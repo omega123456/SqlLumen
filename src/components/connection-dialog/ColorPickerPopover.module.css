@@ -1,0 +1,85 @@
+.wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--color-border);
+  cursor: pointer;
+  padding: 0;
+}
+
+.swatch:hover {
+  border-color: var(--color-border-strong);
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + var(--space-xs));
+  left: 0;
+  z-index: 10;
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Override react-colorful styles */
+.popover :global(.react-colorful) {
+  width: 200px;
+  height: 150px;
+}
+
+.popover :global(.react-colorful__saturation) {
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.popover :global(.react-colorful__hue) {
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+}
+
+.popover :global(.react-colorful__pointer) {
+  width: 20px;
+  height: 20px;
+}
+
+.hexInput {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.hexInput:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+.clearButton {
+  padding: var(--space-xs);
+  border: none;
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+}
+
+.clearButton:hover {
+  background-color: var(--color-bg-sunken);
+  color: var(--color-text-primary);
+}

@@ -49,6 +49,8 @@ mod tests {
         run_migrations(&conn).expect("should run migrations");
         AppState {
             db: Mutex::new(conn),
+            registry: crate::mysql::registry::ConnectionRegistry::new(),
+            app_handle: None,
         }
     }
 

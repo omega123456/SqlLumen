@@ -1,0 +1,23 @@
+[[permission]]
+identifier = "allow-test-connection"
+description = "Enables the test_connection command without any pre-configured scope."
+commands.allow = ["test_connection"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-open-connection"
+description = "Enables the open_connection command without any pre-configured scope."
+commands.allow = ["open_connection"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-close-connection"
+description = "Enables the close_connection command without any pre-configured scope."
+commands.allow = ["close_connection"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-get-connection-status"
+description = "Enables the get_connection_status command without any pre-configured scope."
+commands.allow = ["get_connection_status"]
+commands.deny = []

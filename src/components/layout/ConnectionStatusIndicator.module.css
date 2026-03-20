@@ -1,0 +1,17 @@
+.dot {
+  display: inline-block;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.connected {
+  background-color: var(--color-status-success);
+}
+
+.reconnecting {
+  background-color: var(--color-status-warning);
+}
+
+.disconnected {
+  background-color: var(--color-status-error);
+}

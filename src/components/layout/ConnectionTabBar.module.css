@@ -4,9 +4,9 @@
   border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0 var(--space-sm);
   flex-shrink: 0;
+  gap: 0;
 }
 
 .leftSection,
@@ -14,6 +14,11 @@
   display: flex;
   align-items: center;
   gap: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.rightSection {
+  margin-left: auto;
 }
 
 .iconButton {
@@ -24,10 +29,101 @@
   height: 32px;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
-  transition: background-color 0.1s ease, color 0.1s ease;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
 }
 
 .iconButton:hover {
+  background-color: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+}
+
+/* Scrollable tabs area */
+.tabsSection {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
+  padding: 0 var(--space-xs);
+  scrollbar-width: none; /* Firefox */
+}
+
+.tabsSection::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+/* Individual tab */
+.tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  height: 40px;
+  padding: 0 var(--space-sm);
+  border: none;
+  background: none;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  border-bottom: 3px solid transparent;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease,
+    opacity 0.1s ease;
+  flex-shrink: 0;
+}
+
+.tab:hover {
+  background-color: var(--color-bg-elevated);
+}
+
+.tabActive {
+  color: var(--color-text-primary);
+  opacity: 1;
+}
+
+.tabInactive {
+  color: var(--color-text-secondary);
+  opacity: 0.6;
+}
+
+.tabInactive:hover {
+  opacity: 0.8;
+}
+
+/* 8px color swatch circle */
+.colorDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tabName {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.closeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
+}
+
+.closeButton:hover {
   background-color: var(--color-bg-elevated);
   color: var(--color-text-primary);
 }

@@ -1,0 +1,53 @@
+[[permission]]
+identifier = "allow-save-connection"
+description = "Enables the save_connection command without any pre-configured scope."
+commands.allow = ["save_connection"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-get-connection"
+description = "Enables the get_connection command without any pre-configured scope."
+commands.allow = ["get_connection"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-connections"
+description = "Enables the list_connections command without any pre-configured scope."
+commands.allow = ["list_connections"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-update-connection"
+description = "Enables the update_connection command without any pre-configured scope."
+commands.allow = ["update_connection"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-delete-connection"
+description = "Enables the delete_connection command without any pre-configured scope."
+commands.allow = ["delete_connection"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-create-connection-group"
+description = "Enables the create_connection_group command without any pre-configured scope."
+commands.allow = ["create_connection_group"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-connection-groups"
+description = "Enables the list_connection_groups command without any pre-configured scope."
+commands.allow = ["list_connection_groups"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-update-connection-group"
+description = "Enables the update_connection_group command without any pre-configured scope."
+commands.allow = ["update_connection_group"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-delete-connection-group"
+description = "Enables the delete_connection_group command without any pre-configured scope."
+commands.allow = ["delete_connection_group"]
+commands.deny = []

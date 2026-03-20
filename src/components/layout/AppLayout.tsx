@@ -3,6 +3,7 @@ import { ConnectionTabBar } from './ConnectionTabBar'
 import { Sidebar } from './Sidebar'
 import { WorkspaceArea } from './WorkspaceArea'
 import { StatusBar } from './StatusBar'
+import { ConnectionDialog } from '../connection-dialog/ConnectionDialog'
 import styles from './AppLayout.module.css'
 
 export function AppLayout() {
@@ -27,16 +28,14 @@ export function AppLayout() {
           >
             <Sidebar />
           </Panel>
-          <Separator
-            className={styles.resizeHandle}
-            onDoubleClick={handleSeparatorDoubleClick}
-          />
+          <Separator className={styles.resizeHandle} onDoubleClick={handleSeparatorDoubleClick} />
           <Panel id="workspace" className={styles.workspacePanel}>
             <WorkspaceArea />
           </Panel>
         </Group>
       </div>
       <StatusBar />
+      <ConnectionDialog />
     </div>
   )
 }

@@ -3,10 +3,16 @@ use rusqlite::{Connection, Result};
 /// The list of migrations to apply, in order.
 /// Each entry is (migration_name, sql).
 /// New migrations must be added here manually when new .sql files are created.
-const MIGRATIONS: &[(&str, &str)] = &[(
-    "001_initial",
-    include_str!("../../migrations/001_initial.sql"),
-)];
+const MIGRATIONS: &[(&str, &str)] = &[
+    (
+        "001_initial",
+        include_str!("../../migrations/001_initial.sql"),
+    ),
+    (
+        "002_connection_timeouts",
+        include_str!("../../migrations/002_connection_timeouts.sql"),
+    ),
+];
 
 /// Run all pending migrations on the given connection.
 /// Creates the `_migrations` tracking table if it doesn't exist.

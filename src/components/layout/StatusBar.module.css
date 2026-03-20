@@ -12,3 +12,23 @@
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
 }
+
+.statusLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.statusCenter {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.statusRight {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}

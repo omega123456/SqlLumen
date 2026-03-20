@@ -1,16 +1,26 @@
-import { Sun, Moon, GearSix, Plus } from '@phosphor-icons/react'
+import { Sun, Moon, GearSix, Plus, X } from '@phosphor-icons/react'
 import { useThemeStore } from '../../stores/theme-store'
+import { useConnectionStore } from '../../stores/connection-store'
 import type { Theme } from '../../stores/theme-store'
+import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
 import styles from './ConnectionTabBar.module.css'
 
 export function ConnectionTabBar() {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const setTheme = useThemeStore((state) => state.setTheme)
 
+  const activeConnections = useConnectionStore((state) => state.activeConnections)
+  const activeTabId = useConnectionStore((state) => state.activeTabId)
+  const switchTab = useConnectionStore((state) => state.switchTab)
+  const closeConnection = useConnectionStore((state) => state.closeConnection)
+  const openDialog = useConnectionStore((state) => state.openDialog)
+
   const handleThemeToggle = () => {
     const nextTheme: Theme = resolvedTheme === 'light' ? 'dark' : 'light'
     void setTheme(nextTheme)
   }
+
+  const tabs = Object.values(activeConnections)
 
   return (
     <div className={styles.tabBar}>
@@ -20,10 +30,57 @@ export function ConnectionTabBar() {
           type="button"
           aria-label="New Connection"
           title="New Connection"
+          onClick={openDialog}
         >
           <Plus size={20} weight="regular" />
         </button>
       </div>
+      {tabs.length > 0 && (
+        <div className={styles.tabsSection}>
+          {tabs.map((conn) => {
+            const isActive = conn.id === activeTabId
+            return (
+              <button
+                key={conn.id}
+                type="button"
+                className={`${styles.tab} ${isActive ? styles.tabActive : styles.tabInactive}`}
+                style={{
+                  borderBottomColor: conn.profile.color ?? 'var(--color-border)',
+                }}
+                onClick={() => switchTab(conn.id)}
+                title={`${conn.profile.name} (${conn.profile.host}:${conn.profile.port})`}
+              >
+                {conn.profile.color && (
+                  <span
+                    className={styles.colorDot}
+                    style={{ backgroundColor: conn.profile.color }}
+                  />
+                )}
+                <ConnectionStatusIndicator status={conn.status} size={8} />
+                <span className={styles.tabName}>{conn.profile.name}</span>
+                <span
+                  className={styles.closeButton}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Close ${conn.profile.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void closeConnection(conn.id)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.stopPropagation()
+                      void closeConnection(conn.id)
+                    }
+                  }}
+                >
+                  <X size={14} weight="regular" />
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
       <div className={styles.rightSection}>
         <button
           className={styles.iconButton}
@@ -39,12 +96,7 @@ export function ConnectionTabBar() {
             <Moon size={20} weight="regular" />
           )}
         </button>
-        <button
-          className={styles.iconButton}
-          type="button"
-          aria-label="Settings"
-          title="Settings"
-        >
+        <button className={styles.iconButton} type="button" aria-label="Settings" title="Settings">
           <GearSix size={20} weight="regular" />
         </button>
       </div>

@@ -122,6 +122,18 @@ Theme is applied by setting `data-theme="light|dark"` on `document.documentEleme
 
 ## Testing Conventions
 
+### New code requires tests
+
+Treat tests as part of the feature, not a follow-up task. **Any new or materially changed behavior must ship with tests in the same change set** so `pnpm test:all` stays green and coverage thresholds hold.
+
+| Area | Where to add tests |
+|------|-------------------|
+| React components, hooks, stores, frontend utilities | `src/tests/` — mirror the path under `src/` (e.g. `src/components/Foo.tsx` → `src/tests/components/Foo.test.tsx`) |
+| Rust logic, commands (`*_impl`), DB helpers | `#[cfg(test)]` in the same module or integration tests under `src-tauri/tests/` as appropriate for the project |
+| Critical user journeys spanning the full app | `e2e/` (Playwright) when the change warrants it — not every UI tweak needs E2E |
+
+**Exceptions (no new tests):** purely cosmetic changes, comment-only edits, renames with no behavior change, or generated/boilerplate with no custom logic. When in doubt, add a small test.
+
 - **Workflow:** After every substantive change, run `pnpm test:all` and fix failures or coverage gaps before finishing (includes Playwright).
 - React tests: Vitest + jsdom + `@testing-library/react`. Setup file: `src/tests/setup.ts`
 - E2E: Playwright in `e2e/`; `playwright.config.ts` runs `pnpm dev` as the web server with `VITE_PLAYWRIGHT=true`.

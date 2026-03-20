@@ -1,6 +1,16 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { AppLayout } from '../../components/layout/AppLayout'
+import { useConnectionStore } from '../../stores/connection-store'
+
+beforeEach(() => {
+  useConnectionStore.setState({
+    activeConnections: {},
+    activeTabId: null,
+    dialogOpen: false,
+    error: null,
+  })
+})
 
 describe('AppLayout', () => {
   it('renders all four main sections', () => {

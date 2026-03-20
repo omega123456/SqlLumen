@@ -1,0 +1,239 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.input {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input:focus {
+  border-color: var(--color-accent);
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.inputError {
+  border-color: var(--color-status-error);
+}
+
+.errorText {
+  font-size: var(--font-size-xs);
+  color: var(--color-status-error);
+}
+
+/* Host + Port row: 75% / 25% */
+.hostPortRow {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  gap: var(--space-sm);
+}
+
+/* Password field */
+.passwordWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.passwordInput {
+  padding: var(--space-xs) var(--space-sm);
+  padding-right: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.passwordInput:focus {
+  border-color: var(--color-accent);
+}
+
+.passwordToggle {
+  position: absolute;
+  right: var(--space-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.passwordToggle:hover {
+  color: var(--color-text-primary);
+}
+
+/* Section content inside collapsible sections */
+.sectionContent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fileInputRow {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.fileInputRow .input {
+  flex: 1;
+}
+
+.browseButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.browseButton:hover {
+  background-color: var(--color-bg-sunken);
+  color: var(--color-text-primary);
+}
+
+.browseButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Number inputs with unit label */
+.numberInputRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.numberInputRow .input {
+  width: 100px;
+}
+
+.unitLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Color picker row */
+.colorRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* Group select */
+.select {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.select:focus {
+  border-color: var(--color-accent);
+}
+
+/* Action buttons */
+.actions {
+  display: flex;
+  gap: var(--space-sm);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.secondaryButton {
+  padding: var(--space-xs) var(--space-lg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.secondaryButton:hover {
+  background-color: var(--color-bg-sunken);
+}
+
+.secondaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.primaryButton {
+  padding: var(--space-xs) var(--space-lg);
+  border: none;
+  border-radius: var(--radius-md);
+  background-color: var(--color-accent);
+  color: var(--color-text-on-accent);
+  font-size: var(--font-size-md);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  margin-left: auto;
+}
+
+.primaryButton:hover {
+  background-color: var(--color-accent-hover);
+}
+
+.primaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

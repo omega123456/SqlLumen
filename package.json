@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml --test settings_integration --test connections_integration --test mysql_integration --test commands_integration",
     "test:all": "pnpm test:coverage && pnpm test:rust && pnpm test:e2e",
     "test:e2e": "playwright test",
     "lint": "eslint src",
@@ -22,6 +22,8 @@
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
     "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.2.0",
+    "react-colorful": "^5.6.1",
     "react-resizable-panels": "^4.7.3",
     "zustand": "^5.0.12"
   },

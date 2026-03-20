@@ -7,6 +7,19 @@
     "core:default",
     "allow-get-setting",
     "allow-set-setting",
-    "allow-get-all-settings"
+    "allow-get-all-settings",
+    "allow-save-connection",
+    "allow-get-connection",
+    "allow-list-connections",
+    "allow-update-connection",
+    "allow-delete-connection",
+    "allow-create-connection-group",
+    "allow-list-connection-groups",
+    "allow-update-connection-group",
+    "allow-delete-connection-group",
+    "allow-test-connection",
+    "allow-open-connection",
+    "allow-close-connection",
+    "allow-get-connection-status"
   ]
 }
