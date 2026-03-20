@@ -51,6 +51,8 @@ pnpm dev
 | `pnpm test` | Run Vitest once |
 | `pnpm test:watch` | Vitest in watch mode |
 | `pnpm test:coverage` | Vitest with coverage thresholds |
+| `pnpm test:rust` | Rust unit tests (`cargo test` from repo root) |
+| `pnpm test:all` | Vitest coverage + Rust + Playwright E2E (run after substantive changes) |
 | `pnpm test:e2e` | Playwright E2E tests |
 | `pnpm lint` / `pnpm lint:fix` | ESLint |
 | `pnpm format` | Prettier on `src/` |
@@ -73,7 +75,7 @@ Work is tracked in phases; see `CONTEXT.md` and `.agent/plans/` in this repo for
 ## Contributing
 
 1. Install prerequisites and run `pnpm install`.
-2. Run `pnpm lint`, `pnpm typecheck`, and `pnpm test` before opening a PR.
+2. Run `pnpm lint`, `pnpm typecheck`, and `pnpm test:all` (Vitest coverage, Rust, Playwright) before opening a PR.
 3. For UI changes that affect the desktop shell, verify with `pnpm tauri dev` when possible.
 
 ---
