@@ -19,41 +19,46 @@
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
-    "@tauri-apps/api": "^2",
+    "@tauri-apps/api": "^2.10.1",
     "react-resizable-panels": "^4.7.3",
     "zustand": "^5.0.12"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "eslint": "10"
+      }
+    }
   },
   "devDependencies": {
-    "@eslint/js": "^9",
-    "@fontsource/jetbrains-mono": "^5",
-    "@playwright/test": "^1",
-    "@tauri-apps/cli": "^2",
-    "@testing-library/jest-dom": "^6",
-    "@testing-library/react": "^16",
-    "@testing-library/user-event": "^14",
-    "@types/node": "^22",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "@typescript-eslint/eslint-plugin": "^8",
-    "@typescript-eslint/parser": "^8",
-    "@vitejs/plugin-react": "^4",
-    "@vitest/coverage-v8": "^3",
-    "eslint": "^9",
-    "eslint-plugin-react-hooks": "^5",
-    "eslint-plugin-react-refresh": "^0.4",
-    "globals": "^16",
-    "jsdom": "^26",
-    "prettier": "^3",
-    "react": "^18",
-    "react-dom": "^18",
-    "typescript": "^5",
-    "typescript-eslint": "^8",
-    "vite": "^6",
-    "vitest": "^3"
+    "@eslint/js": "^10.0.1",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@playwright/test": "^1.58.2",
+    "@tauri-apps/cli": "^2.10.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.0",
+    "eslint": "^10.1.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.4.0",
+    "jsdom": "^29.0.1",
+    "prettier": "^3.8.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.1",
+    "vite": "^8.0.1",
+    "vitest": "^4.1.0"
   }
 }
