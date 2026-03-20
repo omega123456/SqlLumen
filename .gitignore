@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+dist-ssr/
+
+# Rust build artifacts
+target/
+src-tauri/target/
+src-tauri/gen/
+
+# Tauri
+*.dmg
+*.deb
+*.AppImage
+*.msi
+*.exe
+!src-tauri/icons/*.ico
+
+# Coverage
+coverage/
+lcov.info
+*.lcov
+
+# Playwright
+playwright-report/
+test-results/
+/e2e/.auth/
+
+# Environment files
+.env.local
+.env.*.local
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+.claude
+.agent
+.ignore
+CONTEXT.md

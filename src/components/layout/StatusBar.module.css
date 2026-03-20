@@ -1,0 +1,14 @@
+.statusBar {
+  height: 24px;
+  background-color: var(--color-bg-surface);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-sm);
+  flex-shrink: 0;
+}
+
+.statusText {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
