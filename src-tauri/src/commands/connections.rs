@@ -155,15 +155,23 @@ pub fn update_connection_impl(
     }
 
     if let Some(pw) = password {
+        let previous_keychain_ref = connections::get_keychain_ref(&conn, id)
+            .map_err(|e| e.to_string())?
+            .filter(|reference| !reference.is_empty());
         // Store/update password in OS keychain
         crate::credentials::store_password(id, &pw)
             .map_err(|e| format!("Failed to update password in keychain: {e}"))?;
         // Ensure keychain_ref is set (may have been NULL if no previous password)
-        conn.execute(
-            "UPDATE connections SET keychain_ref = ?1 WHERE id = ?2",
-            rusqlite::params![id, id],
-        )
-        .map_err(|e| e.to_string())?;
+        if let Err(error) = connections::set_keychain_ref(&conn, id, Some(id)) {
+            let _ = crate::credentials::delete_password(id);
+            return Err(error.to_string());
+        }
+        if let Some(previous_ref) = previous_keychain_ref
+            .as_deref()
+            .filter(|reference| *reference != id)
+        {
+            let _ = crate::credentials::delete_password(previous_ref);
+        }
     }
     // If password is None, leave existing password/keychain_ref unchanged
 
@@ -171,10 +179,15 @@ pub fn update_connection_impl(
 }
 
 pub fn delete_connection_impl(state: &AppState, id: &str) -> Result<(), String> {
-    // Try to delete keychain entry; ignore failures (orphaned entries acceptable)
-    let _ = crate::credentials::delete_password(id);
-
     let conn = lock_db(state)?;
+    let keychain_ref = connections::get_keychain_ref(&conn, id)
+        .map_err(|e| e.to_string())?
+        .filter(|reference| !reference.is_empty());
+    // Try to delete keychain entry; ignore failures (orphaned entries acceptable)
+    let _ = crate::credentials::delete_password(crate::credentials::effective_keychain_ref(
+        id,
+        keychain_ref.as_deref(),
+    ));
     match connections::delete_connection(&conn, id) {
         Ok(()) => Ok(()),
         Err(error) => Err(error.to_string()),

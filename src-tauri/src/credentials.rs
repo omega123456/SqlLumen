@@ -1,8 +1,9 @@
 //! OS-native credential storage for connection passwords.
 //!
 //! Uses the `keyring` crate to store passwords in the OS keychain:
-//! - macOS: Keychain
-//! - Windows: Credential Manager
+//! - macOS: Keychain (`apple-native` feature — see `Cargo.toml`)
+//! - Windows: Credential Manager (`windows-native`)
+//! - Linux: keyutils + Secret Service (`linux-native-sync-persistent`, etc.)
 //!
 //! Service name is `"mysql-client"`, user key is the connection UUID.
 
@@ -43,6 +44,24 @@ pub fn store_password(connection_id: &str, password: &str) -> Result<(), String>
     entry
         .set_password(password)
         .map_err(|e| format!("Failed to store password in keychain: {e}"))
+}
+
+/// Resolve the concrete keychain lookup key for a connection.
+pub fn effective_keychain_ref<'a>(
+    connection_id: &'a str,
+    keychain_ref: Option<&'a str>,
+) -> &'a str {
+    keychain_ref
+        .filter(|reference| !reference.is_empty())
+        .unwrap_or(connection_id)
+}
+
+/// Retrieve a password using the stored keychain reference when present.
+pub fn retrieve_password_for_connection(
+    connection_id: &str,
+    keychain_ref: Option<&str>,
+) -> Result<String, String> {
+    retrieve_password(effective_keychain_ref(connection_id, keychain_ref))
 }
 
 /// Retrieve a password from the OS keychain for the given connection ID.

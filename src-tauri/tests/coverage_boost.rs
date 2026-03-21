@@ -8,7 +8,7 @@ use mysql_client_lib::commands::connections::{
 };
 use mysql_client_lib::commands::mysql::{
     close_connection_impl, get_connection_status_impl, open_connection_impl, test_connection_impl,
-    TestConnectionInput,
+    OpenConnectionResult, TestConnectionInput,
 };
 use mysql_client_lib::commands::settings::{
     get_all_settings_impl, get_setting_impl, set_setting_impl,
@@ -16,6 +16,7 @@ use mysql_client_lib::commands::settings::{
 use mysql_client_lib::credentials::{
     self, set_test_credential_backend, TestCredentialBackend,
 };
+use mysql_client_lib::db::connections::set_keychain_ref;
 #[cfg(coverage)]
 use mysql_client_lib::mysql::health::spawn_health_monitor;
 use mysql_client_lib::mysql::pool::{
@@ -24,21 +25,37 @@ use mysql_client_lib::mysql::pool::{
 use mysql_client_lib::mysql::registry::{ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use mysql_client_lib::state::AppState;
 use rusqlite::Connection;
-use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+use serde::de::DeserializeOwned;
+use serde_json::json;
+use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlSslMode};
 use sqlx::ConnectOptions;
 use std::collections::HashMap;
+use std::time::Duration;
 #[cfg(coverage)]
 use std::process::Command;
 use std::sync::{LazyLock, Mutex};
 #[cfg(coverage)]
 use tauri::AppHandle;
+use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::Manager;
+use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+use tauri::webview::InvokeRequest;
 use tokio_util::sync::CancellationToken;
 
 type CredentialMap = HashMap<String, String>;
 
 static TEST_KEYCHAIN: LazyLock<Mutex<CredentialMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 static TEST_CREDENTIAL_ERROR: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
+
+struct FakeKeychainGuard {
+    _guard: std::sync::MutexGuard<'static, ()>,
+}
+
+impl Drop for FakeKeychainGuard {
+    fn drop(&mut self) {
+        set_test_credential_backend(None);
+    }
+}
 
 struct PoolFactoryGuard {
     _guard: std::sync::MutexGuard<'static, ()>,
@@ -50,7 +67,7 @@ impl Drop for PoolFactoryGuard {
     }
 }
 
-fn install_fake_keychain() -> std::sync::MutexGuard<'static, ()> {
+fn install_fake_keychain() -> FakeKeychainGuard {
     static KEYCHAIN_LOCK: Mutex<()> = Mutex::new(());
     let guard = KEYCHAIN_LOCK
         .lock()
@@ -64,7 +81,7 @@ fn install_fake_keychain() -> std::sync::MutexGuard<'static, ()> {
         retrieve_password: fake_retrieve_password,
         delete_password: fake_delete_password,
     }));
-    guard
+    FakeKeychainGuard { _guard: guard }
 }
 
 fn install_test_pool_factory(
@@ -164,8 +181,74 @@ fn dummy_pool() -> sqlx::MySqlPool {
         .host("127.0.0.1")
         .port(13306)
         .username("dummy")
-        .password("dummy");
-    MySqlPoolOptions::new().connect_lazy_with(opts)
+        .password("dummy")
+        .ssl_mode(MySqlSslMode::Disabled);
+    MySqlPoolOptions::new()
+        .acquire_timeout(Duration::from_secs(1))
+        .connect_lazy_with(opts)
+}
+
+#[tauri::command]
+fn save_connection(data: SaveConnectionInput, state: tauri::State<'_, AppState>) -> Result<String, String> {
+    save_connection_impl(&state, data)
+}
+
+#[tauri::command]
+async fn open_connection(
+    connection_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<OpenConnectionResult, String> {
+    open_connection_impl(&state, &connection_id).await
+}
+
+fn build_connection_commands_app(
+) -> (
+    tauri::App<tauri::test::MockRuntime>,
+    tauri::WebviewWindow<tauri::test::MockRuntime>,
+) {
+    let app = mock_builder()
+        .manage(test_state())
+        .invoke_handler(tauri::generate_handler![save_connection, open_connection])
+        .build(mock_context(noop_assets()))
+        .expect("should build test app");
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("should build test webview");
+    (app, webview)
+}
+
+fn invoke_tauri_command<T: DeserializeOwned>(
+    webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+    cmd: &str,
+    body: serde_json::Value,
+) -> Result<T, serde_json::Value> {
+    get_ipc_response(
+        webview,
+        InvokeRequest {
+            cmd: cmd.into(),
+            callback: CallbackFn(0),
+            error: CallbackFn(1),
+            url: "http://tauri.localhost".parse().expect("test URL should parse"),
+            body: InvokeBody::Json(body),
+            headers: Default::default(),
+            invoke_key: INVOKE_KEY.to_string(),
+        },
+    )
+    .map(|response| {
+        response
+            .deserialize::<T>()
+            .expect("IPC response should deserialize")
+    })
+}
+
+fn move_fake_password(from: &str, to: &str) {
+    let mut keychain = TEST_KEYCHAIN
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let password = keychain
+        .remove(from)
+        .expect("source password should exist in fake keychain");
+    keychain.insert(to.to_string(), password);
 }
 
 fn sample_save_input(password: Option<&str>) -> SaveConnectionInput {
@@ -187,6 +270,33 @@ fn sample_save_input(password: Option<&str>) -> SaveConnectionInput {
         connect_timeout_secs: Some(0),
         keepalive_interval_secs: Some(0),
     }
+}
+
+fn save_input_json(input: SaveConnectionInput) -> serde_json::Value {
+    json!({
+        "name": input.name,
+        "host": input.host,
+        "port": input.port,
+        "username": input.username,
+        "password": input.password,
+        "defaultDatabase": input.default_database,
+        "sslEnabled": input.ssl_enabled,
+        "sslCaPath": input.ssl_ca_path,
+        "sslCertPath": input.ssl_cert_path,
+        "sslKeyPath": input.ssl_key_path,
+        "color": input.color,
+        "groupId": input.group_id,
+        "readOnly": input.read_only,
+        "sortOrder": input.sort_order,
+        "connectTimeoutSecs": input.connect_timeout_secs,
+        "keepaliveIntervalSecs": input.keepalive_interval_secs,
+    })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenConnectionResultDto {
+    server_version: String,
 }
 
 fn sample_test_connection_input() -> TestConnectionInput {
@@ -216,6 +326,7 @@ fn sample_registry_entry(status: ConnectionStatus) -> RegistryEntry {
             port: 3306,
             username: "root".to_string(),
             has_password: false,
+            keychain_ref: None,
             default_database: None,
             ssl_enabled: false,
             ssl_ca_path: None,
@@ -264,7 +375,6 @@ fn credentials_round_trip_with_fake_keychain() {
     let password = credentials::retrieve_password("cred-1").expect("should retrieve password");
     assert_eq!(password, "secret");
     credentials::delete_password("cred-1").expect("should delete password");
-    set_test_credential_backend(None);
 }
 
 #[test]
@@ -282,7 +392,17 @@ fn credentials_surface_fake_backend_errors() {
     let delete_error = credentials::delete_password("cred-err")
         .expect_err("delete should propagate errors");
     assert!(delete_error.contains("Failed to delete password from keychain"));
-    set_test_credential_backend(None);
+}
+
+#[test]
+fn credentials_retrieve_password_for_connection_prefers_stored_keychain_ref() {
+    let _guard = install_fake_keychain();
+    credentials::store_password("legacy-ref", "secret").expect("should store password");
+
+    let password = credentials::retrieve_password_for_connection("conn-1", Some("legacy-ref"))
+        .expect("should read using keychain ref");
+
+    assert_eq!(password, "secret");
 }
 
 #[test]
@@ -300,7 +420,6 @@ fn save_connection_impl_rolls_back_when_password_storage_fails() {
         .expect("should count rows");
     assert_eq!(count, 0);
     assert!(error.starts_with("Failed to store password in keychain:"));
-    set_test_credential_backend(None);
 }
 
 #[test]
@@ -334,7 +453,6 @@ fn update_connection_impl_surfaces_password_update_errors() {
     )
     .expect_err("update should fail when keychain update fails");
     assert!(error.starts_with("Failed to update password in keychain:"));
-    set_test_credential_backend(None);
 }
 
 #[test]
@@ -458,7 +576,34 @@ fn update_connection_with_password_sets_keychain_ref() {
         .expect("get should succeed")
         .expect("record should exist");
     assert!(record.has_password);
-    set_test_credential_backend(None);
+}
+
+#[test]
+fn update_connection_with_password_migrates_legacy_keychain_ref() {
+    let _guard = install_fake_keychain();
+    let state = test_state();
+    let connection_id = save_connection_impl(&state, sample_save_input(Some("old-secret")))
+        .expect("save should succeed");
+    let legacy_keychain_ref = format!("legacy-{connection_id}");
+
+    {
+        let conn = state.db.lock().expect("db lock should succeed");
+        set_keychain_ref(&conn, &connection_id, Some(&legacy_keychain_ref))
+            .expect("should persist legacy keychain ref");
+    }
+    move_fake_password(&connection_id, &legacy_keychain_ref);
+
+    update_connection_impl(&state, &connection_id, update_input(Some("new-secret")))
+        .expect("update with password should succeed");
+
+    assert_eq!(
+        credentials::retrieve_password(&connection_id).expect("new password should exist"),
+        "new-secret"
+    );
+    assert!(
+        credentials::retrieve_password(&legacy_keychain_ref).is_err(),
+        "legacy password should be removed after migration"
+    );
 }
 
 #[test]
@@ -476,7 +621,6 @@ fn update_connection_with_password_surfaces_sqlite_write_errors() {
     let error = update_connection_impl(&state, &connection_id, update_input(Some("secret")))
         .expect_err("sqlite write error should be surfaced");
     assert!(error.contains("no such table") || error.contains("Query returned no rows"));
-    set_test_credential_backend(None);
 }
 
 #[test]
@@ -614,7 +758,45 @@ async fn open_connection_impl_surfaces_keychain_errors() {
         .await
         .expect_err("keychain retrieval failure should be surfaced");
     assert!(error.starts_with("Failed to retrieve password from keychain:"));
-    set_test_credential_backend(None);
+}
+
+#[tokio::test]
+async fn open_connection_ipc_uses_stored_keychain_ref() {
+    let _guard = install_fake_keychain();
+    let (app, webview) = build_connection_commands_app();
+
+    let connection_id: String = invoke_tauri_command(
+        &webview,
+        "save_connection",
+        json!({
+            "data": save_input_json(sample_save_input(Some("super-secret"))),
+        }),
+    )
+    .expect("save_connection IPC should succeed");
+
+    let legacy_keychain_ref = format!("legacy-{connection_id}");
+    {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().expect("db lock should succeed");
+        conn.execute(
+            "UPDATE connections SET keychain_ref = ?1 WHERE id = ?2",
+            rusqlite::params![legacy_keychain_ref, connection_id],
+        )
+        .expect("should persist legacy keychain ref");
+    }
+    move_fake_password(&connection_id, &legacy_keychain_ref);
+
+    let _pool_guard = install_test_pool_factory(forced_pool_success);
+    let result: OpenConnectionResultDto = invoke_tauri_command(
+        &webview,
+        "open_connection",
+        json!({
+            "connectionId": connection_id,
+        }),
+    )
+    .expect("open_connection IPC should use the stored keychain ref");
+
+    assert_eq!(result.server_version, "Unknown");
 }
 
 #[tokio::test]
@@ -628,7 +810,6 @@ async fn open_connection_impl_surfaces_pool_creation_errors() {
     let error = open_connection_impl(&state, &connection_id)
         .await
         .expect_err("pool creation errors should be surfaced");
-    set_test_credential_backend(None);
     assert!(error.starts_with("Failed to connect:"));
 }
 
@@ -645,6 +826,61 @@ async fn open_connection_impl_surfaces_database_read_errors() {
         .await
         .expect_err("database read error should be surfaced");
     assert!(error.contains("no such table"));
+}
+
+#[tokio::test]
+#[cfg(not(coverage))]
+async fn health_reconnect_uses_stored_keychain_ref() {
+    let _guard = install_fake_keychain();
+    let state = test_state();
+    let connection_id = "conn-health".to_string();
+    let legacy_keychain_ref = "legacy-health-ref".to_string();
+    credentials::store_password(&legacy_keychain_ref, "secret").expect("should store password");
+
+    state.registry.insert(
+        connection_id.clone(),
+        RegistryEntry {
+            pool: dummy_pool(),
+            connection_id: connection_id.clone(),
+            status: ConnectionStatus::Disconnected,
+            server_version: "Unknown".to_string(),
+            cancellation_token: CancellationToken::new(),
+            connection_params: StoredConnectionParams {
+                host: "127.0.0.1".to_string(),
+                port: 3306,
+                username: "root".to_string(),
+                has_password: true,
+                keychain_ref: Some(legacy_keychain_ref),
+                default_database: None,
+                ssl_enabled: false,
+                ssl_ca_path: None,
+                ssl_cert_path: None,
+                ssl_key_path: None,
+                connect_timeout_secs: 10,
+                keepalive_interval_secs: 0,
+            },
+            read_only: false,
+        },
+    );
+
+    let _pool_guard = install_test_pool_factory(forced_pool_success);
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .expect("should build app");
+    let token = mysql_client_lib::mysql::health::spawn_health_monitor(
+        connection_id.clone(),
+        1,
+        tauri::AppHandle::clone(&app.handle()),
+    );
+
+    // 1s keepalive + failed ping (~≤1s with connect_timeout) + 5s reconnect backoff + pool swap
+    tokio::time::sleep(Duration::from_secs(8)).await;
+    assert_eq!(
+        app.state::<AppState>().registry.get_status(&connection_id),
+        Some(ConnectionStatus::Connected)
+    );
+    token.cancel();
 }
 
 #[tokio::test]

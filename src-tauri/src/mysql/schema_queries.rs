@@ -5,6 +5,8 @@
 
 use serde::Serialize;
 #[cfg(not(coverage))]
+use sqlx::mysql::MySqlRow;
+#[cfg(not(coverage))]
 use sqlx::{MySqlPool, Row};
 #[cfg(not(coverage))]
 use std::collections::HashMap;
@@ -132,6 +134,53 @@ pub fn safe_identifier(name: &str) -> Result<String, String> {
 // MySQL query functions — excluded from coverage builds (no real MySQL pool)
 // ---------------------------------------------------------------------------
 
+/// Decode a text-like cell that may be reported as `VARCHAR` or `VARBINARY` depending on
+/// server (e.g. MariaDB / some MySQL builds expose `information_schema` identifier columns as
+/// binary). Avoids `unwrap()` panics from sqlx type mismatches.
+#[cfg(not(coverage))]
+fn decode_mysql_text_cell(row: &MySqlRow, index: usize) -> Result<String, String> {
+    match row.try_get::<String, _>(index) {
+        Ok(value) => Ok(value),
+        Err(_) => {
+            let bytes: Vec<u8> = row.try_get(index).map_err(|err| {
+                format!("Failed to decode column index {index} as UTF-8 text: {err}")
+            })?;
+            Ok(String::from_utf8_lossy(&bytes).into_owned())
+        }
+    }
+}
+
+#[cfg(not(coverage))]
+fn decode_mysql_text_cell_named(row: &MySqlRow, column: &str) -> Result<String, String> {
+    match row.try_get::<String, _>(column) {
+        Ok(value) => Ok(value),
+        Err(_) => {
+            let bytes: Vec<u8> = row.try_get(column).map_err(|err| {
+                format!("Failed to decode column '{column}' as UTF-8 text: {err}")
+            })?;
+            Ok(String::from_utf8_lossy(&bytes).into_owned())
+        }
+    }
+}
+
+#[cfg(not(coverage))]
+fn decode_mysql_optional_text_cell(
+    row: &MySqlRow,
+    index: usize,
+) -> Result<Option<String>, String> {
+    match row.try_get::<Option<String>, _>(index) {
+        Ok(value) => Ok(value),
+        Err(_) => match row.try_get::<Option<Vec<u8>>, _>(index) {
+            Ok(opt) => Ok(opt.map(|bytes: Vec<u8>| {
+                String::from_utf8_lossy(&bytes).into_owned()
+            })),
+            Err(err) => Err(format!(
+                "Failed to decode optional text column index {index}: {err}"
+            )),
+        },
+    }
+}
+
 #[cfg(not(coverage))]
 pub async fn query_list_databases(pool: &MySqlPool) -> Result<Vec<String>, String> {
     let rows = sqlx::query(
@@ -141,7 +190,11 @@ pub async fn query_list_databases(pool: &MySqlPool) -> Result<Vec<String>, Strin
     .await
     .map_err(|e| format!("Failed to list databases: {e}"))?;
 
-    Ok(rows.iter().map(|row| row.get::<String, _>(0)).collect())
+    let mut names = Vec::with_capacity(rows.len());
+    for row in &rows {
+        names.push(decode_mysql_text_cell(row, 0)?);
+    }
+    Ok(names)
 }
 
 #[cfg(not(coverage))]
@@ -187,7 +240,11 @@ pub async fn query_list_schema_objects(
         .await
         .map_err(|e| format!("Failed to list {object_type}s: {e}"))?;
 
-    Ok(rows.iter().map(|row| row.get::<String, _>(0)).collect())
+    let mut names = Vec::with_capacity(rows.len());
+    for row in &rows {
+        names.push(decode_mysql_text_cell(row, 0)?);
+    }
+    Ok(names)
 }
 
 #[cfg(not(coverage))]
@@ -208,19 +265,19 @@ pub async fn query_list_columns(
     .await
     .map_err(|e| format!("Failed to list columns: {e}"))?;
 
-    Ok(rows
-        .iter()
-        .enumerate()
-        .map(|(i, row)| ColumnInfo {
-            name: row.get::<String, _>(0),
-            data_type: row.get::<String, _>(1),
+    let mut columns = Vec::with_capacity(rows.len());
+    for (i, row) in rows.iter().enumerate() {
+        columns.push(ColumnInfo {
+            name: decode_mysql_text_cell(row, 0)?,
+            data_type: decode_mysql_text_cell(row, 1)?,
             nullable: false,
             column_key: String::new(),
             default_value: None,
             extra: String::new(),
             ordinal_position: (i + 1) as u32,
-        })
-        .collect())
+        });
+    }
+    Ok(columns)
 }
 
 #[cfg(not(coverage))]
@@ -239,9 +296,9 @@ pub async fn query_database_details(
     .ok_or_else(|| format!("Database '{database}' not found"))?;
 
     Ok(DatabaseDetails {
-        name: row.get::<String, _>(0),
-        default_character_set: row.get::<String, _>(1),
-        default_collation: row.get::<String, _>(2),
+        name: decode_mysql_text_cell(&row, 0)?,
+        default_character_set: decode_mysql_text_cell(&row, 1)?,
+        default_collation: decode_mysql_text_cell(&row, 2)?,
     })
 }
 
@@ -252,18 +309,17 @@ pub async fn query_list_charsets(pool: &MySqlPool) -> Result<Vec<CharsetInfo>, S
         .await
         .map_err(|e| format!("Failed to list character sets: {e}"))?;
 
-    Ok(rows
-        .iter()
-        .map(|row| {
-            let max_len: i64 = row.try_get(3).unwrap_or(1);
-            CharsetInfo {
-                charset: row.get::<String, _>(0),
-                description: row.get::<String, _>(1),
-                default_collation: row.get::<String, _>(2),
-                max_length: max_len as u32,
-            }
-        })
-        .collect())
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let max_len: i64 = row.try_get(3).unwrap_or(1);
+        out.push(CharsetInfo {
+            charset: decode_mysql_text_cell(row, 0)?,
+            description: decode_mysql_text_cell(row, 1)?,
+            default_collation: decode_mysql_text_cell(row, 2)?,
+            max_length: max_len as u32,
+        });
+    }
+    Ok(out)
 }
 
 #[cfg(not(coverage))]
@@ -273,17 +329,16 @@ pub async fn query_list_collations(pool: &MySqlPool) -> Result<Vec<CollationInfo
         .await
         .map_err(|e| format!("Failed to list collations: {e}"))?;
 
-    Ok(rows
-        .iter()
-        .map(|row| {
-            let default_val: String = row.try_get(3).unwrap_or_default();
-            CollationInfo {
-                name: row.get::<String, _>(0),
-                charset: row.get::<String, _>(1),
-                is_default: default_val == "Yes",
-            }
-        })
-        .collect())
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let default_val = decode_mysql_text_cell(row, 3).unwrap_or_default();
+        out.push(CollationInfo {
+            name: decode_mysql_text_cell(row, 0)?,
+            charset: decode_mysql_text_cell(row, 1)?,
+            is_default: default_val == "Yes",
+        });
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -310,22 +365,21 @@ pub async fn query_full_columns(
     .await
     .map_err(|e| format!("Failed to get column details: {e}"))?;
 
-    Ok(rows
-        .iter()
-        .map(|row| {
-            let nullable_str: String = row.try_get(2).unwrap_or_default();
-            let ordinal: i64 = row.try_get(6).unwrap_or(0);
-            ColumnInfo {
-                name: row.get::<String, _>(0),
-                data_type: row.get::<String, _>(1),
-                nullable: nullable_str == "YES",
-                column_key: row.try_get::<String, _>(3).unwrap_or_default(),
-                default_value: row.try_get::<Option<String>, _>(4).unwrap_or(None),
-                extra: row.try_get::<String, _>(5).unwrap_or_default(),
-                ordinal_position: ordinal as u32,
-            }
-        })
-        .collect())
+    let mut columns = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let nullable_str = decode_mysql_text_cell(row, 2).unwrap_or_default();
+        let ordinal: i64 = row.try_get(6).unwrap_or(0);
+        columns.push(ColumnInfo {
+            name: decode_mysql_text_cell(row, 0)?,
+            data_type: decode_mysql_text_cell(row, 1)?,
+            nullable: nullable_str == "YES",
+            column_key: decode_mysql_text_cell(row, 3).unwrap_or_default(),
+            default_value: decode_mysql_optional_text_cell(row, 4)?,
+            extra: decode_mysql_text_cell(row, 5).unwrap_or_default(),
+            ordinal_position: ordinal as u32,
+        });
+    }
+    Ok(columns)
 }
 
 /// Index info via `SHOW INDEX FROM db.table` (works across MySQL versions).
@@ -348,15 +402,16 @@ pub async fn query_indexes(
     let mut index_order: Vec<String> = Vec::new();
 
     for row in &rows {
-        let key_name: String = row.try_get("Key_name").unwrap_or_default();
-        let column_name: String = row.try_get("Column_name").unwrap_or_default();
+        let key_name: String = decode_mysql_text_cell_named(row, "Key_name").unwrap_or_default();
+        let column_name: String =
+            decode_mysql_text_cell_named(row, "Column_name").unwrap_or_default();
         let non_unique: i64 = row.try_get("Non_unique").unwrap_or(0);
-        let index_type: String = row.try_get("Index_type").unwrap_or_default();
+        let index_type: String =
+            decode_mysql_text_cell_named(row, "Index_type").unwrap_or_default();
         let cardinality: Option<i64> = row.try_get("Cardinality").ok();
 
         // MySQL 8.0+ has a Visible column; older versions and MariaDB do not.
-        let is_visible = row
-            .try_get::<String, _>("Visible")
+        let is_visible = decode_mysql_text_cell_named(row, "Visible")
             .map(|v| v == "YES")
             .unwrap_or(true);
 
@@ -412,17 +467,18 @@ pub async fn query_foreign_keys(
     .await
     .map_err(|e| format!("Failed to get foreign keys: {e}"))?;
 
-    Ok(rows
-        .iter()
-        .map(|row| ForeignKeyInfo {
-            name: row.try_get::<String, _>(0).unwrap_or_default(),
-            column_name: row.try_get::<String, _>(1).unwrap_or_default(),
-            referenced_table: row.try_get::<String, _>(2).unwrap_or_default(),
-            referenced_column: row.try_get::<String, _>(3).unwrap_or_default(),
-            on_delete: row.try_get::<String, _>(4).unwrap_or_default(),
-            on_update: row.try_get::<String, _>(5).unwrap_or_default(),
-        })
-        .collect())
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        out.push(ForeignKeyInfo {
+            name: decode_mysql_text_cell(row, 0).unwrap_or_default(),
+            column_name: decode_mysql_text_cell(row, 1).unwrap_or_default(),
+            referenced_table: decode_mysql_text_cell(row, 2).unwrap_or_default(),
+            referenced_column: decode_mysql_text_cell(row, 3).unwrap_or_default(),
+            on_delete: decode_mysql_text_cell(row, 4).unwrap_or_default(),
+            on_update: decode_mysql_text_cell(row, 5).unwrap_or_default(),
+        });
+    }
+    Ok(out)
 }
 
 /// Table metadata from INFORMATION_SCHEMA.TABLES.
@@ -449,11 +505,11 @@ pub async fn query_table_metadata(
     .map_err(|e| format!("Failed to get table metadata: {e}"))?
     .ok_or_else(|| format!("Table '{database}'.'{table}' not found"))?;
 
-    let create_time: Option<String> = row.try_get(3).ok().flatten();
+    let create_time: Option<String> = decode_mysql_optional_text_cell(&row, 3)?;
 
     Ok(TableMetadata {
-        engine: row.try_get::<String, _>(0).unwrap_or_default(),
-        collation: row.try_get::<String, _>(1).unwrap_or_default(),
+        engine: decode_mysql_text_cell(&row, 0).unwrap_or_default(),
+        collation: decode_mysql_text_cell(&row, 1).unwrap_or_default(),
         auto_increment: row.try_get(2).ok().flatten(),
         create_time,
         table_rows: row.try_get(4).unwrap_or(0),
@@ -499,10 +555,7 @@ pub async fn query_ddl(
         .ok_or_else(|| format!("{object_type} '{object_name}' not found in '{database}'"))?;
 
     // The DDL column may be NULL (e.g. insufficient privileges for SHOW CREATE PROCEDURE).
-    let ddl: String = row
-        .try_get::<Option<String>, _>(ddl_col_index)
-        .unwrap_or(None)
-        .unwrap_or_default();
+    let ddl: String = decode_mysql_optional_text_cell(&row, ddl_col_index)?.unwrap_or_default();
 
     Ok(ddl)
 }

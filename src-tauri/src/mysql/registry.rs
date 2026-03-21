@@ -22,6 +22,7 @@ pub struct StoredConnectionParams {
     pub port: u16,
     pub username: String,
     pub has_password: bool,
+    pub keychain_ref: Option<String>,
     pub default_database: Option<String>,
     pub ssl_enabled: bool,
     pub ssl_ca_path: Option<String>,

@@ -68,6 +68,8 @@ pub struct ConnectionRecord {
     pub keepalive_interval_secs: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(skip_serializing, skip_deserializing, default)]
+    pub(crate) keychain_ref: Option<String>,
 }
 
 /// The SELECT columns used by both get and list queries.
@@ -77,7 +79,8 @@ const CONNECTION_SELECT_COLUMNS: &str = "
     c.default_database, c.ssl_enabled, c.ssl_ca_path, c.ssl_cert_path, c.ssl_key_path,
     c.color, c.group_id, c.read_only, c.sort_order,
     c.connect_timeout_secs, c.keepalive_interval_secs,
-    c.created_at, c.updated_at";
+    c.created_at, c.updated_at,
+    c.keychain_ref";
 
 /// Map a rusqlite Row to a ConnectionRecord.
 fn row_to_connection_record(row: &rusqlite::Row) -> rusqlite::Result<ConnectionRecord> {
@@ -101,6 +104,7 @@ fn row_to_connection_record(row: &rusqlite::Row) -> rusqlite::Result<ConnectionR
         keepalive_interval_secs: row.get(16)?,
         created_at: row.get(17)?,
         updated_at: row.get(18)?,
+        keychain_ref: row.get(19)?,
     })
 }
 
@@ -160,6 +164,29 @@ pub fn get_connection(conn: &Connection, id: &str) -> Result<Option<ConnectionRe
         .optional()
 }
 
+pub fn get_keychain_ref(conn: &Connection, id: &str) -> Result<Option<String>> {
+    conn.query_row(
+        "SELECT keychain_ref FROM connections WHERE id = ?1",
+        [id],
+        |row| row.get::<_, Option<String>>(0),
+    )
+    .optional()
+    .map(|result| result.flatten())
+}
+
+pub fn set_keychain_ref(conn: &Connection, id: &str, keychain_ref: Option<&str>) -> Result<()> {
+    let rows_affected = conn.execute(
+        "UPDATE connections SET keychain_ref = ?1 WHERE id = ?2",
+        params![keychain_ref, id],
+    )?;
+
+    if rows_affected == 0 {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+
+    Ok(())
+}
+
 /// List all connections, sorted by group sort_order then connection name.
 /// Ungrouped connections (group_id IS NULL) appear last.
 pub fn list_connections(conn: &Connection) -> Result<Vec<ConnectionRecord>> {
@@ -186,11 +213,7 @@ pub fn list_connections(conn: &Connection) -> Result<Vec<ConnectionRecord>> {
 
 /// Update an existing connection's fields. Does not modify keychain_ref.
 /// Returns an error if the connection does not exist.
-pub fn update_connection(
-    conn: &Connection,
-    id: &str,
-    data: &UpdateConnectionData,
-) -> Result<()> {
+pub fn update_connection(conn: &Connection, id: &str, data: &UpdateConnectionData) -> Result<()> {
     let rows_affected = conn.execute(
         "UPDATE connections SET
             name = ?1, host = ?2, port = ?3, username = ?4,

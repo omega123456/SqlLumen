@@ -206,7 +206,10 @@ async fn reconnect_loop_impl<R: Runtime>(
 
         // Build ConnectionParams from stored params, re-reading password from keychain
         let password = if stored_params.has_password {
-            match credentials::retrieve_password(connection_id) {
+            match credentials::retrieve_password_for_connection(
+                connection_id,
+                stored_params.keychain_ref.as_deref(),
+            ) {
                 Ok(p) => p,
                 Err(e) => {
                     // Keychain retrieval failed — emit disconnected and stop retrying
@@ -307,4 +310,3 @@ fn update_and_emit_impl<R: Runtime>(
     }
     emit_status(app_handle, connection_id, status_str, message);
 }
-

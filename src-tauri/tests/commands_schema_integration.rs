@@ -27,6 +27,7 @@ fn dummy_stored_params() -> StoredConnectionParams {
         port: 13306,
         username: "dummy".to_string(),
         has_password: true,
+        keychain_ref: Some("dummy".to_string()),
         default_database: None,
         ssl_enabled: false,
         ssl_ca_path: None,

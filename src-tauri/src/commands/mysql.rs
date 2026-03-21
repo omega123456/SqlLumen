@@ -214,7 +214,7 @@ pub async fn open_connection_impl(
 
     // Retrieve password from keychain — propagate errors instead of hiding them
     let password = if record.has_password {
-        credentials::retrieve_password(connection_id)
+        credentials::retrieve_password_for_connection(connection_id, record.keychain_ref.as_deref())
             .map_err(|e| format!("Failed to retrieve password from keychain: {e}"))?
     } else {
         String::new()
@@ -229,6 +229,7 @@ pub async fn open_connection_impl(
         port: record.port as u16,
         username: record.username,
         has_password: record.has_password,
+        keychain_ref: record.keychain_ref,
         default_database: record.default_database,
         ssl_enabled: record.ssl_enabled,
         ssl_ca_path: record.ssl_ca_path,
@@ -284,7 +285,7 @@ pub async fn open_connection_impl(
     };
 
     if record.has_password {
-        credentials::retrieve_password(connection_id)
+        credentials::retrieve_password_for_connection(connection_id, record.keychain_ref.as_deref())
             .map_err(|e| format!("Failed to retrieve password from keychain: {e}"))?;
     }
 
@@ -293,6 +294,7 @@ pub async fn open_connection_impl(
         port: record.port as u16,
         username: record.username,
         has_password: record.has_password,
+        keychain_ref: record.keychain_ref,
         default_database: record.default_database,
         ssl_enabled: record.ssl_enabled,
         ssl_ca_path: record.ssl_ca_path,
