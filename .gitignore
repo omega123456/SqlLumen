@@ -47,3 +47,5 @@ Thumbs.db
 .agent
 .ignore
 CONTEXT.md
+opencode.json
+.opencode/

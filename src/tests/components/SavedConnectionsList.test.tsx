@@ -265,6 +265,83 @@ describe('SavedConnectionsList', () => {
       expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
     })
 
+    it('clamps connection context menu position inside the viewport', () => {
+      const innerWidth = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320)
+      const innerHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(240)
+
+      const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+        this: HTMLElement
+      ) {
+        if (this.getAttribute('data-testid') === 'saved-connections-context-menu') {
+          return { width: 280, height: 40, top: 0, left: 0, right: 280, bottom: 40, x: 0, y: 0 } as DOMRect
+        }
+        return { width: 100, height: 32, top: 0, left: 0, right: 100, bottom: 32, x: 0, y: 0 } as DOMRect
+      })
+
+      const conn = makeConnection({ id: 'c1', name: 'Right Click Me' })
+
+      useConnectionStore.setState({
+        savedConnections: [conn],
+        connectionGroups: [],
+      })
+
+      render(<SavedConnectionsList {...defaultProps} />)
+
+      fireEvent.contextMenu(screen.getByText('Right Click Me'), { clientX: 300, clientY: 200 })
+
+      const menu = screen.getByTestId('saved-connections-context-menu')
+      expect(menu).toHaveStyle({ left: '36px', top: '196px' })
+      expect(menu.parentElement).toBe(document.body)
+
+      rectSpy.mockRestore()
+      innerWidth.mockRestore()
+      innerHeight.mockRestore()
+    })
+
+    it('portals the context menu into an open dialog and positions in dialog-local coordinates', () => {
+      const conn = makeConnection({ id: 'c1', name: 'In Dialog' })
+
+      useConnectionStore.setState({
+        savedConnections: [conn],
+        connectionGroups: [],
+      })
+
+      render(
+        <dialog open data-testid="connection-dlg">
+          <SavedConnectionsList {...defaultProps} />
+        </dialog>
+      )
+
+      const dlg = screen.getByTestId('connection-dlg')
+      vi.spyOn(dlg, 'getBoundingClientRect').mockReturnValue({
+        x: 100,
+        y: 80,
+        width: 600,
+        height: 400,
+        top: 80,
+        left: 100,
+        right: 700,
+        bottom: 480,
+        toJSON: () => '',
+      } as DOMRect)
+
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        if (this.getAttribute('data-testid') === 'saved-connections-context-menu') {
+          return { width: 200, height: 40, top: 0, left: 0, right: 200, bottom: 40, x: 0, y: 0 } as DOMRect
+        }
+        return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0 } as DOMRect
+      })
+
+      // Viewport (350, 250) → local (250, 170) relative to mocked dialog box
+      fireEvent.contextMenu(screen.getByText('In Dialog'), { clientX: 350, clientY: 250 })
+
+      const menu = screen.getByTestId('saved-connections-context-menu')
+      expect(dlg.contains(menu)).toBe(true)
+      expect(menu).toHaveStyle({ left: '250px', top: '170px' })
+
+      vi.restoreAllMocks()
+    })
+
     it('deletes connection after confirmation', async () => {
       const user = userEvent.setup()
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -367,6 +444,27 @@ describe('SavedConnectionsList', () => {
 
       expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument()
       expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+    })
+
+    it('does not open group context menu when right-clicking the rename input', async () => {
+      const user = userEvent.setup()
+      const group = makeGroup({ id: 'grp-1', name: 'OldName' })
+
+      useConnectionStore.setState({
+        savedConnections: [],
+        connectionGroups: [group],
+      })
+
+      render(<SavedConnectionsList {...defaultProps} />)
+
+      fireEvent.contextMenu(screen.getByText('OldName'), { clientX: 100, clientY: 200 })
+      await user.click(screen.getByRole('menuitem', { name: 'Rename' }))
+
+      const renameInput = screen.getByLabelText('Group name')
+      fireEvent.contextMenu(renameInput, { clientX: 50, clientY: 50 })
+
+      expect(screen.queryByRole('menuitem', { name: 'Rename' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument()
     })
 
     it('renames a group via inline input on Enter', async () => {

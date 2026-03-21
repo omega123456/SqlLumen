@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import type { CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { Plus, FolderPlus, ShieldCheck, PencilSimple, Trash } from '@phosphor-icons/react'
 import { useConnectionStore } from '../../stores/connection-store'
 import {
@@ -9,6 +10,11 @@ import {
   deleteConnectionGroup,
 } from '../../lib/connection-commands'
 import { useDismissOnOutsideClick } from './useDismissOnOutsideClick'
+import {
+  getContextMenuPortalRoot,
+  isEditableFieldElement,
+  positionContextMenuInPortal,
+} from '../../lib/context-menu-utils'
 import type { SavedConnection, ConnectionGroup } from '../../types/connection'
 import styles from './SavedConnectionsList.module.css'
 
@@ -131,6 +137,7 @@ interface SavedConnectionsListProps {
 interface ContextMenuState {
   x: number
   y: number
+  portalRoot: HTMLElement
   type: 'connection' | 'group'
   connectionId?: string
   groupId?: string
@@ -164,6 +171,23 @@ export function SavedConnectionsList({
     closeOnEscape: true,
   })
 
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) {
+      return
+    }
+    const el = contextMenuRef.current
+    const rect = el.getBoundingClientRect()
+    const pos = positionContextMenuInPortal(
+      contextMenu.portalRoot,
+      contextMenu.x,
+      contextMenu.y,
+      rect.width,
+      rect.height
+    )
+    el.style.left = `${pos.x}px`
+    el.style.top = `${pos.y}px`
+  }, [contextMenu])
+
   // Auto-clear error after 5 seconds
   useEffect(() => {
     if (!error) return
@@ -173,12 +197,26 @@ export function SavedConnectionsList({
 
   const handleConnectionContextMenu = useCallback((e: React.MouseEvent, connectionId: string) => {
     e.preventDefault()
-    setContextMenu({ x: e.clientX, y: e.clientY, type: 'connection', connectionId })
+    const anchor = e.currentTarget as Element
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      portalRoot: getContextMenuPortalRoot(anchor),
+      type: 'connection',
+      connectionId,
+    })
   }, [])
 
   const handleGroupContextMenu = useCallback((e: React.MouseEvent, groupId: string) => {
     e.preventDefault()
-    setContextMenu({ x: e.clientX, y: e.clientY, type: 'group', groupId })
+    const anchor = e.currentTarget as Element
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      portalRoot: getContextMenuPortalRoot(anchor),
+      type: 'group',
+      groupId,
+    })
   }, [])
 
   const handleDeleteConnection = useCallback(
@@ -341,7 +379,14 @@ export function SavedConnectionsList({
               <div
                 className={styles.groupHeader}
                 onContextMenu={
-                  isGroupSection ? (e) => handleGroupContextMenu(e, section.groupId!) : undefined
+                  isGroupSection
+                    ? (e) => {
+                        if (isEditableFieldElement(e.target)) {
+                          return
+                        }
+                        handleGroupContextMenu(e, section.groupId!)
+                      }
+                    : undefined
                 }
               >
                 {isRenaming ? (
@@ -400,53 +445,56 @@ export function SavedConnectionsList({
         </div>
       )}
 
-      {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          className="ui-context-menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          role="menu"
-        >
-          {contextMenu.type === 'connection' && contextMenu.connectionId && (
-            <button
-              type="button"
-              className="ui-context-menu__item ui-context-menu__item--destructive"
-              role="menuitem"
-              onClick={() => void handleDeleteConnection(contextMenu.connectionId!)}
-            >
-              <Trash className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
-              <span>Delete</span>
-            </button>
-          )}
-          {contextMenu.type === 'group' && contextMenu.groupId && (
-            <>
-              <button
-                type="button"
-                className="ui-context-menu__item"
-                role="menuitem"
-                onClick={() => handleRenameGroup(contextMenu.groupId!)}
-              >
-                <PencilSimple className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
-                <span>Rename</span>
-              </button>
-              <div
-                className="ui-context-menu__separator"
-                role="separator"
-                aria-orientation="horizontal"
-              />
+      {contextMenu &&
+        createPortal(
+          <div
+            ref={contextMenuRef}
+            className="ui-context-menu"
+            data-testid="saved-connections-context-menu"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            role="menu"
+          >
+            {contextMenu.type === 'connection' && contextMenu.connectionId && (
               <button
                 type="button"
                 className="ui-context-menu__item ui-context-menu__item--destructive"
                 role="menuitem"
-                onClick={() => void handleDeleteGroup(contextMenu.groupId!)}
+                onClick={() => void handleDeleteConnection(contextMenu.connectionId!)}
               >
                 <Trash className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
                 <span>Delete</span>
               </button>
-            </>
-          )}
-        </div>
-      )}
+            )}
+            {contextMenu.type === 'group' && contextMenu.groupId && (
+              <>
+                <button
+                  type="button"
+                  className="ui-context-menu__item"
+                  role="menuitem"
+                  onClick={() => handleRenameGroup(contextMenu.groupId!)}
+                >
+                  <PencilSimple className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+                  <span>Rename</span>
+                </button>
+                <div
+                  className="ui-context-menu__separator"
+                  role="separator"
+                  aria-orientation="horizontal"
+                />
+                <button
+                  type="button"
+                  className="ui-context-menu__item ui-context-menu__item--destructive"
+                  role="menuitem"
+                  onClick={() => void handleDeleteGroup(contextMenu.groupId!)}
+                >
+                  <Trash className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+                  <span>Delete</span>
+                </button>
+              </>
+            )}
+          </div>,
+          contextMenu.portalRoot
+        )}
     </div>
   )
 }

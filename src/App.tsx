@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { GlobalContextMenu } from './components/common/GlobalContextMenu'
 import { AppLayout } from './components/layout/AppLayout'
 import { useThemeStore } from './stores/theme-store'
 import { useConnectionStore } from './stores/connection-store'
@@ -29,7 +30,12 @@ function App() {
     }
   }, [systemTheme, theme, setTheme])
 
-  return <AppLayout />
+  return (
+    <>
+      <GlobalContextMenu />
+      <AppLayout />
+    </>
+  )
 }
 
 export default App
