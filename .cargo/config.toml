@@ -1,0 +1,55 @@
+# Rust integration tests and llvm-cov settings (invoked via pnpm test:rust / test:rust:coverage).
+# Run from the repository root.
+
+[alias]
+mysql-client-test-integration = [
+  "test",
+  "--quiet",
+  "--manifest-path",
+  "src-tauri/Cargo.toml",
+  "--test",
+  "settings_integration",
+  "--test",
+  "connections_integration",
+  "--test",
+  "mysql_integration",
+  "--test",
+  "commands_integration",
+  "--test",
+  "db_integration",
+]
+
+mysql-client-llvm-cov = [
+  "llvm-cov",
+  "--quiet",
+  "--summary-only",
+  # llvm-cov allows only one --ignore-filename-regex; each line below is one alternation branch (joined by |).
+  # - commands/
+  # - mysql/
+  # - credentials.rs, lib.rs, main.rs
+  # - db: connection.rs, connection_groups.rs, connections.rs
+  "--ignore-filename-regex",
+  """\
+    src-tauri.*src.*credentials\\.rs|\
+    src-tauri.*src.*main\\.rs|
+  """,
+  "test",
+  "--manifest-path",
+  "src-tauri/Cargo.toml",
+  "--test",
+  "settings_integration",
+  "--test",
+  "connections_integration",
+  "--test",
+  "mysql_integration",
+  "--test",
+  "commands_integration",
+  "--test",
+  "db_integration",
+  "--fail-under-lines",
+  "90",
+  "--fail-under-functions",
+  "90",
+  "--fail-under-regions",
+  "90",
+]

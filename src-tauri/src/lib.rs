@@ -23,7 +23,7 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
 /// The `run()` function is excluded from test builds to avoid linking GUI
 /// dependencies (tao/wry/comctl32) that require a Windows SxS manifest
 /// not present in test binaries.
-#[cfg(not(test))]
+#[cfg(not(any(test, coverage)))]
 pub fn run() {
     use mysql::registry::ConnectionRegistry;
     use state::AppState;
@@ -71,6 +71,12 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+/// Coverage builds still compile the bin target (`main.rs`), which calls `run()`.
+/// Provide a no-op stub so coverage can focus on the testable library surface
+/// without linking or executing the full Tauri runtime on Windows.
+#[cfg(coverage)]
+pub fn run() {}
 
 #[cfg(test)]
 mod tests {

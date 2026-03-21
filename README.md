@@ -18,11 +18,39 @@ A desktop **MySQL / MariaDB client** built with [Tauri](https://tauri.app/) 2 an
 | [Node.js](https://nodejs.org/) | LTS recommended |
 | [pnpm](https://pnpm.io/) | Package manager (`corepack enable` or install globally) |
 | [Rust](https://www.rust-lang.org/tools/install) | Required to build the Tauri backend (`cargo`, `rustc`) |
+| Rust coverage (optional) | For `pnpm test:rust:coverage` / `pnpm test:all`: `cargo install cargo-llvm-cov` and `rustup component add llvm-tools-preview` |
 | OS deps | See [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform |
+
+## Setup
+
+Follow these steps on a new machine before **Quick start** or **Contributing**.
+
+1. **Node.js** — Install [Node.js](https://nodejs.org/) (LTS). Verify with `node -v`.
+2. **pnpm** — Enable via Corepack (`corepack enable` then `corepack prepare pnpm@latest --activate`) or [install pnpm](https://pnpm.io/installation) globally. Verify with `pnpm -v`.
+3. **Rust** — Install [rustup](https://www.rust-lang.org/tools/install) and the stable toolchain. Verify with `cargo -v` and `rustc -V`.
+4. **Tauri OS dependencies** — Install the tools Tauri needs on your OS (compilers, WebView2 on Windows, etc.): [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+5. **Clone and install JS deps** — From the repo root:
+   ```bash
+   git clone <repository-url>
+   cd mysql-client
+   pnpm install
+   ```
+6. **Playwright (for E2E / `pnpm test:all`)** — Install browsers once (this project uses Chromium):
+   ```bash
+   pnpm exec playwright install chromium
+   ```
+7. **Rust coverage tools (for `pnpm test:rust:coverage` and `pnpm test:all`)** — Not installed by `pnpm install`. From any directory:
+   ```bash
+   rustup component add llvm-tools-preview
+   cargo install cargo-llvm-cov
+   ```
+   Ensure `~/.cargo/bin` (or your Cargo bin directory) is on your `PATH` so `cargo llvm-cov` is found.
+
+For day-to-day development you only need steps 1–5 and **Quick start** below. Add steps 6–7 when you run the full test suite.
 
 ## Quick start
 
-Clone the repository, install dependencies, then run the app in development mode:
+From the repository root (after **[Setup](#setup)** if this is a fresh clone):
 
 ```bash
 pnpm install
@@ -52,7 +80,8 @@ pnpm dev
 | `pnpm test:watch` | Vitest in watch mode |
 | `pnpm test:coverage` | Vitest with coverage thresholds |
 | `pnpm test:rust` | Rust unit tests (`cargo test` from repo root) |
-| `pnpm test:all` | Vitest coverage + Rust + Playwright E2E (run after substantive changes) |
+| `pnpm test:rust:coverage` | Rust tests with [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (summary to stdout; reports under `src-tauri/target/`) |
+| `pnpm test:all` | Vitest coverage + Rust llvm-cov + Playwright E2E (run after substantive changes) |
 | `pnpm test:e2e` | Playwright E2E tests |
 | `pnpm lint` / `pnpm lint:fix` | ESLint |
 | `pnpm format` | Prettier on `src/` |
@@ -74,8 +103,8 @@ Work is tracked in phases; see `CONTEXT.md` and `.agent/plans/` in this repo for
 
 ## Contributing
 
-1. Install prerequisites and run `pnpm install`.
-2. Run `pnpm lint`, `pnpm typecheck`, and `pnpm test:all` (Vitest coverage, Rust, Playwright) before opening a PR.
+1. Complete **[Setup](#setup)** (including Playwright and Rust coverage tools if you run the full suite), then stay on the latest dependencies with `pnpm install` as needed.
+2. Run `pnpm lint`, `pnpm typecheck`, and `pnpm test:all` (Vitest coverage, Rust with llvm-cov, Playwright) before opening a PR.
 3. For UI changes that affect the desktop shell, verify with `pnpm tauri dev` when possible.
 
 ---

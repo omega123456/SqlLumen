@@ -50,10 +50,7 @@ pub struct UpdateConnectionInput {
 
 // --- Testable implementations (take &AppState instead of State<AppState>) ---
 
-pub fn save_connection_impl(
-    state: &AppState,
-    data: SaveConnectionInput,
-) -> Result<String, String> {
+pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Result<String, String> {
     let password = data.password.clone();
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
@@ -97,10 +94,7 @@ pub fn save_connection_impl(
     Ok(id)
 }
 
-pub fn get_connection_impl(
-    state: &AppState,
-    id: &str,
-) -> Result<Option<ConnectionRecord>, String> {
+pub fn get_connection_impl(state: &AppState, id: &str) -> Result<Option<ConnectionRecord>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     connections::get_connection(&conn, id).map_err(|e| e.to_string())
 }

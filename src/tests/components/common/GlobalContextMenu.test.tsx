@@ -92,14 +92,23 @@ describe('GlobalContextMenu', () => {
     const innerWidth = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320)
     const innerHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(240)
 
-    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
-      this: HTMLElement
-    ) {
-      if (this.getAttribute('data-testid') === 'global-context-menu') {
-        return { width: 280, height: 40, top: 0, left: 0, right: 280, bottom: 40, x: 0, y: 0 } as DOMRect
-      }
-      return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0 } as DOMRect
-    })
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.getAttribute('data-testid') === 'global-context-menu') {
+          return {
+            width: 280,
+            height: 40,
+            top: 0,
+            left: 0,
+            right: 280,
+            bottom: 40,
+            x: 0,
+            y: 0,
+          } as DOMRect
+        }
+        return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0 } as DOMRect
+      })
 
     render(
       <>
@@ -260,7 +269,7 @@ describe('GlobalContextMenu', () => {
     render(
       <>
         <GlobalContextMenu />
-        <div data-testid="ce" contentEditable="true">
+        <div data-testid="ce" contentEditable="true" suppressContentEditableWarning>
           hello world
         </div>
       </>
@@ -297,7 +306,7 @@ describe('GlobalContextMenu', () => {
     render(
       <>
         <GlobalContextMenu />
-        <div data-testid="ce" contentEditable="true">
+        <div data-testid="ce" contentEditable="true" suppressContentEditableWarning>
           hello
         </div>
       </>
@@ -335,7 +344,7 @@ describe('GlobalContextMenu', () => {
     render(
       <>
         <GlobalContextMenu />
-        <div data-testid="ce" contentEditable="true">
+        <div data-testid="ce" contentEditable="true" suppressContentEditableWarning>
           hello
         </div>
       </>
@@ -373,7 +382,7 @@ describe('GlobalContextMenu', () => {
     render(
       <>
         <GlobalContextMenu />
-        <div data-testid="ce" contentEditable="true">
+        <div data-testid="ce" contentEditable="true" suppressContentEditableWarning>
           ab
         </div>
       </>
@@ -481,9 +490,20 @@ describe('GlobalContextMenu', () => {
       toJSON: () => '',
     } as DOMRect)
 
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement
+    ) {
       if (this.getAttribute('data-testid') === 'global-context-menu') {
-        return { width: 160, height: 48, top: 0, left: 0, right: 160, bottom: 48, x: 0, y: 0 } as DOMRect
+        return {
+          width: 160,
+          height: 48,
+          top: 0,
+          left: 0,
+          right: 160,
+          bottom: 48,
+          x: 0,
+          y: 0,
+        } as DOMRect
       }
       return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0 } as DOMRect
     })

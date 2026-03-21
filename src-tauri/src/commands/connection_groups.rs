@@ -4,26 +4,17 @@ use tauri::State;
 
 // --- Testable implementations (take &AppState instead of State<AppState>) ---
 
-pub fn create_connection_group_impl(
-    state: &AppState,
-    name: &str,
-) -> Result<String, String> {
+pub fn create_connection_group_impl(state: &AppState, name: &str) -> Result<String, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     connection_groups::insert_group(&conn, name).map_err(|e| e.to_string())
 }
 
-pub fn list_connection_groups_impl(
-    state: &AppState,
-) -> Result<Vec<ConnectionGroupRecord>, String> {
+pub fn list_connection_groups_impl(state: &AppState) -> Result<Vec<ConnectionGroupRecord>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     connection_groups::list_groups(&conn).map_err(|e| e.to_string())
 }
 
-pub fn update_connection_group_impl(
-    state: &AppState,
-    id: &str,
-    name: &str,
-) -> Result<(), String> {
+pub fn update_connection_group_impl(state: &AppState, id: &str, name: &str) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     connection_groups::update_group(&conn, id, name).map_err(|e| e.to_string())
 }
@@ -36,10 +27,7 @@ pub fn delete_connection_group_impl(state: &AppState, id: &str) -> Result<(), St
 // --- Thin Tauri command wrappers ---
 
 #[tauri::command]
-pub fn create_connection_group(
-    name: String,
-    state: State<AppState>,
-) -> Result<String, String> {
+pub fn create_connection_group(name: String, state: State<AppState>) -> Result<String, String> {
     create_connection_group_impl(&state, &name)
 }
 
@@ -85,8 +73,7 @@ mod tests {
     #[test]
     fn test_create_connection_group_impl_returns_uuid() {
         let state = test_state();
-        let id = create_connection_group_impl(&state, "Production")
-            .expect("should create group");
+        let id = create_connection_group_impl(&state, "Production").expect("should create group");
         assert!(!id.is_empty());
     }
 
@@ -126,8 +113,8 @@ mod tests {
     #[test]
     fn test_delete_connection_group_impl_nullifies_connections() {
         let state = test_state();
-        let group_id = create_connection_group_impl(&state, "My Group")
-            .expect("should create group");
+        let group_id =
+            create_connection_group_impl(&state, "My Group").expect("should create group");
 
         let input = SaveConnectionInput {
             name: "Test DB".to_string(),

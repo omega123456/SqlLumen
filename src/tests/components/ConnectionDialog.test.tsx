@@ -80,9 +80,12 @@ describe('ConnectionDialog', () => {
     expect(useConnectionStore.getState().dialogOpen).toBe(false)
   })
 
-  it('renders ConnectionForm inside the dialog', () => {
+  it('renders ConnectionForm inside the dialog', async () => {
     useConnectionStore.setState({ dialogOpen: true })
-    render(<ConnectionDialog />)
+    await act(async () => {
+      render(<ConnectionDialog />)
+      await Promise.resolve()
+    })
 
     expect(screen.getByLabelText('Connection Name')).toBeInTheDocument()
     expect(screen.getByLabelText('Host address')).toBeInTheDocument()
@@ -90,9 +93,12 @@ describe('ConnectionDialog', () => {
     expect(screen.getByLabelText('Username')).toBeInTheDocument()
   })
 
-  it('renders dialog title with correct aria-labelledby', () => {
+  it('renders dialog title with correct aria-labelledby', async () => {
     useConnectionStore.setState({ dialogOpen: true })
-    render(<ConnectionDialog />)
+    await act(async () => {
+      render(<ConnectionDialog />)
+      await Promise.resolve()
+    })
 
     const title = screen.getByText('Connection Manager')
     expect(title).toBeInTheDocument()

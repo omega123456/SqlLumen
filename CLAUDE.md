@@ -24,7 +24,8 @@ pnpm test               # Vitest (single run)
 pnpm test:watch         # Vitest watch mode
 pnpm test:coverage      # Vitest with v8 coverage (90% threshold on lines/functions/statements)
 pnpm test:rust          # Rust unit tests (from repo root)
-pnpm test:all           # test:coverage, test:rust, test:e2e — run after substantive changes
+pnpm test:rust:coverage # Rust tests via cargo-llvm-cov (needs cargo-llvm-cov + llvm-tools-preview)
+pnpm test:all           # test:coverage, test:rust:coverage, test:e2e — run after substantive changes
 pnpm test:e2e           # Playwright e2e tests
 
 # Rust tests (alternative)
@@ -45,7 +46,7 @@ To run a single Vitest test file: `pnpm vitest run src/tests/path/to/file.test.t
 pnpm test:all    # Vitest+coverage, Rust unit tests, then Playwright (starts Vite via playwright.config)
 ```
 
-Equivalent manual steps: `pnpm test:coverage`, then `pnpm test:rust`, then `pnpm test:e2e`.
+Equivalent manual steps: `pnpm test:coverage`, then `pnpm test:rust:coverage`, then `pnpm test:e2e`. Use `pnpm test:rust` for a fast Rust-only run without coverage instrumentation.
 
 ## Architecture
 

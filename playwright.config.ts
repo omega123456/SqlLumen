@@ -6,9 +6,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  reporter: 'line',
   use: {
-    baseURL: 'http://localhost:1420',
+    baseURL: 'http://127.0.0.1:1420',
     trace: 'on-first-retry',
   },
   projects: [
@@ -18,9 +18,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:1420',
-    reuseExistingServer: false,  // Always start fresh to ensure VITE_PLAYWRIGHT=true
+    command: 'pnpm --silent dev --host 127.0.0.1 --logLevel error',
+    url: 'http://127.0.0.1:1420',
+    reuseExistingServer: false, // Always start fresh to ensure VITE_PLAYWRIGHT=true
+    stdout: 'ignore',
+    stderr: 'pipe',
     env: {
       VITE_PLAYWRIGHT: 'true',
     },

@@ -7,15 +7,19 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['src/tests/setup.ts'],
     globals: true,
-    exclude: ['e2e/**', 'node_modules/**'],
+    include: ['src/tests/**/*.{test,spec}.{ts,tsx}'],
+    exclude: ['e2e/**', 'node_modules/**', '.opencode/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html', 'lcov'],
+      reporter: ['text-summary', 'json', 'html', 'lcov'],
       include: ['src/**'],
       exclude: [
         'src/main.tsx',
         'src/tests/**',
         'src/vite-env.d.ts',
+        'src/styles/**',
+        'src/types/**',
+        'src/**/*.css',
       ],
       thresholds: {
         lines: 90,
