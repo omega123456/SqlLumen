@@ -59,3 +59,200 @@ button {
   background: none;
   color: inherit;
 }
+
+/* ============================================================
+   Global UI primitives — visuals from tokens (theme-specific)
+   ============================================================ */
+
+/* Expandable sub-panels (e.g. SSL files) — no fill; reads as elevated via shadow */
+.ui-subsection {
+  background: var(--ui-subsection-surface-bg);
+  border: var(--ui-subsection-border);
+  border-radius: var(--ui-subsection-radius);
+  box-shadow: var(--ui-subsection-elevation-shadow);
+}
+
+.ui-input,
+.ui-select,
+.ui-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--ui-input-padding-y) var(--ui-input-padding-x);
+  border: var(--control-border);
+  border-radius: var(--ui-input-radius);
+  background: var(--ui-input-bg);
+  color: var(--ui-input-fg);
+  font-family: var(--font-body);
+  font-size: var(--ui-input-font-size);
+  line-height: var(--ui-input-line-height);
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.ui-input::placeholder,
+.ui-textarea::placeholder {
+  color: rgba(var(--on-surface-rgb), var(--ui-input-placeholder-opacity));
+}
+
+.ui-input:focus,
+.ui-select:focus,
+.ui-textarea:focus {
+  border: var(--control-border-focus);
+  box-shadow: var(--control-focus-ring);
+}
+
+[data-theme='light'] .ui-input:focus,
+[data-theme='light'] .ui-select:focus,
+[data-theme='light'] .ui-textarea:focus {
+  box-shadow: var(--control-focus-ring-tight);
+}
+
+.ui-input:disabled,
+.ui-select:disabled,
+.ui-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ui-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+}
+
+.ui-label-caps {
+  font-size: 10px;
+  font-weight: 800;
+  font-family: var(--font-headline);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-label-caps-fg);
+}
+
+.ui-helper {
+  margin-top: 0.4rem;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  line-height: 1.35;
+}
+
+.ui-button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: var(--ui-primary-button-padding);
+  border: none;
+  border-radius: var(--ui-action-button-radius);
+  background: var(--ui-primary-button-bg);
+  color: var(--on-primary);
+  font-size: var(--font-size-ui-strong, 14px);
+  font-family: var(--font-body);
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: var(--ui-primary-button-shadow);
+  transition:
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    filter 0.15s ease,
+    transform 0.1s ease;
+}
+
+.ui-button-primary:hover:not(:disabled) {
+  background: var(--ui-primary-button-bg-hover);
+  box-shadow: var(--ui-primary-button-shadow-hover);
+  filter: var(--ui-primary-button-filter-hover);
+}
+
+.ui-button-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.ui-button-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ui-button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: var(--ui-secondary-button-padding);
+  border: var(--ui-secondary-button-border);
+  border-radius: var(--ui-action-button-radius);
+  background: var(--ui-secondary-button-bg);
+  color: var(--ui-secondary-button-fg);
+  font-size: var(--font-size-ui-strong, 14px);
+  font-family: var(--font-body);
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color 0.15s ease;
+}
+
+.ui-button-secondary:hover:not(:disabled) {
+  background: var(--ui-secondary-button-hover-bg);
+}
+
+.ui-button-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Text / icon row action (e.g. connection dialog “Test Connection”) — uses --ui-test-button-* tokens */
+.ui-button-test {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  border-radius: var(--ui-action-button-radius);
+  background: transparent;
+  color: var(--ui-test-button-fg);
+  font-size: var(--font-size-ui-strong, 14px);
+  font-family: var(--font-body);
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.ui-button-test:hover:not(:disabled) {
+  color: var(--ui-test-button-hover-fg);
+  background: var(--ui-test-button-hover-bg);
+}
+
+.ui-button-test:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ui-button-tertiary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-body);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.ui-button-tertiary:hover:not(:disabled) {
+  background: var(--surface-container-low);
+}

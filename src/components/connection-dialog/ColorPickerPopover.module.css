@@ -1,39 +1,44 @@
+/* Color picker — popover + inputs from tokens */
+
 .wrapper {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
 }
 
 .swatch {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: var(--control-border);
   cursor: pointer;
   padding: 0;
+  flex-shrink: 0;
   transition: border-color 0.15s ease;
 }
 
 .swatch:hover {
-  border-color: rgba(var(--outline-variant-rgb), 0.4);
+  border-color: rgba(var(--outline-variant-rgb), 0.5);
 }
 
 .popover {
   position: absolute;
   top: calc(100% + var(--space-xs));
-  left: 0;
+  right: 0;
+  left: auto;
   z-index: 10;
-  background: var(--glass-surface);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border-radius: var(--radius-md);
+  background: var(--ui-popover-bg);
+  -webkit-backdrop-filter: var(--ui-popover-backdrop-filter);
+  backdrop-filter: var(--ui-popover-backdrop-filter);
+  border: var(--ui-popover-border);
+  border-radius: var(--ui-popover-radius);
   padding: var(--space-sm);
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  box-shadow: var(--elevation-overlay);
+  box-shadow: var(--ui-popover-shadow);
 }
 
-/* Override react-colorful styles */
 .popover :global(.react-colorful) {
   width: 200px;
   height: 150px;
@@ -48,17 +53,17 @@
 }
 
 .popover :global(.react-colorful__pointer) {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .hexInput {
   padding: var(--space-xs) var(--space-sm);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  border-radius: var(--radius-sm);
-  background: var(--surface-container-highest);
-  color: var(--on-surface);
-  font-size: var(--font-size-sm);
+  border: var(--control-border);
+  border-radius: var(--ui-input-radius);
+  background: var(--ui-input-bg);
+  color: var(--ui-input-fg);
+  font-size: var(--ui-input-font-size);
   font-family: var(--font-mono);
   width: 100%;
   box-sizing: border-box;
@@ -69,8 +74,8 @@
 }
 
 .hexInput:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  border: var(--control-border-focus);
+  box-shadow: var(--ui-input-focus-shadow);
 }
 
 .clearButton {
@@ -82,7 +87,7 @@
   font-size: var(--font-size-sm);
   cursor: pointer;
   text-align: center;
-  font-family: inherit;
+  font-family: var(--font-body);
 }
 
 .clearButton:hover {

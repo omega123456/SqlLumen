@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Plus, FolderPlus } from '@phosphor-icons/react'
+import type { CSSProperties } from 'react'
+import { Plus, FolderPlus, ShieldCheck } from '@phosphor-icons/react'
 import { useConnectionStore } from '../../stores/connection-store'
 import {
   deleteConnection,
@@ -266,10 +267,16 @@ export function SavedConnectionsList({
 
   const renderConnectionItem = (conn: SavedConnection) => {
     const isSelected = conn.id === selectedConnectionId
+    const titleText = conn.name.trim() ? conn.name : conn.host
+    const showSubtitle = Boolean(conn.name.trim())
+    const selectedStyle: CSSProperties | undefined =
+      isSelected && conn.color ? { borderLeftColor: conn.color } : undefined
+
     return (
       <div
         key={conn.id}
         className={`${styles.connectionItem} ${isSelected ? styles.connectionItemSelected : ''}`}
+        style={selectedStyle}
         onClick={() => onSelectConnection(conn)}
         onContextMenu={(e) => handleConnectionContextMenu(e, conn.id)}
         role="button"
@@ -285,13 +292,39 @@ export function SavedConnectionsList({
           className={styles.colorDot}
           style={{ backgroundColor: conn.color ?? 'var(--on-surface-variant)' }}
         />
-        <span className={styles.connectionName}>{conn.name || conn.host}</span>
+        <div className={styles.connectionText}>
+          <span className={styles.connectionTitle}>{titleText}</span>
+          {showSubtitle && <span className={styles.connectionHost}>{conn.host}</span>}
+        </div>
       </div>
     )
   }
 
   return (
     <div className={styles.container}>
+      <div className={styles.profilesHeader}>
+        <span className={styles.profilesTitle}>Profiles</span>
+        <div className={styles.headerActions}>
+          <button
+            type="button"
+            className={styles.iconCircleBtn}
+            onClick={onNewConnection}
+            title="New connection"
+            aria-label="New connection"
+          >
+            <Plus size={14} weight="bold" />
+          </button>
+          <button
+            type="button"
+            className={styles.iconCircleBtn}
+            onClick={handleCreateGroup}
+            title="New group"
+            aria-label="New group"
+          >
+            <FolderPlus size={14} weight="bold" />
+          </button>
+        </div>
+      </div>
       <div className={styles.list}>
         {sections.map((section) => {
           // Skip empty ungrouped section
@@ -348,25 +381,9 @@ export function SavedConnectionsList({
         )}
       </div>
 
-      <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.actionButton}
-          onClick={onNewConnection}
-          title="New connection"
-        >
-          <Plus size={14} weight="bold" />
-          New
-        </button>
-        <button
-          type="button"
-          className={styles.actionButton}
-          onClick={handleCreateGroup}
-          title="New group"
-        >
-          <FolderPlus size={14} weight="bold" />
-          Grp
-        </button>
+      <div className={styles.storageFooter}>
+        <ShieldCheck size={14} weight="duotone" className={styles.storageIcon} aria-hidden />
+        <span>Encrypted Storage Active</span>
       </div>
 
       {error && (

@@ -71,9 +71,17 @@ export function ConnectionDialog() {
     >
       <div className={styles.dialogContent}>
         <div className={styles.dialogHeader}>
-          <h2 id="connection-dialog-title" className={styles.dialogTitle}>
-            Connection Manager
-          </h2>
+          <div className={styles.dialogHeaderLeft}>
+            <span className={styles.logoMark} aria-hidden>
+              <span className={styles.logoDot} />
+              <span className={styles.logoDot} />
+              <span className={styles.logoDot} />
+              <span className={styles.logoDot} />
+            </span>
+            <h2 id="connection-dialog-title" className={styles.dialogTitle}>
+              Connection Manager
+            </h2>
+          </div>
           <button
             className={styles.closeButton}
             type="button"
@@ -84,17 +92,15 @@ export function ConnectionDialog() {
           </button>
         </div>
         <div className={styles.dialogBody}>
-          <div className={styles.leftPane}>
+          <aside className={styles.leftPane}>
             <SavedConnectionsList
               onSelectConnection={handleSelectConnection}
               onNewConnection={handleNewConnection}
               onDeleteConnection={handleDeleteConnection}
               selectedConnectionId={editingConnection?.id ?? null}
             />
-          </div>
-          <div className={styles.rightPane}>
-            <ConnectionForm editingConnection={editingConnection ?? undefined} />
-          </div>
+          </aside>
+          <ConnectionForm editingConnection={editingConnection ?? undefined} />
         </div>
       </div>
     </dialog>

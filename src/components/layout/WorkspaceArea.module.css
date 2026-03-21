@@ -36,29 +36,6 @@
   color: var(--on-surface-variant);
 }
 
-.newConnectionButton {
-  padding: var(--space-sm) var(--space-lg);
-  background: linear-gradient(135deg, var(--primary-gradient-from), var(--primary-gradient-to));
-  color: var(--on-primary);
-  border: none;
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-md);
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-  transition:
-    transform 0.1s ease,
-    box-shadow 0.15s ease;
-}
-
-.newConnectionButton:hover {
-  box-shadow: inset 0 0 0 100px rgba(var(--surface-tint-rgb), 0.08);
-}
-
-.newConnectionButton:active {
-  transform: scale(0.98);
-}
-
 /* Connected placeholder */
 .connectedPlaceholder {
   max-width: 480px;

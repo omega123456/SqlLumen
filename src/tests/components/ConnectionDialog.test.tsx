@@ -85,7 +85,7 @@ describe('ConnectionDialog', () => {
     render(<ConnectionDialog />)
 
     expect(screen.getByLabelText('Connection Name')).toBeInTheDocument()
-    expect(screen.getByLabelText('Host')).toBeInTheDocument()
+    expect(screen.getByLabelText('Host address')).toBeInTheDocument()
     expect(screen.getByLabelText('Port')).toBeInTheDocument()
     expect(screen.getByLabelText('Username')).toBeInTheDocument()
   })
@@ -212,7 +212,7 @@ describe('ConnectionDialog', () => {
       // Form should be populated with connection data
       await waitFor(() => {
         expect(screen.getByLabelText('Connection Name')).toHaveValue('Test DB')
-        expect(screen.getByLabelText('Host')).toHaveValue('127.0.0.1')
+        expect(screen.getByLabelText('Host address')).toHaveValue('127.0.0.1')
         expect(screen.getByLabelText('Username')).toHaveValue('root')
       })
     })
@@ -241,7 +241,7 @@ describe('ConnectionDialog', () => {
       // Form should be cleared
       await waitFor(() => {
         expect(screen.getByLabelText('Connection Name')).toHaveValue('')
-        expect(screen.getByLabelText('Host')).toHaveValue('')
+        expect(screen.getByLabelText('Host address')).toHaveValue('')
         expect(screen.getByLabelText('Username')).toHaveValue('')
       })
     })

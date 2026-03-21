@@ -67,28 +67,23 @@ describe('ConnectionForm', () => {
     render(<ConnectionForm />)
 
     expect(screen.getByLabelText('Connection Name')).toBeInTheDocument()
-    expect(screen.getByLabelText('Host')).toBeInTheDocument()
+    expect(screen.getByLabelText('Host address')).toBeInTheDocument()
     expect(screen.getByLabelText('Port')).toBeInTheDocument()
     expect(screen.getByLabelText('Username')).toBeInTheDocument()
     expect(screen.getByLabelText('Password')).toBeInTheDocument()
     expect(screen.getByLabelText('Default Database')).toBeInTheDocument()
   })
 
-  it('renders SSL Settings collapsible section', () => {
+  it('renders SSL certificate files collapsible section', () => {
     render(<ConnectionForm />)
-    expect(screen.getByText('SSL Settings')).toBeInTheDocument()
-  })
-
-  it('renders Advanced collapsible section', () => {
-    render(<ConnectionForm />)
-    expect(screen.getByText('Advanced')).toBeInTheDocument()
+    expect(screen.getByText('SSL certificate files')).toBeInTheDocument()
   })
 
   it('SSL section expands and collapses', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
-    const sslButton = screen.getByRole('button', { name: /SSL Settings/ })
+    const sslButton = screen.getByRole('button', { name: /SSL certificate files/ })
 
     // Initially collapsed
     expect(sslButton).toHaveAttribute('aria-expanded', 'false')
@@ -100,24 +95,6 @@ describe('ConnectionForm', () => {
     // Click to collapse
     await user.click(sslButton)
     expect(sslButton).toHaveAttribute('aria-expanded', 'false')
-  })
-
-  it('Advanced section expands and collapses', async () => {
-    const user = userEvent.setup()
-    render(<ConnectionForm />)
-
-    const advButton = screen.getByRole('button', { name: /Advanced/ })
-
-    // Initially collapsed
-    expect(advButton).toHaveAttribute('aria-expanded', 'false')
-
-    // Click to expand
-    await user.click(advButton)
-    expect(advButton).toHaveAttribute('aria-expanded', 'true')
-
-    // Click to collapse
-    await user.click(advButton)
-    expect(advButton).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('Test Connection button calls testConnection IPC', async () => {
@@ -137,7 +114,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Test Connection'))
 
@@ -157,7 +134,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Save'))
 
@@ -180,7 +157,7 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.click(screen.getByText('Test Connection'))
 
     expect(screen.getByText('Username is required')).toBeInTheDocument()
@@ -193,7 +170,7 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByText('Test Connection'))
     expect(screen.getByText('Host is required')).toBeInTheDocument()
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     expect(screen.queryByText('Host is required')).not.toBeInTheDocument()
   })
 
@@ -240,6 +217,10 @@ describe('ConnectionForm', () => {
     expect(screen.getByText('Test Connection')).toBeInTheDocument()
     expect(screen.getByText('Save')).toBeInTheDocument()
     expect(screen.getByText('Connect')).toBeInTheDocument()
+
+    expect(screen.getByRole('button', { name: 'Test Connection' })).toHaveClass('ui-button-test')
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('ui-button-secondary')
+    expect(screen.getByRole('button', { name: 'Connect' })).toHaveClass('ui-button-primary')
   })
 
   it('renders group selector with Ungrouped option', () => {
@@ -367,7 +348,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Test Connection'))
 
@@ -388,7 +369,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Test Connection'))
 
@@ -399,8 +380,11 @@ describe('ConnectionForm', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument()
   })
 
-  it('SSL fields are disabled when SSL toggle is off', () => {
+  it('SSL fields are disabled when SSL toggle is off', async () => {
+    const user = userEvent.setup()
     render(<ConnectionForm />)
+
+    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
 
     expect(screen.getByLabelText('CA Certificate')).toBeDisabled()
     expect(screen.getByLabelText('Client Certificate')).toBeDisabled()
@@ -411,15 +395,19 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
-    await user.click(screen.getByLabelText('Enable SSL'))
+    await user.click(screen.getByLabelText('Use SSL / TLS'))
+    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
 
     expect(screen.getByLabelText('CA Certificate')).not.toBeDisabled()
     expect(screen.getByLabelText('Client Certificate')).not.toBeDisabled()
     expect(screen.getByLabelText('Client Key')).not.toBeDisabled()
   })
 
-  it('Browse buttons are disabled when SSL is off', () => {
+  it('Browse buttons are disabled when SSL is off', async () => {
+    const user = userEvent.setup()
     render(<ConnectionForm />)
+
+    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
 
     expect(screen.getByLabelText('Browse CA certificate')).toBeDisabled()
     expect(screen.getByLabelText('Browse client certificate')).toBeDisabled()
@@ -433,7 +421,8 @@ describe('ConnectionForm', () => {
     render(<ConnectionForm />)
 
     // Enable SSL first
-    await user.click(screen.getByLabelText('Enable SSL'))
+    await user.click(screen.getByLabelText('Use SSL / TLS'))
+    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
 
     // Click browse for CA cert
     await user.click(screen.getByLabelText('Browse CA certificate'))
@@ -456,7 +445,8 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
-    await user.click(screen.getByLabelText('Enable SSL'))
+    await user.click(screen.getByLabelText('Use SSL / TLS'))
+    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
     await user.click(screen.getByLabelText('Browse client certificate'))
 
     await waitFor(() => {
@@ -483,7 +473,7 @@ describe('ConnectionForm', () => {
     useConnectionStore.setState({ dialogOpen: true })
     render(<ConnectionForm />)
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Connect'))
 
@@ -509,7 +499,7 @@ describe('ConnectionForm', () => {
     useConnectionStore.setState({ dialogOpen: true })
     render(<ConnectionForm />)
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Connect'))
 
@@ -527,7 +517,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Connect'))
 
@@ -546,7 +536,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Save'))
 
@@ -563,7 +553,7 @@ describe('ConnectionForm', () => {
     await user.type(nameInput, 'My Server')
     expect(nameInput).toHaveValue('My Server')
 
-    const hostInput = screen.getByLabelText('Host')
+    const hostInput = screen.getByLabelText('Host address')
     await user.type(hostInput, '192.168.1.1')
     expect(hostInput).toHaveValue('192.168.1.1')
 
@@ -572,11 +562,8 @@ describe('ConnectionForm', () => {
     expect(dbInput).toHaveValue('mydb')
   })
 
-  it('renders Advanced section fields when expanded', async () => {
-    const user = userEvent.setup()
+  it('renders timeout and read-only fields', () => {
     render(<ConnectionForm />)
-
-    await user.click(screen.getByRole('button', { name: /Advanced/ }))
 
     expect(screen.getByLabelText('Read Only')).toBeInTheDocument()
     expect(screen.getByLabelText('Connect Timeout')).toBeInTheDocument()
@@ -586,8 +573,6 @@ describe('ConnectionForm', () => {
   it('Advanced fields accept input', async () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
-
-    await user.click(screen.getByRole('button', { name: /Advanced/ }))
 
     // Toggle read-only
     const readOnlyCheckbox = screen.getByLabelText('Read Only')
@@ -615,7 +600,7 @@ describe('ConnectionForm', () => {
     render(<ConnectionForm editingConnection={editConn} />)
 
     expect(screen.getByLabelText('Connection Name')).toHaveValue('Prod DB')
-    expect(screen.getByLabelText('Host')).toHaveValue('10.0.0.1')
+    expect(screen.getByLabelText('Host address')).toHaveValue('10.0.0.1')
     expect(screen.getByLabelText('Port')).toHaveValue(3307)
     expect(screen.getByLabelText('Username')).toHaveValue('admin')
     expect(screen.getByLabelText('Default Database')).toHaveValue('production')
@@ -643,7 +628,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
 
     // First save — should call save_connection
@@ -691,7 +676,7 @@ describe('ConnectionForm', () => {
     render(<ConnectionForm editingConnection={editConn} />)
 
     // Edit the host
-    const hostInput = screen.getByLabelText('Host')
+    const hostInput = screen.getByLabelText('Host address')
     await user.clear(hostInput)
     await user.type(hostInput, '10.0.0.1')
 
@@ -719,7 +704,7 @@ describe('ConnectionForm', () => {
     useConnectionStore.setState({ dialogOpen: true })
     render(<ConnectionForm />)
 
-    await user.type(screen.getByLabelText('Host'), 'localhost')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Connect'))
 
@@ -755,7 +740,8 @@ describe('ConnectionForm', () => {
     render(<ConnectionForm />)
 
     // Enable SSL
-    await user.click(screen.getByLabelText('Enable SSL'))
+    await user.click(screen.getByLabelText('Use SSL / TLS'))
+    await user.click(screen.getByRole('button', { name: /SSL certificate files/ }))
 
     // Type in CA cert field
     const caInput = screen.getByLabelText('CA Certificate')

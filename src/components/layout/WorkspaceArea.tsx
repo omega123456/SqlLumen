@@ -26,7 +26,7 @@ export function WorkspaceArea() {
       <div className={styles.welcomeCard}>
         <h2 className={styles.welcomeTitle}>Welcome!</h2>
         <p className={styles.welcomeMessage}>Connect to a MySQL server to get started</p>
-        <button className={styles.newConnectionButton} type="button" onClick={openDialog}>
+        <button className="ui-button-primary" type="button" onClick={openDialog}>
           + New Connection
         </button>
       </div>

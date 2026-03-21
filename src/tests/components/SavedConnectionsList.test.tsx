@@ -175,7 +175,7 @@ describe('SavedConnectionsList', () => {
       const { container } = render(<SavedConnectionsList {...defaultProps} />)
 
       const connectionNames = Array.from(
-        container.querySelectorAll('[class*="connectionName"]')
+        container.querySelectorAll('[class*="connectionTitle"]')
       ).map((el) => el.textContent)
 
       expect(connectionNames).toEqual(['Alpha', 'Bravo', 'Charlie'])

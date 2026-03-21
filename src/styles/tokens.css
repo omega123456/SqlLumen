@@ -68,20 +68,139 @@
   --space-xl: 24px;
   --space-2xl: 32px;
 
-  /* Border Radius */
+  /* Border Radius — design spec md = 0.375rem; connection_manager `rounded` = 0.125rem */
+    --radius-2xs: 0.125rem;
   --radius-sm: 4px;
-  --radius-md: 6px;
+  --radius-md: 0.375rem;
   --radius-lg: 8px;
 
+  /* Typography — shared scale (theme-specific sizes override in [data-theme]) */
+    --letter-spacing-display-tight: -0.02em;
+    --letter-spacing-dialog-title: -0.01em;
+    --letter-spacing-label-md: 0.05rem;
+    --font-size-subtitle: var(--font-size-sm);
+    --font-size-dialog-title: var(--font-size-lg);
+    --font-size-ssl-title: 14px;
+    --font-size-ui-strong: 14px;
   /* Utility tokens */
   --elevation-overlay: 0 12px 32px rgba(var(--on-surface-rgb), 0.06);
   --control-border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
   --control-border-focus: 1px solid var(--primary);
   --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  --control-focus-ring-tight: 0 0 0 1px var(--primary);
   --glass-blur: blur(20px);
+/* ---------- Semantic UI tokens — dark (query_slate) ---------- */
+  --ui-modal-bg: var(--surface-container);
+  --ui-modal-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
+  --ui-modal-shadow: var(--elevation-overlay);
+  --ui-modal-backdrop-scrim: rgba(var(--scrim-rgb), 0.55);
+  --ui-modal-backdrop-blur: none;
+
+  --ui-dialog-header-bg: var(--surface-container-low);
+  --ui-dialog-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+  --ui-dialog-header-padding-y: var(--space-md);
+  --ui-dialog-header-padding-x: var(--space-lg);
+  --ui-dialog-title-size: var(--font-size-dialog-title);
+  --ui-dialog-title-weight: 600;
+
+  --ui-dialog-sidebar-bg: var(--surface-container-low);
+  --ui-dialog-sidebar-border-right: 1px solid rgba(var(--outline-variant-rgb), 0.22);
+
+  --ui-close-button-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
+  --ui-close-button-fg: var(--on-surface-variant);
+  --ui-close-button-hover-fg: var(--primary);
+  --ui-close-button-hover-bg: rgba(var(--primary-rgb), 0.08);
+  --ui-close-button-hover-border-color: rgba(var(--primary-rgb), 0.55);
+
+  --ui-form-main-bg: var(--surface-container);
+  --ui-form-footer-bg: var(--surface-container-low);
+  --ui-form-footer-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.22);
+
+  --ui-section-divider-border: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  /* Nested / expandable blocks — no fill; elevation from shadow only */
+  --ui-subsection-surface-bg: transparent;
+  --ui-subsection-border: none;
+  --ui-subsection-radius: var(--ui-input-radius);
+  --ui-subsection-elevation-shadow: 0 1px 3px rgba(0, 0, 0, 0.35),
+    0 6px 16px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(var(--outline-variant-rgb), 0.22);
+  --ui-collapsible-content-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+
+  --ui-input-bg: var(--surface-container-highest);
+  --ui-input-fg: var(--on-surface);
+  --ui-input-font-size: var(--font-size-md);
+  --ui-input-line-height: 1.25;
+  --ui-input-radius: var(--radius-sm);
+  --ui-input-padding-y: 10px;
+  --ui-input-padding-x: 16px;
+  --ui-input-focus-shadow: var(--control-focus-ring);
+  --ui-input-placeholder-opacity: 0.35;
+
+  --ui-label-caps-fg: var(--on-surface-variant);
+  --ui-subtitle-size: var(--font-size-subtitle);
+  --ui-title-hero-size: var(--font-size-xl);
+  --ui-title-hero-weight: 800;
+
+  --ui-password-toggle-hover-fg: var(--on-surface);
+
+  --ui-chip-bg: var(--surface-container-low);
+  --ui-chip-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
+
+  --ui-icon-action-fg: var(--primary);
+  --ui-icon-action-hover-bg: rgba(var(--on-surface-rgb), 0.06);
+
+  --ui-test-button-fg: var(--on-surface);
+  --ui-test-button-hover-fg: var(--primary);
+  --ui-test-button-hover-bg: rgba(var(--on-surface-rgb), 0.06);
+
+  --ui-secondary-button-bg: var(--surface-container-high);
+  --ui-secondary-button-fg: var(--on-surface);
+  --ui-secondary-button-border: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+  --ui-secondary-button-hover-bg: var(--surface-container-highest);
+  --ui-secondary-button-padding: 11px 26px;
+
+  --ui-primary-button-bg: linear-gradient(135deg, var(--primary-gradient-from), var(--primary-gradient-to));
+  --ui-primary-button-bg-hover: var(--ui-primary-button-bg);
+  --ui-primary-button-shadow: 0 4px 14px rgba(var(--primary-rgb), 0.25);
+  --ui-primary-button-shadow-hover: 0 6px 18px rgba(var(--primary-rgb), 0.35);
+  --ui-primary-button-filter-hover: brightness(1.06);
+  --ui-primary-button-padding: 11px 48px;
+
+  /* Modal/footer CTAs — sharp corners per connection_manager_light_mode Tailwind `rounded` */
+  --ui-action-button-radius: var(--radius-2xs);
+
+  --ui-browse-button-bg: var(--surface-container-high);
+  --ui-browse-button-fg: var(--on-surface-variant);
+  --ui-browse-button-border: var(--control-border);
+  --ui-browse-button-hover-bg: var(--surface-container-highest);
+  --ui-browse-button-hover-fg: var(--on-surface);
+
+  --ui-popover-bg: var(--glass-surface);
+  --ui-popover-border: none;
+  --ui-popover-radius: var(--radius-sm);
+  --ui-popover-shadow: var(--elevation-overlay);
+  --ui-popover-backdrop-filter: var(--glass-blur);
+
+  --ui-collapsible-trigger-font: var(--font-headline);
+  --ui-collapsible-trigger-size: var(--font-size-sm);
+  --ui-collapsible-trigger-hover-bg: rgba(var(--on-surface-rgb), 0.04);
+
+  --ui-list-row-hover-bg: rgba(var(--on-surface-rgb), 0.05);
+  --ui-list-item-selected-bg: rgba(var(--primary-rgb), 0.12);
+  --ui-list-item-selected-shadow: none;
+  --ui-list-title-idle-fg: var(--on-surface);
+  --ui-list-title-idle-weight: 700;
+  --ui-list-title-hover-fg: var(--on-surface);
+  --ui-list-meta-fg: var(--on-surface-variant);
+  --ui-storage-footer-fg: var(--on-surface-variant);
+  --ui-storage-icon-fg: var(--primary);
+
+  --ui-profiles-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.18);
+  --ui-storage-footer-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.18);
+
+  --ui-ssl-hint-fg: var(--on-surface-variant);
 }
 
-/* Light Theme — applied via [data-theme="light"] on <html> */
+/* Light Theme — query_slate_light (applied via [data-theme="light"] on <html>) */
 [data-theme='light'] {
   --surface: #f7f9fb;
   --surface-dim: #e6e8ea;
@@ -89,18 +208,20 @@
   --surface-container-lowest: #ffffff;
   --surface-container-low: #f2f4f6;
   --surface-container: #f2f4f6;
-  --surface-container-high: #dee1e5;
-  --surface-container-highest: #d1d5db;
-  --surface-variant: #dee1e5;
+  --surface-container-high: #e6e8ea;
+    --surface-container-highest: #dee1e5;
+    --surface-variant: #e6e8ea;
   --surface-tint: #0066cc;
   --surface-tint-rgb: 0, 102, 204;
   --primary: #0066cc;
   --primary-rgb: 0, 102, 204;
   --primary-container: #e6f0ff;
+  --primary-fixed: #d7e3ff;
+    --primary-fixed-rgb: 215, 227, 255;
   --primary-gradient-from: #004e9f;
   --primary-gradient-to: #0066cc;
   --on-primary: #ffffff;
-  --on-primary-container: #003366;
+  --on-primary-container: #ffffff;
   --secondary: #475569;
   --secondary-container: #e6f0ff;
   --tertiary: #00893c;
@@ -110,27 +231,138 @@
   --error: #cc0000;
   --error-rgb: 204, 0, 0;
   --error-container: #fff0f0;
-  --on-surface: #1e293b;
-  --on-surface-rgb: 30, 41, 59;
-  --on-surface-variant: #475569;
+  --on-surface: #191c1e;
+    --on-surface-rgb: 25, 28, 30;
+    --on-surface-variant: #414753;
   --on-error: #ffffff;
   --on-error-container: #cc0000;
   --outline: #c1c6d5;
-  --outline-variant: #e2e8f0;
-  --outline-variant-rgb: 226, 232, 240;
-  --inverse-surface: #1e293b;
+  --outline-variant: #c1c6d5;
+    --outline-variant-rgb: 193, 198, 213;
+    --inverse-surface: #191c1e;
   --inverse-on-surface: #f7f9fb;
   --background: #f7f9fb;
-  --on-background: #1e293b;
+  --on-background: #191c1e;
   --glass-surface: rgba(255, 255, 255, 0.8);
   --glass-surface-rgb: 255, 255, 255;
   --scrim-rgb: 0, 0, 0;
-  --status-bar-surface: #dee1e5;
+  --status-bar-surface: #e6e8ea;
 
   /* Utility tokens */
-  --elevation-overlay: 0 12px 32px rgba(var(--on-surface-rgb), 0.06);
+  --elevation-overlay: 0 20px 40px -12px rgba(var(--on-surface-rgb), 0.08);
   --control-border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
   --control-border-focus: 1px solid var(--primary);
   --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  --control-focus-ring-tight: 0 0 0 1px var(--primary);
   --glass-blur: blur(20px);
+/* Typography overrides */
+  --font-size-subtitle: 14px;
+  --font-size-dialog-title: 1.125rem;
+  --letter-spacing-dialog-title: -0.025em;
+
+  /* ---------- Semantic UI tokens — light (query_slate_light) ---------- */
+  --ui-modal-bg: var(--surface-container-lowest);
+  --ui-modal-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
+  --ui-modal-shadow: 0 25px 50px -12px rgba(var(--on-surface-rgb), 0.18);
+  --ui-modal-backdrop-scrim: rgba(var(--on-surface-rgb), 0.4);
+  --ui-modal-backdrop-blur: blur(4px);
+
+  --ui-dialog-header-bg: var(--surface-container-lowest);
+  --ui-dialog-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  --ui-dialog-header-padding-y: 16px;
+  --ui-dialog-header-padding-x: 24px;
+  --ui-dialog-title-size: var(--font-size-dialog-title);
+  --ui-dialog-title-weight: 700;
+
+  --ui-dialog-sidebar-bg: var(--surface-container-low);
+  --ui-dialog-sidebar-border-right: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+
+  --ui-close-button-border: 1px solid transparent;
+  --ui-close-button-fg: var(--on-surface-variant);
+  --ui-close-button-hover-fg: var(--on-surface);
+  --ui-close-button-hover-bg: transparent;
+  --ui-close-button-hover-border-color: transparent;
+
+  --ui-form-main-bg: var(--surface-container-lowest);
+  --ui-form-footer-bg: var(--surface-container-low);
+  --ui-form-footer-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.22);
+
+  --ui-section-divider-border: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+  --ui-subsection-surface-bg: transparent;
+  --ui-subsection-border: none;
+  --ui-subsection-elevation-shadow: 0 1px 2px rgba(15, 23, 42, 0.06),
+    0 4px 14px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(var(--outline-variant-rgb), 0.14);
+  --ui-collapsible-content-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+
+  /* Slight grey fill so fields read as inputs on white forms (between lowest + low) */
+  --ui-input-bg: #f1f5f97a;
+  --ui-input-fg: var(--on-surface);
+  --ui-input-font-size: 14px;
+
+  --ui-label-caps-fg: var(--on-surface-variant);
+  --ui-subtitle-size: var(--font-size-subtitle);
+
+  --ui-password-toggle-hover-fg: var(--primary);
+
+  --ui-chip-bg: var(--surface-container-low);
+  --ui-chip-border: var(--control-border);
+
+  --ui-icon-action-fg: var(--primary);
+  --ui-icon-action-hover-bg: var(--surface-container-high);
+
+  /* Footer actions — connection_manager_light_mode/code.html */
+  --ui-test-button-fg: #64748b;
+  --ui-test-button-hover-fg: var(--primary);
+  --ui-test-button-hover-bg: transparent;
+
+  /* Save: bg-white, text-slate-600, border-slate-200, hover:bg-slate-100 */
+  --ui-secondary-button-bg: #ffffff;
+  --ui-secondary-button-fg: #475569;
+  --ui-secondary-button-border: 1px solid #e2e8f0;
+  --ui-secondary-button-hover-bg: #f1f5f9;
+
+  /* Connect: solid #0066CC, shadow-md, hover #0052A3 */
+  --ui-primary-button-bg: #0066cc;
+  --ui-primary-button-bg-hover: #0052a3;
+  --ui-primary-button-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.1),
+    0 2px 4px -2px rgba(15, 23, 42, 0.1);
+  --ui-primary-button-shadow-hover: 0 6px 12px -2px rgba(15, 23, 42, 0.12),
+    0 3px 6px -2px rgba(15, 23, 42, 0.08);
+  --ui-primary-button-filter-hover: none;
+  --ui-secondary-button-padding: 12px 28px;
+  --ui-primary-button-padding: 12px 56px;
+
+  --ui-browse-button-bg: var(--surface-container-high);
+  --ui-browse-button-fg: var(--on-surface-variant);
+  --ui-browse-button-border: var(--control-border);
+  --ui-browse-button-hover-bg: var(--surface-container);
+  --ui-browse-button-hover-fg: var(--on-surface);
+
+  --ui-popover-bg: var(--surface-container-lowest);
+  --ui-popover-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
+  --ui-popover-radius: var(--radius-sm);
+  --ui-popover-shadow: 0 10px 15px -3px rgba(var(--on-surface-rgb), 0.08),
+    0 4px 6px -4px rgba(var(--on-surface-rgb), 0.06);
+  --ui-popover-backdrop-filter: none;
+
+  --ui-collapsible-trigger-font: var(--font-body);
+  --ui-collapsible-trigger-size: 14px;
+
+  --ui-list-row-hover-bg: var(--surface-container-high);
+  --ui-list-item-selected-bg: var(--surface-container-lowest);
+  --ui-list-item-selected-shadow: 0 1px 2px rgba(var(--on-surface-rgb), 0.06);
+  --ui-list-title-idle-fg: var(--on-surface-variant);
+  --ui-list-title-idle-weight: 600;
+  --ui-list-title-hover-fg: var(--on-surface);
+  --ui-list-meta-fg: var(--on-surface-variant);
+  --ui-storage-footer-fg: var(--on-surface-variant);
+  --ui-storage-icon-fg: var(--on-surface-variant);
+
+  --ui-profiles-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.22);
+  --ui-storage-footer-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.22);
+
+  --ui-ssl-hint-fg: var(--on-surface-variant);
+
+  --ui-input-focus-shadow: var(--control-focus-ring-tight);
+  --ui-collapsible-trigger-hover-bg: var(--surface-container-high);
 }

@@ -1,5 +1,6 @@
+/* Collapsible — outer chrome from global .ui-subsection + tokens */
+
 .section {
-  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -8,24 +9,25 @@
   align-items: center;
   gap: var(--space-sm);
   width: 100%;
-  padding: var(--space-sm) var(--space-md);
-  background: var(--surface-container-high);
+  padding: 10px 12px;
+  background: transparent;
   color: var(--on-surface);
   border: none;
   cursor: pointer;
-  font-size: var(--font-size-md);
-  font-weight: 500;
-  font-family: var(--font-headline);
+  font-size: var(--ui-collapsible-trigger-size);
+  font-weight: 600;
+  font-family: var(--ui-collapsible-trigger-font);
   text-align: left;
 }
 
 .trigger:hover {
-  background: var(--surface-container-highest);
+  background: var(--ui-collapsible-trigger-hover-bg);
 }
 
 .icon {
   transition: transform 0.2s ease;
   flex-shrink: 0;
+  color: var(--on-surface-variant);
 }
 
 .iconOpen {
@@ -52,8 +54,9 @@
 }
 
 .contentPadding {
-  padding: var(--space-md);
-  background: var(--surface-container-low);
+  padding: 0 12px 12px;
+  border-top: var(--ui-collapsible-content-border-top);
+  background: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

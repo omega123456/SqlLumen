@@ -19,7 +19,7 @@ export function CollapsibleSection({
   const contentId = `${id}-content`
 
   return (
-    <div className={styles.section}>
+    <div className={`ui-subsection ${styles.section}`}>
       <button
         id={triggerId}
         type="button"

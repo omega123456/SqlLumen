@@ -59,6 +59,7 @@ describe('WorkspaceArea', () => {
   it('renders the New Connection button when no connections', () => {
     render(<WorkspaceArea />)
     expect(screen.getByText('+ New Connection')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ New Connection' })).toHaveClass('ui-button-primary')
   })
 
   it('"New Connection" button calls openDialog()', async () => {

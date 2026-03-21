@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { HexColorPicker } from 'react-colorful'
 import { useDismissOnOutsideClick } from './useDismissOnOutsideClick'
 import styles from './ColorPickerPopover.module.css'
@@ -13,13 +13,22 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
   const [hexInput, setHexInput] = useState(color ?? '')
   const wrapperRef = useRef<HTMLDivElement>(null)
 
-  // Sync hex input with external color changes (e.g., from the picker)
-  useEffect(() => {
-    setHexInput(color ?? '')
-  }, [color])
-
   // Close popover on outside click
   useDismissOnOutsideClick(wrapperRef, isOpen, () => setIsOpen(false))
+
+  const handleToggleOpen = () => {
+    if (isOpen) {
+      setIsOpen(false)
+    } else {
+      setHexInput(color ?? '')
+      setIsOpen(true)
+    }
+  }
+
+  const handlePickerColorChange = (next: string) => {
+    onChange(next)
+    setHexInput(next)
+  }
 
   const handleHexInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -35,12 +44,12 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
         type="button"
         className={styles.swatch}
         style={{ backgroundColor: color ?? 'var(--surface-container-high)' }}
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={handleToggleOpen}
         aria-label="Choose color"
       />
       {isOpen && (
         <div className={styles.popover} data-testid="color-picker-popover">
-          <HexColorPicker color={color ?? '#3b82f6'} onChange={onChange} />
+          <HexColorPicker color={color ?? '#3b82f6'} onChange={handlePickerColorChange} />
           <input
             type="text"
             className={styles.hexInput}

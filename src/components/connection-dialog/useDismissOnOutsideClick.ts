@@ -15,7 +15,10 @@ export function useDismissOnOutsideClick(
   options?: { closeOnEscape?: boolean }
 ): void {
   const onDismissRef = useRef(onDismiss)
-  onDismissRef.current = onDismiss
+
+  useEffect(() => {
+    onDismissRef.current = onDismiss
+  }, [onDismiss])
 
   useEffect(() => {
     if (!active) return
