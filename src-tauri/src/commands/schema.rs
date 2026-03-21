@@ -91,9 +91,12 @@ pub async fn list_databases_impl(
 
 #[cfg(coverage)]
 pub async fn list_databases_impl(
-    _state: &AppState,
-    _connection_id: &str,
+    state: &AppState,
+    connection_id: &str,
 ) -> Result<Vec<String>, String> {
+    if state.registry.get_pool(connection_id).is_none() {
+        return Err(format!("Connection '{connection_id}' is not open"));
+    }
     Ok(vec![])
 }
 

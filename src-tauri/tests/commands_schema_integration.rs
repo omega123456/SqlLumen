@@ -1,11 +1,54 @@
 //! Integration tests for schema commands (`commands/schema.rs`).
 //!
-//! Tests for `safe_identifier` and other pure-logic helpers run without MySQL.
-//! Tests that require a live MySQL connection are marked `#[ignore]`.
+//! Pure logic (`safe_identifier`, registry checks) and command paths that fail before
+//! touching the network (missing connection, read-only guard) run without MySQL.
 
 mod common;
 
+use mysql_client_lib::commands::schema::{create_database_impl, list_databases_impl};
+use mysql_client_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use mysql_client_lib::mysql::schema_queries::safe_identifier;
+use mysql_client_lib::state::AppState;
+use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+use tokio_util::sync::CancellationToken;
+
+fn dummy_lazy_pool() -> sqlx::MySqlPool {
+    let opts = MySqlConnectOptions::new()
+        .host("127.0.0.1")
+        .port(13306)
+        .username("dummy")
+        .password("dummy");
+    MySqlPoolOptions::new().connect_lazy_with(opts)
+}
+
+fn dummy_stored_params() -> StoredConnectionParams {
+    StoredConnectionParams {
+        host: "127.0.0.1".to_string(),
+        port: 13306,
+        username: "dummy".to_string(),
+        has_password: true,
+        default_database: None,
+        ssl_enabled: false,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        connect_timeout_secs: 10,
+        keepalive_interval_secs: 60,
+    }
+}
+
+fn register_lazy_pool(state: &AppState, connection_id: &str, read_only: bool) {
+    let entry = RegistryEntry {
+        pool: dummy_lazy_pool(),
+        connection_id: connection_id.to_string(),
+        status: ConnectionStatus::Connected,
+        server_version: "8.0.0".to_string(),
+        cancellation_token: CancellationToken::new(),
+        connection_params: dummy_stored_params(),
+        read_only,
+    };
+    state.registry.insert(connection_id.to_string(), entry);
+}
 
 // ---------------------------------------------------------------------------
 // safe_identifier tests (pure — no MySQL needed)
@@ -121,6 +164,7 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_list_databases_impl_coverage() {
         let state = common::test_app_state();
+        super::register_lazy_pool(&state, "test-conn", false);
         let result = list_databases_impl(&state, "test-conn").await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -248,21 +292,31 @@ mod coverage_stubs {
 }
 
 // ---------------------------------------------------------------------------
-// Live MySQL tests (require real connection — ignored by default)
+// Command guards (no live MySQL — fail before pool/query)
 // ---------------------------------------------------------------------------
 
-#[ignore]
 #[tokio::test]
-async fn test_list_databases_requires_mysql() {
-    // This test requires a real MySQL connection.
-    // Run with: cargo test --test commands_schema_integration -- --ignored
-    eprintln!("This test requires a live MySQL connection");
+async fn test_list_databases_errors_when_connection_not_open() {
+    let state = common::test_app_state();
+    let result = list_databases_impl(&state, "not-registered").await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("not open"),
+        "expected missing-connection error, got: {err}"
+    );
 }
 
-#[ignore]
 #[tokio::test]
-async fn test_read_only_rejects_create_database() {
-    // This test requires a real MySQL connection with a read-only entry in registry.
-    // Run with: cargo test --test commands_schema_integration -- --ignored
-    eprintln!("This test requires a live MySQL connection with read-only setup");
+async fn test_create_database_rejected_when_connection_read_only() {
+    let state = common::test_app_state();
+    register_lazy_pool(&state, "ro-conn", true);
+
+    let result = create_database_impl(&state, "ro-conn", "newdb", None, None).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("read-only"),
+        "expected read-only rejection, got: {err}"
+    );
 }
