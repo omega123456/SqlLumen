@@ -158,7 +158,7 @@ describe('SavedConnectionsList', () => {
       const { container } = render(<SavedConnectionsList {...defaultProps} />)
 
       const dot = container.querySelector('[class*="colorDot"]')
-      expect(dot).toHaveStyle({ backgroundColor: 'var(--color-text-muted)' })
+      expect(dot).toHaveStyle({ backgroundColor: 'var(--on-surface-variant)' })
     })
 
     it('sorts connections within groups by name', () => {

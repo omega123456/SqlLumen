@@ -34,7 +34,7 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
       <button
         type="button"
         className={styles.swatch}
-        style={{ backgroundColor: color ?? 'var(--color-bg-elevated)' }}
+        style={{ backgroundColor: color ?? 'var(--surface-container-high)' }}
         onClick={() => setIsOpen((prev) => !prev)}
         aria-label="Choose color"
       />

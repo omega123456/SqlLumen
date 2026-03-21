@@ -12,26 +12,37 @@
 
 .label {
   font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  color: var(--on-surface-variant);
   font-weight: 500;
 }
 
-.input {
+.input,
+.passwordInput,
+.select {
   padding: var(--space-xs) var(--space-sm);
-  border: 1px solid var(--color-border);
+  border: var(--control-border);
   border-radius: var(--radius-sm);
-  background-color: var(--color-bg-base);
-  color: var(--color-text-primary);
+  background: var(--surface-container-highest);
+  color: var(--on-surface);
   font-size: var(--font-size-md);
   font-family: inherit;
   outline: none;
-  transition: border-color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
   width: 100%;
   box-sizing: border-box;
 }
 
-.input:focus {
-  border-color: var(--color-accent);
+.passwordInput {
+  padding-right: 36px;
+}
+
+.input:focus,
+.passwordInput:focus,
+.select:focus {
+  border: var(--control-border-focus);
+  box-shadow: var(--control-focus-ring);
 }
 
 .input:disabled {
@@ -39,13 +50,15 @@
   cursor: not-allowed;
 }
 
-.inputError {
-  border-color: var(--color-status-error);
+.input.inputError,
+.passwordInput.inputError,
+.select.inputError {
+  border-color: var(--error);
 }
 
 .errorText {
   font-size: var(--font-size-xs);
-  color: var(--color-status-error);
+  color: var(--error);
 }
 
 /* Host + Port row: 75% / 25% */
@@ -62,25 +75,6 @@
   align-items: center;
 }
 
-.passwordInput {
-  padding: var(--space-xs) var(--space-sm);
-  padding-right: 36px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background-color: var(--color-bg-base);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-md);
-  font-family: inherit;
-  outline: none;
-  transition: border-color 0.15s ease;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.passwordInput:focus {
-  border-color: var(--color-accent);
-}
-
 .passwordToggle {
   position: absolute;
   right: var(--space-xs);
@@ -90,7 +84,7 @@
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  color: var(--color-text-secondary);
+  color: var(--on-surface-variant);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -98,7 +92,7 @@
 }
 
 .passwordToggle:hover {
-  color: var(--color-text-primary);
+  color: var(--on-surface);
 }
 
 /* Section content inside collapsible sections */
@@ -128,17 +122,17 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-xs) var(--space-sm);
-  border: 1px solid var(--color-border);
+  border: none;
   border-radius: var(--radius-sm);
-  background-color: var(--color-bg-elevated);
-  color: var(--color-text-secondary);
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .browseButton:hover {
-  background-color: var(--color-bg-sunken);
-  color: var(--color-text-primary);
+  background: var(--surface-container-highest);
+  color: var(--on-surface);
 }
 
 .browseButton:disabled {
@@ -159,7 +153,7 @@
 
 .unitLabel {
   font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  color: var(--on-surface-variant);
 }
 
 /* Color picker row */
@@ -169,71 +163,52 @@
   gap: var(--space-sm);
 }
 
-/* Group select */
-.select {
-  padding: var(--space-xs) var(--space-sm);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background-color: var(--color-bg-base);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-md);
-  font-family: inherit;
-  outline: none;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.select:focus {
-  border-color: var(--color-accent);
-}
-
 /* Action buttons */
 .actions {
   display: flex;
   gap: var(--space-sm);
   padding-top: var(--space-md);
-  border-top: 1px solid var(--color-border);
 }
 
-.secondaryButton {
-  padding: var(--space-xs) var(--space-lg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background-color: var(--color-bg-elevated);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-md);
-  font-family: inherit;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.secondaryButton:hover {
-  background-color: var(--color-bg-sunken);
-}
-
-.secondaryButton:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
+.secondaryButton,
 .primaryButton {
   padding: var(--space-xs) var(--space-lg);
   border: none;
   border-radius: var(--radius-md);
-  background-color: var(--color-accent);
-  color: var(--color-text-on-accent);
   font-size: var(--font-size-md);
   font-family: inherit;
   cursor: pointer;
+}
+
+.secondaryButton:disabled,
+.primaryButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  background: var(--surface-container-high);
+  color: var(--on-surface);
   transition: background-color 0.15s ease;
+}
+
+.secondaryButton:hover {
+  background: var(--surface-container-highest);
+}
+
+.primaryButton {
+  background: linear-gradient(135deg, var(--primary-gradient-from), var(--primary-gradient-to));
+  color: var(--on-primary);
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
   margin-left: auto;
 }
 
 .primaryButton:hover {
-  background-color: var(--color-accent-hover);
+  box-shadow: inset 0 0 0 100px rgba(var(--surface-tint-rgb), 0.08);
 }
 
-.primaryButton:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.primaryButton:active {
+  transform: scale(0.98);
 }

@@ -5,13 +5,13 @@
 }
 
 .connected {
-  background-color: var(--color-status-success);
+  background-color: var(--tertiary);
 }
 
 .reconnecting {
-  background-color: var(--color-status-warning);
+  background-color: var(--warning);
 }
 
 .disconnected {
-  background-color: var(--color-status-error);
+  background-color: var(--error);
 }

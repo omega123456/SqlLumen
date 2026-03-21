@@ -1,65 +1,71 @@
 .workspace {
   height: 100%;
-  background-color: var(--color-bg-base);
+  background-color: var(--surface);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
 }
 
-.welcomeCard {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-2xl);
-  background-color: var(--color-bg-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  text-align: center;
-  max-width: 360px;
-}
-
-.welcomeTitle {
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.welcomeMessage {
-  font-size: var(--font-size-md);
-  color: var(--color-text-secondary);
-}
-
-.newConnectionButton {
-  padding: var(--space-sm) var(--space-lg);
-  background-color: var(--color-accent);
-  color: var(--color-text-on-accent);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-md);
-  transition: background-color 0.15s ease;
-}
-
-.newConnectionButton:hover {
-  background-color: var(--color-accent-hover);
-}
-
-/* Connected placeholder */
+.welcomeCard,
 .connectedPlaceholder {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-md);
   padding: var(--space-2xl);
-  background-color: var(--color-bg-surface);
-  border: 1px solid var(--color-border);
+  background-color: var(--surface-container);
   border-radius: var(--radius-lg);
   text-align: center;
+  box-shadow: var(--elevation-overlay);
+}
+
+.welcomeCard {
+  max-width: 360px;
+}
+
+.welcomeTitle {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--on-surface);
+  font-family: var(--font-headline);
+}
+
+.welcomeMessage {
+  font-size: var(--font-size-md);
+  color: var(--on-surface-variant);
+}
+
+.newConnectionButton {
+  padding: var(--space-sm) var(--space-lg);
+  background: linear-gradient(135deg, var(--primary-gradient-from), var(--primary-gradient-to));
+  color: var(--on-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.15s ease;
+}
+
+.newConnectionButton:hover {
+  box-shadow: inset 0 0 0 100px rgba(var(--surface-tint-rgb), 0.08);
+}
+
+.newConnectionButton:active {
+  transform: scale(0.98);
+}
+
+/* Connected placeholder */
+.connectedPlaceholder {
   max-width: 480px;
 }
 
 .connectedText {
   font-size: var(--font-size-lg);
-  color: var(--color-text-primary);
+  color: var(--on-surface);
   font-weight: 500;
 }

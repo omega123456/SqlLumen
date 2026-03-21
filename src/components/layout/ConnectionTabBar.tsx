@@ -45,7 +45,7 @@ export function ConnectionTabBar() {
                 type="button"
                 className={`${styles.tab} ${isActive ? styles.tabActive : styles.tabInactive}`}
                 style={{
-                  borderBottomColor: conn.profile.color ?? 'var(--color-border)',
+                  borderBottomColor: conn.profile.color ?? 'var(--outline-variant)',
                 }}
                 onClick={() => switchTab(conn.id)}
                 title={`${conn.profile.name} (${conn.profile.host}:${conn.profile.port})`}

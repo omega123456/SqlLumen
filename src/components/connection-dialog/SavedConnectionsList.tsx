@@ -283,7 +283,7 @@ export function SavedConnectionsList({
       >
         <span
           className={styles.colorDot}
-          style={{ backgroundColor: conn.color ?? 'var(--color-text-muted)' }}
+          style={{ backgroundColor: conn.color ?? 'var(--on-surface-variant)' }}
         />
         <span className={styles.connectionName}>{conn.name || conn.host}</span>
       </div>

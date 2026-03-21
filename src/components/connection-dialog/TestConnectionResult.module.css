@@ -1,15 +1,17 @@
-.resultSuccess {
-  border-left: 3px solid var(--color-status-success);
+.resultSuccess,
+.resultError {
+  border-left: 4px solid var(--result-accent);
   border-radius: var(--radius-sm);
   padding: var(--space-sm) var(--space-md);
-  background-color: var(--color-bg-sunken);
+  background: var(--surface-container-low);
+}
+
+.resultSuccess {
+  --result-accent: var(--tertiary);
 }
 
 .resultError {
-  border-left: 3px solid var(--color-status-error);
-  border-radius: var(--radius-sm);
-  padding: var(--space-sm) var(--space-md);
-  background-color: var(--color-bg-sunken);
+  --result-accent: var(--error);
 }
 
 .resultHeader {
@@ -18,16 +20,16 @@
   gap: var(--space-sm);
   font-size: var(--font-size-md);
   font-weight: 500;
-  color: var(--color-text-primary);
+  color: var(--on-surface);
   margin-bottom: var(--space-sm);
 }
 
 .successIcon {
-  color: var(--color-status-success);
+  color: var(--tertiary);
 }
 
 .errorIcon {
-  color: var(--color-status-error);
+  color: var(--error);
 }
 
 .resultGrid {
@@ -38,18 +40,18 @@
 }
 
 .label {
-  color: var(--color-text-secondary);
+  color: var(--on-surface-variant);
 }
 
 .value {
-  color: var(--color-text-primary);
+  color: var(--on-surface);
   font-family: var(--font-mono);
 }
 
 .errorMessage {
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
-  color: var(--color-status-error);
+  color: var(--error);
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;

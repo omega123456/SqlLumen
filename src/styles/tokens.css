@@ -1,26 +1,64 @@
 /* ============================================================
    Design Tokens — CSS Custom Properties
-   Light theme is default (:root), dark theme applied via
-   [data-theme="dark"] on <html>
+   Dark theme is default (:root), light theme applied via
+   [data-theme="light"] on <html>
    ============================================================ */
 
 :root {
-  /* Colors — Light Theme */
-  --color-bg-base: #ffffff;
-  --color-bg-surface: #f5f5f5;
-  --color-bg-elevated: #ebebeb;
-  --color-bg-sunken: #e4e4e4;
-  --color-border: #d4d4d4;
-  --color-border-strong: #bfbfbf;
-  --color-text-primary: #1a1a1a;
-  --color-text-secondary: #5c5c5c;
-  --color-text-disabled: #a3a3a3;
-  --color-accent: #3b82f6;
-  --color-accent-hover: #2563eb;
-  --color-text-on-accent: #ffffff;
-  --color-status-success: #16a34a;
-  --color-status-warning: #d97706;
-  --color-status-error: #dc2626;
+  /* Colors — Dark Theme (default) */
+  --surface: #0b1326;
+  --surface-dim: #0b1326;
+  --surface-bright: #31394d;
+  --surface-container-lowest: #060e20;
+  --surface-container-low: #131b2e;
+  --surface-container: #171f33;
+  --surface-container-high: #222a3d;
+  --surface-container-highest: #2d3449;
+  --surface-variant: #2d3449;
+  --surface-tint: #7bd0ff;
+  --surface-tint-rgb: 123, 208, 255;
+  --primary: #7bd0ff;
+  --primary-rgb: 123, 208, 255;
+  --primary-container: #007fac;
+  --primary-gradient-from: #7bd0ff;
+  --primary-gradient-to: #007fac;
+  --on-primary: #00354a;
+  --on-primary-container: #ffffff;
+  --secondary: #b9c8de;
+  --secondary-container: #39485a;
+  --tertiary: #4ae176;
+  --tertiary-container: #00893c;
+  --warning: #fcd34d;
+  --warning-container: #78350f;
+  --error: #ffb4ab;
+  --error-rgb: 255, 180, 171;
+  --error-container: #93000a;
+  --on-surface: #dae2fd;
+  --on-surface-rgb: 218, 226, 253;
+  --on-surface-variant: #c0c7d3;
+  --on-error: #690005;
+  --on-error-container: #ffdad6;
+  --outline: #8a919d;
+  --outline-variant: #404751;
+  --outline-variant-rgb: 64, 71, 81;
+  --inverse-surface: #dae2fd;
+  --inverse-on-surface: #283044;
+  --background: #0b1326;
+  --on-background: #dae2fd;
+  --glass-surface: rgba(23, 31, 51, 0.85);
+  --glass-surface-rgb: 23, 31, 51;
+  --scrim-rgb: 0, 0, 0;
+  --status-bar-surface: #060e20;
+
+  /* Typography */
+  --font-headline: 'Manrope', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', 'Menlo', monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-lg: 14px;
+  --font-size-xl: 16px;
 
   /* Spacing */
   --space-xs: 4px;
@@ -35,31 +73,64 @@
   --radius-md: 6px;
   --radius-lg: 8px;
 
-  /* Typography */
-  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', 'Menlo', monospace;
-  --font-size-xs: 11px;
-  --font-size-sm: 12px;
-  --font-size-md: 13px;
-  --font-size-lg: 14px;
-  --font-size-xl: 16px;
+  /* Utility tokens */
+  --elevation-overlay: 0 12px 32px rgba(var(--on-surface-rgb), 0.06);
+  --control-border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  --control-border-focus: 1px solid var(--primary);
+  --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  --glass-blur: blur(20px);
 }
 
-/* Dark Theme — applied via [data-theme="dark"] on <html> */
-[data-theme='dark'] {
-  --color-bg-base: #1e1e1e;
-  --color-bg-surface: #252526;
-  --color-bg-elevated: #2d2d2d;
-  --color-bg-sunken: #1a1a1a;
-  --color-border: #3c3c3c;
-  --color-border-strong: #505050;
-  --color-text-primary: rgba(255, 255, 255, 0.87);
-  --color-text-secondary: rgba(255, 255, 255, 0.6);
-  --color-text-disabled: rgba(255, 255, 255, 0.38);
-  --color-accent: #60a5fa;
-  --color-accent-hover: #93c5fd;
-  --color-text-on-accent: #ffffff;
-  --color-status-success: #4ade80;
-  --color-status-warning: #fcd34d;
-  --color-status-error: #f87171;
+/* Light Theme — applied via [data-theme="light"] on <html> */
+[data-theme='light'] {
+  --surface: #f7f9fb;
+  --surface-dim: #e6e8ea;
+  --surface-bright: #ffffff;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f2f4f6;
+  --surface-container: #f2f4f6;
+  --surface-container-high: #dee1e5;
+  --surface-container-highest: #d1d5db;
+  --surface-variant: #dee1e5;
+  --surface-tint: #0066cc;
+  --surface-tint-rgb: 0, 102, 204;
+  --primary: #0066cc;
+  --primary-rgb: 0, 102, 204;
+  --primary-container: #e6f0ff;
+  --primary-gradient-from: #004e9f;
+  --primary-gradient-to: #0066cc;
+  --on-primary: #ffffff;
+  --on-primary-container: #003366;
+  --secondary: #475569;
+  --secondary-container: #e6f0ff;
+  --tertiary: #00893c;
+  --tertiary-container: #e6f7ed;
+  --warning: #d97706;
+  --warning-container: #fef3c7;
+  --error: #cc0000;
+  --error-rgb: 204, 0, 0;
+  --error-container: #fff0f0;
+  --on-surface: #1e293b;
+  --on-surface-rgb: 30, 41, 59;
+  --on-surface-variant: #475569;
+  --on-error: #ffffff;
+  --on-error-container: #cc0000;
+  --outline: #c1c6d5;
+  --outline-variant: #e2e8f0;
+  --outline-variant-rgb: 226, 232, 240;
+  --inverse-surface: #1e293b;
+  --inverse-on-surface: #f7f9fb;
+  --background: #f7f9fb;
+  --on-background: #1e293b;
+  --glass-surface: rgba(255, 255, 255, 0.8);
+  --glass-surface-rgb: 255, 255, 255;
+  --scrim-rgb: 0, 0, 0;
+  --status-bar-surface: #dee1e5;
+
+  /* Utility tokens */
+  --elevation-overlay: 0 12px 32px rgba(var(--on-surface-rgb), 0.06);
+  --control-border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  --control-border-focus: 1px solid var(--primary);
+  --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  --glass-blur: blur(20px);
 }

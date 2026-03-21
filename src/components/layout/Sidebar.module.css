@@ -1,6 +1,6 @@
 .sidebar {
   height: 100%;
-  background-color: var(--color-bg-surface);
+  background-color: var(--surface-container-low);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -9,7 +9,7 @@
 
 .emptyState {
   font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  color: var(--on-surface-variant);
   text-align: center;
   padding: var(--space-md);
 }

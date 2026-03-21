@@ -7,13 +7,14 @@
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  border: 2px solid var(--color-border);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
   cursor: pointer;
   padding: 0;
+  transition: border-color 0.15s ease;
 }
 
 .swatch:hover {
-  border-color: var(--color-border-strong);
+  border-color: rgba(var(--outline-variant-rgb), 0.4);
 }
 
 .popover {
@@ -21,14 +22,15 @@
   top: calc(100% + var(--space-xs));
   left: 0;
   z-index: 10;
-  background-color: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
+  background: var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
   border-radius: var(--radius-md);
   padding: var(--space-sm);
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--elevation-overlay);
 }
 
 /* Override react-colorful styles */
@@ -52,19 +54,23 @@
 
 .hexInput {
   padding: var(--space-xs) var(--space-sm);
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
   border-radius: var(--radius-sm);
-  background-color: var(--color-bg-base);
-  color: var(--color-text-primary);
+  background: var(--surface-container-highest);
+  color: var(--on-surface);
   font-size: var(--font-size-sm);
   font-family: var(--font-mono);
   width: 100%;
   box-sizing: border-box;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .hexInput:focus {
-  border-color: var(--color-accent);
-  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
 }
 
 .clearButton {
@@ -72,7 +78,7 @@
   border: none;
   border-radius: var(--radius-sm);
   background-color: transparent;
-  color: var(--color-text-secondary);
+  color: var(--on-surface-variant);
   font-size: var(--font-size-sm);
   cursor: pointer;
   text-align: center;
@@ -80,6 +86,6 @@
 }
 
 .clearButton:hover {
-  background-color: var(--color-bg-sunken);
-  color: var(--color-text-primary);
+  background: var(--surface-container-high);
+  color: var(--on-surface);
 }
