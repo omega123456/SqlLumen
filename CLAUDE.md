@@ -151,7 +151,7 @@ The app has **no separate routes**; “screens” are distinct UI states (welcom
 - React tests: Vitest + jsdom + `@testing-library/react`. Setup file: `src/tests/setup.ts`
 - E2E: Playwright in `e2e/`; `playwright.config.ts` runs `pnpm dev` as the web server with `VITE_PLAYWRIGHT=true`. **`pnpm test:e2e` and therefore `pnpm test:all` always run `e2e/screenshots.spec.ts`** alongside functional specs.
 - Coverage thresholds: 90% lines/functions/statements. Branch threshold is intentionally omitted.
-- Rust tests: inline `#[cfg(test)]` modules. Commands use in-memory SQLite (`Connection::open_in_memory()`) — never mock the database layer.
+- Rust tests: integration suites under `src-tauri/tests/` (Nextest via `.cargo/config.toml`); production modules avoid inline `#[cfg(test)]`. Commands / DB tests use in-memory SQLite (`Connection::open_in_memory()`) — never mock the database layer.
 - Tests are built alongside features in each phase — not deferred.
 
 ## Key Gotchas

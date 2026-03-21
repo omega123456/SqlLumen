@@ -13,8 +13,8 @@ fn main() {
     //
     // We link the same resource.lib to test targets via `rustc-link-arg-tests`.
     // This applies to `[[test]]` targets (integration tests in tests/ dir) but NOT
-    // to the lib test target (`cargo test --lib`). The lib inline `#[cfg(test)]`
-    // modules are duplicated as integration tests in tests/commands_integration.rs.
+    // to the lib test target (`cargo test --lib`). Command/bootstrap coverage lives
+    // under tests/commands_*_integration.rs and tests/app_init_integration.rs.
     #[cfg(windows)]
     {
         let out_dir = std::env::var("OUT_DIR").unwrap();

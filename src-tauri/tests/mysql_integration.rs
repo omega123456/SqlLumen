@@ -34,6 +34,34 @@ fn dummy_params() -> StoredConnectionParams {
     }
 }
 
+#[test]
+fn test_stored_connection_params_clone() {
+    let params = dummy_params();
+    let cloned = params.clone();
+    assert_eq!(cloned.host, "127.0.0.1");
+    assert_eq!(cloned.port, 13306);
+    assert_eq!(cloned.username, "dummy");
+    assert!(cloned.has_password);
+    assert_eq!(cloned.connect_timeout_secs, 10);
+    assert_eq!(cloned.keepalive_interval_secs, 60);
+}
+
+#[test]
+fn test_stored_connection_params_to_connection_params() {
+    let stored = dummy_params();
+    let conn = stored.to_connection_params("s3cret".to_string());
+    assert_eq!(conn.host, "127.0.0.1");
+    assert_eq!(conn.port, 13306);
+    assert_eq!(conn.username, "dummy");
+    assert_eq!(conn.password, "s3cret");
+    assert_eq!(conn.default_database, None);
+    assert!(!conn.ssl_enabled);
+    assert_eq!(conn.ssl_ca_path, None);
+    assert_eq!(conn.ssl_cert_path, None);
+    assert_eq!(conn.ssl_key_path, None);
+    assert_eq!(conn.connect_timeout_secs, 10);
+}
+
 fn dummy_entry(id: &str) -> RegistryEntry {
     RegistryEntry {
         pool: dummy_pool(),

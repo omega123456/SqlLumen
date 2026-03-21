@@ -55,10 +55,3 @@ fn test_all_tables_exist_after_migrations() {
         assert_eq!(count, 1, "table '{}' should exist", table);
     }
 }
-
-#[test]
-fn test_get_setting_returns_none_for_missing_key() {
-    let conn = common::test_db();
-    let result = settings::get_setting(&conn, "does_not_exist").expect("should not error");
-    assert_eq!(result, None);
-}

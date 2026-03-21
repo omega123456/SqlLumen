@@ -1,0 +1,221 @@
+//! Command-layer connection `_impl` functions (`commands/connections.rs`).
+
+mod common;
+
+use mysql_client_lib::commands::connections::{
+    delete_connection_impl, get_connection_impl, list_connections_impl, save_connection_impl,
+    update_connection_impl, UpdateConnectionInput,
+};
+
+#[test]
+fn test_save_connection_impl_returns_uuid() {
+    let state = common::test_app_state();
+    let id = save_connection_impl(&state, common::sample_save_input()).expect("should save");
+    assert!(!id.is_empty());
+}
+
+#[test]
+fn test_get_connection_impl_returns_record() {
+    let state = common::test_app_state();
+    let id = save_connection_impl(&state, common::sample_save_input()).expect("should save");
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+
+    assert_eq!(record.id, id);
+    assert_eq!(record.name, "Test DB");
+    assert!(!record.has_password);
+}
+
+#[test]
+fn test_list_connections_impl_returns_all() {
+    let state = common::test_app_state();
+    save_connection_impl(&state, common::sample_save_input()).expect("should save 1");
+
+    let mut input2 = common::sample_save_input();
+    input2.name = "Second DB".to_string();
+    save_connection_impl(&state, input2).expect("should save 2");
+
+    let list = list_connections_impl(&state).expect("should list");
+    assert_eq!(list.len(), 2);
+}
+
+#[test]
+fn test_update_connection_impl_modifies_fields() {
+    let state = common::test_app_state();
+    let id = save_connection_impl(&state, common::sample_save_input()).expect("should save");
+
+    let update = UpdateConnectionInput {
+        name: "Updated DB".to_string(),
+        host: "192.168.1.1".to_string(),
+        port: 3307,
+        username: "admin".to_string(),
+        password: None,
+        default_database: None,
+        ssl_enabled: true,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        color: Some("#00ff00".to_string()),
+        group_id: None,
+        read_only: false,
+        sort_order: 0,
+        connect_timeout_secs: Some(30),
+        keepalive_interval_secs: Some(120),
+    };
+    update_connection_impl(&state, &id, update).expect("should update");
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+    assert_eq!(record.name, "Updated DB");
+    assert_eq!(record.host, "192.168.1.1");
+}
+
+#[test]
+fn test_delete_connection_impl_removes_record() {
+    let state = common::test_app_state();
+    let id = save_connection_impl(&state, common::sample_save_input()).expect("should save");
+
+    delete_connection_impl(&state, &id).expect("should delete");
+
+    let result = get_connection_impl(&state, &id).expect("should not error");
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_save_without_password_sets_has_password_false() {
+    let state = common::test_app_state();
+    let mut input = common::sample_save_input();
+    input.password = None;
+
+    let id = save_connection_impl(&state, input).expect("should save");
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+
+    assert!(
+        !record.has_password,
+        "has_password should be false when no password provided"
+    );
+}
+
+#[test]
+fn test_password_is_not_stored_in_sqlite() {
+    if !common::keychain_available() {
+        eprintln!("Skipping: OS keychain not available");
+        return;
+    }
+
+    let state = common::test_app_state();
+    let mut input = common::sample_save_input();
+    input.password = Some("secret".to_string());
+
+    let id = save_connection_impl(&state, input).expect("should save");
+
+    let conn = state.db.lock().unwrap();
+    let row_data: String = conn
+        .query_row(
+            "SELECT name || host || username || COALESCE(keychain_ref, '') || \
+             COALESCE(default_database, '') || COALESCE(ssl_ca_path, '') || \
+             COALESCE(ssl_cert_path, '') || COALESCE(ssl_key_path, '') || \
+             COALESCE(color, '') FROM connections WHERE id = ?1",
+            [&id],
+            |row| row.get::<_, String>(0),
+        )
+        .expect("should find connection");
+
+    assert!(
+        !row_data.contains("secret"),
+        "password 'secret' should not appear in any SQLite column"
+    );
+
+    drop(conn);
+    let _ = mysql_client_lib::credentials::delete_password(&id);
+}
+
+#[test]
+fn test_save_with_password_sets_has_password_true() {
+    if !common::keychain_available() {
+        eprintln!("Skipping: OS keychain not available");
+        return;
+    }
+
+    let state = common::test_app_state();
+    let mut input = common::sample_save_input();
+    input.password = Some("secret".to_string());
+
+    let id = save_connection_impl(&state, input).expect("should save");
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+
+    assert!(
+        record.has_password,
+        "has_password should be true when password is provided"
+    );
+
+    let _ = mysql_client_lib::credentials::delete_password(&id);
+}
+
+#[test]
+fn test_update_with_password_sets_has_password_true() {
+    if !common::keychain_available() {
+        eprintln!("Skipping: OS keychain not available");
+        return;
+    }
+
+    let state = common::test_app_state();
+    let mut input = common::sample_save_input();
+    input.password = None;
+    let id = save_connection_impl(&state, input).expect("should save");
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+    assert!(!record.has_password);
+
+    let update = UpdateConnectionInput {
+        name: "Test DB".to_string(),
+        host: "localhost".to_string(),
+        port: 3306,
+        username: "root".to_string(),
+        password: Some("new_secret".to_string()),
+        default_database: None,
+        ssl_enabled: false,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        color: None,
+        group_id: None,
+        read_only: false,
+        sort_order: 0,
+        connect_timeout_secs: None,
+        keepalive_interval_secs: None,
+    };
+    update_connection_impl(&state, &id, update).expect("should update");
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+    assert!(
+        record.has_password,
+        "has_password should be true after update with password"
+    );
+
+    let _ = mysql_client_lib::credentials::delete_password(&id);
+}
+
+#[test]
+fn test_delete_connection_tolerates_missing_keychain_entry() {
+    let state = common::test_app_state();
+    let id = save_connection_impl(&state, common::sample_save_input()).expect("should save");
+
+    delete_connection_impl(&state, &id).expect("should delete even without keychain");
+
+    let result = get_connection_impl(&state, &id).expect("should not error");
+    assert!(result.is_none());
+}
