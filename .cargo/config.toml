@@ -1,10 +1,12 @@
 # Rust integration tests and llvm-cov settings (invoked via pnpm test:rust / test:rust:coverage).
 # Run from the repository root.
+# Requires cargo-nextest: https://nexte.st/book/installing.html (e.g. cargo install cargo-nextest).
 
 [alias]
+# Integration test targets for this crate (src-tauri/tests/*.rs). Edit here when adding a suite.
 mysql-client-test-integration = [
-  "test",
-  "--quiet",
+  "nextest",
+  "run",
   "--manifest-path",
   "src-tauri/Cargo.toml",
   "--features",
@@ -25,9 +27,10 @@ mysql-client-test-integration = [
 
 mysql-client-llvm-cov = [
   "llvm-cov",
-  "--quiet",
+  "nextest",
   "--summary-only",
-  "test",
+  "--ignore-filename-regex",
+  "src-tauri.*src.*credentials\\.rs|src-tauri.*src.*main\\.rs|",
   "--manifest-path",
   "src-tauri/Cargo.toml",
   "--features",

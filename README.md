@@ -18,6 +18,7 @@ A desktop **MySQL / MariaDB client** built with [Tauri](https://tauri.app/) 2 an
 | [Node.js](https://nodejs.org/) | LTS recommended |
 | [pnpm](https://pnpm.io/) | Package manager (`corepack enable` or install globally) |
 | [Rust](https://www.rust-lang.org/tools/install) | Required to build the Tauri backend (`cargo`, `rustc`) |
+| [cargo-nextest](https://nexte.st/book/installing.html) | For `pnpm test:rust`, `pnpm test:rust:coverage`, and `pnpm test:all`: `cargo install cargo-nextest` |
 | Rust coverage (optional) | For `pnpm test:rust:coverage` / `pnpm test:all`: `cargo install cargo-llvm-cov` and `rustup component add llvm-tools-preview` |
 | OS deps | See [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform |
 
@@ -39,14 +40,20 @@ Follow these steps on a new machine before **Quick start** or **Contributing**.
    ```bash
    pnpm exec playwright install chromium
    ```
-7. **Rust coverage tools (for `pnpm test:rust:coverage` and `pnpm test:all`)** — Not installed by `pnpm install`. From any directory:
+7. **cargo-nextest (for Rust integration tests)** — Not installed by `pnpm install`. The repo uses Nextest via Cargo aliases in `.cargo/config.toml` (`mysql-client-test-integration`, `mysql-client-llvm-cov`). From any directory:
+   ```bash
+   cargo install cargo-nextest
+   ```
+   Verify with `cargo nextest --version`. Ensure `~/.cargo/bin` (or your Cargo bin directory) is on your `PATH`.
+
+8. **Rust coverage tools (for `pnpm test:rust:coverage` and `pnpm test:all`)** — Requires Nextest (step 7). From any directory:
    ```bash
    rustup component add llvm-tools-preview
    cargo install cargo-llvm-cov
    ```
-   Ensure `~/.cargo/bin` (or your Cargo bin directory) is on your `PATH` so `cargo llvm-cov` is found.
+   Ensure `cargo llvm-cov` is on your `PATH` (same Cargo bin directory as above).
 
-For day-to-day development you only need steps 1–5 and **Quick start** below. Add steps 6–7 when you run the full test suite.
+For day-to-day development you only need steps 1–5 and **Quick start** below. Add steps 6–8 when you run the full Rust or end-to-end test suite.
 
 ## Quick start
 
@@ -79,8 +86,8 @@ pnpm dev
 | `pnpm test` | Run Vitest once |
 | `pnpm test:watch` | Vitest in watch mode |
 | `pnpm test:coverage` | Vitest with coverage thresholds |
-| `pnpm test:rust` | Rust unit tests (`cargo test` from repo root) |
-| `pnpm test:rust:coverage` | Rust tests with [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (summary to stdout; reports under `src-tauri/target/`) |
+| `pnpm test:rust` | Rust integration tests via [cargo-nextest](https://nexte.st/) (`cargo mysql-client-test-integration`; targets and flags in `.cargo/config.toml`) |
+| `pnpm test:rust:coverage` | Same tests under [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo mysql-client-llvm-cov`; summary to stdout; artifacts under `src-tauri/target/`) |
 | `pnpm test:all` | Vitest coverage + Rust llvm-cov + Playwright E2E (run after substantive changes) |
 | `pnpm test:e2e` | Playwright E2E tests |
 | `pnpm lint` / `pnpm lint:fix` | ESLint |
@@ -103,7 +110,7 @@ Work is tracked in phases; see `CONTEXT.md` and `.agent/plans/` in this repo for
 
 ## Contributing
 
-1. Complete **[Setup](#setup)** (including Playwright and Rust coverage tools if you run the full suite), then stay on the latest dependencies with `pnpm install` as needed.
+1. Complete **[Setup](#setup)** (including Playwright, cargo-nextest, and Rust coverage tools if you run the full suite), then stay on the latest dependencies with `pnpm install` as needed.
 2. Run `pnpm lint`, `pnpm typecheck`, and `pnpm test:all` (Vitest coverage, Rust with llvm-cov, Playwright) before opening a PR.
 3. For UI changes that affect the desktop shell, verify with `pnpm tauri dev` when possible.
 
