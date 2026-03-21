@@ -10,6 +10,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [features]
 default = ["dialog"]
 dialog = ["dep:tauri-plugin-dialog"]
+test-utils = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -27,7 +28,8 @@ tokio = { version = "1", features = ["sync", "time", "macros"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["rt", "macros", "time", "test-util"] }
+tauri = { version = "2", features = ["test"] }
 
 [profile.release]
 codegen-units = 1

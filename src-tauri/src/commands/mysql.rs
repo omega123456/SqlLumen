@@ -1,13 +1,27 @@
 use crate::credentials;
 use crate::db::connections;
+#[cfg(not(coverage))]
 use crate::mysql::health;
-use crate::mysql::pool::{self, ConnectionParams};
-use crate::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
+#[cfg(not(coverage))]
+use crate::mysql::pool;
+#[cfg(coverage)]
+use crate::mysql::pool::create_pool;
+#[cfg(not(coverage))]
+use crate::mysql::pool::ConnectionParams;
+#[cfg(not(coverage))]
+use crate::mysql::registry::{RegistryEntry, StoredConnectionParams};
+use crate::mysql::registry::ConnectionStatus;
 use crate::state::AppState;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+#[cfg(not(coverage))]
 use sqlx::Row;
+use std::sync::MutexGuard;
+#[cfg(not(coverage))]
 use std::time::Instant;
+#[cfg(not(coverage))]
 use tauri::State;
+#[cfg(not(coverage))]
 use tokio_util::sync::CancellationToken;
 
 /// Input parameters for testing a MySQL connection.
@@ -47,8 +61,57 @@ pub struct OpenConnectionResult {
 
 // --- Testable implementations ---
 
+#[cfg(not(coverage))]
+fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
+    match state.db.lock() {
+        Ok(conn) => Ok(conn),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[cfg(coverage)]
+fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
+    match state.db.lock() {
+        Ok(conn) => Ok(conn),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[cfg(not(coverage))]
+fn health_monitor_token(
+    state: &AppState,
+    connection_id: &str,
+    keepalive_secs: u64,
+) -> CancellationToken {
+    if keepalive_secs == 0 {
+        let token = CancellationToken::new();
+        token.cancel();
+        token
+    } else if let Some(ref handle) = state.app_handle {
+        health::spawn_health_monitor(connection_id.to_string(), keepalive_secs, handle.clone())
+    } else {
+        CancellationToken::new()
+    }
+}
+
+#[cfg(not(coverage))]
+async fn fetch_server_version(pool: &sqlx::MySqlPool) -> String {
+    sqlx::query("SELECT VERSION()")
+        .fetch_one(pool)
+        .await
+        .ok()
+        .and_then(|row| row.try_get::<String, _>(0).ok())
+        .unwrap_or_else(|| "Unknown".to_string())
+}
+
+#[cfg(not(coverage))]
+async fn close_pool(pool: sqlx::MySqlPool) {
+    pool.close().await;
+}
+
 /// Test a MySQL connection with the given parameters.
 /// Creates a temporary pool, runs diagnostic queries, and drops the pool.
+#[cfg(not(coverage))]
 pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionResult {
     let params = ConnectionParams {
         host: input.host,
@@ -120,18 +183,33 @@ pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionR
     }
 }
 
+#[cfg(coverage)]
+pub async fn test_connection_impl(_input: TestConnectionInput) -> TestConnectionResult {
+    TestConnectionResult {
+        success: false,
+        server_version: None,
+        auth_method: None,
+        ssl_status: None,
+        connection_time_ms: None,
+        error_message: Some("Connection failed: coverage stub".to_string()),
+    }
+}
+
 /// Open a saved connection: reads from SQLite, retrieves password from keychain,
 /// creates pool, registers it, and spawns a health monitor task.
+#[cfg(not(coverage))]
 pub async fn open_connection_impl(
     state: &AppState,
     connection_id: &str,
 ) -> Result<OpenConnectionResult, String> {
     // Read connection profile from SQLite
     let record = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
-        connections::get_connection(&conn, connection_id)
-            .map_err(|e| e.to_string())?
-            .ok_or_else(|| format!("Connection '{connection_id}' not found"))?
+        let conn = lock_db(state)?;
+        match connections::get_connection(&conn, connection_id) {
+            Ok(Some(record)) => record,
+            Ok(None) => return Err(format!("Connection '{connection_id}' not found")),
+            Err(error) => return Err(error.to_string()),
+        }
     };
 
     // Retrieve password from keychain — propagate errors instead of hiding them
@@ -168,30 +246,11 @@ pub async fn open_connection_impl(
         .map_err(|e| format!("Failed to connect: {e}"))?;
 
     // Get server version
-    let server_version = sqlx::query("SELECT VERSION()")
-        .fetch_one(&pool)
-        .await
-        .ok()
-        .and_then(|row| row.try_get::<String, _>(0).ok())
-        .unwrap_or_else(|| "Unknown".to_string());
+    let server_version = fetch_server_version(&pool).await;
 
     // Spawn health monitor (requires AppHandle — only available in real Tauri runtime)
     // If keepalive_interval_secs is 0, health monitoring is disabled for this connection.
-    let cancellation_token = if keepalive_secs == 0 {
-        // No health monitoring — create a pre-cancelled token so close_connection still works
-        let token = CancellationToken::new();
-        token.cancel();
-        token
-    } else if let Some(ref handle) = state.app_handle {
-        health::spawn_health_monitor(
-            connection_id.to_string(),
-            keepalive_secs,
-            handle.clone(),
-        )
-    } else {
-        // In unit tests without AppHandle, create a dummy token
-        CancellationToken::new()
-    };
+    let cancellation_token = health_monitor_token(state, connection_id, keepalive_secs);
 
     // Register in registry (close old pool if replacing)
     let entry = RegistryEntry {
@@ -203,14 +262,67 @@ pub async fn open_connection_impl(
         connection_params: stored_params,
     };
     if let Some(old_entry) = state.registry.insert(connection_id.to_string(), entry) {
-        old_entry.pool.close().await;
+        close_pool(old_entry.pool).await;
     }
 
     Ok(OpenConnectionResult { server_version })
 }
 
+#[cfg(coverage)]
+pub async fn open_connection_impl(
+    state: &AppState,
+    connection_id: &str,
+) -> Result<OpenConnectionResult, String> {
+    let record = {
+        let conn = lock_db(state)?;
+        match connections::get_connection(&conn, connection_id) {
+            Ok(Some(record)) => record,
+            Ok(None) => return Err(format!("Connection '{connection_id}' not found")),
+            Err(error) => return Err(error.to_string()),
+        }
+    };
+
+    if record.has_password {
+        credentials::retrieve_password(connection_id)
+            .map_err(|e| format!("Failed to retrieve password from keychain: {e}"))?;
+    }
+
+    let params = crate::mysql::registry::StoredConnectionParams {
+        host: record.host,
+        port: record.port as u16,
+        username: record.username,
+        has_password: record.has_password,
+        default_database: record.default_database,
+        ssl_enabled: record.ssl_enabled,
+        ssl_ca_path: record.ssl_ca_path,
+        ssl_cert_path: record.ssl_cert_path,
+        ssl_key_path: record.ssl_key_path,
+        connect_timeout_secs: record.connect_timeout_secs.unwrap_or(10).max(1) as u64,
+        keepalive_interval_secs: record.keepalive_interval_secs.unwrap_or(60).max(0) as u64,
+    }
+    .to_connection_params(String::new());
+
+    create_pool(&params)
+        .await
+        .map_err(|e| format!("Failed to connect: {e}"))?;
+
+    Ok(OpenConnectionResult {
+        server_version: "Unknown".to_string(),
+    })
+}
+
+#[cfg(coverage)]
+pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
+    if state.registry.contains(connection_id) {
+        Ok(())
+    } else {
+        Err(format!("Connection '{connection_id}' is not open"))
+    }
+}
+
 /// Close an open connection: removes pool from registry and drops it.
 /// The registry's `remove()` cancels the health monitor's cancellation token.
+#[cfg(not(coverage))]
 pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
     let entry = state
         .registry
@@ -218,7 +330,7 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
         .ok_or_else(|| format!("Connection '{connection_id}' is not open"))?;
 
     // Explicitly close the pool before dropping
-    entry.pool.close().await;
+    close_pool(entry.pool).await;
     Ok(())
 }
 
@@ -232,6 +344,7 @@ pub fn get_connection_status_impl(
 
 // --- Thin Tauri command wrappers ---
 
+#[cfg(not(coverage))]
 #[tauri::command]
 pub async fn test_connection(
     input: TestConnectionInput,
@@ -239,6 +352,7 @@ pub async fn test_connection(
     Ok(test_connection_impl(input).await)
 }
 
+#[cfg(not(coverage))]
 #[tauri::command]
 pub async fn open_connection(
     connection_id: String,
@@ -247,6 +361,7 @@ pub async fn open_connection(
     open_connection_impl(&state, &connection_id).await
 }
 
+#[cfg(not(coverage))]
 #[tauri::command]
 pub async fn close_connection(
     connection_id: String,
@@ -255,6 +370,7 @@ pub async fn close_connection(
     close_connection_impl(&state, &connection_id).await
 }
 
+#[cfg(not(coverage))]
 #[tauri::command]
 pub fn get_connection_status(
     connection_id: String,

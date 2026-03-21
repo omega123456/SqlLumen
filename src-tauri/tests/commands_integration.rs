@@ -8,13 +8,13 @@
 
 mod common;
 
-use mysql_client_lib::commands::connections::{
-    delete_connection_impl, get_connection_impl, list_connections_impl, save_connection_impl,
-    update_connection_impl, SaveConnectionInput, UpdateConnectionInput,
-};
 use mysql_client_lib::commands::connection_groups::{
     create_connection_group_impl, delete_connection_group_impl, list_connection_groups_impl,
     update_connection_group_impl,
+};
+use mysql_client_lib::commands::connections::{
+    delete_connection_impl, get_connection_impl, list_connections_impl, save_connection_impl,
+    update_connection_impl, SaveConnectionInput, UpdateConnectionInput,
 };
 use mysql_client_lib::commands::settings::{
     get_all_settings_impl, get_setting_impl, set_setting_impl,
@@ -108,7 +108,12 @@ fn test_initialize_database_succeeds() {
 fn test_initialize_database_runs_all_migrations() {
     let (app_data_dir, _) = unique_temp_dir("test_init_mig_i");
     let conn = mysql_client_lib::initialize_database(&app_data_dir).expect("should initialize");
-    for table in &["settings", "connections", "connection_groups", "_migrations"] {
+    for table in &[
+        "settings",
+        "connections",
+        "connection_groups",
+        "_migrations",
+    ] {
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
@@ -155,6 +160,37 @@ fn test_initialize_database_is_idempotent() {
         .expect("should find value");
     assert_eq!(value, "test_value");
     drop(conn2);
+    let _ = std::fs::remove_dir_all(&app_data_dir);
+}
+
+#[test]
+fn test_initialize_database_surfaces_open_database_errors() {
+    let (app_data_dir, _) = unique_temp_dir("test_init_open_err_i");
+    std::fs::create_dir_all(&app_data_dir).expect("should create parent dir");
+    let blocker = app_data_dir.join("blocked");
+    std::fs::write(&blocker, "not a directory").expect("should create blocker file");
+
+    let error = mysql_client_lib::initialize_database(&blocker)
+        .expect_err("initialize_database should surface open_database failures");
+
+    assert!(error.starts_with("failed to open SQLite database:"));
+    let _ = std::fs::remove_dir_all(&app_data_dir);
+}
+
+#[test]
+fn test_initialize_database_surfaces_migration_errors() {
+    let (app_data_dir, _) = unique_temp_dir("test_init_migration_err_i");
+    std::fs::create_dir_all(&app_data_dir).expect("should create app data dir");
+    let db_path = app_data_dir.join("mysql-client.db");
+    let conn = Connection::open(&db_path).expect("should create database file");
+    conn.execute("CREATE TABLE _migrations (bad INTEGER)", [])
+        .expect("should create incompatible migrations table");
+    drop(conn);
+
+    let error = mysql_client_lib::initialize_database(&app_data_dir)
+        .expect_err("initialize_database should surface migration failures");
+
+    assert!(error.starts_with("failed to run database migrations:"));
     let _ = std::fs::remove_dir_all(&app_data_dir);
 }
 

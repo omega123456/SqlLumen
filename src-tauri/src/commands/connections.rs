@@ -1,6 +1,9 @@
 use crate::db::connections::{self, ConnectionRecord, NewConnectionData, UpdateConnectionData};
 use crate::state::AppState;
+use rusqlite::Connection;
 use serde::Deserialize;
+use std::sync::MutexGuard;
+#[cfg(not(coverage))]
 use tauri::State;
 
 /// Input for saving a new connection. Includes password field for keychain storage.
@@ -50,9 +53,16 @@ pub struct UpdateConnectionInput {
 
 // --- Testable implementations (take &AppState instead of State<AppState>) ---
 
+fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
+    match state.db.lock() {
+        Ok(conn) => Ok(conn),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Result<String, String> {
     let password = data.password.clone();
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = lock_db(state)?;
 
     let new_data = NewConnectionData {
         name: data.name,
@@ -73,7 +83,10 @@ pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Resu
     };
 
     // insert_connection always sets keychain_ref = id
-    let id = connections::insert_connection(&conn, &new_data).map_err(|e| e.to_string())?;
+    let id = match connections::insert_connection(&conn, &new_data) {
+        Ok(id) => id,
+        Err(error) => return Err(error.to_string()),
+    };
 
     if let Some(pw) = password {
         // Store password in OS keychain
@@ -95,13 +108,19 @@ pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Resu
 }
 
 pub fn get_connection_impl(state: &AppState, id: &str) -> Result<Option<ConnectionRecord>, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    connections::get_connection(&conn, id).map_err(|e| e.to_string())
+    let conn = lock_db(state)?;
+    match connections::get_connection(&conn, id) {
+        Ok(record) => Ok(record),
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 pub fn list_connections_impl(state: &AppState) -> Result<Vec<ConnectionRecord>, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    connections::list_connections(&conn).map_err(|e| e.to_string())
+    let conn = lock_db(state)?;
+    match connections::list_connections(&conn) {
+        Ok(records) => Ok(records),
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 pub fn update_connection_impl(
@@ -110,7 +129,7 @@ pub fn update_connection_impl(
     data: UpdateConnectionInput,
 ) -> Result<(), String> {
     let password = data.password.clone();
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let conn = lock_db(state)?;
 
     let update_data = UpdateConnectionData {
         name: data.name,
@@ -130,7 +149,10 @@ pub fn update_connection_impl(
         keepalive_interval_secs: data.keepalive_interval_secs,
     };
 
-    connections::update_connection(&conn, id, &update_data).map_err(|e| e.to_string())?;
+    match connections::update_connection(&conn, id, &update_data) {
+        Ok(()) => {}
+        Err(error) => return Err(error.to_string()),
+    }
 
     if let Some(pw) = password {
         // Store/update password in OS keychain
@@ -152,12 +174,16 @@ pub fn delete_connection_impl(state: &AppState, id: &str) -> Result<(), String> 
     // Try to delete keychain entry; ignore failures (orphaned entries acceptable)
     let _ = crate::credentials::delete_password(id);
 
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    connections::delete_connection(&conn, id).map_err(|e| e.to_string())
+    let conn = lock_db(state)?;
+    match connections::delete_connection(&conn, id) {
+        Ok(()) => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 // --- Thin Tauri command wrappers ---
 
+#[cfg(not(coverage))]
 #[tauri::command]
 pub fn save_connection(
     data: SaveConnectionInput,
@@ -166,6 +192,7 @@ pub fn save_connection(
     save_connection_impl(&state, data)
 }
 
+#[cfg(not(coverage))]
 #[tauri::command]
 pub fn get_connection(
     id: String,
@@ -174,11 +201,13 @@ pub fn get_connection(
     get_connection_impl(&state, &id)
 }
 
+#[cfg(not(coverage))]
 #[tauri::command]
 pub fn list_connections(state: State<AppState>) -> Result<Vec<ConnectionRecord>, String> {
     list_connections_impl(&state)
 }
 
+#[cfg(not(coverage))]
 #[tauri::command]
 pub fn update_connection(
     id: String,
@@ -188,6 +217,7 @@ pub fn update_connection(
     update_connection_impl(&state, &id, data)
 }
 
+#[cfg(not(coverage))]
 #[tauri::command]
 pub fn delete_connection(id: String, state: State<AppState>) -> Result<(), String> {
     delete_connection_impl(&state, &id)

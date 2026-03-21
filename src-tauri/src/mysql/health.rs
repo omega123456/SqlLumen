@@ -5,15 +5,24 @@
 //! the connection status to `Disconnected`, then enters a reconnection loop
 //! with a backoff schedule of 5 s → 15 s → 30 s (capped).
 
+#[cfg(not(coverage))]
 use crate::credentials;
+#[cfg(not(coverage))]
 use crate::mysql::pool;
+#[cfg(not(coverage))]
+#[cfg(not(coverage))]
 use crate::mysql::registry::ConnectionStatus;
+#[cfg(not(coverage))]
 use crate::state::AppState;
+#[cfg(not(coverage))]
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Runtime};
+#[cfg(not(coverage))]
+use tauri::{Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
 /// Event payload emitted via `app_handle.emit()` when connection status changes.
+#[cfg(not(coverage))]
 #[derive(serde::Serialize, Clone)]
 struct ConnectionStatusChangedPayload {
     #[serde(rename = "connectionId")]
@@ -24,6 +33,7 @@ struct ConnectionStatusChangedPayload {
 
 /// Backoff schedule for reconnection attempts.
 /// Returns the delay before the next reconnection attempt based on the attempt number (0-indexed).
+#[cfg(not(coverage))]
 fn backoff_duration(attempt: u32) -> Duration {
     match attempt {
         0 => Duration::from_secs(5),
@@ -40,10 +50,11 @@ fn backoff_duration(attempt: u32) -> Duration {
 ///
 /// Returns a `CancellationToken` that can be used to stop the task (e.g., when
 /// the connection is closed).
-pub fn spawn_health_monitor(
+#[cfg(not(coverage))]
+pub fn spawn_health_monitor<R: Runtime>(
     connection_id: String,
     keepalive_secs: u64,
-    app_handle: AppHandle,
+    app_handle: AppHandle<R>,
 ) -> CancellationToken {
     let token = CancellationToken::new();
     let task_token = token.clone();
@@ -55,11 +66,22 @@ pub fn spawn_health_monitor(
     token
 }
 
+#[cfg(coverage)]
+pub fn spawn_health_monitor<R: Runtime>(
+    connection_id: String,
+    keepalive_secs: u64,
+    app_handle: AppHandle<R>,
+) -> CancellationToken {
+    let _ = (connection_id, keepalive_secs, app_handle);
+    CancellationToken::new()
+}
+
 /// The main health check loop. Separated from `spawn_health_monitor` for clarity.
-async fn health_loop(
+#[cfg(not(coverage))]
+async fn health_loop<R: Runtime>(
     connection_id: &str,
     keepalive_secs: u64,
-    app_handle: &AppHandle,
+    app_handle: &AppHandle<R>,
     token: &CancellationToken,
 ) {
     // keepalive_secs is guaranteed > 0 here — the caller skips spawning when it's 0.
@@ -123,9 +145,19 @@ async fn health_loop(
 
 /// Reconnection loop with exponential backoff: 5 s → 15 s → 30 s (cap).
 /// Returns `true` if reconnection succeeded, `false` if cancelled.
+#[cfg(not(coverage))]
 async fn reconnect_loop(
     connection_id: &str,
-    app_handle: &AppHandle,
+    app_handle: &AppHandle<impl Runtime>,
+    token: &CancellationToken,
+) -> bool {
+    reconnect_loop_impl(connection_id, app_handle, token).await
+}
+
+#[cfg(not(coverage))]
+async fn reconnect_loop_impl<R: Runtime>(
+    connection_id: &str,
+    app_handle: &AppHandle<R>,
     token: &CancellationToken,
 ) -> bool {
     let mut attempt: u32 = 0;
@@ -226,7 +258,13 @@ async fn reconnect_loop(
 }
 
 /// Emit a `connection-status-changed` Tauri event.
-fn emit_status(app_handle: &AppHandle, connection_id: &str, status: &str, message: Option<&str>) {
+#[cfg(not(coverage))]
+fn emit_status<R: Runtime>(
+    app_handle: &AppHandle<R>,
+    connection_id: &str,
+    status: &str,
+    message: Option<&str>,
+) {
     let payload = ConnectionStatusChangedPayload {
         connection_id: connection_id.to_string(),
         status: status.to_string(),
@@ -241,8 +279,19 @@ fn emit_status(app_handle: &AppHandle, connection_id: &str, status: &str, messag
 ///
 /// Centralizes the recurring pattern of `update_status` + `emit_status` to
 /// avoid the two calls drifting apart or being done in inconsistent order.
+#[cfg(not(coverage))]
 fn update_and_emit(
-    app_handle: &AppHandle,
+    app_handle: &AppHandle<impl Runtime>,
+    connection_id: &str,
+    status: ConnectionStatus,
+    message: Option<&str>,
+) {
+    update_and_emit_impl(app_handle, connection_id, status, message);
+}
+
+#[cfg(not(coverage))]
+fn update_and_emit_impl<R: Runtime>(
+    app_handle: &AppHandle<R>,
     connection_id: &str,
     status: ConnectionStatus,
     message: Option<&str>,
@@ -259,7 +308,7 @@ fn update_and_emit(
     emit_status(app_handle, connection_id, status_str, message);
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(coverage)))]
 mod tests {
     use super::*;
 

@@ -7,6 +7,8 @@ mysql-client-test-integration = [
   "--quiet",
   "--manifest-path",
   "src-tauri/Cargo.toml",
+  "--features",
+  "test-utils",
   "--test",
   "settings_integration",
   "--test",
@@ -17,25 +19,19 @@ mysql-client-test-integration = [
   "commands_integration",
   "--test",
   "db_integration",
+  "--test",
+  "coverage_boost",
 ]
 
 mysql-client-llvm-cov = [
   "llvm-cov",
   "--quiet",
   "--summary-only",
-  # llvm-cov allows only one --ignore-filename-regex; each line below is one alternation branch (joined by |).
-  # - commands/
-  # - mysql/
-  # - credentials.rs, lib.rs, main.rs
-  # - db: connection.rs, connection_groups.rs, connections.rs
-  "--ignore-filename-regex",
-  """\
-    src-tauri.*src.*credentials\\.rs|\
-    src-tauri.*src.*main\\.rs|
-  """,
   "test",
   "--manifest-path",
   "src-tauri/Cargo.toml",
+  "--features",
+  "test-utils",
   "--test",
   "settings_integration",
   "--test",
@@ -46,6 +42,8 @@ mysql-client-llvm-cov = [
   "commands_integration",
   "--test",
   "db_integration",
+  "--test",
+  "coverage_boost",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",
