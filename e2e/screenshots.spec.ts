@@ -272,6 +272,8 @@ for (const theme of themes) {
       // Click "Create Database..."
       await page.getByTestId('ctx-create-database').click()
       await expect(page.getByTestId('create-database-dialog')).toBeVisible()
+      // Charset/collation IPC resolves async; wait so the screenshot matches a stable loaded state
+      await expect(page.getByTestId('create-db-form')).not.toHaveAttribute('aria-busy')
 
       // Blur active element to avoid flaky cursor screenshots
       await page.evaluate(() => {
