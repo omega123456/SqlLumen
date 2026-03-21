@@ -12,6 +12,8 @@ export interface CreateDatabaseDialogProps {
   onCancel: () => void
 }
 
+const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
+
 export function CreateDatabaseDialog({
   isOpen,
   connectionId,
@@ -92,6 +94,7 @@ export function CreateDatabaseDialog({
       maxWidth={480}
       testId="create-database-dialog"
       ariaLabel="Create Database"
+      disableFocusManagement={isPlaywright}
     >
       <div
         className={styles.encodingRoot}
@@ -112,8 +115,8 @@ export function CreateDatabaseDialog({
             onChange={handleNameChange}
             placeholder="my_new_database"
             maxLength={64}
-            autoFocus
-            data-testid="create-db-name-input"
+          autoFocus={!isPlaywright}
+          data-testid="create-db-name-input"
           />
           {nameError && (
             <div className={styles.validationError} data-testid="create-db-name-error">

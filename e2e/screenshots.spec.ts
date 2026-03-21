@@ -275,16 +275,18 @@ for (const theme of themes) {
       // Charset/collation IPC resolves async; wait so the screenshot matches a stable loaded state
       await expect(page.getByTestId('create-db-form')).not.toHaveAttribute('aria-busy')
 
-      // Blur active element to avoid flaky cursor screenshots
+      // Full viewport: modal + dimmed app behind it. Reset object-browser scroll so the blurred/dimmed
+      // tree is identical across parallel workers (otherwise scrollTop races dominate pixel diffs).
+      await page.getByTestId('object-browser-scroll').evaluate((el) => {
+        el.scrollTop = 0
+      })
       await page.evaluate(() => {
-        const el = document.activeElement
-        if (el && el instanceof HTMLElement) el.blur()
+        window.scrollTo(0, 0)
       })
 
-      await expect(page.getByTestId('create-database-dialog')).toHaveScreenshot(
-        `create-database-dialog-${theme}.png`,
-        { animations: 'disabled' }
-      )
+      await expect(page).toHaveScreenshot(`create-database-dialog-${theme}.png`, {
+        animations: 'disabled',
+      })
     })
   })
 }

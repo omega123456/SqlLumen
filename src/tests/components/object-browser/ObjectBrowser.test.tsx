@@ -225,6 +225,13 @@ describe('ObjectBrowser', () => {
     expect(screen.getByTestId('object-browser')).toBeInTheDocument()
   })
 
+  it('exposes data-testid="object-browser-scroll" on tree scroller', () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+    render(<ObjectBrowser connectionId={CONN_ID} />)
+    expect(screen.getByTestId('object-browser-scroll')).toBeInTheDocument()
+  })
+
   it('renders ConnectionHeader', () => {
     setupConnectedState()
     render(<ObjectBrowser connectionId={CONN_ID} />)

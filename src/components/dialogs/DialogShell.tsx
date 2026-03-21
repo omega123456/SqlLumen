@@ -7,10 +7,12 @@ export interface DialogShellProps {
   isOpen: boolean
   onClose: () => void
   maxWidth?: number
-  /** data-testid applied to the backdrop wrapper */
+  /** data-testid applied to the backdrop wrapper; inner surface gets `${testId}-panel` for scoped screenshots */
   testId?: string
   /** aria-label for the dialog */
   ariaLabel?: string
+  /** When true, skip focus trap (used with VITE_PLAYWRIGHT for deterministic screenshots). */
+  disableFocusManagement?: boolean
   children: React.ReactNode
 }
 
@@ -24,10 +26,11 @@ export function DialogShell({
   maxWidth = 420,
   testId,
   ariaLabel,
+  disableFocusManagement = false,
   children,
 }: DialogShellProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
-  useFocusTrap(dialogRef, isOpen)
+  useFocusTrap(dialogRef, isOpen && !disableFocusManagement)
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -63,7 +66,12 @@ export function DialogShell({
       aria-modal="true"
       aria-label={ariaLabel}
     >
-      <div className={styles.dialog} ref={dialogRef} style={{ maxWidth: `${maxWidth}px` }}>
+      <div
+        className={styles.dialog}
+        ref={dialogRef}
+        style={{ maxWidth: `${maxWidth}px` }}
+        data-testid={testId !== undefined ? `${testId}-panel` : undefined}
+      >
         {children}
       </div>
     </div>,

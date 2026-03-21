@@ -31,6 +31,11 @@ describe('DialogShell', () => {
     expect(screen.getByTestId('test-dialog')).toBeInTheDocument()
   })
 
+  it('applies data-testid to inner panel when testId is set', () => {
+    render(<DialogShell {...defaultProps} />)
+    expect(screen.getByTestId('test-dialog-panel')).toBeInTheDocument()
+  })
+
   it('applies aria-label to the dialog', () => {
     render(<DialogShell {...defaultProps} />)
     expect(screen.getByRole('dialog', { name: 'Test dialog' })).toBeInTheDocument()
@@ -101,6 +106,21 @@ describe('DialogShell', () => {
     })
 
     expect(document.activeElement).toBe(screen.getByTestId('first-input'))
+  })
+
+  it('does not auto-focus when disableFocusManagement is true', async () => {
+    render(
+      <DialogShell {...defaultProps} disableFocusManagement>
+        <input data-testid="first-input" type="text" />
+        <button>OK</button>
+      </DialogShell>
+    )
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+
+    expect(screen.getByTestId('first-input')).not.toHaveFocus()
   })
 
   it('removes escape listener when closed', () => {

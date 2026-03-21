@@ -189,7 +189,7 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
         />
       </div>
 
-      <div className={styles.treeContainer}>
+      <div className={styles.treeContainer} data-testid="object-browser-scroll">
         {!isConnected && <div className={styles.emptyState}>Not connected</div>}
 
         {isConnected && !hasNodes && <div className={styles.emptyState}>No databases loaded</div>}
