@@ -11,7 +11,7 @@ export default defineConfig({
     exclude: ['e2e/**', 'node_modules/**', '.opencode/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['text-summary', 'json', 'html', 'lcov'],
+      reporter: ['text', 'text-summary', 'json', 'html', 'lcov'],
       include: ['src/**'],
       exclude: [
         'src/main.tsx',
@@ -20,6 +20,7 @@ export default defineConfig({
         'src/styles/**',
         'src/types/**',
         'src/**/*.css',
+        'src/lib/playwright-ipc-mock.ts',
       ],
       thresholds: {
         lines: 90,
