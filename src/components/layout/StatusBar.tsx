@@ -16,14 +16,14 @@ export function StatusBar() {
 
   if (!activeConnection) {
     return (
-      <div className={styles.statusBar}>
+      <div className={styles.statusBar} data-testid="status-bar">
         <span className={styles.statusText}>Ready</span>
       </div>
     )
   }
 
   return (
-    <div className={styles.statusBar}>
+    <div className={styles.statusBar} data-testid="status-bar">
       <div className={styles.statusLeft}>
         <ConnectionStatusIndicator status={activeConnection.status} size={10} />
         <span className={styles.statusText}>{statusLabel[activeConnection.status]}</span>

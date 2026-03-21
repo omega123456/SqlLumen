@@ -278,7 +278,7 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
 
   return (
     <div className={styles.formGridRoot}>
-      <div className={styles.formMain}>
+      <div className={styles.formMain} data-testid="connection-form-main">
         <div className={styles.formInner}>
           <div className={styles.hero}>
             <label htmlFor="conn-name" className={styles.visuallyHidden}>
@@ -490,7 +490,7 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
             </div>
 
             <div className={styles.moreSections}>
-              <CollapsibleSection title="SSL certificate files">
+              <CollapsibleSection title="SSL certificate files" sectionTestId="ssl-certificate-section">
                 <div className={styles.sectionContent}>
                   <SslFileField
                     id="ssl-ca"

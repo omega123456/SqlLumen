@@ -8,12 +8,8 @@ async function init() {
   // Install Playwright mocks FIRST (before any invoke calls)
   if (import.meta.env.VITE_PLAYWRIGHT === 'true') {
     const { mockIPC } = await import('@tauri-apps/api/mocks')
-    mockIPC((cmd) => {
-      if (cmd === 'get_setting') return null
-      if (cmd === 'set_setting') return null
-      if (cmd === 'get_all_settings') return {}
-      return null
-    })
+    const { playwrightIpcMockHandler } = await import('./lib/playwright-ipc-mock')
+    mockIPC((cmd) => playwrightIpcMockHandler(cmd))
   }
 
   // Apply theme before React renders to prevent flash

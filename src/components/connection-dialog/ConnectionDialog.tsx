@@ -65,6 +65,7 @@ export function ConnectionDialog() {
     <dialog
       ref={dialogRef}
       className={styles.dialog}
+      data-testid="connection-dialog"
       aria-labelledby="connection-dialog-title"
       onClick={handleBackdropClick}
       onClose={handleClose}
@@ -92,7 +93,7 @@ export function ConnectionDialog() {
           </button>
         </div>
         <div className={styles.dialogBody}>
-          <aside className={styles.leftPane}>
+          <aside className={styles.leftPane} data-testid="saved-connections-pane">
             <SavedConnectionsList
               onSelectConnection={handleSelectConnection}
               onNewConnection={handleNewConnection}

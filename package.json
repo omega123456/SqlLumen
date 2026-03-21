@@ -15,6 +15,7 @@
     "test:rust:coverage": "cargo mysql-client-llvm-cov",
     "test:all": "pnpm test:coverage && pnpm test:rust:coverage && pnpm test:e2e",
     "test:e2e": "pnpm exec playwright test --reporter=line",
+    "test:screenshots": "playwright test e2e/screenshots.spec.ts",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write src",

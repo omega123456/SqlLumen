@@ -10,7 +10,7 @@ export function WorkspaceArea() {
 
   if (activeConnection) {
     return (
-      <div className={styles.workspace}>
+      <div className={styles.workspace} data-testid="workspace-area">
         <div className={styles.connectedPlaceholder}>
           <p className={styles.connectedText}>
             Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
@@ -22,7 +22,7 @@ export function WorkspaceArea() {
   }
 
   return (
-    <div className={styles.workspace}>
+    <div className={styles.workspace} data-testid="workspace-area">
       <div className={styles.welcomeCard}>
         <h2 className={styles.welcomeTitle}>Welcome!</h2>
         <p className={styles.welcomeMessage}>Connect to a MySQL server to get started</p>

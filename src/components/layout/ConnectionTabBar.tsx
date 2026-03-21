@@ -23,7 +23,7 @@ export function ConnectionTabBar() {
   const tabs = Object.values(activeConnections)
 
   return (
-    <div className={styles.tabBar}>
+    <div className={styles.tabBar} data-testid="connection-tab-bar">
       <div className={styles.leftSection}>
         <button
           className={styles.iconButton}

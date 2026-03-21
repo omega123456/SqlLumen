@@ -14,7 +14,7 @@ export function AppLayout() {
   }
 
   return (
-    <div className={styles.appLayout}>
+    <div className={styles.appLayout} data-testid="app-layout">
       <ConnectionTabBar />
       <div className={styles.mainContent}>
         <Group orientation="horizontal" className={styles.panelGroup}>

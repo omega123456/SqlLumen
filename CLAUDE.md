@@ -25,8 +25,9 @@ pnpm test:watch         # Vitest watch mode
 pnpm test:coverage      # Vitest with v8 coverage (90% threshold on lines/functions/statements)
 pnpm test:rust          # Rust unit tests (from repo root)
 pnpm test:rust:coverage # Rust tests via cargo-llvm-cov (needs cargo-llvm-cov + llvm-tools-preview)
-pnpm test:all           # test:coverage, test:rust:coverage, test:e2e — run after substantive changes
-pnpm test:e2e           # Playwright e2e tests
+pnpm test:all           # test:coverage, test:rust:coverage, test:e2e — run after substantive changes (includes screenshot baselines — see below)
+pnpm test:e2e           # All Playwright specs under e2e/ (functional + screenshots.spec.ts)
+pnpm test:screenshots   # Visual regression only — e2e/screenshots.spec.ts (faster than full e2e)
 
 # Rust tests (alternative)
 cd src-tauri && cargo test
@@ -40,13 +41,13 @@ pnpm typecheck          # tsc --noEmit (no emit)
 
 To run a single Vitest test file: `pnpm vitest run src/tests/path/to/file.test.ts`
 
-**After every code change** (before treating work as done), run the full check below. Do not skip this: Vitest coverage thresholds must pass, Rust tests must pass, and **Playwright** E2E (`e2e/`) must pass.
+**After every code change** (before treating work as done), run the full check below. Do not skip this: Vitest coverage thresholds must pass, Rust tests must pass, and **Playwright** E2E (`e2e/`) must pass — including **`e2e/screenshots.spec.ts`** (visual regression). The `test:all` script runs `pnpm test:e2e`, which executes **every** `*.spec.ts` in `e2e/`, so screenshot tests are always part of `test:all`.
 
 ```bash
-pnpm test:all    # Vitest+coverage, Rust unit tests, then Playwright (starts Vite via playwright.config)
+pnpm test:all    # Vitest+coverage, Rust unit tests, then full Playwright (functional + screenshot baselines)
 ```
 
-Equivalent manual steps: `pnpm test:coverage`, then `pnpm test:rust:coverage`, then `pnpm test:e2e`. Use `pnpm test:rust` for a fast Rust-only run without coverage instrumentation.
+Equivalent manual steps: `pnpm test:coverage`, then `pnpm test:rust:coverage`, then `pnpm test:e2e`. Use `pnpm test:rust` for a fast Rust-only run without coverage instrumentation; use `pnpm test:screenshots` only when iterating on visuals.
 
 ## Architecture
 
@@ -133,11 +134,22 @@ Treat tests as part of the feature, not a follow-up task. **Any new or materiall
 | Rust logic, commands (`*_impl`), DB helpers | `#[cfg(test)]` in the same module or integration tests under `src-tauri/tests/` as appropriate for the project |
 | Critical user journeys spanning the full app | `e2e/` (Playwright) when the change warrants it — not every UI tweak needs E2E |
 
-**Exceptions (no new tests):** purely cosmetic changes, comment-only edits, renames with no behavior change, or generated/boilerplate with no custom logic. When in doubt, add a small test.
+### Playwright visual regression (screenshots)
 
-- **Workflow:** After every substantive change, run `pnpm test:all` and fix failures or coverage gaps before finishing (includes Playwright).
+The app has **no separate routes**; “screens” are distinct UI states (welcome, dialog open, connected, etc.). **Every new component or screen (state) that affects visible UI must get Playwright screenshot coverage** in the same change set:
+
+1. Extend **`e2e/screenshots.spec.ts`** (or add a sibling spec if the file becomes unwieldy) with `expect(locator).toHaveScreenshot(...)` for **light and dark** themes, matching the existing pattern (`ensureTheme`, etc.).
+2. Add stable **`data-testid`** hooks on new layout surfaces when CSS modules prevent reliable selectors (see existing layout/dialog testids).
+3. If the new UI depends on Tauri IPC in the browser, extend **`src/lib/playwright-ipc-mock.ts`** (used when `VITE_PLAYWRIGHT=true`) so Playwright runs stay deterministic.
+4. After **intentional** visual changes, regenerate baselines:  
+   `pnpm exec playwright test e2e/screenshots.spec.ts --update-snapshots`  
+   and commit the updated files under `e2e/screenshots.spec.ts-snapshots/`.
+
+**Exceptions:** Skip **screenshots** only when output is unchanged (e.g. refactor with identical DOM/CSS) or the change is non-visual plumbing. Skip **Vitest/unit tests** only for comment-only edits, renames with no behavior change, or generated boilerplate with no custom logic. Purely cosmetic UI still needs updated screenshot baselines if pixels change. When in doubt, add coverage.
+
+- **Workflow:** After every substantive change, run `pnpm test:all` and fix failures or coverage gaps before finishing (Vitest, Rust, Playwright functional **and** screenshot baselines).
 - React tests: Vitest + jsdom + `@testing-library/react`. Setup file: `src/tests/setup.ts`
-- E2E: Playwright in `e2e/`; `playwright.config.ts` runs `pnpm dev` as the web server with `VITE_PLAYWRIGHT=true`.
+- E2E: Playwright in `e2e/`; `playwright.config.ts` runs `pnpm dev` as the web server with `VITE_PLAYWRIGHT=true`. **`pnpm test:e2e` and therefore `pnpm test:all` always run `e2e/screenshots.spec.ts`** alongside functional specs.
 - Coverage thresholds: 90% lines/functions/statements. Branch threshold is intentionally omitted.
 - Rust tests: inline `#[cfg(test)]` modules. Commands use in-memory SQLite (`Connection::open_in_memory()`) — never mock the database layer.
 - Tests are built alongside features in each phase — not deferred.

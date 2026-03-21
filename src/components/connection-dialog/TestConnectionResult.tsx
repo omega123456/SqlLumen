@@ -11,7 +11,7 @@ export function TestConnectionResult({ result }: TestConnectionResultProps) {
 
   if (result.success) {
     return (
-      <div className={styles.resultSuccess} role="status">
+      <div className={styles.resultSuccess} role="status" data-testid="test-connection-result">
         <div className={styles.resultHeader}>
           <CheckCircle size={20} weight="fill" className={styles.successIcon} />
           <span>Connection successful</span>
@@ -31,7 +31,7 @@ export function TestConnectionResult({ result }: TestConnectionResultProps) {
   }
 
   return (
-    <div className={styles.resultError} role="alert">
+    <div className={styles.resultError} role="alert" data-testid="test-connection-result">
       <div className={styles.resultHeader}>
         <XCircle size={20} weight="fill" className={styles.errorIcon} />
         <span>Connection failed</span>

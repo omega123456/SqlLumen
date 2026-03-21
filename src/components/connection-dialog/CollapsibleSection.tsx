@@ -6,12 +6,15 @@ interface CollapsibleSectionProps {
   title: string
   children: React.ReactNode
   defaultOpen?: boolean
+  /** Optional hook for e2e / visual tests */
+  sectionTestId?: string
 }
 
 export function CollapsibleSection({
   title,
   children,
   defaultOpen = false,
+  sectionTestId,
 }: CollapsibleSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
   const id = useId()
@@ -19,7 +22,7 @@ export function CollapsibleSection({
   const contentId = `${id}-content`
 
   return (
-    <div className={`ui-subsection ${styles.section}`}>
+    <div className={`ui-subsection ${styles.section}`} data-testid={sectionTestId}>
       <button
         id={triggerId}
         type="button"
