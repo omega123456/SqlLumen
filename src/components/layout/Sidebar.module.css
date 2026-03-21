@@ -2,8 +2,7 @@
   height: 100%;
   background-color: var(--surface-container-low);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -12,4 +11,5 @@
   color: var(--on-surface-variant);
   text-align: center;
   padding: var(--space-md);
+  margin: auto;
 }

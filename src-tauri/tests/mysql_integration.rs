@@ -70,6 +70,7 @@ fn dummy_entry(id: &str) -> RegistryEntry {
         server_version: "8.0.0".to_string(),
         cancellation_token: CancellationToken::new(),
         connection_params: dummy_params(),
+        read_only: false,
     }
 }
 

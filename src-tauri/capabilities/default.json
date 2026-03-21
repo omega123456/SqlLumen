@@ -5,6 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "clipboard-manager:default",
     "allow-get-setting",
     "allow-set-setting",
     "allow-get-all-settings",
@@ -20,6 +21,20 @@
     "allow-test-connection",
     "allow-open-connection",
     "allow-close-connection",
-    "allow-get-connection-status"
+    "allow-get-connection-status",
+    "allow-list-databases",
+    "allow-list-schema-objects",
+    "allow-list-columns",
+    "allow-get-schema-info",
+    "allow-get-database-details",
+    "allow-list-charsets",
+    "allow-list-collations",
+    "allow-create-database",
+    "allow-drop-database",
+    "allow-alter-database",
+    "allow-rename-database",
+    "allow-drop-table",
+    "allow-truncate-table",
+    "allow-rename-table"
   ]
 }

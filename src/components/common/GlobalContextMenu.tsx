@@ -10,6 +10,7 @@ import {
   isInsideDisabledTextControl,
   writeClipboardText,
 } from '../../lib/context-menu-utils'
+import { DISMISS_ALL_CONTEXT_MENUS, dispatchDismissAll } from '../../lib/context-menu-events'
 
 interface OpenState {
   x: number
@@ -32,7 +33,10 @@ function contentEditableHasSelection(host: HTMLElement): boolean {
   return !r.collapsed
 }
 
-async function runCut(field: HTMLElement, textSelection?: { start: number; end: number }): Promise<void> {
+async function runCut(
+  field: HTMLElement,
+  textSelection?: { start: number; end: number }
+): Promise<void> {
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
     if (field.readOnly) {
       return
@@ -55,7 +59,10 @@ async function runCut(field: HTMLElement, textSelection?: { start: number; end: 
   document.execCommand('cut')
 }
 
-async function runCopy(field: HTMLElement, textSelection?: { start: number; end: number }): Promise<void> {
+async function runCopy(
+  field: HTMLElement,
+  textSelection?: { start: number; end: number }
+): Promise<void> {
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
     const start = textSelection?.start ?? field.selectionStart ?? 0
     const end = textSelection?.end ?? field.selectionEnd ?? 0
@@ -70,7 +77,10 @@ async function runCopy(field: HTMLElement, textSelection?: { start: number; end:
   document.execCommand('copy')
 }
 
-async function runPaste(field: HTMLElement, textSelection?: { start: number; end: number }): Promise<void> {
+async function runPaste(
+  field: HTMLElement,
+  textSelection?: { start: number; end: number }
+): Promise<void> {
   if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
     if (field.readOnly) {
       return
@@ -157,10 +167,27 @@ export function GlobalContextMenu() {
     }
     const el = menuRef.current
     const rect = el.getBoundingClientRect()
-    const pos = positionContextMenuInPortal(open.portalRoot, open.x, open.y, rect.width, rect.height)
+    const pos = positionContextMenuInPortal(
+      open.portalRoot,
+      open.x,
+      open.y,
+      rect.width,
+      rect.height
+    )
     el.style.left = `${pos.x}px`
     el.style.top = `${pos.y}px`
   }, [open])
+
+  // Listen for dismiss-all events dispatched by other context menus
+  useEffect(() => {
+    const onDismissAll = () => {
+      setOpen(null)
+    }
+    document.addEventListener(DISMISS_ALL_CONTEXT_MENUS, onDismissAll)
+    return () => {
+      document.removeEventListener(DISMISS_ALL_CONTEXT_MENUS, onDismissAll)
+    }
+  }, [])
 
   useEffect(() => {
     const onContextMenu = (e: MouseEvent) => {
@@ -177,6 +204,10 @@ export function GlobalContextMenu() {
       }
 
       e.stopPropagation()
+
+      // Dismiss any other open context menus before opening this one
+      dispatchDismissAll()
+
       let textSelection: { start: number; end: number } | undefined
       if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
         textSelection = {

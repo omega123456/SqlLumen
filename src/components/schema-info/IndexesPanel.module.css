@@ -1,0 +1,101 @@
+.container {
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-body);
+}
+
+.th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  white-space: nowrap;
+}
+
+.row {
+  transition: background-color 0.1s ease;
+}
+
+.row:hover {
+  background: rgba(var(--on-surface-rgb), 0.03);
+}
+
+.td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  vertical-align: middle;
+}
+
+.indexName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.primaryBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--tertiary-container);
+  color: var(--tertiary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.uniqueBadge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--surface-container-highest);
+  color: var(--on-surface-variant);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.indexType {
+  color: var(--on-surface-variant);
+}
+
+.cardinality {
+  font-family: var(--font-mono);
+  color: var(--on-surface);
+}
+
+.columnPills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.columnPill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.visible {
+  color: var(--on-surface-variant);
+}

@@ -1,0 +1,50 @@
+/* CreateDatabaseDialog — form content styles (shell handled by DialogShell) */
+
+.title {
+  margin: 0 0 20px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-headline);
+  color: var(--on-surface);
+}
+
+.formGroup {
+  margin-bottom: 16px;
+}
+
+.formGroup:last-of-type {
+  margin-bottom: 0;
+}
+
+.label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+}
+
+.error {
+  font-size: 12px;
+  font-family: var(--font-body);
+  color: var(--error);
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(var(--error-rgb), 0.08);
+  border-radius: 6px;
+  border: 1px solid rgba(var(--error-rgb), 0.2);
+}
+
+.validationError {
+  font-size: 11px;
+  color: var(--error);
+  margin-top: 4px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}

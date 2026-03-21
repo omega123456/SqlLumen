@@ -260,6 +260,7 @@ pub async fn open_connection_impl(
         server_version: server_version.clone(),
         cancellation_token,
         connection_params: stored_params,
+        read_only: record.read_only,
     };
     if let Some(old_entry) = state.registry.insert(connection_id.to_string(), entry) {
         close_pool(old_entry.pool).await;

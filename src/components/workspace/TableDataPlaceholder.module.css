@@ -1,0 +1,35 @@
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-2xl);
+  text-align: center;
+}
+
+.icon {
+  font-size: 48px;
+  color: var(--on-surface-variant);
+  opacity: 0.4;
+  line-height: 1;
+}
+
+.headline {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+}
+
+.subtext {
+  font-size: var(--font-size-md);
+  color: var(--on-surface-variant);
+}

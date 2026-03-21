@@ -82,7 +82,15 @@ export function positionContextMenuInPortal(
   const dr = portalRoot.getBoundingClientRect()
   const localX = clientX - dr.left
   const localY = clientY - dr.top
-  return clampContextMenuPosition(localX, localY, menuWidth, menuHeight, dr.width, dr.height, margin)
+  return clampContextMenuPosition(
+    localX,
+    localY,
+    menuWidth,
+    menuHeight,
+    dr.width,
+    dr.height,
+    margin
+  )
 }
 
 function isContentEditableField(el: HTMLElement): boolean {
@@ -116,7 +124,9 @@ export function resolveEditableFieldFromTarget(target: EventTarget | null): HTML
   }
 
   const startEl =
-    target.nodeType === Node.TEXT_NODE ? (target.parentElement as Element | null) : (target as Element)
+    target.nodeType === Node.TEXT_NODE
+      ? (target.parentElement as Element | null)
+      : (target as Element)
 
   if (!startEl) {
     return null
@@ -163,6 +173,20 @@ export function isInsideDisabledTextControl(target: EventTarget | null): boolean
 }
 
 export async function writeClipboardText(text: string): Promise<void> {
+  // Prefer Tauri clipboard plugin when running inside the Tauri webview
+  if (
+    typeof window !== 'undefined' &&
+    '_WRY_INITIALIZED_' in window /* present in Tauri v2 webview */
+  ) {
+    try {
+      const { writeText } = await import('@tauri-apps/plugin-clipboard-manager')
+      await writeText(text)
+      return
+    } catch {
+      // Fall through to browser API
+    }
+  }
+
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text)
     return

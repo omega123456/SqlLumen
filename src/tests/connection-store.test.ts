@@ -427,3 +427,63 @@ describe('useConnectionStore — setupEventListeners', () => {
     expect(useConnectionStore.getState().activeConnections['conn-1'].status).toBe('disconnected')
   })
 })
+
+describe('useConnectionStore — updateDefaultDatabase', () => {
+  it('updates defaultDatabase in-memory and persists via IPC', async () => {
+    useConnectionStore.setState({
+      savedConnections: [mockSavedConnection],
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+      },
+    })
+    mockIPC((cmd) => {
+      if (cmd === 'update_connection') return null
+      return null
+    })
+
+    await useConnectionStore.getState().updateDefaultDatabase('conn-1', 'new_db')
+
+    const state = useConnectionStore.getState()
+    expect(state.activeConnections['conn-1'].profile.defaultDatabase).toBe('new_db')
+    expect(state.savedConnections[0].defaultDatabase).toBe('new_db')
+  })
+
+  it('reverts in-memory state when IPC persistence fails', async () => {
+    useConnectionStore.setState({
+      savedConnections: [mockSavedConnection],
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+      },
+    })
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockIPC((cmd) => {
+      if (cmd === 'update_connection') throw new Error('IPC write failed')
+      return null
+    })
+
+    await useConnectionStore.getState().updateDefaultDatabase('conn-1', 'new_db')
+
+    // Should revert to the original default database
+    const state = useConnectionStore.getState()
+    expect(state.activeConnections['conn-1'].profile.defaultDatabase).toBe(
+      mockSavedConnection.defaultDatabase
+    )
+    expect(state.savedConnections[0].defaultDatabase).toBe(mockSavedConnection.defaultDatabase)
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Failed to persist defaultDatabase change:',
+      expect.any(Error)
+    )
+    consoleSpy.mockRestore()
+  })
+})

@@ -7,6 +7,22 @@
   overflow: hidden;
 }
 
+.workspaceTabbed {
+  height: 100%;
+  background-color: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tabContent {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .welcomeCard,
 .connectedPlaceholder {
   display: flex;
@@ -45,4 +61,13 @@
   font-size: var(--font-size-lg);
   color: var(--on-surface);
   font-weight: 500;
+}
+
+/* Placeholder content for tabs not yet implemented */
+.schemaInfoPlaceholder,
+.queryEditorPlaceholder {
+  text-align: center;
+  color: var(--on-surface-variant);
+  font-size: var(--font-size-md);
+  padding: var(--space-2xl);
 }

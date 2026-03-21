@@ -5,6 +5,7 @@ import {
   listConnectionGroups,
   openConnection as openConnectionIPC,
   closeConnection as closeConnectionIPC,
+  updateConnection as updateConnectionIPC,
 } from '../lib/connection-commands'
 import type {
   SavedConnection,
@@ -12,6 +13,8 @@ import type {
   ActiveConnection,
   ConnectionStatusEvent,
 } from '../types/connection'
+import { useSchemaStore } from './schema-store'
+import { useWorkspaceStore } from './workspace-store'
 
 let listenersSetup = false
 
@@ -44,6 +47,7 @@ interface ConnectionState {
   openDialog: () => void
   closeDialog: () => void
   clearError: () => void
+  updateDefaultDatabase: (connectionId: string, newDefaultDb: string | null) => Promise<void>
   setupEventListeners: () => Promise<(() => void) | undefined>
 }
 
@@ -98,6 +102,10 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     try {
       await closeConnectionIPC(id)
 
+      // Clear dependent store state for this connection
+      useSchemaStore.getState().clearConnectionState(id)
+      useWorkspaceStore.getState().clearConnectionTabs(id)
+
       set((state) => {
         const remaining = { ...state.activeConnections }
         delete remaining[id]
@@ -144,6 +152,70 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
   openDialog: () => set({ dialogOpen: true }),
   closeDialog: () => set({ dialogOpen: false }),
   clearError: () => set({ error: null }),
+
+  updateDefaultDatabase: async (connectionId: string, newDefaultDb: string | null) => {
+    const active = get().activeConnections[connectionId]
+    if (!active) return
+
+    const originalDefault = active.profile.defaultDatabase
+    const updatedProfile = { ...active.profile, defaultDatabase: newDefaultDb }
+
+    // Update in-memory optimistically
+    set((state) => ({
+      activeConnections: {
+        ...state.activeConnections,
+        [connectionId]: {
+          ...state.activeConnections[connectionId],
+          profile: updatedProfile,
+        },
+      },
+      savedConnections: state.savedConnections.map((c) =>
+        c.id === connectionId ? { ...c, defaultDatabase: newDefaultDb } : c
+      ),
+    }))
+
+    // Persist via IPC — revert in-memory state on failure
+    try {
+      await updateConnectionIPC(connectionId, {
+        name: updatedProfile.name,
+        host: updatedProfile.host,
+        port: updatedProfile.port,
+        username: updatedProfile.username,
+        password: '', // empty = don't change existing password
+        defaultDatabase: newDefaultDb,
+        sslEnabled: updatedProfile.sslEnabled,
+        sslCaPath: updatedProfile.sslCaPath,
+        sslCertPath: updatedProfile.sslCertPath,
+        sslKeyPath: updatedProfile.sslKeyPath,
+        color: updatedProfile.color,
+        groupId: updatedProfile.groupId,
+        readOnly: updatedProfile.readOnly,
+        connectTimeoutSecs: updatedProfile.connectTimeoutSecs,
+        keepaliveIntervalSecs: updatedProfile.keepaliveIntervalSecs,
+      })
+    } catch (e) {
+      console.error('Failed to persist defaultDatabase change:', e)
+      // Revert in-memory state if connection still exists
+      const current = get().activeConnections[connectionId]
+      if (current) {
+        set((state) => ({
+          activeConnections: {
+            ...state.activeConnections,
+            [connectionId]: {
+              ...state.activeConnections[connectionId],
+              profile: {
+                ...state.activeConnections[connectionId].profile,
+                defaultDatabase: originalDefault,
+              },
+            },
+          },
+          savedConnections: state.savedConnections.map((c) =>
+            c.id === connectionId ? { ...c, defaultDatabase: originalDefault } : c
+          ),
+        }))
+      }
+    }
+  },
 
   setupEventListeners: async () => {
     if (listenersSetup) return undefined

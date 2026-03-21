@@ -1,0 +1,117 @@
+.tabBar {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background-color: var(--surface-container-high);
+  border-bottom: 1px solid var(--outline-variant);
+  min-height: 32px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-shrink: 0;
+}
+
+[data-theme='light'] .tabBar {
+  background-color: var(--surface-container-low);
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 32px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  position: relative;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--on-surface);
+  background-color: rgba(var(--on-surface-rgb), 0.04);
+}
+
+.tab:hover .tabClose {
+  opacity: 1;
+}
+
+/* Active tab */
+.tabActive {
+  color: var(--on-surface);
+  font-weight: 600;
+}
+
+.tabActive::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--primary);
+}
+
+[data-theme='light'] .tabActive {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+[data-theme='light'] .tabActive::after {
+  top: 0;
+  bottom: auto;
+}
+
+.tabButton {
+  display: flex;
+  align-items: center;
+  padding: 0 0 0 var(--space-md);
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  font-weight: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tabLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.tabClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: var(--space-sm);
+  margin-left: var(--space-xs);
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--on-surface-variant);
+  opacity: 0;
+  border-radius: var(--radius-sm);
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    background-color 0.15s ease;
+  cursor: pointer;
+}
+
+.tabActive .tabClose {
+  opacity: 0.6;
+}
+
+.tabClose:hover {
+  opacity: 1;
+  color: var(--error);
+  background-color: rgba(var(--error-rgb), 0.1);
+}

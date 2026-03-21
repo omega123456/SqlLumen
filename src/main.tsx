@@ -9,7 +9,11 @@ async function init() {
   if (import.meta.env.VITE_PLAYWRIGHT === 'true') {
     const { mockIPC } = await import('@tauri-apps/api/mocks')
     const { playwrightIpcMockHandler } = await import('./lib/playwright-ipc-mock')
-    mockIPC((cmd) => playwrightIpcMockHandler(cmd))
+    mockIPC((cmd, args) => playwrightIpcMockHandler(cmd, args as Record<string, unknown>))
+
+    // Expose stores for E2E tests to programmatically open tabs
+    const { useWorkspaceStore } = await import('./stores/workspace-store')
+    ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
   }
 
   // Apply theme before React renders to prevent flash

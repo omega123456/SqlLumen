@@ -1,0 +1,85 @@
+/* ConfirmDialog — content styles (shell handled by DialogShell) */
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-headline);
+  color: var(--on-surface);
+}
+
+.titleIcon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--error);
+}
+
+.message {
+  font-size: 14px;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
+.warning {
+  font-size: 12px;
+  font-family: var(--font-body);
+  color: var(--error);
+  margin: 0 0 4px;
+}
+
+.error {
+  font-size: 12px;
+  font-family: var(--font-body);
+  color: var(--error);
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(var(--error-rgb), 0.08);
+  border-radius: 6px;
+  border: 1px solid rgba(var(--error-rgb), 0.2);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.destructiveButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--ui-action-button-radius);
+  background: var(--error);
+  color: var(--on-error);
+  font-size: 14px;
+  font-family: var(--font-body);
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    filter 0.15s ease,
+    transform 0.1s ease;
+}
+
+.destructiveButton:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.destructiveButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.destructiveButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

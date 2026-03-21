@@ -1,0 +1,136 @@
+.container {
+  padding: 16px;
+}
+
+/* Top section: two-column layout for tables */
+.topSection {
+  display: grid;
+  grid-template-columns: 65% 35%;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.ddlColumn {
+  min-width: 0;
+}
+
+.metadataColumn {
+  min-width: 0;
+}
+
+/* DDL-only layout (non-table) */
+.ddlOnly {
+  width: 100%;
+}
+
+/* Code block header */
+.codeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.codeLabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+}
+
+.copyButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.copyButton:hover {
+  background: var(--surface-container-highest);
+  color: var(--primary);
+}
+
+/* Code block */
+.codeBlock {
+  background: var(--surface-container-low);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 16px;
+  overflow-x: auto;
+  border-radius: 8px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+[data-theme='light'] .codeBlock {
+  background: #fafafa;
+}
+
+/* Syntax highlighting classes */
+.keyword {
+  color: var(--secondary);
+  font-weight: 600;
+}
+
+.string {
+  color: var(--error);
+}
+
+.identifier {
+  color: var(--primary);
+}
+
+.comment {
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.number {
+  color: var(--tertiary);
+}
+
+/* Columns section within DDL tab for tables */
+.columnsSection {
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.columnsSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  background: rgba(var(--on-surface-rgb), 0.02);
+}
+
+.columnsSectionTitle {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.columnsSectionCount {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+}

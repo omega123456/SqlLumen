@@ -1,0 +1,83 @@
+[[permission]]
+identifier = "allow-list-databases"
+description = "Enables the list_databases command without any pre-configured scope."
+commands.allow = ["list_databases"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-schema-objects"
+description = "Enables the list_schema_objects command without any pre-configured scope."
+commands.allow = ["list_schema_objects"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-columns"
+description = "Enables the list_columns command without any pre-configured scope."
+commands.allow = ["list_columns"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-get-schema-info"
+description = "Enables the get_schema_info command without any pre-configured scope."
+commands.allow = ["get_schema_info"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-get-database-details"
+description = "Enables the get_database_details command without any pre-configured scope."
+commands.allow = ["get_database_details"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-charsets"
+description = "Enables the list_charsets command without any pre-configured scope."
+commands.allow = ["list_charsets"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-collations"
+description = "Enables the list_collations command without any pre-configured scope."
+commands.allow = ["list_collations"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-create-database"
+description = "Enables the create_database command without any pre-configured scope."
+commands.allow = ["create_database"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-drop-database"
+description = "Enables the drop_database command without any pre-configured scope."
+commands.allow = ["drop_database"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-alter-database"
+description = "Enables the alter_database command without any pre-configured scope."
+commands.allow = ["alter_database"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-rename-database"
+description = "Enables the rename_database command without any pre-configured scope."
+commands.allow = ["rename_database"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-drop-table"
+description = "Enables the drop_table command without any pre-configured scope."
+commands.allow = ["drop_table"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-truncate-table"
+description = "Enables the truncate_table command without any pre-configured scope."
+commands.allow = ["truncate_table"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-rename-table"
+description = "Enables the rename_table command without any pre-configured scope."
+commands.allow = ["rename_table"]
+commands.deny = []

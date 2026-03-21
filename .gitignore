@@ -50,3 +50,4 @@ CONTEXT.md
 opencode.json
 .opencode/
 .cursor/
+.cargo

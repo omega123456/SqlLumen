@@ -25,6 +25,19 @@ async function openConnectionManager(page: Page) {
   await expect(page.getByText('Sample MySQL')).toBeVisible()
 }
 
+async function connectToSample(page: Page) {
+  await openConnectionManager(page)
+  await page.getByText('Sample MySQL').click()
+  await page
+    .getByTestId('connection-dialog')
+    .getByRole('button', { name: 'Connect', exact: true })
+    .click()
+  await expect(page.getByTestId('connection-dialog')).toBeHidden()
+  // Wait for the object browser to load databases
+  await expect(page.getByTestId('object-browser')).toBeVisible()
+  await expect(page.getByText('ecommerce_db')).toBeVisible()
+}
+
 for (const theme of themes) {
   test.describe(`visual regression (${theme})`, () => {
     test.beforeEach(async ({ page }) => {
@@ -139,13 +152,7 @@ for (const theme of themes) {
     })
 
     test('connected — workspace, tab bar, status bar', async ({ page }) => {
-      await openConnectionManager(page)
-      await page.getByText('Sample MySQL').click()
-      await page
-        .getByTestId('connection-dialog')
-        .getByRole('button', { name: 'Connect', exact: true })
-        .click()
-      await expect(page.getByTestId('connection-dialog')).toBeHidden()
+      await connectToSample(page)
       await expect(page.getByTestId('workspace-area')).toContainText('Connected to')
       await expect(page.getByTestId('workspace-area')).toHaveScreenshot(
         `workspace-area-connected-${theme}.png`
@@ -155,6 +162,126 @@ for (const theme of themes) {
       )
       await expect(page.getByTestId('status-bar')).toHaveScreenshot(
         `status-bar-connected-${theme}.png`
+      )
+    })
+
+    test('ObjectBrowser — connected sidebar with databases', async ({ page }) => {
+      await connectToSample(page)
+      await expect(page.getByTestId('object-browser')).toHaveScreenshot(
+        `object-browser-connected-${theme}.png`
+      )
+    })
+
+    test('ConnectionHeader — connected header', async ({ page }) => {
+      await connectToSample(page)
+      await expect(page.getByTestId('connection-header')).toHaveScreenshot(
+        `connection-header-${theme}.png`
+      )
+    })
+
+    test('SchemaInfoTab — DDL view', async ({ page }) => {
+      await connectToSample(page)
+
+      // Open a schema-info tab programmatically via the exposed workspace store
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            openTab: (tab: Record<string, unknown>) => void
+          }
+        }
+        store.getState().openTab({
+          type: 'schema-info',
+          label: 'users',
+          connectionId: 'conn-playwright-1',
+          databaseName: 'ecommerce_db',
+          objectName: 'users',
+          objectType: 'table',
+        })
+      })
+
+      // Wait for the schema info tab to load data
+      await expect(page.getByTestId('schema-info-tab')).toBeVisible()
+      await expect(page.getByTestId('stats-row')).toBeVisible()
+
+      // Switch to DDL sub-tab
+      await page.getByRole('button', { name: 'DDL' }).click()
+      await expect(page.getByTestId('ddl-panel')).toBeVisible()
+
+      await expect(page.getByTestId('schema-info-tab')).toHaveScreenshot(
+        `schema-info-ddl-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('ObjectBrowserContextMenu — database node', async ({ page }) => {
+      await connectToSample(page)
+
+      // Right-click on a database node to show context menu
+      const dbNode = page.getByText('ecommerce_db').first()
+      await dbNode.click({ button: 'right' })
+      await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
+
+      await expect(page.getByTestId('object-browser-context-menu')).toHaveScreenshot(
+        `context-menu-database-${theme}.png`
+      )
+    })
+
+    test('ObjectBrowserContextMenu — table node', async ({ page }) => {
+      await connectToSample(page)
+
+      // Expand database and Tables category to reach table nodes
+      await page.getByText('ecommerce_db').first().click()
+      await expect(page.getByText('Tables')).toBeVisible()
+      await page.getByText('Tables').click()
+      await expect(page.getByText('users')).toBeVisible()
+
+      // Right-click on a table node
+      await page.getByText('users').click({ button: 'right' })
+      await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
+
+      await expect(page.getByTestId('object-browser-context-menu')).toHaveScreenshot(
+        `context-menu-table-${theme}.png`
+      )
+    })
+
+    test('ConfirmDialog — drop database confirmation', async ({ page }) => {
+      await connectToSample(page)
+
+      // Right-click on a database node to show context menu
+      const dbNode = page.getByText('ecommerce_db').first()
+      await dbNode.click({ button: 'right' })
+      await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
+
+      // Click "Drop Database..."
+      await page.getByTestId('ctx-drop-database').click()
+      await expect(page.getByTestId('confirm-dialog')).toBeVisible()
+
+      await expect(page.getByTestId('confirm-dialog')).toHaveScreenshot(
+        `confirm-dialog-drop-database-${theme}.png`
+      )
+    })
+
+    test('CreateDatabaseDialog — open', async ({ page }) => {
+      await connectToSample(page)
+
+      // Right-click on a database node to show context menu
+      const dbNode = page.getByText('ecommerce_db').first()
+      await dbNode.click({ button: 'right' })
+      await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
+
+      // Click "Create Database..."
+      await page.getByTestId('ctx-create-database').click()
+      await expect(page.getByTestId('create-database-dialog')).toBeVisible()
+
+      // Blur active element to avoid flaky cursor screenshots
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+
+      await expect(page.getByTestId('create-database-dialog')).toHaveScreenshot(
+        `create-database-dialog-${theme}.png`,
+        { animations: 'disabled' }
       )
     })
   })

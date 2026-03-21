@@ -348,7 +348,8 @@ button {
   border-top: none;
   border-radius: 0 0 var(--ui-dropdown-panel-radius) var(--ui-dropdown-panel-radius);
   /* Match open trigger chrome: elevation + same glow/focus ring so perceived border weight matches */
-  box-shadow: var(--ui-dropdown-panel-shadow), var(--ui-dropdown-trigger-open-shadow),
+  box-shadow:
+    var(--ui-dropdown-panel-shadow), var(--ui-dropdown-trigger-open-shadow),
     var(--ui-input-focus-shadow);
   -webkit-backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
   backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
@@ -515,4 +516,38 @@ button {
   padding: 0;
   border: none;
   border-top: var(--ui-context-menu-separator-border);
+}
+
+.ui-context-menu__item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ui-context-menu__item:disabled:hover,
+.ui-context-menu__item:disabled:focus-visible {
+  background: transparent;
+  color: var(--ui-context-menu-item-fg);
+}
+
+.ui-context-menu__item:disabled .ui-context-menu__icon {
+  color: var(--ui-context-menu-item-icon-fg);
+}
+
+.ui-context-menu__item--destructive:disabled {
+  color: var(--ui-context-menu-destructive-fg);
+}
+
+.ui-context-menu__item--destructive:disabled .ui-context-menu__icon {
+  color: var(--ui-context-menu-destructive-icon-fg);
+}
+
+.ui-context-menu__item--destructive:disabled:hover,
+.ui-context-menu__item--destructive:disabled:focus-visible {
+  background: transparent;
+  color: var(--ui-context-menu-destructive-fg);
+}
+
+.ui-context-menu__item--destructive:disabled:hover .ui-context-menu__icon,
+.ui-context-menu__item--destructive:disabled:focus-visible .ui-context-menu__icon {
+  color: var(--ui-context-menu-destructive-icon-fg);
 }

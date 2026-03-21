@@ -1,0 +1,5 @@
+/* ObjectBrowserContextMenu — module-specific overrides only.
+   The base visuals come from .ui-context-menu in global.css. */
+
+/* The wrapper uses .ui-context-menu directly; no extra container class needed.
+   This module file exists for future overrides and to keep the convention consistent. */

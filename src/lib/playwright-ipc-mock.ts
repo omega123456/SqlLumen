@@ -29,14 +29,17 @@ export const PLAYWRIGHT_MOCK_CONNECTION: SavedConnection = {
  * IPC handler for `mockIPC` when the app runs under Playwright (VITE_PLAYWRIGHT).
  * Returns stable, deterministic data so UI flows and visual snapshots do not flap.
  */
-export function playwrightIpcMockHandler(cmd: string): unknown {
+export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unknown>): unknown {
   switch (cmd) {
+    // --- Settings ---
     case 'get_setting':
       return null
     case 'set_setting':
       return null
     case 'get_all_settings':
       return {}
+
+    // --- Connection management ---
     case 'list_connections':
       return [PLAYWRIGHT_MOCK_CONNECTION]
     case 'list_connection_groups':
@@ -70,6 +73,239 @@ export function playwrightIpcMockHandler(cmd: string): unknown {
       return null
     case 'get_connection_status':
       return 'connected'
+
+    // --- Schema read commands ---
+    case 'list_databases':
+      return ['ecommerce_db', 'analytics_db', 'staging_db']
+    case 'list_schema_objects': {
+      const objectType = (args as Record<string, unknown>)?.objectType
+      switch (objectType) {
+        case 'table':
+          return ['users', 'orders', 'products']
+        case 'view':
+          return ['user_stats_view']
+        case 'procedure':
+          return ['sp_get_orders']
+        case 'function':
+          return ['fn_calculate_total']
+        case 'trigger':
+          return ['trg_before_insert']
+        case 'event':
+          return []
+        default:
+          return []
+      }
+    }
+    case 'list_columns': {
+      const table = (args as Record<string, unknown>)?.table
+      if (table === 'users') {
+        return [
+          {
+            name: 'id',
+            dataType: 'bigint',
+            nullable: false,
+            columnKey: 'PRI',
+            defaultValue: null,
+            extra: 'auto_increment',
+            ordinalPosition: 1,
+          },
+          {
+            name: 'name',
+            dataType: 'varchar',
+            nullable: false,
+            columnKey: '',
+            defaultValue: null,
+            extra: '',
+            ordinalPosition: 2,
+          },
+          {
+            name: 'email',
+            dataType: 'varchar',
+            nullable: true,
+            columnKey: 'UNI',
+            defaultValue: null,
+            extra: '',
+            ordinalPosition: 3,
+          },
+        ]
+      }
+      if (table === 'orders') {
+        return [
+          {
+            name: 'id',
+            dataType: 'bigint',
+            nullable: false,
+            columnKey: 'PRI',
+            defaultValue: null,
+            extra: 'auto_increment',
+            ordinalPosition: 1,
+          },
+          {
+            name: 'user_id',
+            dataType: 'bigint',
+            nullable: false,
+            columnKey: 'MUL',
+            defaultValue: null,
+            extra: '',
+            ordinalPosition: 2,
+          },
+          {
+            name: 'status',
+            dataType: 'varchar',
+            nullable: false,
+            columnKey: '',
+            defaultValue: "'pending'",
+            extra: '',
+            ordinalPosition: 3,
+          },
+        ]
+      }
+      return [
+        {
+          name: 'id',
+          dataType: 'bigint',
+          nullable: false,
+          columnKey: 'PRI',
+          defaultValue: null,
+          extra: 'auto_increment',
+          ordinalPosition: 1,
+        },
+      ]
+    }
+    case 'get_schema_info': {
+      const objectType = (args as Record<string, unknown>)?.objectType ?? 'table'
+
+      if (objectType === 'table') {
+        return {
+          columns: [
+            {
+              name: 'id',
+              dataType: 'bigint',
+              nullable: false,
+              columnKey: 'PRI',
+              defaultValue: null,
+              extra: 'auto_increment',
+              ordinalPosition: 1,
+            },
+            {
+              name: 'name',
+              dataType: 'varchar',
+              nullable: false,
+              columnKey: '',
+              defaultValue: null,
+              extra: '',
+              ordinalPosition: 2,
+            },
+            {
+              name: 'email',
+              dataType: 'varchar',
+              nullable: false,
+              columnKey: '',
+              defaultValue: null,
+              extra: '',
+              ordinalPosition: 3,
+            },
+          ],
+          indexes: [
+            {
+              name: 'PRIMARY',
+              indexType: 'BTREE',
+              cardinality: 1000,
+              columns: ['id'],
+              isVisible: true,
+              isUnique: true,
+            },
+          ],
+          foreignKeys: [],
+          ddl: 'CREATE TABLE `users` (\n  `id` bigint NOT NULL AUTO_INCREMENT,\n  `name` varchar(255) NOT NULL,\n  `email` varchar(255) NOT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+          metadata: {
+            engine: 'InnoDB',
+            collation: 'utf8mb4_general_ci',
+            autoIncrement: 1001,
+            createTime: '2023-01-15T00:00:00',
+            tableRows: 1000,
+            dataLength: 1048576,
+            indexLength: 524288,
+          },
+        }
+      }
+
+      if (objectType === 'view') {
+        return {
+          columns: [
+            {
+              name: 'user_id',
+              dataType: 'bigint',
+              nullable: false,
+              columnKey: '',
+              defaultValue: null,
+              extra: '',
+              ordinalPosition: 1,
+            },
+            {
+              name: 'total',
+              dataType: 'bigint',
+              nullable: false,
+              columnKey: '',
+              defaultValue: null,
+              extra: '',
+              ordinalPosition: 2,
+            },
+          ],
+          indexes: [],
+          foreignKeys: [],
+          ddl: 'CREATE VIEW `user_stats` AS SELECT user_id, COUNT(*) as total FROM orders GROUP BY user_id',
+          metadata: null,
+        }
+      }
+
+      // procedure, function, trigger, event — DDL only
+      const ddlByType: Record<string, string> = {
+        procedure: 'CREATE PROCEDURE `sp_get_orders`()\nBEGIN\n  SELECT * FROM orders;\nEND',
+        function:
+          'CREATE FUNCTION `fn_calculate_total`(order_id BIGINT) RETURNS DECIMAL(10,2)\nBEGIN\n  RETURN 0.00;\nEND',
+        trigger:
+          "CREATE TRIGGER `trg_before_insert` BEFORE INSERT ON `orders`\nFOR EACH ROW\nBEGIN\n  SET NEW.status = 'pending';\nEND",
+        event:
+          'CREATE EVENT `cleanup_job` ON SCHEDULE EVERY 1 DAY DO DELETE FROM logs WHERE created_at < NOW() - INTERVAL 30 DAY',
+      }
+
+      return {
+        columns: [],
+        indexes: [],
+        foreignKeys: [],
+        ddl: ddlByType[objectType as string] ?? 'CREATE ...',
+        metadata: null,
+      }
+    }
+    case 'get_database_details':
+      return {
+        name: 'ecommerce_db',
+        defaultCharacterSet: 'utf8mb4',
+        defaultCollation: 'utf8mb4_general_ci',
+      }
+    case 'list_charsets':
+      return [
+        {
+          charset: 'utf8mb4',
+          description: 'UTF-8 Unicode',
+          defaultCollation: 'utf8mb4_general_ci',
+          maxLength: 4,
+        },
+      ]
+    case 'list_collations':
+      return [{ name: 'utf8mb4_general_ci', charset: 'utf8mb4', isDefault: true }]
+
+    // --- Schema mutating commands ---
+    case 'create_database':
+    case 'drop_database':
+    case 'alter_database':
+    case 'rename_database':
+    case 'drop_table':
+    case 'truncate_table':
+    case 'rename_table':
+      return null
+
     default:
       return null
   }

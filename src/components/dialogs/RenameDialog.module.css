@@ -1,0 +1,61 @@
+/* RenameDialog — content styles (shell handled by DialogShell) */
+
+.title {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-headline);
+  color: var(--on-surface);
+}
+
+.warningBox {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: rgba(252, 211, 77, 0.08);
+  border: 1px solid rgba(252, 211, 77, 0.25);
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: var(--font-body);
+  color: var(--warning);
+  line-height: 1.5;
+}
+
+.currentName {
+  margin: 0 0 16px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+}
+
+.currentNameValue {
+  font-family: var(--font-mono);
+  color: var(--on-surface);
+  font-weight: 600;
+}
+
+.label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+}
+
+.error {
+  font-size: 12px;
+  font-family: var(--font-body);
+  color: var(--error);
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(var(--error-rgb), 0.08);
+  border-radius: 6px;
+  border: 1px solid rgba(var(--error-rgb), 0.2);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}

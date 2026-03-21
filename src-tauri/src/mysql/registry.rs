@@ -60,6 +60,7 @@ pub struct RegistryEntry {
     pub server_version: String,
     pub cancellation_token: CancellationToken,
     pub connection_params: StoredConnectionParams,
+    pub read_only: bool,
 }
 
 /// Thread-safe registry of active MySQL connections.
@@ -141,6 +142,13 @@ impl ConnectionRegistry {
     pub fn contains(&self, id: &str) -> bool {
         let map = self.entries.read().expect("registry lock poisoned");
         map.contains_key(id)
+    }
+
+    /// Check whether a registered connection is read-only.
+    /// Returns `false` if the connection ID is not in the registry.
+    pub fn is_read_only(&self, id: &str) -> bool {
+        let map = self.entries.read().expect("registry lock poisoned");
+        map.get(id).map(|e| e.read_only).unwrap_or(false)
     }
 }
 

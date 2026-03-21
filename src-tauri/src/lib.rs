@@ -37,6 +37,8 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_dialog::init());
     }
 
+    builder = builder.plugin(tauri_plugin_clipboard_manager::init());
+
     builder
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
@@ -67,6 +69,20 @@ pub fn run() {
             commands::mysql::open_connection,
             commands::mysql::close_connection,
             commands::mysql::get_connection_status,
+            commands::schema::list_databases,
+            commands::schema::list_schema_objects,
+            commands::schema::list_columns,
+            commands::schema::get_schema_info,
+            commands::schema::get_database_details,
+            commands::schema::list_charsets,
+            commands::schema::list_collations,
+            commands::schema::create_database,
+            commands::schema::drop_database,
+            commands::schema::alter_database,
+            commands::schema::rename_database,
+            commands::schema::drop_table,
+            commands::schema::truncate_table,
+            commands::schema::rename_table,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

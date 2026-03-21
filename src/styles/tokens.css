@@ -69,19 +69,19 @@
   --space-2xl: 32px;
 
   /* Border Radius — design spec md = 0.375rem; connection_manager `rounded` = 0.125rem */
-    --radius-2xs: 0.125rem;
+  --radius-2xs: 0.125rem;
   --radius-sm: 4px;
   --radius-md: 0.375rem;
   --radius-lg: 8px;
 
   /* Typography — shared scale (theme-specific sizes override in [data-theme]) */
-    --letter-spacing-display-tight: -0.02em;
-    --letter-spacing-dialog-title: -0.01em;
-    --letter-spacing-label-md: 0.05rem;
-    --font-size-subtitle: var(--font-size-sm);
-    --font-size-dialog-title: var(--font-size-lg);
-    --font-size-ssl-title: 14px;
-    --font-size-ui-strong: 14px;
+  --letter-spacing-display-tight: -0.02em;
+  --letter-spacing-dialog-title: -0.01em;
+  --letter-spacing-label-md: 0.05rem;
+  --font-size-subtitle: var(--font-size-sm);
+  --font-size-dialog-title: var(--font-size-lg);
+  --font-size-ssl-title: 14px;
+  --font-size-ui-strong: 14px;
   /* Utility tokens */
   --elevation-overlay: 0 12px 32px rgba(var(--on-surface-rgb), 0.06);
   --control-border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
@@ -89,7 +89,12 @@
   --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
   --control-focus-ring-tight: 0 0 0 1px var(--primary);
   --glass-blur: blur(20px);
-/* ---------- Semantic UI tokens — dark (query_slate) ---------- */
+
+  /* Tree / Object Browser */
+  --tree-indent: 16px;
+  --tree-row-height: 28px;
+
+  /* ---------- Semantic UI tokens — dark (query_slate) ---------- */
   --ui-modal-bg: var(--surface-container);
   --ui-modal-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
   --ui-modal-shadow: var(--elevation-overlay);
@@ -121,8 +126,9 @@
   --ui-subsection-surface-bg: transparent;
   --ui-subsection-border: none;
   --ui-subsection-radius: var(--ui-input-radius);
-  --ui-subsection-elevation-shadow: 0 1px 3px rgba(0, 0, 0, 0.35),
-    0 6px 16px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(var(--outline-variant-rgb), 0.22);
+  --ui-subsection-elevation-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.35), 0 6px 16px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(var(--outline-variant-rgb), 0.22);
   --ui-collapsible-content-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.12);
 
   --ui-input-bg: var(--surface-container-highest);
@@ -158,7 +164,11 @@
   --ui-secondary-button-hover-bg: var(--surface-container-highest);
   --ui-secondary-button-padding: 11px 26px;
 
-  --ui-primary-button-bg: linear-gradient(135deg, var(--primary-gradient-from), var(--primary-gradient-to));
+  --ui-primary-button-bg: linear-gradient(
+    135deg,
+    var(--primary-gradient-from),
+    var(--primary-gradient-to)
+  );
   --ui-primary-button-bg-hover: var(--ui-primary-button-bg);
   --ui-primary-button-shadow: 0 4px 14px rgba(var(--primary-rgb), 0.25);
   --ui-primary-button-shadow-hover: 0 6px 18px rgba(var(--primary-rgb), 0.35);
@@ -271,15 +281,15 @@
   --surface-container-low: #f2f4f6;
   --surface-container: #f2f4f6;
   --surface-container-high: #e6e8ea;
-    --surface-container-highest: #dee1e5;
-    --surface-variant: #e6e8ea;
+  --surface-container-highest: #dee1e5;
+  --surface-variant: #e6e8ea;
   --surface-tint: #0066cc;
   --surface-tint-rgb: 0, 102, 204;
   --primary: #0066cc;
   --primary-rgb: 0, 102, 204;
   --primary-container: #e6f0ff;
   --primary-fixed: #d7e3ff;
-    --primary-fixed-rgb: 215, 227, 255;
+  --primary-fixed-rgb: 215, 227, 255;
   --primary-gradient-from: #004e9f;
   --primary-gradient-to: #0066cc;
   --on-primary: #ffffff;
@@ -294,14 +304,14 @@
   --error-rgb: 204, 0, 0;
   --error-container: #fff0f0;
   --on-surface: #191c1e;
-    --on-surface-rgb: 25, 28, 30;
-    --on-surface-variant: #414753;
+  --on-surface-rgb: 25, 28, 30;
+  --on-surface-variant: #414753;
   --on-error: #ffffff;
   --on-error-container: #cc0000;
   --outline: #c1c6d5;
   --outline-variant: #c1c6d5;
-    --outline-variant-rgb: 193, 198, 213;
-    --inverse-surface: #191c1e;
+  --outline-variant-rgb: 193, 198, 213;
+  --inverse-surface: #191c1e;
   --inverse-on-surface: #f7f9fb;
   --background: #f7f9fb;
   --on-background: #191c1e;
@@ -317,7 +327,7 @@
   --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
   --control-focus-ring-tight: 0 0 0 1px var(--primary);
   --glass-blur: blur(20px);
-/* Typography overrides */
+  /* Typography overrides */
   --font-size-subtitle: 14px;
   --font-size-dialog-title: 1.125rem;
   --letter-spacing-dialog-title: -0.025em;
@@ -352,8 +362,9 @@
   --ui-section-divider-border: 1px solid rgba(var(--outline-variant-rgb), 0.12);
   --ui-subsection-surface-bg: transparent;
   --ui-subsection-border: none;
-  --ui-subsection-elevation-shadow: 0 1px 2px rgba(15, 23, 42, 0.06),
-    0 4px 14px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(var(--outline-variant-rgb), 0.14);
+  --ui-subsection-elevation-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 14px rgba(15, 23, 42, 0.08),
+    0 0 0 1px rgba(var(--outline-variant-rgb), 0.14);
   --ui-collapsible-content-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.15);
 
   /* Slight grey fill so fields read as inputs on white forms (between lowest + low) */
@@ -386,10 +397,10 @@
   /* Connect: solid #0066CC, shadow-md, hover #0052A3 */
   --ui-primary-button-bg: #0066cc;
   --ui-primary-button-bg-hover: #0052a3;
-  --ui-primary-button-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.1),
-    0 2px 4px -2px rgba(15, 23, 42, 0.1);
-  --ui-primary-button-shadow-hover: 0 6px 12px -2px rgba(15, 23, 42, 0.12),
-    0 3px 6px -2px rgba(15, 23, 42, 0.08);
+  --ui-primary-button-shadow:
+    0 4px 6px -1px rgba(15, 23, 42, 0.1), 0 2px 4px -2px rgba(15, 23, 42, 0.1);
+  --ui-primary-button-shadow-hover:
+    0 6px 12px -2px rgba(15, 23, 42, 0.12), 0 3px 6px -2px rgba(15, 23, 42, 0.08);
   --ui-primary-button-filter-hover: none;
   --ui-secondary-button-padding: 12px 28px;
   --ui-primary-button-padding: 12px 56px;

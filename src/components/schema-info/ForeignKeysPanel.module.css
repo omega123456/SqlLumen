@@ -1,0 +1,75 @@
+.container {
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-body);
+}
+
+.th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  white-space: nowrap;
+}
+
+.row {
+  transition: background-color 0.1s ease;
+}
+
+.row:hover {
+  background: rgba(var(--on-surface-rgb), 0.03);
+}
+
+.td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  vertical-align: middle;
+}
+
+.fkName {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--on-surface);
+}
+
+.columnRef {
+  font-family: var(--font-mono);
+  color: var(--on-surface);
+}
+
+.refTable {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.action {
+  color: var(--on-surface-variant);
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px;
+}
+
+.emptyText {
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+  font-size: var(--font-size-md);
+}

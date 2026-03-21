@@ -224,6 +224,7 @@ fn sample_registry_entry(status: ConnectionStatus) -> RegistryEntry {
             connect_timeout_secs: 10,
             keepalive_interval_secs: 0,
         },
+        read_only: false,
     }
 }
 
