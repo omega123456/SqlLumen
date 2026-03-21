@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Database, Eye, EyeSlash, FolderOpen } from '@phosphor-icons/react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -7,6 +7,7 @@ import {
   saveConnection as saveConnectionIPC,
   updateConnection,
 } from '../../lib/connection-commands'
+import { Dropdown } from '../common/Dropdown'
 import { CollapsibleSection } from './CollapsibleSection'
 import { ColorPickerPopover } from './ColorPickerPopover'
 import { TestConnectionResult } from './TestConnectionResult'
@@ -135,6 +136,13 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
 
   const connectionGroups = useConnectionStore((s) => s.connectionGroups)
   const fetchSavedConnections = useConnectionStore((s) => s.fetchSavedConnections)
+  const groupDropdownOptions = useMemo(
+    () => [
+      { value: '', label: 'Ungrouped' },
+      ...connectionGroups.map((g) => ({ value: g.id, label: g.name })),
+    ],
+    [connectionGroups]
+  )
   const openConnection = useConnectionStore((s) => s.openConnection)
   const closeDialog = useConnectionStore((s) => s.closeDialog)
 
@@ -378,22 +386,16 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                   />
                 </div>
                 <div className={styles.fieldGroup}>
-                  <label htmlFor="conn-group" className={styles.label}>
+                  <label id="conn-group-label" htmlFor="conn-group" className={styles.label}>
                     Group
                   </label>
-                  <select
+                  <Dropdown
                     id="conn-group"
-                    className={styles.select}
+                    labelledBy="conn-group-label"
+                    options={groupDropdownOptions}
                     value={formData.groupId ?? ''}
-                    onChange={(e) => updateField('groupId', e.target.value || null)}
-                  >
-                    <option value="">Ungrouped</option>
-                    {connectionGroups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => updateField('groupId', v || null)}
+                  />
                 </div>
               </div>
 

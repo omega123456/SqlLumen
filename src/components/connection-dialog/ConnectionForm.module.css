@@ -143,8 +143,7 @@
 }
 
 .input,
-.passwordInput,
-.select {
+.passwordInput {
   padding: var(--ui-input-padding-y) var(--ui-input-padding-x);
   border: var(--control-border);
   border-radius: var(--ui-input-radius);
@@ -171,22 +170,19 @@
 }
 
 .input:focus,
-.passwordInput:focus,
-.select:focus {
+.passwordInput:focus {
   border: var(--control-border-focus);
   box-shadow: var(--ui-input-focus-shadow);
 }
 
 .input:disabled,
-.passwordInput:disabled,
-.select:disabled {
+.passwordInput:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
 .input.inputError,
-.passwordInput.inputError,
-.select.inputError {
+.passwordInput.inputError {
   border-color: var(--error);
 }
 

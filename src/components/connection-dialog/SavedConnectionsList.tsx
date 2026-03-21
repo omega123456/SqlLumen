@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import type { CSSProperties } from 'react'
-import { Plus, FolderPlus, ShieldCheck } from '@phosphor-icons/react'
+import { Plus, FolderPlus, ShieldCheck, PencilSimple, Trash } from '@phosphor-icons/react'
 import { useConnectionStore } from '../../stores/connection-store'
 import {
   deleteConnection,
@@ -403,37 +403,45 @@ export function SavedConnectionsList({
       {contextMenu && (
         <div
           ref={contextMenuRef}
-          className={styles.contextMenu}
+          className="ui-context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           role="menu"
         >
           {contextMenu.type === 'connection' && contextMenu.connectionId && (
             <button
               type="button"
-              className={styles.contextMenuItem}
+              className="ui-context-menu__item ui-context-menu__item--destructive"
               role="menuitem"
               onClick={() => void handleDeleteConnection(contextMenu.connectionId!)}
             >
-              Delete
+              <Trash className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+              <span>Delete</span>
             </button>
           )}
           {contextMenu.type === 'group' && contextMenu.groupId && (
             <>
               <button
                 type="button"
-                className={styles.contextMenuItem}
+                className="ui-context-menu__item"
                 role="menuitem"
                 onClick={() => handleRenameGroup(contextMenu.groupId!)}
               >
-                Rename
+                <PencilSimple className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+                <span>Rename</span>
               </button>
+              <div
+                className="ui-context-menu__separator"
+                role="separator"
+                aria-orientation="horizontal"
+              />
               <button
                 type="button"
-                className={styles.contextMenuItem}
+                className="ui-context-menu__item ui-context-menu__item--destructive"
                 role="menuitem"
                 onClick={() => void handleDeleteGroup(contextMenu.groupId!)}
               >
-                Delete
+                <Trash className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+                <span>Delete</span>
               </button>
             </>
           )}

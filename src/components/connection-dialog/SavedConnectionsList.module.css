@@ -203,36 +203,6 @@
   opacity: 0.9;
 }
 
-.contextMenu {
-  position: fixed;
-  background: var(--glass-surface);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border-radius: var(--radius-sm);
-  z-index: 1000;
-  box-shadow: var(--elevation-overlay);
-  padding: var(--space-xs) 0;
-  min-width: 120px;
-}
-
-.contextMenuItem {
-  display: block;
-  width: 100%;
-  padding: var(--space-xs) var(--space-md);
-  font-size: var(--font-size-sm);
-  font-family: inherit;
-  color: var(--on-surface);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  transition: background-color 0.1s ease;
-}
-
-.contextMenuItem:hover {
-  background-color: var(--surface-container-high);
-}
-
 .errorBanner {
   display: flex;
   align-items: center;

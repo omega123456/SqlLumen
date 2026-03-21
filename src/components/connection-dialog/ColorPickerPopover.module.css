@@ -1,4 +1,4 @@
-/* Color picker — popover + inputs from tokens */
+/* Color picker — uses --ui-popover-* (aligned with global dropdown / floating menu tokens) */
 
 .wrapper {
   position: relative;

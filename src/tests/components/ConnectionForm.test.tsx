@@ -226,12 +226,13 @@ describe('ConnectionForm', () => {
   it('renders group selector with Ungrouped option', () => {
     render(<ConnectionForm />)
 
-    const select = screen.getByLabelText('Group')
-    expect(select).toBeInTheDocument()
-    expect(screen.getByText('Ungrouped')).toBeInTheDocument()
+    const combobox = screen.getByRole('combobox', { name: 'Group' })
+    expect(combobox).toBeInTheDocument()
+    expect(combobox).toHaveTextContent('Ungrouped')
   })
 
-  it('group selector shows connection groups from store', () => {
+  it('group selector shows connection groups from store', async () => {
+    const user = userEvent.setup()
     useConnectionStore.setState({
       connectionGroups: [
         {
@@ -246,8 +247,9 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
-    expect(screen.getByText('Production')).toBeInTheDocument()
-    expect(screen.getByText('Ungrouped')).toBeInTheDocument()
+    await user.click(screen.getByRole('combobox', { name: 'Group' }))
+    expect(screen.getByRole('option', { name: 'Production' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Ungrouped' })).toBeInTheDocument()
   })
 
   it('group selector changes value', async () => {
@@ -266,9 +268,10 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
-    const select = screen.getByLabelText('Group')
-    await user.selectOptions(select, 'grp-1')
-    expect(select).toHaveValue('grp-1')
+    const combobox = screen.getByRole('combobox', { name: 'Group' })
+    await user.click(combobox)
+    await user.click(screen.getByRole('option', { name: 'Production' }))
+    expect(combobox).toHaveTextContent('Production')
   })
 
   it('renders color picker swatch', () => {

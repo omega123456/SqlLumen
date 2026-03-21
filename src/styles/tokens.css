@@ -174,12 +174,6 @@
   --ui-browse-button-hover-bg: var(--surface-container-highest);
   --ui-browse-button-hover-fg: var(--on-surface);
 
-  --ui-popover-bg: var(--glass-surface);
-  --ui-popover-border: none;
-  --ui-popover-radius: var(--radius-sm);
-  --ui-popover-shadow: var(--elevation-overlay);
-  --ui-popover-backdrop-filter: var(--glass-blur);
-
   --ui-collapsible-trigger-font: var(--font-headline);
   --ui-collapsible-trigger-size: var(--font-size-sm);
   --ui-collapsible-trigger-hover-bg: rgba(var(--on-surface-rgb), 0.04);
@@ -198,6 +192,74 @@
   --ui-storage-footer-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.18);
 
   --ui-ssl-hint-fg: var(--on-surface-variant);
+
+  /* ---------- Dropdown (trigger matches .input / .ui-input geometry & fill) ---------- */
+  --ui-dropdown-trigger-bg: var(--ui-input-bg);
+  --ui-dropdown-trigger-border: var(--control-border);
+  --ui-dropdown-trigger-hover-border-color: rgba(var(--primary-rgb), 0.5);
+  --ui-dropdown-trigger-radius: var(--ui-input-radius);
+  --ui-dropdown-trigger-padding-y: var(--ui-input-padding-y);
+  --ui-dropdown-trigger-padding-x: var(--ui-input-padding-x);
+  --ui-dropdown-trigger-font-size: var(--ui-input-font-size);
+  --ui-dropdown-trigger-font-weight: 400;
+  --ui-dropdown-trigger-open-shadow: 0 0 15px rgba(var(--primary-rgb), 0.1);
+  --ui-dropdown-trigger-open-border: var(--control-border-focus);
+  --ui-dropdown-chevron-color: var(--on-surface-variant);
+
+  --ui-dropdown-panel-bg: rgba(23, 31, 51, 0.8);
+  --ui-dropdown-panel-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+  --ui-dropdown-panel-backdrop-filter: blur(20px);
+  --ui-dropdown-panel-radius: var(--ui-input-radius);
+  --ui-dropdown-panel-padding: 0;
+  /* Flush options: no outer gap/margin; square corners */
+  --ui-dropdown-option-gap: 0;
+  --ui-dropdown-option-padding-y: var(--ui-input-padding-y);
+  --ui-dropdown-option-padding-x: var(--ui-input-padding-x);
+  --ui-dropdown-option-margin-x: 0;
+  --ui-dropdown-option-radius: 0;
+  --ui-dropdown-option-font-size: var(--ui-input-font-size);
+  --ui-dropdown-option-font-weight: 400;
+  --ui-dropdown-option-accent-width: 2px;
+  --ui-dropdown-option-hover-bg: var(--surface-bright);
+  --ui-dropdown-option-selected-bg: rgba(var(--primary-rgb), 0.1);
+  --ui-dropdown-option-label-selected-weight: 700;
+  --ui-dropdown-option-meta-font-size: 10px;
+  --ui-dropdown-option-meta-color: color-mix(in srgb, var(--on-surface-variant) 65%, transparent);
+  --ui-dropdown-listbox-padding: 0;
+
+  /* Shared popover surface (color picker, etc.) — match dropdown panel */
+  --ui-popover-bg: var(--ui-dropdown-panel-bg);
+  --ui-popover-border: 1px solid rgba(var(--primary-rgb), 0.35);
+  --ui-popover-radius: var(--ui-dropdown-panel-radius);
+  --ui-popover-shadow: var(--ui-dropdown-panel-shadow);
+  --ui-popover-backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
+
+  /* Context menu — right_click_context_menu_dark_mode */
+  --ui-context-menu-min-width: 256px;
+  --ui-context-menu-bg: #1e293b;
+  --ui-context-menu-border: 1px solid rgba(148, 163, 184, 0.5);
+  --ui-context-menu-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.6);
+  --ui-context-menu-radius: var(--radius-lg);
+  --ui-context-menu-padding-y: 6px;
+  --ui-context-menu-backdrop-filter: none;
+  --ui-context-menu-item-padding-x: var(--space-lg);
+  --ui-context-menu-item-padding-y: 8px;
+  --ui-context-menu-item-font-size: 13px;
+  --ui-context-menu-item-font-weight: 500;
+  --ui-context-menu-item-gap: var(--space-md);
+  --ui-context-menu-item-fg: #f1f5f9;
+  --ui-context-menu-item-icon-fg: #94a3b8;
+  --ui-context-menu-item-hover-bg: rgba(var(--primary-rgb), 0.2);
+  --ui-context-menu-item-hover-fg: var(--primary);
+  --ui-context-menu-item-hover-icon-fg: var(--primary);
+  --ui-context-menu-separator-margin-x: 12px;
+  --ui-context-menu-separator-margin-y: 4px;
+  --ui-context-menu-separator-border: 1px solid rgba(148, 163, 184, 0.5);
+  --ui-context-menu-destructive-fg: rgba(var(--error-rgb), 0.8);
+  --ui-context-menu-destructive-icon-fg: rgba(var(--error-rgb), 0.6);
+  --ui-context-menu-destructive-hover-bg: rgba(var(--error-rgb), 0.1);
+  --ui-context-menu-destructive-hover-fg: var(--error);
+  --ui-context-menu-destructive-hover-icon-fg: var(--error);
 }
 
 /* Light Theme — query_slate_light (applied via [data-theme="light"] on <html>) */
@@ -338,13 +400,6 @@
   --ui-browse-button-hover-bg: var(--surface-container);
   --ui-browse-button-hover-fg: var(--on-surface);
 
-  --ui-popover-bg: var(--surface-container-lowest);
-  --ui-popover-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
-  --ui-popover-radius: var(--radius-sm);
-  --ui-popover-shadow: 0 10px 15px -3px rgba(var(--on-surface-rgb), 0.08),
-    0 4px 6px -4px rgba(var(--on-surface-rgb), 0.06);
-  --ui-popover-backdrop-filter: none;
-
   --ui-collapsible-trigger-font: var(--font-body);
   --ui-collapsible-trigger-size: 14px;
 
@@ -365,4 +420,44 @@
 
   --ui-input-focus-shadow: var(--control-focus-ring-tight);
   --ui-collapsible-trigger-hover-bg: var(--surface-container-high);
+
+  /* ---------- Dropdown + context menu — dropdowns_light_mode / context menu light ---------- */
+  --ui-dropdown-trigger-bg: var(--ui-input-bg);
+  --ui-dropdown-trigger-border: var(--control-border);
+  --ui-dropdown-trigger-hover-border-color: rgba(var(--primary-rgb), 0.5);
+  --ui-dropdown-trigger-open-shadow: 0 1px 2px rgba(var(--on-surface-rgb), 0.06);
+  --ui-dropdown-trigger-open-border: var(--control-border-focus);
+
+  --ui-dropdown-panel-bg: color-mix(in srgb, var(--surface-container-lowest) 90%, transparent);
+  --ui-dropdown-panel-shadow: 0 25px 50px -12px rgba(var(--on-surface-rgb), 0.18);
+  --ui-dropdown-panel-backdrop-filter: blur(24px);
+  --ui-dropdown-option-hover-bg: var(--surface-container-low);
+  --ui-dropdown-option-selected-bg: color-mix(in srgb, var(--primary-fixed) 30%, transparent);
+  --ui-dropdown-option-accent-width: 4px;
+  --ui-dropdown-option-meta-color: color-mix(in srgb, var(--on-surface-variant) 60%, transparent);
+
+  --ui-popover-bg: var(--ui-dropdown-panel-bg);
+  --ui-popover-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
+  --ui-popover-radius: var(--ui-dropdown-panel-radius);
+  --ui-popover-shadow: var(--ui-dropdown-panel-shadow);
+  --ui-popover-backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
+
+  --ui-context-menu-bg: color-mix(in srgb, var(--surface-container-lowest) 90%, transparent);
+  --ui-context-menu-border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
+  --ui-context-menu-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.12);
+  --ui-context-menu-backdrop-filter: blur(24px);
+  --ui-context-menu-item-font-size: 14px;
+  --ui-context-menu-item-fg: var(--on-surface-variant);
+  --ui-context-menu-item-icon-fg: var(--on-surface-variant);
+  --ui-context-menu-item-hover-bg: var(--primary);
+  --ui-context-menu-item-hover-fg: #ffffff;
+  --ui-context-menu-item-hover-icon-fg: #ffffff;
+  --ui-context-menu-separator-margin-x: 8px;
+  --ui-context-menu-separator-margin-y: 6px;
+  --ui-context-menu-separator-border: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  --ui-context-menu-destructive-fg: var(--error);
+  --ui-context-menu-destructive-icon-fg: var(--error);
+  --ui-context-menu-destructive-hover-bg: var(--error);
+  --ui-context-menu-destructive-hover-fg: #ffffff;
+  --ui-context-menu-destructive-hover-icon-fg: #ffffff;
 }
