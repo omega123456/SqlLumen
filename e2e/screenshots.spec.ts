@@ -2,9 +2,13 @@ import { test, expect, type Page } from '@playwright/test'
 
 const themes = ['light', 'dark'] as const
 
+/** Dev server + async `main.tsx` (dynamic imports, IPC mock, theme) under many parallel workers can exceed the default 5s expect timeout. */
+const APP_READY_MS = 60_000
+
 async function waitForApp(page: Page) {
-  await page.goto('/')
-  await expect(page.getByTestId('status-bar')).toContainText('Ready')
+  await page.goto('/', { waitUntil: 'load', timeout: APP_READY_MS })
+  await expect(page.getByTestId('app-layout')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('status-bar')).toContainText('Ready', { timeout: APP_READY_MS })
   await page.evaluate(() => document.fonts.ready)
 }
 
