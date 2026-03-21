@@ -31,7 +31,7 @@ export function useDatabaseEncoding(
   const [collations, setCollations] = useState<CollationInfo[]>([])
   const [charset, setCharsetState] = useState(initialCharset ?? '')
   const [collation, setCollation] = useState(initialCollation ?? '')
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(() => isOpen)
   const [error, setError] = useState<string | null>(null)
 
   // Fetch charsets and collations when dialog opens

@@ -16,6 +16,13 @@ const mockCreateDatabase = vi.mocked(createDatabase)
 const mockListCharsets = vi.mocked(listCharsets)
 const mockListCollations = vi.mocked(listCollations)
 
+/** Waits until charset/collation fetch finished (avoids act() warnings from async setState). */
+async function waitForCreateDatabaseEncodingIdle() {
+  await waitFor(() => {
+    expect(screen.getByTestId('create-db-form')).not.toHaveAttribute('aria-busy')
+  })
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockListCharsets.mockResolvedValue([
@@ -54,6 +61,7 @@ describe('CreateDatabaseDialog', () => {
     await waitFor(() => {
       expect(screen.getByTestId('create-db-name-input')).toBeInTheDocument()
     })
+    await waitForCreateDatabaseEncodingIdle()
   })
 
   it('renders charset and collation dropdowns', async () => {
@@ -62,6 +70,7 @@ describe('CreateDatabaseDialog', () => {
       expect(screen.getByText('Character Set')).toBeInTheDocument()
       expect(screen.getByText('Collation')).toBeInTheDocument()
     })
+    await waitForCreateDatabaseEncodingIdle()
   })
 
   it('confirm button disabled if name is empty', async () => {
@@ -69,6 +78,7 @@ describe('CreateDatabaseDialog', () => {
     await waitFor(() => {
       expect(screen.getByTestId('create-db-submit-button')).toBeDisabled()
     })
+    await waitForCreateDatabaseEncodingIdle()
   })
 
   it('confirm button enabled when name is typed', async () => {
@@ -78,6 +88,7 @@ describe('CreateDatabaseDialog', () => {
     await waitFor(() => {
       expect(screen.getByTestId('create-db-name-input')).toBeInTheDocument()
     })
+    await waitForCreateDatabaseEncodingIdle()
 
     await user.type(screen.getByTestId('create-db-name-input'), 'test_db')
     expect(screen.getByTestId('create-db-submit-button')).not.toBeDisabled()
@@ -91,6 +102,7 @@ describe('CreateDatabaseDialog', () => {
     await waitFor(() => {
       expect(screen.getByTestId('create-db-name-input')).toBeInTheDocument()
     })
+    await waitForCreateDatabaseEncodingIdle()
 
     await user.type(screen.getByTestId('create-db-name-input'), 'new_database')
     await user.click(screen.getByTestId('create-db-submit-button'))
@@ -113,6 +125,7 @@ describe('CreateDatabaseDialog', () => {
     await waitFor(() => {
       expect(screen.getByTestId('create-db-name-input')).toBeInTheDocument()
     })
+    await waitForCreateDatabaseEncodingIdle()
 
     await user.type(screen.getByTestId('create-db-name-input'), 'new_database')
     await user.click(screen.getByTestId('create-db-submit-button'))
@@ -131,6 +144,7 @@ describe('CreateDatabaseDialog', () => {
     await waitFor(() => {
       expect(screen.getByTestId('create-db-name-input')).toBeInTheDocument()
     })
+    await waitForCreateDatabaseEncodingIdle()
 
     await user.type(screen.getByTestId('create-db-name-input'), 'new_database')
     await user.click(screen.getByTestId('create-db-submit-button'))
@@ -147,6 +161,7 @@ describe('CreateDatabaseDialog', () => {
     await waitFor(() => {
       expect(screen.getByTestId('create-db-name-input')).toBeInTheDocument()
     })
+    await waitForCreateDatabaseEncodingIdle()
 
     await user.type(screen.getByTestId('create-db-name-input'), 'existing_db')
     await user.click(screen.getByTestId('create-db-submit-button'))
@@ -156,9 +171,10 @@ describe('CreateDatabaseDialog', () => {
     })
   })
 
-  it('has data-testid="create-database-dialog"', () => {
+  it('has data-testid="create-database-dialog"', async () => {
     render(<CreateDatabaseDialog {...defaultProps} />)
     expect(screen.getByTestId('create-database-dialog')).toBeInTheDocument()
+    await waitForCreateDatabaseEncodingIdle()
   })
 
   it('does not render when isOpen is false', () => {
@@ -173,6 +189,7 @@ describe('CreateDatabaseDialog', () => {
     await waitFor(() => {
       expect(screen.getByTestId('create-db-name-input')).toBeInTheDocument()
     })
+    await waitForCreateDatabaseEncodingIdle()
 
     // Type then clear to trigger validation
     await user.type(screen.getByTestId('create-db-name-input'), 'a')
@@ -188,23 +205,28 @@ describe('CreateDatabaseDialog', () => {
       expect(mockListCharsets).toHaveBeenCalledWith('conn-1')
       expect(mockListCollations).toHaveBeenCalledWith('conn-1')
     })
+    await waitForCreateDatabaseEncodingIdle()
   })
 
   it('calls onCancel when cancel button clicked', async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn()
-    render(<CreateDatabaseDialog {...defaultProps} onCancel={onCancel} />)
+    const { rerender } = render(<CreateDatabaseDialog {...defaultProps} onCancel={onCancel} />)
 
+    await waitForCreateDatabaseEncodingIdle()
     await user.click(screen.getByTestId('create-db-cancel-button'))
     expect(onCancel).toHaveBeenCalledTimes(1)
+    rerender(<CreateDatabaseDialog {...defaultProps} onCancel={onCancel} isOpen={false} />)
   })
 
   it('Escape key calls onCancel', async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn()
-    render(<CreateDatabaseDialog {...defaultProps} onCancel={onCancel} />)
+    const { rerender } = render(<CreateDatabaseDialog {...defaultProps} onCancel={onCancel} />)
 
+    await waitForCreateDatabaseEncodingIdle()
     await user.keyboard('{Escape}')
     expect(onCancel).toHaveBeenCalledTimes(1)
+    rerender(<CreateDatabaseDialog {...defaultProps} onCancel={onCancel} isOpen={false} />)
   })
 })

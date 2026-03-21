@@ -1,5 +1,9 @@
 /* CreateDatabaseDialog — form content styles (shell handled by DialogShell) */
 
+.encodingRoot {
+  display: contents;
+}
+
 .title {
   margin: 0 0 20px;
   font-size: 16px;

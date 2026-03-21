@@ -93,80 +93,86 @@ export function CreateDatabaseDialog({
       testId="create-database-dialog"
       ariaLabel="Create Database"
     >
-      <h2 className={styles.title}>Create Database</h2>
+      <div
+        className={styles.encodingRoot}
+        data-testid="create-db-form"
+        aria-busy={encoding.isLoading ? true : undefined}
+      >
+        <h2 className={styles.title}>Create Database</h2>
 
-      <div className={styles.formGroup}>
-        <label className={styles.label} htmlFor="create-db-name">
-          Database Name
-        </label>
-        <input
-          id="create-db-name"
-          type="text"
-          className="ui-input"
-          value={name}
-          onChange={handleNameChange}
-          placeholder="my_new_database"
-          maxLength={64}
-          autoFocus
-          data-testid="create-db-name-input"
-        />
-        {nameError && (
-          <div className={styles.validationError} data-testid="create-db-name-error">
-            {nameError}
+        <div className={styles.formGroup}>
+          <label className={styles.label} htmlFor="create-db-name">
+            Database Name
+          </label>
+          <input
+            id="create-db-name"
+            type="text"
+            className="ui-input"
+            value={name}
+            onChange={handleNameChange}
+            placeholder="my_new_database"
+            maxLength={64}
+            autoFocus
+            data-testid="create-db-name-input"
+          />
+          {nameError && (
+            <div className={styles.validationError} data-testid="create-db-name-error">
+              {nameError}
+            </div>
+          )}
+        </div>
+
+        <div className={styles.formGroup}>
+          <label className={styles.label} id="create-db-charset-label">
+            Character Set
+          </label>
+          <Dropdown
+            id="create-db-charset"
+            labelledBy="create-db-charset-label"
+            options={charsetOptions}
+            value={encoding.charset}
+            onChange={encoding.setCharset}
+          />
+        </div>
+
+        <div className={styles.formGroup}>
+          <label className={styles.label} id="create-db-collation-label">
+            Collation
+          </label>
+          <Dropdown
+            id="create-db-collation"
+            labelledBy="create-db-collation-label"
+            options={collationOptions}
+            value={encoding.collation}
+            onChange={encoding.setCollation}
+          />
+        </div>
+
+        {error && (
+          <div className={styles.error} data-testid="create-db-error">
+            {error}
           </div>
         )}
-      </div>
 
-      <div className={styles.formGroup}>
-        <label className={styles.label} id="create-db-charset-label">
-          Character Set
-        </label>
-        <Dropdown
-          id="create-db-charset"
-          labelledBy="create-db-charset-label"
-          options={charsetOptions}
-          value={encoding.charset}
-          onChange={encoding.setCharset}
-        />
-      </div>
-
-      <div className={styles.formGroup}>
-        <label className={styles.label} id="create-db-collation-label">
-          Collation
-        </label>
-        <Dropdown
-          id="create-db-collation"
-          labelledBy="create-db-collation-label"
-          options={collationOptions}
-          value={encoding.collation}
-          onChange={encoding.setCollation}
-        />
-      </div>
-
-      {error && (
-        <div className={styles.error} data-testid="create-db-error">
-          {error}
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className="ui-button-secondary"
+            onClick={onCancel}
+            data-testid="create-db-cancel-button"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="ui-button-primary"
+            onClick={handleSubmit}
+            disabled={!isValid || isSubmitting}
+            data-testid="create-db-submit-button"
+          >
+            {isSubmitting ? 'Creating...' : 'Create Database'}
+          </button>
         </div>
-      )}
-
-      <div className={styles.actions}>
-        <button
-          type="button"
-          className="ui-button-secondary"
-          onClick={onCancel}
-          data-testid="create-db-cancel-button"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className="ui-button-primary"
-          onClick={handleSubmit}
-          disabled={!isValid || isSubmitting}
-          data-testid="create-db-submit-button"
-        >
-          {isSubmitting ? 'Creating...' : 'Create Database'}
-        </button>
       </div>
     </DialogShell>
   )
