@@ -104,11 +104,6 @@ fn test_save_without_password_sets_has_password_false() {
 
 #[test]
 fn test_password_is_not_stored_in_sqlite() {
-    if !common::keychain_available() {
-        eprintln!("Skipping: OS keychain not available");
-        return;
-    }
-
     let state = common::test_app_state();
     let mut input = common::sample_save_input();
     input.password = Some("secret".to_string());
@@ -131,18 +126,10 @@ fn test_password_is_not_stored_in_sqlite() {
         !row_data.contains("secret"),
         "password 'secret' should not appear in any SQLite column"
     );
-
-    drop(conn);
-    let _ = mysql_client_lib::credentials::delete_password(&id);
 }
 
 #[test]
 fn test_save_with_password_sets_has_password_true() {
-    if !common::keychain_available() {
-        eprintln!("Skipping: OS keychain not available");
-        return;
-    }
-
     let state = common::test_app_state();
     let mut input = common::sample_save_input();
     input.password = Some("secret".to_string());
@@ -157,17 +144,10 @@ fn test_save_with_password_sets_has_password_true() {
         record.has_password,
         "has_password should be true when password is provided"
     );
-
-    let _ = mysql_client_lib::credentials::delete_password(&id);
 }
 
 #[test]
 fn test_update_with_password_sets_has_password_true() {
-    if !common::keychain_available() {
-        eprintln!("Skipping: OS keychain not available");
-        return;
-    }
-
     let state = common::test_app_state();
     let mut input = common::sample_save_input();
     input.password = None;
@@ -205,8 +185,6 @@ fn test_update_with_password_sets_has_password_true() {
         record.has_password,
         "has_password should be true after update with password"
     );
-
-    let _ = mysql_client_lib::credentials::delete_password(&id);
 }
 
 #[test]

@@ -82,20 +82,6 @@ fn dummy_entry(id: &str) -> RegistryEntry {
     }
 }
 
-/// Check if the OS keychain is available in this environment.
-/// Some CI and headless environments do not have a credential store.
-fn keychain_available() -> bool {
-    let probe_id = format!("__keyring_probe_{}", uuid::Uuid::new_v4());
-    let store_ok = credentials::store_password(&probe_id, "probe").is_ok();
-    if store_ok {
-        let retrieve_ok = credentials::retrieve_password(&probe_id).is_ok();
-        let _ = credentials::delete_password(&probe_id);
-        retrieve_ok
-    } else {
-        false
-    }
-}
-
 // --- Registry Tests (need tokio context for sqlx pool internals) ---
 
 #[tokio::test]
@@ -257,15 +243,11 @@ async fn test_registry_get_connection_params_returns_none_for_missing() {
     assert!(registry.get_connection_params("nonexistent").is_none());
 }
 
-// --- Credential Tests (gated — keychain may not be available in CI/headless) ---
+// --- Credential Tests (in-memory test backend; no OS keychain) ---
 
 #[test]
 fn test_credential_store_and_retrieve() {
-    if !keychain_available() {
-        eprintln!("Skipping: OS keychain not available in this environment");
-        return;
-    }
-
+    common::ensure_fake_backend_once();
     let test_id = format!("test-cred-{}", uuid::Uuid::new_v4());
 
     credentials::store_password(&test_id, "my_secret_password")
@@ -275,17 +257,12 @@ fn test_credential_store_and_retrieve() {
         credentials::retrieve_password(&test_id).expect("should retrieve password");
     assert_eq!(retrieved, "my_secret_password");
 
-    // Cleanup
     credentials::delete_password(&test_id).expect("should delete password");
 }
 
 #[test]
 fn test_credential_overwrite() {
-    if !keychain_available() {
-        eprintln!("Skipping: OS keychain not available in this environment");
-        return;
-    }
-
+    common::ensure_fake_backend_once();
     let test_id = format!("test-cred-ow-{}", uuid::Uuid::new_v4());
 
     credentials::store_password(&test_id, "first_password").expect("should store");
@@ -294,17 +271,12 @@ fn test_credential_overwrite() {
     let retrieved = credentials::retrieve_password(&test_id).expect("should retrieve");
     assert_eq!(retrieved, "second_password");
 
-    // Cleanup
     credentials::delete_password(&test_id).expect("should delete");
 }
 
 #[test]
 fn test_credential_delete() {
-    if !keychain_available() {
-        eprintln!("Skipping: OS keychain not available in this environment");
-        return;
-    }
-
+    common::ensure_fake_backend_once();
     let test_id = format!("test-cred-del-{}", uuid::Uuid::new_v4());
 
     credentials::store_password(&test_id, "temp_password").expect("should store");
@@ -316,11 +288,7 @@ fn test_credential_delete() {
 
 #[test]
 fn test_credential_retrieve_nonexistent() {
-    if !keychain_available() {
-        eprintln!("Skipping: OS keychain not available in this environment");
-        return;
-    }
-
+    common::ensure_fake_backend_once();
     let test_id = format!("test-cred-none-{}", uuid::Uuid::new_v4());
     let result = credentials::retrieve_password(&test_id);
     assert!(result.is_err(), "should fail for nonexistent credential");

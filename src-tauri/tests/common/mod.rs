@@ -2,6 +2,8 @@
 #![allow(dead_code)]
 // Each integration test binary only uses a subset of helpers; unused items are expected.
 
+pub mod fake_credentials;
+
 use mysql_client_lib::commands::connections::SaveConnectionInput;
 use mysql_client_lib::db::migrations;
 use mysql_client_lib::mysql::registry::ConnectionRegistry;
@@ -17,8 +19,14 @@ pub fn test_db() -> Connection {
     conn
 }
 
+/// Install the in-memory credential backend (idempotent). Use from suites that do not call [`test_app_state`].
+pub fn ensure_fake_backend_once() {
+    fake_credentials::ensure_fake_backend_once();
+}
+
 /// `AppState` backed by an in-memory migrated DB (for command `_impl` tests).
 pub fn test_app_state() -> AppState {
+    ensure_fake_backend_once();
     let conn = test_db();
     AppState {
         db: Mutex::new(conn),
@@ -61,18 +69,5 @@ pub fn sample_save_input() -> SaveConnectionInput {
         sort_order: 0,
         connect_timeout_secs: Some(10),
         keepalive_interval_secs: Some(60),
-    }
-}
-
-/// Whether the OS credential store is usable in this environment.
-pub fn keychain_available() -> bool {
-    let probe_id = format!("__keyring_probe_{}", uuid::Uuid::new_v4());
-    let store_ok = mysql_client_lib::credentials::store_password(&probe_id, "probe").is_ok();
-    if store_ok {
-        let retrieve_ok = mysql_client_lib::credentials::retrieve_password(&probe_id).is_ok();
-        let _ = mysql_client_lib::credentials::delete_password(&probe_id);
-        retrieve_ok
-    } else {
-        false
     }
 }

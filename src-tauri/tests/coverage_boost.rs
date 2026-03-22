@@ -13,9 +13,7 @@ use mysql_client_lib::commands::mysql::{
 use mysql_client_lib::commands::settings::{
     get_all_settings_impl, get_setting_impl, set_setting_impl,
 };
-use mysql_client_lib::credentials::{
-    self, set_test_credential_backend, TestCredentialBackend,
-};
+use mysql_client_lib::credentials::{self};
 use mysql_client_lib::db::connections::set_keychain_ref;
 #[cfg(coverage)]
 use mysql_client_lib::mysql::health::spawn_health_monitor;
@@ -29,11 +27,10 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlSslMode};
 use sqlx::ConnectOptions;
-use std::collections::HashMap;
 use std::time::Duration;
 #[cfg(coverage)]
 use std::process::Command;
-use std::sync::{LazyLock, Mutex};
+use std::sync::Mutex;
 #[cfg(coverage)]
 use tauri::AppHandle;
 use tauri::ipc::{CallbackFn, InvokeBody};
@@ -42,20 +39,7 @@ use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INV
 use tauri::webview::InvokeRequest;
 use tokio_util::sync::CancellationToken;
 
-type CredentialMap = HashMap<String, String>;
-
-static TEST_KEYCHAIN: LazyLock<Mutex<CredentialMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
-static TEST_CREDENTIAL_ERROR: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
-
-struct FakeKeychainGuard {
-    _guard: std::sync::MutexGuard<'static, ()>,
-}
-
-impl Drop for FakeKeychainGuard {
-    fn drop(&mut self) {
-        set_test_credential_backend(None);
-    }
-}
+mod common;
 
 struct PoolFactoryGuard {
     _guard: std::sync::MutexGuard<'static, ()>,
@@ -65,23 +49,6 @@ impl Drop for PoolFactoryGuard {
     fn drop(&mut self) {
         set_test_pool_factory(None);
     }
-}
-
-fn install_fake_keychain() -> FakeKeychainGuard {
-    static KEYCHAIN_LOCK: Mutex<()> = Mutex::new(());
-    let guard = KEYCHAIN_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    TEST_KEYCHAIN.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clear();
-    *TEST_CREDENTIAL_ERROR
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
-    set_test_credential_backend(Some(TestCredentialBackend {
-        store_password: fake_store_password,
-        retrieve_password: fake_retrieve_password,
-        delete_password: fake_delete_password,
-    }));
-    FakeKeychainGuard { _guard: guard }
 }
 
 fn install_test_pool_factory(
@@ -95,64 +62,8 @@ fn install_test_pool_factory(
     PoolFactoryGuard { _guard: guard }
 }
 
-fn fake_store_password(connection_id: &str, password: &str) -> Result<(), String> {
-    if let Some(error) = take_fake_error() {
-        return Err(format!("Failed to store password in keychain: {error}"));
-    }
-
-    TEST_KEYCHAIN
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(connection_id.to_string(), password.to_string());
-    Ok(())
-}
-
-fn fake_retrieve_password(connection_id: &str) -> Result<String, String> {
-    if let Some(error) = take_fake_error() {
-        return Err(format!("Failed to retrieve password from keychain: {error}"));
-    }
-
-    TEST_KEYCHAIN
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .get(connection_id)
-        .cloned()
-        .ok_or_else(|| {
-            "Failed to retrieve password from keychain: No matching entry found in secure storage"
-                .to_string()
-        })
-}
-
-fn fake_delete_password(connection_id: &str) -> Result<(), String> {
-    if let Some(error) = take_fake_error() {
-        return Err(format!("Failed to delete password from keychain: {error}"));
-    }
-
-    TEST_KEYCHAIN
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(connection_id)
-        .map(|_| ())
-        .ok_or_else(|| {
-            "Failed to delete password from keychain: No matching entry found in secure storage"
-                .to_string()
-        })
-}
-
-fn queue_fake_error(message: &str) {
-    *TEST_CREDENTIAL_ERROR
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message.to_string());
-}
-
-fn take_fake_error() -> Option<String> {
-    TEST_CREDENTIAL_ERROR
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .take()
-}
-
 fn test_state() -> AppState {
+    common::ensure_fake_backend_once();
     let conn = Connection::open_in_memory().expect("should open in-memory db");
     mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
     AppState {
@@ -163,6 +74,7 @@ fn test_state() -> AppState {
 }
 
 fn poisoned_state() -> AppState {
+    common::ensure_fake_backend_once();
     let mutex = Mutex::new(Connection::open_in_memory().expect("should open in-memory db"));
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let _guard = mutex.lock().expect("mutex lock should succeed");
@@ -239,16 +151,6 @@ fn invoke_tauri_command<T: DeserializeOwned>(
             .deserialize::<T>()
             .expect("IPC response should deserialize")
     })
-}
-
-fn move_fake_password(from: &str, to: &str) {
-    let mut keychain = TEST_KEYCHAIN
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let password = keychain
-        .remove(from)
-        .expect("source password should exist in fake keychain");
-    keychain.insert(to.to_string(), password);
 }
 
 fn sample_save_input(password: Option<&str>) -> SaveConnectionInput {
@@ -373,7 +275,7 @@ fn update_input(password: Option<&str>) -> UpdateConnectionInput {
 
 #[test]
 fn credentials_round_trip_with_fake_keychain() {
-    let _guard = install_fake_keychain();
+    let _guard = common::fake_credentials::isolate_fake_keychain();
     credentials::store_password("cred-1", "secret").expect("should store password");
     let password = credentials::retrieve_password("cred-1").expect("should retrieve password");
     assert_eq!(password, "secret");
@@ -382,16 +284,16 @@ fn credentials_round_trip_with_fake_keychain() {
 
 #[test]
 fn credentials_surface_fake_backend_errors() {
-    let _guard = install_fake_keychain();
-    queue_fake_error("Attribute user is invalid: bad id");
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    common::fake_credentials::queue_fake_credential_error("Attribute user is invalid: bad id");
     let store_error = credentials::store_password("cred-err", "secret")
         .expect_err("store should propagate errors");
     assert!(store_error.contains("Failed to store password in keychain"));
-    queue_fake_error("No matching entry found in secure storage");
+    common::fake_credentials::queue_fake_credential_error("No matching entry found in secure storage");
     let get_error = credentials::retrieve_password("cred-err")
         .expect_err("retrieve should propagate errors");
     assert!(get_error.contains("Failed to retrieve password from keychain"));
-    queue_fake_error("No matching entry found in secure storage");
+    common::fake_credentials::queue_fake_credential_error("No matching entry found in secure storage");
     let delete_error = credentials::delete_password("cred-err")
         .expect_err("delete should propagate errors");
     assert!(delete_error.contains("Failed to delete password from keychain"));
@@ -399,7 +301,7 @@ fn credentials_surface_fake_backend_errors() {
 
 #[test]
 fn credentials_retrieve_password_for_connection_prefers_stored_keychain_ref() {
-    let _guard = install_fake_keychain();
+    let _guard = common::fake_credentials::isolate_fake_keychain();
     credentials::store_password("legacy-ref", "secret").expect("should store password");
 
     let password = credentials::retrieve_password_for_connection("conn-1", Some("legacy-ref"))
@@ -410,9 +312,9 @@ fn credentials_retrieve_password_for_connection_prefers_stored_keychain_ref() {
 
 #[test]
 fn save_connection_impl_rolls_back_when_password_storage_fails() {
-    let _guard = install_fake_keychain();
+    let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
-    queue_fake_error("store failed");
+    common::fake_credentials::queue_fake_credential_error("store failed");
     let error = save_connection_impl(&state, sample_save_input(Some("secret")))
         .expect_err("save should fail when keychain storage fails");
     let count: i64 = state
@@ -427,11 +329,11 @@ fn save_connection_impl_rolls_back_when_password_storage_fails() {
 
 #[test]
 fn update_connection_impl_surfaces_password_update_errors() {
-    let _guard = install_fake_keychain();
+    let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
     let connection_id = save_connection_impl(&state, sample_save_input(None))
         .expect("save should succeed");
-    queue_fake_error("update failed");
+    common::fake_credentials::queue_fake_credential_error("update failed");
     let error = mysql_client_lib::commands::connections::update_connection_impl(
         &state,
         &connection_id,
@@ -567,7 +469,7 @@ fn update_connection_without_password_preserves_absent_keychain_ref() {
 
 #[test]
 fn update_connection_with_password_sets_keychain_ref() {
-    let _guard = install_fake_keychain();
+    let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
     let connection_id = save_connection_impl(&state, sample_save_input(None))
         .expect("save should succeed");
@@ -583,7 +485,7 @@ fn update_connection_with_password_sets_keychain_ref() {
 
 #[test]
 fn update_connection_with_password_migrates_legacy_keychain_ref() {
-    let _guard = install_fake_keychain();
+    let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
     let connection_id = save_connection_impl(&state, sample_save_input(Some("old-secret")))
         .expect("save should succeed");
@@ -594,7 +496,7 @@ fn update_connection_with_password_migrates_legacy_keychain_ref() {
         set_keychain_ref(&conn, &connection_id, Some(&legacy_keychain_ref))
             .expect("should persist legacy keychain ref");
     }
-    move_fake_password(&connection_id, &legacy_keychain_ref);
+    common::fake_credentials::move_fake_password(&connection_id, &legacy_keychain_ref);
 
     update_connection_impl(&state, &connection_id, update_input(Some("new-secret")))
         .expect("update with password should succeed");
@@ -611,7 +513,7 @@ fn update_connection_with_password_migrates_legacy_keychain_ref() {
 
 #[test]
 fn update_connection_with_password_surfaces_sqlite_write_errors() {
-    let _guard = install_fake_keychain();
+    let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
     let connection_id = save_connection_impl(&state, sample_save_input(None))
         .expect("save should succeed");
@@ -752,11 +654,11 @@ async fn open_connection_impl_errors_for_missing_saved_connection() {
 #[tokio::test]
 #[cfg(not(coverage))]
 async fn open_connection_impl_surfaces_keychain_errors() {
-    let _guard = install_fake_keychain();
+    let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
     let connection_id = save_connection_impl(&state, sample_save_input(Some("pw")))
         .expect("save should succeed");
-    queue_fake_error("No matching entry found in secure storage");
+    common::fake_credentials::queue_fake_credential_error("No matching entry found in secure storage");
     let error = open_connection_impl(&state, &connection_id)
         .await
         .expect_err("keychain retrieval failure should be surfaced");
@@ -765,7 +667,7 @@ async fn open_connection_impl_surfaces_keychain_errors() {
 
 #[tokio::test]
 async fn open_connection_ipc_uses_stored_keychain_ref() {
-    let _guard = install_fake_keychain();
+    let _guard = common::fake_credentials::isolate_fake_keychain();
     let (app, webview) = build_connection_commands_app();
 
     let connection_id: String = invoke_tauri_command(
@@ -787,7 +689,7 @@ async fn open_connection_ipc_uses_stored_keychain_ref() {
         )
         .expect("should persist legacy keychain ref");
     }
-    move_fake_password(&connection_id, &legacy_keychain_ref);
+    common::fake_credentials::move_fake_password(&connection_id, &legacy_keychain_ref);
 
     let _pool_guard = install_test_pool_factory(forced_pool_success);
     let result: OpenConnectionResultDto = invoke_tauri_command(
@@ -808,7 +710,7 @@ async fn open_connection_ipc_uses_stored_keychain_ref() {
 #[tokio::test]
 #[cfg(not(coverage))]
 async fn open_connection_impl_surfaces_pool_creation_errors() {
-    let _guard = install_fake_keychain();
+    let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
     let connection_id = save_connection_impl(&state, sample_save_input(None))
         .expect("save should succeed");
@@ -837,7 +739,7 @@ async fn open_connection_impl_surfaces_database_read_errors() {
 #[tokio::test]
 #[cfg(not(coverage))]
 async fn health_reconnect_uses_stored_keychain_ref() {
-    let _guard = install_fake_keychain();
+    let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
     let connection_id = "conn-health".to_string();
     let legacy_keychain_ref = "legacy-health-ref".to_string();
