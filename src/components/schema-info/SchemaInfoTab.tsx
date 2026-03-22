@@ -115,12 +115,9 @@ export function SchemaInfoTab({ tab }: SchemaInfoTabProps) {
         </div>
       </div>
 
-      {/* Stats row (tables only); column count on Columns sub-tab only */}
+      {/* Stats row (tables only); column count shown on every sub-tab */}
       {tab.objectType === 'table' && data.metadata && (
-        <StatsRow
-          metadata={data.metadata}
-          columnCount={activeSubTab === 'columns' ? data.columns.length : undefined}
-        />
+        <StatsRow metadata={data.metadata} columnCount={data.columns.length} />
       )}
 
       {/* Sub-tab navigation */}

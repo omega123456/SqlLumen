@@ -150,7 +150,7 @@ describe('SchemaInfoTab', () => {
     expect(screen.queryByText('Foreign Keys')).not.toBeInTheDocument()
   })
 
-  it('shows column count stat on Columns sub-tab only', async () => {
+  it('shows column count stat on every table sub-tab', async () => {
     const user = userEvent.setup()
     mockGetSchemaInfo.mockResolvedValue(makeSchemaInfoResponse())
 
@@ -178,7 +178,10 @@ describe('SchemaInfoTab', () => {
     const updatedTab = useWorkspaceStore.getState().tabsByConnection['conn-1'][0]
     rerender(<SchemaInfoTab tab={updatedTab} />)
 
-    expect(screen.queryByTestId('stats-columns-card')).not.toBeInTheDocument()
+    expect(screen.getByTestId('stats-columns-card')).toBeInTheDocument()
+    expect(screen.getByTestId('stats-columns-card')).toHaveTextContent(
+      Number(2).toLocaleString()
+    )
   })
 
   it('renders stats row for tables, not for other types', async () => {

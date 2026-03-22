@@ -8,7 +8,7 @@ function joinClasses(...parts: (string | undefined)[]): string {
 
 export interface StatsRowProps {
   metadata: TableMetadata
-  /** When set (e.g. Columns sub-tab), shows a card after Total Rows. */
+  /** When set, shows a Column count card after Total Rows. */
   columnCount?: number
 }
 
