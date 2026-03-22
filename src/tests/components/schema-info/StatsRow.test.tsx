@@ -70,4 +70,13 @@ describe('StatsRow', () => {
     expect(screen.getByText('Storage Engine')).toBeInTheDocument()
     expect(screen.getByText('Index Size')).toBeInTheDocument()
   })
+
+  it('renders column count card next to row count when columnCount is set', () => {
+    const { container } = render(<StatsRow metadata={makeMetadata({ tableRows: 100 })} columnCount={12} />)
+
+    expect(screen.getByTestId('stats-columns-card')).toBeInTheDocument()
+    expect(screen.getByText('Column count')).toBeInTheDocument()
+    expect(screen.getByText(Number(12).toLocaleString())).toBeInTheDocument()
+    expect(container.querySelectorAll('.ui-elevated-surface')).toHaveLength(4)
+  })
 })

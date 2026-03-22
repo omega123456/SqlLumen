@@ -1,19 +1,16 @@
 import { useCallback } from 'react'
-import type { ColumnInfo, TableMetadata, ObjectType } from '../../types/schema'
+import type { TableMetadata, ObjectType } from '../../types/schema'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { tokenizeSql } from '../../lib/sql-tokenizer'
 import type { TokenType } from '../../lib/sql-tokenizer'
 import { ElevatedCodePanel } from '../common/ElevatedCodePanel'
-import { ElevatedSurface } from '../common/ElevatedSurface'
 import { MetadataCard } from './MetadataCard'
-import { ColumnsPanel } from './ColumnsPanel'
 import styles from './DdlPanel.module.css'
 
 export interface DdlPanelProps {
   ddl: string
   metadata?: TableMetadata | null
   objectType: ObjectType
-  columns?: ColumnInfo[]
 }
 
 const TOKEN_CLASS_MAP: Record<TokenType, string | undefined> = {
@@ -25,7 +22,7 @@ const TOKEN_CLASS_MAP: Record<TokenType, string | undefined> = {
   plain: undefined,
 }
 
-export function DdlPanel({ ddl, metadata, objectType, columns }: DdlPanelProps) {
+export function DdlPanel({ ddl, metadata, objectType }: DdlPanelProps) {
   const tokens = tokenizeSql(ddl)
   const isTable = objectType === 'table'
 
@@ -63,15 +60,6 @@ export function DdlPanel({ ddl, metadata, objectType, columns }: DdlPanelProps) 
               <MetadataCard metadata={metadata} />
             </div>
           </div>
-          {columns && columns.length > 0 && (
-            <ElevatedSurface className={styles.columnsSection}>
-              <div className={styles.columnsSectionHeader}>
-                <span className={styles.columnsSectionTitle}>Columns Definition</span>
-                <span className={styles.columnsSectionCount}>{columns.length} COLUMNS</span>
-              </div>
-              <ColumnsPanel columns={columns} embedded />
-            </ElevatedSurface>
-          )}
         </>
       ) : (
         <div className={styles.ddlOnly}>

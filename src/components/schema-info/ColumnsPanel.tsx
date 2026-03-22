@@ -4,8 +4,6 @@ import styles from './ColumnsPanel.module.css'
 
 export interface ColumnsPanelProps {
   columns: ColumnInfo[]
-  /** When true, table sits inside a parent `.ui-elevated-surface` (e.g. DDL columns block). */
-  embedded?: boolean
 }
 
 function keyBadgeClass(columnKey: string): string | undefined {
@@ -21,10 +19,10 @@ function keyBadgeClass(columnKey: string): string | undefined {
   }
 }
 
-export function ColumnsPanel({ columns, embedded = false }: ColumnsPanelProps) {
+export function ColumnsPanel({ columns }: ColumnsPanelProps) {
   return (
     <div className={styles.container} data-testid="columns-panel">
-      <DataTableContainer elevated={!embedded}>
+      <DataTableContainer>
         <table className={styles.table}>
         <thead>
           <tr>

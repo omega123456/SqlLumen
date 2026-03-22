@@ -122,30 +122,13 @@ describe('DdlPanel', () => {
     }
   })
 
-  it('shows columns section for tables with columns', () => {
-    const columns = [
-      {
-        name: 'id',
-        dataType: 'bigint',
-        nullable: false,
-        columnKey: 'PRI',
-        defaultValue: null,
-        extra: 'auto_increment',
-        ordinalPosition: 1,
-      },
-    ]
-
+  it('does not duplicate column list on DDL tab (use Columns sub-tab)', () => {
     render(
-      <DdlPanel
-        ddl="CREATE TABLE `t` (`id` bigint)"
-        objectType="table"
-        metadata={makeMetadata()}
-        columns={columns}
-      />
+      <DdlPanel ddl="CREATE TABLE `t` (`id` bigint)" objectType="table" metadata={makeMetadata()} />
     )
 
-    expect(screen.getByText('Columns Definition')).toBeInTheDocument()
-    expect(screen.getByText('1 COLUMNS')).toBeInTheDocument()
+    expect(screen.queryByText('Columns Definition')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('columns-panel')).not.toBeInTheDocument()
   })
 })
 

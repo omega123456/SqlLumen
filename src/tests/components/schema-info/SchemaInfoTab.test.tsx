@@ -111,7 +111,7 @@ describe('SchemaInfoTab', () => {
     render(<SchemaInfoTab tab={tab} />)
 
     await waitFor(() => {
-      expect(screen.getByText('Columns')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Columns' })).toBeInTheDocument()
     })
     expect(screen.getByText('Indexes')).toBeInTheDocument()
     expect(screen.getByText('Foreign Keys')).toBeInTheDocument()
@@ -127,7 +127,7 @@ describe('SchemaInfoTab', () => {
     render(<SchemaInfoTab tab={tab} />)
 
     await waitFor(() => {
-      expect(screen.getByText('Columns')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Columns' })).toBeInTheDocument()
     })
     expect(screen.getByText('DDL')).toBeInTheDocument()
     expect(screen.queryByText('Indexes')).not.toBeInTheDocument()
@@ -148,6 +148,37 @@ describe('SchemaInfoTab', () => {
     expect(screen.queryByText('Columns')).not.toBeInTheDocument()
     expect(screen.queryByText('Indexes')).not.toBeInTheDocument()
     expect(screen.queryByText('Foreign Keys')).not.toBeInTheDocument()
+  })
+
+  it('shows column count stat on Columns sub-tab only', async () => {
+    const user = userEvent.setup()
+    mockGetSchemaInfo.mockResolvedValue(makeSchemaInfoResponse())
+
+    useWorkspaceStore.getState().openTab({
+      type: 'schema-info',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    const tab = useWorkspaceStore.getState().tabsByConnection['conn-1'][0]
+
+    const { rerender } = render(<SchemaInfoTab tab={tab} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('stats-columns-card')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('stats-columns-card')).toHaveTextContent(
+      Number(2).toLocaleString()
+    )
+
+    await user.click(screen.getByRole('button', { name: 'DDL' }))
+
+    const updatedTab = useWorkspaceStore.getState().tabsByConnection['conn-1'][0]
+    rerender(<SchemaInfoTab tab={updatedTab} />)
+
+    expect(screen.queryByTestId('stats-columns-card')).not.toBeInTheDocument()
   })
 
   it('renders stats row for tables, not for other types', async () => {

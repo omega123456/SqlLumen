@@ -114,8 +114,13 @@ export function SchemaInfoTab({ tab }: SchemaInfoTabProps) {
         </div>
       </div>
 
-      {/* Stats row (tables only) */}
-      {tab.objectType === 'table' && data.metadata && <StatsRow metadata={data.metadata} />}
+      {/* Stats row (tables only); column count on Columns sub-tab only */}
+      {tab.objectType === 'table' && data.metadata && (
+        <StatsRow
+          metadata={data.metadata}
+          columnCount={activeSubTab === 'columns' ? data.columns.length : undefined}
+        />
+      )}
 
       {/* Sub-tab navigation */}
       <div className={styles.subTabBar}>
@@ -137,12 +142,7 @@ export function SchemaInfoTab({ tab }: SchemaInfoTabProps) {
         {activeSubTab === 'indexes' && <IndexesPanel indexes={data.indexes} />}
         {activeSubTab === 'fks' && <ForeignKeysPanel foreignKeys={data.foreignKeys} />}
         {activeSubTab === 'ddl' && (
-          <DdlPanel
-            ddl={data.ddl}
-            metadata={data.metadata}
-            objectType={tab.objectType}
-            columns={data.columns}
-          />
+          <DdlPanel ddl={data.ddl} metadata={data.metadata} objectType={tab.objectType} />
         )}
       </div>
     </div>

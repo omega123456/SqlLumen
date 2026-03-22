@@ -5,6 +5,10 @@
   padding: 16px;
 }
 
+.containerFour {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .card {
   padding: 16px 20px;
 }
