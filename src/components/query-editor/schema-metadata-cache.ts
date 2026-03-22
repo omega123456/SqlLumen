@@ -35,6 +35,92 @@ function emptyCache(): SchemaCache {
   }
 }
 
+function hasNonEmptyName(value: string | null | undefined): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function isNamedEntry<T extends { name?: string | null }>(entry: T | null | undefined): entry is T {
+  return !!entry && hasNonEmptyName(entry.name)
+}
+
+function sanitizeSchemaMetadata(data: SchemaMetadataResponse): SchemaMetadataResponse {
+  const tables: Record<string, TableInfo[]> = {}
+  const columns: Record<string, ColumnMeta[]> = {}
+  const routines: Record<string, RoutineMeta[]> = {}
+  const databases = new Set<string>()
+
+  for (const db of data.databases) {
+    if (hasNonEmptyName(db)) {
+      databases.add(db)
+    }
+  }
+
+  for (const [database, tableList] of Object.entries(data.tables)) {
+    if (!hasNonEmptyName(database)) {
+      continue
+    }
+    if (!Array.isArray(tableList)) {
+      continue
+    }
+
+    const validTables = tableList.filter(isNamedEntry)
+    if (validTables.length === 0) {
+      continue
+    }
+
+    tables[database] = validTables
+    databases.add(database)
+  }
+
+  for (const [key, columnList] of Object.entries(data.columns)) {
+    const separatorIndex = key.indexOf('.')
+    if (separatorIndex <= 0 || separatorIndex >= key.length - 1) {
+      continue
+    }
+    if (!Array.isArray(columnList)) {
+      continue
+    }
+
+    const database = key.slice(0, separatorIndex)
+    const table = key.slice(separatorIndex + 1)
+    if (!hasNonEmptyName(database) || !hasNonEmptyName(table)) {
+      continue
+    }
+
+    const validColumns = columnList.filter(isNamedEntry)
+    if (validColumns.length === 0) {
+      continue
+    }
+
+    columns[`${database}.${table}`] = validColumns
+    databases.add(database)
+  }
+
+  for (const [database, routineList] of Object.entries(data.routines)) {
+    if (!hasNonEmptyName(database)) {
+      continue
+    }
+    if (!Array.isArray(routineList)) {
+      continue
+    }
+
+    const validRoutines = routineList.filter(isNamedEntry)
+    if (validRoutines.length === 0) {
+      continue
+    }
+
+    routines[database] = validRoutines
+    databases.add(database)
+  }
+
+  return {
+    databases: Array.from(databases),
+    tables,
+    columns,
+    routines,
+  }
+}
+
 /**
  * Get current cache for a connection. Returns an empty cache if none exists.
  */
@@ -65,7 +151,7 @@ export async function loadCache(connectionId: string): Promise<void> {
 
   const loadPromise = (async () => {
     try {
-      const data: SchemaMetadataResponse = await fetchSchemaMetadata(connectionId)
+      const data = sanitizeSchemaMetadata(await fetchSchemaMetadata(connectionId))
       const readyCache: SchemaCache = {
         status: 'ready',
         databases: data.databases,

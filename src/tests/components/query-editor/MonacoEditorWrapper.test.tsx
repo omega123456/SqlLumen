@@ -34,19 +34,51 @@ vi.mock('../../../components/query-editor/AutocompleteProvider', () => ({
 // Override the useMonaco mock to return a functional Monaco instance
 const mockSetTheme = vi.fn()
 const mockDefineTheme = vi.fn()
-const mockRegisterCompletionItemProvider = vi.fn(() => ({ dispose: vi.fn() }))
+const mockCompletionProviderDispose = vi.fn()
+const mockRegisterCompletionItemProvider = vi.fn(() => ({ dispose: mockCompletionProviderDispose }))
+const mockCursorPositionDispose = vi.fn()
+const mockOnDidDispose = vi.fn()
+const registeredDisposeHandlers: Array<() => void> = []
+const mockEditorInstance = {
+  setPosition: vi.fn(),
+  revealPositionInCenter: vi.fn(),
+  onDidChangeCursorPosition: vi.fn(() => ({ dispose: mockCursorPositionDispose })),
+  onDidDispose: vi.fn((handler: () => void) => {
+    mockOnDidDispose(handler)
+    registeredDisposeHandlers.push(handler)
+  }),
+}
 vi.mock('@monaco-editor/react', async () => {
   const React = await import('react')
   return {
     default: (props: Record<string, unknown>) => {
-      return React.createElement('textarea', {
-        'data-testid': 'monaco-editor',
-        value: (props.value as string) ?? '',
-        onChange: (e: { target: { value: string } }) => {
-          const fn = props.onChange as ((v: string | undefined) => void) | undefined
-          fn?.(e.target.value)
-        },
-      })
+      function MockEditor() {
+        React.useEffect(() => {
+          const onMount = props.onMount as
+            | ((editor: typeof mockEditorInstance, monaco: Record<string, unknown>) => void)
+            | undefined
+          onMount?.(mockEditorInstance, {
+            editor: {
+              defineTheme: mockDefineTheme,
+              setTheme: mockSetTheme,
+            },
+            languages: {
+              registerCompletionItemProvider: mockRegisterCompletionItemProvider,
+            },
+          })
+        }, [])
+
+        return React.createElement('textarea', {
+          'data-testid': 'monaco-editor',
+          value: (props.value as string) ?? '',
+          onChange: (e: { target: { value: string } }) => {
+            const fn = props.onChange as ((v: string | undefined) => void) | undefined
+            fn?.(e.target.value)
+          },
+        })
+      }
+
+      return React.createElement(MockEditor)
     },
     useMonaco: () => ({
       editor: {
@@ -69,6 +101,14 @@ beforeEach(() => {
   mockSetTheme.mockClear()
   mockDefineTheme.mockClear()
   mockRegisterCompletionItemProvider.mockClear()
+  mockCompletionProviderDispose.mockClear()
+  mockCursorPositionDispose.mockClear()
+  mockOnDidDispose.mockClear()
+  mockEditorInstance.setPosition.mockClear()
+  mockEditorInstance.revealPositionInCenter.mockClear()
+  mockEditorInstance.onDidChangeCursorPosition.mockClear()
+  mockEditorInstance.onDidDispose.mockClear()
+  registeredDisposeHandlers.length = 0
 })
 
 describe('MonacoEditorWrapper', () => {
@@ -114,8 +154,7 @@ describe('MonacoEditorWrapper', () => {
   it('calls onMount callback when provided', () => {
     const onMount = vi.fn()
     render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" onMount={onMount} />)
-    // Monaco Editor mock doesn't fire onMount, so we just verify the component rendered
-    expect(screen.getByTestId('monaco-editor-wrapper')).toBeInTheDocument()
+    expect(onMount).toHaveBeenCalledWith(mockEditorInstance)
   })
 
   it('registers completion provider when connectionId is provided', () => {
@@ -126,6 +165,29 @@ describe('MonacoEditorWrapper', () => {
   it('does not register completion provider when connectionId is not provided', () => {
     render(<MonacoEditorWrapper tabId="tab-1" />)
     expect(mockRegisterCompletionItemProvider).not.toHaveBeenCalled()
+  })
+
+  it('disposes the cursor listener when the editor is disposed', () => {
+    render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+    expect(mockOnDidDispose).toHaveBeenCalledTimes(1)
+    const handleDispose = registeredDisposeHandlers[0]
+    handleDispose()
+
+    expect(mockCursorPositionDispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('registers one cursor listener per mount', () => {
+    const firstRender = render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+    expect(mockEditorInstance.onDidChangeCursorPosition).toHaveBeenCalledTimes(1)
+
+    firstRender.unmount()
+    registeredDisposeHandlers[0]?.()
+
+    render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+    expect(mockEditorInstance.onDidChangeCursorPosition).toHaveBeenCalledTimes(2)
+    expect(mockCursorPositionDispose).toHaveBeenCalledTimes(1)
   })
 
   it('renders without connectionId (backward compat)', () => {

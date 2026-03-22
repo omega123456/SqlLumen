@@ -279,4 +279,82 @@ describe('schema-metadata-cache', () => {
     expect(getCache('conn-1').status).toBe('empty')
     expect(getCache('conn-2').status).toBe('ready')
   })
+
+  it('filters malformed schema metadata entries before storing cache', async () => {
+    mockFetchSchema.mockResolvedValue({
+      databases: ['valid_db', '', '   '],
+      tables: {
+        valid_db: [
+          { name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 100, dataSize: 1024 },
+          {
+            name: ' leading_space_table',
+            engine: 'InnoDB',
+            charset: 'utf8mb4',
+            rowCount: 10,
+            dataSize: 256,
+          },
+          { name: '', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 0, dataSize: 0 },
+          { name: '   ', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 0, dataSize: 0 },
+          null,
+        ],
+        '': [
+          { name: 'ghost_table', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 0, dataSize: 0 },
+        ],
+        invalid_container: null,
+      },
+      columns: {
+        'valid_db.users': [
+          { name: 'id', dataType: 'int' },
+          { name: ' leading_space_column', dataType: 'varchar' },
+          { name: '', dataType: 'varchar' },
+          { name: '   ', dataType: 'varchar' },
+          undefined,
+        ],
+        '.': [{ name: '', dataType: 'varchar' }],
+        'valid_db.': [{ name: 'broken', dataType: 'varchar' }],
+        'broken.container': null,
+      },
+      routines: {
+        valid_db: [
+          { name: 'get_users', routineType: 'FUNCTION' },
+          { name: ' leading_space_routine', routineType: 'FUNCTION' },
+          { name: '', routineType: 'FUNCTION' },
+          { name: '   ', routineType: 'FUNCTION' },
+          null,
+        ],
+        '': [{ name: 'ghost_routine', routineType: 'PROCEDURE' }],
+        invalid_container: null,
+      },
+    } as never)
+
+    await loadCache('conn-malformed')
+
+    const cache = getCache('conn-malformed')
+    expect(cache.status).toBe('ready')
+    expect(cache.databases).toEqual(['valid_db'])
+    expect(cache.tables).toEqual({
+      valid_db: [
+        { name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 100, dataSize: 1024 },
+        {
+          name: ' leading_space_table',
+          engine: 'InnoDB',
+          charset: 'utf8mb4',
+          rowCount: 10,
+          dataSize: 256,
+        },
+      ],
+    })
+    expect(cache.columns).toEqual({
+      'valid_db.users': [
+        { name: 'id', dataType: 'int' },
+        { name: ' leading_space_column', dataType: 'varchar' },
+      ],
+    })
+    expect(cache.routines).toEqual({
+      valid_db: [
+        { name: 'get_users', routineType: 'FUNCTION' },
+        { name: ' leading_space_routine', routineType: 'FUNCTION' },
+      ],
+    })
+  })
 })

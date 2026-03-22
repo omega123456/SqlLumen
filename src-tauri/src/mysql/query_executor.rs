@@ -667,6 +667,17 @@ fn decode_raw_string(value: MySqlValueRef<'_>) -> Option<String> {
 }
 
 #[cfg(not(coverage))]
+fn decode_required_identifier(row: &sqlx::mysql::MySqlRow, index: usize) -> Option<String> {
+    decode_unchecked_string(row, index)
+        .filter(|value| !value.trim().is_empty())
+}
+
+#[cfg(not(coverage))]
+fn decode_metadata_text(row: &sqlx::mysql::MySqlRow, index: usize) -> String {
+    decode_unchecked_string(row, index).unwrap_or_default()
+}
+
+#[cfg(not(coverage))]
 fn serialize_temporal_value(value: MySqlValueRef<'_>) -> Option<serde_json::Value> {
     use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 
@@ -979,7 +990,7 @@ pub async fn fetch_schema_metadata_impl(
 
     let databases: Vec<String> = db_rows
         .iter()
-        .map(|r| r.try_get::<String, _>(0).unwrap_or_default())
+        .filter_map(|row| decode_required_identifier(row, 0))
         .collect();
 
     // Fetch tables
@@ -999,10 +1010,14 @@ pub async fn fetch_schema_metadata_impl(
     let mut tables: std::collections::HashMap<String, Vec<TableInfo>> =
         std::collections::HashMap::new();
     for row in &table_rows {
-        let schema: String = row.try_get(0).unwrap_or_default();
-        let name: String = row.try_get(1).unwrap_or_default();
-        let engine: String = row.try_get(2).unwrap_or_default();
-        let charset: String = row.try_get(3).unwrap_or_default();
+        let Some(schema) = decode_required_identifier(row, 0) else {
+            continue;
+        };
+        let Some(name) = decode_required_identifier(row, 1) else {
+            continue;
+        };
+        let engine = decode_metadata_text(row, 2);
+        let charset = decode_metadata_text(row, 3);
         let row_count: u64 = row
             .try_get::<Option<i64>, _>(4)
             .unwrap_or(None)
@@ -1036,10 +1051,16 @@ pub async fn fetch_schema_metadata_impl(
     let mut columns: std::collections::HashMap<String, Vec<ColumnMeta>> =
         std::collections::HashMap::new();
     for row in &col_rows {
-        let schema: String = row.try_get(0).unwrap_or_default();
-        let table: String = row.try_get(1).unwrap_or_default();
-        let col_name: String = row.try_get(2).unwrap_or_default();
-        let data_type: String = row.try_get(3).unwrap_or_default();
+        let Some(schema) = decode_required_identifier(row, 0) else {
+            continue;
+        };
+        let Some(table) = decode_required_identifier(row, 1) else {
+            continue;
+        };
+        let Some(col_name) = decode_required_identifier(row, 2) else {
+            continue;
+        };
+        let data_type = decode_metadata_text(row, 3);
         let key = format!("{schema}.{table}");
         columns.entry(key).or_default().push(ColumnMeta {
             name: col_name,
@@ -1061,9 +1082,13 @@ pub async fn fetch_schema_metadata_impl(
     let mut routines: std::collections::HashMap<String, Vec<RoutineMeta>> =
         std::collections::HashMap::new();
     for row in &routine_rows {
-        let schema: String = row.try_get(0).unwrap_or_default();
-        let name: String = row.try_get(1).unwrap_or_default();
-        let routine_type: String = row.try_get(2).unwrap_or_default();
+        let Some(schema) = decode_required_identifier(row, 0) else {
+            continue;
+        };
+        let Some(name) = decode_required_identifier(row, 1) else {
+            continue;
+        };
+        let routine_type = decode_metadata_text(row, 2);
         routines.entry(schema).or_default().push(RoutineMeta {
             name,
             routine_type,

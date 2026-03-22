@@ -93,8 +93,12 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
     }
 
     // Track cursor position changes and persist to store
-    editor.onDidChangeCursorPosition((e) => {
+    const cursorDisposable = editor.onDidChangeCursorPosition((e) => {
       setCursorPosition(tabId, { lineNumber: e.position.lineNumber, column: e.position.column })
+    })
+
+    editor.onDidDispose(() => {
+      cursorDisposable.dispose()
     })
 
     if (onMount) onMount(editor)
