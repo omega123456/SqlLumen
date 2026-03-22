@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import styles from './UnderlineTabs.module.css'
 
 export interface UnderlineTabBarProps {
@@ -59,6 +59,14 @@ export function UnderlineTab({
       .filter(Boolean)
       .join(' ')
 
+    const onLabelKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== 'Enter' && e.key !== ' ') {
+        return
+      }
+      e.preventDefault()
+      handleSelect?.()
+    }
+
     return (
       <div
         className={cellClass}
@@ -67,10 +75,16 @@ export function UnderlineTab({
         style={indicatorStyle}
         title={title}
       >
-        <button type="button" className={styles.labelButton} onClick={handleSelect}>
+        <div
+          role="button"
+          tabIndex={0}
+          className={styles.labelButton}
+          onClick={handleSelect}
+          onKeyDown={onLabelKeyDown}
+        >
           {prefix}
           {children}
-        </button>
+        </div>
         {suffix != null ? <div className={styles.suffixSlot}>{suffix}</div> : null}
       </div>
     )

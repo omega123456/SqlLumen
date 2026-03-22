@@ -27,6 +27,7 @@ export default defineConfig({
   webServer: {
     command: 'pnpm --silent dev --host 127.0.0.1 --logLevel error',
     url: 'http://127.0.0.1:1420',
+    timeout: 120_000,
     reuseExistingServer: false, // Always start fresh to ensure VITE_PLAYWRIGHT=true
     stdout: 'ignore',
     stderr: 'pipe',

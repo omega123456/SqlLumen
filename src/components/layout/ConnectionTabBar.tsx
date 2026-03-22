@@ -65,19 +65,24 @@ export function ConnectionTabBar() {
               return (
                 <UnderlineTab
                   key={conn.id}
+                  data-testid={`connection-session-tab-${conn.id}`}
                   active={isActive}
+                  indicatorColor={
+                    isActive && conn.profile.color ? conn.profile.color : undefined
+                  }
                   onSelect={() => switchTab(conn.id)}
                   title={`${displayName} (${conn.profile.host}:${conn.profile.port})`}
                   prefix={
-                    <>
-                      {conn.profile.color ? (
+                    <div className={styles.tabPrefix}>
+                      {conn.profile.color && !isActive ? (
                         <span
-                          className={styles.colorDot}
+                          className={styles.colorAccent}
                           style={{ backgroundColor: conn.profile.color }}
+                          aria-hidden
                         />
                       ) : null}
                       <ConnectionStatusIndicator status={conn.status} size={8} />
-                    </>
+                    </div>
                   }
                   suffix={
                     <button

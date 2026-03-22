@@ -5,8 +5,22 @@ const themes = ['light', 'dark'] as const
 /** Dev server + async `main.tsx` (dynamic imports, IPC mock, theme) under many parallel workers can exceed the default 5s expect timeout. */
 const APP_READY_MS = 60_000
 
+/** Many parallel workers can briefly see net::ERR_CONNECTION_FAILED if the first goto races the Vite server. */
+const GOTO_RETRY_ATTEMPTS = 5
+const GOTO_RETRY_DELAY_MS = 800
+
 async function waitForApp(page: Page) {
-  await page.goto('/', { waitUntil: 'load', timeout: APP_READY_MS })
+  for (let attempt = 0; attempt < GOTO_RETRY_ATTEMPTS; attempt++) {
+    try {
+      await page.goto('/', { waitUntil: 'load', timeout: APP_READY_MS })
+      break
+    } catch (err) {
+      if (attempt === GOTO_RETRY_ATTEMPTS - 1) {
+        throw err
+      }
+      await new Promise((r) => setTimeout(r, GOTO_RETRY_DELAY_MS))
+    }
+  }
   await expect(page.getByTestId('app-layout')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('status-bar')).toContainText('Ready', { timeout: APP_READY_MS })
   await page.evaluate(() => document.fonts.ready)
@@ -21,6 +35,16 @@ async function ensureTheme(page: Page, theme: 'light' | 'dark') {
     await page.getByTestId('theme-toggle').click()
   }
   throw new Error(`Could not apply theme "${theme}"`)
+}
+
+async function dismissAllToasts(page: Page) {
+  for (let i = 0; i < 8; i++) {
+    const btn = page.getByTestId('toast-dismiss').first()
+    if (!(await btn.isVisible().catch(() => false))) {
+      break
+    }
+    await btn.click()
+  }
 }
 
 async function openConnectionManager(page: Page) {
@@ -58,13 +82,60 @@ async function connectToSample(page: Page) {
   await expect(page.getByTestId('object-browser')).toBeVisible()
   await expect(page.getByText('ecommerce_db')).toBeVisible()
   /* Dismiss success toasts so visual baselines stay stable */
-  for (let i = 0; i < 8; i++) {
-    const btn = page.getByTestId('toast-dismiss').first()
-    if (!(await btn.isVisible().catch(() => false))) {
-      break
+  await dismissAllToasts(page)
+}
+
+/**
+ * Second session injected for tab-bar visuals only (keeps `list_connections` single-item so other screenshots stay stable).
+ * Sample MySQL (#2563eb) active → horizontal underline in profile color; Staging (#d97706) inactive → vertical accent.
+ */
+async function openTwoConnectionSessionsFirstActive(page: Page) {
+  await connectToSample(page)
+  await page.evaluate(() => {
+    const useConnectionStore = (window as unknown as Record<string, unknown>)
+      .__connectionStore__ as {
+      setState: (
+        fn: (state: {
+          activeConnections: Record<string, { id: string; profile: Record<string, unknown>; status: string; serverVersion: string }>
+        }) => Record<string, unknown>
+      ) => void
     }
-    await btn.click()
-  }
+    const stagingProfile = {
+      id: 'conn-playwright-2',
+      name: 'Staging MySQL',
+      host: '10.0.0.5',
+      port: 3307,
+      username: 'staging',
+      hasPassword: true,
+      defaultDatabase: null,
+      sslEnabled: false,
+      sslCaPath: null,
+      sslCertPath: null,
+      sslKeyPath: null,
+      color: '#d97706',
+      groupId: null,
+      readOnly: false,
+      sortOrder: 1,
+      connectTimeoutSecs: 10,
+      keepaliveIntervalSecs: 60,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+    }
+    useConnectionStore.setState((state) => ({
+      activeConnections: {
+        ...state.activeConnections,
+        'session-playwright-2': {
+          id: 'session-playwright-2',
+          profile: stagingProfile,
+          status: 'connected',
+          serverVersion: '8.0.33-mock',
+        },
+      },
+      activeTabId: 'session-playwright-1',
+    }))
+  })
+  await expect(page.getByText('Staging MySQL')).toBeVisible()
+  await expect(page.getByTestId('connection-session-tab-session-playwright-1')).toHaveAttribute('data-active', 'true')
 }
 
 /** Connected workspace with schema-info active and a second tab so the top strip is visible in screenshots. */
@@ -239,6 +310,16 @@ for (const theme of themes) {
       )
       await expect(page.getByTestId('status-bar')).toHaveScreenshot(
         `status-bar-connected-${theme}.png`
+      )
+    })
+
+    test('ConnectionTabBar — two sessions (inactive vertical accent, active color underline)', async ({
+      page,
+    }) => {
+      await openTwoConnectionSessionsFirstActive(page)
+      await expect(page.getByTestId('connection-tab-bar')).toHaveScreenshot(
+        `connection-tab-bar-two-sessions-color-accents-${theme}.png`,
+        { animations: 'disabled' }
       )
     })
 

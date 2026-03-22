@@ -58,13 +58,22 @@
   align-self: stretch;
 }
 
-/* 8px color swatch circle */
-.colorDot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+/* Prefix row: flex inside split-tab label (div role=button, not native <button>) */
+.tabPrefix {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
   flex-shrink: 0;
+}
+
+/* Vertical bar — ~80% of tab bar row height */
+.colorAccent {
+  display: block;
+  width: 4px;
+  height: calc(44px * 0.5);
+  min-height: calc(44px * 0.5);
+  flex-shrink: 0;
+  border-radius: 3px;
 }
 
 .tabName {

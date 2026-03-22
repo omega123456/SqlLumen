@@ -175,7 +175,7 @@ describe('ConnectionTabBar', () => {
     expect(useConnectionStore.getState().dialogOpen).toBe(true)
   })
 
-  it('hides color dot when connection has no color', () => {
+  it('hides vertical color accent when connection has no color', () => {
     const profile = makeSavedConnection({ color: null })
     const conn = makeActiveConnection({ profile })
 
@@ -185,8 +185,34 @@ describe('ConnectionTabBar', () => {
     })
 
     const { container } = render(<ConnectionTabBar />)
-    // The colorDot class should not be present
-    expect(container.querySelector('[class*="colorDot"]')).not.toBeInTheDocument()
+    expect(container.querySelector('[class*="colorAccent"]')).not.toBeInTheDocument()
+  })
+
+  it('does not render vertical color accent on active tab when profile has color', () => {
+    const conn = makeActiveConnection({ id: 'sess-1', profile: makeSavedConnection({ color: '#3b82f6' }) })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn },
+      activeTabId: 'sess-1',
+    })
+
+    const { container } = render(<ConnectionTabBar />)
+    expect(container.querySelector('[class*="colorAccent"]')).not.toBeInTheDocument()
+  })
+
+  it('renders vertical color accent only on inactive tabs when profiles have color', () => {
+    const conn1 = makeActiveConnection({ id: 'sess-1' })
+    const profile2 = makeSavedConnection({ id: 'conn-2', name: 'Staging DB', color: '#ef4444' })
+    const conn2 = makeActiveConnection({ id: 'sess-2', profile: profile2 })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },
+      activeTabId: 'sess-1',
+    })
+
+    const { container } = render(<ConnectionTabBar />)
+    const accents = container.querySelectorAll('[class*="colorAccent"]')
+    expect(accents.length).toBe(1)
   })
 
   it('clicking theme toggle switches from light to dark', async () => {

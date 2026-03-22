@@ -14,8 +14,10 @@ async function init() {
     // Expose stores for E2E tests to programmatically open tabs / toasts
     const { useWorkspaceStore } = await import('./stores/workspace-store')
     const { useToastStore } = await import('./stores/toast-store')
+    const { useConnectionStore } = await import('./stores/connection-store')
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
     ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
+    ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore
   }
 
   // Apply theme before React renders to prevent flash
