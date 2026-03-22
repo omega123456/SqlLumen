@@ -32,6 +32,7 @@ pub fn test_app_state() -> AppState {
         db: Mutex::new(conn),
         registry: ConnectionRegistry::new(),
         app_handle: None,
+        results: std::sync::RwLock::new(std::collections::HashMap::new()),
     }
 }
 

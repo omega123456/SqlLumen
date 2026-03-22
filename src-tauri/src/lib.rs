@@ -84,6 +84,7 @@ pub fn run() {
                 db: Mutex::new(conn),
                 registry: ConnectionRegistry::new(),
                 app_handle: Some(app.handle().clone()),
+                results: std::sync::RwLock::new(std::collections::HashMap::new()),
             };
             app.manage(state);
             Ok(())
@@ -119,6 +120,12 @@ pub fn run() {
             commands::schema::drop_table,
             commands::schema::truncate_table,
             commands::schema::rename_table,
+            commands::query::execute_query,
+            commands::query::fetch_result_page,
+            commands::query::evict_results,
+            commands::query::fetch_schema_metadata,
+            commands::query::read_file,
+            commands::query::write_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

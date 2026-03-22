@@ -1,6 +1,80 @@
 import '@testing-library/jest-dom'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { clearMocks } from '@tauri-apps/api/mocks'
+
+// ---------------------------------------------------------------------------
+// Monaco Editor mocks for Vitest (jsdom doesn't support Monaco workers)
+// ---------------------------------------------------------------------------
+
+vi.mock('monaco-editor', () => ({
+  editor: {
+    create: vi.fn(() => ({
+      getValue: vi.fn(() => ''),
+      setValue: vi.fn(),
+      getModel: vi.fn(() => null),
+      onDidChangeModelContent: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidChangeCursorPosition: vi.fn(() => ({ dispose: vi.fn() })),
+      dispose: vi.fn(),
+      layout: vi.fn(),
+      focus: vi.fn(),
+      setPosition: vi.fn(),
+      getPosition: vi.fn(() => ({ lineNumber: 1, column: 1 })),
+    })),
+    defineTheme: vi.fn(),
+    setTheme: vi.fn(),
+    createModel: vi.fn(() => ({
+      dispose: vi.fn(),
+      getValue: vi.fn(() => ''),
+      setValue: vi.fn(),
+    })),
+    setModelLanguage: vi.fn(),
+    EditorOption: {},
+  },
+  languages: {
+    register: vi.fn(),
+    setMonarchTokensProvider: vi.fn(),
+    registerCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })),
+    CompletionItemKind: {
+      Keyword: 14,
+      Class: 5,
+      Field: 4,
+      Module: 8,
+      Function: 2,
+      Text: 1,
+    },
+    CompletionItemInsertTextRule: {
+      InsertAsSnippet: 4,
+    },
+  },
+  Range: vi.fn(),
+  KeyMod: { CtrlCmd: 2048 },
+  KeyCode: { F5: 63 },
+}))
+
+vi.mock('@monaco-editor/react', async () => {
+  const React = await import('react')
+  return {
+    default: (props: Record<string, unknown>) => {
+      return React.createElement('textarea', {
+        'data-testid': 'monaco-editor',
+        value: (props.value as string) ?? '',
+        onChange: (e: { target: { value: string } }) => {
+          const fn = props.onChange as ((v: string | undefined) => void) | undefined
+          fn?.(e.target.value)
+        },
+      })
+    },
+    useMonaco: () => null,
+    loader: {
+      init: () => Promise.resolve(),
+      config: () => {},
+    },
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Polyfills for jsdom
+// ---------------------------------------------------------------------------
 
 // Polyfill ResizeObserver for jsdom (needed by react-resizable-panels)
 if (typeof globalThis.ResizeObserver === 'undefined') {

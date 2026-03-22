@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WorkspaceTabs } from '../../../components/workspace/WorkspaceTabs'
-import { useWorkspaceStore, _resetTabIdCounter } from '../../../stores/workspace-store'
+import {
+  useWorkspaceStore,
+  _resetTabIdCounter,
+  _resetQueryTabCounter,
+} from '../../../stores/workspace-store'
 
 beforeEach(() => {
   useWorkspaceStore.setState({
@@ -10,12 +14,14 @@ beforeEach(() => {
     activeTabByConnection: {},
   })
   _resetTabIdCounter()
+  _resetQueryTabCounter()
 })
 
 describe('WorkspaceTabs', () => {
-  it('renders nothing when no tabs exist', () => {
-    const { container } = render(<WorkspaceTabs connectionId="conn-1" />)
-    expect(container.innerHTML).toBe('')
+  it('renders tab bar with "+" button even when no tabs exist', () => {
+    render(<WorkspaceTabs connectionId="conn-1" />)
+    expect(screen.getByTestId('workspace-tabs')).toBeInTheDocument()
+    expect(screen.getByTestId('new-query-tab-button')).toBeInTheDocument()
   })
 
   it('renders tabs for the active connection', () => {
@@ -110,7 +116,7 @@ describe('WorkspaceTabs', () => {
     expect(screen.getByText('mydb.users')).toBeInTheDocument()
   })
 
-  it('does not render tabs for other connections', () => {
+  it('"+" button renders even with no tabs for a different connection', () => {
     useWorkspaceStore.getState().openTab({
       type: 'table-data',
       label: 'users',
@@ -120,7 +126,39 @@ describe('WorkspaceTabs', () => {
       objectType: 'table',
     })
 
-    const { container } = render(<WorkspaceTabs connectionId="conn-1" />)
-    expect(container.innerHTML).toBe('')
+    render(<WorkspaceTabs connectionId="conn-1" />)
+    // No tab labels from conn-2 visible
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
+    // But "+" button is present
+    expect(screen.getByTestId('new-query-tab-button')).toBeInTheDocument()
+  })
+
+  it('clicking "+" creates a new query tab', async () => {
+    const user = userEvent.setup()
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toBeUndefined()
+
+    await user.click(screen.getByTestId('new-query-tab-button'))
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0].type).toBe('query-editor')
+    expect(tabs[0].label).toBe('Query 1')
+  })
+
+  it('clicking "+" multiple times creates numbered query tabs', async () => {
+    const user = userEvent.setup()
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    await user.click(screen.getByTestId('new-query-tab-button'))
+    await user.click(screen.getByTestId('new-query-tab-button'))
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    expect(tabs).toHaveLength(2)
+    expect(tabs[0].label).toBe('Query 1')
+    expect(tabs[1].label).toBe('Query 2')
   })
 })

@@ -3,8 +3,14 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WorkspaceArea } from '../../components/layout/WorkspaceArea'
 import { useConnectionStore } from '../../stores/connection-store'
-import { useWorkspaceStore, _resetTabIdCounter } from '../../stores/workspace-store'
+import {
+  useWorkspaceStore,
+  _resetTabIdCounter,
+  _resetQueryTabCounter,
+} from '../../stores/workspace-store'
+import { useQueryStore } from '../../stores/query-store'
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
+import { mockIPC } from '@tauri-apps/api/mocks'
 
 vi.mock('../../lib/schema-commands', () => ({
   getSchemaInfo: vi.fn().mockResolvedValue({
@@ -32,6 +38,12 @@ vi.mock('../../lib/schema-commands', () => ({
       indexLength: 8192,
     },
   }),
+}))
+
+// Mock tauri dialog for EditorToolbar (used by QueryEditorTab)
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  save: vi.fn(() => Promise.resolve(null)),
+  open: vi.fn(() => Promise.resolve(null)),
 }))
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
@@ -80,7 +92,10 @@ beforeEach(() => {
     tabsByConnection: {},
     activeTabByConnection: {},
   })
+  useQueryStore.setState({ tabs: {} })
   _resetTabIdCounter()
+  _resetQueryTabCounter()
+  mockIPC(() => null)
 })
 
 describe('WorkspaceArea', () => {
@@ -198,5 +213,36 @@ describe('WorkspaceArea', () => {
 
     expect(screen.getByText('ecommerce.orders')).toBeInTheDocument()
     expect(screen.getByText('Table data viewing will be available in Phase 6')).toBeInTheDocument()
+  })
+
+  it('renders QueryEditorTab for query-editor tab type', () => {
+    const conn = makeActiveConnection()
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': conn },
+      activeTabId: 'conn-1',
+    })
+
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    render(<WorkspaceArea />)
+
+    expect(screen.getByTestId('query-editor-tab')).toBeInTheDocument()
+    expect(screen.getByTestId('editor-toolbar')).toBeInTheDocument()
+    expect(screen.getByTestId('monaco-editor-wrapper')).toBeInTheDocument()
+    expect(screen.getByTestId('result-panel')).toBeInTheDocument()
+  })
+
+  it('always shows workspace-tabs and "+" button when connected', () => {
+    const conn = makeActiveConnection()
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': conn },
+      activeTabId: 'conn-1',
+    })
+
+    render(<WorkspaceArea />)
+
+    // Tab bar is present even with no tabs
+    expect(screen.getByTestId('workspace-tabs')).toBeInTheDocument()
+    expect(screen.getByTestId('new-query-tab-button')).toBeInTheDocument()
   })
 })

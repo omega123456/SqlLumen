@@ -32,3 +32,39 @@
   align-items: center;
   flex-shrink: 0;
 }
+
+/* ---------- Query Info ---------- */
+
+.queryInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+  margin-left: var(--space-md);
+}
+
+[data-theme='dark'] .queryInfo {
+  order: 1;
+  margin-left: var(--space-sm);
+}
+
+.queryInfoItem {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-xs);
+  color: var(--on-surface-variant);
+  opacity: 0.4;
+  white-space: nowrap;
+}
+
+[data-theme='light'] .queryInfoItem {
+  letter-spacing: 0.05em;
+  opacity: 1;
+}
+
+.queryInfoTime {
+  color: var(--primary);
+}
+
+.queryInfoRows {
+  color: var(--on-surface-variant);
+}

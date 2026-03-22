@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SchemaInfoTab } from '../../../components/schema-info/SchemaInfoTab'
 import { useWorkspaceStore, _resetTabIdCounter } from '../../../stores/workspace-store'
-import type { WorkspaceTab, SchemaInfoResponse } from '../../../types/schema'
+import type { SchemaInfoTab as SchemaInfoTabType, SchemaInfoResponse } from '../../../types/schema'
 
 const mockGetSchemaInfo = vi.fn()
 
@@ -11,7 +11,7 @@ vi.mock('../../../lib/schema-commands', () => ({
   getSchemaInfo: (...args: unknown[]) => mockGetSchemaInfo(...args),
 }))
 
-function makeTab(overrides: Partial<WorkspaceTab> = {}): WorkspaceTab {
+function makeTab(overrides: Partial<SchemaInfoTabType> = {}): SchemaInfoTabType {
   return {
     id: 'tab-1',
     type: 'schema-info',
@@ -162,26 +162,24 @@ describe('SchemaInfoTab', () => {
       objectName: 'users',
       objectType: 'table',
     })
-    const tab = useWorkspaceStore.getState().tabsByConnection['conn-1'][0]
+    const tab = useWorkspaceStore.getState().tabsByConnection['conn-1'][0] as SchemaInfoTabType
 
     const { rerender } = render(<SchemaInfoTab tab={tab} />)
 
     await waitFor(() => {
       expect(screen.getByTestId('stats-columns-card')).toBeInTheDocument()
     })
-    expect(screen.getByTestId('stats-columns-card')).toHaveTextContent(
-      Number(2).toLocaleString()
-    )
+    expect(screen.getByTestId('stats-columns-card')).toHaveTextContent(Number(2).toLocaleString())
 
     await user.click(screen.getByRole('button', { name: 'DDL' }))
 
-    const updatedTab = useWorkspaceStore.getState().tabsByConnection['conn-1'][0]
+    const updatedTab = useWorkspaceStore.getState().tabsByConnection[
+      'conn-1'
+    ][0] as SchemaInfoTabType
     rerender(<SchemaInfoTab tab={updatedTab} />)
 
     expect(screen.getByTestId('stats-columns-card')).toBeInTheDocument()
-    expect(screen.getByTestId('stats-columns-card')).toHaveTextContent(
-      Number(2).toLocaleString()
-    )
+    expect(screen.getByTestId('stats-columns-card')).toHaveTextContent(Number(2).toLocaleString())
   })
 
   it('renders stats row for tables, not for other types', async () => {
@@ -224,7 +222,7 @@ describe('SchemaInfoTab', () => {
     })
 
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
-    const tab = tabs[0]
+    const tab = tabs[0] as SchemaInfoTabType
 
     render(<SchemaInfoTab tab={tab} />)
 

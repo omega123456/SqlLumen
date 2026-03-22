@@ -1,6 +1,7 @@
 import type { WorkspaceTab } from '../../types/schema'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
+import { Plus } from '@phosphor-icons/react'
 import styles from './WorkspaceTabs.module.css'
 
 const EMPTY_TABS: WorkspaceTab[] = []
@@ -16,10 +17,7 @@ export function WorkspaceTabs({ connectionId }: WorkspaceTabsProps) {
   )
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab)
   const closeTab = useWorkspaceStore((state) => state.closeTab)
-
-  if (tabs.length === 0) {
-    return null
-  }
+  const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
 
   return (
     <UnderlineTabBar className={styles.workspaceTabRailBleed} data-testid="workspace-tabs">
@@ -51,6 +49,17 @@ export function WorkspaceTabs({ connectionId }: WorkspaceTabsProps) {
           </UnderlineTab>
         )
       })}
+      {/* Always-visible "+" button to create a new query tab */}
+      <button
+        type="button"
+        className={styles.newTabButton}
+        title="New Query Tab"
+        aria-label="New Query Tab"
+        onClick={() => openQueryTab(connectionId)}
+        data-testid="new-query-tab-button"
+      >
+        <Plus size={16} weight="bold" />
+      </button>
     </UnderlineTabBar>
   )
 }

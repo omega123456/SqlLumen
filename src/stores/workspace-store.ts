@@ -1,15 +1,21 @@
 import { create } from 'zustand'
-import type { WorkspaceTab } from '../types/schema'
+import type { WorkspaceTab, SchemaInfoTab, TableDataTab, DistributiveOmit } from '../types/schema'
+import { useQueryStore } from './query-store'
 
 // ---------------------------------------------------------------------------
 // Tab ID generation
 // ---------------------------------------------------------------------------
 
 let tabIdCounter = 0
+let queryTabCounter = 0
 
 /** Reset the counter — for testing only. */
 export function _resetTabIdCounter() {
   tabIdCounter = 0
+}
+
+export function _resetQueryTabCounter() {
+  queryTabCounter = 0
 }
 
 function generateTabId(): string {
@@ -20,6 +26,9 @@ function generateTabId(): string {
 // Store interface
 // ---------------------------------------------------------------------------
 
+/** The tab types that openTab accepts (schema-info and table-data only). */
+type OpenableTab = DistributiveOmit<SchemaInfoTab | TableDataTab, 'id'>
+
 interface WorkspaceState {
   /** Tabs per connection ID. */
   tabsByConnection: Record<string, WorkspaceTab[]>
@@ -28,7 +37,8 @@ interface WorkspaceState {
   activeTabByConnection: Record<string, string | null>
 
   // Actions
-  openTab: (tab: Omit<WorkspaceTab, 'id'>) => void
+  openTab: (tab: OpenableTab) => void
+  openQueryTab: (connectionId: string, label?: string) => string
   closeTab: (connectionId: string, tabId: string) => void
   setActiveTab: (connectionId: string, tabId: string) => void
   closeTabsByDatabase: (connectionId: string, databaseName: string) => void
@@ -45,7 +55,7 @@ interface WorkspaceState {
 }
 
 // ---------------------------------------------------------------------------
-// Internal helpers (Simplification 7)
+// Internal helpers
 // ---------------------------------------------------------------------------
 
 /**
@@ -96,15 +106,19 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   tabsByConnection: {},
   activeTabByConnection: {},
 
-  // ------ openTab ------
+  // ------ openTab (schema-info and table-data only, with dedup) ------
 
-  openTab: (tab: Omit<WorkspaceTab, 'id'>) => {
+  openTab: (tab: OpenableTab) => {
     const { connectionId, databaseName, objectName, type } = tab
     const tabs = get().tabsByConnection[connectionId] || []
 
     // Dedup: if a tab with same connection + database + object + type exists, focus it
     const existing = tabs.find(
-      (t) => t.databaseName === databaseName && t.objectName === objectName && t.type === type
+      (t) =>
+        t.type !== 'query-editor' &&
+        (t as SchemaInfoTab | TableDataTab).databaseName === databaseName &&
+        (t as SchemaInfoTab | TableDataTab).objectName === objectName &&
+        t.type === type
     )
 
     if (existing) {
@@ -118,17 +132,40 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     }
 
     // Create new tab
-    const newTab: WorkspaceTab = { ...tab, id: generateTabId() }
+    const newTab: WorkspaceTab = { ...tab, id: generateTabId() } as WorkspaceTab
     set((state) => ({
       tabsByConnection: {
         ...state.tabsByConnection,
-        [connectionId]: [...tabs, newTab],
+        [connectionId]: [...(state.tabsByConnection[connectionId] || []), newTab],
       },
       activeTabByConnection: {
         ...state.activeTabByConnection,
         [connectionId]: newTab.id,
       },
     }))
+  },
+
+  // ------ openQueryTab (always creates new tab, no dedup) ------
+
+  openQueryTab: (connectionId: string, label?: string) => {
+    const tabNumber = ++queryTabCounter
+    const newTab: WorkspaceTab = {
+      id: generateTabId(),
+      type: 'query-editor',
+      label: label ?? `Query ${tabNumber}`,
+      connectionId,
+    }
+    set((state) => ({
+      tabsByConnection: {
+        ...state.tabsByConnection,
+        [connectionId]: [...(state.tabsByConnection[connectionId] || []), newTab],
+      },
+      activeTabByConnection: {
+        ...state.activeTabByConnection,
+        [connectionId]: newTab.id,
+      },
+    }))
+    return newTab.id
   },
 
   // ------ closeTab ------
@@ -139,6 +176,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     const idx = tabs.findIndex((t) => t.id === tabId)
     if (idx === -1) return
 
+    const closingTab = tabs[idx]
     const remaining = tabs.filter((t) => t.id !== tabId)
     let newActive = state.activeTabByConnection[connectionId]
 
@@ -151,6 +189,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       } else {
         newActive = remaining[remaining.length - 1].id
       }
+    }
+
+    // Clean up query store state for query-editor tabs
+    if (closingTab.type === 'query-editor') {
+      useQueryStore.getState().cleanupTab(connectionId, tabId)
     }
 
     set((s) => ({
@@ -181,7 +224,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   closeTabsByDatabase: (connectionId: string, databaseName: string) => {
     set((state) =>
       updateConnectionTabs(state, connectionId, (tabs) =>
-        tabs.filter((t) => t.databaseName !== databaseName)
+        tabs.filter((t) => {
+          if (t.type === 'query-editor') return true // skip query tabs
+          return (t as SchemaInfoTab | TableDataTab).databaseName !== databaseName
+        })
       )
     )
   },
@@ -191,7 +237,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   closeTabsByObject: (connectionId: string, databaseName: string, objectName: string) => {
     set((state) =>
       updateConnectionTabs(state, connectionId, (tabs) =>
-        tabs.filter((t) => !(t.databaseName === databaseName && t.objectName === objectName))
+        tabs.filter((t) => {
+          if (t.type === 'query-editor') return true // skip query tabs
+          const dt = t as SchemaInfoTab | TableDataTab
+          return !(dt.databaseName === databaseName && dt.objectName === objectName)
+        })
       )
     )
   },
@@ -201,15 +251,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   updateTabDatabase: (connectionId: string, oldDatabase: string, newDatabase: string) => {
     set((state) =>
       updateConnectionTabs(state, connectionId, (tabs) =>
-        tabs.map((t) =>
-          t.databaseName === oldDatabase
-            ? {
-                ...t,
-                databaseName: newDatabase,
-                label: `${newDatabase}.${t.objectName}`,
-              }
-            : t
-        )
+        tabs.map((t) => {
+          if (t.type === 'query-editor') return t // skip query tabs
+          const dt = t as SchemaInfoTab | TableDataTab
+          if (dt.databaseName !== oldDatabase) return t
+          return {
+            ...dt,
+            databaseName: newDatabase,
+            label: `${newDatabase}.${dt.objectName}`,
+          } as WorkspaceTab
+        })
       )
     )
   },
@@ -224,15 +275,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   ) => {
     set((state) =>
       updateConnectionTabs(state, connectionId, (tabs) =>
-        tabs.map((t) =>
-          t.databaseName === databaseName && t.objectName === oldObjectName
-            ? {
-                ...t,
-                objectName: newObjectName,
-                label: `${t.databaseName}.${newObjectName}`,
-              }
-            : t
-        )
+        tabs.map((t) => {
+          if (t.type === 'query-editor') return t // skip query tabs
+          const dt = t as SchemaInfoTab | TableDataTab
+          if (dt.databaseName !== databaseName || dt.objectName !== oldObjectName) return t
+          return {
+            ...dt,
+            objectName: newObjectName,
+            label: `${dt.databaseName}.${newObjectName}`,
+          } as WorkspaceTab
+        })
       )
     )
   },
@@ -250,9 +302,17 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   // ------ clearConnectionTabs ------
 
   clearConnectionTabs: (connectionId: string) => {
-    set((state) => {
-      const newTabs = { ...state.tabsByConnection }
-      const newActive = { ...state.activeTabByConnection }
+    const state = get()
+    const tabs = state.tabsByConnection[connectionId] || []
+    const queryTabIds = tabs.filter((t) => t.type === 'query-editor').map((t) => t.id)
+
+    if (queryTabIds.length > 0) {
+      useQueryStore.getState().cleanupConnection(connectionId, queryTabIds)
+    }
+
+    set((s) => {
+      const newTabs = { ...s.tabsByConnection }
+      const newActive = { ...s.activeTabByConnection }
       delete newTabs[connectionId]
       delete newActive[connectionId]
       return { tabsByConnection: newTabs, activeTabByConnection: newActive }

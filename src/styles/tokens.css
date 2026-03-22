@@ -342,7 +342,32 @@
   --ui-toast-dark-icon-well-radius: 4px;
   --ui-toast-dark-icon-well-info-bg: color-mix(in srgb, var(--primary-container) 20%, transparent);
   --ui-toast-dark-icon-well-error-bg: color-mix(in srgb, var(--error-container) 20%, transparent);
-  --ui-toast-dark-icon-well-success-bg: color-mix(in srgb, var(--tertiary-container) 20%, transparent);
+  --ui-toast-dark-icon-well-success-bg: color-mix(
+    in srgb,
+    var(--tertiary-container) 20%,
+    transparent
+  );
+
+  /* ---------- Query Editor tokens ---------- */
+  --editor-bg: var(--surface);
+  --editor-toolbar-bg: var(--surface-container-high);
+  --editor-toolbar-border: rgba(var(--outline-variant-rgb), 0.1);
+  --editor-resize-handle-bg: var(--surface-container-low);
+  --editor-resize-pill-color: var(--outline-variant);
+
+  /* ---------- Result grid tokens ---------- */
+  --result-grid-bg: var(--surface-container-low);
+  --result-grid-header-bg: var(--surface-container-high);
+  --result-grid-row-alt-bg: rgba(var(--on-surface-rgb), 0.03);
+  --result-grid-row-selected-bg: var(--secondary-container);
+  --result-grid-row-hover-bg: rgba(var(--on-surface-rgb), 0.08);
+  --result-grid-row-selected-accent: var(--primary);
+  --result-status-success-fg: var(--tertiary);
+
+  /* ---------- Autocomplete doc panel tokens ---------- */
+  --autocomplete-bg: var(--surface-container-high);
+  --autocomplete-border: rgba(var(--outline-variant-rgb), 0.2);
+  --autocomplete-backdrop: blur(12px);
 }
 
 /* Light Theme — query_slate_light (applied via [data-theme="light"] on <html>) */
@@ -565,4 +590,20 @@
   --ui-toast-light-progress-success: #22c55e;
   --ui-toast-light-progress-error: var(--error);
   --ui-toast-light-progress-info: var(--primary);
+
+  /* Query editor light overrides */
+  --editor-bg: var(--surface-container-lowest);
+  --editor-toolbar-bg: var(--surface-container-low);
+  --editor-toolbar-border: rgba(var(--outline-variant-rgb), 0.1);
+
+  /* Result grid light overrides */
+  --result-grid-bg: var(--surface-container-lowest);
+  --result-grid-row-alt-bg: rgba(var(--on-surface-rgb), 0.03);
+  --result-grid-row-hover-bg: rgba(var(--primary-rgb), 0.05);
+  --result-status-success-fg: var(--primary);
+
+  /* Autocomplete doc panel light overrides */
+  --autocomplete-bg: color-mix(in srgb, var(--surface-container-low) 95%, transparent);
+  --autocomplete-border: rgba(var(--outline-variant-rgb), 0.2);
+  --autocomplete-backdrop: blur(20px);
 }

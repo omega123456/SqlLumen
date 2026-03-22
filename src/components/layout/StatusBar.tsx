@@ -1,4 +1,7 @@
 import { useConnectionStore } from '../../stores/connection-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
+import { useQueryStore } from '../../stores/query-store'
+import { useThemeStore } from '../../stores/theme-store'
 import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
 import styles from './StatusBar.module.css'
 
@@ -9,10 +12,32 @@ const statusLabel: Record<string, string> = {
 }
 
 export function StatusBar() {
-  const activeConnections = useConnectionStore((state) => state.activeConnections)
-  const activeTabId = useConnectionStore((state) => state.activeTabId)
+  const activeConnections = useConnectionStore((s) => s.activeConnections)
+  const connectionTabId = useConnectionStore((s) => s.activeTabId)
+  const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
 
-  const activeConnection = activeTabId ? activeConnections[activeTabId] : null
+  // Active workspace tab ID for the current connection
+  const activeWorkspaceTabId = useWorkspaceStore((s) =>
+    connectionTabId ? (s.activeTabByConnection[connectionTabId] ?? null) : null
+  )
+
+  // Check the type of the active workspace tab
+  const activeWorkspaceTabType = useWorkspaceStore((s) => {
+    if (!connectionTabId || !activeWorkspaceTabId) return null
+    const tabs = s.tabsByConnection[connectionTabId]
+    return tabs?.find((t) => t.id === activeWorkspaceTabId)?.type ?? null
+  })
+
+  // Get query state for the active workspace tab
+  const queryState = useQueryStore((s) =>
+    activeWorkspaceTabId ? (s.tabs[activeWorkspaceTabId] ?? null) : null
+  )
+
+  const activeConnection = connectionTabId ? activeConnections[connectionTabId] : null
+
+  // Show query info only for query-editor tabs with a successful execution
+  const showQueryInfo =
+    activeWorkspaceTabType === 'query-editor' && queryState?.status === 'success'
 
   if (!activeConnection) {
     return (
@@ -28,6 +53,35 @@ export function StatusBar() {
         <ConnectionStatusIndicator status={activeConnection.status} size={10} />
         <span className={styles.statusText}>{statusLabel[activeConnection.status]}</span>
       </div>
+      {showQueryInfo && (
+        <div className={styles.queryInfo} data-testid="query-info">
+          {resolvedTheme === 'dark' ? (
+            <>
+              <span className={styles.queryInfoItem} data-testid="query-rows">
+                Rows: {queryState.totalRows}
+              </span>
+              <span className={styles.queryInfoItem} data-testid="query-time">
+                {queryState.executionTimeMs}ms
+              </span>
+            </>
+          ) : (
+            <>
+              <span
+                className={`${styles.queryInfoItem} ${styles.queryInfoTime}`}
+                data-testid="query-time"
+              >
+                QUERY: {queryState.executionTimeMs}ms
+              </span>
+              <span
+                className={`${styles.queryInfoItem} ${styles.queryInfoRows}`}
+                data-testid="query-rows"
+              >
+                ROWS: {queryState.totalRows}
+              </span>
+            </>
+          )}
+        </div>
+      )}
       <div className={styles.statusCenter}>
         <span className={styles.statusText}>
           {activeConnection.profile.name} — {activeConnection.profile.host}:

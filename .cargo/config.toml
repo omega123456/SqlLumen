@@ -42,6 +42,8 @@ mysql-client-test-integration = [
   "--test",
   "mysql_health_integration",
   "--test",
+  "commands_query_integration",
+  "--test",
   "coverage_boost",
 ]
 
@@ -83,6 +85,8 @@ mysql-client-llvm-cov = [
   "connections_integration",
   "--test",
   "mysql_integration",
+  "--test",
+  "commands_query_integration",
   "--test",
   "coverage_boost",
   "--fail-under-lines",

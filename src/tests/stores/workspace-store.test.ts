@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useWorkspaceStore, _resetTabIdCounter } from '../../stores/workspace-store'
-import type { WorkspaceTab } from '../../types/schema'
+import {
+  useWorkspaceStore,
+  _resetTabIdCounter,
+  _resetQueryTabCounter,
+} from '../../stores/workspace-store'
+import type { TableDataTab, SchemaInfoTab } from '../../types/schema'
 
 beforeEach(() => {
   useWorkspaceStore.setState({
@@ -8,15 +12,30 @@ beforeEach(() => {
     activeTabByConnection: {},
   })
   _resetTabIdCounter()
+  _resetQueryTabCounter()
 })
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeTab(overrides: Partial<Omit<WorkspaceTab, 'id'>> = {}): Omit<WorkspaceTab, 'id'> {
+function makeTab(overrides: Partial<Omit<TableDataTab, 'id'>> = {}): Omit<TableDataTab, 'id'> {
   return {
     type: 'table-data',
+    label: 'users',
+    connectionId: 'conn-1',
+    databaseName: 'mydb',
+    objectName: 'users',
+    objectType: 'table',
+    ...overrides,
+  }
+}
+
+function makeSchemaTab(
+  overrides: Partial<Omit<SchemaInfoTab, 'id'>> = {}
+): Omit<SchemaInfoTab, 'id'> {
+  return {
+    type: 'schema-info',
     label: 'users',
     connectionId: 'conn-1',
     databaseName: 'mydb',
@@ -58,7 +77,7 @@ describe('useWorkspaceStore — openTab', () => {
 
   it('creates a new tab when same object but different type', () => {
     useWorkspaceStore.getState().openTab(makeTab({ type: 'table-data' }))
-    useWorkspaceStore.getState().openTab(makeTab({ type: 'schema-info' }))
+    useWorkspaceStore.getState().openTab(makeSchemaTab({ type: 'schema-info' }))
 
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(2)
@@ -71,6 +90,38 @@ describe('useWorkspaceStore — openTab', () => {
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(1)
     expect(state.tabsByConnection['conn-2']).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// openQueryTab
+// ---------------------------------------------------------------------------
+
+describe('useWorkspaceStore — openQueryTab', () => {
+  it('creates a new query-editor tab with auto-incrementing label', () => {
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+    const state = useWorkspaceStore.getState()
+    expect(state.tabsByConnection['conn-1']).toHaveLength(1)
+    expect(state.tabsByConnection['conn-1'][0].type).toBe('query-editor')
+    expect(state.tabsByConnection['conn-1'][0].label).toBe('Query 1')
+  })
+
+  it('creates multiple query tabs without dedup', () => {
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+    const state = useWorkspaceStore.getState()
+    expect(state.tabsByConnection['conn-1']).toHaveLength(2)
+    expect(state.tabsByConnection['conn-1'][0].label).toBe('Query 1')
+    expect(state.tabsByConnection['conn-1'][1].label).toBe('Query 2')
+  })
+
+  it('sets the new query tab as active', () => {
+    useWorkspaceStore.getState().openTab(makeTab())
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+    const state = useWorkspaceStore.getState()
+    // The query tab should be active (it was opened last)
+    expect(state.activeTabByConnection['conn-1']).toBe(state.tabsByConnection['conn-1'][1].id)
+    expect(state.tabsByConnection['conn-1'][1].type).toBe('query-editor')
   })
 })
 
@@ -150,7 +201,7 @@ describe('useWorkspaceStore — closeTabsByDatabase', () => {
 
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(1)
-    expect(state.tabsByConnection['conn-1'][0].databaseName).toBe('db2')
+    expect((state.tabsByConnection['conn-1'][0] as TableDataTab).databaseName).toBe('db2')
   })
 
   it('updates active tab when closing database tabs', () => {
@@ -169,6 +220,19 @@ describe('useWorkspaceStore — closeTabsByDatabase', () => {
     // Should switch to remaining tab
     expect(state.activeTabByConnection['conn-1']).toBe(state.tabsByConnection['conn-1'][0].id)
   })
+
+  it('preserves query-editor tabs when closing database tabs', () => {
+    useWorkspaceStore
+      .getState()
+      .openTab(makeTab({ databaseName: 'db1', objectName: 'a', label: 'a' }))
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    useWorkspaceStore.getState().closeTabsByDatabase('conn-1', 'db1')
+
+    const state = useWorkspaceStore.getState()
+    expect(state.tabsByConnection['conn-1']).toHaveLength(1)
+    expect(state.tabsByConnection['conn-1'][0].type).toBe('query-editor')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -182,14 +246,14 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
       .openTab(makeTab({ type: 'table-data', objectName: 'users', label: 'users data' }))
     useWorkspaceStore
       .getState()
-      .openTab(makeTab({ type: 'schema-info', objectName: 'users', label: 'users info' }))
+      .openTab(makeSchemaTab({ type: 'schema-info', objectName: 'users', label: 'users info' }))
     useWorkspaceStore.getState().openTab(makeTab({ objectName: 'orders', label: 'orders' }))
 
     useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'users')
 
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(1)
-    expect(state.tabsByConnection['conn-1'][0].objectName).toBe('orders')
+    expect((state.tabsByConnection['conn-1'][0] as TableDataTab).objectName).toBe('orders')
   })
 })
 
@@ -208,10 +272,23 @@ describe('useWorkspaceStore — updateTabDatabase', () => {
 
     const state = useWorkspaceStore.getState()
     const tabs = state.tabsByConnection['conn-1']
-    expect(tabs[0].databaseName).toBe('newdb')
+    expect((tabs[0] as TableDataTab).databaseName).toBe('newdb')
     expect(tabs[0].label).toBe('newdb.users')
     // Other tab unchanged
-    expect(tabs[1].databaseName).toBe('otherdb')
+    expect((tabs[1] as TableDataTab).databaseName).toBe('otherdb')
+  })
+
+  it('skips query-editor tabs', () => {
+    useWorkspaceStore.getState().openTab(makeTab({ databaseName: 'olddb', label: 'olddb.users' }))
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    useWorkspaceStore.getState().updateTabDatabase('conn-1', 'olddb', 'newdb')
+
+    const state = useWorkspaceStore.getState()
+    const tabs = state.tabsByConnection['conn-1']
+    expect((tabs[0] as TableDataTab).databaseName).toBe('newdb')
+    expect(tabs[1].type).toBe('query-editor')
+    expect(tabs[1].label).toBe('Query 1')
   })
 })
 
@@ -230,10 +307,24 @@ describe('useWorkspaceStore — updateTabObject', () => {
 
     const state = useWorkspaceStore.getState()
     const tabs = state.tabsByConnection['conn-1']
-    expect(tabs[0].objectName).toBe('new_table')
+    expect((tabs[0] as TableDataTab).objectName).toBe('new_table')
     expect(tabs[0].label).toBe('mydb.new_table')
     // Other tab unchanged
-    expect(tabs[1].objectName).toBe('other')
+    expect((tabs[1] as TableDataTab).objectName).toBe('other')
+  })
+
+  it('skips query-editor tabs', () => {
+    useWorkspaceStore
+      .getState()
+      .openTab(makeTab({ objectName: 'old_table', label: 'mydb.old_table' }))
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    useWorkspaceStore.getState().updateTabObject('conn-1', 'mydb', 'old_table', 'new_table')
+
+    const state = useWorkspaceStore.getState()
+    const tabs = state.tabsByConnection['conn-1']
+    expect((tabs[0] as TableDataTab).objectName).toBe('new_table')
+    expect(tabs[1].type).toBe('query-editor')
   })
 })
 
@@ -243,7 +334,7 @@ describe('useWorkspaceStore — updateTabObject', () => {
 
 describe('useWorkspaceStore — setSubTab', () => {
   it('sets active sub-tab on a schema-info tab', () => {
-    useWorkspaceStore.getState().openTab(makeTab({ type: 'schema-info' }))
+    useWorkspaceStore.getState().openTab(makeSchemaTab({ type: 'schema-info' }))
     const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
 
     useWorkspaceStore.getState().setSubTab('conn-1', tabId, 'indexes')
@@ -253,7 +344,7 @@ describe('useWorkspaceStore — setSubTab', () => {
   })
 
   it('can change sub-tab multiple times', () => {
-    useWorkspaceStore.getState().openTab(makeTab({ type: 'schema-info' }))
+    useWorkspaceStore.getState().openTab(makeSchemaTab({ type: 'schema-info' }))
     const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
 
     useWorkspaceStore.getState().setSubTab('conn-1', tabId, 'columns')

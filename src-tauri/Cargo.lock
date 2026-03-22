@@ -2559,6 +2559,7 @@ name = "mysql-client"
 version = "0.1.0"
 dependencies = [
  "keyring",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

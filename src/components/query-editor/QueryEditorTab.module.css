@@ -1,0 +1,54 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.panelGroup {
+  flex: 1;
+  min-height: 0;
+}
+
+.editorPanel {
+  overflow: hidden;
+}
+
+.resultPanel {
+  overflow: hidden;
+  background-color: var(--surface-container-low);
+  display: flex;
+  flex-direction: column;
+}
+
+.resizeHandle {
+  height: 6px;
+  background-color: var(--surface-container-low);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.resizeHandle:hover,
+.resizeHandle[data-resize-handle-state='drag'] {
+  background-color: rgba(var(--primary-rgb), 0.1);
+}
+
+.resizePill {
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background-color: var(--outline-variant);
+  transition: background-color 0.15s ease;
+}
+
+.resizeHandle:hover .resizePill,
+.resizeHandle[data-resize-handle-state='drag'] .resizePill {
+  background-color: var(--primary);
+}
+
+/* Result panel area fills remaining space */

@@ -1,0 +1,116 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-md);
+  height: 44px;
+  flex-shrink: 0;
+  background-color: var(--surface-container-high);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  gap: var(--space-sm);
+}
+
+[data-theme='light'] .toolbar {
+  background-color: var(--surface-container-low);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+}
+
+.leftActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rightActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.iconButton:hover:not(:disabled) {
+  color: var(--primary);
+  background-color: rgba(var(--primary-rgb), 0.08);
+}
+
+.iconButton:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.executeButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: var(--type-size-xs);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition:
+    filter 0.15s ease,
+    opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+.executeButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.executePrimary {
+  background: var(--ui-primary-button-bg);
+  color: var(--on-primary);
+  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.2);
+}
+
+.executePrimary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.executeAll {
+  background-color: var(--surface-container-highest);
+  color: var(--on-surface-variant);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+}
+
+.executeAll:hover:not(:disabled) {
+  background-color: var(--surface-bright);
+  color: var(--on-surface);
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(var(--on-primary), 0.3);
+  border-top-color: var(--on-primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

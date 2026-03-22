@@ -306,6 +306,114 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'rename_table':
       return null
 
+    // --- Query execution ---
+    case 'execute_query':
+      // Support error simulation for Playwright tests
+      if (
+        typeof window !== 'undefined' &&
+        (window as unknown as Record<string, unknown>).__mockQueryError__
+      ) {
+        throw new Error("Table 'app_db.nonexistent' doesn't exist")
+      }
+      return {
+        queryId: 'mock-query-id-1',
+        columns: [
+          { name: 'id', dataType: 'BIGINT' },
+          { name: 'name', dataType: 'VARCHAR' },
+          { name: 'email', dataType: 'VARCHAR' },
+          { name: 'status', dataType: 'VARCHAR' },
+          { name: 'created_at', dataType: 'DATETIME' },
+        ],
+        totalRows: 5,
+        executionTimeMs: 42,
+        affectedRows: 0,
+        firstPage: [
+          [1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00'],
+          [1002, 'Elena Vance', 'vance.e@techcorp.com', 'active', '2024-02-20T14:22:00'],
+          [1003, 'Marcus Reed', 'm.reed@dbstudio.io', 'inactive', '2024-03-05T09:15:00'],
+          [1004, 'Sarah Kim', 's.kim@devtools.co', 'active', '2024-04-12T16:45:00'],
+          [1005, 'Alex Chen', 'alex.c@datacraft.net', 'active', '2024-05-08T11:00:00'],
+        ],
+        totalPages: 1,
+        autoLimitApplied: true,
+      }
+
+    case 'fetch_result_page':
+      return {
+        rows: [[1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00']],
+        page: 1,
+        totalPages: 1,
+      }
+
+    case 'evict_results':
+      return null
+
+    case 'fetch_schema_metadata':
+      return {
+        databases: ['ecommerce_db', 'analytics_db', 'staging_db'],
+        tables: {
+          ecommerce_db: [
+            {
+              name: 'users',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 1000,
+              dataSize: 1048576,
+            },
+            {
+              name: 'orders',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 5000,
+              dataSize: 2097152,
+            },
+            {
+              name: 'products',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 200,
+              dataSize: 524288,
+            },
+          ],
+          analytics_db: [
+            {
+              name: 'events',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 50000,
+              dataSize: 8388608,
+            },
+          ],
+        },
+        columns: {
+          'ecommerce_db.users': [
+            { name: 'id', dataType: 'BIGINT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+            { name: 'status', dataType: 'VARCHAR' },
+            { name: 'created_at', dataType: 'DATETIME' },
+          ],
+          'ecommerce_db.orders': [
+            { name: 'id', dataType: 'BIGINT' },
+            { name: 'user_id', dataType: 'BIGINT' },
+            { name: 'status', dataType: 'VARCHAR' },
+            { name: 'total', dataType: 'DECIMAL' },
+          ],
+        },
+        routines: {
+          ecommerce_db: [
+            { name: 'sp_get_orders', routineType: 'PROCEDURE' },
+            { name: 'fn_calculate_total', routineType: 'FUNCTION' },
+          ],
+        },
+      }
+
+    case 'read_file':
+      return "SELECT * FROM users\nWHERE status = 'active'\nLIMIT 100;"
+
+    case 'write_file':
+      return null
+
     default:
       return null
   }

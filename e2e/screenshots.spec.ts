@@ -96,7 +96,10 @@ async function openTwoConnectionSessionsFirstActive(page: Page) {
       .__connectionStore__ as {
       setState: (
         fn: (state: {
-          activeConnections: Record<string, { id: string; profile: Record<string, unknown>; status: string; serverVersion: string }>
+          activeConnections: Record<
+            string,
+            { id: string; profile: Record<string, unknown>; status: string; serverVersion: string }
+          >
         }) => Record<string, unknown>
       ) => void
     }
@@ -135,7 +138,10 @@ async function openTwoConnectionSessionsFirstActive(page: Page) {
     }))
   })
   await expect(page.getByText('Staging MySQL')).toBeVisible()
-  await expect(page.getByTestId('connection-session-tab-session-playwright-1')).toHaveAttribute('data-active', 'true')
+  await expect(page.getByTestId('connection-session-tab-session-playwright-1')).toHaveAttribute(
+    'data-active',
+    'true'
+  )
 }
 
 /** Connected workspace with schema-info active and a second tab so the top strip is visible in screenshots. */
@@ -166,6 +172,62 @@ async function openSchemaInfoWithWorkspaceTabStrip(page: Page) {
   await expect(page.getByTestId('workspace-tabs')).toBeVisible()
   await expect(page.getByTestId('schema-info-tab')).toBeVisible()
   await expect(page.getByTestId('stats-row')).toBeVisible()
+}
+
+/** Open a query editor tab via the "+" button after connecting. */
+async function openQueryEditorTab(page: Page) {
+  await connectToSample(page)
+  await page.getByTestId('new-query-tab-button').click()
+  await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+  // Wait for the editor toolbar to settle
+  await expect(page.getByTestId('editor-toolbar')).toBeVisible()
+}
+
+/** Open a query editor tab, set SQL content, execute, and wait for results. */
+async function openQueryEditorWithResults(page: Page) {
+  await openQueryEditorTab(page)
+
+  // Set content in the query store so the Execute button becomes enabled
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__queryStore__ as {
+      getState: () => { tabs: Record<string, { content: string }> }
+      setState: (fn: (state: Record<string, unknown>) => Record<string, unknown>) => void
+    }
+    // Find the active query tab (first one)
+    const tabIds = Object.keys(store.getState().tabs)
+    if (tabIds.length === 0) {
+      // No tab state yet — we need to find the tab ID from workspace store
+      const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+        getState: () => {
+          activeTabByConnection: Record<string, string | null>
+          tabsByConnection: Record<string, { id: string; type: string }[]>
+        }
+      }
+      const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+      const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+      if (queryTab) {
+        const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+          getState: () => { setContent: (id: string, c: string) => void }
+        }
+        qStore.getState().setContent(queryTab.id, 'SELECT * FROM users;')
+      }
+    } else {
+      const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+        getState: () => { setContent: (id: string, c: string) => void }
+      }
+      qStore.getState().setContent(tabIds[0], 'SELECT * FROM users;')
+    }
+  })
+
+  // Wait a tick for React to re-render with the content
+  await page.waitForTimeout(300)
+
+  // Click the Execute Query button
+  await page.getByTestId('toolbar-execute').click()
+
+  // Wait for results to appear
+  await expect(page.getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
 }
 
 /** Stable scroll for full-layout screenshots (parallel workers otherwise differ on tree scroll). */
@@ -481,6 +543,97 @@ for (const theme of themes) {
 
       await expect(page).toHaveScreenshot(`create-database-dialog-${theme}.png`, {
         animations: 'disabled',
+      })
+    })
+
+    // --- Query Editor states ---
+
+    test('QueryEditorTab — empty (no query run)', async ({ page }) => {
+      await openQueryEditorTab(page)
+      // Screenshot the toolbar + result panel (idle placeholder)
+      await expect(page.getByTestId('editor-toolbar')).toHaveScreenshot(
+        `query-editor-toolbar-empty-${theme}.png`,
+        { animations: 'disabled' }
+      )
+      await expect(page.getByTestId('result-panel')).toHaveScreenshot(
+        `query-editor-result-panel-empty-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('QueryEditorTab — with results (success)', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+      // Screenshot the result toolbar and grid
+      await expect(page.getByTestId('result-toolbar')).toHaveScreenshot(
+        `query-editor-result-toolbar-success-${theme}.png`,
+        { animations: 'disabled' }
+      )
+      await expect(page.getByTestId('result-grid')).toHaveScreenshot(
+        `query-editor-result-grid-success-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('StatusBar — query info after execution', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+      // The status bar should now show query rows/time info
+      await expect(page.getByTestId('status-bar')).toHaveScreenshot(
+        `status-bar-query-info-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('full app layout — query editor with results', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('app-layout')).toHaveScreenshot(
+        `app-full-layout-query-editor-results-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('QueryEditorTab — error state', async ({ page }) => {
+      await openQueryEditorTab(page)
+
+      // Enable query error simulation
+      await page.evaluate(() => {
+        ;(window as unknown as Record<string, unknown>).__mockQueryError__ = true
+      })
+
+      // Set content and execute
+      await page.evaluate(() => {
+        const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            tabsByConnection: Record<string, { id: string; type: string }[]>
+          }
+        }
+        const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+        const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+        if (queryTab) {
+          const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+            getState: () => { setContent: (id: string, c: string) => void }
+          }
+          qStore.getState().setContent(queryTab.id, 'SELECT * FROM nonexistent;')
+        }
+      })
+
+      await page.waitForTimeout(300)
+      await page.getByTestId('toolbar-execute').click()
+
+      // Wait for error state to appear in the result panel
+      await expect(page.getByTestId('result-panel')).toContainText("doesn't exist", {
+        timeout: APP_READY_MS,
+      })
+
+      // Screenshot the error result panel
+      await expect(page.getByTestId('result-panel')).toHaveScreenshot(
+        `query-editor-result-panel-error-${theme}.png`,
+        { animations: 'disabled' }
+      )
+
+      // Clean up error flag
+      await page.evaluate(() => {
+        delete (window as unknown as Record<string, unknown>).__mockQueryError__
       })
     })
   })

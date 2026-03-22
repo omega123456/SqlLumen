@@ -16,6 +16,7 @@ import type {
 import { useSchemaStore } from './schema-store'
 import { useWorkspaceStore } from './workspace-store'
 import { showErrorToast, showSuccessToast } from './toast-store'
+import { invalidateCache } from '../components/query-editor/schema-metadata-cache'
 
 let listenersSetup = false
 
@@ -111,6 +112,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       // Clear dependent store state for this connection
       useSchemaStore.getState().clearConnectionState(id)
       useWorkspaceStore.getState().clearConnectionTabs(id)
+      invalidateCache(id)
 
       set((state) => {
         const remaining = { ...state.activeConnections }

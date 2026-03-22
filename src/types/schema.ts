@@ -42,7 +42,7 @@ export interface TreeNode {
 }
 
 // ---------------------------------------------------------------------------
-// Workspace tab types
+// Workspace tab types — discriminated union
 // ---------------------------------------------------------------------------
 
 /** The kind of workspace tab. */
@@ -51,17 +51,41 @@ export type TabType = 'schema-info' | 'table-data' | 'query-editor'
 /** Database object types (excludes 'column' and 'category'). */
 export type ObjectType = 'table' | 'view' | 'procedure' | 'function' | 'trigger' | 'event'
 
-/** A single workspace tab. */
-export interface WorkspaceTab {
+/** Base fields shared by all workspace tab variants. */
+interface WorkspaceTabBase {
   id: string
-  type: TabType
   label: string
   connectionId: string
+  subTabId?: 'columns' | 'indexes' | 'fks' | 'ddl'
+}
+
+/** A schema-info tab (shows DDL, columns, indexes, etc.). */
+export interface SchemaInfoTab extends WorkspaceTabBase {
+  type: 'schema-info'
   databaseName: string
   objectName: string
   objectType: ObjectType
-  subTabId?: 'columns' | 'indexes' | 'fks' | 'ddl'
 }
+
+/** A table-data tab (shows table rows). */
+export interface TableDataTab extends WorkspaceTabBase {
+  type: 'table-data'
+  databaseName: string
+  objectName: string
+  objectType: ObjectType
+}
+
+/** A query editor tab (Monaco editor + results). */
+export interface QueryEditorTab extends WorkspaceTabBase {
+  type: 'query-editor'
+}
+
+/** Union of all workspace tab variants. */
+export type WorkspaceTab = SchemaInfoTab | TableDataTab | QueryEditorTab
+
+/** Distributive Omit — works correctly on union types. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never
 
 // ---------------------------------------------------------------------------
 // Schema data types (match Rust backend structs — camelCase via serde)
@@ -147,4 +171,49 @@ export interface SchemaInfoData {
   foreignKeys: ForeignKeyInfo[]
   ddl: string
   metadata: TableMetadata | null
+}
+
+// ---------------------------------------------------------------------------
+// Query result types (Phase 4)
+// ---------------------------------------------------------------------------
+
+export interface ColumnMeta {
+  name: string
+  dataType: string
+}
+
+export interface QueryResultMeta {
+  queryId: string
+  columns: ColumnMeta[]
+  totalRows: number
+  executionTimeMs: number
+  affectedRows: number
+  totalPages: number
+  autoLimitApplied: boolean
+}
+
+export interface ResultPage {
+  rows: unknown[][]
+  page: number
+  totalPages: number
+}
+
+export interface TableInfo {
+  name: string
+  engine: string
+  charset: string
+  rowCount: number
+  dataSize: number
+}
+
+export interface RoutineMeta {
+  name: string
+  routineType: string
+}
+
+export interface SchemaMetadataResponse {
+  databases: string[]
+  tables: Record<string, TableInfo[]>
+  columns: Record<string, ColumnMeta[]>
+  routines: Record<string, RoutineMeta[]>
 }

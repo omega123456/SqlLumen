@@ -1,0 +1,40 @@
+import { invoke } from '@tauri-apps/api/core'
+import type { QueryResultMeta, ResultPage, SchemaMetadataResponse } from '../types/schema'
+
+export interface ExecuteQueryResult extends QueryResultMeta {
+  firstPage: unknown[][]
+}
+
+export async function executeQuery(
+  connectionId: string,
+  tabId: string,
+  sql: string,
+  pageSize = 1000
+): Promise<ExecuteQueryResult> {
+  return invoke<ExecuteQueryResult>('execute_query', { connectionId, tabId, sql, pageSize })
+}
+
+export async function fetchResultPage(
+  connectionId: string,
+  tabId: string,
+  queryId: string,
+  page: number
+): Promise<ResultPage> {
+  return invoke<ResultPage>('fetch_result_page', { connectionId, tabId, queryId, page })
+}
+
+export async function evictResults(connectionId: string, tabId: string): Promise<void> {
+  return invoke<void>('evict_results', { connectionId, tabId })
+}
+
+export async function fetchSchemaMetadata(connectionId: string): Promise<SchemaMetadataResponse> {
+  return invoke<SchemaMetadataResponse>('fetch_schema_metadata', { connectionId })
+}
+
+export async function readFile(path: string): Promise<string> {
+  return invoke<string>('read_file', { path })
+}
+
+export async function writeFile(path: string, content: string): Promise<void> {
+  return invoke<void>('write_file', { path, content })
+}

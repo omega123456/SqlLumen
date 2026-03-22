@@ -1,7 +1,9 @@
 use rusqlite::Connection;
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::sync::{Mutex, RwLock};
 use tauri::AppHandle;
 
+use crate::mysql::query_executor::StoredResult;
 use crate::mysql::registry::ConnectionRegistry;
 
 /// Application-wide state accessible from Tauri commands.
@@ -12,4 +14,6 @@ pub struct AppState {
     pub registry: ConnectionRegistry,
     /// Tauri app handle (None only in unit tests where AppHandle is unavailable).
     pub app_handle: Option<AppHandle>,
+    /// In-memory query results keyed by (connection_id, tab_id).
+    pub results: RwLock<HashMap<(String, String), StoredResult>>,
 }

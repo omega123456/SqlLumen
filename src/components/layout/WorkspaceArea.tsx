@@ -3,7 +3,12 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import { WorkspaceTabs } from '../workspace/WorkspaceTabs'
 import { TableDataPlaceholder } from '../workspace/TableDataPlaceholder'
 import { SchemaInfoTab } from '../schema-info/SchemaInfoTab'
-import type { WorkspaceTab } from '../../types/schema'
+import { QueryEditorTab } from '../query-editor/QueryEditorTab'
+import type {
+  WorkspaceTab,
+  SchemaInfoTab as SchemaInfoTabType,
+  QueryEditorTab as QueryEditorTabType,
+} from '../../types/schema'
 import styles from './WorkspaceArea.module.css'
 
 const EMPTY_TABS: WorkspaceTab[] = []
@@ -39,39 +44,36 @@ export function WorkspaceArea() {
     )
   }
 
-  // Active connection but no workspace tabs → connected placeholder
-  if (tabs.length === 0) {
-    return (
-      <div className={styles.workspace} data-testid="workspace-area">
-        <div className={styles.connectedPlaceholder}>
-          <p className={styles.connectedText}>
-            Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
-            {activeConnection.profile.port})
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  // Active connection with workspace tabs
+  // Active connection — always show tab bar (even with 0 tabs)
   return (
     <div className={styles.workspaceTabbed} data-testid="workspace-area">
       <WorkspaceTabs connectionId={activeTabId!} />
       <div className={styles.workspaceScroll}>
         <div className={styles.tabContent}>
+          {/* No tabs: connected placeholder */}
+          {tabs.length === 0 && (
+            <div className={styles.connectedPlaceholder}>
+              <p className={styles.connectedText}>
+                Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
+                {activeConnection.profile.port})
+              </p>
+            </div>
+          )}
+          {/* Active tab content */}
           {activeTab?.type === 'table-data' && (
             <TableDataPlaceholder
               databaseName={activeTab.databaseName}
               tableName={activeTab.objectName}
             />
           )}
-          {activeTab?.type === 'schema-info' && <SchemaInfoTab key={activeTab.id} tab={activeTab} />}
-          {activeTab?.type === 'query-editor' && (
-            <div className={styles.queryEditorPlaceholder} data-testid="query-editor-placeholder">
-              <p>Query editor — coming in a future phase</p>
-            </div>
+          {activeTab?.type === 'schema-info' && (
+            <SchemaInfoTab key={activeTab.id} tab={activeTab as SchemaInfoTabType} />
           )}
-          {!activeTab && (
+          {activeTab?.type === 'query-editor' && (
+            <QueryEditorTab key={activeTab.id} tab={activeTab as QueryEditorTabType} />
+          )}
+          {/* Tabs exist but none active */}
+          {tabs.length > 0 && !activeTab && (
             <div className={styles.connectedPlaceholder}>
               <p className={styles.connectedText}>Select a tab to view content</p>
             </div>

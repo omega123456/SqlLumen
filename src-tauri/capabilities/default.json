@@ -35,6 +35,14 @@
     "allow-rename-database",
     "allow-drop-table",
     "allow-truncate-table",
-    "allow-rename-table"
+    "allow-rename-table",
+    "allow-execute-query",
+    "allow-fetch-result-page",
+    "allow-evict-results",
+    "allow-fetch-schema-metadata",
+    "allow-read-file",
+    "allow-write-file",
+    "dialog:allow-save",
+    "dialog:allow-open"
   ]
 }

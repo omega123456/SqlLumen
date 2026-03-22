@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 
+import './lib/monaco-worker-setup'
 import './styles/global.css'
 import App from './App'
 
@@ -15,9 +16,11 @@ async function init() {
     const { useWorkspaceStore } = await import('./stores/workspace-store')
     const { useToastStore } = await import('./stores/toast-store')
     const { useConnectionStore } = await import('./stores/connection-store')
+    const { useQueryStore } = await import('./stores/query-store')
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
     ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
     ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore
+    ;(window as unknown as Record<string, unknown>).__queryStore__ = useQueryStore
   }
 
   // Apply theme before React renders to prevent flash

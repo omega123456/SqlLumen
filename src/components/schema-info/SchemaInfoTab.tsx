@@ -1,5 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
-import type { WorkspaceTab, SchemaInfoResponse, ObjectType } from '../../types/schema'
+import type {
+  SchemaInfoTab as SchemaInfoTabType,
+  SchemaInfoResponse,
+  ObjectType,
+} from '../../types/schema'
 import { getSchemaInfo } from '../../lib/schema-commands'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { ColumnsPanel } from './ColumnsPanel'
@@ -11,10 +15,10 @@ import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import styles from './SchemaInfoTab.module.css'
 
 export interface SchemaInfoTabProps {
-  tab: WorkspaceTab
+  tab: SchemaInfoTabType
 }
 
-type SubTab = NonNullable<WorkspaceTab['subTabId']>
+type SubTab = NonNullable<SchemaInfoTabType['subTabId']>
 
 /** Which sub-tabs are visible per object type. */
 const SUB_TAB_VISIBILITY: Record<ObjectType, SubTab[]> = {
@@ -123,11 +127,7 @@ export function SchemaInfoTab({ tab }: SchemaInfoTabProps) {
       {/* Sub-tab navigation */}
       <UnderlineTabBar className={styles.subTabBar}>
         {visibleSubTabs.map((st) => (
-          <UnderlineTab
-            key={st}
-            active={activeSubTab === st}
-            onClick={() => handleSubTabClick(st)}
-          >
+          <UnderlineTab key={st} active={activeSubTab === st} onClick={() => handleSubTabClick(st)}>
             {SUB_TAB_LABELS[st]}
           </UnderlineTab>
         ))}

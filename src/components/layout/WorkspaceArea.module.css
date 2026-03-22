@@ -39,6 +39,14 @@
   min-height: 0;
 }
 
+/* QueryEditorTab needs to fill available height for react-resizable-panels */
+.tabContent > :global([data-testid='query-editor-tab']) {
+  flex: 1 1 auto;
+  align-self: stretch;
+  width: 100%;
+  min-height: 0;
+}
+
 .welcomeCard,
 .connectedPlaceholder {
   display: flex;

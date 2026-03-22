@@ -1,0 +1,35 @@
+[[permission]]
+identifier = "allow-execute-query"
+description = "Enables the execute_query command without any pre-configured scope."
+commands.allow = ["execute_query"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-fetch-result-page"
+description = "Enables the fetch_result_page command without any pre-configured scope."
+commands.allow = ["fetch_result_page"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-evict-results"
+description = "Enables the evict_results command without any pre-configured scope."
+commands.allow = ["evict_results"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-fetch-schema-metadata"
+description = "Enables the fetch_schema_metadata command without any pre-configured scope."
+commands.allow = ["fetch_schema_metadata"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-read-file"
+description = "Enables the read_file command without any pre-configured scope."
+commands.allow = ["read_file"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-write-file"
+description = "Enables the write_file command without any pre-configured scope."
+commands.allow = ["write_file"]
+commands.deny = []

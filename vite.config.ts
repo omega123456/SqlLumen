@@ -11,4 +11,10 @@ export default defineConfig({
       ignored: ['**/src-tauri/**'],
     },
   },
+  worker: {
+    format: 'es',
+  },
+  optimizeDeps: {
+    include: ['monaco-editor/esm/vs/editor/editor.worker'],
+  },
 })

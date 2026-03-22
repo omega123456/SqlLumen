@@ -92,7 +92,7 @@ describe('AlterDatabaseDialog', () => {
 
   it('shows loading state while fetching details', () => {
     // Hang all async sources so loading stays true and no late setState after the test ends
-    const pending = new Promise(() => {})
+    const pending = new Promise<never>(() => {})
     mockGetDatabaseDetails.mockReturnValue(pending)
     mockListCharsets.mockReturnValue(pending)
     mockListCollations.mockReturnValue(pending)

@@ -61,3 +61,28 @@
   color: var(--error);
   background-color: rgba(var(--error-rgb), 0.1);
 }
+
+/* New query tab button */
+.newTabButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: auto 0;
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.newTabButton:hover {
+  color: var(--primary);
+  background-color: rgba(var(--primary-rgb), 0.08);
+}
