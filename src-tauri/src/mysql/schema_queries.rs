@@ -181,6 +181,28 @@ fn decode_mysql_optional_text_cell(
     }
 }
 
+/// Wrappers for integration tests (`--features test-utils`) — exercise VARBINARY vs VARCHAR decode paths.
+#[cfg(all(not(coverage), any(test, feature = "test-utils")))]
+pub fn decode_mysql_text_cell_for_test(row: &MySqlRow, index: usize) -> Result<String, String> {
+    decode_mysql_text_cell(row, index)
+}
+
+#[cfg(all(not(coverage), any(test, feature = "test-utils")))]
+pub fn decode_mysql_text_cell_named_for_test(
+    row: &MySqlRow,
+    column: &str,
+) -> Result<String, String> {
+    decode_mysql_text_cell_named(row, column)
+}
+
+#[cfg(all(not(coverage), any(test, feature = "test-utils")))]
+pub fn decode_mysql_optional_text_cell_for_test(
+    row: &MySqlRow,
+    index: usize,
+) -> Result<Option<String>, String> {
+    decode_mysql_optional_text_cell(row, index)
+}
+
 #[cfg(not(coverage))]
 pub async fn query_list_databases(pool: &MySqlPool) -> Result<Vec<String>, String> {
     let rows = sqlx::query(

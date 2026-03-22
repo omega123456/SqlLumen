@@ -4,6 +4,11 @@ use mysql_client_lib::credentials;
 use mysql_client_lib::mysql::registry::{
     ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams,
 };
+#[cfg(not(coverage))]
+use mysql_client_lib::mysql::schema_queries::{
+    decode_mysql_optional_text_cell_for_test, decode_mysql_text_cell_for_test,
+    decode_mysql_text_cell_named_for_test,
+};
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use tokio_util::sync::CancellationToken;
 
@@ -395,4 +400,74 @@ fn test_create_pool_with_live_mysql() {
         let pool = create_pool(&params).await.expect("should create pool");
         pool.close().await;
     });
+}
+
+/// `information_schema` identifier columns can be `VARBINARY` (e.g. MariaDB). sqlx cannot use
+/// `row.get::<String>()` on those cells — we must fall back to bytes + UTF-8. This test forces
+/// that path with `CAST(? AS BINARY)` (requires `MYSQL_TEST_URL`).
+#[cfg(not(coverage))]
+#[tokio::test]
+async fn test_schema_text_decode_accepts_varbinary_like_information_schema() {
+    let url = match std::env::var("MYSQL_TEST_URL") {
+        Ok(u) => u,
+        Err(_) => {
+            eprintln!(
+                "Skipping test_schema_text_decode_accepts_varbinary_like_information_schema: MYSQL_TEST_URL not set"
+            );
+            return;
+        }
+    };
+
+    let pool = MySqlPoolOptions::new()
+        .max_connections(1)
+        .connect(&url)
+        .await
+        .expect("should connect to MYSQL_TEST_URL");
+
+    let row_bin = sqlx::query("SELECT CAST(? AS BINARY) AS schema_name")
+        .bind("my_db_τest")
+        .fetch_one(&pool)
+        .await
+        .expect("CAST AS BINARY query");
+
+    assert_eq!(
+        decode_mysql_text_cell_for_test(&row_bin, 0).expect("indexed VARBINARY decode"),
+        "my_db_τest"
+    );
+
+    let row_named = sqlx::query("SELECT CAST(? AS BINARY) AS Key_name")
+        .bind("named_idx")
+        .fetch_one(&pool)
+        .await
+        .expect("named CAST AS BINARY query");
+
+    assert_eq!(
+        decode_mysql_text_cell_named_for_test(&row_named, "Key_name").expect("named VARBINARY decode"),
+        "named_idx"
+    );
+
+    let row_txt = sqlx::query(
+        "SELECT CAST(? AS CHAR(64) CHARACTER SET utf8mb4) AS plain",
+    )
+    .bind("utf8_plain")
+    .fetch_one(&pool)
+    .await
+    .expect("CHAR utf8mb4 query");
+
+    assert_eq!(
+        decode_mysql_text_cell_for_test(&row_txt, 0).expect("VARCHAR decode"),
+        "utf8_plain"
+    );
+
+    let row_null = sqlx::query("SELECT CAST(NULL AS BINARY) AS x")
+        .fetch_one(&pool)
+        .await
+        .expect("NULL binary query");
+
+    assert_eq!(
+        decode_mysql_optional_text_cell_for_test(&row_null, 0).expect("optional decode"),
+        None
+    );
+
+    pool.close().await;
 }
