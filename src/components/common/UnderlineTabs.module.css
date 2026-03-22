@@ -19,8 +19,8 @@
   flex-shrink: 0;
   padding: 12px 20px;
   font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-size: var(--type-nav-tab);
+  font-weight: var(--type-nav-weight);
   color: var(--on-surface-variant);
   background-color: transparent;
   border: none;
@@ -37,6 +37,7 @@
 
 .simpleActive {
   color: var(--primary);
+  font-weight: var(--type-nav-weight-active);
   background-color: var(--underline-tab-active-bg);
 }
 
@@ -63,8 +64,8 @@
   position: relative;
   color: var(--on-surface-variant);
   font-family: var(--font-body);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
+  font-size: var(--type-nav-tab);
+  font-weight: var(--type-nav-weight);
   background-color: transparent;
   transition:
     color 0.15s ease,
@@ -78,6 +79,7 @@
 
 .cellActive {
   color: var(--primary);
+  font-weight: var(--type-nav-weight-active);
   background-color: var(--underline-tab-active-bg);
 }
 

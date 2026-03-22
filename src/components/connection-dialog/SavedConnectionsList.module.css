@@ -17,10 +17,10 @@
 }
 
 .profilesTitle {
-  font-size: 10px;
-  font-weight: 800;
+  font-size: var(--type-label-caps);
+  font-weight: var(--type-label-caps-weight);
   font-family: var(--font-headline);
-  letter-spacing: 0.1em;
+  letter-spacing: var(--type-label-caps-tracking);
   text-transform: uppercase;
   color: var(--ui-label-caps-fg);
 }
@@ -82,16 +82,16 @@
 }
 
 .groupName {
-  font-size: 10px;
-  font-weight: 800;
+  font-size: var(--type-label-caps);
+  font-weight: var(--type-label-caps-weight);
   font-family: var(--font-headline);
   text-transform: uppercase;
   color: var(--ui-label-caps-fg);
-  letter-spacing: 0.1em;
+  letter-spacing: var(--type-label-caps-tracking);
 }
 
 .renameInput {
-  font-size: var(--font-size-xs);
+  font-size: var(--type-label-caps);
   font-weight: 600;
   text-transform: uppercase;
   color: var(--on-surface);
@@ -157,7 +157,7 @@
 }
 
 .connectionTitle {
-  font-size: var(--font-size-ui-strong);
+  font-size: var(--type-body-emphasis);
   font-weight: var(--ui-list-title-idle-weight);
   font-family: var(--font-headline);
   color: var(--ui-list-title-idle-fg);
@@ -175,7 +175,7 @@
 }
 
 .connectionHost {
-  font-size: 10px;
+  font-size: var(--type-meta);
   font-family: var(--font-mono);
   color: var(--ui-list-meta-fg);
   overflow: hidden;
@@ -191,7 +191,7 @@
   flex-shrink: 0;
   padding: 16px;
   border-top: var(--ui-storage-footer-border-top);
-  font-size: 10px;
+  font-size: var(--type-meta);
   font-weight: 500;
   color: var(--ui-storage-footer-fg);
   font-family: var(--font-mono);
@@ -214,7 +214,7 @@
 
 .errorText {
   flex: 1;
-  font-size: var(--font-size-xs);
+  font-size: var(--type-size-xs);
   color: var(--error);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -224,7 +224,7 @@
 .errorDismiss {
   flex-shrink: 0;
   padding: 0 var(--space-xs);
-  font-size: var(--font-size-sm);
+  font-size: var(--type-size-sm);
   color: var(--error);
   background: transparent;
   border: none;

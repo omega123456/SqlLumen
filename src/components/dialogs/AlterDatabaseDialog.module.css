@@ -2,7 +2,7 @@
 
 .title {
   margin: 0 0 4px;
-  font-size: 16px;
+  font-size: var(--type-size-xl);
   font-weight: 700;
   font-family: var(--font-headline);
   color: var(--on-surface);
@@ -10,7 +10,7 @@
 
 .subtitle {
   margin: 0 0 20px;
-  font-size: 13px;
+  font-size: var(--type-body);
   font-family: var(--font-mono);
   color: var(--on-surface-variant);
 }
@@ -26,7 +26,7 @@
 .label {
   display: block;
   margin-bottom: 6px;
-  font-size: 12px;
+  font-size: var(--type-size-sm);
   font-weight: 500;
   font-family: var(--font-body);
   color: var(--on-surface-variant);
@@ -36,11 +36,11 @@
   padding: 24px;
   text-align: center;
   color: var(--on-surface-variant);
-  font-size: 13px;
+  font-size: var(--type-body);
 }
 
 .error {
-  font-size: 12px;
+  font-size: var(--type-size-sm);
   font-family: var(--font-body);
   color: var(--error);
   margin-top: 12px;

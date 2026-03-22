@@ -6,7 +6,7 @@
 
 .title {
   margin: 0 0 20px;
-  font-size: 16px;
+  font-size: var(--type-size-xl);
   font-weight: 700;
   font-family: var(--font-headline);
   color: var(--on-surface);
@@ -23,14 +23,14 @@
 .label {
   display: block;
   margin-bottom: 6px;
-  font-size: 12px;
+  font-size: var(--type-size-sm);
   font-weight: 500;
   font-family: var(--font-body);
   color: var(--on-surface-variant);
 }
 
 .error {
-  font-size: 12px;
+  font-size: var(--type-size-sm);
   font-family: var(--font-body);
   color: var(--error);
   margin-top: 12px;
@@ -41,7 +41,7 @@
 }
 
 .validationError {
-  font-size: 11px;
+  font-size: var(--type-size-xs);
   color: var(--error);
   margin-top: 4px;
 }

@@ -54,11 +54,53 @@
   --font-headline: 'Manrope', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', 'Menlo', monospace;
-  --font-size-xs: 11px;
-  --font-size-sm: 12px;
-  --font-size-md: 13px;
-  --font-size-lg: 14px;
-  --font-size-xl: 16px;
+
+  /* ---- Typography: type scale (only place literal font sizes belong) ----
+   * 4px grid. Semantic roles point here; components use --type-* or --ui-* only.
+   */
+  --type-size-3xs: 9px;
+  --type-size-2xs: 10px;
+  --type-size-xs: 11px;
+  --type-size-sm: 12px;
+  --type-size-md: 13px;
+  --type-size-lg: 14px;
+  --type-size-xl: 16px;
+  --type-size-2xl: 20px;
+  --type-size-3xl: 32px;
+  --type-size-4xl: 48px;
+
+  --type-body: var(--type-size-md);
+  --type-body-lh: 1.5;
+  --type-body-lg: var(--type-size-lg);
+  --type-body-emphasis: var(--type-size-lg);
+  --type-nav: var(--type-size-lg);
+  --type-nav-tab: var(--type-size-lg);
+  --type-nav-weight: 500;
+  --type-nav-weight-active: 600;
+  --type-label-caps: var(--type-size-xs);
+  --type-label-caps-weight: 800;
+  --type-label-caps-tracking: 0.1em;
+  --type-button-sm: var(--type-size-sm);
+  --type-button-sm-weight: 600;
+  --type-subtitle: var(--type-size-sm);
+  --type-dialog-title: var(--type-size-lg);
+  --type-section-title: var(--type-size-lg);
+  --type-title-hero: var(--type-size-xl);
+  --type-display-lg: var(--type-size-3xl);
+  --type-headline-md: 24px;
+  --type-title-lg: var(--type-size-2xl);
+  --type-object-name: 1.1rem;
+  --type-code: var(--type-size-lg);
+  --type-code-lh: 1.6;
+  --type-meta: var(--type-size-2xs);
+  --type-status: var(--type-size-2xs);
+  --type-context-menu: var(--type-size-md);
+
+  /* Table / panel column headers — dark: 10px mono; light overrides below */
+  --type-table-header-size: var(--type-size-2xs);
+  --type-table-header-weight: 700;
+  --type-table-header-tracking: 0.08em;
+  --type-table-header-font: var(--font-mono);
 
   /* Spacing */
   --space-xs: 4px;
@@ -78,10 +120,6 @@
   --letter-spacing-display-tight: -0.02em;
   --letter-spacing-dialog-title: -0.01em;
   --letter-spacing-label-md: 0.05rem;
-  --font-size-subtitle: var(--font-size-sm);
-  --font-size-dialog-title: var(--font-size-lg);
-  --font-size-ssl-title: 14px;
-  --font-size-ui-strong: 14px;
   /* Utility tokens */
   --elevation-overlay: 0 12px 32px rgba(var(--on-surface-rgb), 0.06);
   --control-border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
@@ -110,7 +148,7 @@
   --ui-dialog-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.25);
   --ui-dialog-header-padding-y: var(--space-md);
   --ui-dialog-header-padding-x: var(--space-lg);
-  --ui-dialog-title-size: var(--font-size-dialog-title);
+  --ui-dialog-title-size: var(--type-dialog-title);
   --ui-dialog-title-weight: 600;
 
   --ui-dialog-sidebar-bg: var(--surface-container-low);
@@ -143,7 +181,7 @@
 
   --ui-input-bg: var(--surface-container-highest);
   --ui-input-fg: var(--on-surface);
-  --ui-input-font-size: var(--font-size-md);
+  --ui-input-font-size: var(--type-body);
   --ui-input-line-height: 1.25;
   --ui-input-radius: var(--radius-sm);
   --ui-input-padding-y: 10px;
@@ -152,8 +190,8 @@
   --ui-input-placeholder-opacity: 0.35;
 
   --ui-label-caps-fg: var(--on-surface-variant);
-  --ui-subtitle-size: var(--font-size-subtitle);
-  --ui-title-hero-size: var(--font-size-xl);
+  --ui-subtitle-size: var(--type-subtitle);
+  --ui-title-hero-size: var(--type-title-hero);
   --ui-title-hero-weight: 800;
 
   --ui-password-toggle-hover-fg: var(--on-surface);
@@ -195,7 +233,7 @@
   --ui-browse-button-hover-fg: var(--on-surface);
 
   --ui-collapsible-trigger-font: var(--font-headline);
-  --ui-collapsible-trigger-size: var(--font-size-sm);
+  --ui-collapsible-trigger-size: var(--type-size-sm);
   --ui-collapsible-trigger-hover-bg: rgba(var(--on-surface-rgb), 0.04);
 
   --ui-list-row-hover-bg: rgba(var(--on-surface-rgb), 0.05);
@@ -243,7 +281,7 @@
   --ui-dropdown-option-hover-bg: var(--surface-bright);
   --ui-dropdown-option-selected-bg: rgba(var(--primary-rgb), 0.1);
   --ui-dropdown-option-label-selected-weight: 700;
-  --ui-dropdown-option-meta-font-size: 10px;
+  --ui-dropdown-option-meta-font-size: var(--type-meta);
   --ui-dropdown-option-meta-color: color-mix(in srgb, var(--on-surface-variant) 65%, transparent);
   --ui-dropdown-listbox-padding: 0;
 
@@ -264,7 +302,7 @@
   --ui-context-menu-backdrop-filter: none;
   --ui-context-menu-item-padding-x: var(--space-lg);
   --ui-context-menu-item-padding-y: 8px;
-  --ui-context-menu-item-font-size: 13px;
+  --ui-context-menu-item-font-size: var(--type-context-menu);
   --ui-context-menu-item-font-weight: 500;
   --ui-context-menu-item-gap: var(--space-md);
   --ui-context-menu-item-fg: #f1f5f9;
@@ -365,9 +403,11 @@
   --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
   --control-focus-ring-tight: 0 0 0 1px var(--primary);
   --glass-blur: blur(20px);
-  /* Typography overrides */
-  --font-size-subtitle: 14px;
-  --font-size-dialog-title: 1.125rem;
+  /* Typography — light theme (query_slate_light) */
+  --type-subtitle: var(--type-size-lg);
+  --type-dialog-title: 1.125rem;
+  --type-table-header-size: var(--type-size-xs);
+  --type-table-header-font: var(--font-body);
   --letter-spacing-dialog-title: -0.025em;
 
   /* ---------- Semantic UI tokens — light (query_slate_light) ---------- */
@@ -381,7 +421,7 @@
   --ui-dialog-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
   --ui-dialog-header-padding-y: 16px;
   --ui-dialog-header-padding-x: 24px;
-  --ui-dialog-title-size: var(--font-size-dialog-title);
+  --ui-dialog-title-size: var(--type-dialog-title);
   --ui-dialog-title-weight: 700;
 
   --ui-dialog-sidebar-bg: var(--surface-container-low);
@@ -412,10 +452,10 @@
   /* Slight grey fill so fields read as inputs on white forms (between lowest + low) */
   --ui-input-bg: #f1f5f97a;
   --ui-input-fg: var(--on-surface);
-  --ui-input-font-size: 14px;
+  --ui-input-font-size: var(--type-size-lg);
 
   --ui-label-caps-fg: var(--on-surface-variant);
-  --ui-subtitle-size: var(--font-size-subtitle);
+  --ui-subtitle-size: var(--type-subtitle);
 
   --ui-password-toggle-hover-fg: var(--primary);
 
@@ -454,7 +494,7 @@
   --ui-browse-button-hover-fg: var(--on-surface);
 
   --ui-collapsible-trigger-font: var(--font-body);
-  --ui-collapsible-trigger-size: 14px;
+  --ui-collapsible-trigger-size: var(--type-size-lg);
 
   --ui-list-row-hover-bg: var(--surface-container-high);
   --ui-list-item-selected-bg: var(--surface-container-lowest);
@@ -499,7 +539,7 @@
   --ui-context-menu-border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
   --ui-context-menu-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.12);
   --ui-context-menu-backdrop-filter: blur(24px);
-  --ui-context-menu-item-font-size: 14px;
+  --ui-context-menu-item-font-size: var(--type-size-lg);
   --ui-context-menu-item-fg: var(--on-surface-variant);
   --ui-context-menu-item-icon-fg: var(--on-surface-variant);
   --ui-context-menu-item-hover-bg: var(--primary);

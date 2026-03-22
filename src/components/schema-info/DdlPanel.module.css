@@ -31,7 +31,7 @@
   border-radius: 6px;
   background: var(--surface-container-high);
   color: var(--on-surface-variant);
-  font-size: 11px;
+  font-size: var(--type-size-xs);
   font-weight: 600;
   cursor: pointer;
   border: 1px solid rgba(var(--outline-variant-rgb), 0.2);

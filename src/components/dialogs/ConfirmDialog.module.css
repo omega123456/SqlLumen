@@ -5,7 +5,7 @@
   align-items: center;
   gap: 10px;
   margin: 0 0 16px;
-  font-size: 16px;
+  font-size: var(--type-size-xl);
   font-weight: 700;
   font-family: var(--font-headline);
   color: var(--on-surface);
@@ -19,7 +19,7 @@
 }
 
 .message {
-  font-size: 14px;
+  font-size: var(--type-body-lg);
   font-family: var(--font-body);
   color: var(--on-surface-variant);
   line-height: 1.5;
@@ -27,14 +27,14 @@
 }
 
 .warning {
-  font-size: 12px;
+  font-size: var(--type-size-sm);
   font-family: var(--font-body);
   color: var(--error);
   margin: 0 0 4px;
 }
 
 .error {
-  font-size: 12px;
+  font-size: var(--type-size-sm);
   font-family: var(--font-body);
   color: var(--error);
   margin-top: 12px;
@@ -61,7 +61,7 @@
   border-radius: var(--ui-action-button-radius);
   background: var(--error);
   color: var(--on-error);
-  font-size: 14px;
+  font-size: var(--type-body-emphasis);
   font-family: var(--font-body);
   font-weight: 700;
   line-height: 1.2;

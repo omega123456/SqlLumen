@@ -5,17 +5,18 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--font-size-sm);
+  font-size: var(--type-body);
   font-family: var(--font-body);
 }
 
 .th {
   text-align: left;
   padding: 8px 12px;
-  font-size: 10px;
-  font-weight: 700;
+  font-family: var(--type-table-header-font);
+  font-size: var(--type-table-header-size);
+  font-weight: var(--type-table-header-weight);
+  letter-spacing: var(--type-table-header-tracking);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
   color: var(--on-surface-variant);
   opacity: 0.7;
   border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.2);
@@ -50,20 +51,20 @@
 .nullYes {
   color: var(--on-surface-variant);
   opacity: 0.7;
-  font-size: 11px;
+  font-size: var(--type-size-xs);
 }
 
 .nullNo {
   color: var(--on-surface);
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--type-size-xs);
 }
 
 .keyBadge {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: var(--type-meta);
   font-weight: 700;
   letter-spacing: 0.05em;
 }
@@ -103,5 +104,5 @@
 .extra {
   font-family: var(--font-mono);
   color: var(--on-surface-variant);
-  font-size: 11px;
+  font-size: var(--type-size-xs);
 }

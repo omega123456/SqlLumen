@@ -108,7 +108,7 @@
 .title {
   margin: 0;
   font-family: var(--font-headline);
-  font-size: var(--font-size-lg);
+  font-size: var(--type-body-lg);
   font-weight: 700;
   line-height: 1.25;
   color: var(--ui-toast-dark-title-fg);
@@ -117,7 +117,7 @@
 .message {
   margin: var(--space-xs) 0 0;
   font-family: var(--font-body);
-  font-size: var(--font-size-sm);
+  font-size: var(--type-size-sm);
   line-height: 1.5;
   color: var(--ui-toast-dark-body-fg);
 }

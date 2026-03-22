@@ -8,7 +8,8 @@
 }
 
 .statusText {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-mono);
+  font-size: var(--type-status);
   color: var(--on-surface-variant);
 }
 

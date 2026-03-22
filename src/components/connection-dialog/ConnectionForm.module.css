@@ -127,16 +127,16 @@
 }
 
 .labelCaps {
-  font-size: 10px;
-  font-weight: 800;
+  font-size: var(--type-label-caps);
+  font-weight: var(--type-label-caps-weight);
   font-family: var(--font-headline);
-  letter-spacing: 0.1em;
+  letter-spacing: var(--type-label-caps-tracking);
   text-transform: uppercase;
   color: var(--ui-label-caps-fg);
 }
 
 .label {
-  font-size: var(--font-size-sm);
+  font-size: var(--type-body);
   color: var(--on-surface-variant);
   font-weight: 500;
   font-family: var(--font-body);
@@ -187,7 +187,7 @@
 }
 
 .errorText {
-  font-size: var(--font-size-xs);
+  font-size: var(--type-size-xs);
   color: var(--error);
 }
 
@@ -250,14 +250,14 @@
 }
 
 .sslTitle {
-  font-size: var(--font-size-ssl-title);
+  font-size: var(--type-section-title);
   font-weight: 700;
   font-family: var(--font-headline);
   color: var(--on-surface);
 }
 
 .sslHint {
-  font-size: 10px;
+  font-size: var(--type-meta);
   font-weight: 600;
   font-family: var(--font-body);
   color: var(--ui-ssl-hint-fg);
@@ -362,7 +362,7 @@
 }
 
 .unitLabel {
-  font-size: var(--font-size-sm);
+  font-size: var(--type-size-sm);
   color: var(--on-surface-variant);
   font-family: var(--font-body);
 }

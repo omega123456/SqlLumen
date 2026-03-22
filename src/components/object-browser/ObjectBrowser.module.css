@@ -31,7 +31,7 @@
   border: 1px solid var(--outline-variant);
   border-radius: 6px;
   padding: 6px 10px 6px 32px;
-  font-size: 12px;
+  font-size: var(--type-size-sm);
   color: var(--on-surface);
   outline: none;
   box-sizing: border-box;
@@ -62,5 +62,5 @@
   padding: 24px 16px;
   text-align: center;
   color: var(--on-surface-variant);
-  font-size: 13px;
+  font-size: var(--type-body);
 }

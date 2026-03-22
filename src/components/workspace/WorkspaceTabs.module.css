@@ -44,7 +44,7 @@
   padding: 0;
   border: none;
   background: transparent;
-  font-size: 14px;
+  font-size: var(--type-nav-tab);
   line-height: 1;
   color: var(--on-surface-variant);
   opacity: 0;

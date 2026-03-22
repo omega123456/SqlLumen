@@ -116,7 +116,7 @@
 }
 
 .label {
-  font-size: 13px;
+  font-size: var(--type-body);
   color: var(--on-surface);
   white-space: nowrap;
   overflow: hidden;
@@ -132,7 +132,7 @@
 }
 
 .columnType {
-  font-size: 11px;
+  font-size: var(--type-size-xs);
   color: var(--on-surface-variant);
   opacity: 0.5;
   margin-left: 6px;

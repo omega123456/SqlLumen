@@ -2,6 +2,10 @@
 @import './tokens.css';
 @import './fonts.css';
 
+html {
+  -webkit-font-smoothing: antialiased;
+}
+
 html,
 body {
   height: 100%;
@@ -10,10 +14,10 @@ body {
 
 body {
   font-family: var(--font-body);
-  font-size: var(--font-size-md);
+  font-size: var(--type-body);
   background-color: var(--surface);
   color: var(--on-surface);
-  line-height: 1.5;
+  line-height: var(--type-body-lh);
 }
 
 #root {
@@ -94,10 +98,11 @@ button {
 
 .ui-elevated-panel-header__label {
   min-width: 0;
-  font-size: 10px;
-  font-weight: 700;
+  font-family: var(--type-table-header-font);
+  font-size: var(--type-table-header-size);
+  font-weight: var(--type-table-header-weight);
+  letter-spacing: var(--type-table-header-tracking);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
   color: var(--on-surface-variant);
   opacity: 0.7;
 }
@@ -154,24 +159,24 @@ button {
 }
 
 .ui-label {
-  font-size: var(--font-size-sm);
+  font-size: var(--type-body);
   font-weight: 500;
   font-family: var(--font-body);
   color: var(--on-surface-variant);
 }
 
 .ui-label-caps {
-  font-size: 10px;
-  font-weight: 800;
+  font-size: var(--type-label-caps);
+  font-weight: var(--type-label-caps-weight);
   font-family: var(--font-headline);
-  letter-spacing: 0.1em;
+  letter-spacing: var(--type-label-caps-tracking);
   text-transform: uppercase;
   color: var(--ui-label-caps-fg);
 }
 
 .ui-helper {
   margin-top: 0.4rem;
-  font-size: var(--font-size-sm);
+  font-size: var(--type-size-sm);
   font-family: var(--font-body);
   color: var(--on-surface-variant);
   line-height: 1.35;
@@ -187,7 +192,7 @@ button {
   border-radius: var(--ui-action-button-radius);
   background: var(--ui-primary-button-bg);
   color: var(--on-primary);
-  font-size: var(--font-size-ui-strong, 14px);
+  font-size: var(--type-body-emphasis);
   font-family: var(--font-body);
   font-weight: 700;
   line-height: 1.2;
@@ -225,7 +230,7 @@ button {
   border-radius: var(--ui-action-button-radius);
   background: var(--ui-secondary-button-bg);
   color: var(--ui-secondary-button-fg);
-  font-size: var(--font-size-ui-strong, 14px);
+  font-size: var(--type-body-emphasis);
   font-family: var(--font-body);
   font-weight: 700;
   line-height: 1.2;
@@ -253,7 +258,7 @@ button {
   border-radius: var(--ui-action-button-radius);
   background: transparent;
   color: var(--ui-test-button-fg);
-  font-size: var(--font-size-ui-strong, 14px);
+  font-size: var(--type-body-emphasis);
   font-family: var(--font-body);
   font-weight: 700;
   line-height: 1.2;
@@ -283,9 +288,9 @@ button {
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--primary);
-  font-size: var(--font-size-sm);
+  font-size: var(--type-button-sm);
   font-family: var(--font-body);
-  font-weight: 600;
+  font-weight: var(--type-button-sm-weight);
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
