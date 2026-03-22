@@ -1,5 +1,6 @@
 import type { WorkspaceTab } from '../../types/schema'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import styles from './WorkspaceTabs.module.css'
 
 const EMPTY_TABS: WorkspaceTab[] = []
@@ -16,40 +17,40 @@ export function WorkspaceTabs({ connectionId }: WorkspaceTabsProps) {
   const setActiveTab = useWorkspaceStore((state) => state.setActiveTab)
   const closeTab = useWorkspaceStore((state) => state.closeTab)
 
-  if (tabs.length === 0) return null
+  if (tabs.length === 0) {
+    return null
+  }
 
   return (
-    <div className={styles.tabBar} data-testid="workspace-tabs">
+    <UnderlineTabBar className={styles.workspaceTabRailBleed} data-testid="workspace-tabs">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId
         return (
-          <div
+          <UnderlineTab
             key={tab.id}
-            className={`${styles.tab} ${isActive ? styles.tabActive : ''}`}
+            active={isActive}
+            className={styles.workspaceTab}
             data-testid={`workspace-tab-${tab.id}`}
+            onSelect={() => setActiveTab(connectionId, tab.id)}
+            suffix={
+              <button
+                type="button"
+                className={styles.tabClose}
+                aria-label={`Close ${tab.label}`}
+                tabIndex={-1}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  closeTab(connectionId, tab.id)
+                }}
+              >
+                ×
+              </button>
+            }
           >
-            <button
-              type="button"
-              className={styles.tabButton}
-              onClick={() => setActiveTab(connectionId, tab.id)}
-            >
-              <span className={styles.tabLabel}>{tab.label}</span>
-            </button>
-            <button
-              type="button"
-              className={styles.tabClose}
-              aria-label={`Close ${tab.label}`}
-              tabIndex={-1}
-              onClick={(e) => {
-                e.stopPropagation()
-                closeTab(connectionId, tab.id)
-              }}
-            >
-              ×
-            </button>
-          </div>
+            <span className={styles.tabLabel}>{tab.label}</span>
+          </UnderlineTab>
         )
       })}
-    </div>
+    </UnderlineTabBar>
   )
 }

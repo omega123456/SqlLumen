@@ -3,6 +3,7 @@ import { useThemeStore } from '../../stores/theme-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import type { Theme } from '../../stores/theme-store'
 import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
+import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import styles from './ConnectionTabBar.module.css'
 
 export function ConnectionTabBar() {
@@ -37,48 +38,44 @@ export function ConnectionTabBar() {
       </div>
       {tabs.length > 0 && (
         <div className={styles.tabsSection}>
-          {tabs.map((conn) => {
-            const isActive = conn.id === activeTabId
-            return (
-              <button
-                key={conn.id}
-                type="button"
-                className={`${styles.tab} ${isActive ? styles.tabActive : styles.tabInactive}`}
-                style={{
-                  borderBottomColor: conn.profile.color ?? 'var(--outline-variant)',
-                }}
-                onClick={() => switchTab(conn.id)}
-                title={`${conn.profile.name} (${conn.profile.host}:${conn.profile.port})`}
-              >
-                {conn.profile.color && (
-                  <span
-                    className={styles.colorDot}
-                    style={{ backgroundColor: conn.profile.color }}
-                  />
-                )}
-                <ConnectionStatusIndicator status={conn.status} size={8} />
-                <span className={styles.tabName}>{conn.profile.name}</span>
-                <span
-                  className={styles.closeButton}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Close ${conn.profile.name}`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    void closeConnection(conn.id)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.stopPropagation()
-                      void closeConnection(conn.id)
-                    }
-                  }}
+          <UnderlineTabBar className={styles.connectionTabRail}>
+            {tabs.map((conn) => {
+              const isActive = conn.id === activeTabId
+              return (
+                <UnderlineTab
+                  key={conn.id}
+                  active={isActive}
+                  onSelect={() => switchTab(conn.id)}
+                  title={`${conn.profile.name} (${conn.profile.host}:${conn.profile.port})`}
+                  prefix={
+                    <>
+                      {conn.profile.color ? (
+                        <span
+                          className={styles.colorDot}
+                          style={{ backgroundColor: conn.profile.color }}
+                        />
+                      ) : null}
+                      <ConnectionStatusIndicator status={conn.status} size={8} />
+                    </>
+                  }
+                  suffix={
+                    <button
+                      type="button"
+                      className={styles.closeButton}
+                      aria-label={`Close ${conn.profile.name}`}
+                      onClick={() => {
+                        void closeConnection(conn.id)
+                      }}
+                    >
+                      <X size={14} weight="regular" />
+                    </button>
+                  }
                 >
-                  <X size={14} weight="regular" />
-                </span>
-              </button>
-            )
-          })}
+                  <span className={styles.tabName}>{conn.profile.name}</span>
+                </UnderlineTab>
+              )
+            })}
+          </UnderlineTabBar>
         </div>
       )}
       <div className={styles.rightSection}>

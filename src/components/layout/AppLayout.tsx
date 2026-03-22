@@ -30,7 +30,12 @@ export function AppLayout() {
             <Sidebar />
           </Panel>
           <Separator className={styles.resizeHandle} onDoubleClick={handleSeparatorDoubleClick} />
-          <Panel id="workspace" className={styles.workspacePanel}>
+          <Panel
+            id="workspace"
+            className={styles.workspacePanel}
+            /* Let workspace tab rail extend over the resize gutter (default Panel inner overflow:auto clips it) */
+            style={{ overflow: 'visible' }}
+          >
             <WorkspaceArea />
           </Panel>
         </Group>

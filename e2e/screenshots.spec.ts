@@ -67,6 +67,46 @@ async function connectToSample(page: Page) {
   }
 }
 
+/** Connected workspace with schema-info active and a second tab so the top strip is visible in screenshots. */
+async function openSchemaInfoWithWorkspaceTabStrip(page: Page) {
+  await connectToSample(page)
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    const open = store.getState().openTab
+    open({
+      type: 'table-data',
+      label: 'ecommerce_db.orders',
+      connectionId: 'conn-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+    open({
+      type: 'schema-info',
+      label: 'users',
+      connectionId: 'conn-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'users',
+      objectType: 'table',
+    })
+  })
+  await expect(page.getByTestId('workspace-tabs')).toBeVisible()
+  await expect(page.getByTestId('schema-info-tab')).toBeVisible()
+  await expect(page.getByTestId('stats-row')).toBeVisible()
+}
+
+/** Stable scroll for full-layout screenshots (parallel workers otherwise differ on tree scroll). */
+async function resetChromeScrollPositions(page: Page) {
+  await page.getByTestId('object-browser-scroll').evaluate((el) => {
+    el.scrollTop = 0
+  })
+  await page.evaluate(() => {
+    window.scrollTo(0, 0)
+  })
+}
+
 for (const theme of themes) {
   test.describe(`visual regression (${theme})`, () => {
     test.beforeEach(async ({ page }) => {
@@ -246,6 +286,43 @@ for (const theme of themes) {
 
       await expect(page.getByTestId('schema-info-tab')).toHaveScreenshot(
         `schema-info-ddl-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceTabs — strip above schema-info (multi-tab)', async ({ page }) => {
+      await openSchemaInfoWithWorkspaceTabStrip(page)
+      await expect(page.getByTestId('workspace-tabs')).toHaveScreenshot(
+        `workspace-tabs-above-schema-info-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceArea — tabs + schema-info header region', async ({ page }) => {
+      await openSchemaInfoWithWorkspaceTabStrip(page)
+      await expect(page.getByTestId('workspace-area')).toHaveScreenshot(
+        `workspace-area-schema-info-with-tabs-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('full app layout — schema-info selected (columns, multi-tab)', async ({ page }) => {
+      await openSchemaInfoWithWorkspaceTabStrip(page)
+      await expect(page.getByTestId('columns-panel')).toBeVisible()
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('app-layout')).toHaveScreenshot(
+        `app-full-layout-schema-info-columns-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('full app layout — schema-info DDL sub-tab (multi-tab)', async ({ page }) => {
+      await openSchemaInfoWithWorkspaceTabStrip(page)
+      await page.getByRole('button', { name: 'DDL' }).click()
+      await expect(page.getByTestId('ddl-panel')).toBeVisible()
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('app-layout')).toHaveScreenshot(
+        `app-full-layout-schema-info-ddl-${theme}.png`,
         { animations: 'disabled' }
       )
     })

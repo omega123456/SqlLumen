@@ -1,8 +1,8 @@
 .tabBar {
-  height: 40px;
+  height: 44px;
   background-color: var(--surface-container);
   display: flex;
-  align-items: center;
+  align-items: stretch;
   padding: 0 var(--space-sm);
   flex-shrink: 0;
   gap: 0;
@@ -38,12 +38,10 @@
   color: var(--on-surface);
 }
 
-/* Scrollable tabs area */
+/* Scrollable tabs area — outer chrome keeps surface-container; active tab fill via UnderlineTabs token */
 .tabsSection {
   display: flex;
-  align-items: center;
-  gap: 2px;
-  overflow-x: auto;
+  align-items: stretch;
   flex: 1;
   min-width: 0;
   padding: 0 var(--space-xs);
@@ -54,43 +52,10 @@
   display: none; /* Chrome/Safari */
 }
 
-/* Individual tab */
-.tab {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  height: 40px;
-  padding: 0 var(--space-sm);
-  border: none;
-  background: none;
-  cursor: pointer;
-  white-space: nowrap;
-  font-size: var(--font-size-sm);
-  border-bottom: 3px solid transparent;
-  transition:
-    background-color 0.1s ease,
-    color 0.1s ease,
-    opacity 0.1s ease;
-  flex-shrink: 0;
-}
-
-.tab:hover {
-  background-color: var(--surface-container-high);
-}
-
-.tabActive {
-  color: var(--on-surface);
-  opacity: 1;
-  border-bottom-color: var(--primary);
-}
-
-.tabInactive {
-  color: var(--on-surface-variant);
-  opacity: 0.6;
-}
-
-.tabInactive:hover {
-  opacity: 0.8;
+.connectionTabRail {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
 }
 
 /* 8px color swatch circle */
@@ -118,6 +83,9 @@
   color: var(--on-surface-variant);
   cursor: pointer;
   flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
   transition:
     background-color 0.1s ease,
     color 0.1s ease;

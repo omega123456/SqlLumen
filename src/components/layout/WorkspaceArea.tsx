@@ -57,24 +57,26 @@ export function WorkspaceArea() {
   return (
     <div className={styles.workspaceTabbed} data-testid="workspace-area">
       <WorkspaceTabs connectionId={activeTabId!} />
-      <div className={styles.tabContent}>
-        {activeTab?.type === 'table-data' && (
-          <TableDataPlaceholder
-            databaseName={activeTab.databaseName}
-            tableName={activeTab.objectName}
-          />
-        )}
-        {activeTab?.type === 'schema-info' && <SchemaInfoTab key={activeTab.id} tab={activeTab} />}
-        {activeTab?.type === 'query-editor' && (
-          <div className={styles.queryEditorPlaceholder} data-testid="query-editor-placeholder">
-            <p>Query editor — coming in a future phase</p>
-          </div>
-        )}
-        {!activeTab && (
-          <div className={styles.connectedPlaceholder}>
-            <p className={styles.connectedText}>Select a tab to view content</p>
-          </div>
-        )}
+      <div className={styles.workspaceScroll}>
+        <div className={styles.tabContent}>
+          {activeTab?.type === 'table-data' && (
+            <TableDataPlaceholder
+              databaseName={activeTab.databaseName}
+              tableName={activeTab.objectName}
+            />
+          )}
+          {activeTab?.type === 'schema-info' && <SchemaInfoTab key={activeTab.id} tab={activeTab} />}
+          {activeTab?.type === 'query-editor' && (
+            <div className={styles.queryEditorPlaceholder} data-testid="query-editor-placeholder">
+              <p>Query editor — coming in a future phase</p>
+            </div>
+          )}
+          {!activeTab && (
+            <div className={styles.connectedPlaceholder}>
+              <p className={styles.connectedText}>Select a tab to view content</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

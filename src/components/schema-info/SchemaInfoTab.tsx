@@ -7,6 +7,7 @@ import { IndexesPanel } from './IndexesPanel'
 import { ForeignKeysPanel } from './ForeignKeysPanel'
 import { DdlPanel } from './DdlPanel'
 import { StatsRow } from './StatsRow'
+import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import styles from './SchemaInfoTab.module.css'
 
 export interface SchemaInfoTabProps {
@@ -123,18 +124,17 @@ export function SchemaInfoTab({ tab }: SchemaInfoTabProps) {
       )}
 
       {/* Sub-tab navigation */}
-      <div className={styles.subTabBar}>
+      <UnderlineTabBar className={styles.subTabBar}>
         {visibleSubTabs.map((st) => (
-          <button
+          <UnderlineTab
             key={st}
-            type="button"
-            className={`${styles.subTab} ${activeSubTab === st ? styles.subTabActive : ''}`}
+            active={activeSubTab === st}
             onClick={() => handleSubTabClick(st)}
           >
             {SUB_TAB_LABELS[st]}
-          </button>
+          </UnderlineTab>
         ))}
-      </div>
+      </UnderlineTabBar>
 
       {/* Sub-tab content */}
       <div className={styles.subTabContent}>

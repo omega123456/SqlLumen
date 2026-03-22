@@ -94,6 +94,11 @@
   --tree-indent: 16px;
   --tree-row-height: 28px;
 
+  /* Underline tabs — rail is transparent; active tab uses this fill */
+  --underline-tab-active-bg: var(--surface-container-low);
+  /* Width of react-resizable-panels Separator between sidebar and workspace (tab rail bleeds left by this much) */
+  --resize-handle-width: 4px;
+
   /* ---------- Semantic UI tokens — dark (query_slate) ---------- */
   --ui-modal-bg: var(--surface-container);
   --ui-modal-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
@@ -349,6 +354,9 @@
   --glass-surface-rgb: 255, 255, 255;
   --scrim-rgb: 0, 0, 0;
   --status-bar-surface: #e6e8ea;
+
+  /* Active underline tab fill in light theme */
+  --underline-tab-active-bg: #ffffff;
 
   /* Utility tokens */
   --elevation-overlay: 0 20px 40px -12px rgba(var(--on-surface-rgb), 0.08);
