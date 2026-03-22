@@ -45,7 +45,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'list_connection_groups':
       return []
     case 'open_connection':
-      return { serverVersion: '8.0.33-mock' }
+      return { sessionId: 'session-playwright-1', serverVersion: '8.0.33-mock' }
     case 'test_connection':
       return {
         success: true,

@@ -18,6 +18,8 @@ pub enum ConnectionStatus {
 /// This struct lives only in the in-memory registry — never persisted.
 #[derive(Debug, Clone)]
 pub struct StoredConnectionParams {
+    /// Saved connection profile id (SQLite row). Used for keychain password lookup.
+    pub profile_id: String,
     pub host: String,
     pub port: u16,
     pub username: String,
@@ -56,7 +58,10 @@ impl StoredConnectionParams {
 /// A registered MySQL connection with its pool and metadata.
 pub struct RegistryEntry {
     pub pool: MySqlPool,
-    pub connection_id: String,
+    /// Runtime session id (registry map key, health monitor id, IPC `connectionId`).
+    pub session_id: String,
+    /// Saved profile id used for keychain and SQLite profile updates.
+    pub profile_id: String,
     pub status: ConnectionStatus,
     pub server_version: String,
     pub cancellation_token: CancellationToken,

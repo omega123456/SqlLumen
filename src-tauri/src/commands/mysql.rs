@@ -23,6 +23,8 @@ use std::time::Instant;
 use tauri::State;
 #[cfg(not(coverage))]
 use tokio_util::sync::CancellationToken;
+#[cfg(not(coverage))]
+use uuid::Uuid;
 
 /// Input parameters for testing a MySQL connection.
 #[derive(Debug, Clone, Deserialize)]
@@ -56,6 +58,8 @@ pub struct TestConnectionResult {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenConnectionResult {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
     pub server_version: String,
 }
 
@@ -80,7 +84,7 @@ fn lock_db(state: &AppState) -> Result<MutexGuard<'_, Connection>, String> {
 #[cfg(not(coverage))]
 fn health_monitor_token(
     state: &AppState,
-    connection_id: &str,
+    session_id: &str,
     keepalive_secs: u64,
 ) -> CancellationToken {
     if keepalive_secs == 0 {
@@ -88,7 +92,7 @@ fn health_monitor_token(
         token.cancel();
         token
     } else if let Some(ref handle) = state.app_handle {
-        health::spawn_health_monitor(connection_id.to_string(), keepalive_secs, handle.clone())
+        health::spawn_health_monitor(session_id.to_string(), keepalive_secs, handle.clone())
     } else {
         CancellationToken::new()
     }
@@ -196,25 +200,25 @@ pub async fn test_connection_impl(_input: TestConnectionInput) -> TestConnection
 }
 
 /// Open a saved connection: reads from SQLite, retrieves password from keychain,
-/// creates pool, registers it, and spawns a health monitor task.
+/// creates pool, registers it under a new session id, and spawns a health monitor task.
 #[cfg(not(coverage))]
 pub async fn open_connection_impl(
     state: &AppState,
-    connection_id: &str,
+    profile_id: &str,
 ) -> Result<OpenConnectionResult, String> {
     // Read connection profile from SQLite
     let record = {
         let conn = lock_db(state)?;
-        match connections::get_connection(&conn, connection_id) {
+        match connections::get_connection(&conn, profile_id) {
             Ok(Some(record)) => record,
-            Ok(None) => return Err(format!("Connection '{connection_id}' not found")),
+            Ok(None) => return Err(format!("Connection '{profile_id}' not found")),
             Err(error) => return Err(error.to_string()),
         }
     };
 
     // Retrieve password from keychain — propagate errors instead of hiding them
     let password = if record.has_password {
-        credentials::retrieve_password_for_connection(connection_id, record.keychain_ref.as_deref())
+        credentials::retrieve_password_for_connection(profile_id, record.keychain_ref.as_deref())
             .map_err(|e| format!("Failed to retrieve password from keychain: {e}"))?
     } else {
         String::new()
@@ -225,6 +229,7 @@ pub async fn open_connection_impl(
 
     // Build stored params first (for registry entry), then derive ConnectionParams from them.
     let stored_params = StoredConnectionParams {
+        profile_id: profile_id.to_string(),
         host: record.host,
         port: record.port as u16,
         username: record.username,
@@ -249,47 +254,53 @@ pub async fn open_connection_impl(
     // Get server version
     let server_version = fetch_server_version(&pool).await;
 
+    let session_id = Uuid::new_v4().to_string();
+
     // Spawn health monitor (requires AppHandle — only available in real Tauri runtime)
     // If keepalive_interval_secs is 0, health monitoring is disabled for this connection.
-    let cancellation_token = health_monitor_token(state, connection_id, keepalive_secs);
+    let cancellation_token = health_monitor_token(state, &session_id, keepalive_secs);
 
-    // Register in registry (close old pool if replacing)
     let entry = RegistryEntry {
         pool,
-        connection_id: connection_id.to_string(),
+        session_id: session_id.clone(),
+        profile_id: profile_id.to_string(),
         status: ConnectionStatus::Connected,
         server_version: server_version.clone(),
         cancellation_token,
         connection_params: stored_params,
         read_only: record.read_only,
     };
-    if let Some(old_entry) = state.registry.insert(connection_id.to_string(), entry) {
+    if let Some(old_entry) = state.registry.insert(session_id.clone(), entry) {
         close_pool(old_entry.pool).await;
     }
 
-    Ok(OpenConnectionResult { server_version })
+    Ok(OpenConnectionResult {
+        session_id,
+        server_version,
+    })
 }
 
 #[cfg(coverage)]
 pub async fn open_connection_impl(
     state: &AppState,
-    connection_id: &str,
+    profile_id: &str,
 ) -> Result<OpenConnectionResult, String> {
     let record = {
         let conn = lock_db(state)?;
-        match connections::get_connection(&conn, connection_id) {
+        match connections::get_connection(&conn, profile_id) {
             Ok(Some(record)) => record,
-            Ok(None) => return Err(format!("Connection '{connection_id}' not found")),
+            Ok(None) => return Err(format!("Connection '{profile_id}' not found")),
             Err(error) => return Err(error.to_string()),
         }
     };
 
     if record.has_password {
-        credentials::retrieve_password_for_connection(connection_id, record.keychain_ref.as_deref())
+        credentials::retrieve_password_for_connection(profile_id, record.keychain_ref.as_deref())
             .map_err(|e| format!("Failed to retrieve password from keychain: {e}"))?;
     }
 
     let params = crate::mysql::registry::StoredConnectionParams {
+        profile_id: profile_id.to_string(),
         host: record.host,
         port: record.port as u16,
         username: record.username,
@@ -305,11 +316,15 @@ pub async fn open_connection_impl(
     }
     .to_connection_params(String::new());
 
-    create_pool(&params)
+    let pool = create_pool(&params)
         .await
         .map_err(|e| format!("Failed to connect: {e}"))?;
 
+    pool.close().await;
+
+    let session_id = uuid::Uuid::new_v4().to_string();
     Ok(OpenConnectionResult {
+        session_id,
         server_version: "Unknown".to_string(),
     })
 }
@@ -355,13 +370,20 @@ pub async fn test_connection(
     Ok(test_connection_impl(input).await)
 }
 
+/// Open IPC payload: `profileId` is the saved connection row id (SQLite).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenConnectionPayload {
+    pub profile_id: String,
+}
+
 #[cfg(not(coverage))]
 #[tauri::command]
 pub async fn open_connection(
-    connection_id: String,
+    payload: OpenConnectionPayload,
     state: State<'_, AppState>,
 ) -> Result<OpenConnectionResult, String> {
-    open_connection_impl(&state, &connection_id).await
+    open_connection_impl(&state, &payload.profile_id).await
 }
 
 #[cfg(not(coverage))]

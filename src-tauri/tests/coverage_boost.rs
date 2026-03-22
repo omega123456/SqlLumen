@@ -8,7 +8,7 @@ use mysql_client_lib::commands::connections::{
 };
 use mysql_client_lib::commands::mysql::{
     close_connection_impl, get_connection_status_impl, open_connection_impl, test_connection_impl,
-    OpenConnectionResult, TestConnectionInput,
+    OpenConnectionPayload, OpenConnectionResult, TestConnectionInput,
 };
 use mysql_client_lib::commands::settings::{
     get_all_settings_impl, get_setting_impl, set_setting_impl,
@@ -195,10 +195,10 @@ fn save_connection(data: SaveConnectionInput, state: tauri::State<'_, AppState>)
 
 #[tauri::command]
 async fn open_connection(
-    connection_id: String,
+    payload: OpenConnectionPayload,
     state: tauri::State<'_, AppState>,
 ) -> Result<OpenConnectionResult, String> {
-    open_connection_impl(&state, &connection_id).await
+    open_connection_impl(&state, &payload.profile_id).await
 }
 
 fn build_connection_commands_app(
@@ -296,6 +296,7 @@ fn save_input_json(input: SaveConnectionInput) -> serde_json::Value {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenConnectionResultDto {
+    session_id: String,
     server_version: String,
 }
 
@@ -317,11 +318,13 @@ fn sample_test_connection_input() -> TestConnectionInput {
 fn sample_registry_entry(status: ConnectionStatus) -> RegistryEntry {
     RegistryEntry {
         pool: dummy_pool(),
-        connection_id: "conn-1".to_string(),
+        session_id: "conn-1".to_string(),
+        profile_id: "conn-1".to_string(),
         status,
         server_version: "8.0.36".to_string(),
         cancellation_token: CancellationToken::new(),
         connection_params: StoredConnectionParams {
+            profile_id: "conn-1".to_string(),
             host: "127.0.0.1".to_string(),
             port: 3306,
             username: "root".to_string(),
@@ -791,12 +794,15 @@ async fn open_connection_ipc_uses_stored_keychain_ref() {
         &webview,
         "open_connection",
         json!({
-            "connectionId": connection_id,
+            "payload": {
+                "profileId": connection_id,
+            },
         }),
     )
     .expect("open_connection IPC should use the stored keychain ref");
 
     assert_eq!(result.server_version, "Unknown");
+    assert!(!result.session_id.is_empty());
 }
 
 #[tokio::test]
@@ -841,11 +847,13 @@ async fn health_reconnect_uses_stored_keychain_ref() {
         connection_id.clone(),
         RegistryEntry {
             pool: dummy_pool(),
-            connection_id: connection_id.clone(),
+            session_id: connection_id.clone(),
+            profile_id: connection_id.clone(),
             status: ConnectionStatus::Disconnected,
             server_version: "Unknown".to_string(),
             cancellation_token: CancellationToken::new(),
             connection_params: StoredConnectionParams {
+                profile_id: connection_id.clone(),
                 host: "127.0.0.1".to_string(),
                 port: 3306,
                 username: "root".to_string(),
@@ -914,24 +922,22 @@ async fn open_connection_impl_creates_uncancelled_token_when_keepalive_enabled_w
 
 #[tokio::test]
 #[cfg(coverage)]
-async fn open_connection_impl_replaces_existing_registry_entry() {
+async fn open_connection_impl_distinct_session_per_open() {
     let state = test_state();
-    let connection_id = save_connection_impl(&state, sample_save_input(None))
+    let profile_id = save_connection_impl(&state, sample_save_input(None))
         .expect("save should succeed");
-    let old_token = CancellationToken::new();
-    let old_token_clone = old_token.clone();
-    let mut existing_entry = sample_registry_entry(ConnectionStatus::Disconnected);
-    existing_entry.connection_id = connection_id.clone();
-    existing_entry.cancellation_token = old_token;
-    state.registry.insert(connection_id.clone(), existing_entry);
     let _pool_guard = install_test_pool_factory(forced_pool_success);
 
-    let result = open_connection_impl(&state, &connection_id)
+    let r1 = open_connection_impl(&state, &profile_id)
         .await
-        .expect("open should succeed");
+        .expect("first open should succeed");
+    let r2 = open_connection_impl(&state, &profile_id)
+        .await
+        .expect("second open should succeed");
 
-    assert_eq!(result.server_version, "Unknown");
-    assert!(!old_token_clone.is_cancelled());
+    assert_ne!(r1.session_id, r2.session_id);
+    assert_eq!(r1.server_version, "Unknown");
+    assert_eq!(r2.server_version, "Unknown");
 }
 
 #[test]

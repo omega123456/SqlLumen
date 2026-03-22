@@ -25,6 +25,7 @@ fn dummy_pool() -> sqlx::MySqlPool {
 
 fn dummy_params() -> StoredConnectionParams {
     StoredConnectionParams {
+        profile_id: "profile-dummy".to_string(),
         host: "127.0.0.1".to_string(),
         port: 13306,
         username: "dummy".to_string(),
@@ -71,7 +72,8 @@ fn test_stored_connection_params_to_connection_params() {
 fn dummy_entry(id: &str) -> RegistryEntry {
     RegistryEntry {
         pool: dummy_pool(),
-        connection_id: id.to_string(),
+        session_id: id.to_string(),
+        profile_id: "profile-dummy".to_string(),
         status: ConnectionStatus::Connected,
         server_version: "8.0.0".to_string(),
         cancellation_token: CancellationToken::new(),

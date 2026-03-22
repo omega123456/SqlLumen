@@ -22,6 +22,24 @@ export function ConnectionTabBar() {
   }
 
   const tabs = Object.values(activeConnections)
+  const tabsByProfileId = new Map<string, typeof tabs>()
+  for (const c of tabs) {
+    const pid = c.profile.id
+    const list = tabsByProfileId.get(pid) ?? []
+    list.push(c)
+    tabsByProfileId.set(pid, list)
+  }
+  const tabDisplayName = (c: (typeof tabs)[0]) => {
+    const list = tabsByProfileId.get(c.profile.id) ?? []
+    if (list.length <= 1) {
+      return c.profile.name
+    }
+    const idx = list.findIndex((x) => x.id === c.id) + 1
+    if (idx === 1) {
+      return c.profile.name
+    }
+    return `${c.profile.name} (${idx})`
+  }
 
   return (
     <div className={styles.tabBar} data-testid="connection-tab-bar">

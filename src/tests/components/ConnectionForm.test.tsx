@@ -487,7 +487,9 @@ describe('ConnectionForm', () => {
           makeSavedConnection({ id: 'new-conn-id', name: 'Local', host: 'localhost' }),
         ])
       if (cmd === 'list_connection_groups') return Promise.resolve([])
-      if (cmd === 'open_connection') return Promise.resolve({ serverVersion: '8.0.35' })
+      if (cmd === 'open_connection') {
+        return Promise.resolve({ sessionId: 'sess-test-1', serverVersion: '8.0.35' })
+      }
       return Promise.resolve(null)
     })
 
@@ -514,7 +516,9 @@ describe('ConnectionForm', () => {
           makeSavedConnection({ id: 'new-conn-id', name: 'Local', host: 'localhost' }),
         ])
       if (cmd === 'list_connection_groups') return Promise.resolve([])
-      if (cmd === 'open_connection') return Promise.resolve({ serverVersion: '8.0.35' })
+      if (cmd === 'open_connection') {
+        return Promise.resolve({ sessionId: 'sess-test-1', serverVersion: '8.0.35' })
+      }
       return Promise.resolve(null)
     })
 
@@ -690,7 +694,9 @@ describe('ConnectionForm', () => {
       if (cmd === 'update_connection') return Promise.resolve(undefined)
       if (cmd === 'list_connections') return Promise.resolve([editConn])
       if (cmd === 'list_connection_groups') return Promise.resolve([])
-      if (cmd === 'open_connection') return Promise.resolve({ serverVersion: '8.0.35' })
+      if (cmd === 'open_connection') {
+        return Promise.resolve({ sessionId: 'sess-test-1', serverVersion: '8.0.35' })
+      }
       return Promise.resolve(null)
     })
 

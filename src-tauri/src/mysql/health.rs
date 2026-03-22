@@ -207,7 +207,7 @@ async fn reconnect_loop_impl<R: Runtime>(
         // Build ConnectionParams from stored params, re-reading password from keychain
         let password = if stored_params.has_password {
             match credentials::retrieve_password_for_connection(
-                connection_id,
+                stored_params.profile_id.as_str(),
                 stored_params.keychain_ref.as_deref(),
             ) {
                 Ok(p) => p,

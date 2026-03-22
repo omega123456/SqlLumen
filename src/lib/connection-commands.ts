@@ -112,27 +112,32 @@ export async function testConnection(params: ConnectionFormData): Promise<TestCo
 }
 
 /**
- * Open a saved connection by ID. Returns server version info.
+ * Open a saved connection profile. Returns a new runtime session id and server version.
+ * Multiple calls with the same profile id create independent sessions (separate pools).
  */
-export async function openConnection(id: string): Promise<{ serverVersion: string }> {
-  return invoke<{ serverVersion: string }>('open_connection', { connectionId: id })
+export async function openConnection(
+  profileId: string
+): Promise<{ sessionId: string; serverVersion: string }> {
+  return invoke<{ sessionId: string; serverVersion: string }>('open_connection', {
+    payload: { profileId },
+  })
 }
 
 /**
- * Close an open connection by ID.
+ * Close an open connection session by its runtime session id.
  */
-export async function closeConnection(id: string): Promise<void> {
-  return invoke<void>('close_connection', { connectionId: id })
+export async function closeConnection(sessionId: string): Promise<void> {
+  return invoke<void>('close_connection', { connectionId: sessionId })
 }
 
 /**
- * Get the current status of an open connection.
- * Returns null if the connection ID is not found in the registry.
+ * Get the current status of an open connection session.
+ * Returns null if the session id is not found in the registry.
  */
 export async function getConnectionStatus(
-  id: string
+  sessionId: string
 ): Promise<'connected' | 'disconnected' | 'reconnecting' | null> {
   return invoke<'connected' | 'disconnected' | 'reconnecting' | null>('get_connection_status', {
-    connectionId: id,
+    connectionId: sessionId,
   })
 }

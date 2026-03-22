@@ -78,7 +78,7 @@ async function openSchemaInfoWithWorkspaceTabStrip(page: Page) {
     open({
       type: 'table-data',
       label: 'ecommerce_db.orders',
-      connectionId: 'conn-playwright-1',
+      connectionId: 'session-playwright-1',
       databaseName: 'ecommerce_db',
       objectName: 'orders',
       objectType: 'table',
@@ -86,7 +86,7 @@ async function openSchemaInfoWithWorkspaceTabStrip(page: Page) {
     open({
       type: 'schema-info',
       label: 'users',
-      connectionId: 'conn-playwright-1',
+      connectionId: 'session-playwright-1',
       databaseName: 'ecommerce_db',
       objectName: 'users',
       objectType: 'table',
@@ -269,7 +269,7 @@ for (const theme of themes) {
         store.getState().openTab({
           type: 'schema-info',
           label: 'users',
-          connectionId: 'conn-playwright-1',
+          connectionId: 'session-playwright-1',
           databaseName: 'ecommerce_db',
           objectName: 'users',
           objectType: 'table',

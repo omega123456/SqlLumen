@@ -264,11 +264,11 @@ describe('testConnection', () => {
 })
 
 describe('openConnection', () => {
-  it('calls invoke with correct command and connectionId arg', async () => {
-    mockInvoke.mockResolvedValue({ serverVersion: '8.0.35' })
+  it('calls invoke with profileId and returns sessionId', async () => {
+    mockInvoke.mockResolvedValue({ sessionId: 'sess-1', serverVersion: '8.0.35' })
     const result = await openConnection('conn-1')
-    expect(mockInvoke).toHaveBeenCalledWith('open_connection', { connectionId: 'conn-1' })
-    expect(result).toEqual({ serverVersion: '8.0.35' })
+    expect(mockInvoke).toHaveBeenCalledWith('open_connection', { payload: { profileId: 'conn-1' } })
+    expect(result).toEqual({ sessionId: 'sess-1', serverVersion: '8.0.35' })
   })
 
   it('propagates errors from invoke', async () => {

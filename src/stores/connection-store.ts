@@ -48,7 +48,7 @@ interface ConnectionState {
   openDialog: () => void
   closeDialog: () => void
   clearError: () => void
-  updateDefaultDatabase: (connectionId: string, newDefaultDb: string | null) => Promise<void>
+  updateDefaultDatabase: (sessionId: string, newDefaultDb: string | null) => Promise<void>
   setupEventListeners: () => Promise<(() => void) | undefined>
 }
 
@@ -84,15 +84,15 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       const result = await openConnectionIPC(id)
 
       const active: ActiveConnection = {
-        id,
+        id: result.sessionId,
         profile,
         status: 'connected',
         serverVersion: result.serverVersion,
       }
 
       set((state) => ({
-        activeConnections: { ...state.activeConnections, [id]: active },
-        activeTabId: id,
+        activeConnections: { ...state.activeConnections, [result.sessionId]: active },
+        activeTabId: result.sessionId,
         error: null,
       }))
       showSuccessToast('Connected', profile.name)
@@ -161,30 +161,40 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
   closeDialog: () => set({ dialogOpen: false }),
   clearError: () => set({ error: null }),
 
-  updateDefaultDatabase: async (connectionId: string, newDefaultDb: string | null) => {
-    const active = get().activeConnections[connectionId]
-    if (!active) return
+  updateDefaultDatabase: async (sessionId: string, newDefaultDb: string | null) => {
+    const active = get().activeConnections[sessionId]
+    if (!active) {
+      return
+    }
 
+    const profileId = active.profile.id
     const originalDefault = active.profile.defaultDatabase
     const updatedProfile = { ...active.profile, defaultDatabase: newDefaultDb }
 
-    // Update in-memory optimistically
+    const patchActivesForProfile = (
+      state: { activeConnections: Record<string, ActiveConnection> },
+      profile: SavedConnection
+    ): Record<string, ActiveConnection> => {
+      const next = { ...state.activeConnections }
+      for (const sid of Object.keys(next)) {
+        if (next[sid].profile.id === profileId) {
+          next[sid] = { ...next[sid], profile }
+        }
+      }
+      return next
+    }
+
+    // Update in-memory optimistically (all sessions for this profile + saved list)
     set((state) => ({
-      activeConnections: {
-        ...state.activeConnections,
-        [connectionId]: {
-          ...state.activeConnections[connectionId],
-          profile: updatedProfile,
-        },
-      },
+      activeConnections: patchActivesForProfile(state, updatedProfile),
       savedConnections: state.savedConnections.map((c) =>
-        c.id === connectionId ? { ...c, defaultDatabase: newDefaultDb } : c
+        c.id === profileId ? { ...c, defaultDatabase: newDefaultDb } : c
       ),
     }))
 
     // Persist via IPC — revert in-memory state on failure
     try {
-      await updateConnectionIPC(connectionId, {
+      await updateConnectionIPC(profileId, {
         name: updatedProfile.name,
         host: updatedProfile.host,
         port: updatedProfile.port,
@@ -205,22 +215,13 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       console.error('Failed to persist defaultDatabase change:', e)
       const msg = e instanceof Error ? e.message : String(e)
       showErrorToast('Failed to save default database', msg)
-      // Revert in-memory state if connection still exists
-      const current = get().activeConnections[connectionId]
+      const revertedProfile = { ...updatedProfile, defaultDatabase: originalDefault }
+      const current = get().activeConnections[sessionId]
       if (current) {
         set((state) => ({
-          activeConnections: {
-            ...state.activeConnections,
-            [connectionId]: {
-              ...state.activeConnections[connectionId],
-              profile: {
-                ...state.activeConnections[connectionId].profile,
-                defaultDatabase: originalDefault,
-              },
-            },
-          },
+          activeConnections: patchActivesForProfile(state, revertedProfile),
           savedConnections: state.savedConnections.map((c) =>
-            c.id === connectionId ? { ...c, defaultDatabase: originalDefault } : c
+            c.id === profileId ? { ...c, defaultDatabase: originalDefault } : c
           ),
         }))
       }

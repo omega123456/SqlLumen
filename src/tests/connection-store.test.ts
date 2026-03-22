@@ -129,21 +129,44 @@ describe('useConnectionStore — openConnection', () => {
   it('adds to activeConnections and sets activeTabId', async () => {
     useConnectionStore.setState({ savedConnections: [mockSavedConnection] })
     mockIPC((cmd) => {
-      if (cmd === 'open_connection') return { serverVersion: '8.0.35' }
+      if (cmd === 'open_connection') {
+        return { sessionId: 'sess-1', serverVersion: '8.0.35' }
+      }
       return null
     })
 
     await useConnectionStore.getState().openConnection('conn-1')
 
     const state = useConnectionStore.getState()
-    expect(state.activeConnections['conn-1']).toEqual({
-      id: 'conn-1',
+    expect(state.activeConnections['sess-1']).toEqual({
+      id: 'sess-1',
       profile: mockSavedConnection,
       status: 'connected',
       serverVersion: '8.0.35',
     })
-    expect(state.activeTabId).toBe('conn-1')
+    expect(state.activeTabId).toBe('sess-1')
     expect(state.error).toBeNull()
+  })
+
+  it('opens multiple sessions for the same saved profile', async () => {
+    useConnectionStore.setState({ savedConnections: [mockSavedConnection] })
+    let n = 0
+    mockIPC((cmd) => {
+      if (cmd === 'open_connection') {
+        n += 1
+        return { sessionId: `sess-${n}`, serverVersion: '8.0.35' }
+      }
+      return null
+    })
+
+    await useConnectionStore.getState().openConnection('conn-1')
+    await useConnectionStore.getState().openConnection('conn-1')
+
+    const state = useConnectionStore.getState()
+    expect(Object.keys(state.activeConnections).sort()).toEqual(['sess-1', 'sess-2'])
+    expect(state.activeConnections['sess-1'].profile.id).toBe('conn-1')
+    expect(state.activeConnections['sess-2'].profile.id).toBe('conn-1')
+    expect(state.activeTabId).toBe('sess-2')
   })
 
   it('sets error when profile not found in savedConnections', async () => {
@@ -161,7 +184,9 @@ describe('useConnectionStore — openConnection', () => {
   it('sets error on IPC failure', async () => {
     useConnectionStore.setState({ savedConnections: [mockSavedConnection] })
     mockIPC((cmd) => {
-      if (cmd === 'open_connection') throw new Error('Connection refused')
+      if (cmd === 'open_connection') {
+        throw new Error('Connection refused')
+      }
       return null
     })
 
@@ -179,21 +204,21 @@ describe('useConnectionStore — closeConnection', () => {
   it('removes from activeConnections', async () => {
     useConnectionStore.setState({
       activeConnections: {
-        'conn-1': {
-          id: 'conn-1',
+        'sess-1': {
+          id: 'sess-1',
           profile: mockSavedConnection,
           status: 'connected',
           serverVersion: '8.0.35',
         },
       },
-      activeTabId: 'conn-1',
+      activeTabId: 'sess-1',
     })
     mockIPC((cmd) => {
       if (cmd === 'close_connection') return null
       return null
     })
 
-    await useConnectionStore.getState().closeConnection('conn-1')
+    await useConnectionStore.getState().closeConnection('sess-1')
 
     const state = useConnectionStore.getState()
     expect(state.activeConnections).toEqual({})
@@ -202,50 +227,50 @@ describe('useConnectionStore — closeConnection', () => {
   it('switches activeTabId to another connection when closing active tab', async () => {
     useConnectionStore.setState({
       activeConnections: {
-        'conn-1': {
-          id: 'conn-1',
+        'sess-1': {
+          id: 'sess-1',
           profile: mockSavedConnection,
           status: 'connected',
           serverVersion: '8.0.35',
         },
-        'conn-2': {
-          id: 'conn-2',
+        'sess-2': {
+          id: 'sess-2',
           profile: mockSavedConnection2,
           status: 'connected',
           serverVersion: '8.0.35',
         },
       },
-      activeTabId: 'conn-1',
+      activeTabId: 'sess-1',
     })
     mockIPC((cmd) => {
       if (cmd === 'close_connection') return null
       return null
     })
 
-    await useConnectionStore.getState().closeConnection('conn-1')
+    await useConnectionStore.getState().closeConnection('sess-1')
 
     const state = useConnectionStore.getState()
-    expect(state.activeTabId).toBe('conn-2')
+    expect(state.activeTabId).toBe('sess-2')
   })
 
   it('sets activeTabId to null when closing the last connection', async () => {
     useConnectionStore.setState({
       activeConnections: {
-        'conn-1': {
-          id: 'conn-1',
+        'sess-1': {
+          id: 'sess-1',
           profile: mockSavedConnection,
           status: 'connected',
           serverVersion: '8.0.35',
         },
       },
-      activeTabId: 'conn-1',
+      activeTabId: 'sess-1',
     })
     mockIPC((cmd) => {
       if (cmd === 'close_connection') return null
       return null
     })
 
-    await useConnectionStore.getState().closeConnection('conn-1')
+    await useConnectionStore.getState().closeConnection('sess-1')
 
     const state = useConnectionStore.getState()
     expect(state.activeTabId).toBeNull()
@@ -254,62 +279,62 @@ describe('useConnectionStore — closeConnection', () => {
   it('does not change activeTabId when closing a non-active tab', async () => {
     useConnectionStore.setState({
       activeConnections: {
-        'conn-1': {
-          id: 'conn-1',
+        'sess-1': {
+          id: 'sess-1',
           profile: mockSavedConnection,
           status: 'connected',
           serverVersion: '8.0.35',
         },
-        'conn-2': {
-          id: 'conn-2',
+        'sess-2': {
+          id: 'sess-2',
           profile: mockSavedConnection2,
           status: 'connected',
           serverVersion: '8.0.35',
         },
       },
-      activeTabId: 'conn-1',
+      activeTabId: 'sess-1',
     })
     mockIPC((cmd) => {
       if (cmd === 'close_connection') return null
       return null
     })
 
-    await useConnectionStore.getState().closeConnection('conn-2')
+    await useConnectionStore.getState().closeConnection('sess-2')
 
     const state = useConnectionStore.getState()
-    expect(state.activeTabId).toBe('conn-1')
+    expect(state.activeTabId).toBe('sess-1')
   })
 
   it('sets error on IPC failure', async () => {
     useConnectionStore.setState({
       activeConnections: {
-        'conn-1': {
-          id: 'conn-1',
+        'sess-1': {
+          id: 'sess-1',
           profile: mockSavedConnection,
           status: 'connected',
           serverVersion: '8.0.35',
         },
       },
-      activeTabId: 'conn-1',
+      activeTabId: 'sess-1',
     })
     mockIPC((cmd) => {
       if (cmd === 'close_connection') throw new Error('Close failed')
       return null
     })
 
-    await useConnectionStore.getState().closeConnection('conn-1')
+    await useConnectionStore.getState().closeConnection('sess-1')
 
     const state = useConnectionStore.getState()
     expect(state.error).toBe('Close failed')
     // Connection should still be in activeConnections since IPC failed
-    expect(state.activeConnections['conn-1']).toBeDefined()
+    expect(state.activeConnections['sess-1']).toBeDefined()
   })
 })
 
 describe('useConnectionStore — switchTab', () => {
   it('sets activeTabId', () => {
-    useConnectionStore.getState().switchTab('conn-2')
-    expect(useConnectionStore.getState().activeTabId).toBe('conn-2')
+    useConnectionStore.getState().switchTab('sess-2')
+    expect(useConnectionStore.getState().activeTabId).toBe('sess-2')
   })
 })
 
@@ -317,8 +342,8 @@ describe('useConnectionStore — updateConnectionStatus', () => {
   it('updates the status of a matching active connection', () => {
     useConnectionStore.setState({
       activeConnections: {
-        'conn-1': {
-          id: 'conn-1',
+        'sess-1': {
+          id: 'sess-1',
           profile: mockSavedConnection,
           status: 'connected',
           serverVersion: '8.0.35',
@@ -327,18 +352,18 @@ describe('useConnectionStore — updateConnectionStatus', () => {
     })
 
     useConnectionStore.getState().updateConnectionStatus({
-      connectionId: 'conn-1',
+      connectionId: 'sess-1',
       status: 'reconnecting',
     })
 
-    expect(useConnectionStore.getState().activeConnections['conn-1'].status).toBe('reconnecting')
+    expect(useConnectionStore.getState().activeConnections['sess-1'].status).toBe('reconnecting')
   })
 
   it('does nothing for unknown connection id', () => {
     useConnectionStore.setState({
       activeConnections: {
-        'conn-1': {
-          id: 'conn-1',
+        'sess-1': {
+          id: 'sess-1',
           profile: mockSavedConnection,
           status: 'connected',
           serverVersion: '8.0.35',
@@ -351,8 +376,8 @@ describe('useConnectionStore — updateConnectionStatus', () => {
       status: 'disconnected',
     })
 
-    // conn-1 should be unchanged
-    expect(useConnectionStore.getState().activeConnections['conn-1'].status).toBe('connected')
+    // sess-1 should be unchanged
+    expect(useConnectionStore.getState().activeConnections['sess-1'].status).toBe('connected')
   })
 })
 
@@ -403,8 +428,8 @@ describe('useConnectionStore — setupEventListeners', () => {
     // Set up an active connection so updateConnectionStatus has something to update
     useConnectionStore.setState({
       activeConnections: {
-        'conn-1': {
-          id: 'conn-1',
+        'sess-1': {
+          id: 'sess-1',
           profile: mockSavedConnection,
           status: 'connected',
           serverVersion: '8.0.35',
@@ -424,13 +449,13 @@ describe('useConnectionStore — setupEventListeners', () => {
     // Simulate an event
     capturedHandler!({
       payload: {
-        connectionId: 'conn-1',
+        connectionId: 'sess-1',
         status: 'disconnected',
         message: 'Lost connection',
       },
     })
 
-    expect(useConnectionStore.getState().activeConnections['conn-1'].status).toBe('disconnected')
+    expect(useConnectionStore.getState().activeConnections['sess-1'].status).toBe('disconnected')
   })
 })
 
@@ -439,8 +464,8 @@ describe('useConnectionStore — updateDefaultDatabase', () => {
     useConnectionStore.setState({
       savedConnections: [mockSavedConnection],
       activeConnections: {
-        'conn-1': {
-          id: 'conn-1',
+        'sess-1': {
+          id: 'sess-1',
           profile: mockSavedConnection,
           status: 'connected',
           serverVersion: '8.0.35',
@@ -452,19 +477,49 @@ describe('useConnectionStore — updateDefaultDatabase', () => {
       return null
     })
 
-    await useConnectionStore.getState().updateDefaultDatabase('conn-1', 'new_db')
+    await useConnectionStore.getState().updateDefaultDatabase('sess-1', 'new_db')
 
     const state = useConnectionStore.getState()
-    expect(state.activeConnections['conn-1'].profile.defaultDatabase).toBe('new_db')
+    expect(state.activeConnections['sess-1'].profile.defaultDatabase).toBe('new_db')
     expect(state.savedConnections[0].defaultDatabase).toBe('new_db')
+  })
+
+  it('updates all active sessions sharing the same profile', async () => {
+    useConnectionStore.setState({
+      savedConnections: [mockSavedConnection],
+      activeConnections: {
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+        'sess-2': {
+          id: 'sess-2',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+      },
+    })
+    mockIPC((cmd) => {
+      if (cmd === 'update_connection') return null
+      return null
+    })
+
+    await useConnectionStore.getState().updateDefaultDatabase('sess-1', 'new_db')
+
+    const state = useConnectionStore.getState()
+    expect(state.activeConnections['sess-1'].profile.defaultDatabase).toBe('new_db')
+    expect(state.activeConnections['sess-2'].profile.defaultDatabase).toBe('new_db')
   })
 
   it('reverts in-memory state when IPC persistence fails', async () => {
     useConnectionStore.setState({
       savedConnections: [mockSavedConnection],
       activeConnections: {
-        'conn-1': {
-          id: 'conn-1',
+        'sess-1': {
+          id: 'sess-1',
           profile: mockSavedConnection,
           status: 'connected',
           serverVersion: '8.0.35',
@@ -478,11 +533,11 @@ describe('useConnectionStore — updateDefaultDatabase', () => {
       return null
     })
 
-    await useConnectionStore.getState().updateDefaultDatabase('conn-1', 'new_db')
+    await useConnectionStore.getState().updateDefaultDatabase('sess-1', 'new_db')
 
     // Should revert to the original default database
     const state = useConnectionStore.getState()
-    expect(state.activeConnections['conn-1'].profile.defaultDatabase).toBe(
+    expect(state.activeConnections['sess-1'].profile.defaultDatabase).toBe(
       mockSavedConnection.defaultDatabase
     )
     expect(state.savedConnections[0].defaultDatabase).toBe(mockSavedConnection.defaultDatabase)

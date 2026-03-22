@@ -45,8 +45,10 @@ export interface ConnectionGroup {
 
 /**
  * An active (open) connection with its profile and runtime status.
+ * `id` is the runtime session id (MySQL pool key); `profile.id` is the saved profile row id.
  */
 export interface ActiveConnection {
+  /** Runtime session id — use for IPC (`connectionId`) and UI tab keys. */
   id: string
   profile: SavedConnection
   status: 'connected' | 'disconnected' | 'reconnecting'
@@ -89,6 +91,7 @@ export interface ConnectionFormData {
 
 /**
  * Event payload for connection status changes (from Tauri event system).
+ * `connectionId` is the runtime session id.
  */
 export interface ConnectionStatusEvent {
   connectionId: string

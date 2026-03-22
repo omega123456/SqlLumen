@@ -96,13 +96,13 @@ describe('ConnectionTabBar', () => {
   })
 
   it('renders a tab for each active connection with correct name and color', () => {
-    const conn1 = makeActiveConnection({ id: 'conn-1' })
+    const conn1 = makeActiveConnection({ id: 'sess-1' })
     const profile2 = makeSavedConnection({ id: 'conn-2', name: 'Staging DB', color: '#ef4444' })
-    const conn2 = makeActiveConnection({ id: 'conn-2', profile: profile2 })
+    const conn2 = makeActiveConnection({ id: 'sess-2', profile: profile2 })
 
     useConnectionStore.setState({
-      activeConnections: { 'conn-1': conn1, 'conn-2': conn2 },
-      activeTabId: 'conn-1',
+      activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },
+      activeTabId: 'sess-1',
     })
 
     render(<ConnectionTabBar />)
@@ -111,30 +111,48 @@ describe('ConnectionTabBar', () => {
     expect(screen.getByText('Staging DB')).toBeInTheDocument()
   })
 
-  it('clicking a tab calls switchTab(id)', async () => {
-    const user = userEvent.setup()
-    const conn1 = makeActiveConnection({ id: 'conn-1' })
-    const profile2 = makeSavedConnection({ id: 'conn-2', name: 'Staging DB' })
-    const conn2 = makeActiveConnection({ id: 'conn-2', profile: profile2 })
+  it('disambiguates duplicate profiles with (2), (3) in tab labels', () => {
+    const profile = makeSavedConnection({ id: 'conn-1', name: 'Prod' })
+    const connA = makeActiveConnection({ id: 'sess-a', profile })
+    const connB = makeActiveConnection({ id: 'sess-b', profile })
+    const connC = makeActiveConnection({ id: 'sess-c', profile })
 
     useConnectionStore.setState({
-      activeConnections: { 'conn-1': conn1, 'conn-2': conn2 },
-      activeTabId: 'conn-1',
+      activeConnections: { 'sess-a': connA, 'sess-b': connB, 'sess-c': connC },
+      activeTabId: 'sess-a',
+    })
+
+    render(<ConnectionTabBar />)
+
+    expect(screen.getByText(/^Prod$/)).toBeInTheDocument()
+    expect(screen.getByText('Prod (2)')).toBeInTheDocument()
+    expect(screen.getByText('Prod (3)')).toBeInTheDocument()
+  })
+
+  it('clicking a tab calls switchTab(id)', async () => {
+    const user = userEvent.setup()
+    const conn1 = makeActiveConnection({ id: 'sess-1' })
+    const profile2 = makeSavedConnection({ id: 'conn-2', name: 'Staging DB' })
+    const conn2 = makeActiveConnection({ id: 'sess-2', profile: profile2 })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },
+      activeTabId: 'sess-1',
     })
 
     render(<ConnectionTabBar />)
 
     await user.click(screen.getByText('Staging DB'))
-    expect(useConnectionStore.getState().activeTabId).toBe('conn-2')
+    expect(useConnectionStore.getState().activeTabId).toBe('sess-2')
   })
 
   it('clicking close button calls closeConnection(id)', async () => {
     const user = userEvent.setup()
-    const conn1 = makeActiveConnection({ id: 'conn-1' })
+    const conn1 = makeActiveConnection({ id: 'sess-1' })
 
     useConnectionStore.setState({
-      activeConnections: { 'conn-1': conn1 },
-      activeTabId: 'conn-1',
+      activeConnections: { 'sess-1': conn1 },
+      activeTabId: 'sess-1',
     })
 
     render(<ConnectionTabBar />)
@@ -162,8 +180,8 @@ describe('ConnectionTabBar', () => {
     const conn = makeActiveConnection({ profile })
 
     useConnectionStore.setState({
-      activeConnections: { 'conn-1': conn },
-      activeTabId: 'conn-1',
+      activeConnections: { 'sess-1': conn },
+      activeTabId: 'sess-1',
     })
 
     const { container } = render(<ConnectionTabBar />)

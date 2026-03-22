@@ -23,6 +23,7 @@ fn dummy_lazy_pool() -> sqlx::MySqlPool {
 
 fn dummy_stored_params() -> StoredConnectionParams {
     StoredConnectionParams {
+        profile_id: "profile-schema-test".to_string(),
         host: "127.0.0.1".to_string(),
         port: 13306,
         username: "dummy".to_string(),
@@ -41,7 +42,8 @@ fn dummy_stored_params() -> StoredConnectionParams {
 fn register_lazy_pool(state: &AppState, connection_id: &str, read_only: bool) {
     let entry = RegistryEntry {
         pool: dummy_lazy_pool(),
-        connection_id: connection_id.to_string(),
+        session_id: connection_id.to_string(),
+        profile_id: "profile-schema-test".to_string(),
         status: ConnectionStatus::Connected,
         server_version: "8.0.0".to_string(),
         cancellation_token: CancellationToken::new(),
