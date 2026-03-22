@@ -14,11 +14,15 @@ import {
   Columns,
 } from '@phosphor-icons/react'
 import { useSchemaStore, type ConnectionTreeState } from '../../stores/schema-store'
-import type { NodeType } from '../../types/schema'
+import { hasMatchingDescendantInFilter, isNodeUnderFilterScope } from '../../lib/tree-filter'
+import type { NodeType, TreeNode as TreeNodeData } from '../../types/schema'
 import styles from './TreeNode.module.css'
 
 /** Stable empty array used as fallback to avoid re-render loops from `[] !== []`. */
 const EMPTY_CHILDREN: string[] = []
+
+/** Stable empty nodes map when connection state is absent. */
+const EMPTY_NODES: Record<string, TreeNodeData> = {}
 
 export interface TreeNodeProps {
   nodeId: string
@@ -28,6 +32,11 @@ export interface TreeNodeProps {
   onDoubleClick?: (nodeId: string) => void
   /** Set of node IDs that match the current filter (undefined = no filter active) */
   filterMatchIds?: Set<string>
+  /**
+   * When set with a non-empty filter, only nodes under this subtree use `filterMatchIds`;
+   * `null` means the filter applies to the whole tree.
+   */
+  filterScopeRootId?: string | null
   /** True if this is the first visible node in the tree (for roving tabindex) */
   isFirstVisible?: boolean
 }
@@ -81,6 +90,7 @@ export function TreeNode({
   onContextMenu,
   onDoubleClick,
   filterMatchIds,
+  filterScopeRootId = null,
   isFirstVisible,
 }: TreeNodeProps) {
   const node = useSchemaStore(
@@ -108,6 +118,35 @@ export function TreeNode({
   const toggleExpand = useSchemaStore((state) => state.toggleExpand)
   const selectNode = useSchemaStore((state) => state.selectNode)
 
+  const nodesMap = useSchemaStore(
+    (state) =>
+      (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.nodes ?? EMPTY_NODES
+  )
+
+  const effectiveFilterMatchIds = useMemo(() => {
+    if (!filterMatchIds) {
+      return undefined
+    }
+    if (filterScopeRootId == null) {
+      return filterMatchIds
+    }
+    return isNodeUnderFilterScope(nodeId, filterScopeRootId, nodesMap) ? filterMatchIds : undefined
+  }, [filterMatchIds, filterScopeRootId, nodeId, nodesMap])
+
+  /**
+   * Scoped subtree root (e.g. selected "Tables"): only force-expand when a descendant
+   * matches; otherwise the section row stays visible but collapsed.
+   */
+  const filterDrivesExpand = useMemo(() => {
+    if (effectiveFilterMatchIds == null) {
+      return false
+    }
+    if (filterScopeRootId != null && nodeId === filterScopeRootId) {
+      return hasMatchingDescendantInFilter(nodeId, effectiveFilterMatchIds, nodesMap)
+    }
+    return true
+  }, [effectiveFilterMatchIds, filterScopeRootId, nodeId, nodesMap])
+
   // Use childIdsByParentId index instead of scanning the full nodes map (Simplification 4)
   const indexedChildIds = useSchemaStore(
     (state) =>
@@ -118,21 +157,22 @@ export function TreeNode({
 
   const childIds = useMemo(() => {
     if (!node) return []
-    // Show children if expanded OR if filter is active (to show ancestor paths)
-    if (!isExpanded && !filterMatchIds) return []
+    // Show children if expanded OR if filter forces expansion (paths to matches)
+    if (!isExpanded && !filterDrivesExpand) return []
     return indexedChildIds
-  }, [isExpanded, node, indexedChildIds, filterMatchIds])
+  }, [isExpanded, node, indexedChildIds, filterDrivesExpand])
 
   if (!node) return null
 
   // If filter is active, skip nodes that don't match and have no matching descendants
-  if (filterMatchIds && !filterMatchIds.has(nodeId)) {
+  if (effectiveFilterMatchIds && !effectiveFilterMatchIds.has(nodeId)) {
     return null
   }
 
   const isSelected = selectedNodeId === nodeId
   const { hasChildren } = node
-  const { icon, className: iconClassName } = getNodeIcon(node.type, isExpanded)
+  const showExpandedChrome = isExpanded || filterDrivesExpand
+  const { icon, className: iconClassName } = getNodeIcon(node.type, showExpandedChrome)
 
   const handleRowClick = () => {
     selectNode(nodeId, connectionId)
@@ -143,6 +183,7 @@ export function TreeNode({
 
   const handleChevronClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    selectNode(nodeId, connectionId)
     toggleExpand(nodeId, connectionId)
   }
 
@@ -212,9 +253,7 @@ export function TreeNode({
 
   // Determine if we should show expanded children (either normally expanded or forced by filter)
   const showChildren =
-    hasChildren &&
-    (isExpanded || (filterMatchIds != null && childIds.length > 0)) &&
-    childIds.length > 0
+    hasChildren && (isExpanded || (filterDrivesExpand && childIds.length > 0)) && childIds.length > 0
 
   return (
     <>
@@ -222,7 +261,7 @@ export function TreeNode({
         className={rowClassName}
         role="treeitem"
         aria-expanded={
-          hasChildren ? isExpanded || (filterMatchIds != null && childIds.length > 0) : undefined
+          hasChildren ? isExpanded || (filterDrivesExpand && childIds.length > 0) : undefined
         }
         aria-level={level + 1}
         aria-selected={isSelected}
@@ -242,7 +281,7 @@ export function TreeNode({
             </span>
           ) : (
             <span
-              className={`${styles.chevron} ${isExpanded ? styles.chevronExpanded : ''}`}
+              className={`${styles.chevron} ${showExpandedChrome ? styles.chevronExpanded : ''}`}
               onClick={handleChevronClick}
               role="presentation"
               data-testid="tree-node-chevron"
@@ -279,6 +318,7 @@ export function TreeNode({
               onContextMenu={onContextMenu}
               onDoubleClick={onDoubleClick}
               filterMatchIds={filterMatchIds}
+              filterScopeRootId={filterScopeRootId}
             />
           ))}
         </div>

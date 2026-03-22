@@ -119,6 +119,7 @@ function setupDatabaseNodes() {
   const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
   const db2Id = makeNodeId('database', 'analytics_db', 'analytics_db')
   const catId = makeNodeId('category', 'ecommerce_db', 'table')
+  const viewsCatId = makeNodeId('category', 'ecommerce_db', 'view')
   const tableId = makeNodeId('table', 'ecommerce_db', 'users')
 
   const nodes: Record<string, TreeNodeType> = {
@@ -146,6 +147,15 @@ function setupDatabaseNodes() {
       hasChildren: true,
       isLoaded: true,
       metadata: { categoryType: 'table', databaseName: 'ecommerce_db' },
+    },
+    [viewsCatId]: {
+      id: viewsCatId,
+      label: 'Views',
+      type: 'category',
+      parentId: db1Id,
+      hasChildren: false,
+      isLoaded: false,
+      metadata: { categoryType: 'view', databaseName: 'ecommerce_db' },
     },
     [tableId]: {
       id: tableId,
@@ -306,6 +316,77 @@ describe('ObjectBrowser', () => {
     expect(screen.getByText('Tables')).toBeInTheDocument()
     // analytics_db should be hidden (no matching descendants)
     expect(screen.queryByText('analytics_db')).not.toBeInTheDocument()
+  })
+
+  it('with a database selected, filter is scoped to that database and other DBs stay visible', () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+    const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+
+    act(() => {
+      useSchemaStore.getState().selectNode(db1Id, CONN_ID)
+      useSchemaStore.getState().setFilter('users', CONN_ID)
+    })
+
+    render(<ObjectBrowser connectionId={CONN_ID} />)
+
+    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.getByText('ecommerce_db')).toBeInTheDocument()
+    expect(screen.getByText('Tables')).toBeInTheDocument()
+    expect(screen.getByText('analytics_db')).toBeInTheDocument()
+  })
+
+  it('with Tables selected, filter only affects table list; sibling Views stays visible', () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+    const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+    const catId = makeNodeId('category', 'ecommerce_db', 'table')
+
+    act(() => {
+      useSchemaStore.setState({
+        connectionStates: {
+          [CONN_ID]: {
+            ...useSchemaStore.getState().connectionStates[CONN_ID],
+            expandedNodes: new Set([db1Id]),
+            selectedNodeId: catId,
+            filterText: 'users',
+          },
+        },
+      })
+    })
+
+    render(<ObjectBrowser connectionId={CONN_ID} />)
+
+    expect(screen.getByText('analytics_db')).toBeInTheDocument()
+    expect(screen.getByText('Views')).toBeInTheDocument()
+    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.getByText('Tables')).toBeInTheDocument()
+  })
+
+  it('with Tables selected, keeps Tables row visible when no table name matches', () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+    const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+    const catId = makeNodeId('category', 'ecommerce_db', 'table')
+
+    act(() => {
+      useSchemaStore.setState({
+        connectionStates: {
+          [CONN_ID]: {
+            ...useSchemaStore.getState().connectionStates[CONN_ID],
+            expandedNodes: new Set([db1Id]),
+            selectedNodeId: catId,
+            filterText: 'no_such_table_xyz',
+          },
+        },
+      })
+    })
+
+    render(<ObjectBrowser connectionId={CONN_ID} />)
+
+    expect(screen.getByText('Tables')).toBeInTheDocument()
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
+    expect(screen.getByText('Views')).toBeInTheDocument()
   })
 
   it('shows "Not connected" when connection is disconnected', () => {

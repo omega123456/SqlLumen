@@ -106,13 +106,14 @@ describe('TreeNode', () => {
     expect(screen.queryByTestId('tree-node-chevron')).not.toBeInTheDocument()
   })
 
-  it('click on chevron calls toggleExpand', async () => {
+  it('click on chevron selects node and calls toggleExpand', async () => {
     const user = userEvent.setup()
     const node = makeTreeNode({ hasChildren: true })
     setNodes({ [node.id]: node })
 
     const toggleExpand = vi.fn()
-    useSchemaStore.setState({ toggleExpand })
+    const selectNode = vi.fn()
+    useSchemaStore.setState({ toggleExpand, selectNode })
 
     render(
       <div role="tree">
@@ -121,6 +122,7 @@ describe('TreeNode', () => {
     )
 
     await user.click(screen.getByTestId('tree-node-chevron'))
+    expect(selectNode).toHaveBeenCalledWith(node.id, CONN_ID)
     expect(toggleExpand).toHaveBeenCalledWith(node.id, CONN_ID)
   })
 

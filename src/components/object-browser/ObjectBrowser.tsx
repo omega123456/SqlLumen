@@ -8,39 +8,12 @@ import { useObjectBrowserActions } from '../../hooks/useObjectBrowserActions'
 import { ConnectionHeader } from './ConnectionHeader'
 import { TreeNode } from './TreeNode'
 import { ObjectBrowserContextMenu } from './ObjectBrowserContextMenu'
-import type { TreeNode as TreeNodeType, ObjectType } from '../../types/schema'
+import type { ObjectType } from '../../types/schema'
+import { computeScopedFilterMatchIds } from '../../lib/tree-filter'
 import styles from './ObjectBrowser.module.css'
 
 export interface ObjectBrowserProps {
   connectionId: string
-}
-
-/**
- * Collect all node IDs that match the filter text (case-insensitive substring),
- * plus all their ancestor node IDs (so the tree context is preserved).
- */
-function computeFilterMatchIds(
-  nodes: Record<string, TreeNodeType>,
-  filterText: string
-): Set<string> {
-  const matchIds = new Set<string>()
-  const lowerFilter = filterText.toLowerCase()
-
-  // Find direct matches
-  for (const [id, node] of Object.entries(nodes)) {
-    if (node.label.toLowerCase().includes(lowerFilter)) {
-      matchIds.add(id)
-      // Walk up ancestor chain
-      let parentId = node.parentId
-      while (parentId) {
-        matchIds.add(parentId)
-        const parent = nodes[parentId]
-        parentId = parent?.parentId ?? null
-      }
-    }
-  }
-
-  return matchIds
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +43,11 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
     (state) =>
       (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.nodes ?? null
   )
+  const selectedNodeId = useSchemaStore(
+    (state) =>
+      (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.selectedNodeId ??
+      null
+  )
   const childIdsByParentId = useSchemaStore(
     (state) =>
       (state.connectionStates[connectionId] as ConnectionTreeState | undefined)
@@ -97,10 +75,16 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
     return childIdsByParentId['__root__'] ?? []
   }, [childIdsByParentId])
 
+  const effectiveScopeRoot =
+    selectedNodeId && nodes?.[selectedNodeId] ? selectedNodeId : null
+
   const filterMatchIds = useMemo(() => {
-    if (!filterText || !nodes) return undefined
-    return computeFilterMatchIds(nodes, filterText)
-  }, [filterText, nodes])
+    const trimmed = filterText.trim()
+    if (!trimmed || !nodes) {
+      return undefined
+    }
+    return computeScopedFilterMatchIds(nodes, trimmed, effectiveScopeRoot)
+  }, [filterText, nodes, effectiveScopeRoot])
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilter(e.target.value, connectionId)
@@ -205,6 +189,7 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
                 onContextMenu={handleContextMenu}
                 onDoubleClick={handleDoubleClick}
                 filterMatchIds={filterMatchIds}
+                filterScopeRootId={effectiveScopeRoot}
                 isFirstVisible={index === 0}
               />
             ))}
