@@ -4,6 +4,10 @@
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 #[cfg(not(coverage))]
+use sqlx::mysql::types::MySqlTime;
+#[cfg(not(coverage))]
+use sqlx::mysql::MySqlValueRef;
+#[cfg(not(coverage))]
 use sqlx::Column;
 #[cfg(not(coverage))]
 use sqlx::Executor;
@@ -11,7 +15,17 @@ use sqlx::Executor;
 use sqlx::Row;
 #[cfg(not(coverage))]
 use sqlx::TypeInfo;
+#[cfg(not(coverage))]
+use sqlx::Value;
+#[cfg(not(coverage))]
+use sqlx::ValueRef;
 use uuid::Uuid;
+
+#[cfg(not(coverage))]
+const JS_SAFE_INTEGER_MAX: i64 = 9_007_199_254_740_991;
+
+#[cfg(not(coverage))]
+const JS_SAFE_INTEGER_MIN: i64 = -JS_SAFE_INTEGER_MAX;
 
 // ── Data structures ────────────────────────────────────────────────────────────
 
@@ -507,13 +521,42 @@ fn base64_encode(data: &[u8]) -> String {
 
 #[cfg(not(coverage))]
 fn serialize_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::Value {
-    let type_name = row.columns()[i].type_info().name().to_uppercase();
+    let raw_value = match row.try_get_raw(i) {
+        Ok(value) => value,
+        Err(_) => return serde_json::Value::Null,
+    };
+
+    if raw_value.is_null() {
+        return serde_json::Value::Null;
+    }
+
+    let type_name = raw_value.type_info().name().to_uppercase();
 
     // Integer types
-    if type_name.contains("INT") || type_name == "YEAR" {
+    if matches!(type_name.as_str(), "TINYINT" | "SHORT" | "LONG" | "INT24" | "LONGLONG")
+        || type_name.contains("INT")
+        || type_name == "YEAR"
+    {
         if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
             return v
-                .map(serde_json::Value::from)
+                .map(|n| {
+                    if (JS_SAFE_INTEGER_MIN..=JS_SAFE_INTEGER_MAX).contains(&n) {
+                        serde_json::Value::from(n)
+                    } else {
+                        serde_json::Value::String(n.to_string())
+                    }
+                })
+                .unwrap_or(serde_json::Value::Null);
+        }
+        if let Ok(v) = row.try_get::<Option<u64>, _>(i) {
+            return v
+                .map(|n| {
+                    if n > JS_SAFE_INTEGER_MAX as u64 {
+                        serde_json::Value::String(n.to_string())
+                    } else {
+                        serde_json::Value::from(n)
+                    }
+                })
                 .unwrap_or(serde_json::Value::Null);
         }
         // BIGINT UNSIGNED values > i64::MAX: serialize as string to avoid precision loss
@@ -521,6 +564,12 @@ fn serialize_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::Value {
             return v
                 .map(serde_json::Value::String)
                 .unwrap_or(serde_json::Value::Null);
+        }
+        if let Some(value) = decode_unchecked_string(row, i).map(serde_json::Value::String) {
+            return value;
+        }
+        if let Some(value) = decode_raw_string(raw_value.clone()).map(serde_json::Value::String) {
+            return value;
         }
     }
 
@@ -543,6 +592,22 @@ fn serialize_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::Value {
             return v
                 .map(serde_json::Value::String)
                 .unwrap_or(serde_json::Value::Null);
+        }
+        if let Some(value) = decode_unchecked_string(row, i).map(serde_json::Value::String) {
+            return value;
+        }
+        if let Some(value) = serialize_decimal_value(raw_value.clone()) {
+            return value;
+        }
+    }
+
+    // Date/time values
+    if matches!(
+        type_name.as_str(),
+        "DATE" | "DATETIME" | "TIMESTAMP" | "TIME" | "NEWDATE"
+    ) {
+        if let Some(value) = serialize_temporal_value(raw_value.clone()) {
+            return value;
         }
     }
 
@@ -568,8 +633,94 @@ fn serialize_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::Value {
     match row.try_get::<Option<String>, _>(i) {
         Ok(Some(s)) => serde_json::Value::String(s),
         Ok(None) => serde_json::Value::Null,
-        Err(_) => serde_json::Value::Null,
+        Err(_) => decode_unchecked_string(row, i)
+            .or_else(|| decode_raw_string(raw_value))
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null),
     }
+}
+
+#[cfg(not(coverage))]
+fn decode_unchecked_string(row: &sqlx::mysql::MySqlRow, i: usize) -> Option<String> {
+    if let Ok(value) = row.try_get_unchecked::<Option<String>, _>(i) {
+        return value;
+    }
+
+    row.try_get_unchecked::<Option<Vec<u8>>, _>(i)
+        .ok()
+        .flatten()
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[cfg(not(coverage))]
+fn decode_raw_string(value: MySqlValueRef<'_>) -> Option<String> {
+    let owned = sqlx::ValueRef::to_owned(&value);
+    if let Ok(text) = owned.try_decode::<String>() {
+        return Some(text);
+    }
+
+    let owned = sqlx::ValueRef::to_owned(&value);
+    owned
+        .try_decode::<Vec<u8>>()
+        .ok()
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[cfg(not(coverage))]
+fn serialize_temporal_value(value: MySqlValueRef<'_>) -> Option<serde_json::Value> {
+    use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+
+    let owned = sqlx::ValueRef::to_owned(&value);
+
+    if let Ok(v) = owned.try_decode::<NaiveDateTime>() {
+        return Some(serde_json::Value::String(v.to_string()));
+    }
+
+    let owned = sqlx::ValueRef::to_owned(&value);
+    if let Ok(v) = owned.try_decode::<DateTime<Utc>>() {
+        return Some(serde_json::Value::String(v.naive_utc().to_string()));
+    }
+
+    let owned = sqlx::ValueRef::to_owned(&value);
+    if let Ok(v) = owned.try_decode::<NaiveDate>() {
+        return Some(serde_json::Value::String(v.to_string()));
+    }
+
+    let owned = sqlx::ValueRef::to_owned(&value);
+    if let Ok(v) = owned.try_decode::<MySqlTime>() {
+        return Some(serde_json::Value::String(format_mysql_time(v)));
+    }
+
+    sqlx::ValueRef::to_owned(&value)
+        .try_decode::<String>()
+        .ok()
+        .map(serde_json::Value::String)
+}
+
+#[cfg(not(coverage))]
+fn format_mysql_time(value: MySqlTime) -> String {
+    let sign = if value.sign().is_negative() { "-" } else { "" };
+    let hours = value.hours();
+
+    if value.microseconds() == 0 {
+        format!(
+            "{sign}{hours:02}:{:02}:{:02}",
+            value.minutes(),
+            value.seconds()
+        )
+    } else {
+        format!(
+            "{sign}{hours:02}:{:02}:{:02}.{:06}",
+            value.minutes(),
+            value.seconds(),
+            value.microseconds()
+        )
+    }
+}
+
+#[cfg(not(coverage))]
+fn serialize_decimal_value(value: MySqlValueRef<'_>) -> Option<serde_json::Value> {
+    decode_raw_string(value).map(serde_json::Value::String)
 }
 
 #[cfg(not(coverage))]
