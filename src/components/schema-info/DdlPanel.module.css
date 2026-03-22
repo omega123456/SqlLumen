@@ -23,23 +23,6 @@
   width: 100%;
 }
 
-/* Code block header */
-.codeHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.codeLabel {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--on-surface-variant);
-  opacity: 0.7;
-}
-
 .copyButton {
   display: inline-flex;
   align-items: center;
@@ -60,24 +43,6 @@
 .copyButton:hover {
   background: var(--surface-container-highest);
   color: var(--primary);
-}
-
-/* Code block */
-.codeBlock {
-  background: var(--surface-container-low);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  padding: 16px;
-  overflow-x: auto;
-  border-radius: 8px;
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-[data-theme='light'] .codeBlock {
-  background: #fafafa;
 }
 
 /* Syntax highlighting classes */

@@ -3,6 +3,7 @@ import type { ColumnInfo, TableMetadata, ObjectType } from '../../types/schema'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { tokenizeSql } from '../../lib/sql-tokenizer'
 import type { TokenType } from '../../lib/sql-tokenizer'
+import { ElevatedCodePanel } from '../common/ElevatedCodePanel'
 import { ElevatedSurface } from '../common/ElevatedSurface'
 import { MetadataCard } from './MetadataCard'
 import { ColumnsPanel } from './ColumnsPanel'
@@ -38,26 +39,25 @@ export function DdlPanel({ ddl, metadata, objectType, columns }: DdlPanelProps) 
         <>
           <div className={styles.topSection}>
             <div className={styles.ddlColumn}>
-              <div className={styles.codeHeader}>
-                <span className={styles.codeLabel}>&lt;&gt; SHOW CREATE TABLE</span>
-                <button type="button" className={styles.copyButton} onClick={handleCopy}>
-                  Copy SQL
-                </button>
-              </div>
-              <pre className={styles.codeBlock}>
-                <code>
-                  {tokens.map((token, idx) => {
-                    const cls = TOKEN_CLASS_MAP[token.type]
-                    return cls ? (
-                      <span key={idx} className={cls}>
-                        {token.text}
-                      </span>
-                    ) : (
-                      <span key={idx}>{token.text}</span>
-                    )
-                  })}
-                </code>
-              </pre>
+              <ElevatedCodePanel
+                label="&lt;&gt; SHOW CREATE TABLE"
+                headerActions={
+                  <button type="button" className={styles.copyButton} onClick={handleCopy}>
+                    Copy SQL
+                  </button>
+                }
+              >
+                {tokens.map((token, idx) => {
+                  const cls = TOKEN_CLASS_MAP[token.type]
+                  return cls ? (
+                    <span key={idx} className={cls}>
+                      {token.text}
+                    </span>
+                  ) : (
+                    <span key={idx}>{token.text}</span>
+                  )
+                })}
+              </ElevatedCodePanel>
             </div>
             <div className={styles.metadataColumn}>
               <MetadataCard metadata={metadata} />
@@ -75,26 +75,25 @@ export function DdlPanel({ ddl, metadata, objectType, columns }: DdlPanelProps) 
         </>
       ) : (
         <div className={styles.ddlOnly}>
-          <div className={styles.codeHeader}>
-            <span className={styles.codeLabel}>&lt;&gt; DDL</span>
-            <button type="button" className={styles.copyButton} onClick={handleCopy}>
-              Copy SQL
-            </button>
-          </div>
-          <pre className={styles.codeBlock}>
-            <code>
-              {tokens.map((token, idx) => {
-                const cls = TOKEN_CLASS_MAP[token.type]
-                return cls ? (
-                  <span key={idx} className={cls}>
-                    {token.text}
-                  </span>
-                ) : (
-                  <span key={idx}>{token.text}</span>
-                )
-              })}
-            </code>
-          </pre>
+          <ElevatedCodePanel
+            label="&lt;&gt; DDL"
+            headerActions={
+              <button type="button" className={styles.copyButton} onClick={handleCopy}>
+                Copy SQL
+              </button>
+            }
+          >
+            {tokens.map((token, idx) => {
+              const cls = TOKEN_CLASS_MAP[token.type]
+              return cls ? (
+                <span key={idx} className={cls}>
+                  {token.text}
+                </span>
+              ) : (
+                <span key={idx}>{token.text}</span>
+              )
+            })}
+          </ElevatedCodePanel>
         </div>
       )}
     </div>

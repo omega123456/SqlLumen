@@ -79,6 +79,36 @@ button {
   box-shadow: var(--ui-elevated-surface-shadow);
 }
 
+/* Toolbar row — matches schema data table <th> (ColumnsPanel, etc.) */
+.ui-elevated-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  flex-shrink: 0;
+}
+
+.ui-elevated-panel-header__label {
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--on-surface-variant);
+  opacity: 0.7;
+}
+
+.ui-elevated-panel-header__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
 .ui-input,
 .ui-select,
 .ui-textarea {
