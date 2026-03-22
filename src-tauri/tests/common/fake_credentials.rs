@@ -7,8 +7,7 @@ use std::sync::{LazyLock, Mutex, Once};
 type CredentialMap = HashMap<String, String>;
 
 static TEST_KEYCHAIN: LazyLock<Mutex<CredentialMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
-static TEST_CREDENTIAL_ERROR: LazyLock<Mutex<Option<String>>> =
-    LazyLock::new(|| Mutex::new(None));
+static TEST_CREDENTIAL_ERROR: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 static INSTALL_BACKEND: Once = Once::new();
 static KEYCHAIN_ISOLATION_LOCK: Mutex<()> = Mutex::new(());
@@ -63,7 +62,9 @@ fn fake_store_password(connection_id: &str, password: &str) -> Result<(), String
 
 fn fake_retrieve_password(connection_id: &str) -> Result<String, String> {
     if let Some(error) = take_fake_error() {
-        return Err(format!("Failed to retrieve password from keychain: {error}"));
+        return Err(format!(
+            "Failed to retrieve password from keychain: {error}"
+        ));
     }
 
     TEST_KEYCHAIN

@@ -294,10 +294,12 @@ pub async fn open_connection_impl(
         }
     };
 
-    if record.has_password {
+    let password = if record.has_password {
         credentials::retrieve_password_for_connection(profile_id, record.keychain_ref.as_deref())
-            .map_err(|e| format!("Failed to retrieve password from keychain: {e}"))?;
-    }
+            .map_err(|e| format!("Failed to retrieve password from keychain: {e}"))?
+    } else {
+        String::new()
+    };
 
     let params = crate::mysql::registry::StoredConnectionParams {
         profile_id: profile_id.to_string(),
@@ -314,7 +316,7 @@ pub async fn open_connection_impl(
         connect_timeout_secs: record.connect_timeout_secs.unwrap_or(10).max(1) as u64,
         keepalive_interval_secs: record.keepalive_interval_secs.unwrap_or(60).max(0) as u64,
     }
-    .to_connection_params(String::new());
+    .to_connection_params(password);
 
     let pool = create_pool(&params)
         .await

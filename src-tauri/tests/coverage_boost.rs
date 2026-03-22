@@ -41,6 +41,9 @@ use tokio_util::sync::CancellationToken;
 
 mod common;
 
+static CAPTURED_POOL_URL: Mutex<Option<String>> = Mutex::new(None);
+static CAPTURED_POOL_OPTIONS_DEBUG: Mutex<Option<String>> = Mutex::new(None);
+
 struct PoolFactoryGuard {
     _guard: std::sync::MutexGuard<'static, ()>,
 }
@@ -106,6 +109,23 @@ fn save_connection(data: SaveConnectionInput, state: tauri::State<'_, AppState>)
 }
 
 #[tauri::command]
+fn update_connection(
+    id: String,
+    data: UpdateConnectionInput,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    update_connection_impl(&state, &id, data)
+}
+
+#[tauri::command]
+fn get_connection(
+    id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<mysql_client_lib::db::connections::ConnectionRecord>, String> {
+    get_connection_impl(&state, &id)
+}
+
+#[tauri::command]
 async fn open_connection(
     payload: OpenConnectionPayload,
     state: tauri::State<'_, AppState>,
@@ -120,7 +140,12 @@ fn build_connection_commands_app(
 ) {
     let app = mock_builder()
         .manage(test_state())
-        .invoke_handler(tauri::generate_handler![save_connection, open_connection])
+        .invoke_handler(tauri::generate_handler![
+            save_connection,
+            update_connection,
+            get_connection,
+            open_connection
+        ])
         .build(mock_context(noop_assets()))
         .expect("should build test app");
     let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -252,6 +277,26 @@ fn forced_pool_success(_: &ConnectionParams) -> Result<sqlx::MySqlPool, sqlx::Er
     Ok(dummy_pool())
 }
 
+fn capture_pool_url_success(params: &ConnectionParams) -> Result<sqlx::MySqlPool, sqlx::Error> {
+    let url = build_connect_options(params).to_url_lossy().to_string();
+    let mut guard = CAPTURED_POOL_URL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = Some(url);
+    Ok(dummy_pool())
+}
+
+fn capture_pool_options_debug_success(
+    params: &ConnectionParams,
+) -> Result<sqlx::MySqlPool, sqlx::Error> {
+    let debug_output = format!("{:?}", build_connect_options(params));
+    let mut guard = CAPTURED_POOL_OPTIONS_DEBUG
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = Some(debug_output);
+    Ok(dummy_pool())
+}
+
 fn update_input(password: Option<&str>) -> UpdateConnectionInput {
     UpdateConnectionInput {
         name: "Updated".to_string(),
@@ -259,6 +304,7 @@ fn update_input(password: Option<&str>) -> UpdateConnectionInput {
         port: 3306,
         username: "root".to_string(),
         password: password.map(ToString::to_string),
+        clear_password: false,
         default_database: None,
         ssl_enabled: false,
         ssl_ca_path: None,
@@ -343,6 +389,7 @@ fn update_connection_impl_surfaces_password_update_errors() {
             port: 3306,
             username: "root".to_string(),
             password: Some("secret".to_string()),
+            clear_password: false,
             default_database: None,
             ssl_enabled: false,
             ssl_ca_path: None,
@@ -705,6 +752,223 @@ async fn open_connection_ipc_uses_stored_keychain_ref() {
 
     assert_eq!(result.server_version, "Unknown");
     assert!(!result.session_id.is_empty());
+}
+
+#[tokio::test]
+async fn open_connection_ipc_omits_password_for_passwordless_profiles() {
+    let (_app, webview) = build_connection_commands_app();
+
+    let connection_id: String = invoke_tauri_command(
+        &webview,
+        "save_connection",
+        json!({
+            "data": save_input_json(sample_save_input(None)),
+        }),
+    )
+    .expect("save_connection IPC should succeed");
+
+    {
+        let mut guard = CAPTURED_POOL_URL
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *guard = None;
+    }
+
+    let _pool_guard = install_test_pool_factory(capture_pool_url_success);
+    let result: OpenConnectionResultDto = invoke_tauri_command(
+        &webview,
+        "open_connection",
+        json!({
+            "payload": {
+                "profileId": connection_id,
+            },
+        }),
+    )
+    .expect("open_connection IPC should succeed for passwordless profiles");
+
+    let url = CAPTURED_POOL_URL
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+        .expect("pool factory should capture the MySQL URL");
+
+    assert_eq!(result.server_version, "Unknown");
+    assert!(!result.session_id.is_empty());
+    assert!(
+        url.contains("root@127.0.0.1:3306"),
+        "expected username and host in URL, got {url}"
+    );
+    assert!(
+        !url.contains("root:@127.0.0.1:3306"),
+        "passwordless profiles must omit the password marker, got {url}"
+    );
+}
+
+#[tokio::test]
+async fn open_connection_ipc_does_not_set_password_option_for_passwordless_profiles() {
+    let (_app, webview) = build_connection_commands_app();
+
+    let connection_id: String = invoke_tauri_command(
+        &webview,
+        "save_connection",
+        json!({
+            "data": save_input_json(sample_save_input(None)),
+        }),
+    )
+    .expect("save_connection IPC should succeed");
+
+    {
+        let mut guard = CAPTURED_POOL_OPTIONS_DEBUG
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *guard = None;
+    }
+
+    let _pool_guard = install_test_pool_factory(capture_pool_options_debug_success);
+    let result: OpenConnectionResultDto = invoke_tauri_command(
+        &webview,
+        "open_connection",
+        json!({
+            "payload": {
+                "profileId": connection_id,
+            },
+        }),
+    )
+    .expect("open_connection IPC should succeed for passwordless profiles");
+
+    let options_debug = CAPTURED_POOL_OPTIONS_DEBUG
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+        .expect("pool factory should capture MySQL options");
+
+    assert_eq!(result.server_version, "Unknown");
+    assert!(!result.session_id.is_empty());
+    assert!(
+        options_debug.contains("password: None"),
+        "passwordless profiles must not set a password option, got {options_debug}"
+    );
+}
+
+#[tokio::test]
+async fn open_connection_ipc_preserves_saved_password_after_blank_update() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    let (_app, webview) = build_connection_commands_app();
+
+    let connection_id: String = invoke_tauri_command(
+        &webview,
+        "save_connection",
+        json!({
+            "data": save_input_json(sample_save_input(Some("super-secret"))),
+        }),
+    )
+    .expect("save_connection IPC should succeed");
+
+    invoke_tauri_command::<()>(
+        &webview,
+        "update_connection",
+        json!({
+            "id": connection_id,
+            "data": {
+                "name": "Saved DB",
+                "host": "127.0.0.1",
+                "port": 3306,
+                "username": "root",
+                "password": null,
+                "defaultDatabase": null,
+                "sslEnabled": false,
+                "sslCaPath": null,
+                "sslCertPath": null,
+                "sslKeyPath": null,
+                "color": null,
+                "groupId": null,
+                "readOnly": false,
+                "sortOrder": 0,
+                "connectTimeoutSecs": 10,
+                "keepaliveIntervalSecs": 0
+            }
+        }),
+    )
+    .expect("update_connection IPC should succeed");
+
+    let record: Option<ConnectionRecordDto> = invoke_tauri_command(
+        &webview,
+        "get_connection",
+        json!({
+            "id": connection_id,
+        }),
+    )
+    .expect("get_connection IPC should succeed");
+
+    assert!(record.is_some(), "connection should still exist after update");
+    assert!(
+        record.expect("connection should exist").has_password,
+        "blank password update should preserve saved password state"
+    );
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ConnectionRecordDto {
+    has_password: bool,
+}
+
+#[tokio::test]
+async fn update_connection_ipc_clear_password_clears_saved_password_state() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    let (_app, webview) = build_connection_commands_app();
+
+    let connection_id: String = invoke_tauri_command(
+        &webview,
+        "save_connection",
+        json!({
+            "data": save_input_json(sample_save_input(Some("super-secret"))),
+        }),
+    )
+    .expect("save_connection IPC should succeed");
+
+    invoke_tauri_command::<()>(
+        &webview,
+        "update_connection",
+        json!({
+            "id": connection_id,
+            "data": {
+                "name": "Saved DB",
+                "host": "127.0.0.1",
+                "port": 3306,
+                "username": "root",
+                "password": null,
+                "clearPassword": true,
+                "defaultDatabase": null,
+                "sslEnabled": false,
+                "sslCaPath": null,
+                "sslCertPath": null,
+                "sslKeyPath": null,
+                "color": null,
+                "groupId": null,
+                "readOnly": false,
+                "sortOrder": 0,
+                "connectTimeoutSecs": 10,
+                "keepaliveIntervalSecs": 0
+            }
+        }),
+    )
+    .expect("update_connection IPC should succeed");
+
+    let record: Option<ConnectionRecordDto> = invoke_tauri_command(
+        &webview,
+        "get_connection",
+        json!({
+            "id": connection_id,
+        }),
+    )
+    .expect("get_connection IPC should succeed");
+
+    assert!(record.is_some(), "connection should still exist after update");
+    assert!(
+        !record.expect("connection should exist").has_password,
+        "clearPassword should clear saved password state"
+    );
 }
 
 #[tokio::test]

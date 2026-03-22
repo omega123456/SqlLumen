@@ -4,7 +4,6 @@
   gap: 10px;
   padding: 12px 12px 8px;
   flex-shrink: 0;
-  background: var(--surface-container-lowest);
   border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
 }
 
@@ -50,6 +49,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-weight: 700;
 }
 
 .versionRow {

@@ -40,12 +40,17 @@ export async function listConnections(): Promise<SavedConnection[]> {
  * Update an existing connection profile.
  * Empty password means "don't change the existing password".
  */
-export async function updateConnection(id: string, data: ConnectionFormData): Promise<void> {
+export async function updateConnection(
+  id: string,
+  data: ConnectionFormData,
+  options?: { clearPassword?: boolean }
+): Promise<void> {
   return invoke<void>('update_connection', {
     id,
     data: {
       ...data,
       password: data.password || null,
+      clearPassword: options?.clearPassword ?? false,
       sortOrder: 0,
     },
   })

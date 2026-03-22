@@ -119,6 +119,7 @@ describe('updateConnection', () => {
       data: {
         ...sampleFormData,
         password: 'secret',
+        clearPassword: false,
         sortOrder: 0,
       },
     })
@@ -129,7 +130,16 @@ describe('updateConnection', () => {
     await updateConnection('abc', { ...sampleFormData, password: '' })
     expect(mockInvoke).toHaveBeenCalledWith('update_connection', {
       id: 'abc',
-      data: expect.objectContaining({ password: null }),
+      data: expect.objectContaining({ password: null, clearPassword: false }),
+    })
+  })
+
+  it('passes clearPassword when requested', async () => {
+    mockInvoke.mockResolvedValue(undefined)
+    await updateConnection('abc', { ...sampleFormData, password: '' }, { clearPassword: true })
+    expect(mockInvoke).toHaveBeenCalledWith('update_connection', {
+      id: 'abc',
+      data: expect.objectContaining({ password: null, clearPassword: true }),
     })
   })
 

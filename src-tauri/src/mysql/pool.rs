@@ -29,8 +29,11 @@ pub fn build_connect_options(params: &ConnectionParams) -> MySqlConnectOptions {
     let mut opts = MySqlConnectOptions::new()
         .host(&params.host)
         .port(params.port)
-        .username(&params.username)
-        .password(&params.password);
+        .username(&params.username);
+
+    if !params.password.is_empty() {
+        opts = opts.password(&params.password);
+    }
 
     if let Some(ref db) = params.default_database {
         if !db.is_empty() {

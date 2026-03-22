@@ -645,6 +645,134 @@ describe('ConnectionForm', () => {
     expect(screen.getByLabelText('Password')).toHaveAttribute('placeholder', '••••••••')
   })
 
+  it('shows remove saved password option when editing a connection with password', () => {
+    const editConn = makeSavedConnection({ hasPassword: true })
+
+    render(<ConnectionForm editingConnection={editConn} />)
+
+    expect(screen.getByLabelText('Use no password (remove saved password)')).toBeInTheDocument()
+  })
+
+  it('Save can clear an existing saved password', async () => {
+    const user = userEvent.setup()
+    const editConn = makeSavedConnection({ hasPassword: true })
+
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'update_connection') return Promise.resolve(undefined)
+      if (cmd === 'list_connections') return Promise.resolve([])
+      if (cmd === 'list_connection_groups') return Promise.resolve([])
+      return Promise.resolve(null)
+    })
+
+    render(<ConnectionForm editingConnection={editConn} />)
+
+    await user.click(screen.getByLabelText('Use no password (remove saved password)'))
+    await user.click(screen.getByText('Save'))
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'update_connection',
+        expect.objectContaining({
+          data: expect.objectContaining({ clearPassword: true, password: null }),
+        })
+      )
+    })
+  })
+
+  it('typing a new password is blocked while clear password mode is enabled', async () => {
+    const user = userEvent.setup()
+    const editConn = makeSavedConnection({ hasPassword: true })
+
+    render(<ConnectionForm editingConnection={editConn} />)
+
+    const clearCheckbox = screen.getByLabelText('Use no password (remove saved password)')
+    const passwordInput = screen.getByLabelText('Password')
+    await user.click(clearCheckbox)
+    expect(clearCheckbox).toBeChecked()
+    expect(passwordInput).toBeDisabled()
+
+    await user.type(passwordInput, 'new-secret')
+    expect(clearCheckbox).toBeChecked()
+    expect(passwordInput).toHaveValue('')
+  })
+
+  it('clear password mode disables and clears the password field', async () => {
+    const user = userEvent.setup()
+    const editConn = makeSavedConnection({ hasPassword: true })
+
+    render(<ConnectionForm editingConnection={editConn} />)
+
+    const passwordInput = screen.getByLabelText('Password')
+    await user.type(passwordInput, 'new-secret')
+    expect(passwordInput).toHaveValue('new-secret')
+
+    await user.click(screen.getByLabelText('Use no password (remove saved password)'))
+
+    expect(passwordInput).toHaveValue('')
+    expect(passwordInput).toBeDisabled()
+  })
+
+  it('shows remove saved password option after saving a new password', async () => {
+    const user = userEvent.setup()
+
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'save_connection') return Promise.resolve('new-uuid-123')
+      if (cmd === 'list_connections') return Promise.resolve([])
+      if (cmd === 'list_connection_groups') return Promise.resolve([])
+      return Promise.resolve(null)
+    })
+
+    render(<ConnectionForm />)
+
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
+    await user.type(screen.getByLabelText('Host address'), 'localhost')
+    await user.type(screen.getByLabelText('Username'), 'root')
+    await user.type(screen.getByLabelText('Password'), 'secret')
+    await user.click(screen.getByText('Save'))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Use no password (remove saved password)')).toBeInTheDocument()
+    })
+  })
+
+  it('editing a passwordless connection does not invent saved password state when typed password is cleared', async () => {
+    const user = userEvent.setup()
+    const editConn = makeSavedConnection({ hasPassword: false })
+
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === 'update_connection') return Promise.resolve(undefined)
+      if (cmd === 'list_connections') return Promise.resolve([])
+      if (cmd === 'list_connection_groups') return Promise.resolve([])
+      return Promise.resolve(null)
+    })
+
+    render(<ConnectionForm editingConnection={editConn} />)
+
+    const passwordInput = screen.getByLabelText('Password')
+    expect(passwordInput).toHaveAttribute('placeholder', '')
+    expect(
+      screen.queryByLabelText('Use no password (remove saved password)')
+    ).not.toBeInTheDocument()
+
+    await user.type(passwordInput, 'secret')
+    await user.clear(passwordInput)
+    await user.click(screen.getByText('Save'))
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'update_connection',
+        expect.objectContaining({
+          data: expect.objectContaining({ clearPassword: false, password: null }),
+        })
+      )
+    })
+
+    expect(
+      screen.queryByLabelText('Use no password (remove saved password)')
+    ).not.toBeInTheDocument()
+    expect(passwordInput).toHaveAttribute('placeholder', '')
+  })
+
   it('Save calls updateConnection after previous save (no duplicates)', async () => {
     const user = userEvent.setup()
     mockInvoke.mockImplementation((cmd) => {

@@ -52,6 +52,7 @@ fn test_update_connection_impl_modifies_fields() {
         port: 3307,
         username: "admin".to_string(),
         password: None,
+        clear_password: false,
         default_database: None,
         ssl_enabled: true,
         ssl_ca_path: None,
@@ -164,6 +165,7 @@ fn test_update_with_password_sets_has_password_true() {
         port: 3306,
         username: "root".to_string(),
         password: Some("new_secret".to_string()),
+        clear_password: false,
         default_database: None,
         ssl_enabled: false,
         ssl_ca_path: None,
@@ -185,6 +187,35 @@ fn test_update_with_password_sets_has_password_true() {
         record.has_password,
         "has_password should be true after update with password"
     );
+}
+
+#[test]
+fn test_update_rejects_setting_and_clearing_password_together() {
+    let state = common::test_app_state();
+    let id = save_connection_impl(&state, common::sample_save_input()).expect("should save");
+
+    let update = UpdateConnectionInput {
+        name: "Test DB".to_string(),
+        host: "localhost".to_string(),
+        port: 3306,
+        username: "root".to_string(),
+        password: Some("new_secret".to_string()),
+        clear_password: true,
+        default_database: None,
+        ssl_enabled: false,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        color: None,
+        group_id: None,
+        read_only: false,
+        sort_order: 0,
+        connect_timeout_secs: None,
+        keepalive_interval_secs: None,
+    };
+
+    let error = update_connection_impl(&state, &id, update).expect_err("should reject conflict");
+    assert_eq!(error, "Cannot set and clear password at the same time");
 }
 
 #[test]

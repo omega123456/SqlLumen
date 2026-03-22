@@ -38,6 +38,8 @@ pub struct UpdateConnectionInput {
     pub port: i64,
     pub username: String,
     pub password: Option<String>,
+    #[serde(default)]
+    pub clear_password: bool,
     pub default_database: Option<String>,
     pub ssl_enabled: bool,
     pub ssl_ca_path: Option<String>,
@@ -129,6 +131,12 @@ pub fn update_connection_impl(
     data: UpdateConnectionInput,
 ) -> Result<(), String> {
     let password = data.password.clone();
+    let clear_password = data.clear_password;
+
+    if clear_password && password.is_some() {
+        return Err("Cannot set and clear password at the same time".to_string());
+    }
+
     let conn = lock_db(state)?;
 
     let update_data = UpdateConnectionData {
@@ -154,7 +162,20 @@ pub fn update_connection_impl(
         Err(error) => return Err(error.to_string()),
     }
 
-    if let Some(pw) = password {
+    if clear_password {
+        let previous_keychain_ref = connections::get_keychain_ref(&conn, id)
+            .map_err(|e| e.to_string())?
+            .filter(|reference| !reference.is_empty());
+        if let Err(error) = connections::set_keychain_ref(&conn, id, None) {
+            return Err(error.to_string());
+        }
+        if let Some(previous_ref) = previous_keychain_ref.as_deref() {
+            let _ = crate::credentials::delete_password(previous_ref);
+            if previous_ref != id {
+                let _ = crate::credentials::delete_password(id);
+            }
+        }
+    } else if let Some(pw) = password {
         let previous_keychain_ref = connections::get_keychain_ref(&conn, id)
             .map_err(|e| e.to_string())?
             .filter(|reference| !reference.is_empty());

@@ -134,6 +134,8 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
   const [formData, setFormData] = useState<ConnectionFormData>(DEFAULT_FORM_DATA)
   const [errors, setErrors] = useState<FormErrors>({})
   const [showPassword, setShowPassword] = useState(false)
+  const [hasSavedPassword, setHasSavedPassword] = useState(false)
+  const [clearSavedPassword, setClearSavedPassword] = useState(false)
   const [testResult, setTestResult] = useState<TestConnectionResultType | null>(null)
   const [pendingAction, setPendingAction] = useState<'test' | 'save' | 'connect' | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
@@ -171,9 +173,13 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
         keepaliveIntervalSecs: editingConnection.keepaliveIntervalSecs,
       })
       setSavedId(editingConnection.id)
+      setHasSavedPassword(editingConnection.hasPassword)
+      setClearSavedPassword(false)
     } else {
       setFormData(DEFAULT_FORM_DATA)
       setSavedId(null)
+      setHasSavedPassword(false)
+      setClearSavedPassword(false)
     }
     setErrors({})
     setTestResult(null)
@@ -243,11 +249,16 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
     try {
       const existingId = savedId ?? editingConnection?.id
       if (existingId) {
-        await updateConnection(existingId, formData)
+        await updateConnection(existingId, formData, { clearPassword: clearSavedPassword })
+        setHasSavedPassword(
+          clearSavedPassword ? false : hasSavedPassword || formData.password !== ''
+        )
       } else {
         const newId = await saveConnectionIPC(formData)
         setSavedId(newId)
+        setHasSavedPassword(formData.password !== '')
       }
+      setClearSavedPassword(false)
       await fetchSavedConnections()
       showSuccessToast('Connection saved', formData.name.trim() || undefined)
     } catch (err) {
@@ -268,12 +279,18 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
     let connectionId = savedId ?? editingConnection?.id
     try {
       if (connectionId) {
-        await updateConnection(connectionId, formData)
+        await updateConnection(connectionId, formData, { clearPassword: clearSavedPassword })
+        setHasSavedPassword(
+          clearSavedPassword ? false : hasSavedPassword || formData.password !== ''
+        )
         await fetchSavedConnections()
       } else {
         connectionId = await saveConnectionIPC(formData)
+        setSavedId(connectionId)
+        setHasSavedPassword(formData.password !== '')
         await fetchSavedConnections()
       }
+      setClearSavedPassword(false)
     } catch (err) {
       const failure = buildErrorResult(err)
       setTestResult(failure)
@@ -375,8 +392,14 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                     type={showPassword ? 'text' : 'password'}
                     className={styles.passwordInput}
                     value={formData.password}
-                    onChange={(e) => updateField('password', e.target.value)}
-                    placeholder={editingConnection?.hasPassword ? '••••••••' : ''}
+                    onChange={(e) => {
+                      updateField('password', e.target.value)
+                      if (clearSavedPassword) {
+                        setClearSavedPassword(false)
+                      }
+                    }}
+                    placeholder={hasSavedPassword && !clearSavedPassword ? '••••••••' : ''}
+                    disabled={clearSavedPassword}
                   />
                   <button
                     type="button"
@@ -387,6 +410,22 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                     {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+                {hasSavedPassword && (
+                  <label className={styles.label}>
+                    <input
+                      type="checkbox"
+                      checked={clearSavedPassword}
+                      onChange={(e) => {
+                        const checked = e.target.checked
+                        setClearSavedPassword(checked)
+                        if (checked && formData.password) {
+                          updateField('password', '')
+                        }
+                      }}
+                    />{' '}
+                    Use no password (remove saved password)
+                  </label>
+                )}
               </div>
             </div>
 
@@ -510,7 +549,10 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
             </div>
 
             <div className={styles.moreSections}>
-              <CollapsibleSection title="SSL certificate files" sectionTestId="ssl-certificate-section">
+              <CollapsibleSection
+                title="SSL certificate files"
+                sectionTestId="ssl-certificate-section"
+              >
                 <div className={styles.sectionContent}>
                   <SslFileField
                     id="ssl-ca"
