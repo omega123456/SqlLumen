@@ -1,0 +1,8 @@
+.elevatedOuter {
+  overflow: hidden;
+}
+
+.scrollInner {
+  overflow-x: auto;
+  border-radius: inherit;
+}

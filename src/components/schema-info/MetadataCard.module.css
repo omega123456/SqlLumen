@@ -1,6 +1,4 @@
 .card {
-  background: var(--surface-container-low);
-  border-radius: 12px;
   padding: 20px;
 }
 

@@ -106,8 +106,6 @@
 
 /* Columns section within DDL tab for tables */
 .columnsSection {
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.15);
-  border-radius: 8px;
   overflow: hidden;
 }
 

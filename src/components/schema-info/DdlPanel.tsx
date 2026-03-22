@@ -3,6 +3,7 @@ import type { ColumnInfo, TableMetadata, ObjectType } from '../../types/schema'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { tokenizeSql } from '../../lib/sql-tokenizer'
 import type { TokenType } from '../../lib/sql-tokenizer'
+import { ElevatedSurface } from '../common/ElevatedSurface'
 import { MetadataCard } from './MetadataCard'
 import { ColumnsPanel } from './ColumnsPanel'
 import styles from './DdlPanel.module.css'
@@ -63,13 +64,13 @@ export function DdlPanel({ ddl, metadata, objectType, columns }: DdlPanelProps) 
             </div>
           </div>
           {columns && columns.length > 0 && (
-            <div className={styles.columnsSection}>
+            <ElevatedSurface className={styles.columnsSection}>
               <div className={styles.columnsSectionHeader}>
                 <span className={styles.columnsSectionTitle}>Columns Definition</span>
                 <span className={styles.columnsSectionCount}>{columns.length} COLUMNS</span>
               </div>
-              <ColumnsPanel columns={columns} />
-            </div>
+              <ColumnsPanel columns={columns} embedded />
+            </ElevatedSurface>
           )}
         </>
       ) : (

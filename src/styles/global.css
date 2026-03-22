@@ -72,6 +72,13 @@ button {
   box-shadow: var(--ui-subsection-elevation-shadow);
 }
 
+/* Filled cards / table shells on workspace surfaces (schema info, etc.) */
+.ui-elevated-surface {
+  background: var(--ui-elevated-surface-bg);
+  border-radius: var(--ui-elevated-surface-radius);
+  box-shadow: var(--ui-elevated-surface-shadow);
+}
+
 .ui-input,
 .ui-select,
 .ui-textarea {

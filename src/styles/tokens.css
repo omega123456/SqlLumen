@@ -131,6 +131,11 @@
     0 0 0 1px rgba(var(--outline-variant-rgb), 0.22);
   --ui-collapsible-content-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.12);
 
+  /* Filled raised panels (workspace schema cards / tables) — shadow matches collapsibles */
+  --ui-elevated-surface-bg: var(--surface-container-low);
+  --ui-elevated-surface-shadow: var(--ui-subsection-elevation-shadow);
+  --ui-elevated-surface-radius: 12px;
+
   --ui-input-bg: var(--surface-container-highest);
   --ui-input-fg: var(--on-surface);
   --ui-input-font-size: var(--font-size-md);
@@ -366,6 +371,10 @@
     0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 14px rgba(15, 23, 42, 0.08),
     0 0 0 1px rgba(var(--outline-variant-rgb), 0.14);
   --ui-collapsible-content-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+
+  --ui-elevated-surface-bg: var(--surface-container-lowest);
+  --ui-elevated-surface-shadow: var(--ui-subsection-elevation-shadow);
+  --ui-elevated-surface-radius: 12px;
 
   /* Slight grey fill so fields read as inputs on white forms (between lowest + low) */
   --ui-input-bg: #f1f5f97a;

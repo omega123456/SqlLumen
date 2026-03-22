@@ -1,4 +1,5 @@
 import type { IndexInfo } from '../../types/schema'
+import { DataTableContainer } from '../common/DataTableContainer'
 import styles from './IndexesPanel.module.css'
 
 export interface IndexesPanelProps {
@@ -8,7 +9,8 @@ export interface IndexesPanelProps {
 export function IndexesPanel({ indexes }: IndexesPanelProps) {
   return (
     <div className={styles.container} data-testid="indexes-panel">
-      <table className={styles.table}>
+      <DataTableContainer>
+        <table className={styles.table}>
         <thead>
           <tr>
             <th className={styles.th}>Index Name</th>
@@ -57,7 +59,8 @@ export function IndexesPanel({ indexes }: IndexesPanelProps) {
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </DataTableContainer>
     </div>
   )
 }

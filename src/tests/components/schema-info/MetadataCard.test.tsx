@@ -17,6 +17,12 @@ function makeMetadata(overrides: Partial<TableMetadata> = {}): TableMetadata {
 }
 
 describe('MetadataCard', () => {
+  it('uses elevated surface on root', () => {
+    render(<MetadataCard metadata={makeMetadata()} />)
+
+    expect(screen.getByTestId('metadata-card')).toHaveClass('ui-elevated-surface')
+  })
+
   it('shows engine value', () => {
     render(<MetadataCard metadata={makeMetadata()} />)
 

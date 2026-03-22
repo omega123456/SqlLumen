@@ -17,6 +17,12 @@ function makeMetadata(overrides: Partial<TableMetadata> = {}): TableMetadata {
 }
 
 describe('StatsRow', () => {
+  it('renders three elevated stat cards', () => {
+    const { container } = render(<StatsRow metadata={makeMetadata()} />)
+
+    expect(container.querySelectorAll('.ui-elevated-surface')).toHaveLength(3)
+  })
+
   it('shows formatted row count', () => {
     render(<StatsRow metadata={makeMetadata({ tableRows: 45000 })} />)
 

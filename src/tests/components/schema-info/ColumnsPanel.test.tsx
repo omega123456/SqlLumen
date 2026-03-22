@@ -17,6 +17,22 @@ function makeColumn(overrides: Partial<ColumnInfo> = {}): ColumnInfo {
 }
 
 describe('ColumnsPanel', () => {
+  it('wraps table in ui-elevated-surface when not embedded', () => {
+    const columns = [makeColumn()]
+
+    const { container } = render(<ColumnsPanel columns={columns} />)
+
+    expect(container.querySelectorAll('.ui-elevated-surface')).toHaveLength(1)
+  })
+
+  it('omits inner ui-elevated-surface when embedded', () => {
+    const columns = [makeColumn()]
+
+    const { container } = render(<ColumnsPanel columns={columns} embedded />)
+
+    expect(container.querySelectorAll('.ui-elevated-surface')).toHaveLength(0)
+  })
+
   it('renders correct column count', () => {
     const columns = [
       makeColumn({ name: 'id', ordinalPosition: 1 }),

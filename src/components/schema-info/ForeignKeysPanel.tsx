@@ -1,4 +1,5 @@
 import type { ForeignKeyInfo } from '../../types/schema'
+import { DataTableContainer } from '../common/DataTableContainer'
 import styles from './ForeignKeysPanel.module.css'
 
 export interface ForeignKeysPanelProps {
@@ -18,7 +19,8 @@ export function ForeignKeysPanel({ foreignKeys }: ForeignKeysPanelProps) {
 
   return (
     <div className={styles.container} data-testid="foreign-keys-panel">
-      <table className={styles.table}>
+      <DataTableContainer>
+        <table className={styles.table}>
         <thead>
           <tr>
             <th className={styles.th}>Name</th>
@@ -53,7 +55,8 @@ export function ForeignKeysPanel({ foreignKeys }: ForeignKeysPanelProps) {
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </DataTableContainer>
     </div>
   )
 }
