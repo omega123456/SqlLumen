@@ -15,6 +15,7 @@ import type {
 } from '../types/connection'
 import { useSchemaStore } from './schema-store'
 import { useWorkspaceStore } from './workspace-store'
+import { showErrorToast, showSuccessToast } from './toast-store'
 
 let listenersSetup = false
 
@@ -64,7 +65,9 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       const [connections, groups] = await Promise.all([listConnections(), listConnectionGroups()])
       set({ savedConnections: connections, connectionGroups: groups, error: null })
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) })
+      const msg = err instanceof Error ? err.message : String(err)
+      set({ error: msg })
+      showErrorToast('Failed to load connections', msg)
     }
   },
 
@@ -73,6 +76,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     if (!profile) {
       const errorMsg = `Connection profile '${id}' not found`
       set({ error: errorMsg })
+      showErrorToast('Connection failed', errorMsg)
       throw new Error(errorMsg)
     }
 
@@ -91,9 +95,11 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         activeTabId: id,
         error: null,
       }))
+      showSuccessToast('Connected', profile.name)
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)
       set({ error: errorMsg })
+      showErrorToast('Connection failed', errorMsg)
       throw err
     }
   },
@@ -124,7 +130,9 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         }
       })
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) })
+      const msg = err instanceof Error ? err.message : String(err)
+      set({ error: msg })
+      showErrorToast('Failed to close connection', msg)
     }
   },
 
@@ -195,6 +203,8 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       })
     } catch (e) {
       console.error('Failed to persist defaultDatabase change:', e)
+      const msg = e instanceof Error ? e.message : String(e)
+      showErrorToast('Failed to save default database', msg)
       // Revert in-memory state if connection still exists
       const current = get().activeConnections[connectionId]
       if (current) {

@@ -11,9 +11,11 @@ async function init() {
     const { playwrightIpcMockHandler } = await import('./lib/playwright-ipc-mock')
     mockIPC((cmd, args) => playwrightIpcMockHandler(cmd, args as Record<string, unknown>))
 
-    // Expose stores for E2E tests to programmatically open tabs
+    // Expose stores for E2E tests to programmatically open tabs / toasts
     const { useWorkspaceStore } = await import('./stores/workspace-store')
+    const { useToastStore } = await import('./stores/toast-store')
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
+    ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
   }
 
   // Apply theme before React renders to prevent flash

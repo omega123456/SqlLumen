@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Database, Eye, EyeSlash, FolderOpen } from '@phosphor-icons/react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useConnectionStore } from '../../stores/connection-store'
+import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import {
   testConnection,
   saveConnection as saveConnectionIPC,
@@ -222,7 +223,9 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
       const result = await testConnection(formData)
       setTestResult(result)
     } catch (err) {
-      setTestResult(buildErrorResult(err))
+      const failure = buildErrorResult(err)
+      setTestResult(failure)
+      showErrorToast('Connection test failed', failure.errorMessage ?? undefined)
     } finally {
       setPendingAction(null)
     }
@@ -243,8 +246,11 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
         setSavedId(newId)
       }
       await fetchSavedConnections()
+      showSuccessToast('Connection saved', formData.name.trim() || undefined)
     } catch (err) {
-      setTestResult(buildErrorResult(err))
+      const failure = buildErrorResult(err)
+      setTestResult(failure)
+      showErrorToast('Failed to save connection', failure.errorMessage ?? undefined)
     } finally {
       setPendingAction(null)
     }
@@ -256,9 +262,8 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
     }
 
     setPendingAction('connect')
+    let connectionId = savedId ?? editingConnection?.id
     try {
-      let connectionId = savedId ?? editingConnection?.id
-
       if (connectionId) {
         await updateConnection(connectionId, formData)
         await fetchSavedConnections()
@@ -266,11 +271,21 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
         connectionId = await saveConnectionIPC(formData)
         await fetchSavedConnections()
       }
+    } catch (err) {
+      const failure = buildErrorResult(err)
+      setTestResult(failure)
+      showErrorToast('Failed to save connection', failure.errorMessage ?? undefined)
+      setPendingAction(null)
+      return
+    }
 
-      await openConnection(connectionId)
+    try {
+      await openConnection(connectionId!)
       closeDialog()
     } catch (err) {
-      setTestResult(buildErrorResult(err))
+      const failure = buildErrorResult(err)
+      setTestResult(failure)
+      /* openConnection already shows an error toast */
     } finally {
       setPendingAction(null)
     }

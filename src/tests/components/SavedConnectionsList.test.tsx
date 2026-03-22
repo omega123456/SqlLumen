@@ -14,6 +14,11 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }))
 
+vi.mock('../../stores/toast-store', () => ({
+  showErrorToast: vi.fn(),
+  showSuccessToast: vi.fn(),
+}))
+
 import { invoke } from '@tauri-apps/api/core'
 const mockInvoke = vi.mocked(invoke)
 

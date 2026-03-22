@@ -3,6 +3,7 @@ import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { createDatabase } from '../../lib/schema-commands'
 import { useDatabaseEncoding } from '../../hooks/useDatabaseEncoding'
 import { DialogShell } from './DialogShell'
+import { showErrorToast } from '../../stores/toast-store'
 import styles from './CreateDatabaseDialog.module.css'
 
 export interface CreateDatabaseDialogProps {
@@ -60,7 +61,9 @@ export function CreateDatabaseDialog({
       )
       onSuccess(name.trim())
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const msg = err instanceof Error ? err.message : String(err)
+      setError(msg)
+      showErrorToast('Failed to create database', msg)
     } finally {
       setIsSubmitting(false)
     }

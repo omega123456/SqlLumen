@@ -275,6 +275,31 @@
   --ui-context-menu-destructive-hover-bg: rgba(var(--error-rgb), 0.1);
   --ui-context-menu-destructive-hover-fg: var(--error);
   --ui-context-menu-destructive-hover-icon-fg: var(--error);
+
+  /* Toast — toast_notifications_dark_mode/code.html */
+  --ui-toast-z-index: 10050;
+  --ui-toast-stack-padding: var(--space-xl);
+  --ui-toast-stack-gap: var(--space-md);
+  --ui-toast-max-width: 24rem;
+  --ui-toast-status-bar-offset: 24px;
+  --ui-toast-dark-surface: color-mix(in srgb, var(--surface-container-high) 60%, transparent);
+  --ui-toast-dark-backdrop-filter: blur(24px);
+  --ui-toast-dark-border-default: 1px solid rgba(255, 255, 255, 0.05);
+  --ui-toast-dark-border-error: 1px solid color-mix(in srgb, var(--error) 10%, transparent);
+  --ui-toast-dark-border-success: 1px solid color-mix(in srgb, var(--tertiary) 10%, transparent);
+  --ui-toast-dark-shadow: 0 12px 32px rgba(218, 226, 253, 0.06);
+  --ui-toast-dark-radius: 8px;
+  --ui-toast-dark-inner-padding: var(--space-md);
+  --ui-toast-dark-row-gap: var(--space-md);
+  --ui-toast-dark-title-fg: #f1f5f9;
+  --ui-toast-dark-body-fg: #94a3b8;
+  --ui-toast-dark-close-fg: #64748b;
+  --ui-toast-dark-close-hover-fg: #cbd5e1;
+  --ui-toast-icon-well-size: 40px;
+  --ui-toast-dark-icon-well-radius: 4px;
+  --ui-toast-dark-icon-well-info-bg: color-mix(in srgb, var(--primary-container) 20%, transparent);
+  --ui-toast-dark-icon-well-error-bg: color-mix(in srgb, var(--error-container) 20%, transparent);
+  --ui-toast-dark-icon-well-success-bg: color-mix(in srgb, var(--tertiary-container) 20%, transparent);
 }
 
 /* Light Theme — query_slate_light (applied via [data-theme="light"] on <html>) */
@@ -480,4 +505,16 @@
   --ui-context-menu-destructive-hover-bg: var(--error);
   --ui-context-menu-destructive-hover-fg: #ffffff;
   --ui-context-menu-destructive-hover-icon-fg: #ffffff;
+
+  /* Toast — toast_notifications_light_mode/code.html */
+  --ui-toast-light-card-bg: var(--surface-container-lowest);
+  --ui-toast-light-shadow: 0 24px 40px -12px rgba(25, 28, 31, 0.06);
+  --ui-toast-light-border: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  --ui-toast-light-radius: 8px;
+  --ui-toast-light-success-well-bg: #f0fdf4;
+  --ui-toast-light-success-icon-fg: #16a34a;
+  --ui-toast-light-progress-track: var(--surface-container-low);
+  --ui-toast-light-progress-success: #22c55e;
+  --ui-toast-light-progress-error: var(--error);
+  --ui-toast-light-progress-info: var(--primary);
 }

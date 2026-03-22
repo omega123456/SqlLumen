@@ -16,6 +16,7 @@ import {
   positionContextMenuInPortal,
 } from '../../lib/context-menu-utils'
 import type { SavedConnection, ConnectionGroup } from '../../types/connection'
+import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import styles from './SavedConnectionsList.module.css'
 
 // --- Simplification 6: pure helper to build grouped/sorted sections ---
@@ -229,8 +230,11 @@ export function SavedConnectionsList({
         await deleteConnection(id)
         await fetchSavedConnections()
         onDeleteConnection?.(id)
+        showSuccessToast('Connection deleted')
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to delete connection')
+        const msg = err instanceof Error ? err.message : 'Failed to delete connection'
+        setError(msg)
+        showErrorToast('Failed to delete connection', msg)
       }
     },
     [fetchSavedConnections, onDeleteConnection]
@@ -260,8 +264,11 @@ export function SavedConnectionsList({
       try {
         await createConnectionGroup(trimmedName)
         await fetchSavedConnections()
+        showSuccessToast('Group created', trimmedName)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create group')
+        const msg = err instanceof Error ? err.message : 'Failed to create group'
+        setError(msg)
+        showErrorToast('Failed to create group', msg)
       }
     } else {
       // mode === 'rename'
@@ -269,8 +276,11 @@ export function SavedConnectionsList({
         try {
           await updateConnectionGroup(editingGroup.groupId, trimmedName)
           await fetchSavedConnections()
+          showSuccessToast('Group renamed', trimmedName)
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to rename group')
+          const msg = err instanceof Error ? err.message : 'Failed to rename group'
+          setError(msg)
+          showErrorToast('Failed to rename group', msg)
         }
       }
       setEditingGroup(null)
@@ -292,8 +302,11 @@ export function SavedConnectionsList({
       try {
         await deleteConnectionGroup(groupId)
         await fetchSavedConnections()
+        showSuccessToast('Group deleted')
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to delete group')
+        const msg = err instanceof Error ? err.message : 'Failed to delete group'
+        setError(msg)
+        showErrorToast('Failed to delete group', msg)
       }
     },
     [fetchSavedConnections]

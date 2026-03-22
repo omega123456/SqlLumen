@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
+
+vi.mock('../stores/toast-store', () => ({
+  showErrorToast: vi.fn(),
+  showSuccessToast: vi.fn(),
+}))
+
 import { useConnectionStore, _resetListenersSetup } from '../stores/connection-store'
 import type { SavedConnection, ConnectionGroup } from '../types/connection'
 

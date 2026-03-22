@@ -1,0 +1,230 @@
+@keyframes toastProgressShrink {
+  from {
+    width: 100%;
+  }
+
+  to {
+    width: 0%;
+  }
+}
+
+.viewport {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ui-toast-z-index);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: var(--ui-toast-stack-gap);
+  max-width: 100vw;
+  padding: var(--ui-toast-stack-padding);
+  padding-bottom: calc(var(--ui-toast-stack-padding) + var(--ui-toast-status-bar-offset));
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-toast-stack-gap);
+  width: min(var(--ui-toast-max-width), 100%);
+  pointer-events: auto;
+}
+
+/* ---------- Dark — frosted card ---------- */
+.toast {
+  display: flex;
+  flex-direction: column;
+  max-width: var(--ui-toast-max-width);
+  border-radius: var(--ui-toast-dark-radius);
+  background: var(--ui-toast-dark-surface);
+  backdrop-filter: var(--ui-toast-dark-backdrop-filter);
+  -webkit-backdrop-filter: var(--ui-toast-dark-backdrop-filter);
+  border: var(--ui-toast-dark-border-default);
+  box-shadow: var(--ui-toast-dark-shadow);
+  transition: transform 0.2s ease;
+}
+
+.toast:hover {
+  transform: translateX(-4px);
+}
+
+.toastError {
+  border: var(--ui-toast-dark-border-error);
+}
+
+.toastSuccess {
+  border: var(--ui-toast-dark-border-success);
+}
+
+.surface {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--ui-toast-dark-row-gap);
+  padding: var(--ui-toast-dark-inner-padding);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.iconWell {
+  flex-shrink: 0;
+  width: var(--ui-toast-icon-well-size);
+  height: var(--ui-toast-icon-well-size);
+  border-radius: var(--ui-toast-dark-icon-well-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconWellInfo {
+  background: var(--ui-toast-dark-icon-well-info-bg);
+  color: var(--primary);
+}
+
+.iconWellError {
+  background: var(--ui-toast-dark-icon-well-error-bg);
+  color: var(--error);
+}
+
+.iconWellSuccess {
+  background: var(--ui-toast-dark-icon-well-success-bg);
+  color: var(--tertiary);
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.headerRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-sm);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-headline);
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--ui-toast-dark-title-fg);
+}
+
+.message {
+  margin: var(--space-xs) 0 0;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--ui-toast-dark-body-fg);
+}
+
+.close {
+  flex-shrink: 0;
+  padding: 0;
+  margin: -2px 0 0;
+  line-height: 1;
+  color: var(--ui-toast-dark-close-fg);
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+.close:hover {
+  color: var(--ui-toast-dark-close-hover-fg);
+}
+
+.progressTrack {
+  display: none;
+  width: 100%;
+  height: 4px;
+  background: var(--ui-toast-light-progress-track);
+}
+
+.progressFill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  animation-name: toastProgressShrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+.progressSuccess {
+  background: var(--ui-toast-light-progress-success);
+}
+
+.progressError {
+  background: var(--ui-toast-light-progress-error);
+}
+
+.progressInfo {
+  background: var(--ui-toast-light-progress-info);
+}
+
+/* ---------- Light ---------- */
+:global([data-theme='light']) .toast {
+  overflow: hidden;
+  background: var(--ui-toast-light-card-bg);
+  border: var(--ui-toast-light-border);
+  border-radius: var(--ui-toast-light-radius);
+  box-shadow: var(--ui-toast-light-shadow);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:global([data-theme='light']) .toast:hover {
+  transform: none;
+}
+
+:global([data-theme='light']) .toastError,
+:global([data-theme='light']) .toastSuccess {
+  border: var(--ui-toast-light-border);
+}
+
+:global([data-theme='light']) .surface {
+  padding: var(--ui-toast-dark-inner-padding);
+}
+
+:global([data-theme='light']) .iconWell {
+  border-radius: 50%;
+}
+
+:global([data-theme='light']) .iconWellInfo {
+  background: var(--secondary-container);
+  color: var(--primary);
+}
+
+:global([data-theme='light']) .iconWellError {
+  background: var(--error-container);
+  color: var(--error);
+}
+
+:global([data-theme='light']) .iconWellSuccess {
+  background: var(--ui-toast-light-success-well-bg);
+  color: var(--ui-toast-light-success-icon-fg);
+}
+
+:global([data-theme='light']) .title {
+  color: var(--on-surface);
+}
+
+:global([data-theme='light']) .message {
+  color: var(--on-surface-variant);
+}
+
+:global([data-theme='light']) .close {
+  color: color-mix(in srgb, var(--on-surface-variant) 40%, transparent);
+}
+
+:global([data-theme='light']) .close:hover {
+  color: var(--on-surface);
+}
+
+:global([data-theme='light']) .progressTrack {
+  display: block;
+}

@@ -13,6 +13,7 @@ import { ConfirmDialog } from '../components/dialogs/ConfirmDialog'
 import { CreateDatabaseDialog } from '../components/dialogs/CreateDatabaseDialog'
 import { AlterDatabaseDialog } from '../components/dialogs/AlterDatabaseDialog'
 import { RenameDialog } from '../components/dialogs/RenameDialog'
+import { showErrorToast, showSuccessToast } from '../stores/toast-store'
 
 const RENAME_DB_WARNING =
   'This operation will create a new database, move all tables, and drop the original. Only works for databases containing tables only (no views, procedures, functions, triggers, or events).'
@@ -122,7 +123,8 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
   // ---------------------------------------------------------------------------
 
   const handleCreateDbSuccess = useCallback(
-    (_name: string) => {
+    (name: string) => {
+      showSuccessToast('Database created', name)
       setCreateDbOpen(false)
       void refreshAll(connectionId)
     },
@@ -131,6 +133,9 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
 
   const handleAlterDbSuccess = useCallback(() => {
     const dbName = alterDbTarget
+    if (dbName) {
+      showSuccessToast('Database updated', dbName)
+    }
     setAlterDbOpen(false)
     setAlterDbTarget(null)
     if (dbName) {
@@ -155,8 +160,11 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         setRenameDbOpen(false)
         setRenameDbTarget(null)
         void refreshAll(connectionId)
+        showSuccessToast('Database renamed', `${renameDbTarget} → ${newName}`)
       } catch (err) {
-        setRenameError(err instanceof Error ? err.message : String(err))
+        const msg = err instanceof Error ? err.message : String(err)
+        setRenameError(msg)
+        showErrorToast('Failed to rename database', msg)
       } finally {
         setRenameLoading(false)
       }
@@ -169,18 +177,22 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
     setConfirmLoading(true)
     setConfirmError(null)
     try {
-      await dropDatabase(connectionId, dropDbConfirm.name)
-      closeTabsByDatabase(connectionId, dropDbConfirm.name)
+      const droppedName = dropDbConfirm.name
+      await dropDatabase(connectionId, droppedName)
+      closeTabsByDatabase(connectionId, droppedName)
       // If the dropped database was the defaultDatabase, clear it
       const defaultDb =
         useConnectionStore.getState().activeConnections[connectionId]?.profile.defaultDatabase
-      if (defaultDb === dropDbConfirm.name) {
+      if (defaultDb === droppedName) {
         void useConnectionStore.getState().updateDefaultDatabase(connectionId, null)
       }
       setDropDbConfirm(null)
       void refreshAll(connectionId)
+      showSuccessToast('Database dropped', droppedName)
     } catch (err) {
-      setConfirmError(err instanceof Error ? err.message : String(err))
+      const msg = err instanceof Error ? err.message : String(err)
+      setConfirmError(msg)
+      showErrorToast('Failed to drop database', msg)
     } finally {
       setConfirmLoading(false)
     }
@@ -193,10 +205,14 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
     try {
       await dropTable(connectionId, dropTableConfirm.db, dropTableConfirm.table)
       closeTabsByObject(connectionId, dropTableConfirm.db, dropTableConfirm.table)
+      const { db, table } = dropTableConfirm
       setDropTableConfirm(null)
-      void refreshCategory(connectionId, dropTableConfirm.db, 'table')
+      void refreshCategory(connectionId, db, 'table')
+      showSuccessToast('Table dropped', `${db}.${table}`)
     } catch (err) {
-      setConfirmError(err instanceof Error ? err.message : String(err))
+      const msg = err instanceof Error ? err.message : String(err)
+      setConfirmError(msg)
+      showErrorToast('Failed to drop table', msg)
     } finally {
       setConfirmLoading(false)
     }
@@ -209,10 +225,14 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
     try {
       await truncateTable(connectionId, truncateTableConfirm.db, truncateTableConfirm.table)
       const db = truncateTableConfirm.db
+      const tbl = truncateTableConfirm.table
       setTruncateTableConfirm(null)
       void refreshCategory(connectionId, db, 'table')
+      showSuccessToast('Table truncated', `${db}.${tbl}`)
     } catch (err) {
-      setConfirmError(err instanceof Error ? err.message : String(err))
+      const msg = err instanceof Error ? err.message : String(err)
+      setConfirmError(msg)
+      showErrorToast('Failed to truncate table', msg)
     } finally {
       setConfirmLoading(false)
     }
@@ -227,10 +247,14 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         await renameTable(connectionId, renameTableOpen.db, renameTableOpen.table, newName)
         updateTabObject(connectionId, renameTableOpen.db, renameTableOpen.table, newName)
         const db = renameTableOpen.db
+        const prev = renameTableOpen.table
         setRenameTableOpen(null)
         void refreshCategory(connectionId, db, 'table')
+        showSuccessToast('Table renamed', `${prev} → ${newName}`)
       } catch (err) {
-        setRenameError(err instanceof Error ? err.message : String(err))
+        const msg = err instanceof Error ? err.message : String(err)
+        setRenameError(msg)
+        showErrorToast('Failed to rename table', msg)
       } finally {
         setRenameLoading(false)
       }

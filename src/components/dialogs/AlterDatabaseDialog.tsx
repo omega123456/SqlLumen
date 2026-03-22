@@ -3,6 +3,7 @@ import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { alterDatabase, getDatabaseDetails } from '../../lib/schema-commands'
 import { useDatabaseEncoding } from '../../hooks/useDatabaseEncoding'
 import { DialogShell } from './DialogShell'
+import { showErrorToast } from '../../stores/toast-store'
 import styles from './AlterDatabaseDialog.module.css'
 
 export interface AlterDatabaseDialogProps {
@@ -42,7 +43,9 @@ export function AlterDatabaseDialog({
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err))
+          const msg = err instanceof Error ? err.message : String(err)
+          setError(msg)
+          showErrorToast('Failed to load database', msg)
         }
       } finally {
         if (!cancelled) {
@@ -78,7 +81,9 @@ export function AlterDatabaseDialog({
       )
       onSuccess()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const msg = err instanceof Error ? err.message : String(err)
+      setError(msg)
+      showErrorToast('Failed to alter database', msg)
     } finally {
       setIsSubmitting(false)
     }

@@ -29,6 +29,23 @@ async function openConnectionManager(page: Page) {
   await expect(page.getByText('Sample MySQL')).toBeVisible()
 }
 
+/** Stacked toasts aligned with `.agent/design/toast_notifications_*` copy — for visual regression only. */
+async function showDesignReferenceToasts(page: Page) {
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__toastStore__ as {
+      getState: () => {
+        showInfo: (t: string, m?: string) => void
+        showError: (t: string, m?: string) => void
+        showSuccess: (t: string, m?: string) => void
+      }
+    }
+    const { showInfo, showError, showSuccess } = store.getState()
+    showInfo('Update Available', 'SQL Architect v2.5.1 is ready for installation.')
+    showError('Authentication Error', 'Invalid credentials for user: admin@localhost')
+    showSuccess('Query Executed', 'Successfully retrieved 450 rows in 12ms.')
+  })
+}
+
 async function connectToSample(page: Page) {
   await openConnectionManager(page)
   await page.getByText('Sample MySQL').click()
@@ -40,6 +57,14 @@ async function connectToSample(page: Page) {
   // Wait for the object browser to load databases
   await expect(page.getByTestId('object-browser')).toBeVisible()
   await expect(page.getByText('ecommerce_db')).toBeVisible()
+  /* Dismiss success toasts so visual baselines stay stable */
+  for (let i = 0; i < 8; i++) {
+    const btn = page.getByTestId('toast-dismiss').first()
+    if (!(await btn.isVisible().catch(() => false))) {
+      break
+    }
+    await btn.click()
+  }
 }
 
 for (const theme of themes) {
@@ -75,6 +100,14 @@ for (const theme of themes) {
 
     test('StatusBar — ready', async ({ page }) => {
       await expect(page.getByTestId('status-bar')).toHaveScreenshot(`status-bar-ready-${theme}.png`)
+    })
+
+    test('ToastViewport — stacked toasts (design reference)', async ({ page }) => {
+      await showDesignReferenceToasts(page)
+      await expect(page.getByTestId('toast-stack')).toBeVisible()
+      await expect(page.getByTestId('toast-stack')).toHaveScreenshot(`toast-stack-${theme}.png`, {
+        animations: 'disabled',
+      })
     })
 
     test('ConnectionDialog — full dialog', async ({ page }) => {

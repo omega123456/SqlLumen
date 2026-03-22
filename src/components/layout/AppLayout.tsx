@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar'
 import { WorkspaceArea } from './WorkspaceArea'
 import { StatusBar } from './StatusBar'
 import { ConnectionDialog } from '../connection-dialog/ConnectionDialog'
+import { ToastViewport } from '../common/ToastViewport'
 import styles from './AppLayout.module.css'
 
 export function AppLayout() {
@@ -36,6 +37,7 @@ export function AppLayout() {
       </div>
       <StatusBar />
       <ConnectionDialog />
+      <ToastViewport />
     </div>
   )
 }

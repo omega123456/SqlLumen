@@ -18,6 +18,11 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn(),
 }))
 
+vi.mock('../../stores/toast-store', () => ({
+  showErrorToast: vi.fn(),
+  showSuccessToast: vi.fn(),
+}))
+
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 const mockInvoke = vi.mocked(invoke)
