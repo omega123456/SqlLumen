@@ -30,15 +30,17 @@ export function ConnectionTabBar() {
     tabsByProfileId.set(pid, list)
   }
   const tabDisplayName = (c: (typeof tabs)[0]) => {
+    const baseName =
+      c.profile.name.trim() !== '' ? c.profile.name.trim() : 'Unnamed connection'
     const list = tabsByProfileId.get(c.profile.id) ?? []
     if (list.length <= 1) {
-      return c.profile.name
+      return baseName
     }
     const idx = list.findIndex((x) => x.id === c.id) + 1
     if (idx === 1) {
-      return c.profile.name
+      return baseName
     }
-    return `${c.profile.name} (${idx})`
+    return `${baseName} (${idx})`
   }
 
   return (
@@ -59,8 +61,7 @@ export function ConnectionTabBar() {
           <UnderlineTabBar className={styles.connectionTabRail}>
             {tabs.map((conn) => {
               const isActive = conn.id === activeTabId
-              const displayName =
-                conn.profile.name.trim() !== '' ? conn.profile.name.trim() : 'Unnamed connection'
+              const displayName = tabDisplayName(conn)
               return (
                 <UnderlineTab
                   key={conn.id}
