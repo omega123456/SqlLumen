@@ -20,6 +20,40 @@ pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
     Ok(conn)
 }
 
+#[cfg(not(any(test, coverage)))]
+fn prevent_default_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    use tauri_plugin_prevent_default::Flags;
+
+    let flags = if cfg!(debug_assertions) {
+        Flags::all().difference(Flags::DEV_TOOLS)
+    } else {
+        Flags::all()
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        use tauri_plugin_prevent_default::PlatformOptions;
+
+        tauri_plugin_prevent_default::Builder::new()
+            .with_flags(flags)
+            .platform(
+                PlatformOptions::new()
+                    .general_autofill(false)
+                    .password_autosave(false)
+                    // WebView2 disables F12/Ctrl+Shift+I when false; keep true in debug so DevTools work with `tauri dev`.
+                    .browser_accelerator_keys(cfg!(debug_assertions)),
+            )
+            .build()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        tauri_plugin_prevent_default::Builder::new()
+            .with_flags(flags)
+            .build()
+    }
+}
+
 /// The `run()` function is excluded from test builds to avoid linking GUI
 /// dependencies (tao/wry/comctl32) that require a Windows SxS manifest
 /// not present in test binaries.
@@ -38,6 +72,8 @@ pub fn run() {
     }
 
     builder = builder.plugin(tauri_plugin_clipboard_manager::init());
+
+    builder = builder.plugin(prevent_default_plugin());
 
     builder
         .setup(|app| {

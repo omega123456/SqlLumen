@@ -115,6 +115,7 @@ function SslFileField({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           disabled={disabled}
+          autoComplete="off"
         />
         <button
           type="button"
@@ -314,7 +315,13 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
   return (
     <div className={styles.formGridRoot}>
       <div className={styles.formMain} data-testid="connection-form-main">
-        <div className={styles.formInner}>
+        <form
+          className={styles.formInner}
+          autoComplete="off"
+          onSubmit={(e) => {
+            e.preventDefault()
+          }}
+        >
           <p className={styles.formIntro}>Configure the parameters for your MySQL instance.</p>
 
           <div className={styles.fieldGrid}>
@@ -592,7 +599,7 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
           <div className={styles.testResultSlot}>
             <TestConnectionResult result={testResult} />
           </div>
-        </div>
+        </form>
       </div>
 
       <footer className={styles.formFooter}>
