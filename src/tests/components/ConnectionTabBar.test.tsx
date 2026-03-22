@@ -79,6 +79,22 @@ describe('ConnectionTabBar', () => {
     expect(screen.queryByRole('button', { name: /Close/ })).not.toBeInTheDocument()
   })
 
+  it('shows Unnamed connection when profile name is blank', () => {
+    const profile = makeSavedConnection({ name: '   ' })
+    const conn = makeActiveConnection({ profile })
+
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': conn },
+      activeTabId: 'conn-1',
+    })
+
+    render(<ConnectionTabBar />)
+
+    expect(screen.getByText('Unnamed connection')).toBeInTheDocument()
+    const closeBtn = screen.getByLabelText('Close Unnamed connection')
+    expect(closeBtn).toBeInTheDocument()
+  })
+
   it('renders a tab for each active connection with correct name and color', () => {
     const conn1 = makeActiveConnection({ id: 'conn-1' })
     const profile2 = makeSavedConnection({ id: 'conn-2', name: 'Staging DB', color: '#ef4444' })

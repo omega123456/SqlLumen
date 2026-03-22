@@ -47,6 +47,9 @@ interface FormErrors {
 
 function validate(data: ConnectionFormData): FormErrors {
   const errors: FormErrors = {}
+  if (!data.name.trim()) {
+    errors.name = 'Connection name is required'
+  }
   if (!data.host.trim()) {
     errors.host = 'Host is required'
   }
@@ -295,23 +298,25 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
     <div className={styles.formGridRoot}>
       <div className={styles.formMain} data-testid="connection-form-main">
         <div className={styles.formInner}>
-          <div className={styles.hero}>
-            <label htmlFor="conn-name" className={styles.visuallyHidden}>
-              Connection Name
-            </label>
-            <input
-              id="conn-name"
-              type="text"
-              className={styles.titleInput}
-              value={formData.name}
-              onChange={(e) => updateField('name', e.target.value)}
-              placeholder="New connection"
-              autoFocus
-            />
-            <p className={styles.subtitle}>Configure the parameters for your MySQL instance.</p>
-          </div>
+          <p className={styles.formIntro}>Configure the parameters for your MySQL instance.</p>
 
           <div className={styles.fieldGrid}>
+            <div className={styles.fieldGroup}>
+              <label htmlFor="conn-name" className={styles.labelCaps}>
+                Connection name
+              </label>
+              <input
+                id="conn-name"
+                type="text"
+                className={`${styles.input} ${errors.name ? styles.inputError : ''}`}
+                value={formData.name}
+                onChange={(e) => updateField('name', e.target.value)}
+                placeholder="My production server"
+                autoFocus
+              />
+              {errors.name && <span className={styles.errorText}>{errors.name}</span>}
+            </div>
+
             <div className={styles.row2}>
               <div className={styles.fieldGroup}>
                 <label htmlFor="conn-host" className={styles.labelCaps}>

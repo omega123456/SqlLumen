@@ -40,32 +40,9 @@
   box-sizing: border-box;
 }
 
-.hero {
-  margin-bottom: clamp(16px, 2.2vh, 28px);
+.formIntro {
+  margin: 0 0 clamp(16px, 2.2vh, 24px);
   max-width: 100%;
-}
-
-.titleInput {
-  width: 100%;
-  padding: 0;
-  margin: 0;
-  border: none;
-  background: transparent;
-  color: var(--on-surface);
-  font-size: var(--ui-title-hero-size);
-  font-weight: var(--ui-title-hero-weight);
-  font-family: var(--font-headline);
-  letter-spacing: var(--letter-spacing-display-tight);
-  outline: none;
-  box-sizing: border-box;
-}
-
-.titleInput::placeholder {
-  color: rgba(var(--on-surface-rgb), 0.35);
-}
-
-.subtitle {
-  margin: var(--space-xs) 0 0;
   font-size: var(--ui-subtitle-size);
   color: var(--on-surface-variant);
   font-family: var(--font-body);
@@ -387,16 +364,4 @@
 
 .testResultSlot {
   margin-top: clamp(12px, 1.8vh, 24px);
-}
-
-.visuallyHidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }

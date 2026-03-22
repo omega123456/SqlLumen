@@ -41,12 +41,14 @@ export function ConnectionTabBar() {
           <UnderlineTabBar className={styles.connectionTabRail}>
             {tabs.map((conn) => {
               const isActive = conn.id === activeTabId
+              const displayName =
+                conn.profile.name.trim() !== '' ? conn.profile.name.trim() : 'Unnamed connection'
               return (
                 <UnderlineTab
                   key={conn.id}
                   active={isActive}
                   onSelect={() => switchTab(conn.id)}
-                  title={`${conn.profile.name} (${conn.profile.host}:${conn.profile.port})`}
+                  title={`${displayName} (${conn.profile.host}:${conn.profile.port})`}
                   prefix={
                     <>
                       {conn.profile.color ? (
@@ -62,7 +64,7 @@ export function ConnectionTabBar() {
                     <button
                       type="button"
                       className={styles.closeButton}
-                      aria-label={`Close ${conn.profile.name}`}
+                      aria-label={`Close ${displayName}`}
                       onClick={() => {
                         void closeConnection(conn.id)
                       }}
@@ -71,7 +73,7 @@ export function ConnectionTabBar() {
                     </button>
                   }
                 >
-                  <span className={styles.tabName}>{conn.profile.name}</span>
+                  <span className={styles.tabName}>{displayName}</span>
                 </UnderlineTab>
               )
             })}

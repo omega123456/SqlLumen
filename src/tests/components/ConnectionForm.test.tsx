@@ -71,7 +71,7 @@ describe('ConnectionForm', () => {
   it('renders all basic form fields', () => {
     render(<ConnectionForm />)
 
-    expect(screen.getByLabelText('Connection Name')).toBeInTheDocument()
+    expect(screen.getByLabelText('Connection name')).toBeInTheDocument()
     expect(screen.getByLabelText('Host address')).toBeInTheDocument()
     expect(screen.getByLabelText('Port')).toBeInTheDocument()
     expect(screen.getByLabelText('Username')).toBeInTheDocument()
@@ -119,6 +119,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Test Connection'))
@@ -139,6 +140,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Save'))
@@ -152,6 +154,7 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Test Connection'))
 
@@ -162,6 +165,7 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.click(screen.getByText('Test Connection'))
 
@@ -173,6 +177,10 @@ describe('ConnectionForm', () => {
     render(<ConnectionForm />)
 
     await user.click(screen.getByText('Test Connection'))
+    expect(screen.getByText('Connection name is required')).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
+    expect(screen.queryByText('Connection name is required')).not.toBeInTheDocument()
     expect(screen.getByText('Host is required')).toBeInTheDocument()
 
     await user.type(screen.getByLabelText('Host address'), 'localhost')
@@ -185,6 +193,7 @@ describe('ConnectionForm', () => {
 
     await user.click(screen.getByText('Save'))
 
+    expect(screen.getByText('Connection name is required')).toBeInTheDocument()
     expect(screen.getByText('Host is required')).toBeInTheDocument()
     expect(screen.getByText('Username is required')).toBeInTheDocument()
     expect(mockInvoke).not.toHaveBeenCalled()
@@ -196,7 +205,9 @@ describe('ConnectionForm', () => {
 
     await user.click(screen.getByText('Connect'))
 
+    expect(screen.getByText('Connection name is required')).toBeInTheDocument()
     expect(screen.getByText('Host is required')).toBeInTheDocument()
+    expect(screen.getByText('Username is required')).toBeInTheDocument()
     expect(mockInvoke).not.toHaveBeenCalled()
   })
 
@@ -333,7 +344,7 @@ describe('ConnectionForm', () => {
     expect(screen.getByTestId('color-picker-popover')).toBeInTheDocument()
 
     // Click outside (on a form field)
-    await user.click(screen.getByLabelText('Connection Name'))
+    await user.click(screen.getByLabelText('Connection name'))
 
     // Popover should close
     expect(screen.queryByTestId('color-picker-popover')).not.toBeInTheDocument()
@@ -356,6 +367,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Test Connection'))
@@ -377,6 +389,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Test Connection'))
@@ -471,7 +484,7 @@ describe('ConnectionForm', () => {
       if (cmd === 'save_connection') return Promise.resolve('new-conn-id')
       if (cmd === 'list_connections')
         return Promise.resolve([
-          makeSavedConnection({ id: 'new-conn-id', name: '', host: 'localhost' }),
+          makeSavedConnection({ id: 'new-conn-id', name: 'Local', host: 'localhost' }),
         ])
       if (cmd === 'list_connection_groups') return Promise.resolve([])
       if (cmd === 'open_connection') return Promise.resolve({ serverVersion: '8.0.35' })
@@ -481,6 +494,7 @@ describe('ConnectionForm', () => {
     useConnectionStore.setState({ dialogOpen: true })
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Connect'))
@@ -497,7 +511,7 @@ describe('ConnectionForm', () => {
       if (cmd === 'save_connection') return Promise.resolve('new-conn-id')
       if (cmd === 'list_connections')
         return Promise.resolve([
-          makeSavedConnection({ id: 'new-conn-id', name: '', host: 'localhost' }),
+          makeSavedConnection({ id: 'new-conn-id', name: 'Local', host: 'localhost' }),
         ])
       if (cmd === 'list_connection_groups') return Promise.resolve([])
       if (cmd === 'open_connection') return Promise.resolve({ serverVersion: '8.0.35' })
@@ -507,6 +521,7 @@ describe('ConnectionForm', () => {
     useConnectionStore.setState({ dialogOpen: true })
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Connect'))
@@ -525,6 +540,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Connect'))
@@ -544,6 +560,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Save'))
@@ -557,7 +574,7 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     render(<ConnectionForm />)
 
-    const nameInput = screen.getByLabelText('Connection Name')
+    const nameInput = screen.getByLabelText('Connection name')
     await user.type(nameInput, 'My Server')
     expect(nameInput).toHaveValue('My Server')
 
@@ -607,7 +624,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm editingConnection={editConn} />)
 
-    expect(screen.getByLabelText('Connection Name')).toHaveValue('Prod DB')
+    expect(screen.getByLabelText('Connection name')).toHaveValue('Prod DB')
     expect(screen.getByLabelText('Host address')).toHaveValue('10.0.0.1')
     expect(screen.getByLabelText('Port')).toHaveValue(3307)
     expect(screen.getByLabelText('Username')).toHaveValue('admin')
@@ -636,6 +653,7 @@ describe('ConnectionForm', () => {
 
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
 
@@ -702,7 +720,7 @@ describe('ConnectionForm', () => {
       if (cmd === 'save_connection') return Promise.resolve('new-conn-id')
       if (cmd === 'list_connections')
         return Promise.resolve([
-          makeSavedConnection({ id: 'new-conn-id', name: '', host: 'localhost' }),
+          makeSavedConnection({ id: 'new-conn-id', name: 'Local', host: 'localhost' }),
         ])
       if (cmd === 'list_connection_groups') return Promise.resolve([])
       if (cmd === 'open_connection') return Promise.reject(new Error('Connection refused'))
@@ -712,6 +730,7 @@ describe('ConnectionForm', () => {
     useConnectionStore.setState({ dialogOpen: true })
     render(<ConnectionForm />)
 
+    await user.type(screen.getByLabelText('Connection name'), 'Local')
     await user.type(screen.getByLabelText('Host address'), 'localhost')
     await user.type(screen.getByLabelText('Username'), 'root')
     await user.click(screen.getByText('Connect'))

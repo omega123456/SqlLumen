@@ -87,7 +87,7 @@ describe('ConnectionDialog', () => {
       await Promise.resolve()
     })
 
-    expect(screen.getByLabelText('Connection Name')).toBeInTheDocument()
+    expect(screen.getByLabelText('Connection name')).toBeInTheDocument()
     expect(screen.getByLabelText('Host address')).toBeInTheDocument()
     expect(screen.getByLabelText('Port')).toBeInTheDocument()
     expect(screen.getByLabelText('Username')).toBeInTheDocument()
@@ -139,7 +139,7 @@ describe('ConnectionDialog', () => {
     render(<ConnectionDialog />)
 
     // Click on a form field inside the dialog content
-    await user.click(screen.getByLabelText('Connection Name'))
+    await user.click(screen.getByLabelText('Connection name'))
 
     expect(useConnectionStore.getState().dialogOpen).toBe(true)
   })
@@ -217,7 +217,7 @@ describe('ConnectionDialog', () => {
 
       // Form should be populated with connection data
       await waitFor(() => {
-        expect(screen.getByLabelText('Connection Name')).toHaveValue('Test DB')
+        expect(screen.getByLabelText('Connection name')).toHaveValue('Test DB')
         expect(screen.getByLabelText('Host address')).toHaveValue('127.0.0.1')
         expect(screen.getByLabelText('Username')).toHaveValue('root')
       })
@@ -238,7 +238,7 @@ describe('ConnectionDialog', () => {
       await user.click(screen.getByText('Test DB'))
 
       await waitFor(() => {
-        expect(screen.getByLabelText('Connection Name')).toHaveValue('Test DB')
+        expect(screen.getByLabelText('Connection name')).toHaveValue('Test DB')
       })
 
       // Click "+ New" to clear the form
@@ -246,7 +246,7 @@ describe('ConnectionDialog', () => {
 
       // Form should be cleared
       await waitFor(() => {
-        expect(screen.getByLabelText('Connection Name')).toHaveValue('')
+        expect(screen.getByLabelText('Connection name')).toHaveValue('')
         expect(screen.getByLabelText('Host address')).toHaveValue('')
         expect(screen.getByLabelText('Username')).toHaveValue('')
       })
