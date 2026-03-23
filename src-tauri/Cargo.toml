@@ -28,7 +28,10 @@ regex = { version = "1", features = ["std"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "mysql", "tls-rustls-ring", "chrono"] }
 tokio = { version = "1", features = ["sync", "time", "macros"] }
 tokio-util = { version = "0.7", features = ["rt"] }
-chrono = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
+tracing-appender = "0.2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 # keyring v3 has no default features — without these, the mock backend is used (no OS persistence).
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -46,10 +49,11 @@ keyring = { version = "3", features = [
 ] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "test-util", "net", "io-util"] }
+tokio = { version = "1", features = ["rt", "macros", "time", "test-util"] }
 tauri = { version = "2", features = ["test"] }
+tempfile = "3"
+async-trait = "0.1.89"
 opensrv-mysql = "0.7.0"
-async-trait = "0.1"
 
 [profile.release]
 codegen-units = 1

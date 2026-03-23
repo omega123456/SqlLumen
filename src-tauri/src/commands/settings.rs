@@ -26,7 +26,14 @@ pub fn get_setting_impl(state: &AppState, key: &str) -> Result<Option<String>, S
 pub fn set_setting_impl(state: &AppState, key: &str, value: &str) -> Result<(), String> {
     let conn = lock_db(state)?;
     match settings::set_setting(&conn, key, value) {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            if key == crate::logging::LOG_LEVEL_SETTING_KEY {
+                if let Ok(guard) = state.log_filter_reload.lock() {
+                    crate::logging::reload_log_level_from_setting_value(guard.as_ref(), value);
+                }
+            }
+            Ok(())
+        }
         Err(error) => Err(error.to_string()),
     }
 }

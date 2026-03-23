@@ -1,7 +1,4 @@
 //! Health monitor helpers: backoff schedule, cancellation token behavior, status payload JSON.
-//!
-//! Omitted from `mysql-client-llvm-cov`: the library is built with `cfg(coverage)` there, so
-//! `mysql::health` provides stubs instead of `backoff_duration` / `ConnectionStatusChangedPayload`.
 
 use mysql_client_lib::mysql::health::{backoff_duration, ConnectionStatusChangedPayload};
 use std::time::Duration;

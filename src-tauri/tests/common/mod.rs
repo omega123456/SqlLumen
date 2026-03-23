@@ -3,6 +3,7 @@
 // Each integration test binary only uses a subset of helpers; unused items are expected.
 
 pub mod fake_credentials;
+pub mod mock_mysql_server;
 
 use mysql_client_lib::commands::connections::SaveConnectionInput;
 use mysql_client_lib::db::migrations;
@@ -33,6 +34,7 @@ pub fn test_app_state() -> AppState {
         registry: ConnectionRegistry::new(),
         app_handle: None,
         results: std::sync::RwLock::new(std::collections::HashMap::new()),
+        log_filter_reload: Mutex::new(None),
     }
 }
 

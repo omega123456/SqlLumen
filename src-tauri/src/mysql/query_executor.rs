@@ -783,10 +783,13 @@ pub async fn execute_query_impl(
     let start = std::time::Instant::now();
 
     let (columns, all_rows, affected_rows) = if is_result_set {
+        crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
         let rows = sqlx::query(&sql_to_execute)
             .fetch_all(&pool)
             .await
             .map_err(|e| format!("Query failed: {e}"))?;
+
+        crate::mysql::query_log::log_mysql_rows(&rows);
 
         let columns: Vec<ColumnMeta> = if let Some(first_row) = rows.first() {
             first_row
@@ -799,6 +802,7 @@ pub async fn execute_query_impl(
                 .collect()
         } else {
             // Empty result set — try to get column metadata via PREPARE/describe
+            crate::mysql::query_log::log_sqlx_describe(sql_to_execute.as_str());
             match (&pool).describe(sql_to_execute.as_str()).await {
                 Ok(desc) => desc
                     .columns
@@ -817,10 +821,12 @@ pub async fn execute_query_impl(
 
         (columns, serialized_rows, 0u64)
     } else {
+        crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
         let result = sqlx::query(&sql_to_execute)
             .execute(&pool)
             .await
             .map_err(|e| format!("Query failed: {e}"))?;
+        crate::mysql::query_log::log_execute_result(&result);
         (vec![], vec![], result.rows_affected())
     };
 
@@ -980,13 +986,16 @@ pub async fn fetch_schema_metadata_impl(
     const SYSTEM_DBS: &str = "'information_schema','performance_schema','sys','mysql'";
 
     // Fetch databases
-    let db_rows = sqlx::query(&format!(
+    let db_sql = format!(
         "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA \
          WHERE SCHEMA_NAME NOT IN ({SYSTEM_DBS}) ORDER BY SCHEMA_NAME"
-    ))
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| format!("Failed to fetch databases: {e}"))?;
+    );
+    crate::mysql::query_log::log_outgoing_sql(&db_sql);
+    let db_rows = sqlx::query(&db_sql)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch databases: {e}"))?;
+    crate::mysql::query_log::log_mysql_rows(&db_rows);
 
     let databases: Vec<String> = db_rows
         .iter()
@@ -994,7 +1003,7 @@ pub async fn fetch_schema_metadata_impl(
         .collect();
 
     // Fetch tables
-    let table_rows = sqlx::query(&format!(
+    let table_sql = format!(
         "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, COALESCE(t.ENGINE,''), \
          COALESCE(c.CHARACTER_SET_NAME,''), COALESCE(t.TABLE_ROWS,0), COALESCE(t.DATA_LENGTH,0) \
          FROM information_schema.TABLES t \
@@ -1002,10 +1011,13 @@ pub async fn fetch_schema_metadata_impl(
            ON c.COLLATION_NAME = t.TABLE_COLLATION \
          WHERE t.TABLE_SCHEMA NOT IN ({SYSTEM_DBS}) \
          ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME"
-    ))
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| format!("Failed to fetch tables: {e}"))?;
+    );
+    crate::mysql::query_log::log_outgoing_sql(&table_sql);
+    let table_rows = sqlx::query(&table_sql)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch tables: {e}"))?;
+    crate::mysql::query_log::log_mysql_rows(&table_rows);
 
     let mut tables: std::collections::HashMap<String, Vec<TableInfo>> =
         std::collections::HashMap::new();
@@ -1038,15 +1050,18 @@ pub async fn fetch_schema_metadata_impl(
     }
 
     // Fetch columns
-    let col_rows = sqlx::query(&format!(
+    let col_sql = format!(
         "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE \
          FROM information_schema.COLUMNS \
          WHERE TABLE_SCHEMA NOT IN ({SYSTEM_DBS}) \
          ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION"
-    ))
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| format!("Failed to fetch columns: {e}"))?;
+    );
+    crate::mysql::query_log::log_outgoing_sql(&col_sql);
+    let col_rows = sqlx::query(&col_sql)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch columns: {e}"))?;
+    crate::mysql::query_log::log_mysql_rows(&col_rows);
 
     let mut columns: std::collections::HashMap<String, Vec<ColumnMeta>> =
         std::collections::HashMap::new();
@@ -1069,15 +1084,18 @@ pub async fn fetch_schema_metadata_impl(
     }
 
     // Fetch routines
-    let routine_rows = sqlx::query(&format!(
+    let routine_sql = format!(
         "SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE \
          FROM information_schema.ROUTINES \
          WHERE ROUTINE_SCHEMA NOT IN ({SYSTEM_DBS}) \
          ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME"
-    ))
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| format!("Failed to fetch routines: {e}"))?;
+    );
+    crate::mysql::query_log::log_outgoing_sql(&routine_sql);
+    let routine_rows = sqlx::query(&routine_sql)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to fetch routines: {e}"))?;
+    crate::mysql::query_log::log_mysql_rows(&routine_rows);
 
     let mut routines: std::collections::HashMap<String, Vec<RoutineMeta>> =
         std::collections::HashMap::new();

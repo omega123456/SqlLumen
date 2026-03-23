@@ -8,13 +8,13 @@
 #[cfg(not(coverage))]
 use crate::credentials;
 #[cfg(not(coverage))]
-use crate::mysql::pool;
+use crate::mysql::query_log;
 #[cfg(not(coverage))]
+use crate::mysql::pool;
 #[cfg(not(coverage))]
 use crate::mysql::registry::ConnectionStatus;
 #[cfg(not(coverage))]
 use crate::state::AppState;
-#[cfg(not(coverage))]
 use std::time::Duration;
 use tauri::{AppHandle, Runtime};
 #[cfg(not(coverage))]
@@ -22,7 +22,6 @@ use tauri::{Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
 /// Event payload emitted via `app_handle.emit()` when connection status changes.
-#[cfg(not(coverage))]
 #[derive(serde::Serialize, Clone)]
 pub struct ConnectionStatusChangedPayload {
     #[serde(rename = "connectionId")]
@@ -33,7 +32,6 @@ pub struct ConnectionStatusChangedPayload {
 
 /// Backoff schedule for reconnection attempts.
 /// Returns the delay before the next reconnection attempt based on the attempt number (0-indexed).
-#[cfg(not(coverage))]
 pub fn backoff_duration(attempt: u32) -> Duration {
     match attempt {
         0 => Duration::from_secs(5),
@@ -113,7 +111,11 @@ async fn health_loop<R: Runtime>(
         };
 
         // Attempt to ping the server
+        query_log::log_outgoing_sql("SELECT 1");
         let ping_result = sqlx::query("SELECT 1").execute(&pool).await;
+        if let Ok(ref r) = ping_result {
+            query_log::log_execute_result(r);
+        }
 
         if ping_result.is_ok() {
             // Ping succeeded — connection is healthy. Continue.

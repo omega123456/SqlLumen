@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod credentials;
 pub mod db;
+pub mod logging;
 pub mod mysql;
 pub mod state;
 
@@ -78,13 +79,30 @@ pub fn run() {
     builder
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
+            let log_dir = dir.join("logs");
+            let logging_init = crate::logging::init_logging(&log_dir)
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+
             let conn = initialize_database(&dir)
                 .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+
+            if !logging_init.rust_log_env_set {
+                crate::logging::apply_log_level_from_settings(&conn, &logging_init.filter_reload);
+            }
+
+            tracing::info!(
+                target: "mysql_client_lib",
+                rust_log_env_set = logging_init.rust_log_env_set,
+                log_dir = %log_dir.display(),
+                "logging initialized"
+            );
+
             let state = AppState {
                 db: Mutex::new(conn),
                 registry: ConnectionRegistry::new(),
                 app_handle: Some(app.handle().clone()),
                 results: std::sync::RwLock::new(std::collections::HashMap::new()),
+                log_filter_reload: Mutex::new(Some(logging_init.filter_reload)),
             };
             app.manage(state);
             Ok(())

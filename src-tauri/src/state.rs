@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, RwLock};
 use tauri::AppHandle;
 
+use crate::logging::LogFilterReloadHandle;
 use crate::mysql::query_executor::StoredResult;
 use crate::mysql::registry::ConnectionRegistry;
 
@@ -16,4 +17,6 @@ pub struct AppState {
     pub app_handle: Option<AppHandle>,
     /// In-memory query results keyed by (connection_id, tab_id).
     pub results: RwLock<HashMap<(String, String), StoredResult>>,
+    /// Reload handle for `EnvFilter` when `log.level` changes (None in tests).
+    pub log_filter_reload: Mutex<Option<LogFilterReloadHandle>>,
 }

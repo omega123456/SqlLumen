@@ -25,6 +25,7 @@ fn test_state() -> AppState {
         registry: ConnectionRegistry::new(),
         app_handle: None,
         results: std::sync::RwLock::new(std::collections::HashMap::new()),
+        log_filter_reload: Mutex::new(None),
     }
 }
 

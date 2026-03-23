@@ -3,6 +3,8 @@ use crate::db::connections;
 #[cfg(not(coverage))]
 use crate::mysql::health;
 #[cfg(not(coverage))]
+use crate::mysql::query_log;
+#[cfg(not(coverage))]
 use crate::mysql::pool;
 #[cfg(coverage)]
 use crate::mysql::pool::create_pool;
@@ -100,11 +102,12 @@ fn health_monitor_token(
 
 #[cfg(not(coverage))]
 async fn fetch_server_version(pool: &sqlx::MySqlPool) -> String {
-    sqlx::query("SELECT VERSION()")
-        .fetch_one(pool)
-        .await
-        .ok()
-        .and_then(|row| row.try_get::<String, _>(0).ok())
+    query_log::log_outgoing_sql("SELECT VERSION()");
+    let row = sqlx::query("SELECT VERSION()").fetch_one(pool).await.ok();
+    if let Some(ref r) = row {
+        query_log::log_mysql_rows(std::slice::from_ref(r));
+    }
+    row.and_then(|r| r.try_get::<String, _>(0).ok())
         .unwrap_or_else(|| "Unknown".to_string())
 }
 
@@ -149,17 +152,25 @@ pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionR
     let connection_time_ms = start.elapsed().as_millis() as u64;
 
     // Run diagnostic queries — failures are non-fatal (report what we can)
+    query_log::log_outgoing_sql("SELECT VERSION()");
     let server_version = sqlx::query("SELECT VERSION()")
         .fetch_one(&pool)
         .await
         .ok()
-        .and_then(|row| row.try_get::<String, _>(0).ok());
+        .and_then(|row| {
+            query_log::log_mysql_rows(std::slice::from_ref(&row));
+            row.try_get::<String, _>(0).ok()
+        });
 
+    query_log::log_outgoing_sql("SHOW STATUS LIKE 'Ssl_cipher'");
     let ssl_status = sqlx::query("SHOW STATUS LIKE 'Ssl_cipher'")
         .fetch_one(&pool)
         .await
         .ok()
-        .and_then(|row| row.try_get::<String, _>(1).ok())
+        .and_then(|row| {
+            query_log::log_mysql_rows(std::slice::from_ref(&row));
+            row.try_get::<String, _>(1).ok()
+        })
         .map(|s| {
             if s.is_empty() {
                 "Not using SSL".to_string()
@@ -168,11 +179,15 @@ pub async fn test_connection_impl(input: TestConnectionInput) -> TestConnectionR
             }
         });
 
+    query_log::log_outgoing_sql("SELECT CURRENT_USER()");
     let auth_method = sqlx::query("SELECT CURRENT_USER()")
         .fetch_one(&pool)
         .await
         .ok()
-        .and_then(|row| row.try_get::<String, _>(0).ok());
+        .and_then(|row| {
+            query_log::log_mysql_rows(std::slice::from_ref(&row));
+            row.try_get::<String, _>(0).ok()
+        });
 
     // Always close the temp pool
     pool.close().await;

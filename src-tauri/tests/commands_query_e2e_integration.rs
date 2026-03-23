@@ -1,31 +1,28 @@
+//! Query IPC against the in-process mock MySQL server. Omitted from `cargo mysql-client-llvm-cov`:
+//! instrumented builds hit sqlx pool acquire timeouts against the mock; `pnpm test:rust` runs this suite.
+
 #![cfg(not(coverage))]
 
 mod common;
 
-use async_trait::async_trait;
 use chrono::NaiveDate;
+use common::mock_mysql_server::{
+    MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse, MockTimeValue,
+};
+use opensrv_mysql::{ColumnFlags, ColumnType};
 use mysql_client_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
 use mysql_client_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
 use mysql_client_lib::mysql::query_executor::{execute_query_impl, ExecuteQueryResult};
 use mysql_client_lib::mysql::registry::ConnectionRegistry;
 use mysql_client_lib::state::AppState;
-use opensrv_mysql::{
-    AsyncMysqlIntermediary, AsyncMysqlShim, Column, ColumnFlags, ColumnType, OkResponse,
-    ParamParser, QueryResultWriter, StatementMetaWriter, ToMysqlValue,
-};
 use rusqlite::Connection;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::json;
-use std::io;
-use std::io::Write;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
-use tokio::io::BufWriter;
-use tokio::net::tcp::OwnedWriteHalf;
-use tokio::net::TcpListener;
 
 fn test_state() -> AppState {
     common::ensure_fake_backend_once();
@@ -36,6 +33,7 @@ fn test_state() -> AppState {
         registry: ConnectionRegistry::new(),
         app_handle: None,
         results: std::sync::RwLock::new(std::collections::HashMap::new()),
+        log_filter_reload: Mutex::new(None),
     }
 }
 
@@ -144,289 +142,6 @@ fn save_input_json(port: u16) -> serde_json::Value {
         "connectTimeoutSecs": input.connect_timeout_secs,
         "keepaliveIntervalSecs": input.keepalive_interval_secs,
     })
-}
-
-#[derive(Debug, Clone)]
-struct MockColumnDef {
-    name: &'static str,
-    coltype: ColumnType,
-    colflags: ColumnFlags,
-}
-
-#[derive(Debug, Clone)]
-enum MockCell {
-    U32(u32),
-    I64(i64),
-    U64(u64),
-    DateTime(chrono::NaiveDateTime),
-    Time(MockTimeValue),
-    Bytes(&'static [u8]),
-}
-
-#[derive(Debug, Clone, Copy)]
-struct MockTimeValue {
-    negative: bool,
-    hours: u32,
-    minutes: u8,
-    seconds: u8,
-    microseconds: u32,
-}
-
-impl MockTimeValue {
-    fn format_text(self) -> String {
-        let sign = if self.negative { "-" } else { "" };
-        if self.microseconds == 0 {
-            format!(
-                "{sign}{:02}:{:02}:{:02}",
-                self.hours, self.minutes, self.seconds
-            )
-        } else {
-            format!(
-                "{sign}{:02}:{:02}:{:02}.{:06}",
-                self.hours, self.minutes, self.seconds, self.microseconds
-            )
-        }
-    }
-
-    fn day_hour_parts(self) -> (u32, u8) {
-        ((self.hours / 24), (self.hours % 24) as u8)
-    }
-}
-
-impl ToMysqlValue for MockTimeValue {
-    fn to_mysql_text<W: Write>(&self, w: &mut W) -> io::Result<()> {
-        write_lenenc_str(w, self.format_text().as_bytes())
-    }
-
-    fn to_mysql_bin<W: Write>(&self, w: &mut W, c: &Column) -> io::Result<()> {
-        if c.coltype != ColumnType::MYSQL_TYPE_TIME {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("tried to use {:?} as {:?}", self, c.coltype),
-            ));
-        }
-
-        let (days, hours) = self.day_hour_parts();
-        let has_fraction = self.microseconds != 0;
-
-        w.write_all(&[if has_fraction { 12 } else { 8 }])?;
-        w.write_all(&[u8::from(self.negative)])?;
-        w.write_all(&days.to_le_bytes())?;
-        w.write_all(&[hours, self.minutes, self.seconds])?;
-
-        if has_fraction {
-            w.write_all(&self.microseconds.to_le_bytes())?;
-        }
-
-        Ok(())
-    }
-}
-
-fn write_lenenc_str<W: Write>(w: &mut W, bytes: &[u8]) -> io::Result<()> {
-    write_lenenc_int(w, bytes.len() as u64)?;
-    w.write_all(bytes)
-}
-
-fn write_lenenc_int<W: Write>(w: &mut W, value: u64) -> io::Result<()> {
-    match value {
-        0..=250 => w.write_all(&[value as u8]),
-        251..=65_535 => {
-            w.write_all(&[0xFC])?;
-            w.write_all(&(value as u16).to_le_bytes())
-        }
-        65_536..=16_777_215 => {
-            w.write_all(&[0xFD])?;
-            let bytes = value.to_le_bytes();
-            w.write_all(&bytes[..3])
-        }
-        _ => {
-            w.write_all(&[0xFE])?;
-            w.write_all(&value.to_le_bytes())
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct MockQueryResponse {
-    query: &'static str,
-    columns: Vec<MockColumnDef>,
-    row: Vec<MockCell>,
-}
-
-#[derive(Clone)]
-struct MockMySqlBackend {
-    response: Arc<MockQueryResponse>,
-}
-
-const VERSION_STATEMENT_ID: u32 = 1;
-const QUERY_STATEMENT_ID: u32 = 2;
-const EMPTY_STATEMENT_ID: u32 = 3;
-
-impl MockMySqlBackend {
-    fn new(response: MockQueryResponse) -> Self {
-        Self {
-            response: Arc::new(response),
-        }
-    }
-
-    fn response_columns(&self) -> Vec<Column> {
-        self.response
-            .columns
-            .iter()
-            .map(|col| Column {
-                table: String::new(),
-                column: col.name.to_string(),
-                coltype: col.coltype,
-                colflags: col.colflags,
-            })
-            .collect()
-    }
-
-    async fn write_response(
-        &self,
-        results: QueryResultWriter<'_, BufWriter<OwnedWriteHalf>>,
-    ) -> io::Result<()> {
-        let columns = self.response_columns();
-
-        let mut writer = results.start(&columns).await?;
-        for cell in &self.response.row {
-            match cell {
-                MockCell::U32(value) => writer.write_col(*value)?,
-                MockCell::I64(value) => writer.write_col(*value)?,
-                MockCell::U64(value) => writer.write_col(*value)?,
-                MockCell::DateTime(value) => writer.write_col(*value)?,
-                MockCell::Time(value) => writer.write_col(*value)?,
-                MockCell::Bytes(value) => writer.write_col(*value)?,
-            }
-        }
-        writer.finish().await
-    }
-}
-
-#[async_trait]
-impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
-    type Error = io::Error;
-
-    async fn on_prepare<'a>(
-        &'a mut self,
-        query: &'a str,
-        info: StatementMetaWriter<'a, BufWriter<OwnedWriteHalf>>,
-    ) -> Result<(), Self::Error> {
-        let normalized = query.trim().trim_end_matches(';');
-
-        if normalized.eq_ignore_ascii_case("SELECT VERSION()") {
-            let columns = vec![Column {
-                table: String::new(),
-                column: "VERSION()".to_string(),
-                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                colflags: ColumnFlags::empty(),
-            }];
-            return info.reply(VERSION_STATEMENT_ID, &[], &columns).await;
-        }
-
-        if normalized.eq_ignore_ascii_case(self.response.query) {
-            let columns = self.response_columns();
-            return info.reply(QUERY_STATEMENT_ID, &[], &columns).await;
-        }
-
-        info.reply(EMPTY_STATEMENT_ID, &[], &[]).await
-    }
-
-    async fn on_execute<'a>(
-        &'a mut self,
-        id: u32,
-        _params: ParamParser<'a>,
-        results: QueryResultWriter<'a, BufWriter<OwnedWriteHalf>>,
-    ) -> Result<(), Self::Error> {
-        if id == VERSION_STATEMENT_ID {
-            let cols = [Column {
-                table: String::new(),
-                column: "VERSION()".to_string(),
-                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                colflags: ColumnFlags::empty(),
-            }];
-            let mut writer = results.start(&cols).await?;
-            writer.write_col(b"8.0.36-mock".as_slice())?;
-            return writer.finish().await;
-        }
-
-        if id == QUERY_STATEMENT_ID {
-            return self.write_response(results).await;
-        }
-
-        results.completed(OkResponse::default()).await
-    }
-
-    async fn on_close<'a>(&'a mut self, _stmt: u32) {}
-
-    async fn on_query<'a>(
-        &'a mut self,
-        query: &'a str,
-        results: QueryResultWriter<'a, BufWriter<OwnedWriteHalf>>,
-    ) -> Result<(), Self::Error> {
-        let normalized = query.trim().trim_end_matches(';');
-
-        if normalized.eq_ignore_ascii_case("SELECT VERSION()") {
-            let cols = [Column {
-                table: String::new(),
-                column: "VERSION()".to_string(),
-                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
-                colflags: ColumnFlags::empty(),
-            }];
-            let mut writer = results.start(&cols).await?;
-            writer.write_col("8.0.36-mock")?;
-            return writer.finish().await;
-        }
-
-        if normalized.eq_ignore_ascii_case(self.response.query) {
-            return self.write_response(results).await;
-        }
-
-        results.completed(OkResponse::default()).await
-    }
-}
-
-struct MockMySqlServer {
-    port: u16,
-    accept_task: tokio::task::JoinHandle<()>,
-}
-
-impl MockMySqlServer {
-    async fn start(response: MockQueryResponse) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("should bind mock mysql server");
-        let port = listener
-            .local_addr()
-            .expect("should read local addr")
-            .port();
-        let backend = MockMySqlBackend::new(response);
-
-        let accept_task = tokio::spawn(async move {
-            loop {
-                let (stream, _) = match listener.accept().await {
-                    Ok(parts) => parts,
-                    Err(_) => break,
-                };
-                let backend = backend.clone();
-                tokio::spawn(async move {
-                    let (reader, writer) = stream.into_split();
-                    let writer = BufWriter::new(writer);
-                    if let Err(error) = AsyncMysqlIntermediary::run_on(backend, reader, writer).await {
-                        eprintln!("mock mysql server error: {error}");
-                    }
-                });
-            }
-        });
-
-        Self { port, accept_task }
-    }
-}
-
-impl Drop for MockMySqlServer {
-    fn drop(&mut self) {
-        self.accept_task.abort();
-    }
 }
 
 #[derive(Debug, Deserialize)]

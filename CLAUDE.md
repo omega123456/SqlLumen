@@ -128,10 +128,18 @@ Theme is applied by setting `data-theme="light|dark"` on `document.documentEleme
 
 Treat tests as part of the feature, not a follow-up task. **Any new or materially changed behavior must ship with tests in the same change set** so `pnpm test:all` stays green and coverage thresholds hold.
 
+### Rust tests: separate files only
+
+**Do not** embed tests in production Rust sources. Files under `src-tauri/src/` must not contain `#[cfg(test)]` modules, `#[test]` functions, or other test-only code. **Always** add or extend tests in dedicated files under `src-tauri/tests/` (new `*.rs` suites, helpers under `src-tauri/tests/common/`, etc.) and exercise the crate’s public API or `*_impl` entry points from there.
+
+### Test file naming (Vitest and Rust)
+
+**Do not** name suites after coverage or other meta goals (e.g. `coverage_boost`, `coverage_misc`, `threshold_helpers`). **Name files after what they test**: mirror the production path for the frontend (`src/lib/foo.ts` → `src/tests/lib/foo.test.ts`), and for Rust use clear `src-tauri/tests/<area>_<focus>_integration.rs` names (or extend the existing suite that already matches that area) so readers can tell which modules, commands, or behavior are under test.
+
 | Area | Where to add tests |
 |------|-------------------|
 | React components, hooks, stores, frontend utilities | `src/tests/` — mirror the path under `src/` (e.g. `src/components/Foo.tsx` → `src/tests/components/Foo.test.tsx`) |
-| Rust logic, commands (`*_impl`), DB helpers | `#[cfg(test)]` in the same module or integration tests under `src-tauri/tests/` as appropriate for the project |
+| Rust logic, commands (`*_impl`), DB helpers | Dedicated files under `src-tauri/tests/` only — never inline tests in `src-tauri/src/` |
 | Critical user journeys spanning the full app | `e2e/` (Playwright) when the change warrants it — not every UI tweak needs E2E |
 
 ### Playwright visual regression (screenshots)
@@ -151,7 +159,7 @@ The app has **no separate routes**; “screens” are distinct UI states (welcom
 - React tests: Vitest + jsdom + `@testing-library/react`. Setup file: `src/tests/setup.ts`
 - E2E: Playwright in `e2e/`; `playwright.config.ts` runs `pnpm dev` as the web server with `VITE_PLAYWRIGHT=true`. **`pnpm test:e2e` and therefore `pnpm test:all` always run `e2e/screenshots.spec.ts`** alongside functional specs.
 - Coverage thresholds: 90% lines/functions/statements. Branch threshold is intentionally omitted.
-- Rust tests: integration suites under `src-tauri/tests/` (Nextest via `.cargo/config.toml`); production modules avoid inline `#[cfg(test)]`. Commands / DB tests use in-memory SQLite (`Connection::open_in_memory()`) — never mock the database layer.
+- Rust tests: only in `src-tauri/tests/` (Nextest via `.cargo/config.toml`); no tests inside `src-tauri/src/`. Commands / DB tests use in-memory SQLite (`Connection::open_in_memory()`) — never mock the database layer.
 - Tests are built alongside features in each phase — not deferred.
 
 ## Key Gotchas

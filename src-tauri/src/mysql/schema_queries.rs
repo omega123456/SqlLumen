@@ -5,6 +5,8 @@
 
 use serde::Serialize;
 #[cfg(not(coverage))]
+use crate::mysql::query_log;
+#[cfg(not(coverage))]
 use sqlx::mysql::MySqlRow;
 #[cfg(not(coverage))]
 use sqlx::{MySqlPool, Row};
@@ -205,12 +207,13 @@ pub fn decode_mysql_optional_text_cell_for_test(
 
 #[cfg(not(coverage))]
 pub async fn query_list_databases(pool: &MySqlPool) -> Result<Vec<String>, String> {
-    let rows = sqlx::query(
-        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| format!("Failed to list databases: {e}"))?;
+    let sql = "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME";
+    query_log::log_outgoing_sql(sql);
+    let rows = sqlx::query(sql)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to list databases: {e}"))?;
+    query_log::log_mysql_rows(&rows);
 
     let mut names = Vec::with_capacity(rows.len());
     for row in &rows {
@@ -256,11 +259,13 @@ pub async fn query_list_schema_objects(
         _ => return Err(format!("Unknown object type: '{object_type}'")),
     };
 
+    query_log::log_outgoing_sql_bound(sql, &[database.to_string()]);
     let rows = sqlx::query(sql)
         .bind(database)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to list {object_type}s: {e}"))?;
+    query_log::log_mysql_rows(&rows);
 
     let mut names = Vec::with_capacity(rows.len());
     for row in &rows {
@@ -275,17 +280,18 @@ pub async fn query_list_columns(
     database: &str,
     table: &str,
 ) -> Result<Vec<ColumnInfo>, String> {
-    let rows = sqlx::query(
-        "SELECT COLUMN_NAME, DATA_TYPE \
+    let sql = "SELECT COLUMN_NAME, DATA_TYPE \
          FROM information_schema.COLUMNS \
          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? \
-         ORDER BY ORDINAL_POSITION",
-    )
-    .bind(database)
-    .bind(table)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| format!("Failed to list columns: {e}"))?;
+         ORDER BY ORDINAL_POSITION";
+    query_log::log_outgoing_sql_bound(sql, &[database.to_string(), table.to_string()]);
+    let rows = sqlx::query(sql)
+        .bind(database)
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to list columns: {e}"))?;
+    query_log::log_mysql_rows(&rows);
 
     let mut columns = Vec::with_capacity(rows.len());
     for (i, row) in rows.iter().enumerate() {
@@ -307,15 +313,16 @@ pub async fn query_database_details(
     pool: &MySqlPool,
     database: &str,
 ) -> Result<DatabaseDetails, String> {
-    let row = sqlx::query(
-        "SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME \
-         FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?",
-    )
-    .bind(database)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| format!("Failed to get database details: {e}"))?
-    .ok_or_else(|| format!("Database '{database}' not found"))?;
+    let sql = "SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME \
+         FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?";
+    query_log::log_outgoing_sql_bound(sql, &[database.to_string()]);
+    let row = sqlx::query(sql)
+        .bind(database)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Failed to get database details: {e}"))?
+        .ok_or_else(|| format!("Database '{database}' not found"))?;
+    query_log::log_mysql_rows(std::slice::from_ref(&row));
 
     Ok(DatabaseDetails {
         name: decode_mysql_text_cell(&row, 0)?,
@@ -326,10 +333,13 @@ pub async fn query_database_details(
 
 #[cfg(not(coverage))]
 pub async fn query_list_charsets(pool: &MySqlPool) -> Result<Vec<CharsetInfo>, String> {
-    let rows = sqlx::query("SHOW CHARACTER SET")
+    let sql = "SHOW CHARACTER SET";
+    query_log::log_outgoing_sql(sql);
+    let rows = sqlx::query(sql)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to list character sets: {e}"))?;
+    query_log::log_mysql_rows(&rows);
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
@@ -346,10 +356,13 @@ pub async fn query_list_charsets(pool: &MySqlPool) -> Result<Vec<CharsetInfo>, S
 
 #[cfg(not(coverage))]
 pub async fn query_list_collations(pool: &MySqlPool) -> Result<Vec<CollationInfo>, String> {
-    let rows = sqlx::query("SHOW COLLATION")
+    let sql = "SHOW COLLATION";
+    query_log::log_outgoing_sql(sql);
+    let rows = sqlx::query(sql)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to list collations: {e}"))?;
+    query_log::log_mysql_rows(&rows);
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
@@ -374,18 +387,19 @@ pub async fn query_full_columns(
     database: &str,
     table: &str,
 ) -> Result<Vec<ColumnInfo>, String> {
-    let rows = sqlx::query(
-        "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_KEY, \
+    let sql = "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_KEY, \
          COLUMN_DEFAULT, EXTRA, CAST(ORDINAL_POSITION AS SIGNED) \
          FROM information_schema.COLUMNS \
          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? \
-         ORDER BY ORDINAL_POSITION",
-    )
-    .bind(database)
-    .bind(table)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| format!("Failed to get column details: {e}"))?;
+         ORDER BY ORDINAL_POSITION";
+    query_log::log_outgoing_sql_bound(sql, &[database.to_string(), table.to_string()]);
+    let rows = sqlx::query(sql)
+        .bind(database)
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to get column details: {e}"))?;
+    query_log::log_mysql_rows(&rows);
 
     let mut columns = Vec::with_capacity(rows.len());
     for row in &rows {
@@ -414,11 +428,12 @@ pub async fn query_indexes(
     let safe_db = safe_identifier(database)?;
     let safe_table = safe_identifier(table)?;
     let sql = format!("SHOW INDEX FROM {safe_db}.{safe_table}");
-
+    query_log::log_outgoing_sql(&sql);
     let rows = sqlx::query(&sql)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to get indexes: {e}"))?;
+    query_log::log_mysql_rows(&rows);
 
     let mut index_map: HashMap<String, IndexInfo> = HashMap::new();
     let mut index_order: Vec<String> = Vec::new();
@@ -470,8 +485,7 @@ pub async fn query_foreign_keys(
     database: &str,
     table: &str,
 ) -> Result<Vec<ForeignKeyInfo>, String> {
-    let rows = sqlx::query(
-        "SELECT \
+    let sql = "SELECT \
              kcu.CONSTRAINT_NAME, kcu.COLUMN_NAME, \
              kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, \
              rc.DELETE_RULE, rc.UPDATE_RULE \
@@ -481,13 +495,15 @@ pub async fn query_foreign_keys(
              AND kcu.TABLE_SCHEMA = rc.CONSTRAINT_SCHEMA \
          WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? \
              AND kcu.REFERENCED_TABLE_NAME IS NOT NULL \
-         ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION",
-    )
-    .bind(database)
-    .bind(table)
-    .fetch_all(pool)
-    .await
-    .map_err(|e| format!("Failed to get foreign keys: {e}"))?;
+         ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION";
+    query_log::log_outgoing_sql_bound(sql, &[database.to_string(), table.to_string()]);
+    let rows = sqlx::query(sql)
+        .bind(database)
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to get foreign keys: {e}"))?;
+    query_log::log_mysql_rows(&rows);
 
     let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
@@ -510,22 +526,23 @@ pub async fn query_table_metadata(
     database: &str,
     table: &str,
 ) -> Result<TableMetadata, String> {
-    let row = sqlx::query(
-        "SELECT ENGINE, TABLE_COLLATION, \
+    let sql = "SELECT ENGINE, TABLE_COLLATION, \
              CAST(AUTO_INCREMENT AS SIGNED), \
              CAST(CREATE_TIME AS CHAR), \
              CAST(TABLE_ROWS AS SIGNED), \
              CAST(DATA_LENGTH AS SIGNED), \
              CAST(INDEX_LENGTH AS SIGNED) \
          FROM information_schema.TABLES \
-         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
-    )
-    .bind(database)
-    .bind(table)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| format!("Failed to get table metadata: {e}"))?
-    .ok_or_else(|| format!("Table '{database}'.'{table}' not found"))?;
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
+    query_log::log_outgoing_sql_bound(sql, &[database.to_string(), table.to_string()]);
+    let row = sqlx::query(sql)
+        .bind(database)
+        .bind(table)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Failed to get table metadata: {e}"))?
+        .ok_or_else(|| format!("Table '{database}'.'{table}' not found"))?;
+    query_log::log_mysql_rows(std::slice::from_ref(&row));
 
     let create_time: Option<String> = decode_mysql_optional_text_cell(&row, 3)?;
 
@@ -570,11 +587,13 @@ pub async fn query_ddl(
         _ => return Err(format!("Unknown object type: '{object_type}'")),
     };
 
+    query_log::log_outgoing_sql(&sql);
     let row = sqlx::query(&sql)
         .fetch_optional(pool)
         .await
         .map_err(|e| format!("Failed to get DDL for {object_type} '{object_name}': {e}"))?
         .ok_or_else(|| format!("{object_type} '{object_name}' not found in '{database}'"))?;
+    query_log::log_mysql_rows(std::slice::from_ref(&row));
 
     // The DDL column may be NULL (e.g. insufficient privileges for SHOW CREATE PROCEDURE).
     let ddl: String = decode_mysql_optional_text_cell(&row, ddl_col_index)?.unwrap_or_default();
@@ -748,11 +767,13 @@ pub async fn check_rename_safe(pool: &MySqlPool, database: &str) -> Result<(), S
 
 #[cfg(not(coverage))]
 async fn count_query(pool: &MySqlPool, sql: &str, bind: &str) -> Result<i64, String> {
+    query_log::log_outgoing_sql_bound(sql, &[bind.to_string()]);
     let row = sqlx::query(sql)
         .bind(bind)
         .fetch_one(pool)
         .await
         .map_err(|e| format!("Query failed: {e}"))?;
+    query_log::log_mysql_rows(std::slice::from_ref(&row));
     Ok(row.try_get::<i64, _>(0).unwrap_or(0))
 }
 
