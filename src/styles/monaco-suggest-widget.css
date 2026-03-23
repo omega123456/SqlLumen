@@ -1,0 +1,100 @@
+/* Monaco SQL suggest widget — aligned with .agent/design/sql_autocomplete_* */
+
+[data-theme='light'] .monaco-editor .suggest-widget {
+  width: 256px !important;
+  min-width: 256px !important;
+  max-width: 256px !important;
+  border-radius: 12px;
+  box-shadow: 0 25px 50px -12px rgba(25, 28, 31, 0.18);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(193, 198, 213, 0.2);
+  box-sizing: border-box;
+}
+
+[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row:hover:not(.focused) {
+  background-color: #f2f4f6 !important;
+}
+
+[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
+  background-color: #0066cc !important;
+  color: #ffffff !important;
+}
+
+[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .codicon {
+  color: #dfe8ff !important;
+  opacity: 0.85;
+}
+
+[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .monaco-icon-label {
+  color: #ffffff !important;
+}
+
+[data-theme='light'] .monaco-editor .suggest-widget .details-label {
+  font-family: var(--font-body);
+  font-size: var(--type-size-2xs);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  opacity: 1 !important;
+  color: #414753;
+}
+
+[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .details-label {
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 700;
+}
+
+[data-theme='dark'] .monaco-editor .suggest-widget {
+  width: 256px !important;
+  min-width: 256px !important;
+  max-width: 256px !important;
+  border-radius: 8px 0 0 8px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(64, 71, 81, 0.35);
+  box-sizing: border-box;
+}
+
+[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row:hover:not(.focused) {
+  background-color: #31394d !important;
+}
+
+[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused {
+  background-color: rgba(123, 208, 255, 0.1) !important;
+  border-left: 2px solid #7bd0ff;
+  box-sizing: border-box;
+  color: #ffffff !important;
+}
+
+[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .codicon {
+  color: #7bd0ff !important;
+}
+
+[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .monaco-icon-label {
+  color: #ffffff !important;
+}
+
+[data-theme='dark'] .monaco-editor .suggest-widget .details-label {
+  font-family: var(--font-body);
+  font-size: var(--type-size-2xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  opacity: 1 !important;
+  color: #64748b;
+}
+
+[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .details-label {
+  color: #64748b;
+  font-weight: 500;
+}

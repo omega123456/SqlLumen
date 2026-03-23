@@ -21,6 +21,7 @@ export default defineConfig({
         'src/types/**',
         'src/**/*.css',
         'src/lib/playwright-ipc-mock.ts',
+        'src/lib/monaco-worker-setup.ts',
       ],
       thresholds: {
         lines: 90,

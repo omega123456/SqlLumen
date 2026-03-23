@@ -561,6 +561,19 @@ for (const theme of themes) {
       )
     })
 
+    test('QueryEditorTab — SQL autocomplete (suggest + doc panel)', async ({ page }) => {
+      await openQueryEditorTab(page)
+      const surface = page.getByTestId('monaco-editor-wrapper').locator('.monaco-editor').first()
+      await surface.click()
+      await page.keyboard.type('FROM u')
+      await expect(page.locator('.suggest-widget.visible')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('autocomplete-doc-panel')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('monaco-editor-wrapper')).toHaveScreenshot(
+        `query-editor-sql-autocomplete-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('QueryEditorTab — with results (success)', async ({ page }) => {
       await openQueryEditorWithResults(page)
       // Screenshot the result toolbar and grid

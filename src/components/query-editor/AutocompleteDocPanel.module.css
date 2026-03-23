@@ -61,3 +61,7 @@
   opacity: 0.5;
   font-style: italic;
 }
+
+:global(html[data-theme='light']) .panel {
+  width: 320px;
+}

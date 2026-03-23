@@ -6,11 +6,14 @@ vi.mock('../../../components/query-editor/schema-metadata-cache', () => ({
   loadCache: vi.fn(),
 }))
 
+import { languages } from 'monaco-editor'
 import { getCache } from '../../../components/query-editor/schema-metadata-cache'
 import {
   AutocompleteProvider,
   subscribeDocItem,
   getDocItem,
+  completionPrimaryLabel,
+  pickDocItemForFirstSuggestion,
 } from '../../../components/query-editor/AutocompleteProvider'
 
 const mockGetCache = vi.mocked(getCache)
@@ -37,6 +40,12 @@ function createMockModel(text: string) {
 
 function createMockPosition(lineNumber: number, column: number) {
   return { lineNumber, column }
+}
+
+function suggestionPrimary(s: {
+  label: string | import('monaco-editor').languages.CompletionItemLabel
+}): string {
+  return completionPrimaryLabel(s.label)
 }
 
 // Ready cache with sample data
@@ -111,7 +120,7 @@ describe('AutocompleteProvider', () => {
     expect(result).toBeDefined()
     expect(result.suggestions.length).toBeGreaterThan(0)
 
-    const labels = result.suggestions.map((s: { label: string }) => s.label)
+    const labels = result.suggestions.map((s: { label: unknown }) => suggestionPrimary(s as never))
     expect(labels).toContain('SELECT')
   })
 
@@ -158,7 +167,7 @@ describe('AutocompleteProvider', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = provider.provideCompletionItems(model as any, position as any) as any
     expect(result.suggestions.length).toBeGreaterThan(0)
-    const labels = result.suggestions.map((s: { label: string }) => s.label)
+    const labels = result.suggestions.map((s: { label: unknown }) => suggestionPrimary(s as never))
     expect(labels).toContain('SELECT')
     expect(labels).toContain('SET')
   })
@@ -175,7 +184,7 @@ describe('AutocompleteProvider', () => {
     // Kind 5 = CompletionItemKind.Class (table)
     const tableLabels = result.suggestions
       .filter((s: { kind: number }) => s.kind === 5)
-      .map((s: { label: string }) => s.label)
+      .map((s: { label: unknown }) => suggestionPrimary(s as never))
     expect(tableLabels).toContain('users')
   })
 
@@ -191,7 +200,7 @@ describe('AutocompleteProvider', () => {
     // Kind 8 = CompletionItemKind.Module (database)
     const dbLabels = result.suggestions
       .filter((s: { kind: number }) => s.kind === 8)
-      .map((s: { label: string }) => s.label)
+      .map((s: { label: unknown }) => suggestionPrimary(s as never))
     expect(dbLabels).toContain('app_db')
     expect(dbLabels).toContain('analytics_db')
   })
@@ -205,7 +214,7 @@ describe('AutocompleteProvider', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = provider.provideCompletionItems(model as any, position as any) as any
-    const labels = result.suggestions.map((s: { label: string }) => s.label)
+    const labels = result.suggestions.map((s: { label: unknown }) => suggestionPrimary(s as never))
     expect(labels).toContain('users')
     expect(labels).toContain('products')
   })
@@ -222,7 +231,7 @@ describe('AutocompleteProvider', () => {
     // Kind 4 = CompletionItemKind.Field (column)
     const fieldLabels = result.suggestions
       .filter((s: { kind: number }) => s.kind === 4)
-      .map((s: { label: string }) => s.label)
+      .map((s: { label: unknown }) => suggestionPrimary(s as never))
     expect(fieldLabels).toContain('id')
     expect(fieldLabels).toContain('email')
     expect(fieldLabels).toContain('name')
@@ -239,7 +248,7 @@ describe('AutocompleteProvider', () => {
     const result = provider.provideCompletionItems(model as any, position as any) as any
     const fieldLabels = result.suggestions
       .filter((s: { kind: number }) => s.kind === 4)
-      .map((s: { label: string }) => s.label)
+      .map((s: { label: unknown }) => suggestionPrimary(s as never))
     expect(fieldLabels).toContain('email')
     expect(fieldLabels).not.toContain('id')
   })
@@ -256,8 +265,33 @@ describe('AutocompleteProvider', () => {
     // Kind 2 = CompletionItemKind.Function
     const routineLabels = result.suggestions
       .filter((s: { kind: number }) => s.kind === 2)
-      .map((s: { label: string }) => s.label)
+      .map((s: { label: unknown }) => suggestionPrimary(s as never))
     expect(routineLabels).toContain('get_user_count')
+  })
+
+  it('labels PROCEDURE routines as ROUTINE in the suggest list', () => {
+    mockGetCache.mockReturnValue({
+      ...READY_CACHE,
+      routines: {
+        app_db: [
+          ...(READY_CACHE.routines.app_db ?? []),
+          { name: 'sp_cleanup', routineType: 'PROCEDURE' },
+        ],
+      },
+    })
+    const provider = new AutocompleteProvider('conn-1')
+    const model = createMockModel('sp_c')
+    const position = createMockPosition(1, 5)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = provider.provideCompletionItems(model as any, position as any) as any
+    const proc = result.suggestions.find(
+      (s: { kind: number; label: unknown }) =>
+        s.kind === 2 && suggestionPrimary(s as never) === 'sp_cleanup'
+    )
+    expect(proc).toBeDefined()
+    expect(proc.label).toEqual(
+      expect.objectContaining({ label: 'sp_cleanup', description: 'ROUTINE' })
+    )
   })
 
   it('has triggerCharacters set', () => {
@@ -274,7 +308,7 @@ describe('AutocompleteProvider', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = provider.provideCompletionItems(model as any, position as any) as any
-    const tableSuggestion = result.suggestions.find((s: { label: string }) => s.label === 'users')
+    const tableSuggestion = result.suggestions.find((s: { label: unknown }) => suggestionPrimary(s as never) === 'users')
     expect(tableSuggestion).toBeDefined()
     expect(tableSuggestion.documentation).toBeDefined()
     // Documentation should start with zero-width space (the doc meta marker)
@@ -291,7 +325,7 @@ describe('AutocompleteProvider', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = provider.provideCompletionItems(model as any, position as any) as any
-    const colSuggestion = result.suggestions.find((s: { label: string }) => s.label === 'id')
+    const colSuggestion = result.suggestions.find((s: { label: unknown }) => suggestionPrimary(s as never) === 'id')
     expect(colSuggestion).toBeDefined()
     expect(colSuggestion.documentation).toBeDefined()
     expect(typeof colSuggestion.documentation).toBe('string')
@@ -338,7 +372,7 @@ describe('resolveCompletionItem', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = provider.provideCompletionItems(model as any, position as any) as any
-    const tableSuggestion = result.suggestions.find((s: { label: string }) => s.label === 'users')
+    const tableSuggestion = result.suggestions.find((s: { label: unknown }) => suggestionPrimary(s as never) === 'users')
 
     const callback = vi.fn()
     const unsubscribe = subscribeDocItem(callback)
@@ -420,6 +454,92 @@ describe('resolveCompletionItem', () => {
     expect(docItem?.name).toBe('test_db')
 
     unsubscribe()
+  })
+})
+
+describe('completionPrimaryLabel', () => {
+  it('returns plain string labels', () => {
+    expect(completionPrimaryLabel('SELECT')).toBe('SELECT')
+  })
+
+  it('returns CompletionItemLabel.label', () => {
+    expect(completionPrimaryLabel({ label: 'foo', description: 'BAR' })).toBe('foo')
+  })
+})
+
+describe('pickDocItemForFirstSuggestion', () => {
+  it('returns null for an empty suggestion list', () => {
+    expect(pickDocItemForFirstSuggestion([], READY_CACHE)).toBeNull()
+  })
+
+  it('returns doc metadata decoded from documentation when present', () => {
+    const meta = '\u200B' + JSON.stringify({ type: 'database', name: 'solo_db' })
+    const item: languages.CompletionItem = {
+      label: 'solo_db',
+      kind: languages.CompletionItemKind.Module,
+      insertText: 'solo_db',
+      documentation: meta,
+    }
+    const picked = pickDocItemForFirstSuggestion([item], READY_CACHE)
+    expect(picked?.type).toBe('database')
+    expect(picked?.name).toBe('solo_db')
+  })
+
+  it('falls back to table resolution for Class items without encoded documentation', () => {
+    const item: languages.CompletionItem = {
+      label: { label: 'users', description: 'TABLE' },
+      kind: languages.CompletionItemKind.Class,
+      insertText: 'users',
+    }
+    const picked = pickDocItemForFirstSuggestion([item], READY_CACHE)
+    expect(picked?.type).toBe('table')
+    expect(picked?.name).toBe('users')
+    expect(picked?.database).toBe('app_db')
+  })
+
+  it('falls back to database for Module items without documentation', () => {
+    const item: languages.CompletionItem = {
+      label: { label: 'app_db', description: 'DATABASE' },
+      kind: languages.CompletionItemKind.Module,
+      insertText: 'app_db',
+    }
+    expect(pickDocItemForFirstSuggestion([item], READY_CACHE)).toEqual({
+      type: 'database',
+      name: 'app_db',
+    })
+  })
+
+  it('falls back to routine for Function items without documentation', () => {
+    const item: languages.CompletionItem = {
+      label: { label: 'fn', description: 'FUNCTION' },
+      kind: languages.CompletionItemKind.Function,
+      insertText: 'fn',
+    }
+    expect(pickDocItemForFirstSuggestion([item], READY_CACHE)).toEqual({
+      type: 'routine',
+      name: 'fn',
+    })
+  })
+
+  it('falls back to keyword for Keyword items without documentation', () => {
+    const item: languages.CompletionItem = {
+      label: { label: 'WHERE', description: 'KEYWORD' },
+      kind: languages.CompletionItemKind.Keyword,
+      insertText: 'WHERE',
+    }
+    expect(pickDocItemForFirstSuggestion([item], READY_CACHE)).toEqual({
+      type: 'keyword',
+      name: 'WHERE',
+    })
+  })
+
+  it('returns null when Class label does not match any table', () => {
+    const item: languages.CompletionItem = {
+      label: { label: 'ghost', description: 'TABLE' },
+      kind: languages.CompletionItemKind.Class,
+      insertText: 'ghost',
+    }
+    expect(pickDocItemForFirstSuggestion([item], READY_CACHE)).toBeNull()
   })
 })
 

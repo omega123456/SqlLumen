@@ -1,6 +1,7 @@
 @import './reset.css';
 @import './tokens.css';
 @import './fonts.css';
+@import './monaco-suggest-widget.css';
 
 html {
   -webkit-font-smoothing: antialiased;

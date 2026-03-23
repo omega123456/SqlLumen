@@ -132,7 +132,7 @@ describe('AutocompleteDocPanel', () => {
       })
     }
 
-    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.getByText('app_db.users')).toBeInTheDocument()
     expect(screen.getByText('InnoDB')).toBeInTheDocument()
     expect(screen.getByText('utf8mb4')).toBeInTheDocument()
     expect(screen.getByText('~1,000')).toBeInTheDocument()
@@ -145,6 +145,7 @@ describe('AutocompleteDocPanel', () => {
       name: 'email',
       database: 'app_db',
       table: 'users',
+      dataType: 'varchar(255)',
     }
     mockGetDocItem.mockReturnValue(columnItem)
     render(<AutocompleteDocPanel connectionId="conn-1" />)
@@ -159,6 +160,7 @@ describe('AutocompleteDocPanel', () => {
     }
 
     expect(screen.getByText('email')).toBeInTheDocument()
+    expect(screen.getByText('varchar(255)')).toBeInTheDocument()
     expect(screen.getByText('users')).toBeInTheDocument()
     expect(screen.getByText('app_db')).toBeInTheDocument()
   })

@@ -120,6 +120,8 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
         options={{
           fontSize: 14,
           lineHeight: 22.4, // 14 * 1.6
+          suggestFontSize: 14,
+          suggestLineHeight: 36,
           fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
           minimap: { enabled: false },
           scrollBeyondLastLine: false,

@@ -20,6 +20,8 @@ export interface DocPanelItem {
   table?: string
   tableInfo?: TableInfo
   columnCount?: number
+  dataType?: string
+  routineType?: string
 }
 
 let _selectedDocItem: DocPanelItem | null = null
@@ -125,9 +127,10 @@ const SQL_KEYWORDS = [
 function buildKeywordSuggestions(prefix: string, range: IRange): languages.CompletionItem[] {
   const lower = prefix.toLowerCase()
   return SQL_KEYWORDS.filter((kw) => kw.toLowerCase().startsWith(lower)).map((kw) => ({
-    label: kw,
+    label: { label: kw, description: 'KEYWORD' },
     kind: languages.CompletionItemKind.Keyword,
     insertText: kw,
+    documentation: encodeDocMeta({ type: 'keyword', name: kw }),
     range,
   }))
 }
@@ -137,8 +140,8 @@ function buildKeywordSuggestions(prefix: string, range: IRange): languages.Compl
 // ---------------------------------------------------------------------------
 
 /**
- * Metadata key stored in CompletionItem.detail for resolveCompletionItem to reconstruct
- * the DocPanelItem. We encode a JSON string prefixed with a marker so we can detect it.
+ * Metadata stored in CompletionItem.documentation for resolveCompletionItem to reconstruct
+ * the DocPanelItem. JSON string prefixed with a marker so we can detect it.
  */
 const DOC_META_PREFIX = '\u200B' // zero-width space as marker
 
@@ -155,18 +158,22 @@ function decodeDocMeta(detail: string | undefined): DocPanelItem | null {
   }
 }
 
-/**
- * Build a human-readable detail string (what the user sees) plus encode doc metadata
- * into the completion item's documentation field for resolveCompletionItem.
- */
-function buildCompletionDetail(
-  displayDetail: string,
-  docMeta: DocPanelItem
-): { detail: string; documentation: string } {
-  return {
-    detail: displayDetail,
-    documentation: encodeDocMeta(docMeta),
+/** Primary insert label (Monaco `label` may be a string or CompletionItemLabel). */
+export function completionPrimaryLabel(
+  label: string | languages.CompletionItemLabel
+): string {
+  return typeof label === 'string' ? label : label.label
+}
+
+function getDocumentationPlainString(item: languages.CompletionItem): string | undefined {
+  const d = item.documentation
+  if (typeof d === 'string') {
+    return d
   }
+  if (d && typeof d === 'object' && 'value' in d) {
+    return (d as { value: string }).value
+  }
+  return undefined
 }
 
 export class AutocompleteProvider implements languages.CompletionItemProvider {
@@ -175,20 +182,12 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
   constructor(private connectionId: string) {}
 
   resolveCompletionItem(item: languages.CompletionItem): languages.CompletionItem {
-    // Try to extract doc metadata from the documentation field
-    const docStr =
-      typeof item.documentation === 'string'
-        ? item.documentation
-        : item.documentation &&
-            typeof item.documentation === 'object' &&
-            'value' in item.documentation
-          ? item.documentation.value
-          : undefined
+    const docStr = getDocumentationPlainString(item)
     const meta = decodeDocMeta(docStr)
     if (meta) {
       setDocItem(meta)
     } else if (item.kind === languages.CompletionItemKind.Keyword) {
-      setDocItem({ type: 'keyword', name: String(item.label) })
+      setDocItem({ type: 'keyword', name: completionPrimaryLabel(item.label) })
     }
     return item
   }
@@ -272,12 +271,10 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
             tableInfo: table,
             columnCount: (cache.columns[`${matchedDb}.${table.name}`] ?? []).length,
           }
-          const meta = buildCompletionDetail(`${matchedDb}.${table.name}`, docMeta)
           suggestions.push({
-            label: table.name,
+            label: { label: table.name, description: 'TABLE' },
             kind: languages.CompletionItemKind.Class,
-            detail: meta.detail,
-            documentation: meta.documentation,
+            documentation: encodeDocMeta(docMeta),
             insertText: table.name,
             range,
           })
@@ -311,13 +308,12 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
               name: col.name,
               database,
               table: matchedTable.name,
+              dataType: col.dataType,
             }
-            const meta = buildCompletionDetail(col.dataType, docMeta)
             suggestions.push({
-              label: col.name,
+              label: { label: col.name, description: 'COLUMN' },
               kind: languages.CompletionItemKind.Field,
-              detail: meta.detail,
-              documentation: meta.documentation,
+              documentation: encodeDocMeta(docMeta),
               insertText: col.name,
               range,
             })
@@ -328,6 +324,7 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
               name: filtered[0].name,
               database,
               table: matchedTable.name,
+              dataType: filtered[0].dataType,
             })
           } else {
             setDocItem(null)
@@ -347,7 +344,7 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
         if (db.toLowerCase().startsWith(prefix)) {
           const docMeta: DocPanelItem = { type: 'database', name: db }
           suggestions.push({
-            label: db,
+            label: { label: db, description: 'DATABASE' },
             kind: languages.CompletionItemKind.Module,
             documentation: encodeDocMeta(docMeta),
             insertText: db,
@@ -364,12 +361,10 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
               tableInfo: table,
               columnCount: (cache.columns[`${db}.${table.name}`] ?? []).length,
             }
-            const meta = buildCompletionDetail(`${db}.${table.name}`, docMeta)
             suggestions.push({
-              label: table.name,
+              label: { label: table.name, description: 'TABLE' },
               kind: languages.CompletionItemKind.Class,
-              detail: meta.detail,
-              documentation: meta.documentation,
+              documentation: encodeDocMeta(docMeta),
               insertText: table.name,
               range,
             })
@@ -390,13 +385,12 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
                 name: col.name,
                 database: db,
                 table: context.table,
+                dataType: col.dataType,
               }
-              const meta = buildCompletionDetail(col.dataType, docMeta)
               suggestions.push({
-                label: col.name,
+                label: { label: col.name, description: 'COLUMN' },
                 kind: languages.CompletionItemKind.Field,
-                detail: meta.detail,
-                documentation: meta.documentation,
+                documentation: encodeDocMeta(docMeta),
                 insertText: col.name,
                 range,
               })
@@ -408,11 +402,16 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
       suggestions.push(...buildKeywordSuggestions(prefix, range))
 
       if (suggestions.length > 0 && suggestions[0].kind === languages.CompletionItemKind.Field) {
-        setDocItem({
-          type: 'column',
-          name: String(suggestions[0].label),
-          table: context.table,
-        })
+        const colMeta = decodeDocMeta(getDocumentationPlainString(suggestions[0]))
+        if (colMeta) {
+          setDocItem(colMeta)
+        } else {
+          setDocItem({
+            type: 'column',
+            name: completionPrimaryLabel(suggestions[0].label),
+            table: context.table,
+          })
+        }
       } else {
         setDocItem(null)
       }
@@ -424,7 +423,7 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
         if (db.toLowerCase().startsWith(prefix)) {
           const docMeta: DocPanelItem = { type: 'database', name: db }
           suggestions.push({
-            label: db,
+            label: { label: db, description: 'DATABASE' },
             kind: languages.CompletionItemKind.Module,
             documentation: encodeDocMeta(docMeta),
             insertText: db,
@@ -441,12 +440,10 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
               tableInfo: table,
               columnCount: (cache.columns[`${db}.${table.name}`] ?? []).length,
             }
-            const meta = buildCompletionDetail(`${db}.${table.name}`, docMeta)
             suggestions.push({
-              label: table.name,
+              label: { label: table.name, description: 'TABLE' },
               kind: languages.CompletionItemKind.Class,
-              detail: meta.detail,
-              documentation: meta.documentation,
+              documentation: encodeDocMeta(docMeta),
               insertText: table.name,
               range,
             })
@@ -455,11 +452,15 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
         const routines = cache.routines[db] ?? []
         for (const routine of routines) {
           if (routine.name.toLowerCase().startsWith(prefix)) {
-            const docMeta: DocPanelItem = { type: 'routine', name: routine.name }
+            const docMeta: DocPanelItem = {
+              type: 'routine',
+              name: routine.name,
+              routineType: routine.routineType,
+            }
+            const desc = routine.routineType === 'FUNCTION' ? 'FUNCTION' : 'ROUTINE'
             suggestions.push({
-              label: routine.name,
+              label: { label: routine.name, description: desc },
               kind: languages.CompletionItemKind.Function,
-              detail: routine.routineType,
               documentation: encodeDocMeta(docMeta),
               insertText: routine.name,
               range,
@@ -475,39 +476,48 @@ export class AutocompleteProvider implements languages.CompletionItemProvider {
 }
 
 /**
- * Set the doc item from the first suggestion (for non-dot, non-column paths).
+ * Derive doc panel state from the first completion (used after list rebuild).
+ * Exported for unit tests covering fallback paths when documentation is absent.
  */
-function updateDocItemFromSuggestions(
+export function pickDocItemForFirstSuggestion(
   suggestions: languages.CompletionItem[],
   cache: ReturnType<typeof getCache>
-): void {
+): DocPanelItem | null {
   if (suggestions.length === 0) {
-    setDocItem(null)
-    return
+    return null
   }
   const first = suggestions[0]
+  const fromDoc = decodeDocMeta(getDocumentationPlainString(first))
+  if (fromDoc) {
+    return fromDoc
+  }
   if (first.kind === languages.CompletionItemKind.Class) {
-    // Find the TableInfo for the first table suggestion
+    const name = completionPrimaryLabel(first.label)
     for (const db of cache.databases) {
-      const tableInfo = (cache.tables[db] ?? []).find((t) => t.name === first.label)
+      const tableInfo = (cache.tables[db] ?? []).find((t) => t.name === name)
       if (tableInfo) {
-        setDocItem({
+        return {
           type: 'table',
           name: tableInfo.name,
           database: db,
           tableInfo,
           columnCount: (cache.columns[`${db}.${tableInfo.name}`] ?? []).length,
-        })
-        return
+        }
       }
     }
   } else if (first.kind === languages.CompletionItemKind.Module) {
-    setDocItem({ type: 'database', name: String(first.label) })
+    return { type: 'database', name: completionPrimaryLabel(first.label) }
   } else if (first.kind === languages.CompletionItemKind.Function) {
-    setDocItem({ type: 'routine', name: String(first.label) })
+    return { type: 'routine', name: completionPrimaryLabel(first.label) }
   } else if (first.kind === languages.CompletionItemKind.Keyword) {
-    setDocItem({ type: 'keyword', name: String(first.label) })
-  } else {
-    setDocItem(null)
+    return { type: 'keyword', name: completionPrimaryLabel(first.label) }
   }
+  return null
+}
+
+function updateDocItemFromSuggestions(
+  suggestions: languages.CompletionItem[],
+  cache: ReturnType<typeof getCache>
+): void {
+  setDocItem(pickDocItemForFirstSuggestion(suggestions, cache))
 }

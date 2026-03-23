@@ -79,7 +79,11 @@ export function AutocompleteDocPanel(_props: AutocompleteDocPanelProps) {
       <div className={styles.header}>DOCUMENTATION</div>
       {docItem ? (
         <>
-          <div className={styles.name}>{docItem.name}</div>
+          <div className={styles.name}>
+            {docItem.type === 'table' && docItem.database
+              ? `${docItem.database}.${docItem.name}`
+              : docItem.name}
+          </div>
           <div className={styles.divider} />
           {docItem.type === 'table' && docItem.tableInfo && (
             <div className={styles.meta}>
@@ -113,6 +117,12 @@ export function AutocompleteDocPanel(_props: AutocompleteDocPanelProps) {
           )}
           {docItem.type === 'column' && (
             <div className={styles.meta}>
+              {docItem.dataType && (
+                <div className={styles.metaRow}>
+                  <span className={styles.metaLabel}>Type</span>
+                  <span className={styles.metaValue}>{docItem.dataType}</span>
+                </div>
+              )}
               {docItem.table && (
                 <div className={styles.metaRow}>
                   <span className={styles.metaLabel}>Table</span>
@@ -139,7 +149,9 @@ export function AutocompleteDocPanel(_props: AutocompleteDocPanelProps) {
             <div className={styles.meta}>
               <div className={styles.metaRow}>
                 <span className={styles.metaLabel}>Type</span>
-                <span className={styles.metaValue}>Routine</span>
+                <span className={styles.metaValue}>
+                  {docItem.routineType ?? 'Routine'}
+                </span>
               </div>
             </div>
           )}
