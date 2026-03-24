@@ -13,32 +13,46 @@ vi.mock('../../../components/query-editor/schema-metadata-cache', () => ({
     columns: {},
     routines: {},
   })),
+  getPendingLoad: vi.fn(() => null),
   _clearAllCaches: vi.fn(),
 }))
 
-// Mock AutocompleteDocPanel to avoid portal/observer complexity in unit tests
-vi.mock('../../../components/query-editor/AutocompleteDocPanel', () => ({
-  AutocompleteDocPanel: () => null,
+// Mock monaco-sql-languages contribution (side-effect import)
+vi.mock('monaco-sql-languages/esm/languages/mysql/mysql.contribution', () => ({}))
+
+// Mock monaco-sql-languages named exports
+vi.mock('monaco-sql-languages', () => ({
+  setupLanguageFeatures: vi.fn(),
+  LanguageIdEnum: { MYSQL: 'mysql' },
+  EntityContextType: {
+    DATABASE: 'database',
+    TABLE: 'table',
+    COLUMN: 'column',
+    FUNCTION: 'function',
+    PROCEDURE: 'procedure',
+  },
 }))
 
-// Mock AutocompleteProvider
-vi.mock('../../../components/query-editor/AutocompleteProvider', () => ({
-  AutocompleteProvider: class MockAutocompleteProvider {
-    triggerCharacters = [' ', '.', '(']
-    provideCompletionItems = vi.fn(() => ({ suggestions: [] }))
-  },
-  subscribeDocItem: vi.fn(() => () => {}),
-  getDocItem: vi.fn(() => null),
+// Mock the mysql-language-setup side-effect import (no-op in tests)
+vi.mock('../../../components/query-editor/mysql-language-setup', () => ({}))
+
+// Mock the completion-service model registry
+const mockRegisterModelConnection = vi.fn()
+const mockUnregisterModelConnection = vi.fn()
+vi.mock('../../../components/query-editor/completion-service', () => ({
+  registerModelConnection: (...args: unknown[]) => mockRegisterModelConnection(...args),
+  unregisterModelConnection: (...args: unknown[]) => mockUnregisterModelConnection(...args),
+  resetModelConnections: vi.fn(),
+  completionService: vi.fn(async () => []),
 }))
 
 // Override the useMonaco mock to return a functional Monaco instance
 const mockSetTheme = vi.fn()
 const mockDefineTheme = vi.fn()
-const mockCompletionProviderDispose = vi.fn()
-const mockRegisterCompletionItemProvider = vi.fn(() => ({ dispose: mockCompletionProviderDispose }))
 const mockCursorPositionDispose = vi.fn()
 const mockOnDidDispose = vi.fn()
 const registeredDisposeHandlers: Array<() => void> = []
+const mockModelUri = { toString: () => 'inmemory://model/1' }
 const mockEditorInstance = {
   setPosition: vi.fn(),
   revealPositionInCenter: vi.fn(),
@@ -47,11 +61,15 @@ const mockEditorInstance = {
     mockOnDidDispose(handler)
     registeredDisposeHandlers.push(handler)
   }),
+  getModel: vi.fn(() => ({ uri: mockModelUri })),
 }
+// Track props passed to the mock Editor component
+const mockEditorComponent = vi.fn()
 vi.mock('@monaco-editor/react', async () => {
   const React = await import('react')
   return {
     default: (props: Record<string, unknown>) => {
+      mockEditorComponent(props)
       function MockEditor() {
         React.useEffect(() => {
           const onMount = props.onMount as
@@ -62,9 +80,7 @@ vi.mock('@monaco-editor/react', async () => {
               defineTheme: mockDefineTheme,
               setTheme: mockSetTheme,
             },
-            languages: {
-              registerCompletionItemProvider: mockRegisterCompletionItemProvider,
-            },
+            languages: {},
           })
         }, [])
 
@@ -85,9 +101,7 @@ vi.mock('@monaco-editor/react', async () => {
         defineTheme: mockDefineTheme,
         setTheme: mockSetTheme,
       },
-      languages: {
-        registerCompletionItemProvider: mockRegisterCompletionItemProvider,
-      },
+      languages: {},
     }),
     loader: {
       init: () => Promise.resolve(),
@@ -100,14 +114,16 @@ beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   mockSetTheme.mockClear()
   mockDefineTheme.mockClear()
-  mockRegisterCompletionItemProvider.mockClear()
-  mockCompletionProviderDispose.mockClear()
   mockCursorPositionDispose.mockClear()
   mockOnDidDispose.mockClear()
   mockEditorInstance.setPosition.mockClear()
   mockEditorInstance.revealPositionInCenter.mockClear()
   mockEditorInstance.onDidChangeCursorPosition.mockClear()
   mockEditorInstance.onDidDispose.mockClear()
+  mockEditorInstance.getModel.mockClear()
+  mockRegisterModelConnection.mockClear()
+  mockUnregisterModelConnection.mockClear()
+  mockEditorComponent.mockClear()
   registeredDisposeHandlers.length = 0
 })
 
@@ -157,14 +173,24 @@ describe('MonacoEditorWrapper', () => {
     expect(onMount).toHaveBeenCalledWith(mockEditorInstance)
   })
 
-  it('registers completion provider when connectionId is provided', () => {
+  it('registers model-connection mapping when connectionId is provided', () => {
     render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
-    expect(mockRegisterCompletionItemProvider).toHaveBeenCalledWith('sql', expect.any(Object))
+    expect(mockRegisterModelConnection).toHaveBeenCalledWith('inmemory://model/1', 'conn-1')
   })
 
-  it('does not register completion provider when connectionId is not provided', () => {
+  it('does not register model-connection mapping when connectionId is not provided', () => {
     render(<MonacoEditorWrapper tabId="tab-1" />)
-    expect(mockRegisterCompletionItemProvider).not.toHaveBeenCalled()
+    expect(mockRegisterModelConnection).not.toHaveBeenCalled()
+  })
+
+  it('unregisters model-connection mapping on editor dispose', () => {
+    render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+    expect(mockOnDidDispose).toHaveBeenCalledTimes(1)
+    const handleDispose = registeredDisposeHandlers[0]
+    handleDispose()
+
+    expect(mockUnregisterModelConnection).toHaveBeenCalledWith('inmemory://model/1')
   })
 
   it('disposes the cursor listener when the editor is disposed', () => {
@@ -193,5 +219,30 @@ describe('MonacoEditorWrapper', () => {
   it('renders without connectionId (backward compat)', () => {
     render(<MonacoEditorWrapper tabId="tab-1" />)
     expect(screen.getByTestId('monaco-editor-wrapper')).toBeInTheDocument()
+  })
+
+  it('passes language="mysql" to the Editor component', () => {
+    render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+    expect(mockEditorComponent).toHaveBeenCalled()
+    const props = mockEditorComponent.mock.calls[0][0]
+    expect(props.language).toBe('mysql')
+  })
+
+  it('unregisters model-connection using captured URI even when getModel returns null on dispose', () => {
+    render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+    // Verify initial registration used the correct URI
+    expect(mockRegisterModelConnection).toHaveBeenCalledWith('inmemory://model/1', 'conn-1')
+
+    // Simulate the model being disposed before our handler runs
+    // (getModel returns null when Monaco has already cleaned up)
+    mockEditorInstance.getModel.mockReturnValue(null as unknown as { uri: typeof mockModelUri })
+
+    // Trigger the dispose handler
+    const handleDispose = registeredDisposeHandlers[0]
+    handleDispose()
+
+    // Should still unregister using the captured URI from mount time
+    expect(mockUnregisterModelConnection).toHaveBeenCalledWith('inmemory://model/1')
   })
 })

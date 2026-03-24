@@ -17,7 +17,11 @@
   padding-right: 10px;
 }
 
-[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row:hover:not(.focused) {
+[data-theme='light']
+  .monaco-editor
+  .suggest-widget
+  .monaco-list
+  .monaco-list-row:hover:not(.focused) {
   background-color: #f2f4f6 !important;
 }
 
@@ -31,7 +35,12 @@
   opacity: 0.85;
 }
 
-[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .monaco-icon-label {
+[data-theme='light']
+  .monaco-editor
+  .suggest-widget
+  .monaco-list
+  .monaco-list-row.focused
+  .monaco-icon-label {
   color: #ffffff !important;
 }
 
@@ -44,7 +53,12 @@
   color: #414753;
 }
 
-[data-theme='light'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .details-label {
+[data-theme='light']
+  .monaco-editor
+  .suggest-widget
+  .monaco-list
+  .monaco-list-row.focused
+  .details-label {
   color: rgba(255, 255, 255, 0.72);
   font-weight: 700;
 }
@@ -53,7 +67,7 @@
   width: 256px !important;
   min-width: 256px !important;
   max-width: 256px !important;
-  border-radius: 8px 0 0 8px;
+  border-radius: 8px;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -66,7 +80,11 @@
   padding-right: 10px;
 }
 
-[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row:hover:not(.focused) {
+[data-theme='dark']
+  .monaco-editor
+  .suggest-widget
+  .monaco-list
+  .monaco-list-row:hover:not(.focused) {
   background-color: #31394d !important;
 }
 
@@ -81,7 +99,12 @@
   color: #7bd0ff !important;
 }
 
-[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .monaco-icon-label {
+[data-theme='dark']
+  .monaco-editor
+  .suggest-widget
+  .monaco-list
+  .monaco-list-row.focused
+  .monaco-icon-label {
   color: #ffffff !important;
 }
 
@@ -94,7 +117,12 @@
   color: #64748b;
 }
 
-[data-theme='dark'] .monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused .details-label {
+[data-theme='dark']
+  .monaco-editor
+  .suggest-widget
+  .monaco-list
+  .monaco-list-row.focused
+  .details-label {
   color: #64748b;
   font-weight: 500;
 }

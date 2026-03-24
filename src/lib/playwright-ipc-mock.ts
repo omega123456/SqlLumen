@@ -10,7 +10,7 @@ export const PLAYWRIGHT_MOCK_CONNECTION: SavedConnection = {
   port: 3306,
   username: 'appuser',
   hasPassword: true,
-  defaultDatabase: 'appdb',
+  defaultDatabase: 'ecommerce_db',
   sslEnabled: false,
   sslCaPath: null,
   sslCertPath: null,
@@ -398,6 +398,12 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             { name: 'user_id', dataType: 'BIGINT' },
             { name: 'status', dataType: 'VARCHAR' },
             { name: 'total', dataType: 'DECIMAL' },
+          ],
+          'analytics_db.events': [
+            { name: 'id', dataType: 'BIGINT' },
+            { name: 'event_name', dataType: 'VARCHAR' },
+            { name: 'user_id', dataType: 'BIGINT' },
+            { name: 'created_at', dataType: 'DATETIME' },
           ],
         },
         routines: {

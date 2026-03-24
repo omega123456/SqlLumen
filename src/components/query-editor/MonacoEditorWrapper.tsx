@@ -9,10 +9,15 @@ import type * as MonacoType from 'monaco-editor'
 import { useThemeStore } from '../../stores/theme-store'
 import { useQueryStore } from '../../stores/query-store'
 import { registerMonacoThemes, getMonacoThemeName } from './monaco-theme'
-import { AutocompleteProvider } from './AutocompleteProvider'
+import { registerModelConnection, unregisterModelConnection } from './completion-service'
 import { loadCache } from './schema-metadata-cache'
-import { AutocompleteDocPanel } from './AutocompleteDocPanel'
 import styles from './MonacoEditorWrapper.module.css'
+
+// Register the 'mysql' language with Monaco (side-effect import)
+import 'monaco-sql-languages/esm/languages/mysql/mysql.contribution'
+
+// Setup language features with our custom completionService (side-effect import)
+import './mysql-language-setup'
 
 interface MonacoEditorWrapperProps {
   tabId: string
@@ -25,6 +30,7 @@ interface MonacoEditorWrapperProps {
 export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEditorWrapperProps) {
   const monaco = useMonaco()
   const editorRef = useRef<MonacoType.editor.IStandaloneCodeEditor | null>(null)
+  const modelUriRef = useRef<string | undefined>(undefined)
   const themesRegistered = useRef(false)
 
   const theme = useThemeStore((state) => state.theme)
@@ -50,15 +56,19 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
     }
   }, [monaco, theme, resolvedTheme])
 
-  // Register autocomplete completion provider
+  // Register / unregister model-connection mapping when connectionId changes.
+  // Uses modelUriRef (captured at mount time) so cleanup works even if
+  // Monaco has already disposed the model (getModel() returns null).
   useEffect(() => {
-    if (!monaco || !connectionId) return
-    const disposable = monaco.languages.registerCompletionItemProvider(
-      'sql',
-      new AutocompleteProvider(connectionId)
-    )
-    return () => disposable.dispose()
-  }, [monaco, connectionId])
+    if (editorRef.current && connectionId && modelUriRef.current) {
+      registerModelConnection(modelUriRef.current, connectionId)
+    }
+    return () => {
+      if (modelUriRef.current) {
+        unregisterModelConnection(modelUriRef.current)
+      }
+    }
+  }, [connectionId])
 
   // Trigger schema cache load on mount / connection change
   useEffect(() => {
@@ -74,6 +84,15 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
     monacoInstance: typeof MonacoType
   ) {
     editorRef.current = editor
+
+    // Capture the model URI at mount time so cleanup can use it
+    // even after Monaco disposes the model (getModel() returns null).
+    modelUriRef.current = editor.getModel()?.uri.toString()
+
+    // Register model-connection mapping on mount
+    if (connectionId && modelUriRef.current) {
+      registerModelConnection(modelUriRef.current, connectionId)
+    }
 
     // Register themes if not already done
     if (!themesRegistered.current) {
@@ -99,6 +118,8 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
 
     editor.onDidDispose(() => {
       cursorDisposable.dispose()
+      // Unregister using the captured URI — model may already be disposed
+      if (modelUriRef.current) unregisterModelConnection(modelUriRef.current)
     })
 
     if (onMount) onMount(editor)
@@ -112,7 +133,7 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
     <div className={styles.editorContainer} data-testid="monaco-editor-wrapper">
       <Editor
         height="100%"
-        language="sql"
+        language="mysql"
         theme={currentThemeName}
         value={content}
         onChange={handleChange}
@@ -149,7 +170,6 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
           },
         }}
       />
-      {connectionId && <AutocompleteDocPanel connectionId={connectionId} />}
     </div>
   )
 }

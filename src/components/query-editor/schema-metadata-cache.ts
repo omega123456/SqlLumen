@@ -240,6 +240,15 @@ export function filterRoutines(
 }
 
 /**
+ * Returns the in-flight load promise for a connection, or null if not loading.
+ * Used by the completionService to await pending schema fetches before
+ * returning completions, so the user sees schema items instead of "Loading schema…".
+ */
+export function getPendingLoad(connectionId: string): Promise<void> | null {
+  return _pendingLoads.get(connectionId) ?? null
+}
+
+/**
  * Clear all caches. Primarily for test cleanup.
  */
 export function _clearAllCaches(): void {

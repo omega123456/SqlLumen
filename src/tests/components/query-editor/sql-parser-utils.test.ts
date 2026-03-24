@@ -3,7 +3,6 @@ import {
   splitStatements,
   findStatementAtCursor,
   cursorToOffset,
-  detectCursorContext,
 } from '../../../components/query-editor/sql-parser-utils'
 
 describe('splitStatements', () => {
@@ -158,63 +157,5 @@ describe('cursorToOffset', () => {
     const sql = 'SELECT 1\nFROM t\nWHERE id = 1'
     // Line 3, column 7 → offset should be past "SELECT 1\nFROM t\n" (16 chars) + 6
     expect(cursorToOffset(sql, 3, 7)).toBe(22)
-  })
-})
-
-describe('detectCursorContext', () => {
-  it('detects FROM clause context', () => {
-    const ctx = detectCursorContext('SELECT * FROM ', 14)
-    expect(ctx.type).toBe('from-clause')
-  })
-
-  it('detects SELECT columns context', () => {
-    const ctx = detectCursorContext('SELECT ', 7)
-    expect(ctx.type).toBe('select-columns')
-  })
-
-  it('detects WHERE clause context', () => {
-    const ctx = detectCursorContext('SELECT * FROM t WHERE ', 22)
-    expect(ctx.type).toBe('where-clause')
-  })
-
-  it('returns generic for unknown context', () => {
-    const ctx = detectCursorContext('', 0)
-    expect(ctx.type).toBe('generic')
-  })
-
-  it('detects JOIN clause context', () => {
-    const ctx = detectCursorContext('SELECT * FROM t JOIN ', 21)
-    expect(ctx.type).toBe('from-clause')
-  })
-
-  it('detects database prefix in FROM clause', () => {
-    const ctx = detectCursorContext('SELECT * FROM mydb.', 19)
-    expect(ctx.type).toBe('from-clause')
-    expect(ctx.database).toBe('mydb')
-  })
-
-  it('detects table reference in WHERE clause', () => {
-    const ctx = detectCursorContext('SELECT * FROM users WHERE ', 26)
-    expect(ctx.type).toBe('where-clause')
-    expect(ctx.table).toBe('users')
-  })
-
-  it('detects context for complete SELECT with WHERE via AST', () => {
-    // This should be parseable by node-sql-parser
-    const sql = 'SELECT id FROM users WHERE '
-    const ctx = detectCursorContext(sql, sql.length)
-    expect(ctx.type).toBe('where-clause')
-  })
-
-  it('handles INSERT statement as generic context', () => {
-    const ctx = detectCursorContext('INSERT INTO ', 12)
-    // Should fall to generic or from-clause via regex
-    expect(['generic', 'from-clause']).toContain(ctx.type)
-  })
-
-  it('detects SELECT columns without FROM via AST or regex', () => {
-    const sql = 'SELECT id, '
-    const ctx = detectCursorContext(sql, sql.length)
-    expect(ctx.type).toBe('select-columns')
   })
 })

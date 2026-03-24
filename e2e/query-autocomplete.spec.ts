@@ -146,3 +146,96 @@ test('autocomplete ignores malformed schema metadata instead of emitting invalid
 
   expect(invalidCompletionWarnings).toEqual([])
 })
+
+test('alias completion: FROM users t → t. suggests users columns', async ({ page }) => {
+  test.setTimeout(APP_READY_MS)
+
+  await waitForApp(page)
+  await openQueryEditorTab(page)
+
+  const editorSurface = page.locator('.monaco-editor').first()
+  await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
+
+  await editorSurface.click({ position: { x: 160, y: 40 } })
+  await page.keyboard.type('SELECT * FROM users t WHERE t.')
+
+  const suggestWidget = page.locator('.suggest-widget.visible')
+  await expect(suggestWidget).toBeVisible({ timeout: 10_000 })
+
+  // Verify the suggestions include column names from the users table
+  await expect(suggestWidget).toContainText('id')
+  await expect(suggestWidget).toContainText('email')
+  await expect(suggestWidget).toContainText('name')
+  await page.waitForTimeout(SUGGESTION_SETTLE_MS)
+})
+
+test('alias completion: FROM analytics_db.events e → e. suggests events columns', async ({
+  page,
+}) => {
+  test.setTimeout(APP_READY_MS)
+
+  await waitForApp(page)
+  await openQueryEditorTab(page)
+
+  const editorSurface = page.locator('.monaco-editor').first()
+  await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
+
+  await editorSurface.click({ position: { x: 160, y: 40 } })
+  await page.keyboard.type('SELECT * FROM analytics_db.events e WHERE e.')
+
+  const suggestWidget = page.locator('.suggest-widget.visible')
+  await expect(suggestWidget).toBeVisible({ timeout: 10_000 })
+
+  // Verify the suggestions include column names from analytics_db.events
+  await expect(suggestWidget).toContainText('event_name')
+  await expect(suggestWidget).toContainText('user_id')
+  await expect(suggestWidget).toContainText('created_at')
+  await page.waitForTimeout(SUGGESTION_SETTLE_MS)
+})
+
+test('context-aware ranking: WHERE clause → columns ranked above keywords', async ({ page }) => {
+  test.setTimeout(APP_READY_MS)
+
+  await waitForApp(page)
+  await openQueryEditorTab(page)
+
+  const editorSurface = page.locator('.monaco-editor').first()
+  await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
+
+  // Type a WHERE query — the space after WHERE triggers column context
+  await editorSurface.click({ position: { x: 160, y: 40 } })
+  await page.keyboard.type('SELECT * FROM users WHERE ')
+
+  // Explicitly trigger autocomplete since typing space may not auto-trigger
+  await page.keyboard.press('Control+Space')
+
+  const suggestWidget = page.locator('.suggest-widget.visible')
+  await expect(suggestWidget).toBeVisible({ timeout: 10_000 })
+  await page.waitForTimeout(SUGGESTION_SETTLE_MS)
+
+  // Get ordered list of suggestion labels from the widget rows.
+  // Monaco renders suggestions as role="option" elements with aria-label.
+  const optionLabels = await suggestWidget
+    .locator('.monaco-list-row')
+    .evaluateAll((rows) => rows.map((r) => r.getAttribute('aria-label') ?? r.textContent ?? ''))
+
+  // Columns from users table in the mock: id, name, email, status, created_at
+  const columnNames = ['id', 'name', 'email', 'status', 'created_at']
+  const keywordNames = ['AND', 'OR', 'SELECT', 'FROM', 'WHERE', 'LIMIT', 'LIKE']
+
+  // Find the first column and first keyword positions in the list
+  const firstColumnIndex = optionLabels.findIndex((label) =>
+    columnNames.some((col) => label.toLowerCase().includes(col.toLowerCase()))
+  )
+  const firstKeywordIndex = optionLabels.findIndex((label) =>
+    keywordNames.some((kw) => label.toLowerCase().includes(kw.toLowerCase()))
+  )
+
+  // Columns should appear in the list
+  expect(firstColumnIndex).toBeGreaterThanOrEqual(0)
+
+  // If both columns and keywords are visible, columns should come first
+  if (firstKeywordIndex >= 0) {
+    expect(firstColumnIndex).toBeLessThan(firstKeywordIndex)
+  }
+})

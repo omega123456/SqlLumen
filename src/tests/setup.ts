@@ -41,6 +41,7 @@ vi.mock('monaco-editor', () => ({
       Module: 8,
       Function: 2,
       Text: 1,
+      Snippet: 27,
     },
     CompletionItemInsertTextRule: {
       InsertAsSnippet: 4,
@@ -49,6 +50,33 @@ vi.mock('monaco-editor', () => ({
   Range: vi.fn(),
   KeyMod: { CtrlCmd: 2048 },
   KeyCode: { F5: 63 },
+}))
+
+// ---------------------------------------------------------------------------
+// monaco-sql-languages mocks (contribution is a side-effect import)
+// ---------------------------------------------------------------------------
+
+vi.mock('monaco-sql-languages/esm/languages/mysql/mysql.contribution', () => ({}))
+
+vi.mock('monaco-sql-languages', () => ({
+  setupLanguageFeatures: vi.fn(),
+  LanguageIdEnum: { MYSQL: 'mysql' },
+  EntityContextType: {
+    CATALOG: 'catalog',
+    CATALOG_CREATE: 'catalogCreate',
+    DATABASE: 'database',
+    DATABASE_CREATE: 'databaseCreate',
+    TABLE: 'table',
+    TABLE_CREATE: 'tableCreate',
+    VIEW: 'view',
+    VIEW_CREATE: 'viewCreate',
+    FUNCTION: 'function',
+    FUNCTION_CREATE: 'functionCreate',
+    PROCEDURE: 'procedure',
+    PROCEDURE_CREATE: 'procedureCreate',
+    COLUMN: 'column',
+    COLUMN_CREATE: 'columnCreate',
+  },
 }))
 
 vi.mock('@monaco-editor/react', async () => {
