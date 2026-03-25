@@ -25,7 +25,9 @@ import { getCache, getPendingLoad, loadCache } from './schema-metadata-cache'
 import { buildAliasMap, buildAliasMapFromText, stripQuotes } from './alias-resolver'
 import type { AliasMap } from './alias-resolver'
 import { useConnectionStore } from '../../stores/connection-store'
+import { parseNodeId, useSchemaStore } from '../../stores/schema-store'
 import { SQL_KEYWORDS } from './sql-keywords'
+import { findStatementAtCursor, splitStatements } from './sql-parser-utils'
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -36,6 +38,12 @@ interface TableRef {
   database: string | null
   table: string
 }
+
+type ParseFallbackMode =
+  | { type: 'all' }
+  | { type: 'databases' }
+  | { type: 'tables'; database: string }
+  | { type: 'none' }
 
 // ---------------------------------------------------------------------------
 // Model-URI → connectionId registry
@@ -75,6 +83,78 @@ const SORT_PREFIX_LOW = '2_'
  */
 function hasColumnContext(suggestions: Suggestions): boolean {
   return suggestions.syntax.some((s) => s.syntaxContextType === EntityContextType.COLUMN)
+}
+
+function isDatabaseRankingContext(
+  suggestions: Suggestions,
+  selectedDatabase: string | null
+): boolean {
+  return (
+    !selectedDatabase &&
+    suggestions.syntax.some((s) => s.syntaxContextType === EntityContextType.TABLE)
+  )
+}
+
+function getSelectedDatabase(connectionId: string | undefined): string | null {
+  if (!connectionId) return null
+
+  const selectedNodeId = useSchemaStore.getState().connectionStates[connectionId]?.selectedNodeId
+  if (!selectedNodeId) return null
+
+  try {
+    const parsed = parseNodeId(selectedNodeId)
+    return parsed.database || null
+  } catch {
+    return null
+  }
+}
+
+function getCurrentStatementPrefix(model: editor.IReadOnlyModel, position: Position): string {
+  const sql = model.getValue()
+  const caretOffset = model.getOffsetAt(position)
+  const statements = splitStatements(sql)
+  const statement = findStatementAtCursor(statements, caretOffset)
+  const statementStart = statement?.start ?? 0
+
+  return sql.slice(statementStart, caretOffset)
+}
+
+function isInTableReferenceClause(statementPrefix: string): boolean {
+  return /\b(?:FROM|JOIN|UPDATE|INTO|TABLE|DESCRIBE|DESC)\s+(?:[\w`"']+\.)?[\w`"']*$/i.test(
+    statementPrefix.trimEnd()
+  )
+}
+
+function getParseFallbackMode(
+  statementPrefix: string,
+  databases: readonly string[],
+  scopedDatabase: string | null
+): ParseFallbackMode {
+  if (/\b(?:FROM|JOIN|UPDATE|INTO|TABLE|DESCRIBE|DESC)\s+$/i.test(statementPrefix)) {
+    return scopedDatabase ? { type: 'tables', database: scopedDatabase } : { type: 'databases' }
+  }
+
+  const tableDotMatch = statementPrefix.match(
+    /\b(?:FROM|JOIN|UPDATE|INTO|TABLE|DESCRIBE|DESC)\s+(?:([\w`"']+)\.)?([\w`"']+)\.\s*$/i
+  )
+
+  if (!tableDotMatch) {
+    return { type: 'all' }
+  }
+
+  const qualifier = tableDotMatch[1] ? stripQuotes(tableDotMatch[1]) : null
+  const identifier = stripQuotes(tableDotMatch[2])
+
+  if (qualifier) {
+    return { type: 'none' }
+  }
+
+  const matchedDatabase = databases.find((db) => db.toLowerCase() === identifier.toLowerCase())
+  if (matchedDatabase) {
+    return { type: 'tables', database: matchedDatabase }
+  }
+
+  return { type: 'none' }
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +225,19 @@ function snippetToItem(
   }
 }
 
+function shouldIncludeSnippet(snippet: CompletionSnippet): boolean {
+  return /^[A-Z][A-Za-z0-9 ]*$/.test(snippet.label)
+}
+
+function mapSnippetsToItems(
+  snippets: CompletionSnippet[] | undefined,
+  sortPrefix = SORT_PREFIX_NEUTRAL
+): ICompletionItem[] {
+  if (!snippets) return []
+
+  return snippets.filter(shouldIncludeSnippet).map((snippet) => snippetToItem(snippet, sortPrefix))
+}
+
 // ---------------------------------------------------------------------------
 // Helper: detect dotted prefix before the current word (for manual invoke)
 // ---------------------------------------------------------------------------
@@ -184,9 +277,12 @@ export const completionService: CompletionService = async (
     ? (useConnectionStore.getState().activeConnections[connectionId]?.profile.defaultDatabase ??
       null)
     : null
+  const selectedDatabase = getSelectedDatabase(connectionId)
+  const scopedResolutionDatabase = activeDatabase ?? selectedDatabase
+  const currentStatementPrefix = getCurrentStatementPrefix(model, position)
 
   // Build alias map from entities (pure function — no side effects)
-  const aliasMap = buildAliasMap(entities, activeDatabase)
+  const aliasMap = buildAliasMap(entities, scopedResolutionDatabase)
 
   // -------------------------------------------------------------------
   // Await pending cache loads (must happen BEFORE parse-failure check
@@ -208,24 +304,14 @@ export const completionService: CompletionService = async (
   }
 
   // -------------------------------------------------------------------
-  // Parse-failure fallback: suggestions is null when the parser fails.
-  // Cache is now ready (if available) so buildParseFallback can include
-  // schema items.
-  // -------------------------------------------------------------------
-  if (suggestions === null) {
-    return buildParseFallback(connectionId, snippets)
-  }
-
   // -------------------------------------------------------------------
   // No connectionId → keywords only (neutral ranking).
   // Fall back to SQL_KEYWORDS when parser provides empty keywords list.
   // -------------------------------------------------------------------
   if (!connectionId) {
-    const kwList = suggestions.keywords.length > 0 ? suggestions.keywords : SQL_KEYWORDS
+    const kwList = suggestions?.keywords.length ? suggestions.keywords : SQL_KEYWORDS
     const items: ICompletionItem[] = kwList.map((kw) => keywordItem(kw))
-    if (snippets) {
-      items.push(...snippets.map((s) => snippetToItem(s)))
-    }
+    items.push(...mapSnippetsToItems(snippets))
     return items
   }
 
@@ -267,8 +353,27 @@ export const completionService: CompletionService = async (
     completionContext.triggerCharacter === '.' || hasDottedPrefixBeforeWord(model, position)
 
   if (isDotContext) {
-    const dotResult = handleDotNotation(model, position, connectionId, aliasMap, activeDatabase)
+    const dotResult = handleDotNotation(
+      model,
+      position,
+      connectionId,
+      aliasMap,
+      scopedResolutionDatabase,
+      currentStatementPrefix
+    )
     if (dotResult.length > 0) return dotResult
+    if (isInTableReferenceClause(currentStatementPrefix)) {
+      return []
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Parse-failure fallback: suggestions is null when the parser fails.
+  // Cache is now ready (if available) so buildParseFallback can include
+  // schema items.
+  // -------------------------------------------------------------------
+  if (suggestions === null) {
+    return buildParseFallback(connectionId, currentStatementPrefix, selectedDatabase, snippets)
   }
 
   // -------------------------------------------------------------------
@@ -280,13 +385,15 @@ export const completionService: CompletionService = async (
   const items: ICompletionItem[] = []
   const seenLabels = new Set<string>()
   const isColumnContext = hasColumnContext(suggestions)
+  const isDatabaseContext = isDatabaseRankingContext(suggestions, selectedDatabase)
 
   // In column context: columns='0_', other schema='1_', keywords/snippets='2_'
   // Otherwise: everything='1_' (neutral)
   const columnSortPrefix = isColumnContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
-  const schemaSortPrefix = SORT_PREFIX_NEUTRAL
-  const kwSortPrefix = isColumnContext ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
-  const snippetSortPrefix = isColumnContext ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
+  const schemaSortPrefix = isDatabaseContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
+  const kwSortPrefix = isColumnContext || isDatabaseContext ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
+  const snippetSortPrefix =
+    isColumnContext || isDatabaseContext ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
 
   for (const syntaxSuggestion of suggestions.syntax) {
     const ctxType = syntaxSuggestion.syntaxContextType
@@ -299,12 +406,19 @@ export const completionService: CompletionService = async (
         }
       }
     } else if (ctxType === EntityContextType.TABLE) {
-      for (const db of cache.databases) {
-        const tables = cache.tables[db] ?? []
+      if (selectedDatabase) {
+        const tables = cache.tables[selectedDatabase] ?? []
         for (const table of tables) {
-          if (!seenLabels.has(`tbl:${table.name}`)) {
-            seenLabels.add(`tbl:${table.name}`)
+          if (!seenLabels.has(`tbl:${selectedDatabase}:${table.name}`)) {
+            seenLabels.add(`tbl:${selectedDatabase}:${table.name}`)
             items.push(tableItem(table.name, schemaSortPrefix))
+          }
+        }
+      } else {
+        for (const db of cache.databases) {
+          if (!seenLabels.has(`db:${db}`)) {
+            seenLabels.add(`db:${db}`)
+            items.push(dbItem(db, schemaSortPrefix))
           }
         }
       }
@@ -313,7 +427,14 @@ export const completionService: CompletionService = async (
       const scopedTables = findTablesInCaretStatement(entities)
       if (scopedTables.length > 0) {
         for (const tableRef of scopedTables) {
-          addColumnsForTable(cache, tableRef, items, seenLabels, columnSortPrefix, activeDatabase)
+          addColumnsForTable(
+            cache,
+            tableRef,
+            items,
+            seenLabels,
+            columnSortPrefix,
+            scopedResolutionDatabase
+          )
         }
       } else {
         // Broad fallback: all columns from all tables
@@ -359,9 +480,7 @@ export const completionService: CompletionService = async (
   }
 
   // Snippets (ranked same as keywords)
-  if (snippets) {
-    items.push(...snippets.map((s) => snippetToItem(s, snippetSortPrefix)))
-  }
+  items.push(...mapSnippetsToItems(snippets, snippetSortPrefix))
 
   return items
 }
@@ -375,7 +494,8 @@ function handleDotNotation(
   position: Position,
   connectionId: string,
   aliasMap: AliasMap,
-  activeDatabase: string | null
+  activeDatabase: string | null,
+  currentStatementPrefix: string
 ): ICompletionItem[] {
   const cache = getCache(connectionId)
   if (cache.status !== 'ready') return []
@@ -406,7 +526,7 @@ function handleDotNotation(
 
   // 1. Check entity-based alias map first (case-insensitive)
   const aliasResolution = aliasMap.get(prefixLower)
-  if (aliasResolution) {
+  if (aliasResolution && !isInTableReferenceClause(currentStatementPrefix)) {
     const cols = cache.columns[`${aliasResolution.database}.${aliasResolution.table}`] ?? []
     return cols.map((col) => columnItem(col.name))
   }
@@ -417,7 +537,7 @@ function handleDotNotation(
   const caretOffset = model.getOffsetAt(position)
   const textAliasMap = buildAliasMapFromText(model.getValue(), activeDatabase, caretOffset)
   const textAliasResolution = textAliasMap.get(prefixLower)
-  if (textAliasResolution) {
+  if (textAliasResolution && !isInTableReferenceClause(currentStatementPrefix)) {
     const cols = cache.columns[`${textAliasResolution.database}.${textAliasResolution.table}`] ?? []
     return cols.map((col) => columnItem(col.name))
   }
@@ -427,6 +547,10 @@ function handleDotNotation(
   if (matchedDb) {
     const tables = cache.tables[matchedDb] ?? []
     return tables.map((table) => tableItem(table.name))
+  }
+
+  if (isInTableReferenceClause(currentStatementPrefix)) {
+    return []
   }
 
   // 3. Check if it's a table name → suggest that table's columns.
@@ -533,57 +657,81 @@ function addColumnsForTable(
 
 function buildParseFallback(
   connectionId: string | undefined,
+  currentStatementPrefix: string,
+  scopedDatabase: string | null,
   snippets?: CompletionSnippet[]
 ): ICompletionItem[] {
   const items: ICompletionItem[] = []
-
-  // Basic keywords (neutral ranking in fallback — no context available)
-  for (const kw of SQL_KEYWORDS) {
-    items.push(keywordItem(kw))
-  }
 
   // If we have a connection, dump all schema items
   if (connectionId) {
     const cache = getCache(connectionId)
     if (cache.status === 'ready') {
-      // Databases
-      for (const db of cache.databases) {
-        items.push(dbItem(db))
+      const mode = getParseFallbackMode(currentStatementPrefix, cache.databases, scopedDatabase)
+
+      if (mode.type === 'none') {
+        return []
       }
 
-      // Tables from all databases
-      for (const db of cache.databases) {
-        const tables = cache.tables[db] ?? []
+      const keywordSortPrefix = mode.type === 'databases' ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
+
+      // Basic keywords (neutral ranking in fallback — no context available)
+      for (const kw of SQL_KEYWORDS) {
+        items.push(keywordItem(kw, keywordSortPrefix))
+      }
+
+      if (mode.type === 'databases') {
+        for (const db of cache.databases) {
+          items.push(dbItem(db, SORT_PREFIX_HIGH))
+        }
+      } else if (mode.type === 'tables') {
+        const tables = cache.tables[mode.database] ?? []
         for (const table of tables) {
           items.push(tableItem(table.name))
         }
-      }
+      } else if (mode.type === 'all') {
+        // Databases
+        for (const db of cache.databases) {
+          items.push(dbItem(db))
+        }
 
-      // Columns from all tables
-      for (const db of cache.databases) {
-        const tables = cache.tables[db] ?? []
-        for (const table of tables) {
-          const cols = cache.columns[`${db}.${table.name}`] ?? []
-          for (const col of cols) {
-            items.push(columnItem(col.name))
+        // Tables from all databases
+        for (const db of cache.databases) {
+          const tables = cache.tables[db] ?? []
+          for (const table of tables) {
+            items.push(tableItem(table.name))
+          }
+        }
+
+        // Columns from all tables
+        for (const db of cache.databases) {
+          const tables = cache.tables[db] ?? []
+          for (const table of tables) {
+            const cols = cache.columns[`${db}.${table.name}`] ?? []
+            for (const col of cols) {
+              items.push(columnItem(col.name))
+            }
+          }
+        }
+
+        // Routines (functions + procedures)
+        for (const db of cache.databases) {
+          const routines = cache.routines[db] ?? []
+          for (const routine of routines) {
+            items.push(routineItem(routine.name, routine.routineType as 'FUNCTION' | 'PROCEDURE'))
           }
         }
       }
-
-      // Routines (functions + procedures)
-      for (const db of cache.databases) {
-        const routines = cache.routines[db] ?? []
-        for (const routine of routines) {
-          items.push(routineItem(routine.name, routine.routineType as 'FUNCTION' | 'PROCEDURE'))
-        }
-      }
+    }
+  } else {
+    // Basic keywords (neutral ranking in fallback — no context available)
+    for (const kw of SQL_KEYWORDS) {
+      items.push(keywordItem(kw))
     }
   }
 
   // Snippets
-  if (snippets) {
-    items.push(...snippets.map((s) => snippetToItem(s)))
-  }
+  items.push(...mapSnippetsToItems(snippets))
 
   return items
 }

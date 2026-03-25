@@ -183,6 +183,24 @@ async function openQueryEditorTab(page: Page) {
   await expect(page.getByTestId('editor-toolbar')).toBeVisible()
 }
 
+async function waitForAutocomplete(page: Page, expectedText?: string) {
+  const suggestWidget = page.locator('.suggest-widget.visible')
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await page.keyboard.press('Control+Space')
+    await expect(suggestWidget).toBeVisible({ timeout: APP_READY_MS })
+
+    const text = (await suggestWidget.textContent()) ?? ''
+    if (!text.includes('Loading...') && (!expectedText || text.includes(expectedText))) {
+      return suggestWidget
+    }
+
+    await page.waitForTimeout(300)
+  }
+
+  return suggestWidget
+}
+
 /** Open a query editor tab, set SQL content, execute, and wait for results. */
 async function openQueryEditorWithResults(page: Page) {
   await openQueryEditorTab(page)
@@ -565,8 +583,8 @@ for (const theme of themes) {
       await openQueryEditorTab(page)
       const surface = page.getByTestId('monaco-editor-wrapper').locator('.monaco-editor').first()
       await surface.click()
-      await page.keyboard.type('SELECT * FROM u')
-      await expect(page.locator('.suggest-widget.visible')).toBeVisible({ timeout: APP_READY_MS })
+      await page.keyboard.type('SELECT * FROM e')
+      await waitForAutocomplete(page, 'ecommerce_db')
       await expect(page.getByTestId('monaco-editor-wrapper')).toHaveScreenshot(
         `query-editor-sql-autocomplete-${theme}.png`,
         { animations: 'disabled' }

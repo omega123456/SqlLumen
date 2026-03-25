@@ -12,6 +12,20 @@ vi.mock('../../../components/query-editor/schema-metadata-cache', () => ({
 // Mock mysql-language-setup (side-effect import used by MonacoEditorWrapper, not by completion-service)
 vi.mock('../../../components/query-editor/mysql-language-setup', () => ({}))
 
+vi.mock('../../../stores/schema-store', () => ({
+  useSchemaStore: {
+    getState: vi.fn(() => ({ connectionStates: {} })),
+  },
+  parseNodeId: vi.fn((nodeId: string) => {
+    const [type, database, name] = nodeId.split(':')
+    return {
+      type,
+      database: database ?? '',
+      name: name ?? '',
+    }
+  }),
+}))
+
 // Mock connection store so completionService can read activeDatabase
 const mockConnectionState = {
   activeConnections: {} as Record<string, unknown>,
@@ -34,10 +48,13 @@ import {
   resetModelConnections,
 } from '../../../components/query-editor/completion-service'
 import { EntityContextType } from 'monaco-sql-languages'
+import { parseNodeId, useSchemaStore } from '../../../stores/schema-store'
 
 const mockGetCache = vi.mocked(getCache)
 const mockGetPendingLoad = vi.mocked(getPendingLoad)
 const mockLoadCache = vi.mocked(loadCache)
+const mockUseSchemaStoreGetState = vi.mocked(useSchemaStore.getState)
+const mockParseNodeId = vi.mocked(parseNodeId)
 
 // ---------------------------------------------------------------------------
 // Helpers for working with completion items
@@ -246,6 +263,15 @@ beforeEach(() => {
   vi.clearAllMocks()
   // Reset connection state to empty for each test
   mockConnectionState.activeConnections = {}
+  mockUseSchemaStoreGetState.mockReturnValue({ connectionStates: {} } as never)
+  mockParseNodeId.mockImplementation((nodeId: string) => {
+    const [type, database, name] = nodeId.split(':')
+    return {
+      type: type as never,
+      database: database ?? '',
+      name: name ?? '',
+    }
+  })
 })
 
 afterEach(() => {
@@ -415,7 +441,7 @@ describe('completionService — database suggestions', () => {
 })
 
 describe('completionService — table suggestions', () => {
-  it('returns tables from all databases when EntityContextType.TABLE is in syntax', async () => {
+  it('returns databases when no database is selected and EntityContextType.TABLE is in syntax', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
     mockGetCache.mockReturnValue(READY_CACHE)
 
@@ -427,11 +453,124 @@ describe('completionService — table suggestions', () => {
         keywords: [],
       })
     )
+    const labels = items.map(getLabel)
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).not.toContain('users')
+    expect(labels).not.toContain('products')
+    expect(labels).not.toContain('events')
+  })
+
+  it('ranks databases above keywords after FROM when no database is selected', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'SELECT * FROM ',
+      pos(1, 15),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.TABLE, wordRanges: [] }],
+        keywords: ['FROM', 'WHERE', 'SELECT'],
+      })
+    )
+
+    const dbItems = items.filter(
+      (item: AnyItem) =>
+        item.kind === languages.CompletionItemKind.Module &&
+        ['app_db', 'analytics_db'].includes(getLabel(item))
+    )
+    const keywordItems = items.filter(
+      (item: AnyItem) => item.kind === languages.CompletionItemKind.Keyword
+    )
+
+    expect(dbItems.length).toBeGreaterThan(0)
+    expect(keywordItems.length).toBeGreaterThan(0)
+
+    for (const item of dbItems) {
+      expect(item.sortText).toMatch(/^0_/)
+    }
+
+    for (const item of keywordItems) {
+      expect(item.sortText).toMatch(/^2_/)
+    }
+  })
+
+  it('returns tables only for the selected database when EntityContextType.TABLE is in syntax', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:app_db:app_db',
+        },
+      },
+    } as never)
+
+    const items = await callService(
+      'SELECT * FROM ',
+      pos(1, 15),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.TABLE, wordRanges: [] }],
+        keywords: [],
+      })
+    )
+
     const tableItems = items.filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Class)
     const labels = tableItems.map(getLabel)
     expect(labels).toContain('users')
     expect(labels).toContain('products')
-    expect(labels).toContain('events')
+    expect(labels).not.toContain('events')
+  })
+
+  it('ignores defaultDatabase when no tree node is selected', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'app_db' },
+        status: 'connected',
+      },
+    }
+
+    const items = await callService(
+      'SELECT * FROM ',
+      pos(1, 15),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.TABLE, wordRanges: [] }],
+        keywords: [],
+      })
+    )
+
+    const labels = items.map(getLabel)
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).not.toContain('users')
+    expect(labels).not.toContain('products')
+    expect(labels).not.toContain('events')
+  })
+
+  it('uses the selected node database even when the selected node is not a database root', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'table:analytics_db:events',
+        },
+      },
+    } as never)
+
+    const items = await callService(
+      'SELECT * FROM ',
+      pos(1, 15),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.TABLE, wordRanges: [] }],
+        keywords: [],
+      })
+    )
+
+    expect(items.map(getLabel)).toEqual(['events'])
   })
 })
 
@@ -583,7 +722,25 @@ describe('completionService — dot notation (db.)', () => {
 })
 
 describe('completionService — dot notation (table.)', () => {
-  it('returns columns for a table when trigger is dot after table name', async () => {
+  it('does not return columns for invalid FROM table-dot syntax', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'SELECT * FROM users.',
+      pos(1, 21),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: [],
+      }),
+      null,
+      '.'
+    )
+
+    expect(items.map(getLabel)).toEqual([])
+  })
+
+  it('returns columns for a table when trigger is dot after table name in valid column context', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
     mockGetCache.mockReturnValue(READY_CACHE)
 
@@ -668,6 +825,40 @@ describe('completionService — snippet handling', () => {
       'INSERT INTO ${1:table}\n(${2:columns})\nVALUES (${3:values})'
     )
   })
+
+  it('filters out built-in snippet completions with lowercase/hyphenated labels', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const snippets = [
+      {
+        prefix: 'select',
+        label: 'select-join',
+        body: 'select * from ${1:table1} join ${2:table2}',
+        description: 'bad built-in snippet',
+      },
+      {
+        prefix: 'sel',
+        label: 'SELECT statement',
+        body: 'SELECT ${1:columns} FROM ${2:table}',
+        description: 'good snippet',
+      },
+    ]
+
+    const items = await callService(
+      'selec',
+      pos(1, 6),
+      buildSuggestions({ keywords: ['SELECT'] }),
+      null,
+      undefined,
+      snippets
+    )
+
+    const labels = items.map(getLabel)
+    expect(labels).toContain('SELECT')
+    expect(labels).toContain('SELECT statement')
+    expect(labels).not.toContain('select-join')
+  })
 })
 
 describe('completionService — empty/ready cache with no syntax matches', () => {
@@ -706,10 +897,6 @@ describe('completionService — multiple syntax types', () => {
     // Databases
     expect(labels).toContain('app_db')
     expect(labels).toContain('analytics_db')
-    // Tables
-    expect(labels).toContain('users')
-    expect(labels).toContain('products')
-    expect(labels).toContain('events')
     // Keywords
     expect(labels).toContain('FROM')
   })
@@ -934,6 +1121,13 @@ describe('completionService — context-aware ranking', () => {
   it('non-column context → all items get neutral "1_" prefix', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
     mockGetCache.mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:app_db:app_db',
+        },
+      },
+    } as never)
 
     const items = await callService(
       'SELECT * FROM ',
@@ -1204,6 +1398,202 @@ describe('completionService — dot notation (db.table.)', () => {
     expect(labels).toContain('email')
     expect(labels).toContain('name')
   })
+
+  it('db. prefix returns tables from that database during parse fallback', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService('SELECT * FROM app_db.', pos(1, 22), null)
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('users')
+    expect(labels).toContain('products')
+    expect(labels).not.toContain('events')
+  })
+
+  it('FROM without selected database returns only databases during parse fallback', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService('SELECT * FROM ', pos(1, 15), null)
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).not.toContain('users')
+    expect(labels).not.toContain('products')
+    expect(labels).not.toContain('events')
+  })
+
+  it('FROM parse fallback ranks databases above keywords when no database is selected', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService('SELECT * FROM ', pos(1, 15), null)
+    const dbItems = items.filter(
+      (item: AnyItem) =>
+        item.kind === languages.CompletionItemKind.Module &&
+        ['app_db', 'analytics_db'].includes(getLabel(item))
+    )
+    const keywordItems = items.filter(
+      (item: AnyItem) => item.kind === languages.CompletionItemKind.Keyword
+    )
+
+    expect(dbItems.length).toBeGreaterThan(0)
+    expect(keywordItems.length).toBeGreaterThan(0)
+
+    for (const item of dbItems) {
+      expect(item.sortText).toMatch(/^0_/)
+    }
+
+    for (const item of keywordItems) {
+      expect(item.sortText).toMatch(/^2_/)
+    }
+  })
+
+  it('FROM with selected database returns only that database tables during parse fallback', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:app_db:app_db',
+        },
+      },
+    } as never)
+
+    const items = await callService('SELECT * FROM ', pos(1, 15), null)
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('users')
+    expect(labels).toContain('products')
+    expect(labels).not.toContain('events')
+    expect(labels).not.toContain('analytics_db')
+  })
+
+  it('FROM ignores defaultDatabase during parse fallback when no tree node is selected', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'app_db' },
+        status: 'connected',
+      },
+    }
+
+    const items = await callService('SELECT * FROM ', pos(1, 15), null)
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).not.toContain('users')
+    expect(labels).not.toContain('products')
+    expect(labels).not.toContain('events')
+  })
+
+  it('selected node database overrides defaultDatabase during parse fallback', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'app_db' },
+        status: 'connected',
+      },
+    }
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'category:analytics_db:table',
+        },
+      },
+    } as never)
+
+    const items = await callService('SELECT * FROM ', pos(1, 15), null)
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('events')
+    expect(labels).not.toContain('users')
+    expect(labels).not.toContain('products')
+    expect(labels).not.toContain('analytics_db')
+  })
+
+  it('selected node database does not override defaultDatabase for alias column resolution', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'app_db' },
+        status: 'connected',
+      },
+    }
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'category:analytics_db:table',
+        },
+      },
+    } as never)
+
+    const entities = [buildEntityWithAlias(EntityContextType.TABLE, 'users', 'u', true)]
+    const items = await callService(
+      'SELECT * FROM users u WHERE u.',
+      pos(1, 31),
+      buildSuggestions({ syntax: [], keywords: [] }),
+      entities,
+      '.'
+    )
+
+    const labels = items.map(getLabel)
+    expect(labels).toContain('id')
+    expect(labels).toContain('email')
+    expect(labels).not.toContain('event_id')
+    expect(labels).not.toContain('event_type')
+  })
+
+  it('selected node database resolves alias columns when defaultDatabase is missing', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: null },
+        status: 'connected',
+      },
+    }
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'category:analytics_db:table',
+        },
+      },
+    } as never)
+
+    const entities = [buildEntityWithAlias(EntityContextType.TABLE, 'events', 'e', true)]
+    const items = await callService(
+      'SELECT * FROM events e WHERE e.',
+      pos(1, 32),
+      buildSuggestions({ syntax: [], keywords: [] }),
+      entities,
+      '.'
+    )
+
+    const labels = items.map(getLabel)
+    expect(labels).toContain('event_id')
+    expect(labels).toContain('event_type')
+    expect(labels).not.toContain('email')
+  })
+
+  it('table. in FROM clause returns nothing during parse fallback', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService('SELECT * FROM users.', pos(1, 21), null)
+
+    expect(items).toEqual([])
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1374,6 +1764,13 @@ describe('completionService — dot-notation on manual invoke (Ctrl+Space)', () 
   it('no false positive for non-dotted text on manual invoke', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
     mockGetCache.mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:app_db:app_db',
+        },
+      },
+    } as never)
 
     // User typed "SELECT " and hit Ctrl+Space — no dot in the text
     const items = await callService(
@@ -1390,7 +1787,7 @@ describe('completionService — dot-notation on manual invoke (Ctrl+Space)', () 
     // Should return normal table suggestions + keywords (not dot-notation)
     expect(labels).toContain('users')
     expect(labels).toContain('products')
-    expect(labels).toContain('events')
+    expect(labels).not.toContain('events')
     expect(labels).toContain('FROM')
   })
 })

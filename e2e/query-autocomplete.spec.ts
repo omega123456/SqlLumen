@@ -3,6 +3,23 @@ import { test, expect, type Page } from '@playwright/test'
 const APP_READY_MS = 60_000
 const SUGGESTION_SETTLE_MS = 500
 
+function trackSqlParserConsoleErrors(page: Page) {
+  const errors: string[] = []
+
+  page.on('console', (msg) => {
+    if (msg.type() !== 'error') {
+      return
+    }
+
+    const text = msg.text()
+    if (text.includes('no viable alternative at input') || text.includes('extraneous input')) {
+      errors.push(text)
+    }
+  })
+
+  return errors
+}
+
 const MALFORMED_SCHEMA_METADATA = {
   databases: ['valid_db', ''],
   tables: {
@@ -82,6 +99,28 @@ async function openQueryEditorTab(page: Page) {
   await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
 }
 
+async function openAutocomplete(page: Page, expectedText?: string) {
+  const suggestWidget = page.locator('.suggest-widget.visible')
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await page.keyboard.press('Control+Space')
+    await expect(suggestWidget).toBeVisible({ timeout: 10_000 })
+
+    const text = (await suggestWidget.textContent()) ?? ''
+    if (!text.includes('Loading...') && (!expectedText || text.includes(expectedText))) {
+      return suggestWidget
+    }
+
+    await page.waitForTimeout(300)
+  }
+
+  return suggestWidget
+}
+
+async function selectDatabaseInObjectBrowser(page: Page, databaseName: string) {
+  await page.getByText(databaseName).first().click()
+}
+
 async function injectMalformedSchemaMetadata(page: Page) {
   await page.evaluate((schemaMetadata) => {
     const internals = (
@@ -141,7 +180,8 @@ test('autocomplete ignores malformed schema metadata instead of emitting invalid
   await editorSurface.click({ position: { x: 160, y: 40 } })
   await page.keyboard.type('SELECT * FROM valid_db.')
 
-  await expect(page.locator('.suggest-widget.visible')).toContainText('users')
+  const suggestWidget = await openAutocomplete(page, 'users')
+  await expect(suggestWidget).toContainText('users')
   await page.waitForTimeout(SUGGESTION_SETTLE_MS)
 
   expect(invalidCompletionWarnings).toEqual([])
@@ -159,8 +199,7 @@ test('alias completion: FROM users t → t. suggests users columns', async ({ pa
   await editorSurface.click({ position: { x: 160, y: 40 } })
   await page.keyboard.type('SELECT * FROM users t WHERE t.')
 
-  const suggestWidget = page.locator('.suggest-widget.visible')
-  await expect(suggestWidget).toBeVisible({ timeout: 10_000 })
+  const suggestWidget = await openAutocomplete(page, 'email')
 
   // Verify the suggestions include column names from the users table
   await expect(suggestWidget).toContainText('id')
@@ -183,8 +222,7 @@ test('alias completion: FROM analytics_db.events e → e. suggests events column
   await editorSurface.click({ position: { x: 160, y: 40 } })
   await page.keyboard.type('SELECT * FROM analytics_db.events e WHERE e.')
 
-  const suggestWidget = page.locator('.suggest-widget.visible')
-  await expect(suggestWidget).toBeVisible({ timeout: 10_000 })
+  const suggestWidget = await openAutocomplete(page, 'event_name')
 
   // Verify the suggestions include column names from analytics_db.events
   await expect(suggestWidget).toContainText('event_name')
@@ -206,11 +244,7 @@ test('context-aware ranking: WHERE clause → columns ranked above keywords', as
   await editorSurface.click({ position: { x: 160, y: 40 } })
   await page.keyboard.type('SELECT * FROM users WHERE ')
 
-  // Explicitly trigger autocomplete since typing space may not auto-trigger
-  await page.keyboard.press('Control+Space')
-
-  const suggestWidget = page.locator('.suggest-widget.visible')
-  await expect(suggestWidget).toBeVisible({ timeout: 10_000 })
+  const suggestWidget = await openAutocomplete(page, 'email')
   await page.waitForTimeout(SUGGESTION_SETTLE_MS)
 
   // Get ordered list of suggestion labels from the widget rows.
@@ -238,4 +272,150 @@ test('context-aware ranking: WHERE clause → columns ranked above keywords', as
   if (firstKeywordIndex >= 0) {
     expect(firstColumnIndex).toBeLessThan(firstKeywordIndex)
   }
+})
+
+test('FROM without a selected database suggests databases but not random tables', async ({
+  page,
+}) => {
+  test.setTimeout(APP_READY_MS)
+
+  const parserErrors = trackSqlParserConsoleErrors(page)
+
+  await waitForApp(page)
+  await openQueryEditorTab(page)
+
+  const editorSurface = page.locator('.monaco-editor').first()
+  await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
+
+  await editorSurface.click({ position: { x: 160, y: 40 } })
+  await page.keyboard.type('SELECT * FROM ')
+
+  const suggestWidget = await openAutocomplete(page, 'ecommerce_db')
+  await expect(suggestWidget).toContainText('ecommerce_db')
+  await expect(suggestWidget).toContainText('analytics_db')
+  await expect(suggestWidget).not.toContainText('users')
+  await expect(suggestWidget).not.toContainText('orders')
+  await expect(suggestWidget).not.toContainText('events')
+  await page.waitForTimeout(SUGGESTION_SETTLE_MS)
+
+  expect(parserErrors).toEqual([])
+})
+
+test('FROM ranks databases above keywords when no database is selected', async ({ page }) => {
+  test.setTimeout(APP_READY_MS)
+
+  await waitForApp(page)
+  await openQueryEditorTab(page)
+
+  const editorSurface = page.locator('.monaco-editor').first()
+  await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
+
+  await editorSurface.click({ position: { x: 160, y: 40 } })
+  await page.keyboard.type('SELECT * FROM ')
+
+  const suggestWidget = await openAutocomplete(page, 'ecommerce_db')
+  await page.waitForTimeout(SUGGESTION_SETTLE_MS)
+
+  const optionLabels = await suggestWidget
+    .locator('.monaco-list-row')
+    .evaluateAll((rows) => rows.map((r) => r.getAttribute('aria-label') ?? r.textContent ?? ''))
+
+  const databaseNames = ['ecommerce_db', 'analytics_db', 'staging_db']
+  const keywordNames = ['SELECT', 'FROM', 'WHERE', 'ORDER', 'GROUP', 'LIMIT']
+
+  const firstDatabaseIndex = optionLabels.findIndex((label) =>
+    databaseNames.some((db) => label.toLowerCase().includes(db.toLowerCase()))
+  )
+  const firstKeywordIndex = optionLabels.findIndex((label) =>
+    keywordNames.some((kw) => label.toLowerCase().includes(kw.toLowerCase()))
+  )
+
+  expect(firstDatabaseIndex).toBeGreaterThanOrEqual(0)
+  expect(firstKeywordIndex).toBeGreaterThanOrEqual(0)
+  expect(firstDatabaseIndex).toBeLessThan(firstKeywordIndex)
+})
+
+test('FROM with a database selected scopes table suggestions to that database', async ({
+  page,
+}) => {
+  test.setTimeout(APP_READY_MS)
+
+  await waitForApp(page)
+  await connectToSample(page)
+  await selectDatabaseInObjectBrowser(page, 'ecommerce_db')
+  await page.getByTestId('new-query-tab-button').click()
+  await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+
+  const editorSurface = page.locator('.monaco-editor').first()
+  await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
+
+  await editorSurface.click({ position: { x: 160, y: 40 } })
+  await page.keyboard.type('SELECT * FROM ')
+
+  const suggestWidget = await openAutocomplete(page, 'users')
+  await expect(suggestWidget).toContainText('users')
+  await expect(suggestWidget).toContainText('orders')
+  await expect(suggestWidget).toContainText('products')
+  await expect(suggestWidget).not.toContainText('events')
+})
+
+test('FROM ignores connection default database when no object-browser database is selected', async ({
+  page,
+}) => {
+  test.setTimeout(APP_READY_MS)
+
+  await waitForApp(page)
+  await openQueryEditorTab(page)
+
+  const editorSurface = page.locator('.monaco-editor').first()
+  await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
+
+  await editorSurface.click({ position: { x: 160, y: 40 } })
+  await page.keyboard.type('SELECT * FROM ')
+
+  const suggestWidget = await openAutocomplete(page, 'ecommerce_db')
+  await expect(suggestWidget).toContainText('ecommerce_db')
+  await expect(suggestWidget).toContainText('analytics_db')
+  await expect(suggestWidget).toContainText('staging_db')
+  await expect(suggestWidget).not.toContainText('users')
+  await expect(suggestWidget).not.toContainText('orders')
+  await expect(suggestWidget).not.toContainText('products')
+  await expect(suggestWidget).not.toContainText('events')
+})
+
+test('invalid FROM table-dot syntax does not suggest columns', async ({ page }) => {
+  test.setTimeout(APP_READY_MS)
+
+  await waitForApp(page)
+  await openQueryEditorTab(page)
+
+  const editorSurface = page.locator('.monaco-editor').first()
+  await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
+
+  await editorSurface.click({ position: { x: 160, y: 40 } })
+  await page.keyboard.type('SELECT * FROM users.')
+
+  const suggestWidget = await openAutocomplete(page)
+  await expect(suggestWidget).not.toContainText('email')
+  await expect(suggestWidget).not.toContainText('created_at')
+})
+
+test('autocomplete does not show lowercase SQL snippets', async ({ page }) => {
+  test.setTimeout(APP_READY_MS)
+
+  await waitForApp(page)
+  await openQueryEditorTab(page)
+
+  const editorSurface = page.locator('.monaco-editor').first()
+  await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
+
+  await editorSurface.click({ position: { x: 160, y: 40 } })
+  await page.keyboard.type('selec')
+
+  const suggestWidget = await openAutocomplete(page, 'SELECT')
+  await expect(suggestWidget).toContainText('SELECT')
+  await expect(suggestWidget).not.toContainText('select-join')
+  await expect(suggestWidget).not.toContainText('select-order-by')
+  await expect(suggestWidget).not.toContainText('insert-into-select')
+  await expect(suggestWidget).not.toContainText('create-table-as-select')
 })
