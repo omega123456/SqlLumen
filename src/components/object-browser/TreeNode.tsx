@@ -28,6 +28,7 @@ export interface TreeNodeProps {
   nodeId: string
   connectionId: string
   level: number
+  onSelect?: (nodeId: string) => void
   onContextMenu?: (e: React.MouseEvent, nodeId: string) => void
   onDoubleClick?: (nodeId: string) => void
   /** Set of node IDs that match the current filter (undefined = no filter active) */
@@ -87,6 +88,7 @@ export function TreeNode({
   nodeId,
   connectionId,
   level,
+  onSelect,
   onContextMenu,
   onDoubleClick,
   filterMatchIds,
@@ -120,7 +122,8 @@ export function TreeNode({
 
   const nodesMap = useSchemaStore(
     (state) =>
-      (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.nodes ?? EMPTY_NODES
+      (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.nodes ??
+      EMPTY_NODES
   )
 
   const effectiveFilterMatchIds = useMemo(() => {
@@ -176,6 +179,7 @@ export function TreeNode({
 
   const handleRowClick = () => {
     selectNode(nodeId, connectionId)
+    onSelect?.(nodeId)
     if (hasChildren) {
       toggleExpand(nodeId, connectionId)
     }
@@ -184,6 +188,7 @@ export function TreeNode({
   const handleChevronClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     selectNode(nodeId, connectionId)
+    onSelect?.(nodeId)
     toggleExpand(nodeId, connectionId)
   }
 
@@ -202,6 +207,7 @@ export function TreeNode({
           toggleExpand(nodeId, connectionId)
         }
         selectNode(nodeId, connectionId)
+        onSelect?.(nodeId)
         e.preventDefault()
         break
       case 'ArrowRight':
@@ -253,7 +259,9 @@ export function TreeNode({
 
   // Determine if we should show expanded children (either normally expanded or forced by filter)
   const showChildren =
-    hasChildren && (isExpanded || (filterDrivesExpand && childIds.length > 0)) && childIds.length > 0
+    hasChildren &&
+    (isExpanded || (filterDrivesExpand && childIds.length > 0)) &&
+    childIds.length > 0
 
   return (
     <>
@@ -315,6 +323,7 @@ export function TreeNode({
               nodeId={childId}
               connectionId={connectionId}
               level={level + 1}
+              onSelect={onSelect}
               onContextMenu={onContextMenu}
               onDoubleClick={onDoubleClick}
               filterMatchIds={filterMatchIds}

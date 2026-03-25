@@ -65,6 +65,7 @@
 
   /* Icon */
   --ag-icon-size: 14px;
+  --ag-icon-font-family: agGridAlpine;
   --ag-icon-font-color: var(--on-surface-variant);
 
   /* Scrollbar */

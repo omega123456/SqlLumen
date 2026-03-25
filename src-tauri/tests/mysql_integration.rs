@@ -243,6 +243,27 @@ async fn test_registry_get_connection_params_returns_none_for_missing() {
     assert!(registry.get_connection_params("nonexistent").is_none());
 }
 
+#[tokio::test]
+async fn test_registry_set_default_database_updates_existing_entry() {
+    let registry = ConnectionRegistry::new();
+    let entry = dummy_entry("test-db-default");
+    registry.insert("test-db-default".to_string(), entry);
+
+    registry.set_default_database("test-db-default", Some("analytics_db".to_string()));
+
+    let params = registry
+        .get_connection_params("test-db-default")
+        .expect("params should exist");
+    assert_eq!(params.default_database.as_deref(), Some("analytics_db"));
+}
+
+#[tokio::test]
+async fn test_registry_set_default_database_noop_for_missing_entry() {
+    let registry = ConnectionRegistry::new();
+    registry.set_default_database("missing", Some("analytics_db".to_string()));
+    assert!(registry.get_connection_params("missing").is_none());
+}
+
 // --- Credential Tests (in-memory test backend; no OS keychain) ---
 
 #[test]

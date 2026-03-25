@@ -42,6 +42,7 @@ interface TableRef {
 type ParseFallbackMode =
   | { type: 'all' }
   | { type: 'databases' }
+  | { type: 'databasesAndTables'; database: string }
   | { type: 'tables'; database: string }
   | { type: 'none' }
 
@@ -85,14 +86,8 @@ function hasColumnContext(suggestions: Suggestions): boolean {
   return suggestions.syntax.some((s) => s.syntaxContextType === EntityContextType.COLUMN)
 }
 
-function isDatabaseRankingContext(
-  suggestions: Suggestions,
-  selectedDatabase: string | null
-): boolean {
-  return (
-    !selectedDatabase &&
-    suggestions.syntax.some((s) => s.syntaxContextType === EntityContextType.TABLE)
-  )
+function hasTableContext(suggestions: Suggestions): boolean {
+  return suggestions.syntax.some((s) => s.syntaxContextType === EntityContextType.TABLE)
 }
 
 function getSelectedDatabase(connectionId: string | undefined): string | null {
@@ -131,7 +126,9 @@ function getParseFallbackMode(
   scopedDatabase: string | null
 ): ParseFallbackMode {
   if (/\b(?:FROM|JOIN|UPDATE|INTO|TABLE|DESCRIBE|DESC)\s+$/i.test(statementPrefix)) {
-    return scopedDatabase ? { type: 'tables', database: scopedDatabase } : { type: 'databases' }
+    return scopedDatabase
+      ? { type: 'databasesAndTables', database: scopedDatabase }
+      : { type: 'databases' }
   }
 
   const tableDotMatch = statementPrefix.match(
@@ -274,7 +271,8 @@ export const completionService: CompletionService = async (
   // Resolve the active database for alias resolution
   // -------------------------------------------------------------------
   const activeDatabase = connectionId
-    ? (useConnectionStore.getState().activeConnections[connectionId]?.profile.defaultDatabase ??
+    ? (useConnectionStore.getState().activeConnections[connectionId]?.sessionDatabase ??
+      useConnectionStore.getState().activeConnections[connectionId]?.profile.defaultDatabase ??
       null)
     : null
   const selectedDatabase = getSelectedDatabase(connectionId)
@@ -385,15 +383,15 @@ export const completionService: CompletionService = async (
   const items: ICompletionItem[] = []
   const seenLabels = new Set<string>()
   const isColumnContext = hasColumnContext(suggestions)
-  const isDatabaseContext = isDatabaseRankingContext(suggestions, selectedDatabase)
+  const isTableContext = hasTableContext(suggestions)
 
   // In column context: columns='0_', other schema='1_', keywords/snippets='2_'
   // Otherwise: everything='1_' (neutral)
   const columnSortPrefix = isColumnContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
-  const schemaSortPrefix = isDatabaseContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
-  const kwSortPrefix = isColumnContext || isDatabaseContext ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
+  const schemaSortPrefix = isTableContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
+  const kwSortPrefix = isColumnContext || isTableContext ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
   const snippetSortPrefix =
-    isColumnContext || isDatabaseContext ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
+    isColumnContext || isTableContext ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
 
   for (const syntaxSuggestion of suggestions.syntax) {
     const ctxType = syntaxSuggestion.syntaxContextType
@@ -406,6 +404,15 @@ export const completionService: CompletionService = async (
         }
       }
     } else if (ctxType === EntityContextType.TABLE) {
+      if (selectedDatabase) {
+        for (const db of cache.databases) {
+          if (!seenLabels.has(`db:${db}`)) {
+            seenLabels.add(`db:${db}`)
+            items.push(dbItem(db, schemaSortPrefix))
+          }
+        }
+      }
+
       if (selectedDatabase) {
         const tables = cache.tables[selectedDatabase] ?? []
         for (const table of tables) {
@@ -673,7 +680,10 @@ function buildParseFallback(
         return []
       }
 
-      const keywordSortPrefix = mode.type === 'databases' ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
+      const keywordSortPrefix =
+        mode.type === 'databases' || mode.type === 'databasesAndTables'
+          ? SORT_PREFIX_LOW
+          : SORT_PREFIX_NEUTRAL
 
       // Basic keywords (neutral ranking in fallback — no context available)
       for (const kw of SQL_KEYWORDS) {
@@ -683,6 +693,15 @@ function buildParseFallback(
       if (mode.type === 'databases') {
         for (const db of cache.databases) {
           items.push(dbItem(db, SORT_PREFIX_HIGH))
+        }
+      } else if (mode.type === 'databasesAndTables') {
+        for (const db of cache.databases) {
+          items.push(dbItem(db, SORT_PREFIX_HIGH))
+        }
+
+        const tables = cache.tables[mode.database] ?? []
+        for (const table of tables) {
+          items.push(tableItem(table.name, SORT_PREFIX_HIGH))
         }
       } else if (mode.type === 'tables') {
         const tables = cache.tables[mode.database] ?? []

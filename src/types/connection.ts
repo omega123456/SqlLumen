@@ -51,6 +51,8 @@ export interface ActiveConnection {
   /** Runtime session id — use for IPC (`connectionId`) and UI tab keys. */
   id: string
   profile: SavedConnection
+  /** Current session database used by the live MySQL session. */
+  sessionDatabase?: string | null
   status: 'connected' | 'disconnected' | 'reconnecting'
   serverVersion: string
 }

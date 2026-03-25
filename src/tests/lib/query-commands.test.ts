@@ -8,6 +8,7 @@ import {
   readFile,
   writeFile,
   sortResults,
+  selectDatabase,
 } from '../../lib/query-commands'
 
 const mockExecuteQueryFn = vi.fn(() => ({
@@ -33,6 +34,7 @@ const mockFetchSchemaMetadataFn = vi.fn(() => ({
 const mockReadFileFn = vi.fn(() => 'SELECT 1;')
 const mockWriteFileFn = vi.fn(() => null)
 const mockSortResultsFn = vi.fn(() => ({ rows: [[1], [2], [3]], page: 1, totalPages: 1 }))
+const mockSelectDatabaseFn = vi.fn(() => null)
 
 beforeEach(() => {
   mockExecuteQueryFn.mockClear()
@@ -42,6 +44,7 @@ beforeEach(() => {
   mockReadFileFn.mockClear()
   mockWriteFileFn.mockClear()
   mockSortResultsFn.mockClear()
+  mockSelectDatabaseFn.mockClear()
 
   mockIPC((cmd) => {
     switch (cmd) {
@@ -59,6 +62,8 @@ beforeEach(() => {
         return mockWriteFileFn()
       case 'sort_results':
         return mockSortResultsFn()
+      case 'select_database':
+        return mockSelectDatabaseFn()
       default:
         return null
     }
@@ -106,5 +111,10 @@ describe('query-commands', () => {
     expect(result.page).toBe(1)
     expect(result.totalPages).toBe(1)
     expect(mockSortResultsFn).toHaveBeenCalled()
+  })
+
+  it('selectDatabase invokes select_database command', async () => {
+    await selectDatabase('conn-1', 'analytics_db')
+    expect(mockSelectDatabaseFn).toHaveBeenCalled()
   })
 })

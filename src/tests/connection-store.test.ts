@@ -141,6 +141,7 @@ describe('useConnectionStore — openConnection', () => {
     expect(state.activeConnections['sess-1']).toEqual({
       id: 'sess-1',
       profile: mockSavedConnection,
+      sessionDatabase: mockSavedConnection.defaultDatabase,
       status: 'connected',
       serverVersion: '8.0.35',
     })
@@ -546,5 +547,69 @@ describe('useConnectionStore — updateDefaultDatabase', () => {
       expect.any(Error)
     )
     consoleSpy.mockRestore()
+  })
+})
+
+describe('useConnectionStore — setActiveDatabase', () => {
+  it('updates only the targeted active session and calls select_database IPC', async () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+        'sess-2': {
+          id: 'sess-2',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+      },
+    })
+
+    const selectDatabaseSpy = vi.fn()
+    mockIPC((cmd) => {
+      if (cmd === 'select_database') {
+        selectDatabaseSpy()
+        return null
+      }
+      return null
+    })
+
+    await useConnectionStore.getState().setActiveDatabase('sess-1', 'analytics_db')
+
+    const state = useConnectionStore.getState()
+    expect(state.activeConnections['sess-1'].sessionDatabase).toBe('analytics_db')
+    expect(state.activeConnections['sess-1'].profile.defaultDatabase).toBe(
+      mockSavedConnection.defaultDatabase
+    )
+    expect(state.activeConnections['sess-2'].sessionDatabase).toBeUndefined()
+    expect(selectDatabaseSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('reverts the session database when select_database IPC fails', async () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+      },
+    })
+
+    mockIPC((cmd) => {
+      if (cmd === 'select_database') throw new Error('USE failed')
+      return null
+    })
+
+    await useConnectionStore.getState().setActiveDatabase('sess-1', 'analytics_db')
+
+    expect(useConnectionStore.getState().activeConnections['sess-1'].sessionDatabase).toBe(
+      mockSavedConnection.defaultDatabase
+    )
   })
 })

@@ -522,6 +522,45 @@ describe('completionService — table suggestions', () => {
     expect(labels).not.toContain('events')
   })
 
+  it('returns database names and selected-database tables before keywords', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:analytics_db:analytics_db',
+        },
+      },
+    } as never)
+
+    const items = await callService(
+      'SELECT * FROM ',
+      pos(1, 15),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.TABLE, wordRanges: [] }],
+        keywords: ['LATERAL', 'SELECT'],
+      })
+    )
+
+    const labels = items.map(getLabel)
+    expect(labels).toContain('analytics_db')
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('events')
+
+    const firstSchema = items.find(
+      (item: AnyItem) =>
+        [languages.CompletionItemKind.Module, languages.CompletionItemKind.Class].includes(
+          item.kind
+        ) && ['analytics_db', 'app_db', 'events'].includes(getLabel(item))
+    )
+    const firstKeyword = items.find(
+      (item: AnyItem) => item.kind === languages.CompletionItemKind.Keyword
+    )
+
+    expect(firstSchema?.sortText).toMatch(/^0_/)
+    expect(firstKeyword?.sortText).toMatch(/^2_/)
+  })
+
   it('ignores defaultDatabase when no tree node is selected', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
     mockGetCache.mockReturnValue(READY_CACHE)
@@ -529,6 +568,7 @@ describe('completionService — table suggestions', () => {
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
         status: 'connected',
       },
     }
@@ -570,7 +610,10 @@ describe('completionService — table suggestions', () => {
       })
     )
 
-    expect(items.map(getLabel)).toEqual(['events'])
+    const labels = items.map(getLabel)
+    expect(labels).toContain('analytics_db')
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('events')
   })
 })
 
@@ -933,6 +976,7 @@ describe('completionService — alias resolution via dot notation', () => {
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
         status: 'connected',
       },
     }
@@ -961,6 +1005,7 @@ describe('completionService — alias resolution via dot notation', () => {
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
         status: 'connected',
       },
     }
@@ -990,6 +1035,7 @@ describe('completionService — alias resolution via dot notation', () => {
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
         status: 'connected',
       },
     }
@@ -1016,6 +1062,7 @@ describe('completionService — alias resolution via dot notation', () => {
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: 'nonexistent_db' },
+        sessionDatabase: 'nonexistent_db',
         status: 'connected',
       },
     }
@@ -1042,6 +1089,7 @@ describe('completionService — text-based alias fallback (entities null)', () =
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
         status: 'connected',
       },
     }
@@ -1067,6 +1115,7 @@ describe('completionService — text-based alias fallback (entities null)', () =
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
         status: 'connected',
       },
     }
@@ -1118,7 +1167,7 @@ describe('completionService — context-aware ranking', () => {
     }
   })
 
-  it('non-column context → all items get neutral "1_" prefix', async () => {
+  it('table-reference context ranks schema above keywords', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
     mockGetCache.mockReturnValue(READY_CACHE)
     mockUseSchemaStoreGetState.mockReturnValue({
@@ -1138,18 +1187,18 @@ describe('completionService — context-aware ranking', () => {
       })
     )
 
-    // Table items should have '1_' prefix (neutral)
+    // Table items should have '0_' prefix in table-reference context
     const tableItems = items.filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Class)
     expect(tableItems.length).toBeGreaterThan(0)
     for (const table of tableItems) {
-      expect(table.sortText).toMatch(/^1_/)
+      expect(table.sortText).toMatch(/^0_/)
     }
 
-    // Keyword items should also have '1_' prefix (neutral)
+    // Keyword items should rank below schema in table-reference context
     const kwItems = items.filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Keyword)
     expect(kwItems.length).toBeGreaterThan(0)
     for (const kw of kwItems) {
-      expect(kw.sortText).toMatch(/^1_/)
+      expect(kw.sortText).toMatch(/^2_/)
     }
   })
 
@@ -1451,7 +1500,7 @@ describe('completionService — dot notation (db.table.)', () => {
     }
   })
 
-  it('FROM with selected database returns only that database tables during parse fallback', async () => {
+  it('FROM with selected database returns databases plus that database tables during parse fallback', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
     mockGetCache.mockReturnValue(READY_CACHE)
     mockUseSchemaStoreGetState.mockReturnValue({
@@ -1468,7 +1517,41 @@ describe('completionService — dot notation (db.table.)', () => {
     expect(labels).toContain('users')
     expect(labels).toContain('products')
     expect(labels).not.toContain('events')
-    expect(labels).not.toContain('analytics_db')
+    expect(labels).toContain('analytics_db')
+  })
+
+  it('FROM with selected database includes databases and selected tables during parse fallback', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:analytics_db:analytics_db',
+        },
+      },
+    } as never)
+
+    const items = await callService('SELECT * FROM ', pos(1, 15), null)
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('analytics_db')
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('events')
+    expect(labels).not.toContain('users')
+
+    const databaseItems = items.filter(
+      (item: AnyItem) => item.kind === languages.CompletionItemKind.Module
+    )
+    const tableItems = items.filter(
+      (item: AnyItem) => item.kind === languages.CompletionItemKind.Class
+    )
+    const keywordItems = items.filter(
+      (item: AnyItem) => item.kind === languages.CompletionItemKind.Keyword
+    )
+
+    expect(databaseItems.every((item: AnyItem) => item.sortText.startsWith('0_'))).toBe(true)
+    expect(tableItems.every((item: AnyItem) => item.sortText.startsWith('0_'))).toBe(true)
+    expect(keywordItems.every((item: AnyItem) => item.sortText.startsWith('2_'))).toBe(true)
   })
 
   it('FROM ignores defaultDatabase during parse fallback when no tree node is selected', async () => {
@@ -1478,6 +1561,7 @@ describe('completionService — dot notation (db.table.)', () => {
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
         status: 'connected',
       },
     }
@@ -1492,13 +1576,14 @@ describe('completionService — dot notation (db.table.)', () => {
     expect(labels).not.toContain('events')
   })
 
-  it('selected node database overrides defaultDatabase during parse fallback', async () => {
+  it('selected node database overrides defaultDatabase during parse fallback while still listing databases', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
     mockGetCache.mockReturnValue(READY_CACHE)
     mockConnectionState.activeConnections = {
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
         status: 'connected',
       },
     }
@@ -1516,7 +1601,7 @@ describe('completionService — dot notation (db.table.)', () => {
     expect(labels).toContain('events')
     expect(labels).not.toContain('users')
     expect(labels).not.toContain('products')
-    expect(labels).not.toContain('analytics_db')
+    expect(labels).toContain('analytics_db')
   })
 
   it('selected node database does not override defaultDatabase for alias column resolution', async () => {
@@ -1560,6 +1645,7 @@ describe('completionService — dot notation (db.table.)', () => {
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: null },
+        sessionDatabase: null,
         status: 'connected',
       },
     }
@@ -1632,6 +1718,7 @@ describe('completionService — dot notation prefers activeDatabase for unqualif
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: 'db_beta' },
+        sessionDatabase: 'db_beta',
         status: 'connected',
       },
     }
@@ -1681,6 +1768,7 @@ describe('completionService — dot notation prefers activeDatabase for unqualif
       'conn-1': {
         id: 'conn-1',
         profile: { defaultDatabase: 'db_beta' },
+        sessionDatabase: 'db_beta',
         status: 'connected',
       },
     }

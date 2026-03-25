@@ -36,6 +36,10 @@ export async function sortResults(
   return invoke<ResultPage>('sort_results', { connectionId, tabId, columnName, direction })
 }
 
+export async function selectDatabase(connectionId: string, databaseName: string): Promise<void> {
+  return invoke<void>('select_database', { connectionId, databaseName })
+}
+
 export async function fetchSchemaMetadata(connectionId: string): Promise<SchemaMetadataResponse> {
   return invoke<SchemaMetadataResponse>('fetch_schema_metadata', { connectionId })
 }

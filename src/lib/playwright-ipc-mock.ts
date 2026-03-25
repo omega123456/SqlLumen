@@ -25,6 +25,8 @@ export const PLAYWRIGHT_MOCK_CONNECTION: SavedConnection = {
   updatedAt: MOCK_TS,
 }
 
+let activeMockDatabase: string | null = PLAYWRIGHT_MOCK_CONNECTION.defaultDatabase
+
 /**
  * IPC handler for `mockIPC` when the app runs under Playwright (VITE_PLAYWRIGHT).
  * Returns stable, deterministic data so UI flows and visual snapshots do not flap.
@@ -45,7 +47,12 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'list_connection_groups':
       return []
     case 'open_connection':
+      activeMockDatabase = PLAYWRIGHT_MOCK_CONNECTION.defaultDatabase
       return { sessionId: 'session-playwright-1', serverVersion: '8.0.33-mock' }
+    case 'select_database':
+      activeMockDatabase =
+        ((args as Record<string, unknown>)?.databaseName as string | null) ?? null
+      return null
     case 'test_connection':
       return {
         success: true,
@@ -315,6 +322,20 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       ) {
         throw new Error("Table 'app_db.nonexistent' doesn't exist")
       }
+
+      if (/^\s*SELECT\s+DATABASE\s*\(\s*\)\s*;?\s*$/i.test(String(args?.sql ?? ''))) {
+        return {
+          queryId: 'mock-query-current-db',
+          columns: [{ name: 'DATABASE()', dataType: 'VARCHAR' }],
+          totalRows: 1,
+          executionTimeMs: 7,
+          affectedRows: 0,
+          firstPage: [[activeMockDatabase]],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+
       return {
         queryId: 'mock-query-id-1',
         columns: [

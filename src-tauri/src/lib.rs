@@ -139,6 +139,7 @@ pub fn run() {
             commands::schema::drop_table,
             commands::schema::truncate_table,
             commands::schema::rename_table,
+            commands::session::select_database,
             commands::query::execute_query,
             commands::query::fetch_result_page,
             commands::query::evict_results,

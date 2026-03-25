@@ -359,6 +359,70 @@ test('FROM with a database selected scopes table suggestions to that database', 
   await expect(suggestWidget).not.toContainText('events')
 })
 
+test('selecting a database in object browser changes the session database used for queries', async ({
+  page,
+}) => {
+  test.setTimeout(APP_READY_MS)
+
+  await waitForApp(page)
+  await connectToSample(page)
+  await selectDatabaseInObjectBrowser(page, 'analytics_db')
+  await page.getByTestId('new-query-tab-button').click()
+  await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+
+  const editorSurface = page.locator('.monaco-editor').first()
+  await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
+
+  await editorSurface.click({ position: { x: 160, y: 40 } })
+  await page.keyboard.type('SELECT DATABASE();')
+  await page.getByTestId('toolbar-execute').click()
+
+  await expect(page.getByTestId('result-grid-view')).toContainText('analytics_db', {
+    timeout: APP_READY_MS,
+  })
+})
+
+test('FROM with a selected database suggests databases and scoped tables before keywords', async ({
+  page,
+}) => {
+  test.setTimeout(APP_READY_MS)
+
+  await waitForApp(page)
+  await connectToSample(page)
+  await selectDatabaseInObjectBrowser(page, 'analytics_db')
+  await page.getByTestId('new-query-tab-button').click()
+  await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+
+  const editorSurface = page.locator('.monaco-editor').first()
+  await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
+
+  await editorSurface.click({ position: { x: 160, y: 40 } })
+  await page.keyboard.type('SELECT * FROM ')
+
+  const suggestWidget = await openAutocomplete(page, 'events')
+  await expect(suggestWidget).toContainText('analytics_db')
+  await expect(suggestWidget).toContainText('events')
+  await page.waitForTimeout(SUGGESTION_SETTLE_MS)
+
+  const optionLabels = await suggestWidget
+    .locator('.monaco-list-row')
+    .evaluateAll((rows) => rows.map((r) => r.getAttribute('aria-label') ?? r.textContent ?? ''))
+
+  const firstSchemaIndex = optionLabels.findIndex((label) =>
+    ['analytics_db', 'events'].some((name) => label.toLowerCase().includes(name.toLowerCase()))
+  )
+  const firstKeywordIndex = optionLabels.findIndex((label) =>
+    ['lateral', 'select', 'from', 'where', 'order', 'group', 'limit'].some((kw) =>
+      label.toLowerCase().includes(kw)
+    )
+  )
+
+  expect(firstSchemaIndex).toBeGreaterThanOrEqual(0)
+  if (firstKeywordIndex >= 0) {
+    expect(firstSchemaIndex).toBeLessThan(firstKeywordIndex)
+  }
+})
+
 test('FROM ignores connection default database when no object-browser database is selected', async ({
   page,
 }) => {

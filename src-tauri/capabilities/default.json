@@ -43,6 +43,7 @@
     "allow-read-file",
     "allow-write-file",
     "allow-sort-results",
+    "allow-select-database",
     "allow-export-results",
     "dialog:allow-save",
     "dialog:allow-open"

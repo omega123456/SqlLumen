@@ -7,6 +7,7 @@ import {
   closeConnection as closeConnectionIPC,
   updateConnection as updateConnectionIPC,
 } from '../lib/connection-commands'
+import { selectDatabase as selectDatabaseIPC } from '../lib/query-commands'
 import type {
   SavedConnection,
   ConnectionGroup,
@@ -49,6 +50,7 @@ interface ConnectionState {
   openDialog: () => void
   closeDialog: () => void
   clearError: () => void
+  setActiveDatabase: (sessionId: string, databaseName: string) => Promise<void>
   updateDefaultDatabase: (sessionId: string, newDefaultDb: string | null) => Promise<void>
   setupEventListeners: () => Promise<(() => void) | undefined>
 }
@@ -87,6 +89,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       const active: ActiveConnection = {
         id: result.sessionId,
         profile,
+        sessionDatabase: profile.defaultDatabase,
         status: 'connected',
         serverVersion: result.serverVersion,
       }
@@ -162,6 +165,48 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
   openDialog: () => set({ dialogOpen: true }),
   closeDialog: () => set({ dialogOpen: false }),
   clearError: () => set({ error: null }),
+
+  setActiveDatabase: async (sessionId: string, databaseName: string) => {
+    const active = get().activeConnections[sessionId]
+    const trimmedName = databaseName.trim()
+    const currentSessionDatabase =
+      active?.sessionDatabase ?? active?.profile.defaultDatabase ?? null
+
+    if (!active || !trimmedName || currentSessionDatabase === trimmedName) {
+      return
+    }
+
+    const originalSessionDatabase = currentSessionDatabase
+
+    set((state) => ({
+      activeConnections: {
+        ...state.activeConnections,
+        [sessionId]: {
+          ...state.activeConnections[sessionId],
+          sessionDatabase: trimmedName,
+        },
+      },
+    }))
+
+    try {
+      await selectDatabaseIPC(sessionId, trimmedName)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      showErrorToast('Failed to switch database', msg)
+
+      if (get().activeConnections[sessionId]) {
+        set((state) => ({
+          activeConnections: {
+            ...state.activeConnections,
+            [sessionId]: {
+              ...state.activeConnections[sessionId],
+              sessionDatabase: originalSessionDatabase,
+            },
+          },
+        }))
+      }
+    }
+  },
 
   updateDefaultDatabase: async (sessionId: string, newDefaultDb: string | null) => {
     const active = get().activeConnections[sessionId]

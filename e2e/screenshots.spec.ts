@@ -604,6 +604,53 @@ for (const theme of themes) {
       )
     })
 
+    test('QueryEditorTab — with results sorted by name', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+
+      await page.evaluate(() => {
+        const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            activeTabByConnection: Record<string, string | null>
+          }
+        }
+        const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+          setState: (
+            updater: (state: { tabs: Record<string, Record<string, unknown>> }) => {
+              tabs: Record<string, Record<string, unknown>>
+            }
+          ) => void
+        }
+
+        const activeTabId = wsStore.getState().activeTabByConnection['session-playwright-1']
+        if (!activeTabId) {
+          throw new Error('No active query tab found for sorted screenshot')
+        }
+
+        queryStore.setState((state) => ({
+          tabs: {
+            ...state.tabs,
+            [activeTabId]: {
+              ...state.tabs[activeTabId],
+              sortColumn: 'name',
+              sortDirection: 'asc',
+            },
+          },
+        }))
+      })
+
+      await expect(
+        page
+          .getByTestId('result-grid-view')
+          .locator('.ag-sort-ascending-icon:not(.ag-hidden)')
+          .first()
+      ).toBeVisible({ timeout: APP_READY_MS })
+
+      await expect(page.getByTestId('result-grid-view')).toHaveScreenshot(
+        `query-editor-result-grid-sorted-name-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('StatusBar — query info after execution', async ({ page }) => {
       await openQueryEditorWithResults(page)
       // The status bar should now show query rows/time info

@@ -133,6 +133,14 @@ impl ConnectionRegistry {
         map.get(id).map(|e| e.connection_params.clone())
     }
 
+    /// Update the stored default database for an active connection.
+    pub fn set_default_database(&self, id: &str, default_database: Option<String>) {
+        let mut map = self.entries.write().expect("registry lock poisoned");
+        if let Some(entry) = map.get_mut(id) {
+            entry.connection_params.default_database = default_database;
+        }
+    }
+
     /// Remove a connection from the registry, returning the entry if it existed.
     /// Cancels the entry's cancellation token to stop any background health tasks.
     pub fn remove(&self, id: &str) -> Option<RegistryEntry> {

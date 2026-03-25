@@ -510,6 +510,39 @@ describe('ObjectBrowser', () => {
     })
   })
 
+  it('selecting a database node switches the active session database', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    const setActiveDatabase = vi.fn().mockResolvedValue(undefined)
+    useConnectionStore.setState({ setActiveDatabase })
+
+    render(<ObjectBrowser connectionId={CONN_ID} />)
+
+    await user.click(screen.getByText('analytics_db'))
+
+    await waitFor(() => {
+      expect(setActiveDatabase).toHaveBeenCalledWith(CONN_ID, 'analytics_db')
+    })
+  })
+
+  it("selecting a table node switches the active session database to that table's database", async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandToTable()
+    const setActiveDatabase = vi.fn().mockResolvedValue(undefined)
+    useConnectionStore.setState({ setActiveDatabase })
+
+    render(<ObjectBrowser connectionId={CONN_ID} />)
+
+    await user.click(screen.getByText('users'))
+
+    await waitFor(() => {
+      expect(setActiveDatabase).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db')
+    })
+  })
+
   // ---------------------------------------------------------------------------
   // Dialog integration tests
   // ---------------------------------------------------------------------------

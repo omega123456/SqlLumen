@@ -30,6 +30,7 @@ interface ContextMenuState {
 const CLOSED_MENU: ContextMenuState = { visible: false, x: 0, y: 0, nodeId: null }
 
 export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
+  const setActiveDatabase = useConnectionStore((state) => state.setActiveDatabase)
   const activeConnection = useConnectionStore(
     (state) => state.activeConnections[connectionId] ?? null
   )
@@ -69,14 +70,28 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
     }
   }, [connectionId, activeConnection?.status, loadDatabases])
 
+  const handleNodeSelect = useCallback(
+    (nodeId: string) => {
+      if (activeConnection?.status !== 'connected' || !nodes) return
+
+      const node = nodes[nodeId]
+      if (!node) return
+
+      const selectedDatabase = node.databaseName ?? parseNodeId(nodeId).database
+      if (!selectedDatabase) return
+
+      void setActiveDatabase(connectionId, selectedDatabase)
+    },
+    [activeConnection?.status, connectionId, nodes, setActiveDatabase]
+  )
+
   // Use childIdsByParentId index for top-level nodes (Simplification 4)
   const topLevelIds = useMemo(() => {
     if (!childIdsByParentId) return []
     return childIdsByParentId['__root__'] ?? []
   }, [childIdsByParentId])
 
-  const effectiveScopeRoot =
-    selectedNodeId && nodes?.[selectedNodeId] ? selectedNodeId : null
+  const effectiveScopeRoot = selectedNodeId && nodes?.[selectedNodeId] ? selectedNodeId : null
 
   const filterMatchIds = useMemo(() => {
     const trimmed = filterText.trim()
@@ -188,6 +203,7 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
                 level={0}
                 onContextMenu={handleContextMenu}
                 onDoubleClick={handleDoubleClick}
+                onSelect={handleNodeSelect}
                 filterMatchIds={filterMatchIds}
                 filterScopeRootId={effectiveScopeRoot}
                 isFirstVisible={index === 0}

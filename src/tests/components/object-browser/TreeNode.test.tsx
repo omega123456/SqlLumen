@@ -126,6 +126,22 @@ describe('TreeNode', () => {
     expect(toggleExpand).toHaveBeenCalledWith(node.id, CONN_ID)
   })
 
+  it('calls onSelect when the row is clicked', async () => {
+    const user = userEvent.setup()
+    const node = makeTreeNode()
+    setNodes({ [node.id]: node })
+    const onSelect = vi.fn()
+
+    render(
+      <div role="tree">
+        <TreeNode nodeId={node.id} connectionId={CONN_ID} level={0} onSelect={onSelect} />
+      </div>
+    )
+
+    await user.click(screen.getByRole('treeitem'))
+    expect(onSelect).toHaveBeenCalledWith(node.id)
+  })
+
   it('shows loading spinner when node is in loadingNodes', () => {
     const node = makeTreeNode({ hasChildren: true })
     setNodes({ [node.id]: node }, { loading: new Set([node.id]) })

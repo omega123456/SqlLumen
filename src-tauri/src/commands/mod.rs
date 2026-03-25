@@ -4,4 +4,5 @@ pub mod export;
 pub mod mysql;
 pub mod query;
 pub mod schema;
+pub mod session;
 pub mod settings;
