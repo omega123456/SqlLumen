@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useQueryStore } from '../../stores/query-store'
 
@@ -34,6 +34,16 @@ describe('useQueryStore — getTabState', () => {
     expect(state.status).toBe('idle')
     expect(state.content).toBe('')
     expect(state.columns).toHaveLength(0)
+  })
+
+  it('returns default new fields for unknown tab', () => {
+    const state = useQueryStore.getState().getTabState('unknown')
+    expect(state.viewMode).toBe('grid')
+    expect(state.sortColumn).toBeNull()
+    expect(state.sortDirection).toBeNull()
+    expect(state.selectedRowIndex).toBeNull()
+    expect(state.exportDialogOpen).toBe(false)
+    expect(state.lastExecutedSql).toBeNull()
   })
 })
 
@@ -72,6 +82,55 @@ describe('useQueryStore — executeQuery', () => {
     const state = useQueryStore.getState().getTabState('tab-error')
     expect(state.status).toBe('error')
     expect(state.errorMessage).toContain('table not found')
+  })
+
+  it('saves lastExecutedSql on success', async () => {
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users')
+    const state = useQueryStore.getState().getTabState('tab-1')
+    expect(state.lastExecutedSql).toBe('SELECT * FROM users')
+  })
+
+  it('uses stored pageSize for the IPC call', async () => {
+    // Set a custom page size before executing
+    useQueryStore.getState().setContent('tab-ps', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-ps': {
+          ...prev.tabs['tab-ps']!,
+          pageSize: 500,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-ps', 'SELECT 1')
+    const state = useQueryStore.getState().getTabState('tab-ps')
+    expect(state.status).toBe('success')
+    // The query still succeeds (the mock doesn't validate pageSize,
+    // but the code path passes it)
+    expect(state.rows).toEqual([[1], [2], [3]])
+  })
+
+  it('resets sortColumn, sortDirection, and selectedRowIndex on new query', async () => {
+    // Set up tab with existing sort/selection state
+    useQueryStore.getState().setContent('tab-reset', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-reset': {
+          ...prev.tabs['tab-reset']!,
+          sortColumn: 'id',
+          sortDirection: 'asc' as const,
+          selectedRowIndex: 5,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-reset', 'SELECT 1')
+    const state = useQueryStore.getState().getTabState('tab-reset')
+    expect(state.sortColumn).toBeNull()
+    expect(state.sortDirection).toBeNull()
+    expect(state.selectedRowIndex).toBeNull()
   })
 })
 
@@ -198,5 +257,368 @@ describe('useQueryStore — stale query guard', () => {
 
     // Tab state should still be undefined
     expect(useQueryStore.getState().tabs['tab-stale2']).toBeUndefined()
+  })
+})
+
+// --- New Phase 5.1 action tests ---
+
+describe('useQueryStore — setViewMode', () => {
+  it('sets view mode for a tab', () => {
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    useQueryStore.getState().setViewMode('tab-1', 'form')
+    expect(useQueryStore.getState().tabs['tab-1']?.viewMode).toBe('form')
+  })
+
+  it('sets view mode to text', () => {
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    useQueryStore.getState().setViewMode('tab-1', 'text')
+    expect(useQueryStore.getState().tabs['tab-1']?.viewMode).toBe('text')
+  })
+
+  it('sets view mode back to grid', () => {
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    useQueryStore.getState().setViewMode('tab-1', 'form')
+    useQueryStore.getState().setViewMode('tab-1', 'grid')
+    expect(useQueryStore.getState().tabs['tab-1']?.viewMode).toBe('grid')
+  })
+})
+
+describe('useQueryStore — setSelectedRow', () => {
+  it('sets selected row index', () => {
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    useQueryStore.getState().setSelectedRow('tab-1', 5)
+    expect(useQueryStore.getState().tabs['tab-1']?.selectedRowIndex).toBe(5)
+  })
+
+  it('clears selected row with null', () => {
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    useQueryStore.getState().setSelectedRow('tab-1', 3)
+    useQueryStore.getState().setSelectedRow('tab-1', null)
+    expect(useQueryStore.getState().tabs['tab-1']?.selectedRowIndex).toBeNull()
+  })
+})
+
+describe('useQueryStore — export dialog', () => {
+  it('opens export dialog', () => {
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    useQueryStore.getState().openExportDialog('tab-1')
+    expect(useQueryStore.getState().tabs['tab-1']?.exportDialogOpen).toBe(true)
+  })
+
+  it('closes export dialog', () => {
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    useQueryStore.getState().openExportDialog('tab-1')
+    useQueryStore.getState().closeExportDialog('tab-1')
+    expect(useQueryStore.getState().tabs['tab-1']?.exportDialogOpen).toBe(false)
+  })
+})
+
+describe('useQueryStore — sortResults', () => {
+  it('calls sort_results IPC and updates store state', async () => {
+    // Set up mock IPC with sort_results handler
+    mockIPC((cmd) => {
+      switch (cmd) {
+        case 'execute_query':
+          return {
+            queryId: 'q-mock',
+            columns: [{ name: 'id', dataType: 'INT' }],
+            totalRows: 3,
+            executionTimeMs: 10,
+            affectedRows: 0,
+            firstPage: [[3], [1], [2]],
+            totalPages: 1,
+            autoLimitApplied: false,
+          }
+        case 'sort_results':
+          return { rows: [[1], [2], [3]], page: 1, totalPages: 1 }
+        case 'evict_results':
+          return null
+        default:
+          return null
+      }
+    })
+
+    // Execute a query first
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT id FROM t')
+
+    // Sort ascending
+    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
+    const state = useQueryStore.getState().getTabState('tab-1')
+    expect(state.sortColumn).toBe('id')
+    expect(state.sortDirection).toBe('asc')
+    expect(state.rows).toEqual([[1], [2], [3]])
+    expect(state.currentPage).toBe(1)
+  })
+
+  it('clears sort state when direction is null and re-executes query', async () => {
+    // Set up mock IPC with execute_query handler (for re-execution)
+    mockIPC((cmd) => {
+      switch (cmd) {
+        case 'execute_query':
+          return {
+            queryId: 'q-reexec',
+            columns: [{ name: 'id', dataType: 'INT' }],
+            totalRows: 3,
+            executionTimeMs: 8,
+            affectedRows: 0,
+            firstPage: [[3], [1], [2]],
+            totalPages: 1,
+            autoLimitApplied: false,
+          }
+        case 'evict_results':
+          return null
+        default:
+          return null
+      }
+    })
+
+    // Set up tab with sort state and lastExecutedSql
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-1': {
+          ...prev.tabs['tab-1']!,
+          sortColumn: 'id',
+          sortDirection: 'asc' as const,
+          lastExecutedSql: 'SELECT id FROM t',
+          queryId: 'q-old',
+          status: 'success' as const,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', null)
+    const state = useQueryStore.getState().getTabState('tab-1')
+    expect(state.sortColumn).toBeNull()
+    expect(state.sortDirection).toBeNull()
+    // Should have re-executed and gotten fresh data
+    expect(state.queryId).toBe('q-reexec')
+    expect(state.rows).toEqual([[3], [1], [2]])
+  })
+
+  it('clears sort state visually when no lastExecutedSql', async () => {
+    // Set up tab with sort state but NO lastExecutedSql
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-1': {
+          ...prev.tabs['tab-1']!,
+          sortColumn: 'id',
+          sortDirection: 'asc' as const,
+          lastExecutedSql: null,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', null)
+    const state = useQueryStore.getState().getTabState('tab-1')
+    expect(state.sortColumn).toBeNull()
+    expect(state.sortDirection).toBeNull()
+  })
+
+  it('logs error on IPC failure', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'sort_results') throw new Error('Sort failed')
+      return null
+    })
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
+    expect(consoleSpy).toHaveBeenCalledWith('sortResults failed:', expect.any(Error))
+    consoleSpy.mockRestore()
+  })
+
+  it('skips state update if tab was cleaned up during sort', async () => {
+    let resolveSortPromise: ((value: unknown) => void) | null = null
+    mockIPC((cmd) => {
+      if (cmd === 'sort_results') {
+        return new Promise((resolve) => {
+          resolveSortPromise = resolve
+        })
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-stale-sort', 'SELECT 1')
+    const promise = useQueryStore.getState().sortResults('conn-1', 'tab-stale-sort', 'id', 'asc')
+
+    // Simulate tab close during sort
+    useQueryStore.getState().cleanupTab('conn-1', 'tab-stale-sort')
+    expect(useQueryStore.getState().tabs['tab-stale-sort']).toBeUndefined()
+
+    // Resolve the sort
+    resolveSortPromise!({ rows: [[1]], page: 1, totalPages: 1 })
+    await promise
+
+    // Tab should remain undefined
+    expect(useQueryStore.getState().tabs['tab-stale-sort']).toBeUndefined()
+  })
+})
+
+describe('useQueryStore — changePageSize', () => {
+  it('re-executes query with new page size', async () => {
+    const executeFn = vi.fn(() => ({
+      queryId: 'q-new',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      totalRows: 100,
+      executionTimeMs: 5,
+      affectedRows: 0,
+      firstPage: [[1], [2]],
+      totalPages: 2,
+      autoLimitApplied: false,
+    }))
+
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') return executeFn()
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    // Set up tab with lastExecutedSql
+    useQueryStore.getState().setContent('tab-1', 'SELECT id FROM t')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-1': {
+          ...prev.tabs['tab-1']!,
+          lastExecutedSql: 'SELECT id FROM t',
+          status: 'success' as const,
+          queryId: 'q-old',
+          selectedRowIndex: 3,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
+    const state = useQueryStore.getState().getTabState('tab-1')
+    expect(state.status).toBe('success')
+    expect(state.pageSize).toBe(500)
+    expect(state.queryId).toBe('q-new')
+    expect(state.totalRows).toBe(100)
+    expect(state.rows).toEqual([[1], [2]])
+    expect(state.currentPage).toBe(1)
+    expect(state.sortColumn).toBeNull()
+    expect(state.sortDirection).toBeNull()
+    expect(state.selectedRowIndex).toBeNull()
+  })
+
+  it('does nothing when no lastExecutedSql', async () => {
+    useQueryStore.getState().setContent('tab-1', '')
+    await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
+    // Should not throw; status should remain unchanged
+    expect(useQueryStore.getState().getTabState('tab-1').status).toBe('idle')
+  })
+
+  it('sets error status on IPC failure', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') throw new Error('Query failed')
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-1': {
+          ...prev.tabs['tab-1']!,
+          lastExecutedSql: 'SELECT 1',
+          status: 'success' as const,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
+    const state = useQueryStore.getState().getTabState('tab-1')
+    expect(state.status).toBe('error')
+    expect(state.errorMessage).toContain('Query failed')
+  })
+
+  it('skips state update if tab was cleaned up during changePageSize', async () => {
+    let resolveQuery: ((value: unknown) => void) | null = null
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return new Promise((resolve) => {
+          resolveQuery = resolve
+        })
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-stale-ps', 'SELECT id FROM t')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-stale-ps': {
+          ...prev.tabs['tab-stale-ps']!,
+          lastExecutedSql: 'SELECT id FROM t',
+          status: 'success' as const,
+        },
+      },
+    }))
+
+    const promise = useQueryStore.getState().changePageSize('conn-1', 'tab-stale-ps', 500)
+
+    // Simulate tab close mid-flight
+    useQueryStore.getState().cleanupTab('conn-1', 'tab-stale-ps')
+    expect(useQueryStore.getState().tabs['tab-stale-ps']).toBeUndefined()
+
+    // Resolve the query
+    resolveQuery!({
+      queryId: 'q-new',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      totalRows: 10,
+      executionTimeMs: 5,
+      affectedRows: 0,
+      firstPage: [[1]],
+      totalPages: 1,
+      autoLimitApplied: false,
+    })
+    await promise
+
+    // Tab should remain undefined
+    expect(useQueryStore.getState().tabs['tab-stale-ps']).toBeUndefined()
+  })
+
+  it('skips error update if tab was cleaned up during failed changePageSize', async () => {
+    let rejectQuery: ((reason: unknown) => void) | null = null
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return new Promise((_resolve, reject) => {
+          rejectQuery = reject
+        })
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-stale-ps2', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-stale-ps2': {
+          ...prev.tabs['tab-stale-ps2']!,
+          lastExecutedSql: 'SELECT 1',
+          status: 'success' as const,
+        },
+      },
+    }))
+
+    const promise = useQueryStore.getState().changePageSize('conn-1', 'tab-stale-ps2', 100)
+
+    // Simulate tab close mid-flight
+    useQueryStore.getState().cleanupTab('conn-1', 'tab-stale-ps2')
+
+    // Reject the query
+    rejectQuery!(new Error('Timeout'))
+    await promise
+
+    // Tab should remain undefined (error handler guard prevents write-back)
+    expect(useQueryStore.getState().tabs['tab-stale-ps2']).toBeUndefined()
   })
 })

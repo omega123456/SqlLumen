@@ -1,14 +1,17 @@
 /**
  * Result display panel — shows query results in different states:
- * idle (placeholder), running (spinner), success (toolbar + grid),
+ * idle (placeholder), running (spinner), success (toolbar + grid/form/text),
  * or error (toolbar + error message).
  */
 
-import { useState, useCallback } from 'react'
+import { useCallback } from 'react'
 import { Play, CheckCircle } from '@phosphor-icons/react'
 import { useQueryStore } from '../../stores/query-store'
 import { ResultToolbar } from './ResultToolbar'
-import { ResultGrid } from './ResultGrid'
+import { ResultGridView } from './ResultGridView'
+import { ResultFormView } from './ResultFormView'
+import { ResultTextView } from './ResultTextView'
+import ExportDialog from '../dialogs/ExportDialog'
 import type { ColumnMeta } from '../../types/schema'
 import styles from './ResultPanel.module.css'
 
@@ -18,38 +21,69 @@ interface ResultPanelProps {
 }
 
 export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
-  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null)
-
   const tabState = useQueryStore((state) => state.tabs[tabId])
-  const fetchPage = useQueryStore((state) => state.fetchPage)
+  const store = useQueryStore()
 
   const status = tabState?.status ?? 'idle'
   const columns = (tabState?.columns ?? []) as ColumnMeta[]
-  const rows = (tabState?.rows ?? []) as (string | null)[][]
-  const totalRows = tabState?.totalRows ?? 0
+  const rows = (tabState?.rows ?? []) as unknown[][]
   const affectedRows = tabState?.affectedRows ?? 0
-  const executionTimeMs = tabState?.executionTimeMs ?? null
-  const errorMessage = tabState?.errorMessage ?? null
-  const autoLimitApplied = tabState?.autoLimitApplied ?? false
+  const viewMode = tabState?.viewMode ?? 'grid'
+  const sortColumn = tabState?.sortColumn ?? null
+  const sortDirection = tabState?.sortDirection ?? null
+  const selectedRowIndex = tabState?.selectedRowIndex ?? null
+  const exportDialogOpen = tabState?.exportDialogOpen ?? false
+  const totalRows = tabState?.totalRows ?? 0
   const currentPage = tabState?.currentPage ?? 1
   const totalPages = tabState?.totalPages ?? 1
-  const queryId = tabState?.queryId ?? null
+  const pageSize = tabState?.pageSize ?? 1000
 
-  const handlePrevPage = useCallback(() => {
-    if (queryId && connectionId && currentPage > 1) {
-      fetchPage(connectionId, tabId, currentPage - 1)
-    }
-  }, [queryId, connectionId, currentPage, fetchPage, tabId])
+  const handleSortChanged = useCallback(
+    (column: string, direction: 'asc' | 'desc' | null) => {
+      // All sort state transitions (reset selection, update sort column/direction,
+      // IPC call, row replacement) are handled inside the store action.
+      store.sortResults(connectionId, tabId, column, direction)
+    },
+    [store, connectionId, tabId]
+  )
 
-  const handleNextPage = useCallback(() => {
-    if (queryId && connectionId && currentPage < totalPages) {
-      fetchPage(connectionId, tabId, currentPage + 1)
-    }
-  }, [queryId, connectionId, currentPage, totalPages, fetchPage, tabId])
+  const handleRowSelected = useCallback(
+    (localRowIndex: number) => {
+      // Convert page-local index to absolute index across the full result set
+      const absoluteIndex = (currentPage - 1) * pageSize + localRowIndex
+      store.setSelectedRow(tabId, absoluteIndex)
+    },
+    [store, tabId, currentPage, pageSize]
+  )
 
-  const handleRowSelect = useCallback((index: number) => {
-    setSelectedRowIndex(index)
-  }, [])
+  /**
+   * Handle form-view record navigation (Previous / Next).
+   *
+   * Calculates the new absolute index, checks if a page change is needed,
+   * fetches the new page if so, and always updates the selected row index.
+   */
+  const handleFormNavigate = useCallback(
+    (direction: 'prev' | 'next') => {
+      const currentIndex = selectedRowIndex ?? 0
+      const newIndex = direction === 'prev' ? currentIndex - 1 : currentIndex + 1
+
+      // Bounds check
+      if (newIndex < 0 || newIndex >= totalRows) return
+
+      // Determine if we need a page change
+      const pageStart = (currentPage - 1) * pageSize
+      const pageEnd = pageStart + pageSize - 1
+
+      if (newIndex < pageStart && currentPage > 1) {
+        store.fetchPage(connectionId, tabId, currentPage - 1)
+      } else if (newIndex > pageEnd && currentPage < totalPages) {
+        store.fetchPage(connectionId, tabId, currentPage + 1)
+      }
+
+      store.setSelectedRow(tabId, newIndex)
+    },
+    [store, connectionId, tabId, selectedRowIndex, totalRows, currentPage, totalPages, pageSize]
+  )
 
   return (
     <div className={styles.container} data-testid="result-panel">
@@ -69,26 +103,36 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
 
       {status === 'success' && (
         <>
-          <ResultToolbar
-            status="success"
-            totalRows={totalRows}
-            affectedRows={affectedRows}
-            columnsCount={columns.length}
-            executionTimeMs={executionTimeMs}
-            error={null}
-            autoLimitApplied={autoLimitApplied}
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPrevPage={handlePrevPage}
-            onNextPage={handleNextPage}
-          />
+          <ResultToolbar tabId={tabId} connectionId={connectionId} />
           {columns.length > 0 ? (
-            <ResultGrid
-              columns={columns}
-              rows={rows}
-              selectedRowIndex={selectedRowIndex}
-              onRowSelect={handleRowSelect}
-            />
+            <>
+              {viewMode === 'grid' && (
+                <ResultGridView
+                  columns={columns}
+                  rows={rows}
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  onSortChanged={handleSortChanged}
+                  onRowSelected={handleRowSelected}
+                  selectedRowIndex={selectedRowIndex}
+                  currentPage={currentPage}
+                  pageSize={pageSize}
+                />
+              )}
+              {viewMode === 'form' && (
+                <ResultFormView
+                  columns={columns}
+                  rows={rows}
+                  selectedRowIndex={selectedRowIndex}
+                  totalRows={totalRows}
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onNavigate={handleFormNavigate}
+                  tabId={tabId}
+                />
+              )}
+              {viewMode === 'text' && <ResultTextView columns={columns} rows={rows} />}
+            </>
           ) : (
             <div className={styles.emptyState} data-testid="dml-success">
               <CheckCircle size={32} weight="duotone" className={styles.successIcon} />
@@ -104,23 +148,21 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
 
       {status === 'error' && (
         <>
-          <ResultToolbar
-            status="error"
-            totalRows={0}
-            affectedRows={0}
-            columnsCount={0}
-            executionTimeMs={executionTimeMs}
-            error={errorMessage}
-            autoLimitApplied={false}
-            currentPage={1}
-            totalPages={1}
-            onPrevPage={handlePrevPage}
-            onNextPage={handleNextPage}
-          />
+          <ResultToolbar tabId={tabId} connectionId={connectionId} />
           <div className={styles.errorBody}>
-            <span className={styles.errorMessage}>{errorMessage}</span>
+            <span className={styles.errorMessage}>{tabState?.errorMessage}</span>
           </div>
         </>
+      )}
+
+      {exportDialogOpen && (
+        <ExportDialog
+          connectionId={connectionId}
+          tabId={tabId}
+          columnCount={columns.length}
+          totalRows={totalRows}
+          onClose={() => store.closeExportDialog(tabId)}
+        />
       )}
     </div>
   )

@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod credentials;
 pub mod db;
+pub mod export;
 pub mod logging;
 pub mod mysql;
 pub mod state;
@@ -144,6 +145,8 @@ pub fn run() {
             commands::query::fetch_schema_metadata,
             commands::query::read_file,
             commands::query::write_file,
+            commands::query::sort_results,
+            commands::export::export_results,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

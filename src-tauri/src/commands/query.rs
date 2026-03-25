@@ -7,7 +7,8 @@
 #[cfg(not(coverage))]
 use crate::mysql::query_executor::{
     evict_results_impl, execute_query_impl, fetch_result_page_impl, fetch_schema_metadata_impl,
-    read_file_impl, write_file_impl, ExecuteQueryResult, FetchPageResult, SchemaMetadata,
+    read_file_impl, sort_results_impl, write_file_impl, ExecuteQueryResult, FetchPageResult,
+    SchemaMetadata,
 };
 #[cfg(not(coverage))]
 use crate::state::AppState;
@@ -83,4 +84,18 @@ pub fn write_file(
 ) -> Result<(), String> {
     let _ = state;
     write_file_impl(&path, &content)
+}
+
+// ── sort_results ──────────────────────────────────────────────────────────────
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub fn sort_results(
+    connection_id: String,
+    tab_id: String,
+    column_name: String,
+    direction: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<FetchPageResult, String> {
+    sort_results_impl(&state, &connection_id, &tab_id, &column_name, &direction)
 }

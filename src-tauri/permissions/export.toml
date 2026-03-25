@@ -1,0 +1,5 @@
+[[permission]]
+identifier = "allow-export-results"
+description = "Enables the export_results command without any pre-configured scope."
+commands.allow = ["export_results"]
+commands.deny = []

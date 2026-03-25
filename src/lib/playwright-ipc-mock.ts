@@ -330,9 +330,9 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         firstPage: [
           [1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00'],
           [1002, 'Elena Vance', 'vance.e@techcorp.com', 'active', '2024-02-20T14:22:00'],
-          [1003, 'Marcus Reed', 'm.reed@dbstudio.io', 'inactive', '2024-03-05T09:15:00'],
-          [1004, 'Sarah Kim', 's.kim@devtools.co', 'active', '2024-04-12T16:45:00'],
-          [1005, 'Alex Chen', 'alex.c@datacraft.net', 'active', '2024-05-08T11:00:00'],
+          [1003, 'Marcus Reed', null, 'inactive', '2024-03-05T09:15:00'],
+          [1004, 'Sarah Kim', 's.kim@devtools.co', null, '2024-04-12T16:45:00'],
+          [1005, 'Alex Chen', 'alex.c@datacraft.net', 'active', null],
         ],
         totalPages: 1,
         autoLimitApplied: true,
@@ -347,6 +347,23 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     case 'evict_results':
       return null
+
+    case 'sort_results':
+      // Returns FetchPageResult shape (same as fetch_result_page)
+      return {
+        rows: [
+          [1005, 'Alex Chen', 'alex.c@datacraft.net', 'active', null],
+          [1002, 'Elena Vance', 'vance.e@techcorp.com', 'active', '2024-02-20T14:22:00'],
+          [1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00'],
+          [1003, 'Marcus Reed', null, 'inactive', '2024-03-05T09:15:00'],
+          [1004, 'Sarah Kim', 's.kim@devtools.co', null, '2024-04-12T16:45:00'],
+        ],
+        page: 1,
+        totalPages: 1,
+      }
+
+    case 'export_results':
+      return { bytesWritten: 1024, rowsExported: 5 }
 
     case 'fetch_schema_metadata':
       return {

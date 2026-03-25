@@ -598,8 +598,11 @@
 
   /* Result grid light overrides */
   --result-grid-bg: var(--surface-container-lowest);
+  --result-grid-header-bg: var(--surface-container-low);
   --result-grid-row-alt-bg: rgba(var(--on-surface-rgb), 0.03);
   --result-grid-row-hover-bg: rgba(var(--primary-rgb), 0.05);
+  --result-grid-row-selected-bg: var(--secondary-container);
+  --result-grid-row-selected-accent: var(--primary);
   --result-status-success-fg: var(--primary);
 
   /* Autocomplete doc panel light overrides */

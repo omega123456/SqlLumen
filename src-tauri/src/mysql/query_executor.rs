@@ -741,6 +741,29 @@ fn serialize_row(row: &sqlx::mysql::MySqlRow) -> Vec<serde_json::Value> {
         .collect()
 }
 
+// ── Pagination helpers ─────────────────────────────────────────────────────────
+
+/// Calculate total pages from row count and page size.
+/// Always returns at least 1 (even for 0 rows).
+pub fn calculate_total_pages(total_rows: usize, page_size: usize) -> usize {
+    if page_size == 0 || total_rows == 0 {
+        return 1;
+    }
+    (total_rows + page_size - 1) / page_size
+}
+
+/// Extract a single page of rows from a full result set.
+/// `page` is 1-indexed. Returns the slice for the requested page.
+pub fn get_page_rows<'a>(
+    rows: &'a [Vec<serde_json::Value>],
+    page: usize,
+    page_size: usize,
+) -> &'a [Vec<serde_json::Value>] {
+    let start = (page - 1).saturating_mul(page_size);
+    let end = (start + page_size).min(rows.len());
+    &rows[start..end]
+}
+
 // ── Core impl functions ────────────────────────────────────────────────────────
 
 #[cfg(not(coverage))]
@@ -833,14 +856,10 @@ pub async fn execute_query_impl(
     let execution_time_ms = start.elapsed().as_millis() as u64;
     let total_rows = all_rows.len();
     let page_size_used = if page_size == 0 { 1000 } else { page_size };
-    let total_pages = if total_rows == 0 {
-        1
-    } else {
-        (total_rows + page_size_used - 1) / page_size_used
-    };
+    let total_pages = calculate_total_pages(total_rows, page_size_used);
 
     let first_page: Vec<Vec<serde_json::Value>> =
-        all_rows.iter().take(page_size_used).cloned().collect();
+        get_page_rows(&all_rows, 1, page_size_used).to_vec();
 
     let query_id = Uuid::new_v4().to_string();
 
@@ -947,19 +966,13 @@ pub fn fetch_result_page_impl(
 
     let page_size = stored.page_size;
     let total_rows = stored.rows.len();
-    let total_pages = if total_rows == 0 {
-        1
-    } else {
-        (total_rows + page_size - 1) / page_size
-    };
+    let total_pages = calculate_total_pages(total_rows, page_size);
 
     if page < 1 || page > total_pages {
         return Err(format!("Page {page} out of range (1..={total_pages})"));
     }
 
-    let start = (page - 1) * page_size;
-    let end = (start + page_size).min(total_rows);
-    let rows = stored.rows[start..end].to_vec();
+    let rows = get_page_rows(&stored.rows, page, page_size).to_vec();
 
     Ok(FetchPageResult {
         rows,
@@ -1192,6 +1205,92 @@ pub fn write_file_impl(path: &str, content: &str) -> Result<(), String> {
         }
     }
     std::fs::write(p, content).map_err(|e| format!("Failed to write file: {e}"))
+}
+
+// ── Sort helpers ───────────────────────────────────────────────────────────────
+
+/// Compare two `serde_json::Value` items for sorting purposes.
+///
+/// - `Null` sorts **after** all non-null values (for ascending order;
+///   callers reverse the result for descending).
+/// - Two `Number` values are compared as f64.
+/// - Two `String` values are compared lexicographically.
+/// - Mixed types (or booleans / arrays / objects) fall back to `to_string()` comparison.
+pub fn compare_json_values(a: &serde_json::Value, b: &serde_json::Value) -> std::cmp::Ordering {
+    use serde_json::Value;
+    use std::cmp::Ordering;
+
+    match (a, b) {
+        (Value::Null, Value::Null) => Ordering::Equal,
+        (Value::Null, _) => Ordering::Greater, // NULLs sort LAST in ASC
+        (_, Value::Null) => Ordering::Less,
+
+        (Value::Number(na), Value::Number(nb)) => {
+            let fa = na.as_f64().unwrap_or(0.0);
+            let fb = nb.as_f64().unwrap_or(0.0);
+            fa.partial_cmp(&fb).unwrap_or(Ordering::Equal)
+        }
+
+        (Value::String(sa), Value::String(sb)) => sa.cmp(sb),
+
+        // Mixed types: compare as strings
+        _ => {
+            let sa = a.to_string();
+            let sb = b.to_string();
+            sa.cmp(&sb)
+        }
+    }
+}
+
+/// Sort a stored result set in-place by a named column and return the first page.
+///
+/// The sort is performed under a write lock on `state.results`. After sorting
+/// the rows are re-paginated starting from page 1.
+pub fn sort_results_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    column_name: &str,
+    direction: &str, // "asc" or "desc"
+) -> Result<FetchPageResult, String> {
+    let mut results = state.results.write().expect("results lock poisoned");
+    let stored = results
+        .get_mut(&(connection_id.to_string(), tab_id.to_string()))
+        .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+
+    // Find column index
+    let col_idx = stored
+        .columns
+        .iter()
+        .position(|c| c.name == column_name)
+        .ok_or_else(|| format!("Column '{column_name}' not found in result set"))?;
+
+    let is_asc = direction == "asc";
+
+    // Sort rows in-place (stable sort preserves relative order for equal values)
+    stored.rows.sort_by(|a, b| {
+        let va = a.get(col_idx).unwrap_or(&serde_json::Value::Null);
+        let vb = b.get(col_idx).unwrap_or(&serde_json::Value::Null);
+        let cmp = compare_json_values(va, vb);
+        if is_asc {
+            cmp
+        } else {
+            cmp.reverse()
+        }
+    });
+
+    // Return first page
+    let page_size = stored.page_size;
+    let total_rows = stored.rows.len();
+    let total_pages = calculate_total_pages(total_rows, page_size);
+
+    let rows = get_page_rows(&stored.rows, 1, page_size).to_vec();
+
+    Ok(FetchPageResult {
+        rows,
+        page: 1,
+        total_pages,
+    })
 }
 
 // ── Unit tests ─────────────────────────────────────────────────────────────────

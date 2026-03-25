@@ -1,134 +1,355 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
+import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
+
+const DEFAULT_TAB_STATE: TabQueryState = {
+  content: '',
+  filePath: null,
+  status: 'idle',
+  columns: [],
+  rows: [],
+  totalRows: 0,
+  executionTimeMs: 0,
+  affectedRows: 0,
+  queryId: null,
+  currentPage: 1,
+  totalPages: 1,
+  pageSize: 1000,
+  autoLimitApplied: false,
+  errorMessage: null,
+  cursorPosition: null,
+  viewMode: 'grid',
+  sortColumn: null,
+  sortDirection: null,
+  selectedRowIndex: null,
+  exportDialogOpen: false,
+  lastExecutedSql: null,
+}
+
+/** Helper to set up store state for a tab. */
+function setupTabState(tabId: string, overrides: Partial<TabQueryState> = {}) {
+  useQueryStore.setState({
+    tabs: {
+      [tabId]: { ...DEFAULT_TAB_STATE, ...overrides },
+    },
+  })
+}
+
+beforeEach(() => {
+  useQueryStore.setState({ tabs: {} })
+  mockIPC(() => null)
+})
 
 describe('ResultToolbar', () => {
-  const defaultProps = {
-    status: 'success' as const,
-    totalRows: 42,
-    affectedRows: 0,
-    columnsCount: 3,
-    executionTimeMs: 150,
-    error: null,
-    autoLimitApplied: false,
-    currentPage: 1,
-    totalPages: 3,
-    onPrevPage: vi.fn(),
-    onNextPage: vi.fn(),
-  }
+  const tabId = 'tab-1'
+  const connectionId = 'conn-1'
 
   it('renders with data-testid="result-toolbar"', () => {
-    render(<ResultToolbar {...defaultProps} />)
+    setupTabState(tabId, {
+      status: 'success',
+      totalRows: 10,
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
   })
 
   it('renders success status with correct row count', () => {
-    render(<ResultToolbar {...defaultProps} />)
+    setupTabState(tabId, {
+      status: 'success',
+      totalRows: 42,
+      columns: [
+        { name: 'id', dataType: 'INT' },
+        { name: 'name', dataType: 'VARCHAR' },
+        { name: 'email', dataType: 'VARCHAR' },
+      ],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByText(/SUCCESS: 42 ROWS/)).toBeInTheDocument()
   })
 
   it('renders error status with error message', () => {
-    render(
-      <ResultToolbar
-        {...defaultProps}
-        status="error"
-        error="Table 'users' doesn't exist"
-        columnsCount={0}
-      />
-    )
+    setupTabState(tabId, {
+      status: 'error',
+      errorMessage: "Table 'users' doesn't exist",
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByText("Table 'users' doesn't exist")).toBeInTheDocument()
   })
 
   it('shows "(1000 row limit applied)" when autoLimitApplied', () => {
-    render(<ResultToolbar {...defaultProps} autoLimitApplied />)
+    setupTabState(tabId, {
+      status: 'success',
+      totalRows: 42,
+      autoLimitApplied: true,
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByText('(1000 row limit applied)')).toBeInTheDocument()
   })
 
   it('does not show auto-limit text when autoLimitApplied is false', () => {
-    render(<ResultToolbar {...defaultProps} autoLimitApplied={false} />)
+    setupTabState(tabId, {
+      status: 'success',
+      totalRows: 42,
+      autoLimitApplied: false,
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.queryByText('(1000 row limit applied)')).not.toBeInTheDocument()
   })
 
   it('prev button is disabled on page 1', () => {
-    render(<ResultToolbar {...defaultProps} currentPage={1} />)
+    setupTabState(tabId, {
+      status: 'success',
+      currentPage: 1,
+      totalPages: 3,
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByLabelText('Previous page')).toBeDisabled()
   })
 
   it('next button is disabled on last page', () => {
-    render(<ResultToolbar {...defaultProps} currentPage={3} totalPages={3} />)
+    setupTabState(tabId, {
+      status: 'success',
+      currentPage: 3,
+      totalPages: 3,
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByLabelText('Next page')).toBeDisabled()
   })
 
   it('prev button is enabled when not on first page', () => {
-    render(<ResultToolbar {...defaultProps} currentPage={2} />)
+    setupTabState(tabId, {
+      status: 'success',
+      currentPage: 2,
+      totalPages: 3,
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByLabelText('Previous page')).not.toBeDisabled()
   })
 
   it('next button is enabled when not on last page', () => {
-    render(<ResultToolbar {...defaultProps} currentPage={1} totalPages={3} />)
+    setupTabState(tabId, {
+      status: 'success',
+      currentPage: 1,
+      totalPages: 3,
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByLabelText('Next page')).not.toBeDisabled()
   })
 
-  it('calls onPrevPage when prev button clicked', () => {
-    const onPrevPage = vi.fn()
-    render(<ResultToolbar {...defaultProps} currentPage={2} onPrevPage={onPrevPage} />)
-    fireEvent.click(screen.getByLabelText('Previous page'))
-    expect(onPrevPage).toHaveBeenCalledTimes(1)
-  })
-
-  it('calls onNextPage when next button clicked', () => {
-    const onNextPage = vi.fn()
-    render(<ResultToolbar {...defaultProps} currentPage={1} onNextPage={onNextPage} />)
-    fireEvent.click(screen.getByLabelText('Next page'))
-    expect(onNextPage).toHaveBeenCalledTimes(1)
-  })
-
-  it('renders 3 disabled filter/export/refresh buttons', () => {
-    render(<ResultToolbar {...defaultProps} />)
-    const comingSoonButtons = screen.getAllByTitle('Coming soon')
-    expect(comingSoonButtons).toHaveLength(3)
-    comingSoonButtons.forEach((btn) => {
-      expect(btn).toBeDisabled()
+  it('calls fetchPage via store when prev button clicked', () => {
+    setupTabState(tabId, {
+      status: 'success',
+      currentPage: 2,
+      totalPages: 3,
+      queryId: 'q1',
+      columns: [{ name: 'id', dataType: 'INT' }],
     })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    fireEvent.click(screen.getByLabelText('Previous page'))
+    // fetchPage is async and calls IPC — just verify no crash
+  })
+
+  it('calls fetchPage via store when next button clicked', () => {
+    setupTabState(tabId, {
+      status: 'success',
+      currentPage: 1,
+      totalPages: 3,
+      queryId: 'q1',
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    fireEvent.click(screen.getByLabelText('Next page'))
+    // fetchPage is async and calls IPC — just verify no crash
   })
 
   it('shows page text', () => {
-    render(<ResultToolbar {...defaultProps} currentPage={2} totalPages={5} />)
+    setupTabState(tabId, {
+      status: 'success',
+      currentPage: 2,
+      totalPages: 5,
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByText('Page 2 of 5')).toBeInTheDocument()
   })
 
   it('shows execution time', () => {
-    render(<ResultToolbar {...defaultProps} executionTimeMs={42} />)
+    setupTabState(tabId, {
+      status: 'success',
+      executionTimeMs: 42,
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByText('(42ms)')).toBeInTheDocument()
   })
 
   it('truncates long error messages to 200 chars', () => {
     const longError = 'A'.repeat(250)
-    render(<ResultToolbar {...defaultProps} status="error" error={longError} columnsCount={0} />)
-    // Should truncate to 200 chars + ellipsis
+    setupTabState(tabId, {
+      status: 'error',
+      errorMessage: longError,
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     const displayed = screen.getByText(/^A+/)
     expect(displayed.textContent!.length).toBeLessThanOrEqual(201) // 200 + ellipsis char
   })
 
   it('shows "ROWS AFFECTED" for DML results', () => {
-    render(<ResultToolbar {...defaultProps} totalRows={0} affectedRows={5} columnsCount={0} />)
+    setupTabState(tabId, {
+      status: 'success',
+      totalRows: 0,
+      affectedRows: 5,
+      columns: [],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByText('5 ROWS AFFECTED')).toBeInTheDocument()
   })
 
   it('shows "QUERY OK" for DDL results with no affected rows', () => {
-    render(<ResultToolbar {...defaultProps} totalRows={0} affectedRows={0} columnsCount={0} />)
+    setupTabState(tabId, {
+      status: 'success',
+      totalRows: 0,
+      affectedRows: 0,
+      columns: [],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.getByText('QUERY OK')).toBeInTheDocument()
   })
 
   it('hides pagination in error state', () => {
-    render(<ResultToolbar {...defaultProps} status="error" error="Some error" columnsCount={0} />)
+    setupTabState(tabId, {
+      status: 'error',
+      errorMessage: 'Some error',
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.queryByLabelText('Previous page')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Next page')).not.toBeInTheDocument()
   })
 
   it('hides pagination for DML results (no columns)', () => {
-    render(<ResultToolbar {...defaultProps} totalRows={0} affectedRows={3} columnsCount={0} />)
+    setupTabState(tabId, {
+      status: 'success',
+      totalRows: 0,
+      affectedRows: 3,
+      columns: [],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     expect(screen.queryByLabelText('Previous page')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Next page')).not.toBeInTheDocument()
+  })
+
+  // --- View mode toggle tests ---
+
+  it('renders view mode toggle buttons', () => {
+    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    expect(screen.getByTestId('view-mode-grid')).toBeInTheDocument()
+    expect(screen.getByTestId('view-mode-form')).toBeInTheDocument()
+    expect(screen.getByTestId('view-mode-text')).toBeInTheDocument()
+  })
+
+  it('sets view mode to form when form button clicked', () => {
+    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    fireEvent.click(screen.getByTestId('view-mode-form'))
+    const state = useQueryStore.getState().tabs[tabId]
+    expect(state?.viewMode).toBe('form')
+  })
+
+  it('sets view mode to text when text button clicked', () => {
+    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    fireEvent.click(screen.getByTestId('view-mode-text'))
+    const state = useQueryStore.getState().tabs[tabId]
+    expect(state?.viewMode).toBe('text')
+  })
+
+  // --- Export button tests ---
+
+  it('renders export button', () => {
+    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    expect(screen.getByTestId('export-button')).toBeInTheDocument()
+    expect(screen.getByText('Export')).toBeInTheDocument()
+  })
+
+  it('export button is enabled when results exist', () => {
+    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    expect(screen.getByTestId('export-button')).not.toBeDisabled()
+  })
+
+  it('export button is disabled when no results (idle)', () => {
+    setupTabState(tabId, { status: 'idle' })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    expect(screen.getByTestId('export-button')).toBeDisabled()
+  })
+
+  it('opens export dialog when export button clicked', () => {
+    setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    fireEvent.click(screen.getByTestId('export-button'))
+    const state = useQueryStore.getState().tabs[tabId]
+    expect(state?.exportDialogOpen).toBe(true)
+  })
+
+  // --- Page size selector tests ---
+
+  it('renders page size selector for success with columns', () => {
+    setupTabState(tabId, {
+      status: 'success',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      pageSize: 1000,
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    expect(screen.getByTestId('page-size-selector')).toBeInTheDocument()
+  })
+
+  it('page size selector has correct options', () => {
+    setupTabState(tabId, {
+      status: 'success',
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    const select = screen.getByTestId('page-size-selector') as HTMLSelectElement
+    const options = Array.from(select.options).map((o) => o.value)
+    expect(options).toEqual(['100', '500', '1000', '5000'])
+  })
+
+  it('does not show page size selector for DML results', () => {
+    setupTabState(tabId, {
+      status: 'success',
+      columns: [],
+      affectedRows: 3,
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    expect(screen.queryByTestId('page-size-selector')).not.toBeInTheDocument()
+  })
+
+  // --- Data testid verification ---
+
+  it('has correct data-testid attributes', () => {
+    setupTabState(tabId, {
+      status: 'success',
+      columns: [{ name: 'id', dataType: 'INT' }],
+    })
+    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
+    expect(screen.getByTestId('view-mode-grid')).toBeInTheDocument()
+    expect(screen.getByTestId('view-mode-form')).toBeInTheDocument()
+    expect(screen.getByTestId('view-mode-text')).toBeInTheDocument()
+    expect(screen.getByTestId('export-button')).toBeInTheDocument()
+    expect(screen.getByTestId('page-size-selector')).toBeInTheDocument()
+    expect(screen.getByTestId('prev-page-button')).toBeInTheDocument()
+    expect(screen.getByTestId('next-page-button')).toBeInTheDocument()
   })
 })

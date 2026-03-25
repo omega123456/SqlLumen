@@ -27,6 +27,15 @@ export async function evictResults(connectionId: string, tabId: string): Promise
   return invoke<void>('evict_results', { connectionId, tabId })
 }
 
+export async function sortResults(
+  connectionId: string,
+  tabId: string,
+  columnName: string,
+  direction: string
+): Promise<ResultPage> {
+  return invoke<ResultPage>('sort_results', { connectionId, tabId, columnName, direction })
+}
+
 export async function fetchSchemaMetadata(connectionId: string): Promise<SchemaMetadataResponse> {
   return invoke<SchemaMetadataResponse>('fetch_schema_metadata', { connectionId })
 }

@@ -217,3 +217,20 @@ export interface SchemaMetadataResponse {
   columns: Record<string, ColumnMeta[]>
   routines: Record<string, RoutineMeta[]>
 }
+
+// ---------------------------------------------------------------------------
+// Result view / export types (Phase 5)
+// ---------------------------------------------------------------------------
+
+export type ViewMode = 'grid' | 'form' | 'text'
+
+export type SortDirection = 'asc' | 'desc'
+
+export type ExportFormat = 'csv' | 'json' | 'xlsx' | 'sql-insert'
+
+export interface ExportOptions {
+  format: ExportFormat
+  filePath: string
+  includeHeaders: boolean
+  tableName?: string
+}

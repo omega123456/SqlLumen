@@ -42,6 +42,8 @@
     "allow-fetch-schema-metadata",
     "allow-read-file",
     "allow-write-file",
+    "allow-sort-results",
+    "allow-export-results",
     "dialog:allow-save",
     "dialog:allow-open"
   ]

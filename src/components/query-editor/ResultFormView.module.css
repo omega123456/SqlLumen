@@ -1,0 +1,173 @@
+/* ============================================================
+   ResultFormView — read-only form for single-record display
+   Adapted from the editable_form_view design (read-only: no inputs)
+   ============================================================ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--surface);
+}
+
+/* Record navigation header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.recordTitle {
+  font-family: var(--font-headline);
+  font-size: var(--type-size-xl);
+  font-weight: 800;
+  color: var(--on-surface);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.navigation {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-container);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--outline-variant);
+}
+
+.navButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface-bright);
+  color: var(--on-surface);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.navButton:hover:not(:disabled) {
+  color: var(--primary);
+  background: var(--surface-container-high);
+}
+
+.navButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Field card container */
+.card {
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  border-radius: 8px;
+  padding: 24px;
+}
+
+/* Individual field row (label + value + copy) */
+.field {
+  display: grid;
+  grid-template-columns: 1fr 3fr;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+}
+
+.field:last-child {
+  border-bottom: none;
+}
+
+.fieldLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: var(--font-headline);
+}
+
+.fieldValueRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fieldValue {
+  font-size: 13px;
+  color: var(--on-surface);
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.nullValue {
+  font-style: italic;
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+}
+
+/* Per-field copy button — ghost / icon-only */
+.copyButton {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.copyButton:hover {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+/* ---- Light theme overrides ---- */
+
+[data-theme='light'] .card {
+  background: white;
+  border-color: #e2e8f0;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme='light'] .fieldLabel {
+  color: #64748b;
+}
+
+[data-theme='light'] .navigation {
+  background: #e2e8f0;
+  border-color: #e2e8f0;
+}
+
+[data-theme='light'] .navButton {
+  background: white;
+  color: #334155;
+}
+
+[data-theme='light'] .navButton:hover:not(:disabled) {
+  color: var(--primary);
+  background: #f1f5f9;
+}

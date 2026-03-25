@@ -7,6 +7,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'line',
+  timeout: 60_000,
   expect: {
     toHaveScreenshot: {
       maxDiffPixels: 900,

@@ -33,3 +33,9 @@ identifier = "allow-write-file"
 description = "Enables the write_file command without any pre-configured scope."
 commands.allow = ["write_file"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-sort-results"
+description = "Enables the sort_results command without any pre-configured scope."
+commands.allow = ["sort_results"]
+commands.deny = []

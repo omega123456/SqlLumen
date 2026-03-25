@@ -245,7 +245,7 @@ async function openQueryEditorWithResults(page: Page) {
 
   // Wait for results to appear
   await expect(page.getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
 }
 
 /** Stable scroll for full-layout screenshots (parallel workers otherwise differ on tree scroll). */
@@ -598,7 +598,7 @@ for (const theme of themes) {
         `query-editor-result-toolbar-success-${theme}.png`,
         { animations: 'disabled' }
       )
-      await expect(page.getByTestId('result-grid')).toHaveScreenshot(
+      await expect(page.getByTestId('result-grid-view')).toHaveScreenshot(
         `query-editor-result-grid-success-${theme}.png`,
         { animations: 'disabled' }
       )
@@ -664,6 +664,48 @@ for (const theme of themes) {
       // Clean up error flag
       await page.evaluate(() => {
         delete (window as unknown as Record<string, unknown>).__mockQueryError__
+      })
+    })
+
+    // --- Phase 5 view mode & export dialog screenshots ---
+
+    test('ResultFormView — form view with record', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+      // Switch to form view
+      await page.getByTestId('view-mode-form').click()
+      await expect(page.getByTestId('result-form-view')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('result-form-view')).toHaveScreenshot(
+        `result-form-view-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('ResultTextView — text view', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+      // Switch to text view
+      await page.getByTestId('view-mode-text').click()
+      await expect(page.getByTestId('result-text-view')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('result-text-view')).toHaveScreenshot(
+        `result-text-view-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('ExportDialog — open', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+      // Click the Export button
+      await page.getByTestId('export-button').click()
+      await expect(page.getByTestId('export-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      // Reset scroll positions for stable screenshots
+      await page.getByTestId('object-browser-scroll').evaluate((el) => {
+        el.scrollTop = 0
+      })
+      await page.evaluate(() => {
+        window.scrollTo(0, 0)
+      })
+      // Screenshot the full viewport with the dialog modal visible
+      await expect(page).toHaveScreenshot(`export-dialog-${theme}.png`, {
+        animations: 'disabled',
       })
     })
   })

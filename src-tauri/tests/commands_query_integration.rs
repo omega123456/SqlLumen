@@ -5,9 +5,10 @@
 use mysql_client_lib::mysql::query_executor::ColumnMeta;
 use mysql_client_lib::mysql::query_executor::StoredResult;
 use mysql_client_lib::mysql::query_executor::{
-    evict_results_impl, fetch_result_page_impl, find_with_main_keyword, get_first_keyword,
-    has_top_level_limit, inject_limit_into_select, is_read_only_allowed, is_select_like,
-    needs_auto_limit, read_file_impl, strip_non_executable_comments, write_file_impl,
+    calculate_total_pages, evict_results_impl, fetch_result_page_impl, find_with_main_keyword,
+    get_first_keyword, get_page_rows, has_top_level_limit, inject_limit_into_select,
+    is_read_only_allowed, is_select_like, needs_auto_limit, read_file_impl,
+    strip_non_executable_comments, write_file_impl,
 };
 use mysql_client_lib::mysql::registry::ConnectionRegistry;
 use mysql_client_lib::state::AppState;
@@ -707,6 +708,73 @@ fn write_file_creates_parent_directories() {
 
     // Cleanup
     let _ = std::fs::remove_dir_all(dir.join(format!("test_nested_{}", std::process::id())));
+}
+
+// ── Pagination helper tests ───────────────────────────────────────────────────
+
+#[test]
+fn calculate_total_pages_normal() {
+    assert_eq!(calculate_total_pages(100, 10), 10);
+    assert_eq!(calculate_total_pages(101, 10), 11);
+    assert_eq!(calculate_total_pages(99, 10), 10);
+    assert_eq!(calculate_total_pages(10, 10), 1);
+    assert_eq!(calculate_total_pages(1, 10), 1);
+}
+
+#[test]
+fn calculate_total_pages_zero_rows() {
+    assert_eq!(calculate_total_pages(0, 10), 1);
+    assert_eq!(calculate_total_pages(0, 1000), 1);
+}
+
+#[test]
+fn calculate_total_pages_zero_page_size() {
+    assert_eq!(calculate_total_pages(100, 0), 1);
+    assert_eq!(calculate_total_pages(0, 0), 1);
+}
+
+#[test]
+fn get_page_rows_first_page() {
+    let rows = vec![
+        vec![serde_json::json!(1)],
+        vec![serde_json::json!(2)],
+        vec![serde_json::json!(3)],
+    ];
+    let page = get_page_rows(&rows, 1, 2);
+    assert_eq!(page.len(), 2);
+    assert_eq!(page[0][0], serde_json::json!(1));
+    assert_eq!(page[1][0], serde_json::json!(2));
+}
+
+#[test]
+fn get_page_rows_last_page_partial() {
+    let rows = vec![
+        vec![serde_json::json!(1)],
+        vec![serde_json::json!(2)],
+        vec![serde_json::json!(3)],
+    ];
+    let page = get_page_rows(&rows, 2, 2);
+    assert_eq!(page.len(), 1);
+    assert_eq!(page[0][0], serde_json::json!(3));
+}
+
+#[test]
+fn get_page_rows_empty() {
+    let rows: Vec<Vec<serde_json::Value>> = vec![];
+    let page = get_page_rows(&rows, 1, 10);
+    assert_eq!(page.len(), 0);
+}
+
+#[test]
+fn get_page_rows_full_page() {
+    let rows = vec![
+        vec![serde_json::json!(1)],
+        vec![serde_json::json!(2)],
+        vec![serde_json::json!(3)],
+        vec![serde_json::json!(4)],
+    ];
+    let page = get_page_rows(&rows, 1, 4);
+    assert_eq!(page.len(), 4);
 }
 
 // ── Coverage-mode tests for execute_query_impl / fetch_schema_metadata_impl ──

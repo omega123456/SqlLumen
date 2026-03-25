@@ -1,8 +1,26 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
+
+// Mock AG Grid modules
+vi.mock('ag-grid-community', () => ({
+  AllCommunityModule: {},
+  ModuleRegistry: { registerModules: vi.fn() },
+}))
+
+vi.mock('ag-grid-react', async () => {
+  const React = await import('react')
+  return {
+    AgGridReact: vi.fn(() => React.createElement('div', { 'data-testid': 'ag-grid-inner' })),
+  }
+})
+
+// Mock clipboard utility (used by ResultFormView and ResultTextView)
+vi.mock('../../../lib/context-menu-utils', () => ({
+  writeClipboardText: vi.fn().mockResolvedValue(undefined),
+}))
 
 const DEFAULT_TAB_STATE: TabQueryState = {
   content: '',
@@ -20,6 +38,12 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   autoLimitApplied: false,
   errorMessage: null,
   cursorPosition: null,
+  viewMode: 'grid',
+  sortColumn: null,
+  sortDirection: null,
+  selectedRowIndex: null,
+  exportDialogOpen: false,
+  lastExecutedSql: null,
 }
 
 beforeEach(() => {
@@ -62,7 +86,7 @@ describe('ResultPanel', () => {
     expect(screen.getByText('Executing query...')).toBeInTheDocument()
   })
 
-  it('shows success state with toolbar and grid', () => {
+  it('shows success state with toolbar and grid view', () => {
     useQueryStore.setState({
       tabs: {
         'tab-1': {
@@ -84,7 +108,7 @@ describe('ResultPanel', () => {
     })
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
-    expect(screen.getByTestId('result-grid')).toBeInTheDocument()
+    expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
     expect(screen.getByText(/SUCCESS: 2 ROWS/)).toBeInTheDocument()
   })
 
@@ -108,7 +132,7 @@ describe('ResultPanel', () => {
   it('does not show grid or toolbar in idle state', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.queryByTestId('result-toolbar')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('result-grid')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('result-grid-view')).not.toBeInTheDocument()
   })
 
   it('does not show grid or toolbar in running state', () => {
@@ -119,25 +143,7 @@ describe('ResultPanel', () => {
     })
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.queryByTestId('result-toolbar')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('result-grid')).not.toBeInTheDocument()
-  })
-
-  it('shows grid data in success state', () => {
-    useQueryStore.setState({
-      tabs: {
-        'tab-1': {
-          ...DEFAULT_TAB_STATE,
-          status: 'success',
-          columns: [{ name: 'val', dataType: 'VARCHAR' }],
-          rows: [['hello'], [null]],
-          totalRows: 2,
-          queryId: 'q1',
-        },
-      },
-    })
-    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
-    expect(screen.getByText('hello')).toBeInTheDocument()
-    expect(screen.getByText('NULL')).toBeInTheDocument()
+    expect(screen.queryByTestId('result-grid-view')).not.toBeInTheDocument()
   })
 
   it('shows DML success state with affected rows message', () => {
@@ -158,7 +164,7 @@ describe('ResultPanel', () => {
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('dml-success')).toBeInTheDocument()
     expect(screen.getByText('Query executed: 3 rows affected')).toBeInTheDocument()
-    expect(screen.queryByTestId('result-grid')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('result-grid-view')).not.toBeInTheDocument()
   })
 
   it('shows DDL success state with generic message', () => {
@@ -192,5 +198,66 @@ describe('ResultPanel', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.queryByLabelText('Previous page')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Next page')).not.toBeInTheDocument()
+  })
+
+  // --- View mode tests ---
+
+  it('shows form view when viewMode is form', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...DEFAULT_TAB_STATE,
+          status: 'success',
+          viewMode: 'form',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          rows: [['1']],
+          totalRows: 1,
+          queryId: 'q1',
+        },
+      },
+    })
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('result-form-view')).toBeInTheDocument()
+    expect(screen.queryByTestId('result-grid-view')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('result-text-view')).not.toBeInTheDocument()
+  })
+
+  it('shows text view when viewMode is text', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...DEFAULT_TAB_STATE,
+          status: 'success',
+          viewMode: 'text',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          rows: [['1']],
+          totalRows: 1,
+          queryId: 'q1',
+        },
+      },
+    })
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('result-text-view')).toBeInTheDocument()
+    expect(screen.queryByTestId('result-grid-view')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('result-form-view')).not.toBeInTheDocument()
+  })
+
+  it('shows grid view by default', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...DEFAULT_TAB_STATE,
+          status: 'success',
+          viewMode: 'grid',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          rows: [['1']],
+          queryId: 'q1',
+        },
+      },
+    })
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
+    expect(screen.queryByTestId('result-form-view')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('result-text-view')).not.toBeInTheDocument()
   })
 })

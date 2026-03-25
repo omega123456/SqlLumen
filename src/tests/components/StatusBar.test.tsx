@@ -153,6 +153,12 @@ describe('StatusBar', () => {
       autoLimitApplied: false,
       errorMessage: null,
       cursorPosition: null,
+      viewMode: 'grid',
+      sortColumn: null,
+      sortDirection: null,
+      selectedRowIndex: null,
+      exportDialogOpen: false,
+      lastExecutedSql: null,
     }
 
     function setupQueryEditorTab() {

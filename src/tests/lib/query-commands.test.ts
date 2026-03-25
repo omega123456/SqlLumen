@@ -7,6 +7,7 @@ import {
   fetchSchemaMetadata,
   readFile,
   writeFile,
+  sortResults,
 } from '../../lib/query-commands'
 
 const mockExecuteQueryFn = vi.fn(() => ({
@@ -31,6 +32,7 @@ const mockFetchSchemaMetadataFn = vi.fn(() => ({
 }))
 const mockReadFileFn = vi.fn(() => 'SELECT 1;')
 const mockWriteFileFn = vi.fn(() => null)
+const mockSortResultsFn = vi.fn(() => ({ rows: [[1], [2], [3]], page: 1, totalPages: 1 }))
 
 beforeEach(() => {
   mockExecuteQueryFn.mockClear()
@@ -39,6 +41,7 @@ beforeEach(() => {
   mockFetchSchemaMetadataFn.mockClear()
   mockReadFileFn.mockClear()
   mockWriteFileFn.mockClear()
+  mockSortResultsFn.mockClear()
 
   mockIPC((cmd) => {
     switch (cmd) {
@@ -54,6 +57,8 @@ beforeEach(() => {
         return mockReadFileFn()
       case 'write_file':
         return mockWriteFileFn()
+      case 'sort_results':
+        return mockSortResultsFn()
       default:
         return null
     }
@@ -93,5 +98,13 @@ describe('query-commands', () => {
   it('writeFile invokes write_file command', async () => {
     await writeFile('/path/to/file.sql', 'SELECT 1;')
     expect(mockWriteFileFn).toHaveBeenCalled()
+  })
+
+  it('sortResults invokes sort_results command', async () => {
+    const result = await sortResults('conn-1', 'tab-1', 'id', 'asc')
+    expect(result.rows).toEqual([[1], [2], [3]])
+    expect(result.page).toBe(1)
+    expect(result.totalPages).toBe(1)
+    expect(mockSortResultsFn).toHaveBeenCalled()
   })
 })

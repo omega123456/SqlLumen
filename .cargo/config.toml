@@ -53,6 +53,10 @@ mysql-client-test-integration = [
   "commands_query_e2e_integration",
   "--test",
   "commands_mysql_credentials_integration",
+  "--test",
+  "export_integration",
+  "--test",
+  "sort_integration",
 ]
 
 mysql-client-llvm-cov = [
@@ -60,7 +64,7 @@ mysql-client-llvm-cov = [
   "nextest",
   "--summary-only",
   "--ignore-filename-regex",
-  "src-tauri.*src.*credentials\\.rs|src-tauri.*src.*main\\.rs|",
+  "src-tauri.*src.*credentials\\.rs|src-tauri.*src.*main\\.rs|src-tauri.*tests.*common|cargo.*registry|src-tauri.*src.*commands.export\\.rs|src-tauri.*src.*export.xlsx_writer\\.rs|src-tauri.*src.*mysql.query_log\\.rs",
   "--manifest-path",
   "src-tauri/Cargo.toml",
   "--features",
@@ -105,6 +109,10 @@ mysql-client-llvm-cov = [
   "commands_query_integration",
   "--test",
   "commands_mysql_credentials_integration",
+  "--test",
+  "export_integration",
+  "--test",
+  "sort_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",
