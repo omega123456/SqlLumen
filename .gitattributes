@@ -1,0 +1,5 @@
+# Keep this file LF in the repo (portable across platforms).
+.gitattributes text eol=lf
+
+# Enforce Unix line endings for shell scripts that must run on macOS/Linux and in CI.
+scripts/setup-worktree.sh text eol=lf
