@@ -72,7 +72,7 @@ vi.mock('../../../lib/table-data-commands', () => ({
   exportTableData: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import type { Mock } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
@@ -187,6 +187,14 @@ function setupTabState(overrides: Partial<TableDataTabState> = {}) {
 
   useTableDataStore.setState({
     tabs: { 'tab-1': defaultState },
+  })
+}
+
+/** `sortByColumn` / `applyFilters` call `fetchPage` without awaiting — flush updates for act(). */
+async function flushAsyncTableDataUpdates() {
+  await waitFor(() => {
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab?.isLoading).toBe(false)
   })
 }
 
@@ -553,9 +561,11 @@ describe('TableDataGrid', () => {
       colDef: { field: string }
     }) => Promise<void>
 
-    await onCellEditingStarted({
-      data: { id: 1, name: 'Alice', avatar: null, __rowIndex: 0 },
-      colDef: { field: 'name' },
+    await act(async () => {
+      await onCellEditingStarted({
+        data: { id: 1, name: 'Alice', avatar: null, __rowIndex: 0 },
+        colDef: { field: 'name' },
+      })
     })
 
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -582,10 +592,12 @@ describe('TableDataGrid', () => {
       newValue: unknown
     }) => void
 
-    onCellEditingStopped({
-      colDef: { field: 'name' },
-      oldValue: 'Alice',
-      newValue: 'Bob',
+    act(() => {
+      onCellEditingStopped({
+        colDef: { field: 'name' },
+        oldValue: 'Alice',
+        newValue: 'Bob',
+      })
     })
 
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -612,10 +624,12 @@ describe('TableDataGrid', () => {
       newValue: unknown
     }) => void
 
-    onCellEditingStopped({
-      colDef: { field: 'name' },
-      oldValue: 'Alice',
-      newValue: 'Alice', // same value
+    act(() => {
+      onCellEditingStopped({
+        colDef: { field: 'name' },
+        oldValue: 'Alice',
+        newValue: 'Alice', // same value
+      })
     })
 
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -634,9 +648,10 @@ describe('TableDataGrid', () => {
       newValue: unknown
     }) => void
 
-    // Should not throw
-    onCellEditingStopped({ oldValue: 'x', newValue: 'y' })
-    onCellEditingStopped({ colDef: {}, oldValue: 'x', newValue: 'y' })
+    act(() => {
+      onCellEditingStopped({ oldValue: 'x', newValue: 'y' })
+      onCellEditingStopped({ colDef: {}, oldValue: 'x', newValue: 'y' })
+    })
   })
 
   it('handleRowClicked sets selected row in store', () => {
@@ -647,7 +662,9 @@ describe('TableDataGrid', () => {
     const props = mockCalls[0][0] as Record<string, unknown>
     const onRowClicked = props.onRowClicked as (event: { data: Record<string, unknown> }) => void
 
-    onRowClicked({ data: { id: 2, name: null, avatar: '[BLOB 32 bytes]', __rowIndex: 1 } })
+    act(() => {
+      onRowClicked({ data: { id: 2, name: null, avatar: '[BLOB 32 bytes]', __rowIndex: 1 } })
+    })
 
     const state = useTableDataStore.getState().tabs['tab-1']
     expect(state?.selectedRowKey).toEqual({ id: 2 })
@@ -661,8 +678,9 @@ describe('TableDataGrid', () => {
     const props = mockCalls[0][0] as Record<string, unknown>
     const onRowClicked = props.onRowClicked as (event: { data?: Record<string, unknown> }) => void
 
-    // Should not throw
-    onRowClicked({})
+    act(() => {
+      onRowClicked({})
+    })
   })
 
   it('onCellEditingStarted ignores events without data', async () => {
@@ -675,8 +693,9 @@ describe('TableDataGrid', () => {
       data?: Record<string, unknown>
     }) => Promise<void>
 
-    // Should not throw
-    await onCellEditingStarted({})
+    await act(async () => {
+      await onCellEditingStarted({})
+    })
   })
 
   it('onCellEditingStarted does NOT reset edit state when staying on same row', async () => {
@@ -697,10 +716,11 @@ describe('TableDataGrid', () => {
       colDef: { field: string }
     }) => Promise<void>
 
-    // Enter editing on a different cell of the SAME row (id=1)
-    await onCellEditingStarted({
-      data: { id: 1, name: 'Modified', avatar: null, __rowIndex: 0 },
-      colDef: { field: 'avatar' },
+    await act(async () => {
+      await onCellEditingStarted({
+        data: { id: 1, name: 'Modified', avatar: null, __rowIndex: 0 },
+        colDef: { field: 'avatar' },
+      })
     })
 
     // Edit state should be PRESERVED — not reset
@@ -710,7 +730,7 @@ describe('TableDataGrid', () => {
     expect(state?.editState?.currentValues.name).toBe('Modified')
   })
 
-  it('handleSortChanged dispatches sort action', () => {
+  it('handleSortChanged dispatches sort action', async () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
@@ -720,20 +740,21 @@ describe('TableDataGrid', () => {
       api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
     }) => void
 
-    onSortChanged({
-      api: {
-        getColumnState: () => [
-          { colId: 'id', sort: 'asc' },
-          { colId: 'name', sort: null },
-        ],
-      },
+    act(() => {
+      onSortChanged({
+        api: {
+          getColumnState: () => [
+            { colId: 'id', sort: 'asc' },
+            { colId: 'name', sort: null },
+          ],
+        },
+      })
     })
 
-    // The sort action is dispatched via requestNavigationAction, which may
-    // be deferred. Verify no crash.
+    await flushAsyncTableDataUpdates()
   })
 
-  it('handleSortChanged handles sort cleared', () => {
+  it('handleSortChanged handles sort cleared', async () => {
     setupConnection()
     setupTabState({ sort: { column: 'id', direction: 'asc' } })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
@@ -743,18 +764,21 @@ describe('TableDataGrid', () => {
       api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
     }) => void
 
-    // All columns have sort: null (sort was cleared)
-    onSortChanged({
-      api: {
-        getColumnState: () => [
-          { colId: 'id', sort: null },
-          { colId: 'name', sort: null },
-        ],
-      },
+    act(() => {
+      onSortChanged({
+        api: {
+          getColumnState: () => [
+            { colId: 'id', sort: null },
+            { colId: 'name', sort: null },
+          ],
+        },
+      })
     })
+
+    await flushAsyncTableDataUpdates()
   })
 
-  it('handleFilterChanged dispatches filter action', () => {
+  it('handleFilterChanged dispatches filter action', async () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
@@ -764,14 +788,17 @@ describe('TableDataGrid', () => {
       api: { getFilterModel: () => Record<string, unknown> }
     }) => void
 
-    onFilterChanged({
-      api: {
-        getFilterModel: () => ({
-          name: { filterType: 'text', type: 'contains', filter: 'alice' },
-        }),
-      },
+    act(() => {
+      onFilterChanged({
+        api: {
+          getFilterModel: () => ({
+            name: { filterType: 'text', type: 'contains', filter: 'alice' },
+          }),
+        },
+      })
     })
-    // Verify no crash — action is dispatched through requestNavigationAction
+
+    await flushAsyncTableDataUpdates()
   })
 
   it('rowData carries __tempId for new row in editState', () => {
@@ -845,11 +872,12 @@ describe('TableDataGrid', () => {
       api: { stopEditing: (cancel?: boolean) => void }
     }) => Promise<void>
 
-    // Try to start editing on a DIFFERENT row (id=2)
-    await onCellEditingStarted({
-      data: { id: 2, name: 'Bob', avatar: null, __rowIndex: 1 },
-      colDef: { field: 'name' },
-      api: { stopEditing: stopEditingMock },
+    await act(async () => {
+      await onCellEditingStarted({
+        data: { id: 2, name: 'Bob', avatar: null, __rowIndex: 1 },
+        colDef: { field: 'name' },
+        api: { stopEditing: stopEditingMock },
+      })
     })
 
     // Save failed — editState should remain on the original row (id=1)

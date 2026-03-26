@@ -273,12 +273,19 @@ export interface TableDataResponse {
   executionTimeMs: number
 }
 
-/** AG Grid filter model entry (per column). */
+/**
+ * AG Grid filter model entry per column — either a simple filter (`type` + values)
+ * or a combined model with `conditions` + `operator` (no top-level `type`).
+ * @see https://www.ag-grid.com/javascript-data-grid/filter-text/#text-filter-model
+ */
 export interface AgGridFilterEntry {
-  filterType: string
-  type: string
+  filterType?: string
+  /** Simple filter option key, e.g. `contains`, `equals`. */
+  type?: string | null
   filter?: string | number
   filterTo?: string | number
+  operator?: 'AND' | 'OR'
+  conditions?: AgGridFilterEntry[]
 }
 
 /** Full AG Grid filter model (keyed by column name). */

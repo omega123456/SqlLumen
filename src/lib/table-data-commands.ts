@@ -1,29 +1,77 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { TableDataResponse, PrimaryKeyInfo, AgGridFilterModel } from '../types/schema'
 
+/** Rust `FilterModelEntry` (camelCase over IPC). */
+type BackendFilterEntry = {
+  filterType: string
+  filterCondition: string
+  filter: string | null
+  filterTo: string | null
+}
+
+function coerceFilterString(value: unknown): string | null {
+  if (value == null) {
+    return null
+  }
+  return String(value)
+}
+
+/**
+ * Normalize AG Grid's per-column filter JSON (simple or combined `conditions[]`) into
+ * the shape expected by the Rust command. Combined models only send the **first**
+ * condition to the backend today (multi-condition per column is not translated to SQL yet).
+ */
+function normalizeFilterEntryForBackend(raw: unknown): BackendFilterEntry | null {
+  if (raw == null || typeof raw !== 'object') {
+    return null
+  }
+
+  const root = raw as Record<string, unknown>
+  let leaf = root
+
+  const conditions = root.conditions
+  if (Array.isArray(conditions) && conditions.length > 0) {
+    const first = conditions[0]
+    if (first != null && typeof first === 'object') {
+      leaf = first as Record<string, unknown>
+    }
+  }
+
+  const filterTypeRaw = leaf.filterType ?? root.filterType
+  const filterType =
+    typeof filterTypeRaw === 'string' && filterTypeRaw.length > 0 ? filterTypeRaw : 'text'
+
+  const typeRaw = leaf.type ?? leaf.filterOption
+  let filterCondition: string
+  if (typeof typeRaw === 'string' && typeRaw.length > 0) {
+    filterCondition = typeRaw
+  } else if (filterType === 'number') {
+    filterCondition = 'equals'
+  } else {
+    filterCondition = 'contains'
+  }
+
+  return {
+    filterType,
+    filterCondition,
+    filter: coerceFilterString(leaf.filter ?? root.filter),
+    filterTo: coerceFilterString(leaf.filterTo ?? root.filterTo),
+  }
+}
+
 /**
  * Transform frontend filter model to match Rust backend's FilterModelEntry format.
- * The frontend uses `type` (AG Grid convention) while Rust uses `filterCondition`.
+ * The frontend uses `type` (AG Grid simple model) while Rust uses `filterCondition`.
  */
-function mapFilterModel(
-  filterModel: AgGridFilterModel
-): Record<
-  string,
-  { filterType: string; filterCondition: string; filter: string | null; filterTo: string | null }
-> {
-  return Object.fromEntries(
-    Object.entries(filterModel).map(([col, entry]) => [
-      col,
-      {
-        filterType: entry.filterType,
-        filterCondition: entry.type,
-        // Convert to string so the Rust backend (which expects Option<String>) always
-        // receives a string. AG Grid's agNumberColumnFilter sends `filter` as a number.
-        filter: entry.filter != null ? String(entry.filter) : null,
-        filterTo: entry.filterTo != null ? String(entry.filterTo) : null,
-      },
-    ])
-  )
+function mapFilterModel(filterModel: AgGridFilterModel): Record<string, BackendFilterEntry> {
+  const out: Record<string, BackendFilterEntry> = {}
+  for (const [col, entry] of Object.entries(filterModel)) {
+    const normalized = normalizeFilterEntryForBackend(entry)
+    if (normalized) {
+      out[col] = normalized
+    }
+  }
+  return out
 }
 
 export async function fetchTableData(params: {

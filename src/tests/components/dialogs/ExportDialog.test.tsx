@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ExportDialog from '../../../components/dialogs/ExportDialog'
 
@@ -18,6 +18,12 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockExportResults.mockResolvedValue({ bytesWritten: 1024, rowsExported: 5 })
 })
+
+/** jsdom + focus trap: keyboard typing into the destination field is unreliable; drive controlled input directly. */
+function setExportDestinationPath(path: string) {
+  const input = screen.getByTestId('export-file-path-input')
+  fireEvent.change(input, { target: { value: path } })
+}
 
 describe('ExportDialog', () => {
   const defaultProps = {
@@ -65,12 +71,10 @@ describe('ExportDialog', () => {
     expect(exportBtn).toBeDisabled()
   })
 
-  it('export button is enabled when file path is provided', async () => {
-    const user = userEvent.setup()
+  it('export button is enabled when file path is provided', () => {
     render(<ExportDialog {...defaultProps} />)
 
-    const input = screen.getByTestId('export-file-path-input')
-    await user.type(input, '/tmp/export.csv')
+    setExportDestinationPath('/tmp/export.csv')
 
     const exportBtn = screen.getByTestId('export-submit-button')
     expect(exportBtn).not.toBeDisabled()
@@ -81,9 +85,7 @@ describe('ExportDialog', () => {
     const onClose = vi.fn()
     render(<ExportDialog {...defaultProps} onClose={onClose} />)
 
-    // Type a file path
-    const input = screen.getByTestId('export-file-path-input')
-    await user.type(input, '/tmp/export.csv')
+    setExportDestinationPath('/tmp/export.csv')
 
     // Click Export
     const exportBtn = screen.getByTestId('export-submit-button')
@@ -117,8 +119,7 @@ describe('ExportDialog', () => {
     // Change format to SQL INSERT
     await user.selectOptions(screen.getByTestId('export-format-select'), 'sql-insert')
 
-    // Type a file path
-    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.sql')
+    setExportDestinationPath('/tmp/export.sql')
 
     // Click Export
     await user.click(screen.getByTestId('export-submit-button'))
@@ -154,7 +155,7 @@ describe('ExportDialog', () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
-    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
+    setExportDestinationPath('/tmp/export.csv')
     await user.click(screen.getByTestId('export-submit-button'))
 
     await waitFor(
@@ -173,7 +174,7 @@ describe('ExportDialog', () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
-    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
+    setExportDestinationPath('/tmp/export.csv')
     await user.click(screen.getByTestId('export-submit-button'))
 
     // Button should show loading and be disabled (wait for async state update)
@@ -238,7 +239,7 @@ describe('ExportDialog', () => {
     await user.click(screen.getByTestId('export-include-headers-checkbox'))
 
     // Type path and export
-    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
+    setExportDestinationPath('/tmp/export.csv')
     await user.click(screen.getByTestId('export-submit-button'))
 
     await waitFor(
@@ -274,7 +275,7 @@ describe('ExportDialog', () => {
     const onClose = vi.fn()
     render(<ExportDialog {...defaultProps} onClose={onClose} onExport={onExport} />)
 
-    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
+    setExportDestinationPath('/tmp/export.csv')
     await user.click(screen.getByTestId('export-submit-button'))
 
     await waitFor(
@@ -322,7 +323,7 @@ describe('ExportDialog', () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
-    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
+    setExportDestinationPath('/tmp/export.csv')
     await user.click(screen.getByTestId('export-submit-button'))
 
     await waitFor(
@@ -360,7 +361,7 @@ describe('ExportDialog', () => {
     const onExport = vi.fn().mockRejectedValue(new Error('Custom export failed'))
     render(<ExportDialog {...defaultProps} onExport={onExport} />)
 
-    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
+    setExportDestinationPath('/tmp/export.csv')
     await user.click(screen.getByTestId('export-submit-button'))
 
     await waitFor(
@@ -380,7 +381,7 @@ describe('ExportDialog', () => {
     await user.clear(tableNameInput)
     await user.type(tableNameInput, 'my_table')
 
-    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.sql')
+    setExportDestinationPath('/tmp/export.sql')
     await user.click(screen.getByTestId('export-submit-button'))
 
     await waitFor(

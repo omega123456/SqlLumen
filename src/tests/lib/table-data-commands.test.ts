@@ -126,6 +126,42 @@ describe('fetchTableData', () => {
     expect(sentFilter.name.filterType).toBe('text')
     expect(sentFilter.name.filter).toBe('Alice')
   })
+
+  it('maps AG Grid combined filter model (conditions[]) using first condition', async () => {
+    let capturedArgs: Record<string, unknown> = {}
+    mockIPC((cmd, args) => {
+      if (cmd === 'fetch_table_data') {
+        capturedArgs = args as Record<string, unknown>
+        return mockFetchTableDataFn()
+      }
+      return null
+    })
+
+    const filterModel: AgGridFilterModel = {
+      sport: {
+        filterType: 'text',
+        operator: 'OR',
+        conditions: [
+          { filterType: 'text', type: 'equals', filter: 'Swimming' },
+          { filterType: 'text', type: 'equals', filter: 'Gymnastics' },
+        ],
+      },
+    }
+
+    await fetchTableData({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      table: 'events',
+      page: 1,
+      pageSize: 100,
+      filterModel,
+    })
+
+    const sentFilter = capturedArgs.filterModel as Record<string, Record<string, unknown>>
+    expect(sentFilter.sport.filterCondition).toBe('equals')
+    expect(sentFilter.sport.filterType).toBe('text')
+    expect(sentFilter.sport.filter).toBe('Swimming')
+  })
 })
 
 describe('updateTableRow', () => {

@@ -82,6 +82,11 @@ pub fn log_mysql_rows(rows: &[MySqlRow]) {
     }
 }
 
+/// Log a single row (e.g. `fetch_one` / `COUNT(*)`).
+pub fn log_mysql_row(row: &MySqlRow) {
+    log_mysql_rows(std::slice::from_ref(row));
+}
+
 pub fn log_execute_result(r: &sqlx::mysql::MySqlQueryResult) {
     tracing::debug!(
         target: TARGET,

@@ -1535,11 +1535,12 @@ mod tests {
     }
 
     #[test]
-    fn test_base64_encode() {
-        assert_eq!(base64_encode(b"Man"), "TWFu");
-        assert_eq!(base64_encode(b"Ma"), "TWE=");
-        assert_eq!(base64_encode(b"M"), "TQ==");
-        assert_eq!(base64_encode(b""), "");
+    fn test_base64_standard_encode_samples() {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        assert_eq!(STANDARD.encode(b"Man"), "TWFu");
+        assert_eq!(STANDARD.encode(b"Ma"), "TWE=");
+        assert_eq!(STANDARD.encode(b"M"), "TQ==");
+        assert_eq!(STANDARD.encode(b""), "");
     }
 
     #[test]

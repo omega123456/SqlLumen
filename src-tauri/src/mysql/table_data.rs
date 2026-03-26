@@ -434,6 +434,13 @@ fn serialize_export_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::
     }
 }
 
+/// Debug-log outgoing SQL with bound parameter values (JSON string form).
+#[cfg(not(coverage))]
+fn log_table_data_sql(sql: &str, params: &[serde_json::Value]) {
+    let binds: Vec<String> = params.iter().map(|v| v.to_string()).collect();
+    crate::mysql::query_log::log_outgoing_sql_bound(sql, &binds);
+}
+
 /// Bind a serde_json::Value to a sqlx query, returning the updated query.
 #[cfg(not(coverage))]
 fn bind_json_value<'q>(
@@ -477,12 +484,20 @@ pub async fn fetch_table_pk_impl(
                    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? \
                    ORDER BY ORDINAL_POSITION";
 
+    log_table_data_sql(
+        col_sql,
+        &[
+            serde_json::Value::String(database.to_string()),
+            serde_json::Value::String(table.to_string()),
+        ],
+    );
     let col_rows = sqlx::query(col_sql)
         .bind(database)
         .bind(table)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch column metadata: {e}"))?;
+    crate::mysql::query_log::log_mysql_rows(&col_rows);
 
     let mut columns: Vec<TableDataColumnMeta> = Vec::with_capacity(col_rows.len());
     let mut column_nullable: HashMap<String, bool> = HashMap::new();
@@ -527,12 +542,20 @@ pub async fn fetch_table_pk_impl(
                     AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' \
                   ORDER BY kcu.ORDINAL_POSITION";
 
+    log_table_data_sql(
+        pk_sql,
+        &[
+            serde_json::Value::String(database.to_string()),
+            serde_json::Value::String(table.to_string()),
+        ],
+    );
     let pk_rows = sqlx::query(pk_sql)
         .bind(database)
         .bind(table)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch primary key info: {e}"))?;
+    crate::mysql::query_log::log_mysql_rows(&pk_rows);
 
     let pk_columns: Vec<String> = pk_rows.iter().map(|r| decode_text(r, 0)).collect();
 
@@ -562,12 +585,20 @@ pub async fn fetch_table_pk_impl(
                       AND tc.CONSTRAINT_TYPE = 'UNIQUE' \
                     ORDER BY tc.CONSTRAINT_NAME, kcu.ORDINAL_POSITION";
 
+    log_table_data_sql(
+        uniq_sql,
+        &[
+            serde_json::Value::String(database.to_string()),
+            serde_json::Value::String(table.to_string()),
+        ],
+    );
     let uniq_rows = sqlx::query(uniq_sql)
         .bind(database)
         .bind(table)
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Failed to fetch unique key info: {e}"))?;
+    crate::mysql::query_log::log_mysql_rows(&uniq_rows);
 
     // Group columns by constraint name, preserving order
     let mut constraint_columns: Vec<(String, Vec<String>)> = Vec::new();
@@ -654,6 +685,7 @@ pub async fn fetch_table_data_impl(
 
     // Build and execute COUNT query
     let count_sql = format!("SELECT COUNT(*) FROM {safe_db}.{safe_table}{where_sql}");
+    log_table_data_sql(&count_sql, &filter_clause.params);
     let mut count_query = sqlx::query(&count_sql);
     for param in &filter_clause.params {
         count_query = bind_json_value(count_query, param);
@@ -662,6 +694,7 @@ pub async fn fetch_table_data_impl(
         .fetch_one(pool)
         .await
         .map_err(|e| format!("Count query failed: {e}"))?;
+    crate::mysql::query_log::log_mysql_row(&count_row);
     let total_rows: i64 = count_row.try_get(0).map_err(|e| format!("Failed to read count: {e}"))?;
     let total_rows = total_rows as u64;
 
@@ -671,6 +704,7 @@ pub async fn fetch_table_data_impl(
     let data_sql = format!(
         "SELECT * FROM {safe_db}.{safe_table}{where_sql}{order_sql} LIMIT {page_size} OFFSET {offset}"
     );
+    log_table_data_sql(&data_sql, &filter_clause.params);
     let mut data_query = sqlx::query(&data_sql);
     for param in &filter_clause.params {
         data_query = bind_json_value(data_query, param);
@@ -679,6 +713,7 @@ pub async fn fetch_table_data_impl(
         .fetch_all(pool)
         .await
         .map_err(|e| format!("Data query failed: {e}"))?;
+    crate::mysql::query_log::log_mysql_rows(&data_rows);
 
     let execution_time_ms = start.elapsed().as_millis() as u64;
 
@@ -807,6 +842,7 @@ pub async fn update_table_row_impl(
     let mut all_params = set_params;
     all_params.extend(where_params);
 
+    log_table_data_sql(&sql, &all_params);
     let mut query = sqlx::query(&sql);
     for param in &all_params {
         query = bind_json_value(query, param);
@@ -816,6 +852,7 @@ pub async fn update_table_row_impl(
         .execute(pool)
         .await
         .map_err(|e| format!("Update failed: {e}"))?;
+    crate::mysql::query_log::log_execute_result(&result);
 
     if result.rows_affected() != 1 {
         return Err(format!(
@@ -877,23 +914,28 @@ pub async fn insert_table_row_impl(
         placeholders.join(", ")
     );
 
+    log_table_data_sql(&sql, &params);
     let mut query = sqlx::query(&sql);
     for param in &params {
         query = bind_json_value(query, param);
     }
 
-    query
+    let insert_result = query
         .execute(pool)
         .await
         .map_err(|e| format!("Insert failed: {e}"))?;
+    crate::mysql::query_log::log_execute_result(&insert_result);
 
     // Re-fetch the inserted row
     let refetch_row = if pk_info.has_auto_increment {
         // Get LAST_INSERT_ID()
-        let id_row = sqlx::query("SELECT LAST_INSERT_ID() AS id")
+        const LAST_ID_SQL: &str = "SELECT LAST_INSERT_ID() AS id";
+        crate::mysql::query_log::log_outgoing_sql(LAST_ID_SQL);
+        let id_row = sqlx::query(LAST_ID_SQL)
             .fetch_one(pool)
             .await
             .map_err(|e| format!("Failed to get LAST_INSERT_ID: {e}"))?;
+        crate::mysql::query_log::log_mysql_row(&id_row);
 
         let last_id: i64 = id_row
             .try_get(0)
@@ -920,14 +962,19 @@ pub async fn insert_table_row_impl(
             where_parts.join(" AND ")
         );
 
+        log_table_data_sql(&refetch_sql, &where_params);
         let mut refetch_query = sqlx::query(&refetch_sql);
         for param in &where_params {
             refetch_query = bind_json_value(refetch_query, param);
         }
 
-        refetch_query.fetch_optional(pool).await.map_err(|e| {
+        let opt = refetch_query.fetch_optional(pool).await.map_err(|e| {
             format!("Failed to re-fetch inserted row: {e}")
-        })?
+        })?;
+        if let Some(ref r) = opt {
+            crate::mysql::query_log::log_mysql_row(r);
+        }
+        opt
     } else {
         // No auto-increment: use provided PK values
         let mut where_parts = Vec::new();
@@ -949,14 +996,19 @@ pub async fn insert_table_row_impl(
             where_parts.join(" AND ")
         );
 
+        log_table_data_sql(&refetch_sql, &where_params);
         let mut refetch_query = sqlx::query(&refetch_sql);
         for param in &where_params {
             refetch_query = bind_json_value(refetch_query, param);
         }
 
-        refetch_query.fetch_optional(pool).await.map_err(|e| {
+        let opt = refetch_query.fetch_optional(pool).await.map_err(|e| {
             format!("Failed to re-fetch inserted row: {e}")
-        })?
+        })?;
+        if let Some(ref r) = opt {
+            crate::mysql::query_log::log_mysql_row(r);
+        }
+        opt
     };
 
     // Serialize the re-fetched row
@@ -1023,6 +1075,7 @@ pub async fn delete_table_row_impl(
         where_parts.join(" AND ")
     );
 
+    log_table_data_sql(&sql, &params);
     let mut query = sqlx::query(&sql);
     for param in &params {
         query = bind_json_value(query, param);
@@ -1032,6 +1085,7 @@ pub async fn delete_table_row_impl(
         .execute(pool)
         .await
         .map_err(|e| format!("Delete failed: {e}"))?;
+    crate::mysql::query_log::log_execute_result(&result);
 
     if result.rows_affected() != 1 {
         return Err(format!(
@@ -1115,6 +1169,7 @@ pub async fn export_table_data_impl(
     };
 
     let sql = format!("SELECT * FROM {safe_db}.{safe_table}{where_sql}{order_sql}");
+    log_table_data_sql(&sql, &filter_clause.params);
     let format = crate::export::ExportFormat::from_format_str(&options.format)?;
 
     let table_name = if options.table_name_for_sql.is_empty() {
@@ -1135,6 +1190,7 @@ pub async fn export_table_data_impl(
             .fetch_all(pool)
             .await
             .map_err(|e| format!("Export query failed: {e}"))?;
+        crate::mysql::query_log::log_mysql_rows(&rows);
 
         let columns: Vec<String> = if let Some(first) = rows.first() {
             first
@@ -1198,6 +1254,7 @@ pub async fn export_table_data_impl(
                 .await
                 .map_err(|e| format!("Export query failed: {e}"))?
             {
+                crate::mysql::query_log::log_mysql_row(&row);
                 if !headers_written {
                     if options.include_headers {
                         let cols: Vec<String> = row
@@ -1251,6 +1308,7 @@ pub async fn export_table_data_impl(
                 .await
                 .map_err(|e| format!("Export query failed: {e}"))?
             {
+                crate::mysql::query_log::log_mysql_row(&row);
                 if columns.is_none() {
                     columns = Some(
                         row.columns()
@@ -1306,6 +1364,7 @@ pub async fn export_table_data_impl(
                 .await
                 .map_err(|e| format!("Export query failed: {e}"))?
             {
+                crate::mysql::query_log::log_mysql_row(&row);
                 if columns.is_none() {
                     columns = Some(
                         row.columns()
