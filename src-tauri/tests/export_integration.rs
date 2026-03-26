@@ -4,12 +4,13 @@ use mysql_client_lib::export::csv_writer::write_csv;
 use mysql_client_lib::export::json_writer::write_json;
 use mysql_client_lib::export::sql_writer::write_sql;
 use mysql_client_lib::export::xlsx_writer::write_xlsx;
-use mysql_client_lib::export::{ExportFormat, ExportOptions};
+use mysql_client_lib::export::{ExportFormat, ExportOptions, ExportResult};
 use mysql_client_lib::commands::export::{export_results_impl, export_with_data};
 use mysql_client_lib::mysql::query_executor::{ColumnMeta, StoredResult};
 use mysql_client_lib::mysql::registry::ConnectionRegistry;
 use mysql_client_lib::state::AppState;
 use rusqlite::Connection;
+use std::io::{self, Write};
 use std::sync::Mutex;
 
 mod common;
@@ -44,6 +45,19 @@ fn sample_rows() -> Vec<Vec<serde_json::Value>> {
             serde_json::json!("bob@example.com"),
         ],
     ]
+}
+
+fn temp_export_path(prefix: &str, extension: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!(
+        "{}_{}_{}.{}",
+        prefix,
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos(),
+        extension
+    ))
 }
 
 // ── CSV tests ─────────────────────────────────────────────────────────────────
@@ -170,6 +184,27 @@ fn test_json_ignores_include_headers() {
     write_json(&mut buf_with, &columns, &rows, true).unwrap();
     write_json(&mut buf_without, &columns, &rows, false).unwrap();
     assert_eq!(buf_with, buf_without);
+}
+
+#[test]
+fn test_json_writer_surfaces_underlying_writer_errors() {
+    struct FailingWriter;
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::other("sink failed"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let columns = vec!["id".to_string()];
+    let rows = vec![vec![serde_json::json!(1)]];
+    let error = write_json(&mut FailingWriter, &columns, &rows, true)
+        .expect_err("writer failure should be surfaced");
+    assert_eq!(error.kind(), io::ErrorKind::Other);
 }
 
 // ── SQL INSERT tests ──────────────────────────────────────────────────────────
@@ -474,6 +509,141 @@ fn test_export_with_data_xlsx() {
     let result = export_with_data(&columns, &rows, options).expect("export_with_data should succeed");
     assert_eq!(result.rows_exported, 2);
     assert!(result.bytes_written > 0);
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn test_export_format_from_format_str_accepts_supported_values() {
+    assert_eq!(
+        ExportFormat::from_format_str("csv").expect("csv should parse"),
+        ExportFormat::Csv
+    );
+    assert_eq!(
+        ExportFormat::from_format_str("json").expect("json should parse"),
+        ExportFormat::Json
+    );
+    assert_eq!(
+        ExportFormat::from_format_str("xlsx").expect("xlsx should parse"),
+        ExportFormat::Xlsx
+    );
+    assert_eq!(
+        ExportFormat::from_format_str("sql").expect("sql should parse"),
+        ExportFormat::SqlInsert
+    );
+    assert_eq!(
+        ExportFormat::from_format_str("sql-insert").expect("sql-insert should parse"),
+        ExportFormat::SqlInsert
+    );
+}
+
+#[test]
+fn test_export_format_from_format_str_rejects_unknown_value() {
+    let error = ExportFormat::from_format_str("yaml").expect_err("unknown format should fail");
+    assert!(error.contains("Unknown export format"));
+}
+
+#[test]
+fn test_export_format_serde_round_trip() {
+    let json = serde_json::to_string(&ExportFormat::SqlInsert).expect("serialize export format");
+    assert_eq!(json, r#""sql-insert""#);
+
+    let round_trip: ExportFormat =
+        serde_json::from_str(&json).expect("deserialize export format");
+    assert_eq!(round_trip, ExportFormat::SqlInsert);
+}
+
+#[test]
+fn test_export_options_serde_round_trip() {
+    let options = ExportOptions {
+        format: ExportFormat::Json,
+        file_path: "D:/tmp/result.json".to_string(),
+        include_headers: false,
+        table_name: Some("audit_log".to_string()),
+    };
+
+    let json = serde_json::to_value(&options).expect("serialize export options");
+    assert_eq!(json["filePath"], serde_json::json!("D:/tmp/result.json"));
+    assert_eq!(json["includeHeaders"], serde_json::json!(false));
+    assert_eq!(json["tableName"], serde_json::json!("audit_log"));
+
+    let round_trip: ExportOptions =
+        serde_json::from_value(json).expect("deserialize export options");
+    assert_eq!(round_trip.file_path, "D:/tmp/result.json");
+    assert_eq!(round_trip.format, ExportFormat::Json);
+    assert_eq!(round_trip.table_name.as_deref(), Some("audit_log"));
+}
+
+#[test]
+fn test_export_result_serde_round_trip() {
+    let result = ExportResult {
+        bytes_written: 128,
+        rows_exported: 3,
+    };
+
+    let json = serde_json::to_value(&result).expect("serialize export result");
+    assert_eq!(json["bytesWritten"], serde_json::json!(128));
+    assert_eq!(json["rowsExported"], serde_json::json!(3));
+
+    let round_trip: ExportResult =
+        serde_json::from_value(json).expect("deserialize export result");
+    assert_eq!(round_trip.bytes_written, 128);
+    assert_eq!(round_trip.rows_exported, 3);
+}
+
+#[test]
+fn test_export_with_data_reports_create_file_errors() {
+    let columns = sample_columns();
+    let rows = sample_rows();
+    let missing_parent = temp_export_path("missing_parent_export", "csv")
+        .join("nested")
+        .join("export.csv");
+
+    let options = ExportOptions {
+        format: ExportFormat::Csv,
+        file_path: missing_parent.to_string_lossy().to_string(),
+        include_headers: true,
+        table_name: None,
+    };
+
+    let error = export_with_data(&columns, &rows, options).expect_err("create should fail");
+    assert!(error.contains("Failed to create file"));
+}
+
+#[test]
+fn test_export_with_data_reports_create_file_errors_for_json() {
+    let columns = sample_columns();
+    let rows = sample_rows();
+    let missing_parent = temp_export_path("missing_parent_export_json", "json")
+        .join("nested")
+        .join("export.json");
+
+    let options = ExportOptions {
+        format: ExportFormat::Json,
+        file_path: missing_parent.to_string_lossy().to_string(),
+        include_headers: true,
+        table_name: None,
+    };
+
+    let error = export_with_data(&columns, &rows, options).expect_err("create should fail");
+    assert!(error.contains("Failed to create file"));
+}
+
+#[test]
+fn test_export_with_data_surfaces_sql_writer_errors() {
+    let columns = sample_columns();
+    let rows = sample_rows();
+    let path = temp_export_path("bad_sql_export", "sql");
+
+    let options = ExportOptions {
+        format: ExportFormat::SqlInsert,
+        file_path: path.to_string_lossy().to_string(),
+        include_headers: true,
+        table_name: Some(String::new()),
+    };
+
+    let error = export_with_data(&columns, &rows, options).expect_err("sql write should fail");
+    assert!(error.contains("Failed to write SQL"));
 
     let _ = std::fs::remove_file(&path);
 }

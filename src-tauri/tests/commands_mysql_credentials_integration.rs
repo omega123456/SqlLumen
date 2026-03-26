@@ -580,6 +580,74 @@ fn update_connection_with_password_surfaces_sqlite_write_errors() {
 }
 
 #[test]
+fn update_connection_clear_password_removes_legacy_and_current_keychain_entries() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    let state = test_state();
+    let connection_id = save_connection_impl(&state, sample_save_input(Some("old-secret")))
+        .expect("save should succeed");
+    let legacy_keychain_ref = format!("legacy-{connection_id}");
+
+    credentials::store_password(&legacy_keychain_ref, "legacy-secret")
+        .expect("legacy credential should be stored");
+    {
+        let conn = state.db.lock().expect("db lock should succeed");
+        set_keychain_ref(&conn, &connection_id, Some(&legacy_keychain_ref))
+            .expect("should persist legacy keychain ref");
+    }
+
+    let mut clear_input = update_input(None);
+    clear_input.clear_password = true;
+    update_connection_impl(&state, &connection_id, clear_input)
+        .expect("clear password should succeed");
+
+    let record = get_connection_impl(&state, &connection_id)
+        .expect("get should succeed")
+        .expect("record should exist");
+    assert!(!record.has_password);
+    {
+        let conn = state.db.lock().expect("db lock should succeed");
+        let persisted_ref: Option<String> = conn
+            .query_row(
+                "SELECT keychain_ref FROM connections WHERE id = ?1",
+                [&connection_id],
+                |row| row.get(0),
+            )
+            .expect("connection row should exist");
+        assert!(persisted_ref.is_none());
+    }
+    assert!(credentials::retrieve_password(&legacy_keychain_ref).is_err());
+    assert!(credentials::retrieve_password(&connection_id).is_err());
+}
+
+#[tokio::test]
+async fn open_connection_impl_surfaces_keychain_lookup_errors() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    let state = test_state();
+    let profile_id = save_connection_impl(&state, sample_save_input(Some("pw")))
+        .expect("save should succeed");
+    common::fake_credentials::queue_fake_credential_error("missing secret");
+
+    let error = open_connection_impl(&state, &profile_id)
+        .await
+        .expect_err("keychain lookup failure should surface");
+    assert!(error.contains("Failed to retrieve password from keychain"));
+}
+
+#[tokio::test]
+async fn open_connection_impl_coverage_succeeds_with_test_pool_factory() {
+    let _guard = install_test_pool_factory(forced_pool_success);
+    let state = test_state();
+    let profile_id = save_connection_impl(&state, sample_save_input(None))
+        .expect("save should succeed");
+
+    let result = open_connection_impl(&state, &profile_id)
+        .await
+        .expect("open should succeed with fake pool");
+    assert_eq!(result.server_version, "Unknown");
+    assert!(!result.session_id.is_empty());
+}
+
+#[test]
 fn build_connect_options_applies_ssl_database_and_credentials() {
     let params = ConnectionParams {
         host: "db.example.com".to_string(),
@@ -976,7 +1044,6 @@ async fn update_connection_ipc_clear_password_clears_saved_password_state() {
 }
 
 #[tokio::test]
-#[cfg(not(coverage))]
 async fn open_connection_impl_surfaces_pool_creation_errors() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();

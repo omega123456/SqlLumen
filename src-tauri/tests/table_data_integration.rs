@@ -7,6 +7,491 @@ use std::collections::HashMap;
 
 mod common;
 
+#[cfg(coverage)]
+mod command_wrapper_coverage {
+    use super::*;
+    use mysql_client_lib::commands::table_data as table_data_commands;
+    use mysql_client_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
+    use mysql_client_lib::state::AppState;
+    use serde::de::DeserializeOwned;
+    use serde_json::json;
+    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+    use tauri::ipc::{CallbackFn, InvokeBody};
+    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+    use tauri::webview::InvokeRequest;
+    use tokio_util::sync::CancellationToken;
+
+    fn dummy_pool() -> sqlx::MySqlPool {
+        let opts = MySqlConnectOptions::new()
+            .host("127.0.0.1")
+            .port(13306)
+            .username("dummy")
+            .password("dummy");
+        MySqlPoolOptions::new().connect_lazy_with(opts)
+    }
+
+    fn register_connection(state: &AppState, connection_id: &str, read_only: bool) {
+        state.registry.insert(
+            connection_id.to_string(),
+            RegistryEntry {
+                pool: dummy_pool(),
+                session_id: connection_id.to_string(),
+                profile_id: connection_id.to_string(),
+                status: ConnectionStatus::Connected,
+                server_version: "8.0.0".to_string(),
+                cancellation_token: CancellationToken::new(),
+                connection_params: StoredConnectionParams {
+                    profile_id: connection_id.to_string(),
+                    host: "127.0.0.1".to_string(),
+                    port: 13306,
+                    username: "dummy".to_string(),
+                    has_password: false,
+                    keychain_ref: None,
+                    default_database: Some("test_db".to_string()),
+                    ssl_enabled: false,
+                    ssl_ca_path: None,
+                    ssl_cert_path: None,
+                    ssl_key_path: None,
+                    connect_timeout_secs: 10,
+                    keepalive_interval_secs: 0,
+                },
+                read_only,
+            },
+        );
+    }
+
+    fn build_app(state: AppState) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
+        let app = mock_builder()
+            .manage(state)
+            .invoke_handler(tauri::generate_handler![
+                fetch_table_data,
+                update_table_row,
+                insert_table_row,
+                delete_table_row,
+                export_table_data
+            ])
+            .build(mock_context(noop_assets()))
+            .expect("should build app");
+
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("should build test webview")
+    }
+
+    fn invoke_tauri_command<T: DeserializeOwned>(
+        webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+        cmd: &str,
+        body: serde_json::Value,
+    ) -> Result<T, serde_json::Value> {
+        get_ipc_response(
+            webview,
+            InvokeRequest {
+                cmd: cmd.into(),
+                callback: CallbackFn(0),
+                error: CallbackFn(1),
+                url: "http://tauri.localhost".parse().expect("test URL should parse"),
+                body: InvokeBody::Json(body),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+        .map(|response| {
+            response
+                .deserialize::<T>()
+                .expect("IPC response should deserialize")
+        })
+    }
+
+    #[tauri::command]
+    async fn fetch_table_data(
+        state: tauri::State<'_, AppState>,
+        connection_id: String,
+        database: String,
+        table: String,
+        page: u32,
+        page_size: u32,
+        sort_column: Option<String>,
+        sort_direction: Option<String>,
+        filter_model: Option<HashMap<String, mysql_client_lib::mysql::table_data::FilterModelEntry>>,
+    ) -> Result<mysql_client_lib::mysql::table_data::TableDataResponse, String> {
+        table_data_commands::fetch_table_data(
+            state,
+            connection_id,
+            database,
+            table,
+            page,
+            page_size,
+            sort_column,
+            sort_direction,
+            filter_model,
+        )
+        .await
+    }
+
+    #[tauri::command]
+    async fn update_table_row(
+        state: tauri::State<'_, AppState>,
+        connection_id: String,
+        database: String,
+        table: String,
+        primary_key_columns: Vec<String>,
+        original_pk_values: HashMap<String, serde_json::Value>,
+        updated_values: HashMap<String, serde_json::Value>,
+    ) -> Result<(), String> {
+        table_data_commands::update_table_row(
+            state,
+            connection_id,
+            database,
+            table,
+            primary_key_columns,
+            original_pk_values,
+            updated_values,
+        )
+        .await
+    }
+
+    #[tauri::command]
+    async fn insert_table_row(
+        state: tauri::State<'_, AppState>,
+        connection_id: String,
+        database: String,
+        table: String,
+        values: HashMap<String, serde_json::Value>,
+        pk_info: mysql_client_lib::mysql::table_data::PrimaryKeyInfo,
+    ) -> Result<Vec<(String, serde_json::Value)>, String> {
+        table_data_commands::insert_table_row(state, connection_id, database, table, values, pk_info)
+            .await
+    }
+
+    #[tauri::command]
+    async fn delete_table_row(
+        state: tauri::State<'_, AppState>,
+        connection_id: String,
+        database: String,
+        table: String,
+        pk_columns: Vec<String>,
+        pk_values: HashMap<String, serde_json::Value>,
+    ) -> Result<(), String> {
+        table_data_commands::delete_table_row(
+            state,
+            connection_id,
+            database,
+            table,
+            pk_columns,
+            pk_values,
+        )
+        .await
+    }
+
+    #[tauri::command]
+    async fn export_table_data(
+        state: tauri::State<'_, AppState>,
+        connection_id: String,
+        database: String,
+        table: String,
+        format: String,
+        file_path: String,
+        include_headers: bool,
+        table_name_for_sql: String,
+        filter_model: Option<HashMap<String, mysql_client_lib::mysql::table_data::FilterModelEntry>>,
+        sort_column: Option<String>,
+        sort_direction: Option<String>,
+    ) -> Result<(), String> {
+        table_data_commands::export_table_data(
+            state,
+            connection_id,
+            database,
+            table,
+            format,
+            file_path,
+            include_headers,
+            table_name_for_sql,
+            filter_model,
+            sort_column,
+            sort_direction,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn fetch_table_data_wrapper_validates_inputs_and_uses_stubbed_impl() {
+        let state = common::test_app_state();
+        register_connection(&state, "conn-1", false);
+        let webview = build_app(state);
+
+        let zero_page_size_err = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+            &webview,
+            "fetch_table_data",
+            json!({
+                "connectionId": "conn-1",
+                "database": "test_db",
+                "table": "users",
+                "page": 1,
+                "pageSize": 0,
+                "sortColumn": null,
+                "sortDirection": null,
+                "filterModel": null
+            }),
+        )
+        .expect_err("page size zero should error");
+        assert!(zero_page_size_err.to_string().contains("page_size must be at least 1"));
+
+        let missing_connection_err = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+            &webview,
+            "fetch_table_data",
+            json!({
+                "connectionId": "missing",
+                "database": "test_db",
+                "table": "users",
+                "page": 1,
+                "pageSize": 50,
+                "sortColumn": null,
+                "sortDirection": null,
+                "filterModel": null
+            }),
+        )
+        .expect_err("missing connection should error");
+        assert!(missing_connection_err.to_string().contains("not found"));
+
+        let response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+            &webview,
+            "fetch_table_data",
+            json!({
+                "connectionId": "conn-1",
+                "database": "test_db",
+                "table": "users",
+                "page": 2,
+                "pageSize": 25,
+                "sortColumn": "name",
+                "sortDirection": "asc",
+                "filterModel": {
+                    "name": {
+                        "filterType": "text",
+                        "filterCondition": "contains",
+                        "filter": "ali",
+                        "filterTo": null
+                    }
+                }
+            }),
+        )
+        .expect("fetch should succeed");
+
+        assert_eq!(response.current_page, 2);
+        assert_eq!(response.page_size, 25);
+        assert_eq!(response.total_rows, 0);
+        assert!(response.rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn update_table_row_wrapper_enforces_read_only_and_missing_connection_checks() {
+        let read_only_state = common::test_app_state();
+        register_connection(&read_only_state, "conn-ro", true);
+        let read_only_webview = build_app(read_only_state);
+
+        let read_only_err = invoke_tauri_command::<()>(
+            &read_only_webview,
+            "update_table_row",
+            json!({
+                "connectionId": "conn-ro",
+                "database": "test_db",
+                "table": "users",
+                "primaryKeyColumns": ["id"],
+                "originalPkValues": { "id": 1 },
+                "updatedValues": { "name": "Alice" }
+            }),
+        )
+        .expect_err("read-only connection should error");
+        assert!(read_only_err.to_string().contains("read-only"));
+
+        let state = common::test_app_state();
+        let webview = build_app(state);
+        let missing_err = invoke_tauri_command::<()>(
+            &webview,
+            "update_table_row",
+            json!({
+                "connectionId": "missing",
+                "database": "test_db",
+                "table": "users",
+                "primaryKeyColumns": ["id"],
+                "originalPkValues": { "id": 1 },
+                "updatedValues": { "name": "Alice" }
+            }),
+        )
+        .expect_err("missing connection should error");
+        assert!(missing_err.to_string().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn mutating_table_data_wrappers_succeed_with_registered_writable_connection() {
+        let state = common::test_app_state();
+        register_connection(&state, "conn-1", false);
+        let webview = build_app(state);
+
+        invoke_tauri_command::<()>(
+            &webview,
+            "update_table_row",
+            json!({
+                "connectionId": "conn-1",
+                "database": "test_db",
+                "table": "users",
+                "primaryKeyColumns": ["id"],
+                "originalPkValues": { "id": 1 },
+                "updatedValues": { "name": "Updated" }
+            }),
+        )
+        .expect("update should succeed");
+
+        let inserted = invoke_tauri_command::<Vec<(String, serde_json::Value)>>(
+            &webview,
+            "insert_table_row",
+            json!({
+                "connectionId": "conn-1",
+                "database": "test_db",
+                "table": "users",
+                "values": { "name": "New User" },
+                "pkInfo": {
+                    "keyColumns": ["id"],
+                    "hasAutoIncrement": true,
+                    "isUniqueKeyFallback": false
+                }
+            }),
+        )
+        .expect("insert should succeed");
+        assert!(inserted.is_empty());
+
+        invoke_tauri_command::<()>(
+            &webview,
+            "delete_table_row",
+            json!({
+                "connectionId": "conn-1",
+                "database": "test_db",
+                "table": "users",
+                "pkColumns": ["id"],
+                "pkValues": { "id": 1 }
+            }),
+        )
+        .expect("delete should succeed");
+
+        invoke_tauri_command::<()>(
+            &webview,
+            "export_table_data",
+            json!({
+                "connectionId": "conn-1",
+                "database": "test_db",
+                "table": "users",
+                "format": "csv",
+                "filePath": "ignored.csv",
+                "includeHeaders": true,
+                "tableNameForSql": "users",
+                "filterModel": {
+                    "name": {
+                        "filterType": "text",
+                        "filterCondition": "startsWith",
+                        "filter": "A",
+                        "filterTo": null
+                    }
+                },
+                "sortColumn": "id",
+                "sortDirection": "desc"
+            }),
+        )
+        .expect("export should succeed");
+    }
+
+    #[tokio::test]
+    async fn insert_delete_and_export_wrappers_surface_expected_errors() {
+        let read_only_state = common::test_app_state();
+        register_connection(&read_only_state, "conn-ro", true);
+        let read_only_webview = build_app(read_only_state);
+
+        let insert_read_only = invoke_tauri_command::<Vec<(String, serde_json::Value)>>(
+            &read_only_webview,
+            "insert_table_row",
+            json!({
+                "connectionId": "conn-ro",
+                "database": "test_db",
+                "table": "users",
+                "values": { "name": "Blocked" },
+                "pkInfo": {
+                    "keyColumns": ["id"],
+                    "hasAutoIncrement": true,
+                    "isUniqueKeyFallback": false
+                }
+            }),
+        )
+        .expect_err("read-only insert should error");
+        assert!(insert_read_only.to_string().contains("read-only"));
+
+        let delete_read_only = invoke_tauri_command::<()>(
+            &read_only_webview,
+            "delete_table_row",
+            json!({
+                "connectionId": "conn-ro",
+                "database": "test_db",
+                "table": "users",
+                "pkColumns": ["id"],
+                "pkValues": { "id": 1 }
+            }),
+        )
+        .expect_err("read-only delete should error");
+        assert!(delete_read_only.to_string().contains("read-only"));
+
+        let state = common::test_app_state();
+        let webview = build_app(state);
+
+        let insert_missing = invoke_tauri_command::<Vec<(String, serde_json::Value)>>(
+            &webview,
+            "insert_table_row",
+            json!({
+                "connectionId": "missing",
+                "database": "test_db",
+                "table": "users",
+                "values": { "name": "Missing" },
+                "pkInfo": {
+                    "keyColumns": ["id"],
+                    "hasAutoIncrement": true,
+                    "isUniqueKeyFallback": false
+                }
+            }),
+        )
+        .expect_err("missing insert connection should error");
+        assert!(insert_missing.to_string().contains("not found"));
+
+        let delete_missing = invoke_tauri_command::<()>(
+            &webview,
+            "delete_table_row",
+            json!({
+                "connectionId": "missing",
+                "database": "test_db",
+                "table": "users",
+                "pkColumns": ["id"],
+                "pkValues": { "id": 1 }
+            }),
+        )
+        .expect_err("missing delete connection should error");
+        assert!(delete_missing.to_string().contains("not found"));
+
+        let export_missing = invoke_tauri_command::<()>(
+            &webview,
+            "export_table_data",
+            json!({
+                "connectionId": "missing",
+                "database": "test_db",
+                "table": "users",
+                "format": "json",
+                "filePath": "ignored.json",
+                "includeHeaders": false,
+                "tableNameForSql": "users",
+                "filterModel": null,
+                "sortColumn": null,
+                "sortDirection": null
+            }),
+        )
+        .expect_err("missing export connection should error");
+        assert!(export_missing.to_string().contains("not found"));
+    }
+}
+
 // ── translate_filter_model (pure function) ────────────────────────────────────
 
 #[test]
