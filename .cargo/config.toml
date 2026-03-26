@@ -59,6 +59,8 @@ mysql-client-test-integration = [
   "sort_integration",
   "--test",
   "session_select_database_integration",
+  "--test",
+  "table_data_integration",
 ]
 
 mysql-client-llvm-cov = [
@@ -117,6 +119,8 @@ mysql-client-llvm-cov = [
   "sort_integration",
   "--test",
   "session_select_database_integration",
+  "--test",
+  "table_data_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",

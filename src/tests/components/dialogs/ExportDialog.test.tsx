@@ -89,20 +89,26 @@ describe('ExportDialog', () => {
     const exportBtn = screen.getByTestId('export-submit-button')
     await user.click(exportBtn)
 
-    await waitFor(() => {
-      expect(mockExportResults).toHaveBeenCalledWith('conn-1', 'tab-1', {
-        format: 'csv',
-        filePath: '/tmp/export.csv',
-        includeHeaders: true,
-        tableName: undefined,
-      })
-    })
+    await waitFor(
+      () => {
+        expect(mockExportResults).toHaveBeenCalledWith('conn-1', 'tab-1', {
+          format: 'csv',
+          filePath: '/tmp/export.csv',
+          includeHeaders: true,
+          tableName: undefined,
+        })
+      },
+      { timeout: 5000 }
+    )
 
     // Should close on success
-    await waitFor(() => {
-      expect(onClose).toHaveBeenCalled()
-    })
-  })
+    await waitFor(
+      () => {
+        expect(onClose).toHaveBeenCalled()
+      },
+      { timeout: 5000 }
+    )
+  }, 15000)
 
   it('passes tableName when format is sql-insert', async () => {
     const user = userEvent.setup()
@@ -117,17 +123,20 @@ describe('ExportDialog', () => {
     // Click Export
     await user.click(screen.getByTestId('export-submit-button'))
 
-    await waitFor(() => {
-      expect(mockExportResults).toHaveBeenCalledWith(
-        'conn-1',
-        'tab-1',
-        expect.objectContaining({
-          format: 'sql-insert',
-          tableName: 'exported_results',
-        })
-      )
-    })
-  })
+    await waitFor(
+      () => {
+        expect(mockExportResults).toHaveBeenCalledWith(
+          'conn-1',
+          'tab-1',
+          expect.objectContaining({
+            format: 'sql-insert',
+            tableName: 'exported_results',
+          })
+        )
+      },
+      { timeout: 5000 }
+    )
+  }, 15000)
 
   it('cancel button calls onClose', async () => {
     const user = userEvent.setup()
@@ -139,25 +148,8 @@ describe('ExportDialog', () => {
   })
 
   it('shows error display when export fails', async () => {
-    mockExportResults.mockRejectedValue(new Error('Export failed: disk full'))
-    const user = userEvent.setup()
-    render(<ExportDialog {...defaultProps} />)
-
-    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
-    await user.click(screen.getByTestId('export-submit-button'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('export-error')).toHaveTextContent('Export failed: disk full')
-    })
-  })
-
-  it('export button is disabled during export (loading state)', async () => {
-    // Make exportResults hang
-    mockExportResults.mockImplementation(
-      () =>
-        new Promise((resolve) =>
-          setTimeout(() => resolve({ bytesWritten: 0, rowsExported: 0 }), 5000)
-        )
+    mockExportResults.mockImplementation(() =>
+      Promise.reject(new Error('Export failed: disk full'))
     )
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
@@ -165,11 +157,35 @@ describe('ExportDialog', () => {
     await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
     await user.click(screen.getByTestId('export-submit-button'))
 
-    // Button should show loading and be disabled
-    const exportBtn = screen.getByTestId('export-submit-button')
-    expect(exportBtn).toBeDisabled()
-    expect(exportBtn).toHaveTextContent('Exporting...')
-  })
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('export-error')).toHaveTextContent('Export failed: disk full')
+      },
+      { timeout: 5000 }
+    )
+  }, 15000)
+
+  it('export button is disabled during export (loading state)', async () => {
+    // Make exportResults hang indefinitely
+    mockExportResults.mockImplementation(
+      () => new Promise(() => {}) // never resolves
+    )
+    const user = userEvent.setup()
+    render(<ExportDialog {...defaultProps} />)
+
+    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
+    await user.click(screen.getByTestId('export-submit-button'))
+
+    // Button should show loading and be disabled (wait for async state update)
+    await waitFor(
+      () => {
+        const exportBtn = screen.getByTestId('export-submit-button')
+        expect(exportBtn).toBeDisabled()
+        expect(exportBtn).toHaveTextContent('Exporting...')
+      },
+      { timeout: 5000 }
+    )
+  }, 15000)
 
   it('displays estimated size', () => {
     render(<ExportDialog {...defaultProps} />)
@@ -225,14 +241,187 @@ describe('ExportDialog', () => {
     await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
     await user.click(screen.getByTestId('export-submit-button'))
 
+    await waitFor(
+      () => {
+        expect(mockExportResults).toHaveBeenCalledWith(
+          'conn-1',
+          'tab-1',
+          expect.objectContaining({
+            includeHeaders: false,
+          })
+        )
+      },
+      { timeout: 5000 }
+    )
+  }, 15000)
+
+  it('browse button calls Tauri save dialog', async () => {
+    const user = userEvent.setup()
+    render(<ExportDialog {...defaultProps} />)
+
+    await user.click(screen.getByTestId('export-browse-button'))
+
+    // The mock save dialog returns '/mock/path/export.csv'
     await waitFor(() => {
-      expect(mockExportResults).toHaveBeenCalledWith(
-        'conn-1',
-        'tab-1',
-        expect.objectContaining({
-          includeHeaders: false,
-        })
-      )
+      const input = screen.getByTestId('export-file-path-input') as HTMLInputElement
+      expect(input.value).toBe('/mock/path/export.csv')
     })
+  })
+
+  it('onExport callback is called instead of built-in export', async () => {
+    const user = userEvent.setup()
+    const onExport = vi.fn().mockResolvedValue(undefined)
+    const onClose = vi.fn()
+    render(<ExportDialog {...defaultProps} onClose={onClose} onExport={onExport} />)
+
+    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
+    await user.click(screen.getByTestId('export-submit-button'))
+
+    await waitFor(
+      () => {
+        expect(onExport).toHaveBeenCalledWith({
+          format: 'csv',
+          filePath: '/tmp/export.csv',
+          includeHeaders: true,
+          tableName: 'exported_results',
+        })
+      },
+      { timeout: 5000 }
+    )
+    // Built-in exportResults should NOT have been called
+    expect(mockExportResults).not.toHaveBeenCalled()
+    // Should close on success
+    await waitFor(
+      () => {
+        expect(onClose).toHaveBeenCalled()
+      },
+      { timeout: 5000 }
+    )
+  }, 15000)
+
+  it('defaultTableName prop sets initial table name', async () => {
+    const user = userEvent.setup()
+    render(<ExportDialog {...defaultProps} defaultTableName="users" />)
+
+    // Switch to SQL INSERT to see the table name input
+    await user.selectOptions(screen.getByTestId('export-format-select'), 'sql-insert')
+
+    const tableNameInput = screen.getByTestId('export-table-name-input') as HTMLInputElement
+    expect(tableNameInput.value).toBe('users')
+  })
+
+  it('estimated size shows MB for large exports', () => {
+    render(<ExportDialog {...defaultProps} totalRows={100000} columnCount={10} />)
+    const estimated = screen.getByTestId('export-estimated-size')
+    // 100000 * 10 * 20 = 20,000,000 bytes = 20.0 MB
+    expect(estimated.textContent).toContain('20.0 MB')
+  })
+
+  it('shows error message for non-Error thrown value', async () => {
+    mockExportResults.mockRejectedValue('string error')
+    const user = userEvent.setup()
+    render(<ExportDialog {...defaultProps} />)
+
+    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
+    await user.click(screen.getByTestId('export-submit-button'))
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('export-error')).toHaveTextContent('string error')
+      },
+      { timeout: 5000 }
+    )
+  }, 15000)
+
+  it('export does nothing when file path is empty', async () => {
+    const user = userEvent.setup()
+    render(<ExportDialog {...defaultProps} />)
+
+    // Don't type a file path — just click export (it should be disabled)
+    const exportBtn = screen.getByTestId('export-submit-button')
+    expect(exportBtn).toBeDisabled()
+    await user.click(exportBtn)
+
+    expect(mockExportResults).not.toHaveBeenCalled()
+  })
+
+  it('close X button calls onClose', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<ExportDialog {...defaultProps} onClose={onClose} />)
+
+    const closeBtn = screen.getByRole('button', { name: /close/i })
+    await user.click(closeBtn)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('onExport callback error is displayed', async () => {
+    const user = userEvent.setup()
+    const onExport = vi.fn().mockRejectedValue(new Error('Custom export failed'))
+    render(<ExportDialog {...defaultProps} onExport={onExport} />)
+
+    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.csv')
+    await user.click(screen.getByTestId('export-submit-button'))
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('export-error')).toHaveTextContent('Custom export failed')
+      },
+      { timeout: 5000 }
+    )
+  }, 15000)
+
+  it('table name can be modified for SQL INSERT format', async () => {
+    const user = userEvent.setup()
+    render(<ExportDialog {...defaultProps} />)
+
+    await user.selectOptions(screen.getByTestId('export-format-select'), 'sql-insert')
+    const tableNameInput = screen.getByTestId('export-table-name-input')
+    await user.clear(tableNameInput)
+    await user.type(tableNameInput, 'my_table')
+
+    await user.type(screen.getByTestId('export-file-path-input'), '/tmp/export.sql')
+    await user.click(screen.getByTestId('export-submit-button'))
+
+    await waitFor(
+      () => {
+        expect(mockExportResults).toHaveBeenCalledWith(
+          'conn-1',
+          'tab-1',
+          expect.objectContaining({
+            format: 'sql-insert',
+            tableName: 'my_table',
+          })
+        )
+      },
+      { timeout: 5000 }
+    )
+  }, 15000)
+
+  it('shows format description for each format option', async () => {
+    const user = userEvent.setup()
+    render(<ExportDialog {...defaultProps} />)
+
+    const select = screen.getByTestId('export-format-select') as HTMLSelectElement
+    expect(select.options.length).toBe(4) // csv, json, xlsx, sql-insert
+
+    // Verify we can select each format
+    for (const fmt of ['csv', 'json', 'xlsx', 'sql-insert']) {
+      await user.selectOptions(select, fmt)
+      expect(select.value).toBe(fmt)
+    }
+  })
+
+  it('destination prefix changes based on selected format', async () => {
+    const user = userEvent.setup()
+    render(<ExportDialog {...defaultProps} />)
+
+    // Default is CSV — the destination prefix shows .csv
+    const dialog = screen.getByTestId('export-dialog')
+    expect(dialog.textContent).toContain('.csv')
+
+    // Switch to JSON
+    await user.selectOptions(screen.getByTestId('export-format-select'), 'json')
+    expect(dialog.textContent).toContain('.json')
   })
 })

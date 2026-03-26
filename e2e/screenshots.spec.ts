@@ -248,6 +248,34 @@ async function openQueryEditorWithResults(page: Page) {
   await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
 }
 
+/** Open a table data tab for the `users` table and wait for data to load. */
+async function openTableDataTab(page: Page) {
+  await connectToSample(page)
+
+  // Programmatically open a table-data tab via the workspace store
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'users',
+      objectType: 'table',
+    })
+  })
+
+  // Wait for the table data tab to mount and data to load
+  await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+  // Wait for loading to finish — the toolbar shows row count when done
+  await expect(page.getByTestId('table-data-toolbar')).toContainText('Rows', {
+    timeout: APP_READY_MS,
+  })
+}
+
 /** Stable scroll for full-layout screenshots (parallel workers otherwise differ on tree scroll). */
 async function resetChromeScrollPositions(page: Page) {
   await page.getByTestId('object-browser-scroll').evaluate((el) => {
@@ -754,6 +782,56 @@ for (const theme of themes) {
       await expect(page).toHaveScreenshot(`export-dialog-${theme}.png`, {
         animations: 'disabled',
       })
+    })
+
+    // --- Phase 6 Table Data Browser screenshots ---
+
+    test('TableDataGrid — grid view with data', async ({ page }) => {
+      await openTableDataTab(page)
+      // Wait for the AG Grid to be rendered with data
+      await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
+      // Wait for at least one data row to render
+      await expect(page.getByTestId('table-data-grid').locator('.ag-row').first()).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
+        `table-data-grid-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('TableDataFormView — form view with record', async ({ page }) => {
+      await openTableDataTab(page)
+      // Switch to form view
+      await page.getByTestId('btn-form-view').click()
+      await expect(page.getByTestId('table-data-form-view')).toBeVisible({ timeout: APP_READY_MS })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
+        `table-data-form-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('full app layout — table data grid', async ({ page }) => {
+      await openTableDataTab(page)
+      await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('table-data-grid').locator('.ag-row').first()).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('app-layout')).toHaveScreenshot(
+        `app-full-layout-table-data-grid-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('TableDataToolbar — toolbar controls', async ({ page }) => {
+      await openTableDataTab(page)
+      await expect(page.getByTestId('table-data-toolbar')).toHaveScreenshot(
+        `table-data-toolbar-${theme}.png`,
+        { animations: 'disabled' }
+      )
     })
   })
 }

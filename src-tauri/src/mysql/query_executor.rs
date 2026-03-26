@@ -487,37 +487,7 @@ pub fn is_read_only_allowed(sql: &str) -> bool {
 // ── Value serialization ────────────────────────────────────────────────────────
 
 #[cfg(not(coverage))]
-fn base64_encode(data: &[u8]) -> String {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::new();
-    let mut i = 0;
-    while i + 3 <= data.len() {
-        let b0 = data[i] as usize;
-        let b1 = data[i + 1] as usize;
-        let b2 = data[i + 2] as usize;
-        result.push(CHARS[b0 >> 2] as char);
-        result.push(CHARS[((b0 & 3) << 4) | (b1 >> 4)] as char);
-        result.push(CHARS[((b1 & 0xf) << 2) | (b2 >> 6)] as char);
-        result.push(CHARS[b2 & 0x3f] as char);
-        i += 3;
-    }
-    let rem = data.len() - i;
-    if rem == 1 {
-        let b0 = data[i] as usize;
-        result.push(CHARS[b0 >> 2] as char);
-        result.push(CHARS[(b0 & 3) << 4] as char);
-        result.push('=');
-        result.push('=');
-    } else if rem == 2 {
-        let b0 = data[i] as usize;
-        let b1 = data[i + 1] as usize;
-        result.push(CHARS[b0 >> 2] as char);
-        result.push(CHARS[((b0 & 3) << 4) | (b1 >> 4)] as char);
-        result.push(CHARS[(b1 & 0xf) << 2] as char);
-        result.push('=');
-    }
-    result
-}
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 
 #[cfg(not(coverage))]
 fn serialize_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::Value {
@@ -624,7 +594,7 @@ fn serialize_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::Value {
     if type_name.contains("BLOB") || type_name == "BINARY" || type_name == "VARBINARY" {
         if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(i) {
             return v
-                .map(|b| serde_json::Value::String(base64_encode(&b)))
+                .map(|b| serde_json::Value::String(BASE64_STANDARD.encode(&b)))
                 .unwrap_or(serde_json::Value::Null);
         }
     }

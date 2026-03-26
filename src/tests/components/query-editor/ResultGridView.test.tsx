@@ -285,4 +285,134 @@ describe('ResultGridView', () => {
     // Component should render without errors with these props
     expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
   })
+
+  it('handleSortChanged calls onSortChanged with column name and direction', () => {
+    const onSortChanged = vi.fn()
+    render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} />)
+    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
+    const props = mockCalls[0][0] as Record<string, unknown>
+    const handleSortChanged = props.onSortChanged as (event: {
+      api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
+    }) => void
+
+    // Simulate sort on col_1 (name) ascending
+    handleSortChanged({
+      api: {
+        getColumnState: () => [
+          { colId: 'col_0', sort: null },
+          { colId: 'col_1', sort: 'asc' },
+          { colId: 'col_2', sort: null },
+        ],
+      },
+    })
+
+    expect(onSortChanged).toHaveBeenCalledWith('name', 'asc')
+  })
+
+  it('handleSortChanged calls onSortChanged with null when sort is cleared', () => {
+    const onSortChanged = vi.fn()
+    render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} sortColumn="name" />)
+    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
+    const props = mockCalls[0][0] as Record<string, unknown>
+    const handleSortChanged = props.onSortChanged as (event: {
+      api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
+    }) => void
+
+    // Simulate sort cleared — no column has sort
+    handleSortChanged({
+      api: {
+        getColumnState: () => [
+          { colId: 'col_0', sort: null },
+          { colId: 'col_1', sort: null },
+          { colId: 'col_2', sort: null },
+        ],
+      },
+    })
+
+    expect(onSortChanged).toHaveBeenCalledWith('name', null)
+  })
+
+  it('handleSortChanged does nothing when sort cleared and no previous sortColumn', () => {
+    const onSortChanged = vi.fn()
+    render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} sortColumn={null} />)
+    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
+    const props = mockCalls[0][0] as Record<string, unknown>
+    const handleSortChanged = props.onSortChanged as (event: {
+      api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
+    }) => void
+
+    handleSortChanged({
+      api: {
+        getColumnState: () => [
+          { colId: 'col_0', sort: null },
+          { colId: 'col_1', sort: null },
+        ],
+      },
+    })
+
+    expect(onSortChanged).not.toHaveBeenCalled()
+  })
+
+  it('getRowClass returns selected class for matching row index', () => {
+    render(
+      <ResultGridView {...defaultProps} selectedRowIndex={1} currentPage={1} pageSize={1000} />
+    )
+    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
+    const props = mockCalls[0][0] as Record<string, unknown>
+    const getRowClass = props.getRowClass as (params: {
+      rowIndex: number | undefined
+    }) => string | undefined
+
+    // Local row 1 should be selected (absolute 1, page 1, size 1000 → local = 1)
+    expect(getRowClass({ rowIndex: 1 })).toBe('ag-row-precision-selected')
+    // Other rows should not be selected
+    expect(getRowClass({ rowIndex: 0 })).toBeUndefined()
+    expect(getRowClass({ rowIndex: 2 })).toBeUndefined()
+  })
+
+  it('getRowClass handles page-offset conversion for selection', () => {
+    render(<ResultGridView {...defaultProps} selectedRowIndex={15} currentPage={2} pageSize={10} />)
+    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
+    const props = mockCalls[0][0] as Record<string, unknown>
+    const getRowClass = props.getRowClass as (params: {
+      rowIndex: number | undefined
+    }) => string | undefined
+
+    // Absolute index 15 on page 2 (size 10) → local = 15 - (2-1)*10 = 5
+    expect(getRowClass({ rowIndex: 5 })).toBe('ag-row-precision-selected')
+    expect(getRowClass({ rowIndex: 4 })).toBeUndefined()
+  })
+
+  it('getRowClass returns undefined when no row is selected', () => {
+    render(<ResultGridView {...defaultProps} selectedRowIndex={null} />)
+    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
+    const props = mockCalls[0][0] as Record<string, unknown>
+    const getRowClass = props.getRowClass as (params: {
+      rowIndex: number | undefined
+    }) => string | undefined
+
+    expect(getRowClass({ rowIndex: 0 })).toBeUndefined()
+    expect(getRowClass({ rowIndex: undefined })).toBeUndefined()
+  })
+
+  it('handleSortChanged handles desc sort direction', () => {
+    const onSortChanged = vi.fn()
+    render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} />)
+    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
+    const props = mockCalls[0][0] as Record<string, unknown>
+    const handleSortChanged = props.onSortChanged as (event: {
+      api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
+    }) => void
+
+    handleSortChanged({
+      api: {
+        getColumnState: () => [
+          { colId: 'col_0', sort: 'desc' },
+          { colId: 'col_1', sort: null },
+        ],
+      },
+    })
+
+    expect(onSortChanged).toHaveBeenCalledWith('id', 'desc')
+  })
 })

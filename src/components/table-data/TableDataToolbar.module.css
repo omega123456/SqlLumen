@@ -1,0 +1,304 @@
+/* TableDataToolbar — toolbar for table data browser/editor */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--surface-container-high) 50%, transparent);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.05);
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+/* Sections */
+.leftSection {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rightSection {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Status text */
+.statusArea {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+}
+
+.successStatus {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--result-status-success-fg);
+  white-space: nowrap;
+}
+
+.executionTime {
+  font-size: 10px;
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+  text-transform: none;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.loadingStatus {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+}
+
+.miniSpinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(var(--primary-rgb), 0.2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: toolbarSpin 0.7s linear infinite;
+}
+
+@keyframes toolbarSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Badges */
+.readonlyBadge {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  background: var(--td-readonly-badge-bg);
+  color: var(--td-readonly-badge-text);
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.nopkBadge {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  background: var(--td-warning-bg);
+  color: var(--td-warning-text);
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Divider */
+.divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(var(--outline-variant-rgb), 0.12);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* Toolbar buttons */
+.toolbarButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.toolbarButton:hover:not(:disabled) {
+  color: var(--primary);
+  border-color: rgba(var(--primary-rgb), 0.35);
+  background: rgba(var(--primary-rgb), 0.06);
+}
+
+.toolbarButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Icon-only toolbar button */
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.iconButton:hover:not(:disabled) {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.06);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* View mode group */
+.viewModeGroup {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  border-left: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+  padding-left: 8px;
+  margin-left: 4px;
+}
+
+.viewModeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+  position: relative;
+}
+
+.viewModeButton:hover {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.06);
+}
+
+.viewModeActive {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.1);
+}
+
+.viewModeActive::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  background: var(--primary);
+  border-radius: 1px;
+}
+
+/* Pagination group */
+.paginationGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  border-left: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+  padding-left: 8px;
+}
+
+.pageSizeSelect {
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  outline: none;
+}
+
+.pageSizeSelect:focus {
+  border-color: var(--primary);
+}
+
+.pageSizeSelect option {
+  background: var(--surface-container);
+  color: var(--on-surface);
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.pageButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s ease;
+}
+
+.pageButton:hover:not(:disabled) {
+  color: var(--primary);
+}
+
+.pageButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pageText {
+  font-size: 11px;
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+  user-select: none;
+}

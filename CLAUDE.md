@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-A cross-platform desktop MySQL/MariaDB client built with **Tauri v2** (Rust backend) + **React 19 / TypeScript** (frontend). The Rust backend handles all MySQL connectivity, query execution, and local SQLite persistence. The frontend handles UI. They communicate exclusively via Tauri's IPC (`invoke`).
+A cross-platform desktop MySQL/MariaDB client built with **Tauri v2** (Rust backend) + **React 19 / TypeScript** (frontend). The Rust backend handles all MySQL connectivity, query execution, result paging/sorting, export, table row CRUD, and local SQLite persistence. The frontend handles UI. They communicate exclusively via Tauri's IPC (`invoke`).
 
-Target: Mac + Windows. In-progress — Phase 1 (foundation) complete, Phase 2 (MySQL connectivity) is next.
+**Target:** Mac + Windows — in active development.
+
+**Currently in the codebase:** local app data (SQLite + migrations), saved connections and groups, live MySQL sessions and pooling, object browser, SQL query editor (Monaco with SQL completion), result panel (AG Grid grid view, form view, text view) with server-side sort/paging and export (CSV / JSON / XLSX / SQL INSERT), schema info tab, and a **table data** workspace (paginated AG Grid + form editing, filters/sort via backend, unsaved-changes flow). Further polish and features continue by phase.
 
 ## Commands
 
@@ -20,17 +22,11 @@ pnpm build              # TypeScript check + Vite production build
 pnpm tauri build        # Full native app bundle (DMG / MSI)
 
 # Testing
-pnpm test               # Vitest (single run)
-pnpm test:watch         # Vitest watch mode
 pnpm test:coverage      # Vitest with v8 coverage (90% threshold on lines/functions/statements)
-pnpm test:rust          # Rust unit tests (from repo root)
 pnpm test:rust:coverage # Rust tests via cargo-llvm-cov (needs cargo-llvm-cov + llvm-tools-preview)
 pnpm test:all           # test:coverage, test:rust:coverage, test:e2e — run after substantive changes (includes screenshot baselines — see below)
 pnpm test:e2e           # All Playwright specs under e2e/ (functional + screenshots.spec.ts)
 pnpm test:screenshots   # Visual regression only — e2e/screenshots.spec.ts (faster than full e2e)
-
-# Rust tests (alternative)
-cd src-tauri && cargo test
 
 # Code quality
 pnpm lint               # ESLint on src/
@@ -53,34 +49,61 @@ Equivalent manual steps: `pnpm test:coverage`, then `pnpm test:rust:coverage`, t
 
 ### IPC Boundary
 
-The frontend **never** touches SQLite or MySQL directly. All persistence and database operations go through `src/lib/tauri-commands.ts`, which wraps `invoke()` calls to named Rust commands. When adding a new Tauri command:
+The frontend **never** touches SQLite or MySQL directly. All persistence and database work goes through typed `invoke()` wrappers under `src/lib/`. When adding a new Tauri command:
 
-1. Implement a `*_impl(state: &AppState, ...)` function in `src-tauri/src/commands/` (testable without Tauri runtime)
-2. Write a thin `#[tauri::command]` wrapper that calls the `*_impl`
-3. Register it in `tauri::generate_handler![...]` in `src-tauri/src/lib.rs`
-4. Add a typed wrapper in `src/lib/tauri-commands.ts`
+1. Implement a `*_impl(state: &AppState, ...)` function in `src-tauri/src/commands/` (or the relevant `src-tauri/src/mysql/` / `src-tauri/src/db/` helper), testable without the Tauri runtime where practical.
+2. Write a thin `#[tauri::command]` wrapper that calls the `*_impl`.
+3. Register it in `tauri::generate_handler![...]` in `src-tauri/src/lib.rs`.
+4. Add a typed wrapper in the appropriate `src/lib/*-commands.ts` file (`connection-commands.ts`, `schema-commands.ts`, `query-commands.ts`, `export-commands.ts`, `table-data-commands.ts`, etc.). Use `tauri-commands.ts` only for settings/theme helpers.
+
+Playwright runs the web build with `VITE_PLAYWRIGHT=true`; extend **`src/lib/playwright-ipc-mock.ts`** when new UI depends on IPC so E2E stays deterministic.
 
 ### Rust Backend Layout
 
 ```
 src-tauri/src/
   lib.rs              # App entry point, DB init, command registration
-  state.rs            # AppState (Mutex<Connection>)
+  main.rs
+  state.rs            # AppState (shared resources for commands)
+  credentials.rs
+  logging/
   commands/
     mod.rs
     settings.rs       # get_setting / set_setting / get_all_settings
+    connections.rs    # Saved connections (SQLite)
+    connection_groups.rs
+    session.rs        # open/close MySQL session, status
+    mysql.rs          # MySQL-oriented command entrypoints
+    schema.rs         # Schema listing / DDL-adjacent commands
+    query.rs          # Execute query, result paging, sort
+    export.rs         # Export result sets
+    table_data.rs     # Table browse / row update insert delete / table export
+  mysql/
+    mod.rs
+    pool.rs           # Connection pool per session
+    registry.rs
+    health.rs
+    query_executor.rs # Query execution, sort, paging
+    query_log.rs
+    schema_queries.rs
+    table_data.rs     # Table data SQL and row operations
+  export/
+    mod.rs            # csv_writer, json_writer, xlsx_writer, sql_writer
   db/
     mod.rs
-    connection.rs     # open_database (WAL mode, foreign keys on)
-    migrations.rs     # Migration runner — reads SQL via include_str!
-    settings.rs       # SQL helpers for the settings table
+    connection.rs     # open_database (WAL, foreign keys)
+    connections.rs    # CRUD for saved connections
+    connection_groups.rs
+    migrations.rs
+    settings.rs
   migrations/
-    001_initial.sql   # Tables: settings, connections, connection_groups
+    001_initial.sql   # settings, connections, connection_groups, …
 ```
 
 ### Adding a Migration
 
 Migrations are **compiled into the binary** via `include_str!`. To add one:
+
 1. Create `src-tauri/migrations/NNN_description.sql`
 2. Add an entry to the `MIGRATIONS` const array in `src-tauri/src/db/migrations.rs`
 
@@ -90,21 +113,44 @@ The migration runner tracks applied migrations in a `_migrations` table and is i
 
 ```
 src/
-  App.tsx             # Theme initialization + AppLayout
-  main.tsx            # React entry point
+  App.tsx
+  main.tsx            # React entry; Monaco worker / Playwright hooks as needed
   lib/
-    tauri-commands.ts # All invoke() wrappers (typed)
+    tauri-commands.ts       # Settings + theme persistence
+    connection-commands.ts  # Saved connections, groups, open/close session
+    schema-commands.ts      # Databases, objects, schema info, DDL helpers
+    query-commands.ts       # executeQuery, result paging, sort, select DB, …
+    export-commands.ts
+    table-data-commands.ts  # fetch/update/insert/delete row, table export
+    playwright-ipc-mock.ts
+    result-cell-utils.ts    # Shared NULL/formatting for grid/form/text
+    monaco-worker-setup.ts
   stores/
-    theme-store.ts    # Zustand store for theme (light/dark/system)
-  hooks/
-    use-system-theme.ts
-  components/layout/  # AppLayout, ConnectionTabBar, Sidebar, WorkspaceArea, StatusBar
+    theme-store.ts
+    connection-store.ts
+    workspace-store.ts      # Which workspace tab is active (query, table data, …)
+    query-store.ts
+    table-data-store.ts
+    schema-store.ts
+    toast-store.ts
+  components/
+    layout/           # AppLayout, Sidebar, WorkspaceArea, ConnectionTabBar, StatusBar
+    workspace/        # WorkspaceTabs
+    connection-dialog/
+    object-browser/
+    query-editor/     # Monaco, ResultPanel, ResultGridView, ResultFormView, ResultTextView, …
+    table-data/       # TableDataTab, TableDataGrid, TableDataFormView, TableDataToolbar, UnsavedChangesDialog
+    schema-info/
+    dialogs/          # ExportDialog, ConfirmDialog, create/alter DB, …
+    common/
   styles/
-    tokens.css        # CSS custom properties (design tokens)
-    global.css        # Base styles
-    fonts.css         # JetBrains Mono
+    tokens.css
+    global.css
+    fonts.css
     reset.css
-  tests/              # Mirrors src/ structure; setup in tests/setup.ts
+    ag-grid-precision.css   # AG Grid “Precision Studio” theme overrides (with ag-theme-alpine)
+  types/
+  tests/              # Mirrors src/; setup in tests/setup.ts
 ```
 
 ### Theming
@@ -116,11 +162,12 @@ Theme is applied by setting `data-theme="light|dark"` on `document.documentEleme
 - Component styles use CSS Modules (`*.module.css`)
 - Design tokens are CSS custom properties in `src/styles/tokens.css`, scoped under `[data-theme="light"]` and `[data-theme="dark"]`
 - Font: JetBrains Mono (`@fontsource/jetbrains-mono`)
+- **AG Grid:** use `theme="legacy"` on `AgGridReact`, import base AG Grid CSS plus `ag-theme-alpine` (sort icons), then layer `ag-grid-precision.css` for token-aligned styling. Query results and table data both use this pattern; client-side reordering is disabled where the backend owns sort order.
 
 ### State Management
 
-- **Global**: Zustand stores (`src/stores/`)
-- **Layout**: `react-resizable-panels` v4 — use `Group`/`Panel`/`Separator` components; sizes as strings (`"20%"`); panel refs via `usePanelRef()`
+- **Global:** Zustand stores (`src/stores/`)
+- **Layout:** `react-resizable-panels` v4 — use `Group`/`Panel`/`Separator` components; sizes as strings (`"20%"`); panel refs via `usePanelRef()`
 
 ## Testing Conventions
 
@@ -168,3 +215,4 @@ The app has **no separate routes**; “screens” are distinct UI states (welcom
 - **`csp: null`** in `tauri.conf.json` is intentional for now — will be tightened in a later phase.
 - **Tauri v2 permissions**: Capability files live in `src-tauri/capabilities/`. Tauri v2 requires explicit permission grants for any plugin (fs, dialog, etc.).
 - **Package manager**: `pnpm` only. Do not use npm or yarn.
+- **Monaco editor**: SQL worker wiring lives in `main.tsx` / `src/lib/monaco-worker-setup.ts`; keep Playwright and dev builds consistent when upgrading Monaco.

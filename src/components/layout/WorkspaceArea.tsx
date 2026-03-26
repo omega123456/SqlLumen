@@ -1,7 +1,7 @@
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { WorkspaceTabs } from '../workspace/WorkspaceTabs'
-import { TableDataPlaceholder } from '../workspace/TableDataPlaceholder'
+import { TableDataTab } from '../table-data/TableDataTab'
 import { SchemaInfoTab } from '../schema-info/SchemaInfoTab'
 import { QueryEditorTab } from '../query-editor/QueryEditorTab'
 import type {
@@ -60,12 +60,7 @@ export function WorkspaceArea() {
             </div>
           )}
           {/* Active tab content */}
-          {activeTab?.type === 'table-data' && (
-            <TableDataPlaceholder
-              databaseName={activeTab.databaseName}
-              tableName={activeTab.objectName}
-            />
-          )}
+          {activeTab?.type === 'table-data' && <TableDataTab key={activeTab.id} tab={activeTab} />}
           {activeTab?.type === 'schema-info' && (
             <SchemaInfoTab key={activeTab.id} tab={activeTab as SchemaInfoTabType} />
           )}

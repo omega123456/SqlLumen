@@ -1,0 +1,17 @@
+/* TableDataGrid — AG Grid wrapper with editing */
+
+.container {
+  flex: 1;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Cell editor wrapper */
+.cellEditorWrapper {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  gap: 2px;
+}

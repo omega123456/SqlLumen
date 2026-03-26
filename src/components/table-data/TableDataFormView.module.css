@@ -1,0 +1,371 @@
+/* ============================================================
+   TableDataFormView — editable single-record form
+   ============================================================ */
+
+.formView {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Record navigation header + action buttons */
+.recordNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+}
+
+.recordTitle {
+  font-family: var(--font-headline);
+  font-size: var(--type-size-xl);
+  font-weight: 800;
+  color: var(--on-surface);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.navGroup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.navButtonGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-container);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--outline-variant);
+}
+
+.navButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface-bright);
+  color: var(--on-surface);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.navButton:hover:not(:disabled) {
+  color: var(--primary);
+  background: var(--surface-container-high);
+}
+
+.navButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Form action buttons (Save / Discard) */
+.formButtons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.discardButton {
+  padding: 6px 16px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.discardButton:hover:not(:disabled) {
+  color: var(--on-surface);
+  border-color: rgba(var(--outline-variant-rgb), 0.4);
+}
+
+.discardButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.saveButton {
+  padding: 6px 16px;
+  background: var(--primary);
+  color: var(--on-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(var(--primary-rgb), 0.2);
+  transition:
+    filter 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.saveButton:hover:not(:disabled) {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 18px rgba(var(--primary-rgb), 0.3);
+}
+
+.saveButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+  filter: none;
+}
+
+/* Scrollable form content */
+.formContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.formCard {
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  border-radius: 8px;
+  padding: 24px;
+}
+
+/* Individual field group */
+.fieldGroup {
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+}
+
+.fieldGroup:last-child {
+  border-bottom: none;
+}
+
+/* Field label row (label + suffix + NULL toggle) */
+.fieldLabelRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.fieldLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-family: var(--font-headline);
+}
+
+.fieldLabelSuffix {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(var(--on-surface-rgb), 0.35);
+  text-transform: none;
+  letter-spacing: 0.05em;
+}
+
+.fieldNullBtn {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.fieldNullBtn:hover {
+  color: var(--primary);
+  border-color: rgba(var(--primary-rgb), 0.4);
+}
+
+.fieldNullBtnActive {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+/* Field input row (input + copy button) */
+.fieldInputRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fieldInput {
+  flex: 1;
+  background: var(--background);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
+  color: var(--on-surface);
+  font-size: var(--type-size-md);
+  font-family: var(--font-mono);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  width: 100%;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.fieldInput:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+/* Modified field glow */
+.fieldInputModified {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.25);
+}
+
+/* NULL state input */
+.fieldInputNull {
+  font-style: italic;
+  color: var(--td-null-text-color);
+}
+
+/* Read-only display div (BLOB fields) */
+.fieldInputReadonly {
+  flex: 1;
+  background: var(--background);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-md);
+  font-family: var(--font-mono);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* BLOB placeholder */
+.fieldBlobReadonly {
+  flex: 1;
+  background: var(--background);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-md);
+  font-family: var(--font-mono);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  opacity: 0.5;
+  font-style: italic;
+}
+
+/* Per-field copy button */
+.fieldCopyBtn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.fieldCopyBtn:hover {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+/* "Unsaved change detected" note */
+.fieldModifiedNote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.fieldModifiedNoteIcon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Empty state */
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-sm);
+}
+
+/* ---- Light theme overrides ---- */
+
+[data-theme='light'] .formCard {
+  background: white;
+  border-color: #e2e8f0;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme='light'] .navButtonGroup {
+  background: #e2e8f0;
+  border-color: #e2e8f0;
+}
+
+[data-theme='light'] .navButton {
+  background: white;
+  color: #334155;
+}
+
+[data-theme='light'] .navButton:hover:not(:disabled) {
+  color: var(--primary);
+  background: #f1f5f9;
+}
+
+[data-theme='light'] .fieldLabel {
+  color: #64748b;
+}
+
+[data-theme='light'] .fieldInput {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+[data-theme='light'] .fieldInput:focus {
+  border-color: var(--primary);
+}

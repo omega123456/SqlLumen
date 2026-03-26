@@ -14,6 +14,15 @@ interface ExportDialogProps {
   /** Total row count in the result set. */
   totalRows: number
   onClose: () => void
+  /** When provided, called instead of the built-in exportResults() for custom export logic. */
+  onExport?: (options: {
+    format: string
+    filePath: string
+    includeHeaders: boolean
+    tableName: string
+  }) => Promise<void>
+  /** When provided, used as the initial table name instead of 'exported_results'. */
+  defaultTableName?: string
 }
 
 const EXPORT_FORMAT_CONFIG: Record<
@@ -65,11 +74,13 @@ export default function ExportDialog({
   columnCount,
   totalRows,
   onClose,
+  onExport,
+  defaultTableName,
 }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>('csv')
   const [filePath, setFilePath] = useState('')
   const [includeHeaders, setIncludeHeaders] = useState(true)
-  const [tableName, setTableName] = useState('exported_results')
+  const [tableName, setTableName] = useState(defaultTableName ?? 'exported_results')
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -100,19 +111,28 @@ export default function ExportDialog({
     setIsExporting(true)
     setError(null)
     try {
-      await exportResults(connectionId, tabId, {
-        format,
-        filePath,
-        includeHeaders,
-        tableName: format === 'sql-insert' ? tableName : undefined,
-      })
+      if (onExport) {
+        await onExport({
+          format,
+          filePath,
+          includeHeaders,
+          tableName,
+        })
+      } else {
+        await exportResults(connectionId, tabId, {
+          format,
+          filePath,
+          includeHeaders,
+          tableName: format === 'sql-insert' ? tableName : undefined,
+        })
+      }
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setIsExporting(false)
     }
-  }, [connectionId, tabId, format, filePath, includeHeaders, tableName, onClose])
+  }, [connectionId, tabId, format, filePath, includeHeaders, tableName, onClose, onExport])
 
   return (
     <DialogShell

@@ -180,3 +180,113 @@
 [data-theme='light'] .ag-theme-precision .ag-header {
   border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
 }
+
+/* ==========================================================================
+   Table Data Editing Styles — applied via custom CSS classes
+   ========================================================================== */
+
+/* Editing row — left accent border + tinted background */
+.ag-theme-precision .ag-row.td-editing-row {
+  background-color: var(--td-editing-row-bg) !important;
+  border-left: 2px solid var(--td-editing-row-border) !important;
+}
+
+/* Modified cell indicator — corner triangle via ::before pseudo-element */
+.ag-theme-precision .ag-cell.td-modified-cell {
+  position: relative;
+}
+
+.ag-theme-precision .ag-cell.td-modified-cell::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  border-top: 6px solid var(--td-modified-cell-indicator);
+  border-right: 6px solid transparent;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Editable cell cursor */
+.ag-theme-precision .ag-cell.td-editable-cell {
+  cursor: text;
+}
+
+/* NULL value display in cells */
+.ag-theme-precision .ag-cell .td-null-value {
+  font-style: italic;
+  color: var(--td-null-text-color);
+}
+
+/* BLOB placeholder display */
+.ag-theme-precision .ag-cell .td-blob-value {
+  font-style: italic;
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+}
+
+/* New row styling */
+.ag-theme-precision .ag-row.td-new-row {
+  background-color: var(--td-editing-row-bg) !important;
+  border-left: 2px solid var(--td-editing-row-border) !important;
+}
+
+/* Edit mode input styling (cell editor) */
+.ag-theme-precision .td-cell-editor-input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  outline: none;
+  padding: 0 4px;
+}
+
+.ag-theme-precision .td-cell-editor-input:focus {
+  background: rgba(var(--primary-rgb), 0.04);
+  outline: 1px solid rgba(var(--primary-rgb), 0.3);
+  outline-offset: -1px;
+}
+
+.ag-theme-precision .td-cell-editor-input:disabled {
+  color: var(--td-null-text-color);
+  font-style: italic;
+}
+
+/* NULL toggle button inside cell editor */
+.ag-theme-precision .td-null-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  margin-left: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.ag-theme-precision .td-null-toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.06);
+}
+
+.ag-theme-precision .td-null-toggle.td-null-active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.1);
+}

@@ -1,0 +1,29 @@
+[[permission]]
+identifier = "allow-fetch-table-data"
+description = "Enables the fetch_table_data command without any pre-configured scope."
+commands.allow = ["fetch_table_data"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-update-table-row"
+description = "Enables the update_table_row command without any pre-configured scope."
+commands.allow = ["update_table_row"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-insert-table-row"
+description = "Enables the insert_table_row command without any pre-configured scope."
+commands.allow = ["insert_table_row"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-delete-table-row"
+description = "Enables the delete_table_row command without any pre-configured scope."
+commands.allow = ["delete_table_row"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-export-table-data"
+description = "Enables the export_table_data command without any pre-configured scope."
+commands.allow = ["export_table_data"]
+commands.deny = []

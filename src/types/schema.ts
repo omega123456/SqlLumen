@@ -57,6 +57,8 @@ interface WorkspaceTabBase {
   label: string
   connectionId: string
   subTabId?: 'columns' | 'indexes' | 'fks' | 'ddl'
+  /** True when a close was requested but deferred pending unsaved-edit resolution. */
+  pendingClose?: boolean
 }
 
 /** A schema-info tab (shows DDL, columns, indexes, etc.). */
@@ -233,4 +235,111 @@ export interface ExportOptions {
   filePath: string
   includeHeaders: boolean
   tableName?: string
+}
+
+// ---------------------------------------------------------------------------
+// Table Data Browser types (Phase 6)
+// ---------------------------------------------------------------------------
+
+/** Extended column metadata for table data. */
+export interface TableDataColumnMeta {
+  name: string
+  dataType: string
+  isNullable: boolean
+  isPrimaryKey: boolean
+  isUniqueKey: boolean
+  hasDefault: boolean
+  columnDefault: string | null
+  isBinary: boolean
+  isAutoIncrement: boolean
+}
+
+/** Primary/unique key info from backend. */
+export interface PrimaryKeyInfo {
+  keyColumns: string[]
+  hasAutoIncrement: boolean
+  isUniqueKeyFallback: boolean
+}
+
+/** Response from fetch_table_data. */
+export interface TableDataResponse {
+  columns: TableDataColumnMeta[]
+  rows: unknown[][]
+  totalRows: number
+  currentPage: number
+  totalPages: number
+  pageSize: number
+  primaryKey: PrimaryKeyInfo | null
+  executionTimeMs: number
+}
+
+/** AG Grid filter model entry (per column). */
+export interface AgGridFilterEntry {
+  filterType: string
+  type: string
+  filter?: string | number
+  filterTo?: string | number
+}
+
+/** Full AG Grid filter model (keyed by column name). */
+export type AgGridFilterModel = Record<string, AgGridFilterEntry>
+
+/** Tracks the currently-editing row. */
+export interface RowEditState {
+  /** PK column values that uniquely identify the row (or temp ID for new rows). */
+  rowKey: Record<string, unknown>
+  /** Original values before editing started (used for UPDATE WHERE clause). */
+  originalValues: Record<string, unknown>
+  /** Current (possibly modified) values. */
+  currentValues: Record<string, unknown>
+  /** Set of column names that have been modified. */
+  modifiedColumns: Set<string>
+  /** True if this is an unsaved new row (INSERT pending). */
+  isNewRow: boolean
+  /** Temporary client-side ID for new rows (cleared after save). */
+  tempId?: string
+}
+
+/** Sort info for table data. */
+export interface TableDataSortInfo {
+  column: string
+  direction: 'asc' | 'desc'
+}
+
+/** Per-tab table data state. */
+export interface TableDataTabState {
+  // Data
+  columns: TableDataColumnMeta[]
+  rows: unknown[][]
+  totalRows: number
+  currentPage: number
+  totalPages: number
+  pageSize: number
+  primaryKey: PrimaryKeyInfo | null
+  executionTimeMs: number
+
+  // Table context
+  connectionId: string
+  database: string
+  table: string
+
+  // Edit state
+  editState: RowEditState | null
+
+  // View state
+  viewMode: 'grid' | 'form'
+  selectedRowKey: Record<string, unknown> | null
+
+  // Filter/sort
+  filterModel: AgGridFilterModel
+  sort: TableDataSortInfo | null
+
+  // UI state
+  isLoading: boolean
+  error: string | null
+  saveError: string | null
+  isExportDialogOpen: boolean
+
+  // Unsaved changes dialog state
+  pendingNavigationAction: (() => void) | null
 }

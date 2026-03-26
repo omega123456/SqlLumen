@@ -9,6 +9,7 @@ import {
   _resetQueryTabCounter,
 } from '../../stores/workspace-store'
 import { useQueryStore } from '../../stores/query-store'
+import { useTableDataStore } from '../../stores/table-data-store'
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
 import { mockIPC } from '@tauri-apps/api/mocks'
 
@@ -39,6 +40,51 @@ vi.mock('../../lib/schema-commands', () => ({
     },
   }),
 }))
+
+// Mock table-data-commands to prevent real IPC calls
+vi.mock('../../lib/table-data-commands', () => ({
+  fetchTableData: vi.fn().mockResolvedValue({
+    columns: [
+      {
+        name: 'id',
+        dataType: 'bigint',
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: true,
+      },
+    ],
+    rows: [[1]],
+    totalRows: 1,
+    currentPage: 1,
+    totalPages: 1,
+    pageSize: 1000,
+    primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+    executionTimeMs: 12,
+  }),
+  updateTableRow: vi.fn().mockResolvedValue(undefined),
+  insertTableRow: vi.fn().mockResolvedValue([]),
+  deleteTableRow: vi.fn().mockResolvedValue(undefined),
+  exportTableData: vi.fn().mockResolvedValue(undefined),
+}))
+
+// Mock AG Grid to avoid jsdom issues
+vi.mock('ag-grid-community', () => ({
+  AllCommunityModule: {},
+  ModuleRegistry: { registerModules: vi.fn() },
+}))
+
+vi.mock('ag-grid-react', async () => {
+  const React = await import('react')
+  return {
+    AgGridReact: vi.fn(() => {
+      return React.createElement('div', { 'data-testid': 'ag-grid-inner' }, 'Grid Mock')
+    }),
+  }
+})
 
 // Mock tauri dialog for EditorToolbar (used by QueryEditorTab)
 vi.mock('@tauri-apps/plugin-dialog', () => ({
@@ -93,6 +139,7 @@ beforeEach(() => {
     activeTabByConnection: {},
   })
   useQueryStore.setState({ tabs: {} })
+  useTableDataStore.setState({ tabs: {} })
   _resetTabIdCounter()
   _resetQueryTabCounter()
   mockIPC(() => null)
@@ -146,7 +193,7 @@ describe('WorkspaceArea', () => {
     expect(screen.getByText('Welcome!')).toBeInTheDocument()
   })
 
-  it('renders workspace tabs when connection has tabs', () => {
+  it('renders TableDataTab when workspace has a table-data tab', async () => {
     const conn = makeActiveConnection()
     useConnectionStore.setState({
       activeConnections: { 'conn-1': conn },
@@ -166,7 +213,10 @@ describe('WorkspaceArea', () => {
 
     expect(screen.getByTestId('workspace-tabs')).toBeInTheDocument()
     expect(screen.getByText('users')).toBeInTheDocument()
-    expect(screen.getByTestId('table-data-placeholder')).toBeInTheDocument()
+    // TableDataTab is rendered, which includes the toolbar
+    await waitFor(() => {
+      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+    })
   })
 
   it('renders SchemaInfoTab for schema-info tab type', async () => {
@@ -191,28 +241,6 @@ describe('WorkspaceArea', () => {
     await waitFor(() => {
       expect(screen.getByTestId('schema-info-tab')).toBeInTheDocument()
     })
-  })
-
-  it('renders TableDataPlaceholder with correct database and table name', () => {
-    const conn = makeActiveConnection()
-    useConnectionStore.setState({
-      activeConnections: { 'conn-1': conn },
-      activeTabId: 'conn-1',
-    })
-
-    useWorkspaceStore.getState().openTab({
-      type: 'table-data',
-      label: 'orders',
-      connectionId: 'conn-1',
-      databaseName: 'ecommerce',
-      objectName: 'orders',
-      objectType: 'table',
-    })
-
-    render(<WorkspaceArea />)
-
-    expect(screen.getByText('ecommerce.orders')).toBeInTheDocument()
-    expect(screen.getByText('Table data viewing will be available in Phase 6')).toBeInTheDocument()
   })
 
   it('renders QueryEditorTab for query-editor tab type', () => {

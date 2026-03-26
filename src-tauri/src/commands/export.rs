@@ -1,6 +1,8 @@
-use crate::export::{ExportFormat, ExportOptions, ExportResult};
+use crate::export::{ExportOptions, ExportResult};
 use crate::state::AppState;
-use std::io::Write;
+
+// Re-export so existing test imports continue to work.
+pub use crate::export::export_with_data;
 
 /// Core export logic — testable without the Tauri runtime.
 /// Looks up stored results by (connection_id, tab_id), clones the data
@@ -22,81 +24,6 @@ pub fn export_results_impl(
     };
 
     export_with_data(&columns, &rows, options)
-}
-
-/// Write export data to disk. Separated from `export_results_impl` so that
-/// the `#[tauri::command]` wrapper can clone data under a brief lock and
-/// then run this in `spawn_blocking` without holding the lock.
-pub fn export_with_data(
-    columns: &[String],
-    rows: &[Vec<serde_json::Value>],
-    options: ExportOptions,
-) -> Result<ExportResult, String> {
-    let rows_exported = rows.len();
-
-    let bytes_written = match options.format {
-        ExportFormat::Csv => {
-            let mut file = std::fs::File::create(&options.file_path)
-                .map_err(|e| format!("Failed to create file: {e}"))?;
-            crate::export::csv_writer::write_csv(
-                &mut file,
-                columns,
-                rows,
-                options.include_headers,
-            )
-            .map_err(|e| format!("Failed to write CSV: {e}"))?;
-            file.flush()
-                .map_err(|e| format!("Failed to flush file: {e}"))?;
-            std::fs::metadata(&options.file_path)
-                .map_err(|e| format!("Failed to read file size: {e}"))?
-                .len()
-        }
-        ExportFormat::Json => {
-            let mut file = std::fs::File::create(&options.file_path)
-                .map_err(|e| format!("Failed to create file: {e}"))?;
-            crate::export::json_writer::write_json(
-                &mut file,
-                columns,
-                rows,
-                options.include_headers,
-            )
-            .map_err(|e| format!("Failed to write JSON: {e}"))?;
-            file.flush()
-                .map_err(|e| format!("Failed to flush file: {e}"))?;
-            std::fs::metadata(&options.file_path)
-                .map_err(|e| format!("Failed to read file size: {e}"))?
-                .len()
-        }
-        ExportFormat::Xlsx => crate::export::xlsx_writer::write_xlsx(
-            &options.file_path,
-            columns,
-            rows,
-            options.include_headers,
-        )?,
-        ExportFormat::SqlInsert => {
-            let table_name = options.table_name.as_deref().unwrap_or("exported_results");
-            let mut file = std::fs::File::create(&options.file_path)
-                .map_err(|e| format!("Failed to create file: {e}"))?;
-            crate::export::sql_writer::write_sql(
-                &mut file,
-                columns,
-                rows,
-                options.include_headers,
-                table_name,
-            )
-            .map_err(|e| format!("Failed to write SQL: {e}"))?;
-            file.flush()
-                .map_err(|e| format!("Failed to flush file: {e}"))?;
-            std::fs::metadata(&options.file_path)
-                .map_err(|e| format!("Failed to read file size: {e}"))?
-                .len()
-        }
-    };
-
-    Ok(ExportResult {
-        bytes_written,
-        rows_exported,
-    })
 }
 
 #[tauri::command]

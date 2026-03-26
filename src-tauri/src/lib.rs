@@ -148,6 +148,11 @@ pub fn run() {
             commands::query::write_file,
             commands::query::sort_results,
             commands::export::export_results,
+            commands::table_data::fetch_table_data,
+            commands::table_data::update_table_row,
+            commands::table_data::insert_table_row,
+            commands::table_data::delete_table_row,
+            commands::table_data::export_table_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

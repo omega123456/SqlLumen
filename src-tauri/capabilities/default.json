@@ -45,6 +45,11 @@
     "allow-sort-results",
     "allow-select-database",
     "allow-export-results",
+    "allow-fetch-table-data",
+    "allow-update-table-row",
+    "allow-insert-table-row",
+    "allow-delete-table-row",
+    "allow-export-table-data",
     "dialog:allow-save",
     "dialog:allow-open"
   ]

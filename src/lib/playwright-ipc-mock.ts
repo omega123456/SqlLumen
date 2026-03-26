@@ -452,6 +452,90 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         },
       }
 
+    // --- Table data browser/editor ---
+    case 'fetch_table_data':
+      return {
+        columns: [
+          {
+            name: 'id',
+            dataType: 'INT',
+            isNullable: false,
+            isPrimaryKey: true,
+            isUniqueKey: false,
+            hasDefault: false,
+            columnDefault: null,
+            isBinary: false,
+            isAutoIncrement: true,
+          },
+          {
+            name: 'name',
+            dataType: 'VARCHAR',
+            isNullable: true,
+            isPrimaryKey: false,
+            isUniqueKey: false,
+            hasDefault: false,
+            columnDefault: null,
+            isBinary: false,
+            isAutoIncrement: false,
+          },
+          {
+            name: 'email',
+            dataType: 'VARCHAR',
+            isNullable: true,
+            isPrimaryKey: false,
+            isUniqueKey: false,
+            hasDefault: false,
+            columnDefault: null,
+            isBinary: false,
+            isAutoIncrement: false,
+          },
+          {
+            name: 'status',
+            dataType: 'VARCHAR',
+            isNullable: false,
+            isPrimaryKey: false,
+            isUniqueKey: false,
+            hasDefault: true,
+            columnDefault: 'active',
+            isBinary: false,
+            isAutoIncrement: false,
+          },
+        ],
+        rows: [
+          [1001, 'Julian Thorne', 'j.thorne@example.com', 'active'],
+          [1002, 'Elena Vasquez', null, 'active'],
+          [1003, 'Marcus Chen', 'marcus@db.net', 'inactive'],
+          [1004, 'Sarah Park', 'sarah@dev.co', 'active'],
+        ],
+        totalRows: 4,
+        currentPage: 1,
+        totalPages: 1,
+        pageSize: 1000,
+        primaryKey: {
+          keyColumns: ['id'],
+          hasAutoIncrement: true,
+          isUniqueKeyFallback: false,
+        },
+        executionTimeMs: 42,
+      }
+
+    case 'update_table_row':
+      return null
+
+    case 'insert_table_row':
+      return [
+        ['id', 1005],
+        ['name', ''],
+        ['email', null],
+        ['status', 'active'],
+      ]
+
+    case 'delete_table_row':
+      return null
+
+    case 'export_table_data':
+      return null
+
     case 'read_file':
       return "SELECT * FROM users\nWHERE status = 'active'\nLIMIT 100;"
 

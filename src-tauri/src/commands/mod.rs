@@ -6,3 +6,4 @@ pub mod query;
 pub mod schema;
 pub mod session;
 pub mod settings;
+pub mod table_data;
