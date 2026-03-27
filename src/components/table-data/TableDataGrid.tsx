@@ -46,11 +46,18 @@ function getRowKey(data: Record<string, unknown>, pkColumns: string[]): Record<s
   if (data.__tempId != null) {
     return { __tempId: data.__tempId }
   }
+  if (data.__editingRowKey && typeof data.__editingRowKey === 'object') {
+    return data.__editingRowKey as Record<string, unknown>
+  }
   const key: Record<string, unknown> = {}
   for (const col of pkColumns) {
     key[col] = data[col]
   }
   return key
+}
+
+function isNullish(value: unknown): value is null | undefined {
+  return value === null || value === undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +128,7 @@ export function buildColumnDefs(
 // ---------------------------------------------------------------------------
 
 function TableDataCellRenderer(props: ICellRendererParams) {
-  if (props.value === null || props.value === undefined) {
+  if (isNullish(props.value)) {
     return <span className="td-null-value">NULL</span>
   }
   if (typeof props.value === 'string' && props.value.startsWith('[BLOB')) {
@@ -144,10 +151,14 @@ const NullableCellEditor = forwardRef(function NullableCellEditor(
   ref: React.Ref<{ getValue: () => unknown }>
 ) {
   const isNullable = props.isNullable ?? false
-  const initialNull = props.value === null || props.value === undefined
+  const initialNull = isNullish(props.value)
+  const initialValue = initialNull ? null : props.value
   const [isNull, setIsNull] = useState(initialNull)
   const [value, setValue] = useState(initialNull ? '' : String(props.value ?? ''))
   const inputRef = useRef<HTMLInputElement>(null)
+  const updateCellValue = useTableDataStore((state) => state.updateCellValue)
+  const fieldName = props.colDef?.field
+  const tabId = props.context?.tabId as string | undefined
 
   useImperativeHandle(ref, () => ({
     getValue: () => (isNull ? null : value),
@@ -164,25 +175,52 @@ const NullableCellEditor = forwardRef(function NullableCellEditor(
   const handleToggleNull = useCallback(() => {
     if (isNull) {
       setIsNull(false)
+      if (tabId && fieldName) {
+        updateCellValue(tabId, fieldName, '')
+      }
       // Restore with empty string
       setTimeout(() => inputRef.current?.focus(), 0)
     } else {
       setIsNull(true)
       setValue('')
+      if (tabId && fieldName) {
+        updateCellValue(tabId, fieldName, null)
+      }
     }
-  }, [isNull])
+  }, [fieldName, isNull, tabId, updateCellValue])
+
+  const handleChange = useCallback(
+    (nextValue: string) => {
+      if (isNull) {
+        setIsNull(false)
+      }
+      setValue(nextValue)
+      if (tabId && fieldName) {
+        updateCellValue(tabId, fieldName, nextValue)
+      }
+    },
+    [fieldName, isNull, tabId, updateCellValue]
+  )
+
+  const displayValue = isNull ? '' : value
 
   return (
     <div className={styles.cellEditorWrapper}>
       <input
         ref={inputRef}
         className="td-cell-editor-input"
-        value={isNull ? 'NULL' : value}
-        disabled={isNull}
-        onChange={(e) => setValue(e.target.value)}
+        value={displayValue}
+        onChange={(e) => handleChange(e.target.value)}
         onKeyDown={(e) => {
           // Let AG Grid handle Tab/Enter/Escape
           if (e.key === 'Tab' || e.key === 'Enter' || e.key === 'Escape') {
+            if (e.key === 'Escape') {
+              setIsNull(initialNull)
+              setValue(initialNull ? '' : String(initialValue ?? ''))
+              if (tabId && fieldName) {
+                updateCellValue(tabId, fieldName, initialValue)
+              }
+            }
             return
           }
         }}
@@ -219,6 +257,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const requestNavigationAction = useTableDataStore((state) => state.requestNavigationAction)
   const sortByColumn = useTableDataStore((state) => state.sortByColumn)
   const applyFilters = useTableDataStore((state) => state.applyFilters)
+  const clearEditStateIfUnmodified = useTableDataStore((state) => state.clearEditStateIfUnmodified)
 
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
   const rows = useMemo(() => tabState?.rows ?? [], [tabState?.rows])
@@ -262,14 +301,28 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       if (editState?.isNewRow && editState.tempId && rowIdx === rows.length - 1) {
         obj.__tempId = editState.tempId
       }
+      if (editState) {
+        const rowKey = getRowKey(obj, pkColumns)
+        if (isSameRowKey(rowKey, editState.rowKey)) {
+          obj.__editingRowKey = editState.rowKey
+          for (const [colName, value] of Object.entries(editState.currentValues)) {
+            obj[colName] = value
+          }
+        }
+      }
       return obj
     })
-  }, [rows, columns, editState])
+  }, [rows, columns, editState, pkColumns])
 
   // Unique row ID for AG Grid
   const getRowId = useCallback(
     (params: GetRowIdParams) => {
       if (params.data.__tempId) return String(params.data.__tempId)
+      if (params.data.__editingRowKey && typeof params.data.__editingRowKey === 'object') {
+        return Object.values(params.data.__editingRowKey as Record<string, unknown>)
+          .map((value) => String(value ?? ''))
+          .join('|')
+      }
       if (pkColumns.length > 0) {
         return pkColumns.map((c) => String(params.data[c] ?? '')).join('|')
       }
@@ -358,13 +411,16 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       if (!event.colDef?.field) return
       const colName = event.colDef.field
       const newValue = event.newValue
+      const rowKey = event.data ? getRowKey(event.data, pkColumns) : null
 
       // Only update if value actually changed
       if (event.oldValue !== newValue) {
         updateCellValue(tabId, colName, newValue)
+      } else if (rowKey) {
+        clearEditStateIfUnmodified(tabId, rowKey)
       }
     },
-    [tabId, updateCellValue]
+    [tabId, updateCellValue, clearEditStateIfUnmodified, pkColumns]
   )
 
   // Handle row click — update selection
@@ -428,6 +484,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         rowData={rowData}
         defaultColDef={defaultColDef}
         components={components}
+        context={{ tabId }}
         suppressMultiSort={true}
         animateRows={false}
         headerHeight={32}

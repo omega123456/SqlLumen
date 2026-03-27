@@ -185,10 +185,9 @@
    Table Data Editing Styles — applied via custom CSS classes
    ========================================================================== */
 
-/* Editing row — left accent border + tinted background */
+/* Editing row — tinted background only */
 .ag-theme-precision .ag-row.td-editing-row {
   background-color: var(--td-editing-row-bg) !important;
-  border-left: 2px solid var(--td-editing-row-border) !important;
 }
 
 /* Modified cell indicator — corner triangle via ::before pseudo-element */
@@ -230,7 +229,6 @@
 /* New row styling */
 .ag-theme-precision .ag-row.td-new-row {
   background-color: var(--td-editing-row-bg) !important;
-  border-left: 2px solid var(--td-editing-row-border) !important;
 }
 
 /* Edit mode input styling (cell editor) */

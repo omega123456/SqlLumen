@@ -54,6 +54,10 @@ function displayValue(value: unknown): string {
   return String(value)
 }
 
+function isNullish(value: unknown): value is null | undefined {
+  return value === null || value === undefined
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -112,9 +116,10 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
 
   // Current row key
   const currentRowKey = useMemo(() => {
+    if (editState?.isNewRow) return editState.rowKey
     if (!currentRow || pkColumns.length === 0) return null
     return getRowKeyFromArray(currentRow, columns, pkColumns)
-  }, [currentRow, columns, pkColumns])
+  }, [editState, currentRow, columns, pkColumns])
 
   // Is the current row being edited?
   const isEditingCurrentRow = useMemo(() => {
@@ -335,7 +340,7 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
                   ? currentRow[colIdx]
                   : null
 
-            const isNull = rawValue === null
+            const isNull = isNullish(rawValue)
             const isModified = isEditingCurrentRow
               ? (editState?.modifiedColumns.has(col.name) ?? false)
               : false
@@ -398,8 +403,7 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
                       ]
                         .filter(Boolean)
                         .join(' ')}
-                      value={isNull ? 'NULL' : displayValue(rawValue)}
-                      disabled={isNull}
+                      value={displayValue(rawValue)}
                       onFocus={() => handleInputFocus(col.name)}
                       onChange={(e) => handleInputChange(col.name, e.target.value)}
                       data-testid={`form-input-${col.name}`}

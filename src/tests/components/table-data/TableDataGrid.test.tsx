@@ -72,7 +72,8 @@ vi.mock('../../../lib/table-data-commands', () => ({
   exportTableData: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { ComponentType } from 'react'
 import type { Mock } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
@@ -82,9 +83,16 @@ import {
   buildColumnDefs,
   getFilterType,
 } from '../../../components/table-data/TableDataGrid'
+import { TableDataToolbar } from '../../../components/table-data/TableDataToolbar'
 import { AgGridReact } from 'ag-grid-react'
 import { updateTableRow } from '../../../lib/table-data-commands'
 import type { TableDataColumnMeta, TableDataTabState, RowEditState } from '../../../types/schema'
+
+function getLatestGridProps(): Record<string, unknown> {
+  const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
+  expect(mockCalls.length).toBeGreaterThanOrEqual(1)
+  return mockCalls[mockCalls.length - 1][0] as Record<string, unknown>
+}
 
 function setupConnection() {
   useConnectionStore.setState({
@@ -652,6 +660,224 @@ describe('TableDataGrid', () => {
       onCellEditingStopped({ oldValue: 'x', newValue: 'y' })
       onCellEditingStopped({ colDef: {}, oldValue: 'x', newValue: 'y' })
     })
+  })
+
+  it('clears no-op edit state when a cell edit ends unchanged', async () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const startProps = getLatestGridProps()
+    const onCellEditingStarted = startProps.onCellEditingStarted as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string }
+      api: { stopEditing: (cancel?: boolean) => void }
+    }) => Promise<void>
+
+    await act(async () => {
+      await onCellEditingStarted({
+        data: { id: 1, name: 'Alice', avatar: null, __rowIndex: 0 },
+        colDef: { field: 'name' },
+        api: { stopEditing: vi.fn() },
+      })
+    })
+
+    const stopProps = getLatestGridProps()
+    const onCellEditingStopped = stopProps.onCellEditingStopped as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string }
+      oldValue: unknown
+      newValue: unknown
+    }) => void
+
+    act(() => {
+      onCellEditingStopped({
+        data: { id: 1, name: 'Alice', avatar: null, __rowIndex: 0 },
+        colDef: { field: 'name' },
+        oldValue: 'Alice',
+        newValue: 'Alice',
+      })
+    })
+
+    expect(useTableDataStore.getState().tabs['tab-1']?.editState).toBeNull()
+
+    const latestProps = getLatestGridProps()
+    const getRowClass = latestProps.getRowClass as (params: {
+      data?: Record<string, unknown>
+    }) => string | undefined
+    expect(getRowClass({ data: { id: 1, __rowIndex: 0 } })).toBeUndefined()
+  })
+
+  it('typing in the cell editor immediately enables save and preserves changes on row switch', async () => {
+    setupConnection()
+    setupTabState()
+    render(
+      <>
+        <TableDataToolbar tabId="tab-1" />
+        <TableDataGrid tabId="tab-1" isReadOnly={false} />
+      </>
+    )
+
+    const startProps = getLatestGridProps()
+    const onCellEditingStarted = startProps.onCellEditingStarted as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string }
+      api: { stopEditing: (cancel?: boolean) => void }
+    }) => Promise<void>
+    const components = startProps.components as Record<
+      string,
+      ComponentType<Record<string, unknown>>
+    >
+    const NullableEditor = components.nullableCellEditor
+
+    await act(async () => {
+      await onCellEditingStarted({
+        data: { id: 1, name: null, avatar: null, __rowIndex: 0 },
+        colDef: { field: 'name' },
+        api: { stopEditing: vi.fn() },
+      })
+    })
+
+    const editor = render(
+      <NullableEditor
+        value={null}
+        isNullable={true}
+        columnMeta={testColumns[1]}
+        colDef={{ field: 'name' }}
+        context={{ tabId: 'tab-1' }}
+      />
+    )
+    const input = editor.getByRole('textbox') as HTMLInputElement
+
+    expect(input).not.toBeDisabled()
+    expect(input.value).toBe('')
+
+    fireEvent.change(input, { target: { value: 'Bob' } })
+
+    expect(input.value).toBe('Bob')
+    expect(useTableDataStore.getState().tabs['tab-1']?.editState?.currentValues.name).toBe('Bob')
+    expect(screen.getByTestId('btn-save')).not.toBeDisabled()
+
+    await act(async () => {
+      await onCellEditingStarted({
+        data: { id: 2, name: null, avatar: '[BLOB 32 bytes]', __rowIndex: 1 },
+        colDef: { field: 'name' },
+        api: { stopEditing: vi.fn() },
+      })
+    })
+
+    expect(updateTableRow).toHaveBeenCalledWith({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      table: 'users',
+      primaryKeyColumns: ['id'],
+      originalPkValues: { id: 1 },
+      updatedValues: { name: 'Bob' },
+    })
+  })
+
+  it('pressing Escape reverts the editor draft and does not leave pending modifications', async () => {
+    setupConnection()
+    setupTabState()
+    render(
+      <>
+        <TableDataToolbar tabId="tab-1" />
+        <TableDataGrid tabId="tab-1" isReadOnly={false} />
+      </>
+    )
+
+    const startProps = getLatestGridProps()
+    const onCellEditingStarted = startProps.onCellEditingStarted as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string }
+      api: { stopEditing: (cancel?: boolean) => void }
+    }) => Promise<void>
+    const onCellEditingStopped = startProps.onCellEditingStopped as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string }
+      oldValue: unknown
+      newValue: unknown
+    }) => void
+    const components = startProps.components as Record<
+      string,
+      ComponentType<Record<string, unknown>>
+    >
+    const NullableEditor = components.nullableCellEditor
+
+    await act(async () => {
+      await onCellEditingStarted({
+        data: { id: 1, name: null, avatar: null, __rowIndex: 0 },
+        colDef: { field: 'name' },
+        api: { stopEditing: vi.fn() },
+      })
+    })
+
+    const editor = render(
+      <NullableEditor
+        value={null}
+        isNullable={true}
+        columnMeta={testColumns[1]}
+        colDef={{ field: 'name' }}
+        context={{ tabId: 'tab-1' }}
+      />
+    )
+    const input = editor.getByRole('textbox') as HTMLInputElement
+
+    fireEvent.change(input, { target: { value: 'Canceled' } })
+    expect(screen.getByTestId('btn-save')).not.toBeDisabled()
+
+    fireEvent.keyDown(input, { key: 'Escape' })
+    act(() => {
+      onCellEditingStopped({
+        data: { id: 1, name: null, avatar: null, __rowIndex: 0 },
+        colDef: { field: 'name' },
+        oldValue: null,
+        newValue: null,
+      })
+    })
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState).toBeNull()
+    expect(screen.getByTestId('btn-save')).toBeDisabled()
+  })
+
+  it('editing a primary key keeps the same row identity while moving to another cell', async () => {
+    setupConnection()
+    setupTabState({
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, name: 'Alice', avatar: null },
+        currentValues: { id: 10, name: 'Alice', avatar: null },
+        modifiedColumns: new Set(['id']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const rowData = props.rowData as Array<Record<string, unknown>>
+    const getRowId = props.getRowId as (params: { data: Record<string, unknown> }) => string
+    const onCellEditingStarted = props.onCellEditingStarted as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string }
+      api: { stopEditing: (cancel?: boolean) => void }
+    }) => Promise<void>
+
+    expect(rowData[0].id).toBe(10)
+    expect(getRowId({ data: rowData[0] })).toBe('1')
+
+    await act(async () => {
+      await onCellEditingStarted({
+        data: rowData[0],
+        colDef: { field: 'name' },
+        api: { stopEditing: vi.fn() },
+      })
+    })
+
+    expect(updateTableRow).not.toHaveBeenCalled()
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState?.rowKey).toEqual({ id: 1 })
+    expect(state?.editState?.currentValues.id).toBe(10)
   })
 
   it('handleRowClicked sets selected row in store', () => {

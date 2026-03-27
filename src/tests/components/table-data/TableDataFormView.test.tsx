@@ -459,6 +459,37 @@ describe('TableDataFormView', () => {
     expect(state?.editState?.currentValues.name).toBe('NewName')
   })
 
+  it('null values remain editable in form view', () => {
+    setupStore({
+      rows: [[1, null, '[BLOB - 128 bytes]']],
+      selectedRowKey: { id: 1 },
+    })
+    renderFormView()
+
+    const nameInput = screen.getByTestId('form-input-name') as HTMLInputElement
+
+    expect(nameInput.disabled).toBe(false)
+    expect(nameInput.value).toBe('')
+
+    fireEvent.focus(nameInput)
+    fireEvent.change(nameInput, { target: { value: 'Filled in' } })
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState?.currentValues.name).toBe('Filled in')
+    expect(screen.getByTestId('btn-form-save')).not.toBeDisabled()
+  })
+
+  it('new rows start with editable empty inputs in form view', () => {
+    setupStore()
+    useTableDataStore.getState().insertNewRow('tab-1')
+    useTableDataStore.getState().setViewMode('tab-1', 'form')
+    renderFormView()
+
+    const nameInput = screen.getByTestId('form-input-name') as HTMLInputElement
+    expect(nameInput.disabled).toBe(false)
+    expect(nameInput.value).toBe('')
+  })
+
   it('null toggle OFF sets value to empty string', () => {
     // Start with a row where name is null
     const editState: RowEditState = {
@@ -577,7 +608,7 @@ describe('TableDataFormView', () => {
     expect(nameInput.value).toBe('Edited')
   })
 
-  it('input shows "NULL" and is disabled for null values in edit state', () => {
+  it('input stays editable and empty for null values in edit state', () => {
     const editState: RowEditState = {
       rowKey: { id: 1 },
       originalValues: { id: 1, name: 'Alice', avatar: '[BLOB - 128 bytes]' },
@@ -589,8 +620,8 @@ describe('TableDataFormView', () => {
     renderFormView()
 
     const nameInput = screen.getByTestId('form-input-name') as HTMLInputElement
-    expect(nameInput.value).toBe('NULL')
-    expect(nameInput.disabled).toBe(true)
+    expect(nameInput.value).toBe('')
+    expect(nameInput.disabled).toBe(false)
   })
 
   it('shows read-only input for non-editable non-blob fields with non-null value', () => {

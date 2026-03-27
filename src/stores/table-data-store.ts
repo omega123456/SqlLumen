@@ -184,6 +184,7 @@ export interface TableDataStore {
     currentValues: Record<string, unknown>
   ) => void
   updateCellValue: (tabId: string, column: string, value: unknown) => void
+  clearEditStateIfUnmodified: (tabId: string, rowKey: Record<string, unknown>) => void
   saveCurrentRow: (tabId: string) => Promise<void>
   discardCurrentRow: (tabId: string) => void
   insertNewRow: (tabId: string) => void
@@ -359,7 +360,11 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       if (!tab?.editState) return
 
       const newModified = new Set(tab.editState.modifiedColumns)
-      newModified.add(column)
+      if (JSON.stringify(tab.editState.originalValues[column]) === JSON.stringify(value)) {
+        newModified.delete(column)
+      } else {
+        newModified.add(column)
+      }
 
       patchTab(tabId, {
         editState: {
@@ -369,6 +374,18 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         },
         saveError: null,
       })
+    },
+
+    // ------ clearEditStateIfUnmodified ------
+
+    clearEditStateIfUnmodified: (tabId, rowKey) => {
+      const tab = get().tabs[tabId]
+      if (!tab?.editState) return
+      if (!isSameRowKey(tab.editState.rowKey, rowKey)) return
+      if (tab.editState.isNewRow) return
+      if (tab.editState.modifiedColumns.size > 0) return
+
+      patchTab(tabId, { editState: null, saveError: null })
     },
 
     // ------ saveCurrentRow ------
@@ -512,7 +529,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       }
 
       // Update rows first
-      patchTab(tabId, { rows: newRows })
+      patchTab(tabId, { rows: newRows, selectedRowKey: { __tempId: tempId } })
 
       // Start editing with __tempId as the key
       get().startEditing(tabId, { __tempId: tempId }, currentValues)

@@ -366,7 +366,6 @@
 
   /* ---------- Table Data Editing States ---------- */
   --td-editing-row-bg: rgba(var(--primary-rgb), 0.05);
-  --td-editing-row-border: var(--primary);
   --td-modified-cell-indicator: var(--primary);
   --td-null-text-color: rgba(var(--on-surface-rgb), 0.4);
   --td-warning-bg: rgba(252, 211, 77, 0.08);
@@ -617,7 +616,6 @@
 
   /* Table Data Editing States — light overrides */
   --td-editing-row-bg: rgba(var(--primary-rgb), 0.05);
-  --td-editing-row-border: var(--primary);
   --td-modified-cell-indicator: var(--primary);
   --td-null-text-color: rgba(var(--on-surface-rgb), 0.4);
   --td-warning-bg: rgba(217, 119, 6, 0.06);

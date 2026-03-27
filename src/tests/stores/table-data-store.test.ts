@@ -407,6 +407,15 @@ describe('useTableDataStore — insertNewRow', () => {
     expect(tab.editState!.tempId).toBeDefined()
     expect(tab.editState!.rowKey).toHaveProperty('__tempId')
   })
+
+  it('selects the temp row when inserting a new row', async () => {
+    await setupTabWithData()
+
+    useTableDataStore.getState().insertNewRow('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.selectedRowKey).toEqual({ __tempId: tab.editState!.tempId })
+  })
 })
 
 describe('useTableDataStore — deleteRow (existing row)', () => {
@@ -600,6 +609,22 @@ describe('useTableDataStore — commitEditingRowIfNeeded', () => {
     await useTableDataStore.getState().commitEditingRowIfNeeded('tab-1', { id: 2 })
 
     expect(updateTableRow).not.toHaveBeenCalled()
+  })
+})
+
+describe('useTableDataStore — clearEditStateIfUnmodified', () => {
+  it('does not clear an untouched new row edit state', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().insertNewRow('tab-1')
+
+    const tabBefore = useTableDataStore.getState().tabs['tab-1']
+    const rowKey = tabBefore.editState!.rowKey
+
+    useTableDataStore.getState().clearEditStateIfUnmodified('tab-1', rowKey)
+
+    const tabAfter = useTableDataStore.getState().tabs['tab-1']
+    expect(tabAfter.editState).not.toBeNull()
+    expect(tabAfter.editState!.isNewRow).toBe(true)
   })
 })
 
