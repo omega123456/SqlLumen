@@ -72,6 +72,27 @@ vi.mock('../../../lib/table-data-commands', () => ({
   exportTableData: vi.fn().mockResolvedValue(undefined),
 }))
 
+const { mockShowError, mockShowSuccess } = vi.hoisted(() => ({
+  mockShowError: vi.fn(),
+  mockShowSuccess: vi.fn(),
+}))
+
+vi.mock('../../../stores/toast-store', () => ({
+  useToastStore: vi.fn((selector: (s: Record<string, unknown>) => unknown) => {
+    const state = {
+      toasts: [],
+      showError: mockShowError,
+      showSuccess: mockShowSuccess,
+      showInfo: vi.fn(),
+      dismiss: vi.fn(),
+    }
+    return selector(state)
+  }),
+  showErrorToast: mockShowError,
+  showSuccessToast: mockShowSuccess,
+  showInfoToast: vi.fn(),
+}))
+
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ComponentType } from 'react'
 import type { Mock } from 'vitest'
@@ -218,7 +239,7 @@ beforeEach(() => {
 
 describe('buildColumnDefs', () => {
   it('creates correct column definitions', () => {
-    const defs = buildColumnDefs(testColumns, ['id'], false, true)
+    const defs = buildColumnDefs(testColumns, false, true)
     expect(defs).toHaveLength(3)
     expect(defs[0].field).toBe('id')
     expect(defs[0].headerName).toBe('id')
@@ -227,35 +248,35 @@ describe('buildColumnDefs', () => {
   })
 
   it('marks binary columns as NOT editable', () => {
-    const defs = buildColumnDefs(testColumns, ['id'], false, true)
+    const defs = buildColumnDefs(testColumns, false, true)
     expect(defs[0].editable).toBe(true) // id (non-binary)
     expect(defs[1].editable).toBe(true) // name (non-binary)
     expect(defs[2].editable).toBe(false) // avatar (binary)
   })
 
   it('all columns non-editable when read-only', () => {
-    const defs = buildColumnDefs(testColumns, ['id'], true, true)
+    const defs = buildColumnDefs(testColumns, true, true)
     defs.forEach((d) => {
       expect(d.editable).toBe(false)
     })
   })
 
   it('all columns non-editable when no PK', () => {
-    const defs = buildColumnDefs(testColumns, ['id'], false, false)
+    const defs = buildColumnDefs(testColumns, false, false)
     defs.forEach((d) => {
       expect(d.editable).toBe(false)
     })
   })
 
   it('uses agNumberColumnFilter for numeric and agTextColumnFilter for text columns', () => {
-    const defs = buildColumnDefs(testColumns, ['id'], false, true)
+    const defs = buildColumnDefs(testColumns, false, true)
     expect(defs[0].filter).toBe('agNumberColumnFilter') // id is bigint
     expect(defs[1].filter).toBe('agTextColumnFilter') // name is varchar
     expect(defs[2].filter).toBe(false) // avatar is binary
   })
 
   it('uses noop comparator for server-side sort', () => {
-    const defs = buildColumnDefs(testColumns, ['id'], false, true)
+    const defs = buildColumnDefs(testColumns, false, true)
     defs.forEach((d) => {
       if (typeof d.comparator === 'function') {
         expect(d.comparator(null, null, {} as never, {} as never, false)).toBe(0)
@@ -378,7 +399,7 @@ describe('TableDataGrid', () => {
   })
 
   it('sets cellEditor and cellEditorParams on editable columns', () => {
-    const defs = buildColumnDefs(testColumns, ['id'], false, true)
+    const defs = buildColumnDefs(testColumns, false, true)
     // Editable columns should have nullableCellEditor
     expect(defs[0].cellEditor).toBe('nullableCellEditor')
     expect(defs[0].cellEditorParams).toEqual({
@@ -396,7 +417,7 @@ describe('TableDataGrid', () => {
   })
 
   it('non-editable columns do not get cellEditor or cellEditorParams', () => {
-    const defs = buildColumnDefs(testColumns, ['id'], true, true) // read-only
+    const defs = buildColumnDefs(testColumns, true, true) // read-only
     defs.forEach((d) => {
       expect(d.cellEditor).toBeUndefined()
       expect(d.cellEditorParams).toBeUndefined()
@@ -404,7 +425,7 @@ describe('TableDataGrid', () => {
   })
 
   it('all columns use tableDataCellRenderer', () => {
-    const defs = buildColumnDefs(testColumns, ['id'], false, true)
+    const defs = buildColumnDefs(testColumns, false, true)
     defs.forEach((d) => {
       expect(d.cellRenderer).toBe('tableDataCellRenderer')
     })
@@ -880,6 +901,166 @@ describe('TableDataGrid', () => {
     expect(state?.editState?.currentValues.id).toBe(10)
   })
 
+  it('clicking into another row blocks outside-row save when temporal validation fails', async () => {
+    setupConnection()
+    setupTabState({
+      columns: [
+        testColumns[0],
+        {
+          name: 'created_at',
+          dataType: 'DATETIME',
+          isNullable: true,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [
+        [1, '2023-01-01 00:00:00'],
+        [2, '2023-01-02 00:00:00'],
+      ],
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, created_at: '2023-01-01 00:00:00' },
+        currentValues: { id: 1, created_at: 'garbage' },
+        modifiedColumns: new Set(['created_at']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const rowData = props.rowData as Array<Record<string, unknown>>
+    const onCellEditingStarted = props.onCellEditingStarted as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string }
+      api: { stopEditing: (cancel?: boolean) => void }
+    }) => Promise<void>
+    const stopEditing = vi.fn()
+
+    await act(async () => {
+      await onCellEditingStarted({
+        data: rowData[1],
+        colDef: { field: 'created_at' },
+        api: { stopEditing },
+      })
+    })
+
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(
+        'Invalid date value',
+        expect.stringContaining('created_at')
+      )
+    })
+    expect(updateTableRow).not.toHaveBeenCalled()
+    expect(stopEditing).toHaveBeenCalledWith(true)
+    expect(useTableDataStore.getState().tabs['tab-1']?.editState?.rowKey).toEqual({ id: 1 })
+  })
+
+  it('clicking into another row blocks outside-row save when temporal value is blank', async () => {
+    setupConnection()
+    setupTabState({
+      columns: [
+        testColumns[0],
+        {
+          name: 'created_at',
+          dataType: 'DATETIME',
+          isNullable: true,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [
+        [1, '2023-01-01 00:00:00'],
+        [2, '2023-01-02 00:00:00'],
+      ],
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, created_at: '2023-01-01 00:00:00' },
+        currentValues: { id: 1, created_at: '' },
+        modifiedColumns: new Set(['created_at']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const rowData = props.rowData as Array<Record<string, unknown>>
+    const onCellEditingStarted = props.onCellEditingStarted as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string }
+      api: { stopEditing: (cancel?: boolean) => void }
+    }) => Promise<void>
+    const stopEditing = vi.fn()
+
+    await act(async () => {
+      await onCellEditingStarted({
+        data: rowData[1],
+        colDef: { field: 'created_at' },
+        api: { stopEditing },
+      })
+    })
+
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(
+        'Invalid date value',
+        expect.stringContaining('created_at')
+      )
+    })
+    expect(updateTableRow).not.toHaveBeenCalled()
+    expect(stopEditing).toHaveBeenCalledWith(true)
+    expect(useTableDataStore.getState().tabs['tab-1']?.editState?.rowKey).toEqual({ id: 1 })
+  })
+
+  it('clicking into another row shows the save toast after a successful outside-row save', async () => {
+    setupConnection()
+    setupTabState({
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, name: 'Alice', avatar: null },
+        currentValues: { id: 1, name: 'Bob', avatar: null },
+        modifiedColumns: new Set(['name']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const rowData = props.rowData as Array<Record<string, unknown>>
+    const onCellEditingStarted = props.onCellEditingStarted as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string }
+      api: { stopEditing: (cancel?: boolean) => void }
+    }) => Promise<void>
+
+    await act(async () => {
+      await onCellEditingStarted({
+        data: rowData[1],
+        colDef: { field: 'name' },
+        api: { stopEditing: vi.fn() },
+      })
+    })
+
+    expect(updateTableRow).toHaveBeenCalledWith({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      table: 'users',
+      primaryKeyColumns: ['id'],
+      originalPkValues: { id: 1 },
+      updatedValues: { name: 'Bob' },
+    })
+    await waitFor(() => {
+      expect(mockShowSuccess).toHaveBeenCalledWith('Row saved', 'Changes saved successfully.')
+    })
+  })
+
   it('handleRowClicked sets selected row in store', () => {
     setupConnection()
     setupTabState()
@@ -1111,6 +1292,7 @@ describe('TableDataGrid', () => {
     expect(state?.saveError).toBe('Save failed')
     expect(state?.editState).not.toBeNull()
     expect(state?.editState?.rowKey).toEqual({ id: 1 })
+    expect(mockShowError).toHaveBeenCalledWith('Save failed', 'Save failed')
     // stopEditing(true) should have been called to cancel the new cell
     expect(stopEditingMock).toHaveBeenCalledWith(true)
     // selectedRowKey should snap back to the failed row

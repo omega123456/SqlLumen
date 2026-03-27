@@ -1,0 +1,323 @@
+/* =======================================================================
+   DateTimePicker — popup calendar/time picker for MySQL temporal columns.
+   Consumes design tokens for both dark (default) and light themes.
+   Overrides react-datepicker styles via :global() within scoped wrappers.
+
+   Theme support: All colors, borders, backgrounds, and shadows are
+   expressed via CSS custom properties defined in tokens.css, which
+   provides [data-theme="light"] and [data-theme="dark"] values for
+   every token used here. No explicit [data-theme] overrides are needed
+   in this file because the token indirection handles both themes.
+   ======================================================================= */
+
+/* --- Portal / outermost fixed container --- */
+.pickerPortal {
+  position: fixed;
+  z-index: 1100;
+}
+
+.pickerPortal.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* --- Wrapper around all content --- */
+.pickerWrapper {
+  width: 300px;
+  background: var(--ui-popover-bg);
+  border: var(--ui-popover-border);
+  border-radius: var(--ui-popover-radius);
+  box-shadow: var(--ui-popover-shadow);
+  backdrop-filter: var(--ui-popover-backdrop-filter);
+  -webkit-backdrop-filter: var(--ui-popover-backdrop-filter);
+  overflow: hidden;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+}
+
+/* =========================================================================
+   Calendar section — react-datepicker overrides
+   ========================================================================= */
+
+.calendarSection {
+  padding: 12px 12px 4px;
+}
+
+/* --- Custom header --- */
+.calendarHeader {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 0 8px;
+}
+
+.navArrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.navArrow:hover {
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+}
+
+.monthYearLabel {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  color: var(--on-surface);
+  white-space: nowrap;
+}
+
+.todayLink {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-family: var(--font-body);
+  font-size: var(--type-size-2xs);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: background 120ms ease;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.todayLink:hover {
+  background: rgba(var(--primary-rgb), 0.1);
+}
+
+/* --- react-datepicker global overrides (scoped inside .calendarSection) --- */
+
+.calendarSection :global(.react-datepicker) {
+  border: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+}
+
+.calendarSection :global(.react-datepicker__header) {
+  background: transparent;
+  border-bottom: none;
+  padding: 0;
+}
+
+.calendarSection :global(.react-datepicker__month-container) {
+  width: 100%;
+}
+
+.calendarSection :global(.react-datepicker__month) {
+  margin: 0;
+}
+
+.calendarSection :global(.react-datepicker__day-names) {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 2px;
+  margin-bottom: 2px;
+}
+
+.calendarSection :global(.react-datepicker__day-name) {
+  width: 32px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  font-family: var(--font-body);
+  font-size: var(--type-size-2xs);
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.calendarSection :global(.react-datepicker__week) {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+
+.calendarSection :global(.react-datepicker__day) {
+  width: 32px;
+  height: 32px;
+  line-height: 32px;
+  text-align: center;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  color: var(--on-surface);
+  cursor: pointer;
+  transition:
+    background 100ms ease,
+    color 100ms ease;
+  margin: 0;
+}
+
+.calendarSection :global(.react-datepicker__day:hover) {
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+}
+
+.calendarSection :global(.react-datepicker__day--selected),
+.calendarSection :global(.react-datepicker__day--keyboard-selected) {
+  background: var(--primary) !important;
+  color: var(--on-primary) !important;
+  font-weight: 600;
+}
+
+.calendarSection :global(.react-datepicker__day--today) {
+  font-weight: 700;
+  box-shadow: inset 0 0 0 2px rgba(var(--primary-rgb), 0.2);
+}
+
+.calendarSection :global(.react-datepicker__day--today.react-datepicker__day--selected) {
+  box-shadow: none;
+}
+
+.calendarSection :global(.react-datepicker__day--outside-month) {
+  opacity: 0.2;
+}
+
+.calendarSection :global(.react-datepicker__day--disabled) {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.calendarSection :global(.react-datepicker__current-month) {
+  display: none; /* We use our custom header */
+}
+
+.calendarSection :global(.react-datepicker__navigation) {
+  display: none; /* We use our custom header */
+}
+
+/* =========================================================================
+   Time section
+   ========================================================================= */
+
+.timeSection {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 14px;
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+}
+
+.timeLabel {
+  font-family: var(--font-body);
+  font-size: var(--type-size-2xs);
+  font-weight: 700;
+  color: var(--on-surface-variant);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.timeInput {
+  flex: 1;
+  background: var(--ui-input-bg);
+  border: var(--control-border);
+  border-radius: var(--ui-input-radius);
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: var(--type-size-md);
+  color: var(--on-surface);
+  outline: none;
+  transition:
+    border 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.timeInput::placeholder {
+  color: var(--on-surface-variant);
+  opacity: var(--ui-input-placeholder-opacity);
+}
+
+.timeInput:focus {
+  border: var(--control-border-focus);
+  box-shadow: var(--ui-input-focus-shadow);
+}
+
+/* =========================================================================
+   Button row — Cancel / Apply
+   ========================================================================= */
+
+.buttonRow {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  padding: 10px 14px 14px;
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+}
+
+.cancelButton {
+  padding: 6px 16px;
+  border: none;
+  border-radius: var(--ui-action-button-radius);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.cancelButton:hover {
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+}
+
+.cancelButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.applyButton {
+  padding: 6px 20px;
+  border: none;
+  border-radius: var(--ui-action-button-radius);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    filter 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.applyButton:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.3);
+}
+
+.applyButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+  filter: none;
+  box-shadow: none;
+}
+
+.applyButtonDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

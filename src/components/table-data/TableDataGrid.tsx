@@ -28,7 +28,11 @@ import type {
 } from 'ag-grid-community'
 import { AgGridReact } from 'ag-grid-react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
+import { getTemporalColumnType } from '../../lib/date-utils'
+import { useToastStore } from '../../stores/toast-store'
+import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import type { TableDataColumnMeta, PrimaryKeyInfo, AgGridFilterModel } from '../../types/schema'
+import DateTimeCellEditor from './DateTimeCellEditor'
 import styles from './TableDataGrid.module.css'
 
 // Register AG Grid Community modules (idempotent)
@@ -91,7 +95,6 @@ export function getFilterType(col: TableDataColumnMeta): string | false {
 
 export function buildColumnDefs(
   columns: TableDataColumnMeta[],
-  _pkColumns: string[],
   isReadOnly: boolean,
   hasPk: boolean
 ): ColDef[] {
@@ -112,7 +115,12 @@ export function buildColumnDefs(
     }
 
     if (editable) {
-      colDef.cellEditor = 'nullableCellEditor'
+      const temporalType = getTemporalColumnType(col.dataType)
+      if (temporalType) {
+        colDef.cellEditor = 'dateTimeCellEditor'
+      } else {
+        colDef.cellEditor = 'nullableCellEditor'
+      }
       colDef.cellEditorParams = {
         isNullable: col.isNullable,
         columnMeta: col,
@@ -258,6 +266,8 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const sortByColumn = useTableDataStore((state) => state.sortByColumn)
   const applyFilters = useTableDataStore((state) => state.applyFilters)
   const clearEditStateIfUnmodified = useTableDataStore((state) => state.clearEditStateIfUnmodified)
+  const showError = useToastStore((state) => state.showError)
+  const showSuccess = useToastStore((state) => state.showSuccess)
 
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
   const rows = useMemo(() => tabState?.rows ?? [], [tabState?.rows])
@@ -273,13 +283,14 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
     () => ({
       tableDataCellRenderer: TableDataCellRenderer,
       nullableCellEditor: NullableCellEditor,
+      dateTimeCellEditor: DateTimeCellEditor,
     }),
     []
   )
 
   // Build column definitions
   const columnDefs = useMemo(() => {
-    const defs = buildColumnDefs(columns, pkColumns, isReadOnly, hasPk)
+    const defs = buildColumnDefs(columns, isReadOnly, hasPk)
     // Apply sort indicator
     if (sort) {
       const sortDef = defs.find((d) => d.field === sort.column)
@@ -364,11 +375,25 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const onCellEditingStarted = useCallback(
     async (event: CellEditingStartedEvent) => {
       if (!event.data) return
+      const currentState = useTableDataStore.getState().tabs[tabId]
+      const currentEditState = currentState?.editState ?? null
       const newRowKey = getRowKey(event.data, pkColumns)
-      const currentEditRowKey = tabState?.editState?.rowKey ?? null
+      const currentEditRowKey = currentEditState?.rowKey ?? null
 
       // Only commit + start new edit if switching to a DIFFERENT row
       if (!isSameRowKey(newRowKey, currentEditRowKey)) {
+        const validationError = getTemporalValidationResult(currentEditState, columns)
+        if (validationError) {
+          showError('Invalid date value', `${validationError.columnName}: ${validationError.error}`)
+          if (currentEditState) {
+            setSelectedRow(tabId, currentEditState.rowKey)
+          }
+          event.api.stopEditing(true)
+          return
+        }
+
+        const hadPendingChanges = (currentEditState?.modifiedColumns.size ?? 0) > 0
+
         // Commit the old row first (async save) — await so we don't
         // reset edit state before the save completes.
         await commitEditingRowIfNeeded(tabId, newRowKey)
@@ -376,6 +401,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         // Check if save failed — if so, snap back to the failed row
         const updatedState = useTableDataStore.getState().tabs[tabId]
         if (updatedState?.saveError) {
+          showError('Save failed', updatedState.saveError)
           // Save failed — cancel editing the new cell and restore selection
           // to the failed row. editState remains on the original row.
           if (updatedState.editState) {
@@ -383,6 +409,10 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
           }
           event.api.stopEditing(true) // cancel the new cell's editing
           return
+        }
+
+        if (hadPendingChanges) {
+          showSuccess('Row saved', 'Changes saved successfully.')
         }
 
         // Start tracking the new row
@@ -400,8 +430,9 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       commitEditingRowIfNeeded,
       startEditing,
       columns,
-      tabState?.editState?.rowKey,
       setSelectedRow,
+      showError,
+      showSuccess,
     ]
   )
 
@@ -413,8 +444,13 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       const newValue = event.newValue
       const rowKey = event.data ? getRowKey(event.data, pkColumns) : null
 
-      // Only update if value actually changed
-      if (event.oldValue !== newValue) {
+      // Double-update guard: cell editors (DateTimeCellEditor, NullableCellEditor)
+      // sync values to the store on every change. If the store already has this
+      // value, skip the redundant updateCellValue call.
+      const currentState = useTableDataStore.getState().tabs[tabId]
+      const currentStoreValue = currentState?.editState?.currentValues[colName]
+
+      if (event.oldValue !== newValue && currentStoreValue !== newValue) {
         updateCellValue(tabId, colName, newValue)
       } else if (rowKey) {
         clearEditStateIfUnmodified(tabId, rowKey)

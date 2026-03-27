@@ -304,6 +304,35 @@
   background: rgba(var(--primary-rgb), 0.08);
 }
 
+/* Per-field date/time picker button */
+.fieldCalendarBtn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.fieldCalendarBtn:hover {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+.fieldCalendarBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
 /* "Unsaved change detected" note */
 .fieldModifiedNote {
   display: flex;

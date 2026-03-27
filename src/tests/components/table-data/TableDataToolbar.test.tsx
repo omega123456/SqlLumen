@@ -1,9 +1,26 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { TableDataTabState } from '../../../types/schema'
+import { updateTableRow } from '../../../lib/table-data-commands'
+
+// Mock toast store
+const mockShowError = vi.fn()
+const mockShowSuccess = vi.fn()
+vi.mock('../../../stores/toast-store', () => ({
+  useToastStore: vi.fn((selector: (s: Record<string, unknown>) => unknown) => {
+    const state = {
+      toasts: [],
+      showError: mockShowError,
+      showSuccess: mockShowSuccess,
+      showInfo: vi.fn(),
+      dismiss: vi.fn(),
+    }
+    return selector(state)
+  }),
+}))
 
 // Mock AG Grid
 vi.mock('ag-grid-community', () => ({
@@ -126,6 +143,7 @@ beforeEach(() => {
     activeTabId: null,
   })
   mockIPC(() => null)
+  vi.clearAllMocks()
 })
 
 describe('TableDataToolbar', () => {
@@ -593,5 +611,197 @@ describe('TableDataToolbar', () => {
     const deleteBtn = screen.getByTestId('btn-delete-row')
     fireEvent.click(deleteBtn) // no-op since disabled
     // Should not crash
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Save validation — temporal field validation + toast tests
+// ---------------------------------------------------------------------------
+
+describe('TableDataToolbar — Save validation', () => {
+  it('clicking Save with invalid temporal data shows error toast', async () => {
+    setupConnection()
+    setupTabState({
+      columns: [
+        {
+          name: 'id',
+          dataType: 'bigint',
+          isNullable: false,
+          isPrimaryKey: true,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: true,
+        },
+        {
+          name: 'created_at',
+          dataType: 'DATETIME',
+          isNullable: true,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: false,
+        },
+      ],
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, created_at: '2023-01-01 00:00:00' },
+        currentValues: { id: 1, created_at: 'garbage' },
+        modifiedColumns: new Set(['created_at']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    const saveBtn = screen.getByTestId('btn-save')
+    expect(saveBtn).not.toBeDisabled()
+    fireEvent.click(saveBtn)
+
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(
+        'Invalid date value',
+        expect.stringContaining('created_at')
+      )
+    })
+  })
+
+  it('clicking Save with valid data calls saveCurrentRow and shows success toast', async () => {
+    setupConnection()
+    setupTabState({
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1 },
+        currentValues: { id: 1, name: 'Bob' },
+        modifiedColumns: new Set(['name']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    const saveBtn = screen.getByTestId('btn-save')
+    fireEvent.click(saveBtn)
+
+    // Should NOT show error toast
+    await waitFor(() => {
+      expect(mockShowError).not.toHaveBeenCalled()
+      expect(mockShowSuccess).toHaveBeenCalledWith('Row saved', 'Changes saved successfully.')
+    })
+  })
+
+  it('clicking Save with blank temporal data shows error toast', async () => {
+    setupConnection()
+    setupTabState({
+      columns: [
+        {
+          name: 'id',
+          dataType: 'bigint',
+          isNullable: false,
+          isPrimaryKey: true,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: true,
+        },
+        {
+          name: 'created_at',
+          dataType: 'DATETIME',
+          isNullable: true,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: false,
+        },
+      ],
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, created_at: '2023-01-01 00:00:00' },
+        currentValues: { id: 1, created_at: '' },
+        modifiedColumns: new Set(['created_at']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    fireEvent.click(screen.getByTestId('btn-save'))
+
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith(
+        'Invalid date value',
+        expect.stringContaining('created_at')
+      )
+    })
+  })
+
+  it('clicking Save shows an error toast when saving fails', async () => {
+    ;(updateTableRow as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Save failed'))
+
+    setupConnection()
+    setupTabState({
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, name: 'Alice' },
+        currentValues: { id: 1, name: 'Bob' },
+        modifiedColumns: new Set(['name']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    fireEvent.click(screen.getByTestId('btn-save'))
+
+    await waitFor(() => {
+      expect(mockShowError).toHaveBeenCalledWith('Save failed', 'Save failed')
+    })
+    expect(mockShowSuccess).not.toHaveBeenCalled()
+  })
+
+  it('clicking Save with null temporal value does NOT show error', async () => {
+    setupConnection()
+    setupTabState({
+      columns: [
+        {
+          name: 'id',
+          dataType: 'bigint',
+          isNullable: false,
+          isPrimaryKey: true,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: true,
+        },
+        {
+          name: 'created_at',
+          dataType: 'DATETIME',
+          isNullable: true,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: false,
+        },
+      ],
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, created_at: '2023-01-01 00:00:00' },
+        currentValues: { id: 1, created_at: null },
+        modifiedColumns: new Set(['created_at']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    fireEvent.click(screen.getByTestId('btn-save'))
+
+    await waitFor(() => {
+      expect(mockShowError).not.toHaveBeenCalled()
+    })
   })
 })

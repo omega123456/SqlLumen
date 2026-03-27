@@ -20,6 +20,8 @@ import {
 } from '@phosphor-icons/react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
+import { useToastStore } from '../../stores/toast-store'
+import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import styles from './TableDataToolbar.module.css'
 
@@ -56,6 +58,10 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
   const totalPages = tabState?.totalPages ?? 1
   const pageSize = tabState?.pageSize ?? 1000
   const selectedRowKey = tabState?.selectedRowKey ?? null
+  const columns = tabState?.columns ?? []
+
+  const showError = useToastStore((s) => s.showError)
+  const showSuccess = useToastStore((s) => s.showSuccess)
 
   const hasPk = primaryKey !== null
   const isMutationDisabled = isConnectionReadOnly || !hasPk
@@ -94,15 +100,36 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
     }
 
     await deleteRow(tabId, selectedRowKey, {})
-  }, [selectedRowKey, editState, discardCurrentRow, deleteRow, tabId])
+
+    // Show success toast if no error occurred
+    const newState = useTableDataStore.getState().tabs[tabId]
+    if (newState && !newState.error) {
+      showSuccess('Row deleted', 'Row deleted successfully.')
+    }
+  }, [selectedRowKey, editState, discardCurrentRow, deleteRow, tabId, showSuccess])
 
   const handleCancelDelete = useCallback(() => {
     setShowDeleteConfirm(false)
   }, [])
 
-  const handleSave = useCallback(() => {
-    saveCurrentRow(tabId)
-  }, [saveCurrentRow, tabId])
+  const handleSave = useCallback(async () => {
+    const validationError = getTemporalValidationResult(editState, columns)
+    if (validationError) {
+      showError('Invalid date value', `${validationError.columnName}: ${validationError.error}`)
+      return
+    }
+
+    await saveCurrentRow(tabId)
+    const newState = useTableDataStore.getState().tabs[tabId]
+    if (newState?.saveError) {
+      showError('Save failed', newState.saveError)
+      return
+    }
+
+    if (newState && !newState.saveError && !newState.editState) {
+      showSuccess('Row saved', 'Changes saved successfully.')
+    }
+  }, [saveCurrentRow, tabId, editState, columns, showError, showSuccess])
 
   const handleDiscard = useCallback(() => {
     discardCurrentRow(tabId)

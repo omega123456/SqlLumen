@@ -835,3 +835,104 @@ for (const theme of themes) {
     })
   })
 }
+
+// ---------------------------------------------------------------------------
+// Date picker screenshot tests
+// ---------------------------------------------------------------------------
+
+test.describe('Date picker', () => {
+  for (const theme of themes) {
+    test.describe(`${theme} theme`, () => {
+      test.beforeEach(async ({ page }) => {
+        await waitForApp(page)
+        await ensureTheme(page, theme)
+      })
+
+      test('DateTimePicker — Form View (calendar popup open)', async ({ page }) => {
+        await openTableDataTab(page)
+
+        // Switch to form view
+        await page.getByTestId('btn-form-view').click()
+        await expect(page.getByTestId('table-data-form-view')).toBeVisible({
+          timeout: APP_READY_MS,
+        })
+
+        // Dismiss any lingering toasts before interaction
+        await dismissAllToasts(page)
+
+        // Click calendar button for created_at field
+        const calendarBtn = page.getByTestId('calendar-btn-created_at')
+        await expect(calendarBtn).toBeVisible({ timeout: APP_READY_MS })
+        await calendarBtn.click()
+
+        // Wait for picker popup to be fully visible
+        await expect(page.getByTestId('date-time-picker-popup')).toBeVisible({
+          timeout: APP_READY_MS,
+        })
+        await page.waitForTimeout(300) // Let animations settle
+
+        // Dismiss any new toasts
+        await dismissAllToasts(page)
+
+        // Reset scroll positions for stable screenshots
+        await resetChromeScrollPositions(page)
+
+        // Full viewport screenshot — popup is a portal on body with position:fixed
+        await expect(page).toHaveScreenshot(`date-picker-form-view-${theme}.png`, {
+          animations: 'disabled',
+        })
+
+        // Close picker
+        await page.keyboard.press('Escape')
+      })
+
+      test('DateTimePicker — Grid View (calendar popup open)', async ({ page }) => {
+        await openTableDataTab(page)
+
+        // Grid view is the default — wait for data rows
+        await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
+        await expect(page.getByTestId('table-data-grid').locator('.ag-row').first()).toBeVisible({
+          timeout: APP_READY_MS,
+        })
+
+        // Dismiss any lingering toasts before interaction
+        await dismissAllToasts(page)
+
+        // Click on the created_at cell in the first data row to start editing
+        // AG Grid uses col-id attribute matching the field name
+        const createdAtCell = page
+          .getByTestId('table-data-grid')
+          .locator('.ag-row[row-index="0"] .ag-cell[col-id="created_at"]')
+        await expect(createdAtCell).toBeVisible({ timeout: APP_READY_MS })
+        await createdAtCell.click()
+
+        // Wait for the DateTimeCellEditor to mount with the calendar button
+        const gridCalendarBtn = page.getByTestId('grid-calendar-btn')
+        await expect(gridCalendarBtn).toBeVisible({ timeout: APP_READY_MS })
+
+        // Click calendar button to open picker
+        await gridCalendarBtn.click()
+
+        // Wait for picker popup to be fully visible
+        await expect(page.getByTestId('date-time-picker-popup')).toBeVisible({
+          timeout: APP_READY_MS,
+        })
+        await page.waitForTimeout(300) // Let animations settle
+
+        // Dismiss any new toasts
+        await dismissAllToasts(page)
+
+        // Reset scroll positions for stable screenshots
+        await resetChromeScrollPositions(page)
+
+        // Full viewport screenshot — popup is a portal on body with position:fixed
+        await expect(page).toHaveScreenshot(`date-picker-grid-view-${theme}.png`, {
+          animations: 'disabled',
+        })
+
+        // Close picker
+        await page.keyboard.press('Escape')
+      })
+    })
+  }
+})

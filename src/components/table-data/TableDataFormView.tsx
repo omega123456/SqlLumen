@@ -9,11 +9,22 @@
  * between views preserves in-progress edits.
  */
 
-import { useCallback, useMemo } from 'react'
-import { CaretLeft, CaretRight, CopySimple, Info } from '@phosphor-icons/react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import {
+  CaretLeft,
+  CaretRight,
+  CopySimple,
+  Info,
+  CalendarBlank,
+  Clock,
+} from '@phosphor-icons/react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
+import { useToastStore } from '../../stores/toast-store'
 import { writeClipboardText } from '../../lib/context-menu-utils'
+import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
+import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
+import { DateTimePicker } from './DateTimePicker'
 import type { TableDataColumnMeta } from '../../types/schema'
 import styles from './TableDataFormView.module.css'
 
@@ -58,6 +69,14 @@ function isNullish(value: unknown): value is null | undefined {
   return value === null || value === undefined
 }
 
+function escapeForAttributeSelector(value: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+    return CSS.escape(value)
+  }
+
+  return value.replace(/(["\\])/g, '\\$1')
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -96,6 +115,17 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
   const isEditable = !isConnectionReadOnly && hasPk
 
   const pkColumns = primaryKey?.keyColumns ?? []
+
+  // --- Date/time picker state ---
+  const [openPickerState, setOpenPickerState] = useState<{
+    field: string
+    anchorEl: HTMLElement
+  } | null>(null)
+
+  // --- Focus-tracking ref for first-click-open on temporal fields ---
+  // Tracks whether each temporal input was already focused before a click,
+  // so the picker only auto-opens on the initial focus-granting click.
+  const inputFocusedRef = useRef<Record<string, boolean>>({})
 
   // Find local index of selected row
   const localIndex = useMemo(() => {
@@ -220,10 +250,18 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
         : currentRow[columns.findIndex((c) => c.name === col.name)]
 
       if (currentVal === null) {
-        // Toggling NULL off → set to empty string
-        updateCellValue(tabId, col.name, '')
+        // Toggling NULL off — use today's date/time for temporal columns
+        const temporalType = getTemporalColumnType(col.dataType)
+        if (temporalType) {
+          updateCellValue(tabId, col.name, getTodayMysqlString(temporalType))
+        } else {
+          updateCellValue(tabId, col.name, '')
+        }
       } else {
-        // Toggling NULL on
+        // Toggling NULL on — close picker if it's open for this field
+        if (openPickerState?.field === col.name) {
+          setOpenPickerState(null)
+        }
         updateCellValue(tabId, col.name, null)
       }
     },
@@ -236,6 +274,7 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
       columns,
       updateCellValue,
       tabId,
+      openPickerState,
     ]
   )
 
@@ -248,9 +287,33 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
     }
   }, [])
 
-  const handleSave = useCallback(() => {
-    saveCurrentRow(tabId)
-  }, [saveCurrentRow, tabId])
+  const showError = useToastStore((s) => s.showError)
+  const showSuccess = useToastStore((s) => s.showSuccess)
+
+  const handleSave = useCallback(async () => {
+    const validationError = getTemporalValidationResult(editState, columns)
+    if (validationError) {
+      showError('Invalid date value', `${validationError.columnName}: ${validationError.error}`)
+      // Focus the problematic field
+      const input = document.querySelector(
+        `[data-testid="form-input-${escapeForAttributeSelector(validationError.columnName)}"]`
+      ) as HTMLElement
+      input?.focus()
+      return // Block save
+    }
+
+    await saveCurrentRow(tabId)
+    const newState = useTableDataStore.getState().tabs[tabId]
+    if (newState?.saveError) {
+      showError('Save failed', newState.saveError)
+      return
+    }
+
+    // Show success toast if no saveError (check state after save)
+    if (newState && !newState.saveError && !newState.editState) {
+      showSuccess('Row saved', 'Changes saved successfully.')
+    }
+  }, [saveCurrentRow, tabId, editState, columns, showError, showSuccess])
 
   const handleDiscard = useCallback(() => {
     discardCurrentRow(tabId)
@@ -349,6 +412,8 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
             const isPk = col.isPrimaryKey
             const isUnique = col.isUniqueKey && !col.isPrimaryKey
             const isFieldReadonly = isBlobField || !isEditable
+            const temporalType = getTemporalColumnType(col.dataType)
+            const isTemporalEditable = temporalType !== null && !isFieldReadonly && !isBlobField
 
             // Label suffix
             let labelSuffix = ''
@@ -404,10 +469,59 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
                         .filter(Boolean)
                         .join(' ')}
                       value={displayValue(rawValue)}
-                      onFocus={() => handleInputFocus(col.name)}
+                      onFocus={() => {
+                        handleInputFocus(col.name)
+                        // Mark as focused AFTER the focus event fires so the
+                        // onClick handler can distinguish first-click vs re-click.
+                        // Use setTimeout(0) so the flag is set after the synchronous
+                        // onClick that may fire in the same event loop tick.
+                        setTimeout(() => {
+                          if (isTemporalEditable) {
+                            inputFocusedRef.current[col.name] = true
+                          }
+                        }, 0)
+                      }}
+                      onBlur={() => {
+                        if (isTemporalEditable) {
+                          inputFocusedRef.current[col.name] = false
+                        }
+                      }}
+                      onClick={
+                        isTemporalEditable
+                          ? (e) => {
+                              // Don't open picker when the field is NULL
+                              if (isNull) return
+                              // Open picker only on the click that first grants focus
+                              // (i.e., the input was not already focused before this click).
+                              if (!inputFocusedRef.current[col.name]) {
+                                const anchorEl = (e.currentTarget.parentElement ??
+                                  e.currentTarget) as HTMLElement
+                                setOpenPickerState({ field: col.name, anchorEl })
+                              }
+                            }
+                          : undefined
+                      }
                       onChange={(e) => handleInputChange(col.name, e.target.value)}
                       data-testid={`form-input-${col.name}`}
                     />
+                  )}
+
+                  {isTemporalEditable && (
+                    <button
+                      type="button"
+                      className={styles.fieldCalendarBtn}
+                      disabled={isNull}
+                      onClick={(e) => {
+                        if (isNull) return
+                        const anchorEl = (e.currentTarget.parentElement ??
+                          e.currentTarget) as HTMLElement
+                        setOpenPickerState({ field: col.name, anchorEl })
+                      }}
+                      data-testid={`calendar-btn-${col.name}`}
+                      aria-label={temporalType === 'TIME' ? 'Open time picker' : 'Open date picker'}
+                    >
+                      {temporalType === 'TIME' ? <Clock size={14} /> : <CalendarBlank size={14} />}
+                    </button>
                   )}
 
                   <button
@@ -421,6 +535,21 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
                     <CopySimple size={14} />
                   </button>
                 </div>
+
+                {/* Date/time picker popup (rendered via portal) */}
+                {openPickerState?.field === col.name && temporalType && (
+                  <DateTimePicker
+                    value={isNullish(rawValue) ? null : displayValue(rawValue)}
+                    columnType={temporalType}
+                    disabled={isNull}
+                    anchorEl={openPickerState.anchorEl}
+                    onApply={(val) => {
+                      handleInputChange(col.name, val)
+                      setOpenPickerState(null)
+                    }}
+                    onCancel={() => setOpenPickerState(null)}
+                  />
+                )}
 
                 {/* Modified indicator */}
                 {isModified && (
