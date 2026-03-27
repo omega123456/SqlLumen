@@ -9,11 +9,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[cfg(not(coverage))]
+use sqlx::mysql::types::MySqlTime;
+#[cfg(not(coverage))]
+use sqlx::mysql::MySqlValueRef;
+#[cfg(not(coverage))]
 use sqlx::Column;
 #[cfg(not(coverage))]
 use sqlx::Row;
 #[cfg(not(coverage))]
 use sqlx::TypeInfo;
+#[cfg(not(coverage))]
+use sqlx::Value;
 #[cfg(not(coverage))]
 use sqlx::ValueRef;
 
@@ -119,6 +125,30 @@ enum FilterOp {
     InRange,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ColumnFilterKind {
+    TextLike,
+    NonText,
+}
+
+fn classify_column_filter_kind(data_type: &str) -> ColumnFilterKind {
+    let upper = data_type.to_uppercase();
+
+    if is_binary_data_type(&upper) {
+        return ColumnFilterKind::NonText;
+    }
+
+    if upper.contains("CHAR")
+        || upper.contains("TEXT")
+        || upper.contains("ENUM")
+        || upper.contains("SET")
+    {
+        return ColumnFilterKind::TextLike;
+    }
+
+    ColumnFilterKind::NonText
+}
+
 /// Map an AG Grid filter condition string to its SQL operation.
 fn get_filter_op(condition: &str) -> Option<FilterOp> {
     match condition {
@@ -219,6 +249,107 @@ pub fn translate_filter_model(
     }
 }
 
+/// Convert an AG Grid filter model to a SQL WHERE clause using column metadata
+/// when the caller has it available.
+pub fn translate_filter_model_with_columns(
+    filter_model: &HashMap<String, FilterModelEntry>,
+    columns: &[TableDataColumnMeta],
+) -> FilterClause {
+    if filter_model.is_empty() {
+        return FilterClause {
+            sql: String::new(),
+            params: vec![],
+        };
+    }
+
+    let column_kinds: HashMap<&str, ColumnFilterKind> = columns
+        .iter()
+        .map(|column| {
+            (
+                column.name.as_str(),
+                classify_column_filter_kind(&column.data_type),
+            )
+        })
+        .collect();
+
+    let mut entries: Vec<(&String, &FilterModelEntry)> = filter_model.iter().collect();
+    entries.sort_by_key(|(k, _)| (*k).clone());
+
+    let mut conditions = Vec::new();
+    let mut params = Vec::new();
+
+    for (col_name, entry) in entries {
+        let safe_col = match safe_identifier(col_name) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let op = match get_filter_op(entry.filter_condition.as_str()) {
+            Some(op) => op,
+            None => continue,
+        };
+
+        let column_kind = column_kinds
+            .get(col_name.as_str())
+            .copied()
+            .unwrap_or(ColumnFilterKind::TextLike);
+
+        match op {
+            FilterOp::Operator(sql_op) => {
+                if let Some(ref val) = entry.filter {
+                    conditions.push(format!("{safe_col} {sql_op} ?"));
+                    params.push(serde_json::Value::String(val.clone()));
+                }
+            }
+            FilterOp::Like(prefix, suffix) => {
+                if let Some(ref val) = entry.filter {
+                    let is_not = entry.filter_condition == "notContains";
+                    let like_kw = if is_not { "NOT LIKE" } else { "LIKE" };
+                    conditions.push(format!("{safe_col} {like_kw} ?"));
+                    params.push(serde_json::Value::String(format!(
+                        "{prefix}{val}{suffix}"
+                    )));
+                }
+            }
+            FilterOp::Blank => {
+                if column_kind == ColumnFilterKind::TextLike {
+                    conditions.push(format!("({safe_col} IS NULL OR {safe_col} = '')"));
+                } else {
+                    conditions.push(format!("{safe_col} IS NULL"));
+                }
+            }
+            FilterOp::NotBlank => {
+                if column_kind == ColumnFilterKind::TextLike {
+                    conditions.push(format!(
+                        "({safe_col} IS NOT NULL AND {safe_col} != '')"
+                    ));
+                } else {
+                    conditions.push(format!("{safe_col} IS NOT NULL"));
+                }
+            }
+            FilterOp::InRange => {
+                if let (Some(ref from), Some(ref to)) = (&entry.filter, &entry.filter_to) {
+                    conditions.push(format!("{safe_col} >= ? AND {safe_col} <= ?"));
+                    params.push(serde_json::Value::String(from.clone()));
+                    params.push(serde_json::Value::String(to.clone()));
+                }
+            }
+        }
+    }
+
+    if conditions.is_empty() {
+        return FilterClause {
+            sql: String::new(),
+            params: vec![],
+        };
+    }
+
+    FilterClause {
+        sql: conditions.join(" AND "),
+        params,
+    }
+}
+
 // ── Helper: check whether a DATA_TYPE string is binary ─────────────────────────
 
 fn is_binary_data_type(data_type: &str) -> bool {
@@ -251,6 +382,84 @@ fn decode_optional_text(row: &sqlx::mysql::MySqlRow, index: usize) -> Option<Str
             Err(_) => None,
         },
     }
+}
+
+#[cfg(not(coverage))]
+fn decode_unchecked_string(row: &sqlx::mysql::MySqlRow, i: usize) -> Option<String> {
+    if let Ok(value) = row.try_get_unchecked::<Option<String>, _>(i) {
+        return value;
+    }
+
+    row.try_get_unchecked::<Option<Vec<u8>>, _>(i)
+        .ok()
+        .flatten()
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[cfg(not(coverage))]
+fn decode_raw_string(value: MySqlValueRef<'_>) -> Option<String> {
+    let owned = sqlx::ValueRef::to_owned(&value);
+    if let Ok(text) = owned.try_decode::<String>() {
+        return Some(text);
+    }
+
+    let owned = sqlx::ValueRef::to_owned(&value);
+    owned
+        .try_decode::<Vec<u8>>()
+        .ok()
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[cfg(not(coverage))]
+fn format_mysql_time(value: MySqlTime) -> String {
+    let sign = if value.sign().is_negative() { "-" } else { "" };
+    let hours = value.hours();
+
+    if value.microseconds() == 0 {
+        format!(
+            "{sign}{hours:02}:{:02}:{:02}",
+            value.minutes(),
+            value.seconds()
+        )
+    } else {
+        format!(
+            "{sign}{hours:02}:{:02}:{:02}.{:06}",
+            value.minutes(),
+            value.seconds(),
+            value.microseconds()
+        )
+    }
+}
+
+#[cfg(not(coverage))]
+fn serialize_temporal_value(value: MySqlValueRef<'_>) -> Option<serde_json::Value> {
+    use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+
+    let owned = sqlx::ValueRef::to_owned(&value);
+
+    if let Ok(v) = owned.try_decode::<NaiveDateTime>() {
+        return Some(serde_json::Value::String(v.to_string()));
+    }
+
+    let owned = sqlx::ValueRef::to_owned(&value);
+    if let Ok(v) = owned.try_decode::<DateTime<Utc>>() {
+        return Some(serde_json::Value::String(v.naive_utc().to_string()));
+    }
+
+    let owned = sqlx::ValueRef::to_owned(&value);
+    if let Ok(v) = owned.try_decode::<NaiveDate>() {
+        return Some(serde_json::Value::String(v.to_string()));
+    }
+
+    let owned = sqlx::ValueRef::to_owned(&value);
+    if let Ok(v) = owned.try_decode::<MySqlTime>() {
+        return Some(serde_json::Value::String(format_mysql_time(v)));
+    }
+
+    sqlx::ValueRef::to_owned(&value)
+        .try_decode::<String>()
+        .ok()
+        .map(serde_json::Value::String)
 }
 
 /// Serialize a single cell value from a MySQL row for the table data browser.
@@ -351,16 +560,24 @@ fn serialize_table_value(
         }
     }
 
+    // Date/time values
+    if matches!(
+        type_name.as_str(),
+        "DATE" | "DATETIME" | "TIMESTAMP" | "TIME" | "NEWDATE"
+    ) {
+        if let Some(value) = serialize_temporal_value(raw_value.clone()) {
+            return value;
+        }
+    }
+
     // Default: string
     match row.try_get::<Option<String>, _>(i) {
         Ok(Some(s)) => serde_json::Value::String(s),
         Ok(None) => serde_json::Value::Null,
-        Err(_) => match row.try_get::<Option<Vec<u8>>, _>(i) {
-            Ok(Some(bytes)) => {
-                serde_json::Value::String(String::from_utf8_lossy(&bytes).into_owned())
-            }
-            _ => serde_json::Value::Null,
-        },
+        Err(_) => decode_unchecked_string(row, i)
+            .or_else(|| decode_raw_string(raw_value))
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null),
     }
 }
 
@@ -421,16 +638,24 @@ fn serialize_export_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::
         }
     }
 
+    // Date/time values
+    if matches!(
+        type_name.as_str(),
+        "DATE" | "DATETIME" | "TIMESTAMP" | "TIME" | "NEWDATE"
+    ) {
+        if let Some(value) = serialize_temporal_value(raw_value.clone()) {
+            return value;
+        }
+    }
+
     // Default: string
     match row.try_get::<Option<String>, _>(i) {
         Ok(Some(s)) => serde_json::Value::String(s),
         Ok(None) => serde_json::Value::Null,
-        Err(_) => match row.try_get::<Option<Vec<u8>>, _>(i) {
-            Ok(Some(bytes)) => {
-                serde_json::Value::String(String::from_utf8_lossy(&bytes).into_owned())
-            }
-            _ => serde_json::Value::Null,
-        },
+        Err(_) => decode_unchecked_string(row, i)
+            .or_else(|| decode_raw_string(raw_value))
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null),
     }
 }
 
@@ -663,7 +888,7 @@ pub async fn fetch_table_data_impl(
     let (pk_info, columns) = fetch_table_pk_impl(pool, database, table).await?;
 
     // Build filter WHERE clause
-    let filter_clause = translate_filter_model(&filter_model);
+    let filter_clause = translate_filter_model_with_columns(&filter_model, &columns);
     let where_sql = if filter_clause.sql.is_empty() {
         String::new()
     } else {
@@ -1150,9 +1375,10 @@ pub async fn export_table_data_impl(
 
     let safe_db = safe_identifier(&options.database)?;
     let safe_table = safe_identifier(&options.table)?;
+    let (_, columns) = fetch_table_pk_impl(pool, &options.database, &options.table).await?;
 
     // Build WHERE and ORDER BY (same as data fetch, but no LIMIT/OFFSET)
-    let filter_clause = translate_filter_model(&options.filter_model);
+    let filter_clause = translate_filter_model_with_columns(&options.filter_model, &columns);
     let where_sql = if filter_clause.sql.is_empty() {
         String::new()
     } else {

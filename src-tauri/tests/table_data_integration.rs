@@ -1,11 +1,428 @@
 //! Integration tests for table data operations — filter translation and coverage stubs.
 
 use mysql_client_lib::mysql::table_data::{
-    translate_filter_model, ExportTableOptions, FilterModelEntry, PrimaryKeyInfo, SortInfo,
+    translate_filter_model, translate_filter_model_with_columns, ExportTableOptions,
+    FilterModelEntry, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
 };
 use std::collections::HashMap;
 
 mod common;
+
+#[cfg(not(coverage))]
+mod type_aware_filter_integration {
+    use super::*;
+    use chrono::NaiveDate;
+    use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
+    use mysql_client_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+    use mysql_client_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
+    use mysql_client_lib::commands::table_data as table_data_commands;
+    use mysql_client_lib::mysql::pool::set_test_pool_factory;
+    use mysql_client_lib::mysql::registry::ConnectionRegistry;
+    use mysql_client_lib::state::AppState;
+    use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
+    use rusqlite::Connection;
+    use serde::de::DeserializeOwned;
+    use serde_json::json;
+    use std::sync::Mutex;
+    use tauri::ipc::{CallbackFn, InvokeBody};
+    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+    use tauri::webview::InvokeRequest;
+
+    fn test_state() -> AppState {
+        common::ensure_fake_backend_once();
+        let conn = Connection::open_in_memory().expect("should open in-memory db");
+        mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
+        AppState {
+            db: Mutex::new(conn),
+            registry: ConnectionRegistry::new(),
+            app_handle: None,
+            results: std::sync::RwLock::new(std::collections::HashMap::new()),
+            log_filter_reload: Mutex::new(None),
+        }
+    }
+
+    fn build_app(
+    ) -> (
+        tauri::App<tauri::test::MockRuntime>,
+        tauri::WebviewWindow<tauri::test::MockRuntime>,
+    ) {
+        let app = mock_builder()
+            .manage(test_state())
+            .invoke_handler(tauri::generate_handler![save_connection, open_connection, fetch_table_data])
+            .build(mock_context(noop_assets()))
+            .expect("should build test app");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("should build test webview");
+        (app, webview)
+    }
+
+    #[tauri::command]
+    fn save_connection(
+        data: SaveConnectionInput,
+        state: tauri::State<'_, AppState>,
+    ) -> Result<String, String> {
+        save_connection_impl(&state, data)
+    }
+
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct OpenConnectionPayloadDto {
+        profile_id: String,
+    }
+
+    #[tauri::command]
+    async fn open_connection(
+        payload: OpenConnectionPayloadDto,
+        state: tauri::State<'_, AppState>,
+    ) -> Result<OpenConnectionResult, String> {
+        open_connection_impl(&state, &payload.profile_id).await
+    }
+
+    #[tauri::command]
+    async fn fetch_table_data(
+        state: tauri::State<'_, AppState>,
+        connection_id: String,
+        database: String,
+        table: String,
+        page: u32,
+        page_size: u32,
+        sort_column: Option<String>,
+        sort_direction: Option<String>,
+        filter_model: Option<HashMap<String, mysql_client_lib::mysql::table_data::FilterModelEntry>>,
+    ) -> Result<mysql_client_lib::mysql::table_data::TableDataResponse, String> {
+        table_data_commands::fetch_table_data(
+            state,
+            connection_id,
+            database,
+            table,
+            page,
+            page_size,
+            sort_column,
+            sort_direction,
+            filter_model,
+        )
+        .await
+    }
+
+    fn invoke_tauri_command<T: DeserializeOwned>(
+        webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+        cmd: &str,
+        body: serde_json::Value,
+    ) -> Result<T, serde_json::Value> {
+        get_ipc_response(
+            webview,
+            InvokeRequest {
+                cmd: cmd.into(),
+                callback: CallbackFn(0),
+                error: CallbackFn(1),
+                url: "http://tauri.localhost".parse().expect("test URL should parse"),
+                body: InvokeBody::Json(body),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+        .map(|response| {
+            response
+                .deserialize::<T>()
+                .expect("IPC response should deserialize")
+        })
+    }
+
+    fn save_input_json(port: u16) -> serde_json::Value {
+        let input = SaveConnectionInput {
+            name: "Mock Table Data DB".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: i64::from(port),
+            username: "root".to_string(),
+            password: None,
+            default_database: None,
+            ssl_enabled: false,
+            ssl_ca_path: None,
+            ssl_cert_path: None,
+            ssl_key_path: None,
+            color: None,
+            group_id: None,
+            read_only: false,
+            sort_order: 0,
+            connect_timeout_secs: Some(2),
+            keepalive_interval_secs: Some(0),
+        };
+
+        json!({
+            "name": input.name,
+            "host": input.host,
+            "port": input.port,
+            "username": input.username,
+            "password": input.password,
+            "defaultDatabase": input.default_database,
+            "sslEnabled": input.ssl_enabled,
+            "sslCaPath": input.ssl_ca_path,
+            "sslCertPath": input.ssl_cert_path,
+            "sslKeyPath": input.ssl_key_path,
+            "color": input.color,
+            "groupId": input.group_id,
+            "readOnly": input.read_only,
+            "sortOrder": input.sort_order,
+            "connectTimeoutSecs": input.connect_timeout_secs,
+            "keepaliveIntervalSecs": input.keepalive_interval_secs,
+        })
+    }
+
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct OpenConnectionResultDto {
+        session_id: String,
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fetch_table_data_avoids_empty_string_comparison_for_timestamp_not_blank_filter() {
+        let server = MockMySqlServer::start_script(vec![
+            MockQueryStep {
+                query: "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
+                columns: vec![
+                    MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "DATA_TYPE", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "IS_NULLABLE", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "COLUMN_KEY", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::empty() },
+                    MockColumnDef { name: "COLUMN_DEFAULT", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::empty() },
+                    MockColumnDef { name: "EXTRA", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                ],
+                rows: vec![
+                    vec![
+                        MockCell::Bytes(b"id"),
+                        MockCell::Bytes(b"int"),
+                        MockCell::Bytes(b"NO"),
+                        MockCell::Bytes(b"PRI"),
+                        MockCell::Bytes(b""),
+                        MockCell::Bytes(b"auto_increment"),
+                    ],
+                    vec![
+                        MockCell::Bytes(b"email_verified_at"),
+                        MockCell::Bytes(b"timestamp"),
+                        MockCell::Bytes(b"YES"),
+                        MockCell::Bytes(b""),
+                        MockCell::Null,
+                        MockCell::Bytes(b""),
+                    ],
+                ],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION",
+                columns: vec![MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG }],
+                rows: vec![vec![MockCell::Bytes(b"id")]],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT COUNT(*) FROM `pi_management`.`users` WHERE `email_verified_at` IS NOT NULL",
+                columns: vec![MockColumnDef { name: "COUNT(*)", coltype: ColumnType::MYSQL_TYPE_LONGLONG, colflags: ColumnFlags::NOT_NULL_FLAG }],
+                rows: vec![vec![MockCell::I64(1)]],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT * FROM `pi_management`.`users` WHERE `email_verified_at` IS NOT NULL LIMIT 50 OFFSET 0",
+                columns: vec![
+                    MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
+                    MockColumnDef { name: "email_verified_at", coltype: ColumnType::MYSQL_TYPE_TIMESTAMP, colflags: ColumnFlags::empty() },
+                ],
+                rows: vec![vec![
+                    MockCell::U32(1),
+                    MockCell::DateTime(
+                        NaiveDate::from_ymd_opt(2024, 1, 1)
+                            .expect("date should be valid")
+                            .and_hms_opt(0, 0, 0)
+                            .expect("time should be valid"),
+                    ),
+                ]],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT COUNT(*) FROM `pi_management`.`users` WHERE (`email_verified_at` IS NOT NULL AND `email_verified_at` != '')",
+                columns: vec![],
+                rows: vec![],
+                error: Some((ErrorKind::ER_WRONG_VALUE, b"Incorrect TIMESTAMP value: ''")),
+            },
+        ])
+        .await;
+
+        set_test_pool_factory(None);
+
+        let (_app, webview) = build_app();
+
+        let profile_id: String = invoke_tauri_command(
+            &webview,
+            "save_connection",
+            json!({ "data": save_input_json(server.port) }),
+        )
+        .expect("save_connection IPC should succeed");
+
+        let open_result: OpenConnectionResultDto = invoke_tauri_command(
+            &webview,
+            "open_connection",
+            json!({
+                "payload": {
+                    "profileId": profile_id,
+                }
+            }),
+        )
+        .expect("open_connection IPC should succeed");
+
+        let response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+            &webview,
+            "fetch_table_data",
+            json!({
+                "connectionId": open_result.session_id,
+                "database": "pi_management",
+                "table": "users",
+                "page": 1,
+                "pageSize": 50,
+                "sortColumn": null,
+                "sortDirection": null,
+                "filterModel": {
+                    "email_verified_at": {
+                        "filterType": "text",
+                        "filterCondition": "notBlank",
+                        "filter": null,
+                        "filterTo": null
+                    }
+                }
+            }),
+        )
+        .expect("type-aware timestamp notBlank filter should succeed");
+
+        assert_eq!(response.total_rows, 1);
+        assert_eq!(response.rows.len(), 1);
+
+        set_test_pool_factory(None);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fetch_table_data_serializes_timestamp_columns_as_strings() {
+        let server = MockMySqlServer::start_script(vec![
+            MockQueryStep {
+                query: "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
+                columns: vec![
+                    MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "DATA_TYPE", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "IS_NULLABLE", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "COLUMN_KEY", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::empty() },
+                    MockColumnDef { name: "COLUMN_DEFAULT", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::empty() },
+                    MockColumnDef { name: "EXTRA", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                ],
+                rows: vec![
+                    vec![
+                        MockCell::Bytes(b"id"),
+                        MockCell::Bytes(b"int"),
+                        MockCell::Bytes(b"NO"),
+                        MockCell::Bytes(b"PRI"),
+                        MockCell::Null,
+                        MockCell::Bytes(b"auto_increment"),
+                    ],
+                    vec![
+                        MockCell::Bytes(b"created_at"),
+                        MockCell::Bytes(b"timestamp"),
+                        MockCell::Bytes(b"NO"),
+                        MockCell::Bytes(b""),
+                        MockCell::Null,
+                        MockCell::Bytes(b""),
+                    ],
+                    vec![
+                        MockCell::Bytes(b"updated_at"),
+                        MockCell::Bytes(b"timestamp"),
+                        MockCell::Bytes(b"YES"),
+                        MockCell::Bytes(b""),
+                        MockCell::Null,
+                        MockCell::Bytes(b""),
+                    ],
+                ],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION",
+                columns: vec![MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG }],
+                rows: vec![vec![MockCell::Bytes(b"id")]],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT COUNT(*) FROM `pi_management`.`users`",
+                columns: vec![MockColumnDef { name: "COUNT(*)", coltype: ColumnType::MYSQL_TYPE_LONGLONG, colflags: ColumnFlags::NOT_NULL_FLAG }],
+                rows: vec![vec![MockCell::I64(1)]],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT * FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
+                columns: vec![
+                    MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
+                    MockColumnDef { name: "created_at", coltype: ColumnType::MYSQL_TYPE_TIMESTAMP, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "updated_at", coltype: ColumnType::MYSQL_TYPE_TIMESTAMP, colflags: ColumnFlags::empty() },
+                ],
+                rows: vec![vec![
+                    MockCell::U32(1),
+                    MockCell::DateTime(
+                        NaiveDate::from_ymd_opt(2024, 1, 1)
+                            .expect("date should be valid")
+                            .and_hms_opt(0, 0, 0)
+                            .expect("time should be valid"),
+                    ),
+                    MockCell::DateTime(
+                        NaiveDate::from_ymd_opt(2024, 1, 2)
+                            .expect("date should be valid")
+                            .and_hms_opt(3, 4, 5)
+                            .expect("time should be valid"),
+                    ),
+                ]],
+                error: None,
+            },
+        ])
+        .await;
+
+        set_test_pool_factory(None);
+
+        let (_app, webview) = build_app();
+
+        let profile_id: String = invoke_tauri_command(
+            &webview,
+            "save_connection",
+            json!({ "data": save_input_json(server.port) }),
+        )
+        .expect("save_connection IPC should succeed");
+
+        let open_result: OpenConnectionResultDto = invoke_tauri_command(
+            &webview,
+            "open_connection",
+            json!({
+                "payload": {
+                    "profileId": profile_id,
+                }
+            }),
+        )
+        .expect("open_connection IPC should succeed");
+
+        let response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+            &webview,
+            "fetch_table_data",
+            json!({
+                "connectionId": open_result.session_id,
+                "database": "pi_management",
+                "table": "users",
+                "page": 1,
+                "pageSize": 50,
+                "sortColumn": null,
+                "sortDirection": null,
+                "filterModel": null
+            }),
+        )
+        .expect("fetch_table_data IPC should succeed");
+
+        assert_eq!(response.total_rows, 1);
+        assert_eq!(response.rows.len(), 1);
+        assert_eq!(response.rows[0][1], serde_json::json!("2024-01-01 00:00:00"));
+        assert_eq!(response.rows[0][2], serde_json::json!("2024-01-02 03:04:05"));
+
+        set_test_pool_factory(None);
+    }
+}
 
 #[cfg(coverage)]
 mod command_wrapper_coverage {
@@ -833,6 +1250,152 @@ fn translate_filter_model_in_range_missing_filter_to() {
     let clause = translate_filter_model(&model);
     assert!(clause.sql.is_empty());
     assert!(clause.params.is_empty());
+}
+
+fn make_column_meta(name: &str, data_type: &str) -> TableDataColumnMeta {
+    TableDataColumnMeta {
+        name: name.to_string(),
+        data_type: data_type.to_string(),
+        is_nullable: true,
+        is_primary_key: false,
+        is_unique_key: false,
+        has_default: false,
+        column_default: None,
+        is_binary: false,
+        is_auto_increment: false,
+    }
+}
+
+#[test]
+fn translate_filter_model_with_columns_not_blank_uses_type_aware_sql() {
+    let mut model = HashMap::new();
+    model.insert(
+        "email_verified_at".to_string(),
+        FilterModelEntry {
+            filter_type: "text".to_string(),
+            filter_condition: "notBlank".to_string(),
+            filter: None,
+            filter_to: None,
+        },
+    );
+    model.insert(
+        "notes".to_string(),
+        FilterModelEntry {
+            filter_type: "text".to_string(),
+            filter_condition: "notBlank".to_string(),
+            filter: None,
+            filter_to: None,
+        },
+    );
+    model.insert(
+        "login_count".to_string(),
+        FilterModelEntry {
+            filter_type: "number".to_string(),
+            filter_condition: "notBlank".to_string(),
+            filter: None,
+            filter_to: None,
+        },
+    );
+
+    let columns = vec![
+        make_column_meta("email_verified_at", "TIMESTAMP"),
+        make_column_meta("notes", "VARCHAR"),
+        make_column_meta("login_count", "INT"),
+    ];
+
+    let clause = translate_filter_model_with_columns(&model, &columns);
+    assert!(clause.sql.contains("`email_verified_at` IS NOT NULL"));
+    assert!(!clause.sql.contains("`email_verified_at` != ''"));
+    assert!(clause.sql.contains("`notes` IS NOT NULL AND `notes` != ''"));
+    assert!(clause.sql.contains("`login_count` IS NOT NULL"));
+    assert!(!clause.sql.contains("`login_count` != ''"));
+    assert!(clause.params.is_empty());
+}
+
+#[test]
+fn translate_filter_model_with_columns_blank_uses_type_aware_sql() {
+    let mut model = HashMap::new();
+    model.insert(
+        "published_on".to_string(),
+        FilterModelEntry {
+            filter_type: "text".to_string(),
+            filter_condition: "blank".to_string(),
+            filter: None,
+            filter_to: None,
+        },
+    );
+    model.insert(
+        "title".to_string(),
+        FilterModelEntry {
+            filter_type: "text".to_string(),
+            filter_condition: "blank".to_string(),
+            filter: None,
+            filter_to: None,
+        },
+    );
+    model.insert(
+        "price".to_string(),
+        FilterModelEntry {
+            filter_type: "number".to_string(),
+            filter_condition: "blank".to_string(),
+            filter: None,
+            filter_to: None,
+        },
+    );
+
+    let columns = vec![
+        make_column_meta("published_on", "DATE"),
+        make_column_meta("title", "TEXT"),
+        make_column_meta("price", "DECIMAL"),
+    ];
+
+    let clause = translate_filter_model_with_columns(&model, &columns);
+    assert!(clause.sql.contains("`published_on` IS NULL"));
+    assert!(!clause.sql.contains("`published_on` = ''"));
+    assert!(clause.sql.contains("`title` IS NULL OR `title` = ''"));
+    assert!(clause.sql.contains("`price` IS NULL"));
+    assert!(!clause.sql.contains("`price` = ''"));
+    assert!(clause.params.is_empty());
+}
+
+#[test]
+fn translate_filter_model_with_columns_json_blank_is_null_only() {
+    let mut model = HashMap::new();
+    model.insert(
+        "profile".to_string(),
+        FilterModelEntry {
+            filter_type: "text".to_string(),
+            filter_condition: "blank".to_string(),
+            filter: None,
+            filter_to: None,
+        },
+    );
+
+    let columns = vec![make_column_meta("profile", "JSON")];
+
+    let clause = translate_filter_model_with_columns(&model, &columns);
+    assert!(clause.sql.contains("`profile` IS NULL"));
+    assert!(!clause.sql.contains("`profile` = ''"));
+}
+
+#[test]
+fn translate_filter_model_with_columns_json_not_blank_is_not_null_only() {
+    let mut model = HashMap::new();
+    model.insert(
+        "profile".to_string(),
+        FilterModelEntry {
+            filter_type: "text".to_string(),
+            filter_condition: "notBlank".to_string(),
+            filter: None,
+            filter_to: None,
+        },
+    );
+
+    let columns = vec![make_column_meta("profile", "JSON")];
+
+    let clause = translate_filter_model_with_columns(&model, &columns);
+    assert!(clause.sql.contains("`profile` IS NOT NULL"));
+    assert!(!clause.sql.contains("`profile` != ''"));
 }
 
 // ── Data structure serialization tests ────────────────────────────────────────

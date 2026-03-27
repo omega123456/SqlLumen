@@ -2,9 +2,10 @@
 
 use async_trait::async_trait;
 use opensrv_mysql::{
-    AsyncMysqlIntermediary, AsyncMysqlShim, Column, ColumnFlags, ColumnType, OkResponse,
-    ParamParser, QueryResultWriter, StatementMetaWriter, ToMysqlValue,
+    AsyncMysqlIntermediary, AsyncMysqlShim, Column, ColumnFlags, ColumnType, ErrorKind,
+    OkResponse, ParamParser, QueryResultWriter, StatementMetaWriter, ToMysqlValue,
 };
+use std::collections::HashMap;
 use std::io;
 use std::io::Write;
 use std::sync::Arc;
@@ -21,6 +22,7 @@ pub struct MockColumnDef {
 
 #[derive(Debug, Clone)]
 pub enum MockCell {
+    Null,
     U32(u32),
     I64(i64),
     U64(u64),
@@ -120,25 +122,68 @@ pub struct MockQueryResponse {
     pub row: Vec<MockCell>,
 }
 
+#[derive(Debug, Clone)]
+pub struct MockQueryStep {
+    pub query: &'static str,
+    pub columns: Vec<MockColumnDef>,
+    pub rows: Vec<Vec<MockCell>>,
+    pub error: Option<(ErrorKind, &'static [u8])>,
+}
+
+impl From<MockQueryResponse> for MockQueryStep {
+    fn from(response: MockQueryResponse) -> Self {
+        Self {
+            query: response.query,
+            columns: response.columns,
+            rows: vec![response.row],
+            error: None,
+        }
+    }
+}
+
 #[derive(Clone)]
 struct MockMySqlBackend {
-    response: Arc<MockQueryResponse>,
+    steps: Arc<Vec<MockQueryStep>>,
+    prepared_steps: HashMap<u32, MockQueryStep>,
+    next_statement_id: u32,
 }
 
 const VERSION_STATEMENT_ID: u32 = 1;
-const QUERY_STATEMENT_ID: u32 = 2;
-const EMPTY_STATEMENT_ID: u32 = 3;
+const FIRST_QUERY_STATEMENT_ID: u32 = 2;
+const EMPTY_STATEMENT_ID: u32 = u32::MAX;
 
 impl MockMySqlBackend {
     fn new(response: MockQueryResponse) -> Self {
+        Self::with_steps(vec![response.into()])
+    }
+
+    fn with_steps(steps: Vec<MockQueryStep>) -> Self {
         Self {
-            response: Arc::new(response),
+            steps: Arc::new(steps),
+            prepared_steps: HashMap::new(),
+            next_statement_id: FIRST_QUERY_STATEMENT_ID,
         }
     }
 
-    fn response_columns(&self) -> Vec<Column> {
-        self.response
-            .columns
+    fn normalize_query(query: &str) -> String {
+        query
+            .trim()
+            .trim_end_matches(';')
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn find_step(&self, query: &str) -> Option<MockQueryStep> {
+        let normalized = Self::normalize_query(query);
+        self.steps
+            .iter()
+            .find(|step| Self::normalize_query(step.query).eq_ignore_ascii_case(&normalized))
+            .cloned()
+    }
+
+    fn step_columns(step: &MockQueryStep) -> Vec<Column> {
+        step.columns
             .iter()
             .map(|col| Column {
                 table: String::new(),
@@ -149,23 +194,31 @@ impl MockMySqlBackend {
             .collect()
     }
 
-    async fn write_response(
-        &self,
+    async fn write_step(
+        step: &MockQueryStep,
         results: QueryResultWriter<'_, BufWriter<OwnedWriteHalf>>,
     ) -> io::Result<()> {
-        let columns = self.response_columns();
+        if let Some((kind, message)) = step.error {
+            return results.error(kind, message).await;
+        }
+
+        let columns = Self::step_columns(step);
 
         let mut writer = results.start(&columns).await?;
-        for cell in &self.response.row {
-            match cell {
-                MockCell::U32(value) => writer.write_col(*value)?,
-                MockCell::I64(value) => writer.write_col(*value)?,
-                MockCell::U64(value) => writer.write_col(*value)?,
-                MockCell::F64(value) => writer.write_col(*value)?,
-                MockCell::DateTime(value) => writer.write_col(*value)?,
-                MockCell::Time(value) => writer.write_col(*value)?,
-                MockCell::Bytes(value) => writer.write_col(*value)?,
+        for row in &step.rows {
+            for cell in row {
+                match cell {
+                    MockCell::Null => writer.write_col(Option::<u8>::None)?,
+                    MockCell::U32(value) => writer.write_col(*value)?,
+                    MockCell::I64(value) => writer.write_col(*value)?,
+                    MockCell::U64(value) => writer.write_col(*value)?,
+                    MockCell::F64(value) => writer.write_col(*value)?,
+                    MockCell::DateTime(value) => writer.write_col(*value)?,
+                    MockCell::Time(value) => writer.write_col(*value)?,
+                    MockCell::Bytes(value) => writer.write_col(*value)?,
+                }
             }
+            writer.end_row().await?;
         }
         writer.finish().await
     }
@@ -180,7 +233,7 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
         query: &'a str,
         info: StatementMetaWriter<'a, BufWriter<OwnedWriteHalf>>,
     ) -> Result<(), Self::Error> {
-        let normalized = query.trim().trim_end_matches(';');
+        let normalized = Self::normalize_query(query);
 
         if normalized.eq_ignore_ascii_case("SELECT VERSION()") {
             let columns = vec![Column {
@@ -192,9 +245,12 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
             return info.reply(VERSION_STATEMENT_ID, &[], &columns).await;
         }
 
-        if normalized.eq_ignore_ascii_case(self.response.query) {
-            let columns = self.response_columns();
-            return info.reply(QUERY_STATEMENT_ID, &[], &columns).await;
+        if let Some(step) = self.find_step(query) {
+            let statement_id = self.next_statement_id;
+            self.next_statement_id += 1;
+            let columns = Self::step_columns(&step);
+            self.prepared_steps.insert(statement_id, step);
+            return info.reply(statement_id, &[], &columns).await;
         }
 
         info.reply(EMPTY_STATEMENT_ID, &[], &[]).await
@@ -218,8 +274,8 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
             return writer.finish().await;
         }
 
-        if id == QUERY_STATEMENT_ID {
-            return self.write_response(results).await;
+        if let Some(step) = self.prepared_steps.get(&id) {
+            return Self::write_step(step, results).await;
         }
 
         results.completed(OkResponse::default()).await
@@ -232,7 +288,7 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
         query: &'a str,
         results: QueryResultWriter<'a, BufWriter<OwnedWriteHalf>>,
     ) -> Result<(), Self::Error> {
-        let normalized = query.trim().trim_end_matches(';');
+        let normalized = Self::normalize_query(query);
 
         if normalized.eq_ignore_ascii_case("SELECT VERSION()") {
             let cols = [Column {
@@ -246,8 +302,8 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
             return writer.finish().await;
         }
 
-        if normalized.eq_ignore_ascii_case(self.response.query) {
-            return self.write_response(results).await;
+        if let Some(step) = self.find_step(query) {
+            return Self::write_step(&step, results).await;
         }
 
         results.completed(OkResponse::default()).await
@@ -261,6 +317,10 @@ pub struct MockMySqlServer {
 
 impl MockMySqlServer {
     pub async fn start(response: MockQueryResponse) -> Self {
+        Self::start_script(vec![response.into()]).await
+    }
+
+    pub async fn start_script(steps: Vec<MockQueryStep>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("should bind mock mysql server");
@@ -268,7 +328,7 @@ impl MockMySqlServer {
             .local_addr()
             .expect("should read local addr")
             .port();
-        let backend = MockMySqlBackend::new(response);
+        let backend = MockMySqlBackend::with_steps(steps);
 
         let accept_task = tokio::spawn(async move {
             loop {
