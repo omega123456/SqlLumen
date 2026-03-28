@@ -4,7 +4,7 @@ import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { TableDataTabState } from '../../../types/schema'
-import { updateTableRow } from '../../../lib/table-data-commands'
+import { updateTableRow, fetchTableData, deleteTableRow } from '../../../lib/table-data-commands'
 
 // Mock toast store
 const mockShowError = vi.fn()
@@ -270,13 +270,16 @@ describe('TableDataToolbar', () => {
     expect(options).toEqual(['100', '500', '1000', '5000'])
   })
 
-  it('page size change updates store', () => {
+  it('page size change updates store', async () => {
     setupConnection()
     setupTabState({ pageSize: 1000 })
     render(<TableDataToolbar tabId="tab-1" />)
+    const callsBefore = vi.mocked(fetchTableData).mock.calls.length
     const select = screen.getByTestId('page-size-select') as HTMLSelectElement
     fireEvent.change(select, { target: { value: '500' } })
-    // Should have triggered store update (async, so we just verify no crash)
+    await waitFor(() => {
+      expect(vi.mocked(fetchTableData).mock.calls.length).toBeGreaterThan(callsBefore)
+    })
   })
 
   it('view mode buttons exist', () => {
@@ -359,7 +362,7 @@ describe('TableDataToolbar', () => {
     expect(screen.getByText('Are you sure you want to delete this row?')).toBeInTheDocument()
   })
 
-  it('confirming delete dialog calls deleteRow', () => {
+  it('confirming delete dialog calls deleteRow', async () => {
     setupConnection()
     setupTabState({
       selectedRowKey: { id: 1 },
@@ -380,6 +383,9 @@ describe('TableDataToolbar', () => {
 
     // Dialog should close
     expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(vi.mocked(deleteTableRow)).toHaveBeenCalled()
+    })
   })
 
   it('cancelling delete dialog does not delete', () => {
@@ -436,7 +442,7 @@ describe('TableDataToolbar', () => {
     expect(screen.getByTestId('btn-delete-row')).not.toBeDisabled()
   })
 
-  it('confirming delete discards edits when deleting the editing row', () => {
+  it('confirming delete discards edits when deleting the editing row', async () => {
     setupConnection()
     setupTabState({
       selectedRowKey: { id: 1 },
@@ -452,12 +458,15 @@ describe('TableDataToolbar', () => {
     fireEvent.click(screen.getByTestId('btn-delete-row'))
     fireEvent.click(screen.getByTestId('confirm-confirm-button'))
 
+    await waitFor(() => {
+      expect(vi.mocked(deleteTableRow)).toHaveBeenCalled()
+    })
     // editState should be cleared (discard + delete)
     const state = useTableDataStore.getState().tabs['tab-1']
     expect(state?.editState).toBeNull()
   })
 
-  it('clicking Save calls saveCurrentRow', () => {
+  it('clicking Save calls saveCurrentRow', async () => {
     setupConnection()
     setupTabState({
       editState: {
@@ -472,7 +481,9 @@ describe('TableDataToolbar', () => {
     const saveBtn = screen.getByTestId('btn-save')
     expect(saveBtn).not.toBeDisabled()
     fireEvent.click(saveBtn)
-    // No crash = success
+    await waitFor(() => {
+      expect(vi.mocked(updateTableRow)).toHaveBeenCalled()
+    })
   })
 
   it('clicking Discard calls discardCurrentRow', () => {
@@ -494,14 +505,17 @@ describe('TableDataToolbar', () => {
     expect(state?.editState).toBeNull()
   })
 
-  it('clicking Refresh calls refreshData', () => {
+  it('clicking Refresh calls refreshData', async () => {
     setupConnection()
     setupTabState()
     render(<TableDataToolbar tabId="tab-1" />)
+    const callsBefore = vi.mocked(fetchTableData).mock.calls.length
     const refreshBtn = screen.getByTestId('btn-refresh')
     expect(refreshBtn).not.toBeDisabled()
     fireEvent.click(refreshBtn)
-    // No crash
+    await waitFor(() => {
+      expect(vi.mocked(fetchTableData).mock.calls.length).toBeGreaterThan(callsBefore)
+    })
   })
 
   it('clicking Grid View toggles view mode', () => {
@@ -520,20 +534,24 @@ describe('TableDataToolbar', () => {
     // No crash
   })
 
-  it('clicking Next Page fetches next page', () => {
+  it('clicking Next Page fetches next page', async () => {
     setupConnection()
     setupTabState({ currentPage: 1, totalPages: 3 })
     render(<TableDataToolbar tabId="tab-1" />)
     fireEvent.click(screen.getByTestId('pagination-next'))
-    // No crash — page change dispatched via requestNavigationAction
+    await waitFor(() => {
+      expect(vi.mocked(fetchTableData).mock.calls.some((c) => c[0]?.page === 2)).toBe(true)
+    })
   })
 
-  it('clicking Prev Page fetches previous page', () => {
+  it('clicking Prev Page fetches previous page', async () => {
     setupConnection()
     setupTabState({ currentPage: 2, totalPages: 3 })
     render(<TableDataToolbar tabId="tab-1" />)
     fireEvent.click(screen.getByTestId('pagination-prev'))
-    // No crash
+    await waitFor(() => {
+      expect(vi.mocked(fetchTableData).mock.calls.some((c) => c[0]?.page === 1)).toBe(true)
+    })
   })
 
   it('shows loading spinner when loading', () => {

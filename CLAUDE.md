@@ -15,7 +15,7 @@ A cross-platform desktop MySQL/MariaDB client built with **Tauri v2** (Rust back
 ```bash
 # Development
 pnpm tauri dev          # Start full Tauri app (preferred — runs both frontend and Rust)
-pnpm dev                # Frontend only (Vite on port 1420, no Rust)
+pnpm dev                # Frontend only (Vite prefers 1420, falls back if busy; no Rust)
 
 # Build
 pnpm build              # TypeScript check + Vite production build

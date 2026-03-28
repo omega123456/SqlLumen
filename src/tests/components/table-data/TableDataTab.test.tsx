@@ -177,14 +177,25 @@ beforeEach(() => {
   mockIPC(() => null)
 })
 
+/** Drain async loadTableData so follow-up assertions and test teardown do not warn on act(). */
+async function waitForTableDataLoaded() {
+  await waitFor(() => {
+    expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
+  })
+  await waitFor(() => {
+    expect(useTableDataStore.getState().tabs['tab-1']?.isLoading).toBe(false)
+  })
+}
+
 describe('TableDataTab', () => {
   it('renders with data-testid="table-data-tab"', async () => {
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
     expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+    await waitForTableDataLoaded()
   })
 
-  it('renders loading state initially', () => {
+  it('renders loading state initially', async () => {
     setupConnection()
     // Don't pre-populate store — the component will init on mount
     render(<TableDataTab tab={makeTab()} />)
@@ -192,6 +203,7 @@ describe('TableDataTab', () => {
     expect(screen.getByTestId('table-data-toolbar')).toBeInTheDocument()
     // Loading text or spinner should be present
     expect(screen.getByText('Loading table data...')).toBeInTheDocument()
+    await waitForTableDataLoaded()
   })
 
   it('renders grid after data loads', async () => {
@@ -298,7 +310,7 @@ describe('TableDataTab', () => {
     })
   })
 
-  it('passes correct tab context to store initTab', () => {
+  it('passes correct tab context to store initTab', async () => {
     setupConnection()
     const tab = makeTab({ connectionId: 'conn-1', databaseName: 'testdb', objectName: 'orders' })
     render(<TableDataTab tab={tab} />)
@@ -309,16 +321,14 @@ describe('TableDataTab', () => {
     expect(state?.connectionId).toBe('conn-1')
     expect(state?.database).toBe('testdb')
     expect(state?.table).toBe('orders')
+    await waitForTableDataLoaded()
   })
 
   it('renders form view when viewMode is form', async () => {
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
-    // Wait for data to load first
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    })
+    await waitForTableDataLoaded()
 
     // Now switch to form view via the store
     useTableDataStore.getState().setViewMode('tab-1', 'form')
@@ -332,10 +342,7 @@ describe('TableDataTab', () => {
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
-    // Wait for data to load
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    })
+    await waitForTableDataLoaded()
 
     // Open export dialog via the store
     useTableDataStore.getState().openExportDialog('tab-1')
@@ -349,10 +356,7 @@ describe('TableDataTab', () => {
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
-    // Wait for data to load
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    })
+    await waitForTableDataLoaded()
 
     // Set unsaved changes dialog state
     useTableDataStore.setState((state) => ({
@@ -381,10 +385,7 @@ describe('TableDataTab', () => {
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
-    // Wait for data to load
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    })
+    await waitForTableDataLoaded()
 
     // Open export dialog
     useTableDataStore.getState().openExportDialog('tab-1')
@@ -406,9 +407,7 @@ describe('TableDataTab', () => {
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    })
+    await waitForTableDataLoaded()
 
     // Set up pending navigation
     useTableDataStore.setState((state) => ({
@@ -445,9 +444,7 @@ describe('TableDataTab', () => {
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    })
+    await waitForTableDataLoaded()
 
     // Set up pending navigation
     useTableDataStore.setState((state) => ({
@@ -484,10 +481,7 @@ describe('TableDataTab', () => {
     setupConnection(true) // readOnly
     render(<TableDataTab tab={makeTab()} />)
 
-    // Wait for grid to appear
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
-    })
+    await waitForTableDataLoaded()
 
     // Read-only badge should appear in toolbar
     expect(screen.getByTestId('readonly-badge')).toBeInTheDocument()

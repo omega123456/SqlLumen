@@ -12,6 +12,7 @@ src-tauri/target/
 src-tauri/gen/
 
 # Tauri
+src-tauri/tauri.dev.merge.json
 *.dmg
 *.deb
 *.AppImage
@@ -25,6 +26,7 @@ lcov.info
 *.lcov
 
 # Playwright
+.playwright-dev-port
 playwright-report/
 test-results/
 /e2e/.auth/

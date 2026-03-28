@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 
-const APP_READY_MS = 60_000
+const APP_READY_MS = 5_000
 
 async function waitForApp(page: Page) {
   await page.goto('/', { waitUntil: 'load', timeout: APP_READY_MS })
@@ -33,7 +33,7 @@ async function openQueryEditorWithResults(page: Page) {
 }
 
 test('result grid wires an AG Grid icon font so sort indicators render', async ({ page }) => {
-  test.setTimeout(APP_READY_MS)
+  test.setTimeout(APP_READY_MS * 3)
 
   await waitForApp(page)
   await openQueryEditorWithResults(page)

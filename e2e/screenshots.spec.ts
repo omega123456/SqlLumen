@@ -3,13 +3,14 @@ import { test, expect, type Page } from '@playwright/test'
 const themes = ['light', 'dark'] as const
 
 /** Dev server + async `main.tsx` (dynamic imports, IPC mock, theme) under many parallel workers can exceed the default 5s expect timeout. */
-const APP_READY_MS = 60_000
-const AUTOCOMPLETE_OPEN_RETRIES = 8
+const APP_READY_MS = 5_000
+const AUTOCOMPLETE_OPEN_RETRIES = 4
+const AUTOCOMPLETE_OPEN_TIMEOUT_MS = 1_500
 const AUTOCOMPLETE_RETRY_DELAY_MS = 300
 
 /** Many parallel workers can briefly see net::ERR_CONNECTION_FAILED if the first goto races the Vite server. */
-const GOTO_RETRY_ATTEMPTS = 5
-const GOTO_RETRY_DELAY_MS = 800
+const GOTO_RETRY_ATTEMPTS = 2
+const GOTO_RETRY_DELAY_MS = 500
 
 async function waitForApp(page: Page) {
   for (let attempt = 0; attempt < GOTO_RETRY_ATTEMPTS; attempt++) {
@@ -187,12 +188,13 @@ async function openQueryEditorTab(page: Page) {
 
 async function waitForAutocomplete(page: Page, expectedText?: string) {
   const suggestWidget = page.locator('.suggest-widget.visible')
+  await page.waitForTimeout(300)
 
   for (let attempt = 0; attempt < AUTOCOMPLETE_OPEN_RETRIES; attempt++) {
     await page.keyboard.press('Control+Space')
 
     const isVisible = await expect(suggestWidget)
-      .toBeVisible({ timeout: APP_READY_MS })
+      .toBeVisible({ timeout: AUTOCOMPLETE_OPEN_TIMEOUT_MS })
       .then(() => true)
       .catch(() => false)
 
@@ -364,7 +366,7 @@ for (const theme of themes) {
       })
       await expect(page.getByTestId('connection-form-main')).toHaveScreenshot(
         `connection-form-main-${theme}.png`,
-        { animations: 'disabled', timeout: 30_000 }
+        { animations: 'disabled', timeout: APP_READY_MS }
       )
     })
 

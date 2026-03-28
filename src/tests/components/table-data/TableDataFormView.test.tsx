@@ -93,7 +93,7 @@ vi.mock('../../../components/table-data/DateTimePicker', async () => {
 
 import { TableDataFormView } from '../../../components/table-data/TableDataFormView'
 import { writeClipboardText } from '../../../lib/context-menu-utils'
-import { updateTableRow } from '../../../lib/table-data-commands'
+import { updateTableRow, fetchTableData } from '../../../lib/table-data-commands'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -760,7 +760,7 @@ describe('TableDataFormView', () => {
     expect(writeClipboardText).toHaveBeenCalledWith('NULL')
   })
 
-  it('Save button calls saveCurrentRow', () => {
+  it('Save button calls saveCurrentRow', async () => {
     const editState: RowEditState = {
       rowKey: { id: 1 },
       originalValues: { id: 1, name: 'Alice', avatar: '[BLOB - 128 bytes]' },
@@ -774,7 +774,9 @@ describe('TableDataFormView', () => {
     const saveBtn = screen.getByTestId('btn-form-save')
     expect(saveBtn).not.toBeDisabled()
     fireEvent.click(saveBtn)
-    // saveCurrentRow was called — no crash
+    await waitFor(() => {
+      expect(vi.mocked(updateTableRow)).toHaveBeenCalled()
+    })
   })
 
   it('Discard button calls discardCurrentRow', () => {
@@ -911,7 +913,9 @@ describe('TableDataFormView', () => {
     const nextBtn = screen.getByTestId('btn-form-next')
     expect(nextBtn).not.toBeDisabled()
     fireEvent.click(nextBtn)
-    // Navigation action is dispatched — no crash
+    await waitFor(() => {
+      expect(vi.mocked(fetchTableData).mock.calls.some((c) => c[0]?.page === 2)).toBe(true)
+    })
   })
 
   it('Next button disabled on last record of last page', () => {

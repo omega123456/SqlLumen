@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
+import { fetchResultPage } from '../../../lib/query-commands'
 
 // Mock AG Grid modules
 vi.mock('ag-grid-community', () => ({
@@ -488,7 +489,7 @@ describe('ResultPanel', () => {
     sortResultsSpy.mockRestore()
   })
 
-  it('handleFormNavigate triggers page fetch when crossing page boundary forward', () => {
+  it('handleFormNavigate triggers page fetch when crossing page boundary forward', async () => {
     useQueryStore.setState({
       tabs: {
         'tab-1': {
@@ -515,9 +516,12 @@ describe('ResultPanel', () => {
 
     const state = useQueryStore.getState().tabs['tab-1']
     expect(state?.selectedRowIndex).toBe(2)
+    await waitFor(() => {
+      expect(vi.mocked(fetchResultPage)).toHaveBeenCalledWith('conn-1', 'tab-1', 'q1', 2)
+    })
   })
 
-  it('handleFormNavigate triggers page fetch when crossing page boundary backward', () => {
+  it('handleFormNavigate triggers page fetch when crossing page boundary backward', async () => {
     useQueryStore.setState({
       tabs: {
         'tab-1': {
@@ -544,5 +548,8 @@ describe('ResultPanel', () => {
 
     const state = useQueryStore.getState().tabs['tab-1']
     expect(state?.selectedRowIndex).toBe(1)
+    await waitFor(() => {
+      expect(vi.mocked(fetchResultPage)).toHaveBeenCalledWith('conn-1', 'tab-1', 'q1', 1)
+    })
   })
 })

@@ -1,4 +1,5 @@
 import type { SavedConnection } from '../types/connection'
+import type { SchemaMetadataResponse } from '../types/schema'
 
 const MOCK_TS = '2025-01-01T00:00:00.000Z'
 
@@ -26,6 +27,14 @@ export const PLAYWRIGHT_MOCK_CONNECTION: SavedConnection = {
 }
 
 let activeMockDatabase: string | null = PLAYWRIGHT_MOCK_CONNECTION.defaultDatabase
+
+function getSchemaMetadataOverride(): SchemaMetadataResponse | undefined {
+  const w = globalThis as typeof globalThis & {
+    __PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__?: SchemaMetadataResponse
+  }
+
+  return w.__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__
+}
 
 /**
  * IPC handler for `mockIPC` when the app runs under Playwright (VITE_PLAYWRIGHT).
@@ -387,70 +396,72 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return { bytesWritten: 1024, rowsExported: 5 }
 
     case 'fetch_schema_metadata':
-      return {
-        databases: ['ecommerce_db', 'analytics_db', 'staging_db'],
-        tables: {
-          ecommerce_db: [
-            {
-              name: 'users',
-              engine: 'InnoDB',
-              charset: 'utf8mb4',
-              rowCount: 1000,
-              dataSize: 1048576,
-            },
-            {
-              name: 'orders',
-              engine: 'InnoDB',
-              charset: 'utf8mb4',
-              rowCount: 5000,
-              dataSize: 2097152,
-            },
-            {
-              name: 'products',
-              engine: 'InnoDB',
-              charset: 'utf8mb4',
-              rowCount: 200,
-              dataSize: 524288,
-            },
-          ],
-          analytics_db: [
-            {
-              name: 'events',
-              engine: 'InnoDB',
-              charset: 'utf8mb4',
-              rowCount: 50000,
-              dataSize: 8388608,
-            },
-          ],
-        },
-        columns: {
-          'ecommerce_db.users': [
-            { name: 'id', dataType: 'BIGINT' },
-            { name: 'name', dataType: 'VARCHAR' },
-            { name: 'email', dataType: 'VARCHAR' },
-            { name: 'status', dataType: 'VARCHAR' },
-            { name: 'created_at', dataType: 'DATETIME' },
-          ],
-          'ecommerce_db.orders': [
-            { name: 'id', dataType: 'BIGINT' },
-            { name: 'user_id', dataType: 'BIGINT' },
-            { name: 'status', dataType: 'VARCHAR' },
-            { name: 'total', dataType: 'DECIMAL' },
-          ],
-          'analytics_db.events': [
-            { name: 'id', dataType: 'BIGINT' },
-            { name: 'event_name', dataType: 'VARCHAR' },
-            { name: 'user_id', dataType: 'BIGINT' },
-            { name: 'created_at', dataType: 'DATETIME' },
-          ],
-        },
-        routines: {
-          ecommerce_db: [
-            { name: 'sp_get_orders', routineType: 'PROCEDURE' },
-            { name: 'fn_calculate_total', routineType: 'FUNCTION' },
-          ],
-        },
-      }
+      return (
+        getSchemaMetadataOverride() ?? {
+          databases: ['ecommerce_db', 'analytics_db', 'staging_db'],
+          tables: {
+            ecommerce_db: [
+              {
+                name: 'users',
+                engine: 'InnoDB',
+                charset: 'utf8mb4',
+                rowCount: 1000,
+                dataSize: 1048576,
+              },
+              {
+                name: 'orders',
+                engine: 'InnoDB',
+                charset: 'utf8mb4',
+                rowCount: 5000,
+                dataSize: 2097152,
+              },
+              {
+                name: 'products',
+                engine: 'InnoDB',
+                charset: 'utf8mb4',
+                rowCount: 200,
+                dataSize: 524288,
+              },
+            ],
+            analytics_db: [
+              {
+                name: 'events',
+                engine: 'InnoDB',
+                charset: 'utf8mb4',
+                rowCount: 50000,
+                dataSize: 8388608,
+              },
+            ],
+          },
+          columns: {
+            'ecommerce_db.users': [
+              { name: 'id', dataType: 'BIGINT' },
+              { name: 'name', dataType: 'VARCHAR' },
+              { name: 'email', dataType: 'VARCHAR' },
+              { name: 'status', dataType: 'VARCHAR' },
+              { name: 'created_at', dataType: 'DATETIME' },
+            ],
+            'ecommerce_db.orders': [
+              { name: 'id', dataType: 'BIGINT' },
+              { name: 'user_id', dataType: 'BIGINT' },
+              { name: 'status', dataType: 'VARCHAR' },
+              { name: 'total', dataType: 'DECIMAL' },
+            ],
+            'analytics_db.events': [
+              { name: 'id', dataType: 'BIGINT' },
+              { name: 'event_name', dataType: 'VARCHAR' },
+              { name: 'user_id', dataType: 'BIGINT' },
+              { name: 'created_at', dataType: 'DATETIME' },
+            ],
+          },
+          routines: {
+            ecommerce_db: [
+              { name: 'sp_get_orders', routineType: 'PROCEDURE' },
+              { name: 'fn_calculate_total', routineType: 'FUNCTION' },
+            ],
+          },
+        }
+      )
 
     // --- Table data browser/editor ---
     case 'fetch_table_data':
