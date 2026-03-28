@@ -104,3 +104,11 @@
   overflow: hidden;
   position: relative;
 }
+
+/* Light: card chrome matches inline_editable_grid_light_mode_pro_sync_v2 */
+:global([data-theme='light']) .content {
+  margin: 0 24px 24px;
+  border-radius: 12px;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  box-shadow: 0 8px 32px rgba(25, 28, 30, 0.06);
+}

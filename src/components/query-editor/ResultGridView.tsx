@@ -12,6 +12,8 @@ import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import type { ColDef, SortChangedEvent, RowClickedEvent, CellClassParams } from 'ag-grid-community'
 import { AgGridReact } from 'ag-grid-react'
 import { formatCellValue } from '../../lib/result-cell-utils'
+import { getResultGridCellClass } from '../../lib/grid-column-style'
+import { useGridAgDimensions } from '../../hooks/use-grid-ag-dimensions'
 import type { ColumnMeta } from '../../types/schema'
 import styles from './ResultGridView.module.css'
 
@@ -49,6 +51,8 @@ export function ResultGridView({
   currentPage,
   pageSize,
 }: ResultGridViewProps) {
+  const { rowHeight, headerHeight } = useGridAgDimensions()
+
   // Build column definitions from ColumnMeta[]
   const columnDefs: ColDef[] = useMemo(() => {
     return columns.map((col, i) => ({
@@ -58,6 +62,7 @@ export function ResultGridView({
       resizable: true,
       unSortIcon: true,
       comparator: NOOP_COMPARATOR,
+      cellClass: getResultGridCellClass(col.dataType),
       // Show sort indicator for the currently sorted column
       sort:
         col.name === sortColumn && sortDirection ? (sortDirection as 'asc' | 'desc') : undefined,
@@ -133,8 +138,8 @@ export function ResultGridView({
         rowData={rowData}
         suppressMultiSort={true}
         animateRows={false}
-        headerHeight={32}
-        rowHeight={28}
+        headerHeight={headerHeight}
+        rowHeight={rowHeight}
         onSortChanged={handleSortChanged}
         onRowClicked={handleRowClicked}
         getRowClass={getRowClass}

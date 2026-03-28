@@ -287,6 +287,13 @@ describe('buildColumnDefs', () => {
       }
     })
   })
+
+  it('assigns body/primary vs mono-muted cell classes from column types and PK', () => {
+    const defs = buildColumnDefs(testColumns, false, true, ['id'])
+    expect(defs[0].cellClass).toBe('td-cell-mono-muted')
+    expect(defs[1].cellClass).toBe('td-cell-body td-cell-primary')
+    expect(defs[2].cellClass).toBe('td-cell-body')
+  })
 })
 
 describe('getFilterType', () => {
@@ -365,9 +372,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    expect(mockCalls.length).toBeGreaterThanOrEqual(1)
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const rowData = props.rowData as Array<Record<string, unknown>>
     expect(rowData).toHaveLength(2)
     expect(rowData[0].id).toBe(1)
@@ -381,8 +386,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const colDefs = props.columnDefs as Array<{ field: string }>
     expect(colDefs).toHaveLength(3)
   })
@@ -524,8 +528,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState({ sort: { column: 'name', direction: 'desc' } })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const colDefs = props.columnDefs as Array<{ field: string; sort?: string }>
     const nameCol = colDefs.find((d) => d.field === 'name')
     expect(nameCol?.sort).toBe('desc')
@@ -547,8 +550,7 @@ describe('TableDataGrid', () => {
       },
     })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const getRowId = props.getRowId as (params: { data: Record<string, unknown> }) => string
     // Row with __tempId
     expect(getRowId({ data: { __tempId: 'temp-1', id: null } })).toBe('temp-1')
@@ -560,8 +562,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState({ primaryKey: null })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const getRowId = props.getRowId as (params: { data: Record<string, unknown> }) => string
     expect(getRowId({ data: { __rowIndex: 5 } })).toBe('5')
   })
@@ -577,8 +578,7 @@ describe('TableDataGrid', () => {
     }
     setupTabState({ editState })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const getRowClass = props.getRowClass as (params: {
       data?: Record<string, unknown>
     }) => string | undefined
@@ -602,8 +602,7 @@ describe('TableDataGrid', () => {
     }
     setupTabState({ editState })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const getRowClass = props.getRowClass as (params: {
       data?: Record<string, unknown>
     }) => string | undefined
@@ -623,8 +622,7 @@ describe('TableDataGrid', () => {
     }
     setupTabState({ editState })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const defaultColDef = props.defaultColDef as {
       cellClassRules: Record<
         string,
@@ -648,8 +646,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const defaultColDef = props.defaultColDef as {
       cellClassRules: Record<string, () => boolean>
     }
@@ -660,8 +657,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={true} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const defaultColDef = props.defaultColDef as {
       cellClassRules: Record<string, () => boolean>
     }
@@ -672,8 +668,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const onCellEditingStarted = props.onCellEditingStarted as (event: {
       data: Record<string, unknown>
       colDef: { field: string }
@@ -702,8 +697,7 @@ describe('TableDataGrid', () => {
     }
     setupTabState({ editState })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const onCellEditingStopped = props.onCellEditingStopped as (event: {
       data: Record<string, unknown>
       colDef: { field: string }
@@ -736,8 +730,7 @@ describe('TableDataGrid', () => {
     }
     setupTabState({ editState })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const onCellEditingStopped = props.onCellEditingStopped as (event: {
       colDef: { field: string }
       oldValue: unknown
@@ -760,8 +753,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const onCellEditingStopped = props.onCellEditingStopped as (event: {
       colDef?: { field?: string }
       oldValue: unknown
@@ -1208,8 +1200,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const onRowClicked = props.onRowClicked as (event: { data: Record<string, unknown> }) => void
 
     act(() => {
@@ -1224,8 +1215,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const onRowClicked = props.onRowClicked as (event: { data?: Record<string, unknown> }) => void
 
     act(() => {
@@ -1237,8 +1227,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const onCellEditingStarted = props.onCellEditingStarted as (event: {
       data?: Record<string, unknown>
     }) => Promise<void>
@@ -1259,8 +1248,7 @@ describe('TableDataGrid', () => {
     }
     setupTabState({ editState })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const onCellEditingStarted = props.onCellEditingStarted as (event: {
       data: Record<string, unknown>
       colDef: { field: string }
@@ -1284,8 +1272,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const onSortChanged = props.onSortChanged as (event: {
       api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
     }) => void
@@ -1308,8 +1295,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState({ sort: { column: 'id', direction: 'asc' } })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const onSortChanged = props.onSortChanged as (event: {
       api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
     }) => void
@@ -1332,8 +1318,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const onFilterChanged = props.onFilterChanged as (event: {
       api: { getFilterModel: () => Record<string, unknown> }
     }) => void
@@ -1368,8 +1353,7 @@ describe('TableDataGrid', () => {
       },
     })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const rowData = props.rowData as Array<Record<string, unknown>>
     // Last row should have __tempId
     expect(rowData[rowData.length - 1].__tempId).toBe('temp-1')
@@ -1381,8 +1365,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const components = props.components as Record<string, unknown>
     expect(components.tableDataCellRenderer).toBeDefined()
     expect(components.nullableCellEditor).toBeDefined()
@@ -1392,8 +1375,7 @@ describe('TableDataGrid', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     expect(props.singleClickEdit).toBe(false)
     expect(props.suppressClickEdit).toBe(true)
     expect(props.stopEditingWhenCellsLoseFocus).toBe(true)
@@ -1414,8 +1396,7 @@ describe('TableDataGrid', () => {
     }
     setupTabState({ editState })
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestGridProps()
     const stopEditingMock = vi.fn()
     const onCellEditingStarted = props.onCellEditingStarted as (event: {
       data: Record<string, unknown>

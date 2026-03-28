@@ -360,9 +360,21 @@
   --result-grid-header-bg: var(--surface-container-high);
   --result-grid-row-alt-bg: rgba(var(--on-surface-rgb), 0.03);
   --result-grid-row-selected-bg: var(--secondary-container);
-  --result-grid-row-hover-bg: rgba(var(--on-surface-rgb), 0.08);
+  --result-grid-row-hover-bg: color-mix(in srgb, var(--surface-variant) 30%, transparent);
   --result-grid-row-selected-accent: var(--primary);
   --result-status-success-fg: var(--tertiary);
+
+  /* AG Grid — inline_editable_grid_dark_mode_pro_sync_v2 */
+  --grid-cell-padding-x: var(--space-lg);
+  --grid-cell-padding-y: var(--space-sm);
+  /* Must include px: unitless values break line-height (interpreted as font-size multiplier). */
+  --grid-row-height: 32px;
+  --grid-header-height: 32px;
+  --grid-scrollbar-size: 8px;
+  --grid-scrollbar-thumb: var(--surface-container-highest);
+  --grid-scrollbar-thumb-hover: var(--outline-variant);
+  --grid-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  --grid-header-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 
   /* ---------- Table Data Editing States ---------- */
   --td-editing-row-bg: rgba(var(--primary-rgb), 0.05);
@@ -440,8 +452,9 @@
   /* Typography — light theme (query_slate_light) */
   --type-subtitle: var(--type-size-lg);
   --type-dialog-title: 1.125rem;
-  --type-table-header-size: var(--type-size-xs);
+  --type-table-header-size: var(--type-size-2xs);
   --type-table-header-font: var(--font-body);
+  --type-table-header-tracking: 0.1em;
   --letter-spacing-dialog-title: -0.025em;
 
   /* ---------- Semantic UI tokens — light (query_slate_light) ---------- */
@@ -605,14 +618,24 @@
   --editor-toolbar-bg: var(--surface-container-low);
   --editor-toolbar-border: rgba(var(--outline-variant-rgb), 0.1);
 
-  /* Result grid light overrides */
+  /* Result grid light overrides — inline_editable_grid_light_mode_pro_sync_v2 */
   --result-grid-bg: var(--surface-container-lowest);
   --result-grid-header-bg: var(--surface-container-low);
   --result-grid-row-alt-bg: rgba(var(--on-surface-rgb), 0.03);
-  --result-grid-row-hover-bg: rgba(var(--primary-rgb), 0.05);
+  --result-grid-row-hover-bg: var(--surface-container-low);
   --result-grid-row-selected-bg: var(--secondary-container);
   --result-grid-row-selected-accent: var(--primary);
   --result-status-success-fg: var(--primary);
+
+  --grid-cell-padding-x: var(--space-xl);
+  --grid-cell-padding-y: 10px;
+  --grid-row-height: 36px;
+  --grid-header-height: 36px;
+  --grid-scrollbar-size: 6px;
+  --grid-scrollbar-thumb: var(--outline-variant);
+  --grid-scrollbar-thumb-hover: var(--outline);
+  --grid-header-border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  --grid-header-shadow: none;
 
   /* Table Data Editing States — light overrides */
   --td-editing-row-bg: rgba(var(--primary-rgb), 0.05);

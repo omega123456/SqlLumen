@@ -189,25 +189,27 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
 
   return (
     <div ref={containerRef} className={styles.cellEditorWrapper} data-testid="datetime-cell-editor">
-      <input
-        ref={editor.inputRef}
-        className="td-cell-editor-input"
-        value={displayValue}
-        onChange={(e) => editor.handleChange(e.target.value)}
+      <div className="td-cell-editor-shell">
+        <input
+          ref={editor.inputRef}
+          className="td-cell-editor-input"
+          value={displayValue}
+          onChange={(e) => editor.handleChange(e.target.value)}
         onBlur={(e) => handleInputBlur(e.relatedTarget)}
-        onKeyDown={handleKeyDown}
-      />
-      {params.isNullable && (
-        <button
-          type="button"
-          className={`td-null-toggle ${editor.isNull ? 'td-null-active' : ''}`}
+          onKeyDown={handleKeyDown}
+        />
+        {params.isNullable && (
+          <button
+            type="button"
+            className={`td-null-toggle ${editor.isNull ? 'td-null-active' : ''}`}
           onMouseDown={(e) => e.preventDefault()}
-          onClick={handleToggleNull}
-          tabIndex={-1}
-        >
-          NULL
-        </button>
-      )}
+            onClick={handleToggleNull}
+            tabIndex={-1}
+          >
+            NULL
+          </button>
+        )}
+      </div>
       <button
         type="button"
         className={styles.calendarBtn}

@@ -1,87 +1,71 @@
 /* ==========================================================================
    AG Grid — Precision Studio Custom Theme
    Maps design tokens to AG Grid's --ag-* CSS variable system.
-   Applied via class .ag-theme-precision on the grid wrapper.
-   Import ag-grid-community/styles/ag-grid.css (base reset) in App.tsx.
+   Aligned with .agent/design/inline_editable_grid_*_pro_sync_v2
    ========================================================================== */
 
 /* ---------- Dark theme (default) ---------- */
 .ag-theme-precision {
-  /* Background */
   --ag-background-color: var(--result-grid-bg);
   --ag-data-background-color: var(--result-grid-bg);
   --ag-header-background-color: var(--result-grid-header-bg);
   --ag-header-cell-hover-background-color: rgba(var(--on-surface-rgb), 0.06);
 
-  /* Text */
   --ag-foreground-color: var(--on-surface);
-  --ag-header-foreground-color: rgba(var(--on-surface-rgb), 0.8);
+  --ag-header-foreground-color: var(--on-surface-variant);
   --ag-secondary-foreground-color: var(--on-surface-variant);
   --ag-data-color: var(--on-surface);
 
-  /* Borders */
   --ag-border-color: rgba(var(--outline-variant-rgb), 0.1);
   --ag-secondary-border-color: rgba(var(--outline-variant-rgb), 0.08);
-  --ag-row-border-color: rgba(var(--outline-variant-rgb), 0.06);
+  --ag-row-border-color: rgba(var(--outline-variant-rgb), 0.1);
   --ag-row-border-width: 1px;
   --ag-row-border-style: solid;
   --ag-borders: none;
   --ag-borders-critical: none;
   --ag-wrapper-border-radius: 0;
 
-  /* Header column separators */
   --ag-header-column-separator-display: block;
-  --ag-header-column-separator-color: rgba(var(--outline-variant-rgb), 0.05);
+  --ag-header-column-separator-color: rgba(var(--outline-variant-rgb), 0.1);
   --ag-header-column-separator-width: 1px;
-  --ag-header-column-separator-height: 60%;
+  --ag-header-column-separator-height: 100%;
 
-  /* Column resize handle */
   --ag-header-column-resize-handle-display: block;
   --ag-header-column-resize-handle-color: rgba(var(--outline-variant-rgb), 0.15);
   --ag-header-column-resize-handle-width: 2px;
   --ag-header-column-resize-handle-height: 50%;
 
-  /* Row alternation */
   --ag-odd-row-background-color: rgba(var(--on-surface-rgb), 0.03);
-
-  /* Row hover */
   --ag-row-hover-color: var(--result-grid-row-hover-bg);
 
-  /* Row selection (AG Grid built-in — also styled with custom class below) */
   --ag-selected-row-background-color: var(--result-grid-row-selected-bg);
   --ag-range-selection-background-color: transparent;
 
-  /* Cell padding */
-  --ag-cell-horizontal-padding: 12px;
+  --ag-cell-horizontal-padding: var(--grid-cell-padding-x);
   --ag-grid-size: 4px;
 
-  /* Font — data cells use mono, headers use system UI */
   --ag-font-family: var(--font-mono);
   --ag-font-size: 13px;
 
-  /* Sizing */
-  --ag-header-height: 32px;
-  --ag-row-height: 28px;
+  --ag-header-height: var(--grid-header-height);
+  --ag-row-height: var(--grid-row-height);
 
-  /* Icon */
   --ag-icon-size: 14px;
   --ag-icon-font-family: agGridAlpine;
   --ag-icon-font-color: var(--on-surface-variant);
 
-  /* Scrollbar */
   color-scheme: dark;
 }
 
-/* Header cells: system UI font, semibold */
+/* Header — 10px caps (tokens: --type-table-header-*) */
 .ag-theme-precision .ag-header-cell {
-  font-family: var(--font-body);
-  font-weight: 600;
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  text-transform: none;
+  font-family: var(--type-table-header-font);
+  font-weight: var(--type-table-header-weight);
+  font-size: var(--type-table-header-size);
+  letter-spacing: var(--type-table-header-tracking);
+  text-transform: uppercase;
 }
 
-/* Header sort icons — subtle color */
 .ag-theme-precision .ag-sort-indicator-icon {
   color: var(--on-surface-variant);
   opacity: 0.6;
@@ -91,41 +75,64 @@
   opacity: 1;
 }
 
-/* Data cells: compact */
 .ag-theme-precision .ag-cell {
-  line-height: 28px;
+  line-height: var(--grid-row-height);
   padding-top: 0;
   padding-bottom: 0;
 }
 
-/* NULL cell styling — applied via cellClassRules */
-.ag-theme-precision .ag-cell-null {
+/* Body column roles — inline_editable_grid */
+.ag-theme-precision .ag-cell.td-cell-mono-muted {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-md);
+  color: var(--on-surface-variant);
+}
+
+.ag-theme-precision .ag-cell.td-cell-mono {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-md);
+  color: var(--on-surface);
+}
+
+.ag-theme-precision .ag-cell.td-cell-body {
+  font-family: var(--font-body);
+  font-size: var(--type-size-md);
+  font-weight: 500;
+  color: var(--on-surface);
+}
+
+.ag-theme-precision .ag-cell.td-cell-primary {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.ag-theme-precision .ag-cell.ag-cell-null {
   font-style: italic;
   color: var(--on-surface-variant);
   opacity: 0.5;
 }
 
-/* Custom selected row accent border */
+.ag-theme-precision .ag-cell.ag-cell-null.td-cell-primary {
+  color: var(--on-surface-variant);
+}
+
 .ag-theme-precision .ag-row-precision-selected {
   background-color: var(--result-grid-row-selected-bg) !important;
   border-left: 2px solid var(--result-grid-row-selected-accent) !important;
 }
 
-/* Row cursor */
 .ag-theme-precision .ag-row {
   cursor: pointer;
 }
 
-/* Remove outer grid border */
 .ag-theme-precision .ag-root-wrapper {
   border: none;
 }
 
-/* Thin scrollbar styling */
 .ag-theme-precision .ag-body-viewport::-webkit-scrollbar,
 .ag-theme-precision .ag-body-horizontal-scroll-viewport::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: var(--grid-scrollbar-size);
+  height: var(--grid-scrollbar-size);
 }
 
 .ag-theme-precision .ag-body-viewport::-webkit-scrollbar-track,
@@ -135,27 +142,26 @@
 
 .ag-theme-precision .ag-body-viewport::-webkit-scrollbar-thumb,
 .ag-theme-precision .ag-body-horizontal-scroll-viewport::-webkit-scrollbar-thumb {
-  background: rgba(var(--on-surface-rgb), 0.15);
+  background: var(--grid-scrollbar-thumb);
   border-radius: 4px;
 }
 
 .ag-theme-precision .ag-body-viewport::-webkit-scrollbar-thumb:hover,
 .ag-theme-precision .ag-body-horizontal-scroll-viewport::-webkit-scrollbar-thumb:hover {
-  background: rgba(var(--on-surface-rgb), 0.25);
+  background: var(--grid-scrollbar-thumb-hover);
 }
 
-/* No-rows overlay */
 .ag-theme-precision .ag-overlay-no-rows-wrapper {
   color: var(--on-surface-variant);
   font-size: 13px;
 }
 
-/* Header bottom border */
 .ag-theme-precision .ag-header {
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+  border-bottom: var(--grid-header-border-bottom);
+  box-shadow: var(--grid-header-shadow);
 }
 
-/* ---------- Light theme overrides ---------- */
+/* ---------- Light theme ---------- */
 [data-theme='light'] .ag-theme-precision {
   --ag-background-color: var(--result-grid-bg);
   --ag-data-background-color: var(--result-grid-bg);
@@ -167,7 +173,7 @@
   --ag-data-color: var(--on-surface);
   --ag-border-color: rgba(var(--outline-variant-rgb), 0.15);
   --ag-secondary-border-color: rgba(var(--outline-variant-rgb), 0.1);
-  --ag-row-border-color: rgba(var(--outline-variant-rgb), 0.08);
+  --ag-row-border-color: rgba(var(--outline-variant-rgb), 0.1);
   --ag-header-column-separator-color: rgba(var(--outline-variant-rgb), 0.08);
   --ag-header-column-resize-handle-color: rgba(var(--outline-variant-rgb), 0.2);
   --ag-odd-row-background-color: var(--result-grid-row-alt-bg);
@@ -178,92 +184,145 @@
 }
 
 [data-theme='light'] .ag-theme-precision .ag-header {
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+  border-bottom: var(--grid-header-border-bottom);
+  box-shadow: var(--grid-header-shadow);
 }
 
 /* ==========================================================================
-   Table Data Editing Styles — applied via custom CSS classes
+   Table Data Editing
    ========================================================================== */
 
-/* Editing row — tinted background only */
 .ag-theme-precision .ag-row.td-editing-row {
   background-color: var(--td-editing-row-bg) !important;
 }
 
-/* Modified cell indicator — corner triangle via ::before pseudo-element */
-.ag-theme-precision .ag-cell.td-modified-cell::before {
+[data-theme='dark'] .ag-theme-precision .ag-row.td-editing-row {
+  border-left: 2px solid var(--primary) !important;
+}
+
+.ag-theme-precision .ag-cell.td-modified-cell {
+  position: relative;
+}
+
+/* Light: dot + ring (pro_sync light mock) */
+[data-theme='light'] .ag-theme-precision .ag-cell.td-modified-cell::after {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  border-top: 6px solid var(--td-modified-cell-indicator);
-  border-right: 6px solid transparent;
+  top: 3px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  background: var(--td-modified-cell-indicator);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--surface-container-lowest);
   pointer-events: none;
   z-index: 1;
 }
 
-/* Editable cell cursor */
+/* Dark: top-left corner ticks (pro_sync dark mock) */
+[data-theme='dark'] .ag-theme-precision .ag-cell.td-modified-cell::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--td-modified-cell-indicator);
+  border-left: 1px solid var(--td-modified-cell-indicator);
+  pointer-events: none;
+  z-index: 1;
+}
+
 .ag-theme-precision .ag-cell.td-editable-cell {
   cursor: text;
 }
 
-/* NULL value display in cells */
 .ag-theme-precision .ag-cell .td-null-value {
   font-style: italic;
   color: var(--td-null-text-color);
 }
 
-/* BLOB placeholder display */
 .ag-theme-precision .ag-cell .td-blob-value {
   font-style: italic;
   color: var(--on-surface-variant);
   opacity: 0.6;
 }
 
-/* New row styling */
 .ag-theme-precision .ag-row.td-new-row {
   background-color: var(--td-editing-row-bg) !important;
 }
 
-/* Edit mode input styling (cell editor) */
-.ag-theme-precision .td-cell-editor-input {
-  width: 100%;
+/* Cell editor shell — light: lowest + border + ring + shadow */
+[data-theme='light'] .ag-theme-precision .td-cell-editor-shell {
+  display: flex;
+  align-items: center;
+  flex: 1;
   min-width: 0;
-  height: 100%;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--surface-container-lowest);
+  border: 1px solid rgba(var(--primary-rgb), 0.5);
+  border-radius: var(--radius-sm);
+  box-shadow:
+    0 1px 2px rgba(var(--on-surface-rgb), 0.06),
+    0 0 0 1px rgba(var(--primary-rgb), 0.2);
+}
+
+/* Dark: surface-container-highest wrapper */
+[data-theme='dark'] .ag-theme-precision .td-cell-editor-shell {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--surface-container-highest);
+  border: 1px solid rgba(var(--primary-rgb), 0.5);
+  border-radius: var(--radius-sm);
+}
+
+.ag-theme-precision .td-cell-editor-input {
+  flex: 1;
+  min-width: 0;
+  height: auto;
   border: none;
   background: transparent;
   color: var(--on-surface);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--type-size-md);
   outline: none;
-  padding: 0 4px;
+  padding: 0;
+  line-height: 1.25;
+}
+
+[data-theme='light'] .ag-theme-precision .td-cell-editor-shell .td-cell-editor-input,
+[data-theme='light'] .ag-theme-precision .td-cell-editor-shell .td-cell-editor-select {
+  color: var(--primary);
+}
+
+[data-theme='dark'] .ag-theme-precision .td-cell-editor-shell .td-cell-editor-input,
+[data-theme='dark'] .ag-theme-precision .td-cell-editor-shell .td-cell-editor-select {
+  color: var(--primary);
 }
 
 .ag-theme-precision .td-cell-editor-select {
-  width: 100%;
+  flex: 1;
   min-width: 0;
-  height: 100%;
+  height: auto;
   border: none;
   background: transparent;
   color: var(--on-surface);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--type-size-md);
   outline: none;
-  padding: 0 4px;
+  padding: 0;
+  line-height: 1.25;
 }
 
-.ag-theme-precision .td-cell-editor-select:focus {
-  background: rgba(var(--primary-rgb), 0.04);
-  outline: 1px solid rgba(var(--primary-rgb), 0.3);
-  outline-offset: -1px;
-}
-
+.ag-theme-precision .td-cell-editor-select:focus,
 .ag-theme-precision .td-cell-editor-input:focus {
-  background: rgba(var(--primary-rgb), 0.04);
-  outline: 1px solid rgba(var(--primary-rgb), 0.3);
-  outline-offset: -1px;
+  outline: none;
 }
 
 .ag-theme-precision .td-cell-editor-input:disabled {
@@ -271,26 +330,33 @@
   font-style: italic;
 }
 
-/* NULL toggle button inside cell editor */
 .ag-theme-precision .td-null-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
-  margin-left: 2px;
-  font-size: 9px;
-  font-weight: 700;
+  padding: 0 6px;
+  margin-left: 0;
+  font-size: var(--type-size-2xs);
+  font-weight: 800;
   font-family: var(--font-mono);
   letter-spacing: 0.04em;
   border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--on-surface-variant);
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-low);
+  color: rgba(var(--on-surface-rgb), 0.4);
   cursor: pointer;
   white-space: nowrap;
   line-height: 1;
   height: 18px;
   flex-shrink: 0;
+}
+
+[data-theme='dark'] .ag-theme-precision .td-null-toggle {
+  font-size: var(--type-size-3xs);
+  font-weight: 700;
+  height: 16px;
+  padding: 0 4px;
+  background: transparent;
 }
 
 .ag-theme-precision .td-null-toggle:hover {

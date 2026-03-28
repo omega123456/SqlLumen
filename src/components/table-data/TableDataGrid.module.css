@@ -7,15 +7,17 @@
   overflow: hidden;
 }
 
-/* Cell editor wrapper */
+/* Cell editor wrapper — shell + optional calendar (DateTime) */
 .cellEditorWrapper {
   display: flex;
   align-items: center;
   width: 100%;
   min-width: 0;
   height: 100%;
-  gap: 2px;
-  overflow: hidden;
+  gap: 6px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 2px;
 }
 
 /* Calendar/clock icon button in DateTimeCellEditor */

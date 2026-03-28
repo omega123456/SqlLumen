@@ -73,6 +73,11 @@ const rows: unknown[][] = [
   [3, 'Charlie', 'charlie@example.com'],
 ]
 
+function getLatestAgGridProps(): Record<string, unknown> {
+  const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
+  return mockCalls[mockCalls.length - 1][0] as Record<string, unknown>
+}
+
 describe('ResultGridView', () => {
   const defaultProps = {
     columns,
@@ -104,16 +109,15 @@ describe('ResultGridView', () => {
   it('passes correct number of column defs to AgGridReact', () => {
     render(<ResultGridView {...defaultProps} />)
     const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    expect(mockCalls).toHaveLength(1)
-    const props = mockCalls[0][0] as Record<string, unknown>
+    expect(mockCalls.length).toBeGreaterThanOrEqual(1)
+    const props = getLatestAgGridProps()
     const colDefs = props.columnDefs as Array<{ headerName: string; field: string }>
     expect(colDefs).toHaveLength(3)
   })
 
   it('maps column names to headerName', () => {
     render(<ResultGridView {...defaultProps} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const colDefs = props.columnDefs as Array<{ headerName: string; field: string }>
     expect(colDefs[0].headerName).toBe('id')
     expect(colDefs[1].headerName).toBe('name')
@@ -122,8 +126,7 @@ describe('ResultGridView', () => {
 
   it('uses index-based field names to handle duplicate columns', () => {
     render(<ResultGridView {...defaultProps} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const colDefs = props.columnDefs as Array<{ headerName: string; field: string }>
     expect(colDefs[0].field).toBe('col_0')
     expect(colDefs[1].field).toBe('col_1')
@@ -132,8 +135,7 @@ describe('ResultGridView', () => {
 
   it('transforms row arrays into keyed objects for AG Grid', () => {
     render(<ResultGridView {...defaultProps} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const rowData = props.rowData as Array<Record<string, unknown>>
     expect(rowData).toHaveLength(3)
     expect(rowData[0]).toEqual({ col_0: 1, col_1: 'Alice', col_2: 'alice@example.com' })
@@ -142,8 +144,7 @@ describe('ResultGridView', () => {
 
   it('sets sortable: true on all column defs', () => {
     render(<ResultGridView {...defaultProps} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const colDefs = props.columnDefs as Array<{ sortable: boolean }>
     colDefs.forEach((col) => {
       expect(col.sortable).toBe(true)
@@ -152,8 +153,7 @@ describe('ResultGridView', () => {
 
   it('disables client-side sort via comparator returning 0', () => {
     render(<ResultGridView {...defaultProps} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const colDefs = props.columnDefs as Array<{ comparator: () => number }>
     colDefs.forEach((col) => {
       expect(col.comparator()).toBe(0)
@@ -162,15 +162,13 @@ describe('ResultGridView', () => {
 
   it('sets suppressMultiSort to true', () => {
     render(<ResultGridView {...defaultProps} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     expect(props.suppressMultiSort).toBe(true)
   })
 
   it('applies sort direction to matching column from sortColumn/sortDirection props', () => {
     render(<ResultGridView {...defaultProps} sortColumn="name" sortDirection="asc" />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const colDefs = props.columnDefs as Array<{
       headerName: string
       sort: string | undefined
@@ -210,8 +208,7 @@ describe('ResultGridView', () => {
     render(<ResultGridView {...defaultProps} rows={[]} />)
     expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
     // Verify row data is empty
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const rowData = props.rowData as Array<Record<string, unknown>>
     expect(rowData).toHaveLength(0)
   })
@@ -219,16 +216,14 @@ describe('ResultGridView', () => {
   it('renders with empty columns', () => {
     render(<ResultGridView {...defaultProps} columns={[]} rows={[]} />)
     expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const colDefs = props.columnDefs as Array<{ headerName: string }>
     expect(colDefs).toHaveLength(0)
   })
 
   it('has cellClassRules for null detection', () => {
     render(<ResultGridView {...defaultProps} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const colDefs = props.columnDefs as Array<{
       cellClassRules: Record<string, (params: { value: unknown }) => boolean>
     }>
@@ -242,8 +237,7 @@ describe('ResultGridView', () => {
 
   it('has valueFormatter that returns "NULL" for null values', () => {
     render(<ResultGridView {...defaultProps} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const colDefs = props.columnDefs as Array<{
       valueFormatter: (params: { value: unknown }) => string
     }>
@@ -254,8 +248,7 @@ describe('ResultGridView', () => {
 
   it('enables column resizing', () => {
     render(<ResultGridView {...defaultProps} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const colDefs = props.columnDefs as Array<{ resizable: boolean }>
     colDefs.forEach((col) => {
       expect(col.resizable).toBe(true)
@@ -289,8 +282,7 @@ describe('ResultGridView', () => {
   it('handleSortChanged calls onSortChanged with column name and direction', () => {
     const onSortChanged = vi.fn()
     render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const handleSortChanged = props.onSortChanged as (event: {
       api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
     }) => void
@@ -312,8 +304,7 @@ describe('ResultGridView', () => {
   it('handleSortChanged calls onSortChanged with null when sort is cleared', () => {
     const onSortChanged = vi.fn()
     render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} sortColumn="name" />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const handleSortChanged = props.onSortChanged as (event: {
       api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
     }) => void
@@ -335,8 +326,7 @@ describe('ResultGridView', () => {
   it('handleSortChanged does nothing when sort cleared and no previous sortColumn', () => {
     const onSortChanged = vi.fn()
     render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} sortColumn={null} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const handleSortChanged = props.onSortChanged as (event: {
       api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
     }) => void
@@ -357,8 +347,7 @@ describe('ResultGridView', () => {
     render(
       <ResultGridView {...defaultProps} selectedRowIndex={1} currentPage={1} pageSize={1000} />
     )
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const getRowClass = props.getRowClass as (params: {
       rowIndex: number | undefined
     }) => string | undefined
@@ -372,8 +361,7 @@ describe('ResultGridView', () => {
 
   it('getRowClass handles page-offset conversion for selection', () => {
     render(<ResultGridView {...defaultProps} selectedRowIndex={15} currentPage={2} pageSize={10} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const getRowClass = props.getRowClass as (params: {
       rowIndex: number | undefined
     }) => string | undefined
@@ -385,8 +373,7 @@ describe('ResultGridView', () => {
 
   it('getRowClass returns undefined when no row is selected', () => {
     render(<ResultGridView {...defaultProps} selectedRowIndex={null} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const getRowClass = props.getRowClass as (params: {
       rowIndex: number | undefined
     }) => string | undefined
@@ -398,8 +385,7 @@ describe('ResultGridView', () => {
   it('handleSortChanged handles desc sort direction', () => {
     const onSortChanged = vi.fn()
     render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    const props = mockCalls[0][0] as Record<string, unknown>
+    const props = getLatestAgGridProps()
     const handleSortChanged = props.onSortChanged as (event: {
       api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
     }) => void

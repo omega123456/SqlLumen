@@ -36,6 +36,8 @@ import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import type { TableDataColumnMeta, PrimaryKeyInfo, AgGridFilterModel } from '../../types/schema'
 import DateTimeCellEditor from './DateTimeCellEditor'
 import { ENUM_NULL_SENTINEL, getEnumFallbackValue, isEnumColumn } from './enum-field-utils'
+import { getTableDataGridCellClass, isNumericSqlType } from '../../lib/grid-column-style'
+import { useGridAgDimensions } from '../../hooks/use-grid-ag-dimensions'
 import styles from './TableDataGrid.module.css'
 
 // Register AG Grid Community modules (idempotent)
@@ -71,26 +73,10 @@ function isNullish(value: unknown): value is null | undefined {
 // Column definition builder
 // ---------------------------------------------------------------------------
 
-/** Numeric MySQL/MariaDB type prefixes — these columns use agNumberColumnFilter. */
-const NUMERIC_TYPE_PREFIXES = [
-  'INT',
-  'INTEGER',
-  'TINYINT',
-  'SMALLINT',
-  'MEDIUMINT',
-  'BIGINT',
-  'FLOAT',
-  'DOUBLE',
-  'DECIMAL',
-  'NUMERIC',
-  'REAL',
-]
-
 /** Choose the correct AG Grid column filter based on data type. */
 export function getFilterType(col: TableDataColumnMeta): string | false {
   if (col.isBinary) return false
-  const upperType = col.dataType.toUpperCase()
-  if (NUMERIC_TYPE_PREFIXES.some((prefix) => upperType.startsWith(prefix))) {
+  if (isNumericSqlType(col.dataType)) {
     return 'agNumberColumnFilter'
   }
   return 'agTextColumnFilter'
@@ -99,7 +85,8 @@ export function getFilterType(col: TableDataColumnMeta): string | false {
 export function buildColumnDefs(
   columns: TableDataColumnMeta[],
   isReadOnly: boolean,
-  hasPk: boolean
+  hasPk: boolean,
+  pkColumnNames: string[] = []
 ): ColDef[] {
   return columns.map((col) => {
     const editable = !isReadOnly && hasPk && !col.isBinary
@@ -113,6 +100,7 @@ export function buildColumnDefs(
       comparator: NOOP_COMPARATOR,
       editable,
       filter: getFilterType(col),
+      cellClass: getTableDataGridCellClass(col, pkColumnNames),
       cellRenderer: 'tableDataCellRenderer',
       cellEditorPopup: false,
     }
@@ -231,37 +219,39 @@ const NullableCellEditor = forwardRef(function NullableCellEditor(
 
   return (
     <div ref={wrapperRef} className={styles.cellEditorWrapper}>
-      <input
-        ref={inputRef}
-        className="td-cell-editor-input"
-        value={displayValue}
-        onChange={(e) => handleChange(e.target.value)}
+      <div className="td-cell-editor-shell">
+        <input
+          ref={inputRef}
+          className="td-cell-editor-input"
+          value={displayValue}
+          onChange={(e) => handleChange(e.target.value)}
         onBlur={(e) => handleBlur(e.relatedTarget)}
-        onKeyDown={(e) => {
-          // Let AG Grid handle Tab/Enter/Escape
-          if (e.key === 'Tab' || e.key === 'Enter' || e.key === 'Escape') {
-            if (e.key === 'Escape') {
-              setIsNull(initialNull)
-              setValue(initialNull ? '' : String(initialValue ?? ''))
-              if (tabId && fieldName) {
-                updateCellValue(tabId, fieldName, initialValue)
+          onKeyDown={(e) => {
+            // Let AG Grid handle Tab/Enter/Escape
+            if (e.key === 'Tab' || e.key === 'Enter' || e.key === 'Escape') {
+              if (e.key === 'Escape') {
+                setIsNull(initialNull)
+                setValue(initialNull ? '' : String(initialValue ?? ''))
+                if (tabId && fieldName) {
+                  updateCellValue(tabId, fieldName, initialValue)
+                }
               }
+              return
             }
-            return
-          }
-        }}
-      />
-      {isNullable && (
-        <button
-          type="button"
-          className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+          }}
+        />
+        {isNullable && (
+          <button
+            type="button"
+            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
           onMouseDown={(e) => e.preventDefault()}
-          onClick={handleToggleNull}
-          tabIndex={-1}
-        >
-          NULL
-        </button>
-      )}
+            onClick={handleToggleNull}
+            tabIndex={-1}
+          >
+            NULL
+          </button>
+        )}
+      </div>
     </div>
   )
 })
@@ -336,45 +326,47 @@ const EnumCellEditor = forwardRef(function EnumCellEditor(
 
   return (
     <div ref={wrapperRef} className={styles.cellEditorWrapper}>
-      <select
-        ref={selectRef}
-        className="td-cell-editor-select"
-        value={isNull ? ENUM_NULL_SENTINEL : value}
+      <div className="td-cell-editor-shell">
+        <select
+          ref={selectRef}
+          className="td-cell-editor-select"
+          value={isNull ? ENUM_NULL_SENTINEL : value}
         onBlur={(e) => handleBlur(e.relatedTarget)}
-        onChange={(e) => {
-          if (e.target.value === ENUM_NULL_SENTINEL) {
-            setIsNull(true)
-            syncValue(null)
-            return
-          }
-          handleChange(e.target.value)
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            setIsNull(initialNull)
-            setValue(initialValue ?? getEnumFallbackValue(props.columnMeta))
-            syncValue(initialValue)
-          }
-        }}
-      >
-        {isNullable && <option value={ENUM_NULL_SENTINEL}>NULL</option>}
-        {enumValues.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-      {isNullable && (
-        <button
-          type="button"
-          className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={handleToggleNull}
-          tabIndex={-1}
+          onChange={(e) => {
+            if (e.target.value === ENUM_NULL_SENTINEL) {
+              setIsNull(true)
+              syncValue(null)
+              return
+            }
+            handleChange(e.target.value)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setIsNull(initialNull)
+              setValue(initialValue ?? getEnumFallbackValue(props.columnMeta))
+              syncValue(initialValue)
+            }
+          }}
         >
-          NULL
-        </button>
-      )}
+          {isNullable && <option value={ENUM_NULL_SENTINEL}>NULL</option>}
+          {enumValues.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        {isNullable && (
+          <button
+            type="button"
+            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+          onMouseDown={(e) => e.preventDefault()}
+            onClick={handleToggleNull}
+            tabIndex={-1}
+          >
+            NULL
+          </button>
+        )}
+      </div>
     </div>
   )
 })
@@ -394,6 +386,7 @@ interface ActiveEditingCell {
 }
 
 export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
+  const { rowHeight, headerHeight } = useGridAgDimensions()
   const tabState = useTableDataStore((state) => state.tabs[tabId])
   const startEditing = useTableDataStore((state) => state.startEditing)
   const updateCellValue = useTableDataStore((state) => state.updateCellValue)
@@ -430,7 +423,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
 
   // Build column definitions
   const columnDefs = useMemo(() => {
-    const defs = buildColumnDefs(columns, isReadOnly, hasPk)
+    const defs = buildColumnDefs(columns, isReadOnly, hasPk, pkColumns)
     // Apply sort indicator
     if (sort) {
       const sortDef = defs.find((d) => d.field === sort.column)
@@ -439,7 +432,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       }
     }
     return defs
-  }, [columns, pkColumns, isReadOnly, hasPk, sort])
+  }, [columns, isReadOnly, hasPk, pkColumns, sort])
 
   // Transform array-of-arrays to array-of-objects with __rowIndex for identification
   const rowData = useMemo(() => {
@@ -724,8 +717,8 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         context={{ tabId }}
         suppressMultiSort={true}
         animateRows={false}
-        headerHeight={32}
-        rowHeight={28}
+        headerHeight={headerHeight}
+        rowHeight={rowHeight}
         suppressMovableColumns={true}
         singleClickEdit={false}
         suppressClickEdit={true}

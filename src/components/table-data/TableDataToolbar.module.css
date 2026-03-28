@@ -3,12 +3,17 @@
 .toolbar {
   display: flex;
   align-items: center;
-  height: 36px;
-  padding: 0 12px;
-  background: color-mix(in srgb, var(--surface-container-high) 50%, transparent);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.05);
+  height: 44px;
+  padding: 0 24px;
+  background: var(--surface-container);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
   flex-shrink: 0;
   gap: 4px;
+}
+
+:global([data-theme='light']) .toolbar {
+  height: 48px;
+  background: var(--surface-container-high);
 }
 
 /* Sections */
