@@ -82,9 +82,23 @@ async function waitForApp(page: Page) {
 }
 
 async function openConnectionManager(page: Page) {
-  await page.getByRole('button', { name: 'New Connection' }).first().click()
-  await expect(page.getByTestId('connection-dialog')).toBeVisible()
-  await expect(page.getByText('Sample MySQL')).toBeVisible()
+  const btn = page.getByRole('button', { name: 'New Connection' }).first()
+  const dialog = page.getByTestId('connection-dialog')
+
+  // The click → Zustand update → React effect → showModal() chain can be delayed
+  // under load.  Retry the click once if the dialog doesn't appear promptly.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (!(await dialog.isVisible())) await btn.click()
+
+    try {
+      await expect(dialog).toBeVisible({ timeout: 3_000 })
+      break
+    } catch (error) {
+      if (attempt === 1) throw error
+    }
+  }
+
+  await expect(dialog.getByText('Sample MySQL')).toBeVisible({ timeout: APP_READY_MS })
 }
 
 async function connectToSample(page: Page) {
