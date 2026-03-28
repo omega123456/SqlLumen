@@ -228,7 +228,7 @@ async function selectDatabaseInObjectBrowser(page: Page, databaseName: string) {
 
 async function injectMalformedSchemaMetadata(page: Page) {
   await page.evaluate((schemaMetadata) => {
-    ; (
+    ;(
       window as unknown as { __PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__: unknown }
     ).__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__ = schemaMetadata
   }, MALFORMED_SCHEMA_METADATA)
@@ -239,10 +239,14 @@ async function clearSchemaMetadataOverride(page: Page) {
     return
   }
 
-  await page.evaluate(() => {
-    delete (window as unknown as { __PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__?: unknown })
-      .__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__
-  })
+  try {
+    await page.evaluate(() => {
+      delete (window as unknown as { __PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__?: unknown })
+        .__PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__
+    })
+  } catch {
+    // Context may have been destroyed by test timeout or navigation — non-fatal cleanup.
+  }
 }
 
 function expectAutocomplete(
@@ -252,42 +256,26 @@ function expectAutocomplete(
 }
 
 test.describe('Monaco SQL autocomplete', () => {
-  test('autocomplete ignores malformed schema metadata instead of emitting invalid Monaco items', async ({
-    page,
-  }) => {
-    const invalidCompletionWarnings: string[] = []
-
-    page.on('console', (msg) => {
-      if (msg.type() !== 'warning') {
-        return
-      }
-
-      const text = msg.text()
-      if (text.includes('did IGNORE invalid completion item')) {
-        invalidCompletionWarnings.push(text)
-      }
-    })
-
-    try {
-      await waitForApp(page)
-
-      await injectMalformedSchemaMetadata(page)
-
-      await openQueryEditorTab(page)
-
-      await typeQuery(page, 'SELECT * FROM valid_db.')
-
-      const suggestWidget = await openAutocomplete(page, 'users')
-      expectAutocomplete(suggestWidget)
-      await expect(suggestWidget).toContainText('users')
-      await page.waitForTimeout(SUGGESTION_SETTLE_MS)
-
-      expect(invalidCompletionWarnings).toEqual([])
-    } finally {
-      await clearSchemaMetadataOverride(page)
-    }
+  // The first test in this serial project absorbs the cold-start cost: Vite module
+  // transforms, V8 compilation of React/Monaco/AG Grid, AND the autocomplete code paths
+  // (completion provider, suggestion widget rendering).  Each subsequent test gets a fresh
+  // page but reuses V8's compiled bytecode from the same browser instance.
+  test('warm-up: full autocomplete flow to prime all browser caches', async ({ page }) => {
+    await waitForApp(page)
+    await openQueryEditorTab(page)
+    await typeQuery(page, 'SELECT ')
+    // Trigger autocomplete to compile suggestion-related Monaco modules.
+    // We don't care whether it succeeds — just warming the code path.
+    await page.keyboard.press('Control+Space')
+    await page
+      .locator('.suggest-widget.visible')
+      .waitFor({ state: 'visible', timeout: APP_READY_MS })
+      .catch(() => {})
   })
 
+  // The alias-completion test runs first intentionally: the malformed-schema-metadata
+  // test is more expensive (extra metadata injection + console listener + cleanup) and
+  // benefits from a warm Vite/Chromium that a simpler test establishes.
   test('alias completion: FROM users t → t. suggests users columns', async ({ page }) => {
     await waitForApp(page)
     await openQueryEditorTab(page)
@@ -528,5 +516,44 @@ test.describe('Monaco SQL autocomplete', () => {
     await expect(suggestWidget).not.toContainText('select-order-by')
     await expect(suggestWidget).not.toContainText('insert-into-select')
     await expect(suggestWidget).not.toContainText('create-table-as-select')
+  })
+
+  // This test runs last: it injects malformed metadata + attaches a console listener,
+  // making it the most expensive autocomplete test.  Running it after the simpler tests
+  // ensures Vite and Chromium are warm, so the 25s project timeout is not eaten by cold-start.
+  test('autocomplete ignores malformed schema metadata instead of emitting invalid Monaco items', async ({
+    page,
+  }) => {
+    const invalidCompletionWarnings: string[] = []
+
+    page.on('console', (msg) => {
+      if (msg.type() !== 'warning') {
+        return
+      }
+
+      const text = msg.text()
+      if (text.includes('did IGNORE invalid completion item')) {
+        invalidCompletionWarnings.push(text)
+      }
+    })
+
+    try {
+      await waitForApp(page)
+
+      await injectMalformedSchemaMetadata(page)
+
+      await openQueryEditorTab(page)
+
+      await typeQuery(page, 'SELECT * FROM valid_db.')
+
+      const suggestWidget = await openAutocomplete(page, 'users')
+      expectAutocomplete(suggestWidget)
+      await expect(suggestWidget).toContainText('users')
+      await page.waitForTimeout(SUGGESTION_SETTLE_MS)
+
+      expect(invalidCompletionWarnings).toEqual([])
+    } finally {
+      await clearSchemaMetadataOverride(page)
+    }
   })
 })

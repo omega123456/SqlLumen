@@ -41,6 +41,12 @@ To run a single Vitest test file: `pnpm vitest run src/tests/path/to/file.test.t
 
 **Critical:** If `pnpm test:all` fails, you must fix **every** failure before finishing — not only failures you think your diff caused. Do not treat unrelated suites, flaky-looking tests, or “already red” main as out of scope: diagnose, repair, update baselines when the change is intentional, or get explicit user direction. The bar is a **fully green** `test:all`, not “green for the files I touched.”
 
+**Critical — agents must not (without explicit user override where noted):**
+
+- **Lower coverage thresholds** — Do not reduce Vitest/v8 (or any) configured coverage percentages, quality gates, or equivalent bars to make the suite pass. Improve tests and coverage instead.
+- **Add long fixed delays** — Do not introduce sleeps, `waitForTimeout`, or other fixed waits **longer than 5 seconds** in any test (Vitest, Playwright, or Rust). Prefer condition-based waiting (e.g. Playwright auto-waiting, `expect` retries, polling). Existing delays in the repo may stay unless you are changing them; when you change or add waits, keep each at **≤ 5 seconds**.
+- **Exclude code from coverage** — Do not add `istanbul`/`c8` ignore comments, widen Vitest/coverage exclude lists, or otherwise omit files or lines from coverage to hide gaps. **Exception:** if the user gives **explicit permission** naming what to exclude (files, patterns, or lines), you may follow that direction only for the scope they approved.
+
 ```bash
 pnpm test:all    # Vitest+coverage, Rust unit tests, then full Playwright (functional + screenshot baselines)
 ```
@@ -185,11 +191,11 @@ Treat tests as part of the feature, not a follow-up task. **Any new or materiall
 
 **Do not** name suites after coverage or other meta goals (e.g. `coverage_boost`, `coverage_misc`, `threshold_helpers`). **Name files after what they test**: mirror the production path for the frontend (`src/lib/foo.ts` → `src/tests/lib/foo.test.ts`), and for Rust use clear `src-tauri/tests/<area>_<focus>_integration.rs` names (or extend the existing suite that already matches that area) so readers can tell which modules, commands, or behavior are under test.
 
-| Area | Where to add tests |
-|------|-------------------|
+| Area                                                | Where to add tests                                                                                                |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | React components, hooks, stores, frontend utilities | `src/tests/` — mirror the path under `src/` (e.g. `src/components/Foo.tsx` → `src/tests/components/Foo.test.tsx`) |
-| Rust logic, commands (`*_impl`), DB helpers | Dedicated files under `src-tauri/tests/` only — never inline tests in `src-tauri/src/` |
-| Critical user journeys spanning the full app | `e2e/` (Playwright) when the change warrants it — not every UI tweak needs E2E |
+| Rust logic, commands (`*_impl`), DB helpers         | Dedicated files under `src-tauri/tests/` only — never inline tests in `src-tauri/src/`                            |
+| Critical user journeys spanning the full app        | `e2e/` (Playwright) when the change warrants it — not every UI tweak needs E2E                                    |
 
 ### Playwright visual regression (screenshots)
 
@@ -206,7 +212,7 @@ The app has **no separate routes**; “screens” are distinct UI states (welcom
 
 - **Workflow:** After every substantive change, run `pnpm test:all` and fix **all** failures or coverage gaps before finishing (Vitest, Rust, Playwright functional **and** screenshot baselines) — including any that pre-existed or appear unrelated to your edits; see the **Critical** note under Commands.
 - React tests: Vitest + jsdom + `@testing-library/react`. Setup file: `src/tests/setup.ts`
-- E2E: Playwright in `e2e/`; `playwright.config.ts` runs `pnpm dev` as the web server with `VITE_PLAYWRIGHT=true`. **`pnpm test:e2e` and therefore `pnpm test:all` always run `e2e/screenshots.spec.ts`** alongside functional specs.
+- E2E: Playwright in `e2e/`; a pre-script (`scripts/ensure-playwright-port.mjs`) picks a free port and writes it to `.playwright-dev-port` before Playwright loads. The config reads that file and starts a fresh Vite dev server (`VITE_PLAYWRIGHT=true`) as the webServer. **`pnpm test:e2e` and therefore `pnpm test:all` always run `e2e/screenshots.spec.ts`** alongside functional specs.
 - Coverage thresholds: 90% lines/functions/statements. Branch threshold is intentionally omitted.
 - Rust tests: only in `src-tauri/tests/` (Nextest via `.cargo/config.toml`); no tests inside `src-tauri/src/`. Commands / DB tests use in-memory SQLite (`Connection::open_in_memory()`) — never mock the database layer.
 - Tests are built alongside features in each phase — not deferred.

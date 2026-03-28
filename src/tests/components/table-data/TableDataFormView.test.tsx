@@ -521,6 +521,7 @@ describe('TableDataFormView', () => {
         hasDefault: false,
         columnDefault: null,
         isBinary: false,
+        isBooleanAlias: false,
         isAutoIncrement: false,
       },
     ]

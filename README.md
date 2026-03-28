@@ -13,14 +13,14 @@ A desktop **MySQL / MariaDB client** built with [Tauri](https://tauri.app/) 2 an
 
 ## Requirements
 
-| Tool | Notes |
-|------|--------|
-| [Node.js](https://nodejs.org/) | LTS recommended |
-| [pnpm](https://pnpm.io/) | Package manager (`corepack enable` or install globally) |
-| [Rust](https://www.rust-lang.org/tools/install) | Required to build the Tauri backend (`cargo`, `rustc`) |
-| [cargo-nextest](https://nexte.st/book/installing.html) | For `pnpm test:rust`, `pnpm test:rust:coverage`, and `pnpm test:all`: `cargo install cargo-nextest` |
-| Rust coverage (optional) | For `pnpm test:rust:coverage` / `pnpm test:all`: `cargo install cargo-llvm-cov` and `rustup component add llvm-tools-preview` |
-| OS deps | See [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform |
+| Tool                                                   | Notes                                                                                                                         |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| [Node.js](https://nodejs.org/)                         | LTS recommended                                                                                                               |
+| [pnpm](https://pnpm.io/)                               | Package manager (`corepack enable` or install globally)                                                                       |
+| [Rust](https://www.rust-lang.org/tools/install)        | Required to build the Tauri backend (`cargo`, `rustc`)                                                                        |
+| [cargo-nextest](https://nexte.st/book/installing.html) | For `pnpm test:rust`, `pnpm test:rust:coverage`, and `pnpm test:all`: `cargo install cargo-nextest`                           |
+| Rust coverage (optional)                               | For `pnpm test:rust:coverage` / `pnpm test:all`: `cargo install cargo-llvm-cov` and `rustup component add llvm-tools-preview` |
+| OS deps                                                | See [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform                                        |
 
 ## Setup
 
@@ -41,9 +41,11 @@ Follow these steps on a new machine before **Quick start** or **Contributing**.
    pnpm exec playwright install chromium
    ```
 7. **cargo-nextest (for Rust integration tests)** — Not installed by `pnpm install`. The repo uses Nextest via Cargo aliases in `.cargo/config.toml` (`mysql-client-test-integration`, `mysql-client-llvm-cov`). From any directory:
+
    ```bash
    cargo install cargo-nextest
    ```
+
    Verify with `cargo nextest --version`. Ensure `~/.cargo/bin` (or your Cargo bin directory) is on your `PATH`.
 
 8. **Rust coverage tools (for `pnpm test:rust:coverage` and `pnpm test:all`)** — Requires Nextest (step 7). From any directory:
@@ -64,7 +66,7 @@ pnpm install
 pnpm tauri dev
 ```
 
-The dev server runs on [http://localhost:1420](http://localhost:1420) (configured in `src-tauri/tauri.conf.json`).
+The dev server prefers port **1420**. `pnpm tauri dev` picks that port automatically (or the next free one) and wires it into Tauri. `pnpm dev` (frontend-only) does the same via Vite's built-in fallback — check Vite's startup banner for the actual URL.
 
 ### Web-only UI (no native shell)
 
@@ -76,23 +78,23 @@ pnpm dev
 
 ## Scripts
 
-| Command | Purpose |
-|---------|---------|
-| `pnpm dev` | Vite dev server |
-| `pnpm build` | Typecheck + production frontend build |
-| `pnpm preview` | Preview the built frontend |
-| `pnpm tauri dev` | Run the full Tauri app in development |
-| `pnpm tauri build` | Build installable bundles for your OS |
-| `pnpm test` | Run Vitest once |
-| `pnpm test:watch` | Vitest in watch mode |
-| `pnpm test:coverage` | Vitest with coverage thresholds |
-| `pnpm test:rust` | Rust integration tests via [cargo-nextest](https://nexte.st/) (`cargo mysql-client-test-integration`; targets and flags in `.cargo/config.toml`) |
-| `pnpm test:rust:coverage` | Same tests under [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo mysql-client-llvm-cov`; summary to stdout; artifacts under `src-tauri/target/`) |
-| `pnpm test:all` | Vitest coverage + Rust llvm-cov + Playwright E2E (run after substantive changes) |
-| `pnpm test:e2e` | Playwright E2E tests |
-| `pnpm lint` / `pnpm lint:fix` | ESLint |
-| `pnpm format` | Prettier on `src/` |
-| `pnpm typecheck` | `tsc --noEmit` |
+| Command                       | Purpose                                                                                                                                                              |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                    | Vite dev server                                                                                                                                                      |
+| `pnpm build`                  | Typecheck + production frontend build                                                                                                                                |
+| `pnpm preview`                | Preview the built frontend                                                                                                                                           |
+| `pnpm tauri dev`              | Run the full Tauri app in development                                                                                                                                |
+| `pnpm tauri build`            | Build installable bundles for your OS                                                                                                                                |
+| `pnpm test`                   | Run Vitest once                                                                                                                                                      |
+| `pnpm test:watch`             | Vitest in watch mode                                                                                                                                                 |
+| `pnpm test:coverage`          | Vitest with coverage thresholds                                                                                                                                      |
+| `pnpm test:rust`              | Rust integration tests via [cargo-nextest](https://nexte.st/) (`cargo mysql-client-test-integration`; targets and flags in `.cargo/config.toml`)                     |
+| `pnpm test:rust:coverage`     | Same tests under [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo mysql-client-llvm-cov`; summary to stdout; artifacts under `src-tauri/target/`) |
+| `pnpm test:all`               | Vitest coverage + Rust llvm-cov + Playwright E2E (run after substantive changes)                                                                                     |
+| `pnpm test:e2e`               | Playwright E2E tests                                                                                                                                                 |
+| `pnpm lint` / `pnpm lint:fix` | ESLint                                                                                                                                                               |
+| `pnpm format`                 | Prettier on `src/`                                                                                                                                                   |
+| `pnpm typecheck`              | `tsc --noEmit`                                                                                                                                                       |
 
 ## Project layout
 
@@ -116,4 +118,4 @@ Work is tracked in phases; see `CONTEXT.md` and `.agent/plans/` in this repo for
 
 ---
 
-*Product name in bundles: **MySQL Client** · Identifier: `io.mysqlclient.app`*
+_Product name in bundles: **MySQL Client** · Identifier: `io.mysqlclient.app`_

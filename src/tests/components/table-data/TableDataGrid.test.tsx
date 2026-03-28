@@ -299,6 +299,7 @@ describe('getFilterType', () => {
       hasDefault: false,
       columnDefault: null,
       isBinary,
+      isBooleanAlias: false,
       isAutoIncrement: false,
     }
   }
@@ -1002,6 +1003,7 @@ describe('TableDataGrid', () => {
           hasDefault: false,
           columnDefault: null,
           isBinary: false,
+          isBooleanAlias: false,
           isAutoIncrement: false,
         },
       ],
@@ -1061,6 +1063,7 @@ describe('TableDataGrid', () => {
           hasDefault: false,
           columnDefault: null,
           isBinary: false,
+          isBooleanAlias: false,
           isAutoIncrement: false,
         },
       ],

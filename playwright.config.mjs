@@ -8,35 +8,41 @@ import { DEV_SERVER_HOST } from './scripts/pick-dev-port.mjs'
 const root = path.dirname(fileURLToPath(import.meta.url))
 const portFile = path.join(root, '.playwright-dev-port')
 
+// The port file is written by a pre-script (ensure-playwright-port.mjs) that
+// runs before both `test:e2e` and `test:screenshots`.  Reading from a file
+// (rather than calling pickDevPort at config-evaluation time) is critical
+// because Playwright evaluates the config module in EVERY worker process —
+// each call to pickDevPort would race and pick a different port than the one
+// the webServer is actually bound to.
 if (!existsSync(portFile)) {
   throw new Error(
-    'Missing .playwright-dev-port. Run Playwright via pnpm test:e2e / pnpm test:screenshots, or first run: node scripts/ensure-playwright-port.mjs'
+    'Missing .playwright-dev-port. Run Playwright via pnpm test:e2e / pnpm test:screenshots, ' +
+      'or first run: node scripts/ensure-playwright-port.mjs'
   )
 }
 
-const port = parseInt(readFileSync(portFile, 'utf8').trim(), 10)
+const portText = readFileSync(portFile, 'utf8')
+const port = parseInt(portText.trim(), 10)
 if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid port in .playwright-dev-port: ${readFileSync(portFile, 'utf8')}`)
+  throw new Error(`Invalid port in .playwright-dev-port: ${portText.trim()}`)
 }
 
 const baseURL = `http://${DEV_SERVER_HOST}:${port}`
 
 // One shared Vite dev server cannot serve unbounded parallel Chromium + Monaco; uncapped workers
 // overload it (flaky autocomplete + net::ERR_CONNECTION_REFUSED mid-run after test:coverage + rust).
-const localWorkers = Math.min(4, Math.max(1, os.availableParallelism?.() ?? os.cpus().length))
 // Screenshot-only runs (scripts/playwright-screenshots.mjs) may use more workers; still capped at 10.
-const screenshotWorkers = Math.min(10, Math.max(1, os.availableParallelism?.() ?? os.cpus().length))
+const availableCpus = Math.max(1, os.availableParallelism?.() ?? os.cpus().length)
+const isCI = !!process.env.CI
+const isScreenshotRun = process.env.PLAYWRIGHT_SCREENSHOT_RUN === '1'
+const workers = isCI ? 1 : Math.min(isScreenshotRun ? 10 : 4, availableCpus)
 
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI
-    ? 1
-    : process.env.PLAYWRIGHT_SCREENSHOT_RUN === '1'
-      ? screenshotWorkers
-      : localWorkers,
+  forbidOnly: isCI,
+  retries: isCI ? 2 : 0,
+  workers,
   reporter: 'line',
   timeout: 15_000,
   expect: {
@@ -57,8 +63,11 @@ export default defineConfig({
       name: 'monaco-autocomplete',
       testMatch: '**/query-autocomplete.spec.ts',
       // Must be single-worker: multiple Chromium instances + Monaco against one Vite dev
-      // server stalls suggestions (60s timeouts, closed pages).
+      // server stalls suggestions (timeouts, closed pages).
       workers: 1,
+      // Autocomplete tests do more setup (connect + editor + type + retry Ctrl+Space).
+      // 25s gives enough headroom without the old 60s bloat.
+      timeout: 25_000,
       use: { ...devices['Desktop Chrome'] },
     },
     {
@@ -69,6 +78,9 @@ export default defineConfig({
     },
   ],
   webServer: {
+    // --strictPort: if the probed port was grabbed by a race, Vite fails fast
+    // and Playwright surfaces a clear error rather than silently connecting to
+    // the wrong server.
     command: `pnpm --silent exec vite --host ${DEV_SERVER_HOST} --port ${port} --strictPort --logLevel error`,
     url: baseURL,
     timeout: 120_000,
