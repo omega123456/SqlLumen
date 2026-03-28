@@ -225,7 +225,7 @@ const NullableCellEditor = forwardRef(function NullableCellEditor(
           className="td-cell-editor-input"
           value={displayValue}
           onChange={(e) => handleChange(e.target.value)}
-        onBlur={(e) => handleBlur(e.relatedTarget)}
+          onBlur={(e) => handleBlur(e.relatedTarget)}
           onKeyDown={(e) => {
             // Let AG Grid handle Tab/Enter/Escape
             if (e.key === 'Tab' || e.key === 'Enter' || e.key === 'Escape') {
@@ -244,7 +244,7 @@ const NullableCellEditor = forwardRef(function NullableCellEditor(
           <button
             type="button"
             className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-          onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleToggleNull}
             tabIndex={-1}
           >
@@ -331,7 +331,7 @@ const EnumCellEditor = forwardRef(function EnumCellEditor(
           ref={selectRef}
           className="td-cell-editor-select"
           value={isNull ? ENUM_NULL_SENTINEL : value}
-        onBlur={(e) => handleBlur(e.relatedTarget)}
+          onBlur={(e) => handleBlur(e.relatedTarget)}
           onChange={(e) => {
             if (e.target.value === ENUM_NULL_SENTINEL) {
               setIsNull(true)
@@ -359,7 +359,7 @@ const EnumCellEditor = forwardRef(function EnumCellEditor(
           <button
             type="button"
             className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-          onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleToggleNull}
             tabIndex={-1}
           >
@@ -400,12 +400,22 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const showSuccess = useToastStore((state) => state.showSuccess)
   const [, setActiveEditingCell] = useState<ActiveEditingCell | null>(null)
   const activeEditingCellRef = useRef<ActiveEditingCell | null>(null)
+  const pendingEditTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
   const rows = useMemo(() => tabState?.rows ?? [], [tabState?.rows])
   const primaryKey: PrimaryKeyInfo | null = tabState?.primaryKey ?? null
   const editState = tabState?.editState ?? null
   const sort = tabState?.sort ?? null
+
+  // Cancel any pending deferred edit on unmount
+  useEffect(() => {
+    return () => {
+      if (pendingEditTimerRef.current !== null) {
+        clearTimeout(pendingEditTimerRef.current)
+      }
+    }
+  }, [])
 
   const pkColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
   const hasPk = primaryKey !== null
@@ -636,6 +646,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       const clickedRowKey = getRowKey(event.data, pkColumns)
       const currentActiveCell = activeEditingCellRef.current
 
+      // Already editing this exact cell — nothing to do
       if (
         currentActiveCell &&
         currentActiveCell.field === event.colDef.field &&
@@ -644,7 +655,28 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         return
       }
 
+      // Editing a different cell — stop the current editor, then start the new one.
+      // We must defer startEditingCell to the next task because stopEditing
+      // triggers the cell editor's handleBlur callback synchronously, which calls
+      // stopEditing again and would immediately stop the new editor if we started
+      // it synchronously.
       if (currentActiveCell) {
+        const colKey = event.colDef.field
+        // Cancel any pending deferred edit from a previous rapid click
+        if (pendingEditTimerRef.current !== null) {
+          clearTimeout(pendingEditTimerRef.current)
+          pendingEditTimerRef.current = null
+        }
+        event.api.stopEditing(false)
+        activeEditingCellRef.current = null
+        flushSync(() => {
+          setActiveEditingCell(null)
+        })
+        // Defer so the outgoing editor's blur → stopEditing chain finishes first
+        pendingEditTimerRef.current = setTimeout(() => {
+          pendingEditTimerRef.current = null
+          event.api.startEditingCell({ rowIndex, colKey })
+        }, 0)
         return
       }
 

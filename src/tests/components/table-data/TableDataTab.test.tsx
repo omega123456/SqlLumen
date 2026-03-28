@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
@@ -336,7 +336,9 @@ describe('TableDataTab', () => {
     await waitForTableDataLoaded()
 
     // Now switch to form view via the store
-    useTableDataStore.getState().setViewMode('tab-1', 'form')
+    await act(async () => {
+      useTableDataStore.getState().setViewMode('tab-1', 'form')
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('table-data-form-view')).toBeInTheDocument()
@@ -350,7 +352,9 @@ describe('TableDataTab', () => {
     await waitForTableDataLoaded()
 
     // Open export dialog via the store
-    useTableDataStore.getState().openExportDialog('tab-1')
+    await act(async () => {
+      useTableDataStore.getState().openExportDialog('tab-1')
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
@@ -364,22 +368,24 @@ describe('TableDataTab', () => {
     await waitForTableDataLoaded()
 
     // Set unsaved changes dialog state
-    useTableDataStore.setState((state) => ({
-      tabs: {
-        ...state.tabs,
-        'tab-1': {
-          ...state.tabs['tab-1'],
-          editState: {
-            rowKey: { id: 1 },
-            originalValues: { id: 1, name: 'Alice' },
-            currentValues: { id: 1, name: 'Changed' },
-            modifiedColumns: new Set(['name']),
-            isNewRow: false,
+    await act(async () => {
+      useTableDataStore.setState((state) => ({
+        tabs: {
+          ...state.tabs,
+          'tab-1': {
+            ...state.tabs['tab-1'],
+            editState: {
+              rowKey: { id: 1 },
+              originalValues: { id: 1, name: 'Alice' },
+              currentValues: { id: 1, name: 'Changed' },
+              modifiedColumns: new Set(['name']),
+              isNewRow: false,
+            },
+            pendingNavigationAction: () => {},
           },
-          pendingNavigationAction: () => {},
         },
-      },
-    }))
+      }))
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('unsaved-changes-dialog')).toBeInTheDocument()
@@ -393,7 +399,9 @@ describe('TableDataTab', () => {
     await waitForTableDataLoaded()
 
     // Open export dialog
-    useTableDataStore.getState().openExportDialog('tab-1')
+    await act(async () => {
+      useTableDataStore.getState().openExportDialog('tab-1')
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
@@ -415,22 +423,24 @@ describe('TableDataTab', () => {
     await waitForTableDataLoaded()
 
     // Set up pending navigation
-    useTableDataStore.setState((state) => ({
-      tabs: {
-        ...state.tabs,
-        'tab-1': {
-          ...state.tabs['tab-1'],
-          editState: {
-            rowKey: { id: 1 },
-            originalValues: { id: 1, name: 'Alice' },
-            currentValues: { id: 1, name: 'Changed' },
-            modifiedColumns: new Set(['name']),
-            isNewRow: false,
+    await act(async () => {
+      useTableDataStore.setState((state) => ({
+        tabs: {
+          ...state.tabs,
+          'tab-1': {
+            ...state.tabs['tab-1'],
+            editState: {
+              rowKey: { id: 1 },
+              originalValues: { id: 1, name: 'Alice' },
+              currentValues: { id: 1, name: 'Changed' },
+              modifiedColumns: new Set(['name']),
+              isNewRow: false,
+            },
+            pendingNavigationAction: () => {},
           },
-          pendingNavigationAction: () => {},
         },
-      },
-    }))
+      }))
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('unsaved-changes-dialog')).toBeInTheDocument()
@@ -452,22 +462,24 @@ describe('TableDataTab', () => {
     await waitForTableDataLoaded()
 
     // Set up pending navigation
-    useTableDataStore.setState((state) => ({
-      tabs: {
-        ...state.tabs,
-        'tab-1': {
-          ...state.tabs['tab-1'],
-          editState: {
-            rowKey: { id: 1 },
-            originalValues: { id: 1, name: 'Alice' },
-            currentValues: { id: 1, name: 'Changed' },
-            modifiedColumns: new Set(['name']),
-            isNewRow: false,
+    await act(async () => {
+      useTableDataStore.setState((state) => ({
+        tabs: {
+          ...state.tabs,
+          'tab-1': {
+            ...state.tabs['tab-1'],
+            editState: {
+              rowKey: { id: 1 },
+              originalValues: { id: 1, name: 'Alice' },
+              currentValues: { id: 1, name: 'Changed' },
+              modifiedColumns: new Set(['name']),
+              isNewRow: false,
+            },
+            pendingNavigationAction: () => {},
           },
-          pendingNavigationAction: () => {},
         },
-      },
-    }))
+      }))
+    })
 
     await waitFor(() => {
       expect(screen.getByTestId('unsaved-changes-dialog')).toBeInTheDocument()

@@ -81,6 +81,14 @@
   padding-bottom: 0;
 }
 
+/* Prevent cell-value spans from overflowing into adjacent cells.
+   Scoped to non-editing cells so editor UI (NULL toggle, calendar) is not clipped. */
+.ag-theme-precision .ag-cell-not-inline-editing .ag-cell-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 /* Body column roles — inline_editable_grid */
 .ag-theme-precision .ag-cell.td-cell-mono-muted {
   font-family: var(--font-mono);
