@@ -28,6 +28,12 @@ beforeEach(() => {
   })
 })
 
+const BOOLEAN_ALIAS_COLUMNS = [
+  { name: 'is_active', dataType: 'BOOLEAN' },
+  { name: 'is_archived', dataType: 'BOOL' },
+  { name: 'label', dataType: 'VARCHAR' },
+]
+
 describe('useQueryStore — getTabState', () => {
   it('returns default state for unknown tab', () => {
     const state = useQueryStore.getState().getTabState('unknown')
@@ -132,6 +138,29 @@ describe('useQueryStore — executeQuery', () => {
     expect(state.sortDirection).toBeNull()
     expect(state.selectedRowIndex).toBeNull()
   })
+
+  it('normalizes tinyint boolean aliases to integer rows on executeQuery', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-bool',
+          columns: BOOLEAN_ALIAS_COLUMNS,
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[true, false, 'flagged']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-bool', 'SELECT is_active FROM flags')
+
+    expect(useQueryStore.getState().getTabState('tab-bool').rows).toEqual([[1, 0, 'flagged']])
+  })
 })
 
 describe('useQueryStore — fetchPage', () => {
@@ -148,6 +177,34 @@ describe('useQueryStore — fetchPage', () => {
   it('does nothing when no queryId', async () => {
     await useQueryStore.getState().fetchPage('conn-1', 'no-query-tab', 1)
     // Should not throw
+  })
+
+  it('normalizes tinyint boolean aliases to integer rows on fetchPage', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'fetch_result_page') {
+        return { rows: [[false, true, 'page-2']], page: 2, totalPages: 2 }
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-bool-page', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-bool-page': {
+          ...prev.tabs['tab-bool-page']!,
+          queryId: 'q-bool-page',
+          columns: BOOLEAN_ALIAS_COLUMNS,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().fetchPage('conn-1', 'tab-bool-page', 2)
+
+    const state = useQueryStore.getState().getTabState('tab-bool-page')
+    expect(state.rows).toEqual([[0, 1, 'page-2']])
+    expect(state.currentPage).toBe(2)
   })
 })
 
@@ -397,6 +454,50 @@ describe('useQueryStore — sortResults', () => {
     expect(state.rows).toEqual([[3], [1], [2]])
   })
 
+  it('normalizes tinyint boolean aliases when clearing sort re-executes the query', async () => {
+    mockIPC((cmd) => {
+      switch (cmd) {
+        case 'execute_query':
+          return {
+            queryId: 'q-reexec-bool',
+            columns: BOOLEAN_ALIAS_COLUMNS,
+            totalRows: 1,
+            executionTimeMs: 8,
+            affectedRows: 0,
+            firstPage: [[true, false, 'reexec']],
+            totalPages: 1,
+            autoLimitApplied: false,
+          }
+        case 'evict_results':
+          return null
+        default:
+          return null
+      }
+    })
+
+    useQueryStore.getState().setContent('tab-bool-reexec', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-bool-reexec': {
+          ...prev.tabs['tab-bool-reexec']!,
+          sortColumn: 'is_active',
+          sortDirection: 'asc' as const,
+          lastExecutedSql: 'SELECT is_active FROM t',
+          queryId: 'q-old',
+          status: 'success' as const,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().sortResults('conn-1', 'tab-bool-reexec', 'is_active', null)
+
+    const state = useQueryStore.getState().getTabState('tab-bool-reexec')
+    expect(state.sortColumn).toBeNull()
+    expect(state.sortDirection).toBeNull()
+    expect(state.rows).toEqual([[1, 0, 'reexec']])
+  })
+
   it('clears sort state visually when no lastExecutedSql', async () => {
     // Set up tab with sort state but NO lastExecutedSql
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
@@ -457,6 +558,34 @@ describe('useQueryStore — sortResults', () => {
     // Tab should remain undefined
     expect(useQueryStore.getState().tabs['tab-stale-sort']).toBeUndefined()
   })
+
+  it('normalizes tinyint boolean aliases to integer rows on sortResults', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'sort_results') {
+        return { rows: [[false, true, 'sorted']], page: 1, totalPages: 1 }
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-bool-sort', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-bool-sort': {
+          ...prev.tabs['tab-bool-sort']!,
+          columns: BOOLEAN_ALIAS_COLUMNS,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().sortResults('conn-1', 'tab-bool-sort', 'is_active', 'asc')
+
+    const state = useQueryStore.getState().getTabState('tab-bool-sort')
+    expect(state.rows).toEqual([[0, 1, 'sorted']])
+    expect(state.sortColumn).toBe('is_active')
+    expect(state.sortDirection).toBe('asc')
+  })
 })
 
 describe('useQueryStore — changePageSize', () => {
@@ -504,6 +633,44 @@ describe('useQueryStore — changePageSize', () => {
     expect(state.sortColumn).toBeNull()
     expect(state.sortDirection).toBeNull()
     expect(state.selectedRowIndex).toBeNull()
+  })
+
+  it('normalizes tinyint boolean aliases when changePageSize re-executes the query', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-new-bool',
+          columns: BOOLEAN_ALIAS_COLUMNS,
+          totalRows: 1,
+          executionTimeMs: 5,
+          affectedRows: 0,
+          firstPage: [[false, true, 'resized']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-bool-size', 'SELECT is_active FROM t')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-bool-size': {
+          ...prev.tabs['tab-bool-size']!,
+          lastExecutedSql: 'SELECT is_active FROM t',
+          status: 'success' as const,
+          queryId: 'q-old',
+        },
+      },
+    }))
+
+    await useQueryStore.getState().changePageSize('conn-1', 'tab-bool-size', 250)
+
+    const state = useQueryStore.getState().getTabState('tab-bool-size')
+    expect(state.rows).toEqual([[0, 1, 'resized']])
+    expect(state.pageSize).toBe(250)
   })
 
   it('does nothing when no lastExecutedSql', async () => {

@@ -15,6 +15,7 @@ const mockFetchTableDataFn = vi.fn(
       {
         name: 'id',
         dataType: 'INT',
+        isBooleanAlias: false,
         isNullable: false,
         isPrimaryKey: true,
         isUniqueKey: false,
@@ -171,6 +172,7 @@ describe('fetchTableData', () => {
         {
           name: 'status',
           dataType: 'ENUM',
+          isBooleanAlias: false,
           enumValues: ['active', 'disabled'],
           isNullable: true,
           isPrimaryKey: false,

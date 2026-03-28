@@ -37,6 +37,7 @@ const JS_SAFE_INTEGER_MIN: i64 = -JS_SAFE_INTEGER_MAX;
 pub struct TableDataColumnMeta {
     pub name: String,
     pub data_type: String,
+    pub is_boolean_alias: bool,
     pub enum_values: Option<Vec<String>>,
     pub is_nullable: bool,
     pub is_primary_key: bool,
@@ -148,6 +149,16 @@ fn classify_column_filter_kind(data_type: &str) -> ColumnFilterKind {
     }
 
     ColumnFilterKind::NonText
+}
+
+#[cfg(not(coverage))]
+fn is_boolean_alias_column(data_type: &str, column_type: &str) -> bool {
+    let normalized_data_type = data_type.trim().to_uppercase();
+    let normalized_column_type = column_type.trim().to_uppercase();
+
+    normalized_data_type == "BOOL"
+        || normalized_data_type == "BOOLEAN"
+        || (normalized_data_type == "TINYINT" && normalized_column_type.starts_with("TINYINT(1)"))
 }
 
 /// Map an AG Grid filter condition string to its SQL operation.
@@ -516,6 +527,7 @@ fn serialize_temporal_value(value: MySqlValueRef<'_>) -> Option<serde_json::Valu
 fn serialize_table_value(
     row: &sqlx::mysql::MySqlRow,
     i: usize,
+    is_boolean_alias: bool,
     is_binary: bool,
     is_pk: bool,
 ) -> serde_json::Value {
@@ -551,6 +563,14 @@ fn serialize_table_value(
     }
 
     let type_name = raw_value.type_info().name().to_uppercase();
+
+    if is_boolean_alias {
+        if let Ok(v) = row.try_get::<Option<bool>, _>(i) {
+            return v
+                .map(|b| serde_json::Value::from(if b { 1 } else { 0 }))
+                .unwrap_or(serde_json::Value::Null);
+        }
+    }
 
     // Integer types
     if matches!(
@@ -783,6 +803,7 @@ pub async fn fetch_table_pk_impl(
         let extra = decode_text(row, 6).to_lowercase();
 
         let is_binary = is_binary_data_type(&data_type);
+        let is_boolean_alias = is_boolean_alias_column(&data_type, &column_type);
         let is_auto_increment = extra.contains("auto_increment");
         let has_default = column_default.is_some() || is_nullable;
         let is_primary_key = column_key.contains("PRI");
@@ -793,6 +814,7 @@ pub async fn fetch_table_pk_impl(
         columns.push(TableDataColumnMeta {
             name,
             data_type,
+            is_boolean_alias,
             enum_values,
             is_nullable,
             is_primary_key,
@@ -1005,7 +1027,13 @@ pub async fn fetch_table_data_impl(
         for (i, col_meta) in columns.iter().enumerate() {
             if i < row_col_count {
                 let is_pk = pk_col_set.contains(col_meta.name.as_str());
-                serialized_row.push(serialize_table_value(row, i, col_meta.is_binary, is_pk));
+                serialized_row.push(serialize_table_value(
+                    row,
+                    i,
+                    col_meta.is_boolean_alias,
+                    col_meta.is_binary,
+                    is_pk,
+                ));
             } else {
                 serialized_row.push(serde_json::Value::Null);
             }
@@ -1287,10 +1315,13 @@ pub async fn insert_table_row_impl(
     // Serialize the re-fetched row
     match refetch_row {
         Some(row) => {
+            let (_, columns) = fetch_table_pk_impl(pool, database, table).await?;
             let result: Vec<(String, serde_json::Value)> = (0..row.columns().len())
                 .map(|i| {
                     let col_name = row.column(i).name().to_string();
-                    let value = serialize_table_value(&row, i, false, false);
+                    let is_boolean_alias = columns.get(i).map(|c| c.is_boolean_alias).unwrap_or(false);
+                    let is_binary = columns.get(i).map(|c| c.is_binary).unwrap_or(false);
+                    let value = serialize_table_value(&row, i, is_boolean_alias, is_binary, false);
                     (col_name, value)
                 })
                 .collect();

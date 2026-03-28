@@ -245,6 +245,7 @@ export interface ExportOptions {
 export interface TableDataColumnMeta {
   name: string
   dataType: string
+  isBooleanAlias: boolean
   enumValues?: string[]
   isNullable: boolean
   isPrimaryKey: boolean

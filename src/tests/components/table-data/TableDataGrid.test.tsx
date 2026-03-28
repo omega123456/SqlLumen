@@ -159,6 +159,7 @@ const testColumns: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: false,
+    isBooleanAlias: false,
     isAutoIncrement: true,
   },
   {
@@ -170,6 +171,7 @@ const testColumns: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: false,
+    isBooleanAlias: false,
     isAutoIncrement: false,
   },
   {
@@ -181,6 +183,7 @@ const testColumns: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: true,
+    isBooleanAlias: false,
     isAutoIncrement: false,
   },
 ]

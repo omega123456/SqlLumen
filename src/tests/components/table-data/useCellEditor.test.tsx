@@ -36,6 +36,7 @@ function makeColumnMeta(
     hasDefault: false,
     columnDefault: null,
     isBinary: false,
+    isBooleanAlias: false,
     isAutoIncrement: false,
     ...overrides,
   }

@@ -23,6 +23,7 @@ pub struct MockColumnDef {
 #[derive(Debug, Clone)]
 pub enum MockCell {
     Null,
+    I8(i8),
     U32(u32),
     I64(i64),
     U64(u64),
@@ -209,6 +210,7 @@ impl MockMySqlBackend {
             for cell in row {
                 match cell {
                     MockCell::Null => writer.write_col(Option::<u8>::None)?,
+                    MockCell::I8(value) => writer.write_col(*value)?,
                     MockCell::U32(value) => writer.write_col(*value)?,
                     MockCell::I64(value) => writer.write_col(*value)?,
                     MockCell::U64(value) => writer.write_col(*value)?,

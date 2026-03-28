@@ -93,7 +93,8 @@ async function connectToSample(page: Page) {
     .getByRole('button', { name: 'Connect', exact: true })
     .click()
   await expect(page.getByTestId('connection-dialog')).toBeHidden()
-  await expect(page.getByTestId('object-browser')).toBeVisible()
+  await expect(page.getByTestId('object-browser')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('status-bar')).toContainText('Connected', { timeout: APP_READY_MS })
 }
 
 async function openQueryEditorTab(page: Page) {

@@ -78,6 +78,43 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   lastExecutedSql: null,
 }
 
+function isTinyIntBooleanAlias(dataType: string): boolean {
+  const normalized = dataType.trim().toUpperCase()
+  return normalized === 'BOOL' || normalized === 'BOOLEAN'
+}
+
+function normalizeQueryRows(columns: ColumnMeta[], rows: unknown[][]): unknown[][] {
+  if (columns.length === 0 || rows.length === 0) {
+    return rows
+  }
+
+  const booleanAliasIndexes = columns.reduce<Set<number>>((indexes, column, index) => {
+    if (isTinyIntBooleanAlias(column.dataType)) {
+      indexes.add(index)
+    }
+    return indexes
+  }, new Set())
+
+  if (booleanAliasIndexes.size === 0) {
+    return rows
+  }
+
+  return rows.map((row) => {
+    let changed = false
+
+    const normalizedRow = row.map((value, index) => {
+      if (typeof value === 'boolean' && booleanAliasIndexes.has(index)) {
+        changed = true
+        return value ? 1 : 0
+      }
+
+      return value
+    })
+
+    return changed ? normalizedRow : row
+  })
+}
+
 interface QueryState {
   /** Per-tab state keyed by tab ID. */
   tabs: Record<string, TabQueryState>
@@ -169,6 +206,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       try {
         const result = await executeQueryCmd(connectionId, tabId, sql, currentPageSize)
+        const normalizedRows = normalizeQueryRows(result.columns, result.firstPage)
 
         // Guard: if the tab was closed while query was running, skip the update
         if (!get().tabs[tabId]) return
@@ -176,7 +214,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         patchTab(tabId, {
           status: 'success',
           columns: result.columns,
-          rows: result.firstPage,
+          rows: normalizedRows,
           totalRows: result.totalRows,
           executionTimeMs: result.executionTimeMs,
           affectedRows: result.affectedRows,
@@ -211,12 +249,13 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       try {
         const result = await fetchResultPageCmd(connectionId, tabId, tabState.queryId, page)
+        const normalizedRows = normalizeQueryRows(tabState.columns, result.rows)
 
         // Guard: if the tab was closed while fetching, skip the update
         if (!get().tabs[tabId]) return
 
         patchTab(tabId, {
-          rows: result.rows,
+          rows: normalizedRows,
           currentPage: result.page,
           totalPages: result.totalPages,
         })
@@ -279,6 +318,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           if (lastSql) {
             const currentPageSize = tabState?.pageSize ?? DEFAULT_TAB_STATE.pageSize
             const result = await executeQueryCmd(connectionId, tabId, lastSql, currentPageSize)
+            const normalizedRows = normalizeQueryRows(result.columns, result.firstPage)
 
             // Guard: if the tab was closed while re-executing, skip the update
             if (!get().tabs[tabId]) return
@@ -286,7 +326,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             patchTab(tabId, {
               sortColumn: null,
               sortDirection: null,
-              rows: result.firstPage,
+              rows: normalizedRows,
               columns: result.columns,
               currentPage: 1,
               totalPages: result.totalPages,
@@ -309,7 +349,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         // Reset selection before performing sort
         patchTab(tabId, { selectedRowIndex: null })
 
+        const currentColumns = get().tabs[tabId]?.columns ?? []
+
         const result = await sortResultsCmd(connectionId, tabId, column, direction)
+        const normalizedRows = normalizeQueryRows(currentColumns, result.rows)
 
         // Guard: if the tab was closed while sorting, skip the update
         if (!get().tabs[tabId]) return
@@ -317,7 +360,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         patchTab(tabId, {
           sortColumn: column,
           sortDirection: direction,
-          rows: result.rows,
+          rows: normalizedRows,
           currentPage: result.page,
           totalPages: result.totalPages,
         })
@@ -335,12 +378,13 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       try {
         const result = await executeQueryCmd(connectionId, tabId, tabState.lastExecutedSql, size)
+        const normalizedRows = normalizeQueryRows(result.columns, result.firstPage)
 
         // Guard: if the tab was closed while re-executing, skip the update
         if (!get().tabs[tabId]) return
 
         patchTab(tabId, {
-          rows: result.firstPage,
+          rows: normalizedRows,
           columns: result.columns,
           currentPage: 1,
           totalPages: result.totalPages,

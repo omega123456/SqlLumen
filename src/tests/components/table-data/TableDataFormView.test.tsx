@@ -109,6 +109,7 @@ const mockColumns: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: false,
+    isBooleanAlias: false,
     isAutoIncrement: true,
   },
   {
@@ -120,6 +121,7 @@ const mockColumns: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: false,
+    isBooleanAlias: false,
     isAutoIncrement: false,
   },
   {
@@ -131,6 +133,7 @@ const mockColumns: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: true,
+    isBooleanAlias: false,
     isAutoIncrement: false,
   },
 ]
@@ -224,6 +227,7 @@ const mockColumnsWithTemporal: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: false,
+    isBooleanAlias: false,
     isAutoIncrement: true,
   },
   {
@@ -235,6 +239,7 @@ const mockColumnsWithTemporal: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: false,
+    isBooleanAlias: false,
     isAutoIncrement: false,
   },
   {
@@ -246,6 +251,7 @@ const mockColumnsWithTemporal: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: false,
+    isBooleanAlias: false,
     isAutoIncrement: false,
   },
   {
@@ -257,6 +263,7 @@ const mockColumnsWithTemporal: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: false,
+    isBooleanAlias: false,
     isAutoIncrement: false,
   },
   {
@@ -268,6 +275,7 @@ const mockColumnsWithTemporal: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: true,
+    isBooleanAlias: false,
     isAutoIncrement: false,
   },
 ]

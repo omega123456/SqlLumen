@@ -50,8 +50,45 @@ function findRowIndexByKey(
   })
 }
 
+function isTinyIntBooleanAlias(dataType: string): boolean {
+  const normalized = dataType.trim().toUpperCase()
+  return normalized === 'BOOL' || normalized === 'BOOLEAN'
+}
+
+function normalizeTableDataRows(columns: TableDataColumnMeta[], rows: unknown[][]): unknown[][] {
+  if (columns.length === 0 || rows.length === 0) {
+    return rows
+  }
+
+  const booleanAliasIndexes = columns.reduce<Set<number>>((indexes, column, index) => {
+    if (column.isBooleanAlias || isTinyIntBooleanAlias(column.dataType)) {
+      indexes.add(index)
+    }
+    return indexes
+  }, new Set())
+
+  if (booleanAliasIndexes.size === 0) {
+    return rows
+  }
+
+  return rows.map((row) => {
+    let changed = false
+
+    const normalizedRow = row.map((value, index) => {
+      if (typeof value === 'boolean' && booleanAliasIndexes.has(index)) {
+        changed = true
+        return value ? 1 : 0
+      }
+
+      return value
+    })
+
+    return changed ? normalizedRow : row
+  })
+}
+
 // Exported for testing
-export { isSameRowKey, findRowIndexByKey }
+export { isSameRowKey, findRowIndexByKey, normalizeTableDataRows }
 
 // ---------------------------------------------------------------------------
 // saveCurrentRow helpers (pure functions)
@@ -99,7 +136,9 @@ function applyInsertedRow(
   insertedData: [string, unknown][]
 ): unknown[][] {
   const returnedMap = Object.fromEntries(insertedData)
-  const newRow = columns.map((col) => returnedMap[col.name] ?? null)
+  const newRow = normalizeTableDataRows(columns, [
+    columns.map((col) => returnedMap[col.name] ?? null),
+  ])[0]
   const newRows = [...rows]
   newRows[newRows.length - 1] = newRow
   return newRows
@@ -295,7 +334,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
         patchTab(tabId, {
           columns: result.columns,
-          rows: result.rows,
+          rows: normalizeTableDataRows(result.columns, result.rows),
           totalRows: result.totalRows,
           currentPage: result.currentPage,
           totalPages: result.totalPages,

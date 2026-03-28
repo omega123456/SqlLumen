@@ -537,6 +537,111 @@ mod type_aware_filter_integration {
 
         set_test_pool_factory(None);
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fetch_table_data_serializes_boolean_alias_columns_as_integers() {
+        let server = MockMySqlServer::start_script(vec![
+            MockQueryStep {
+                query: "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
+                columns: vec![
+                    MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "DATA_TYPE", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "COLUMN_TYPE", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "IS_NULLABLE", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "COLUMN_KEY", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::empty() },
+                    MockColumnDef { name: "COLUMN_DEFAULT", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::empty() },
+                    MockColumnDef { name: "EXTRA", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                ],
+                rows: vec![
+                    vec![
+                        MockCell::Bytes(b"id"),
+                        MockCell::Bytes(b"int"),
+                        MockCell::Bytes(b"int(11)"),
+                        MockCell::Bytes(b"NO"),
+                        MockCell::Bytes(b"PRI"),
+                        MockCell::Null,
+                        MockCell::Bytes(b"auto_increment"),
+                    ],
+                    vec![
+                        MockCell::Bytes(b"is_admin"),
+                        MockCell::Bytes(b"tinyint"),
+                        MockCell::Bytes(b"tinyint(1)"),
+                        MockCell::Bytes(b"YES"),
+                        MockCell::Bytes(b""),
+                        MockCell::Null,
+                        MockCell::Bytes(b""),
+                    ],
+                ],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION",
+                columns: vec![MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG }],
+                rows: vec![vec![MockCell::Bytes(b"id")]],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT COUNT(*) FROM `pi_management`.`users`",
+                columns: vec![MockColumnDef { name: "COUNT(*)", coltype: ColumnType::MYSQL_TYPE_LONGLONG, colflags: ColumnFlags::NOT_NULL_FLAG }],
+                rows: vec![vec![MockCell::I64(1)]],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT * FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
+                columns: vec![
+                    MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
+                    MockColumnDef { name: "is_admin", coltype: ColumnType::MYSQL_TYPE_TINY, colflags: ColumnFlags::empty() },
+                ],
+                rows: vec![vec![MockCell::U32(1), MockCell::I8(1)]],
+                error: None,
+            },
+        ])
+        .await;
+
+        set_test_pool_factory(None);
+
+        let (_app, webview) = build_app();
+
+        let profile_id: String = invoke_tauri_command(
+            &webview,
+            "save_connection",
+            json!({ "data": save_input_json(server.port) }),
+        )
+        .expect("save_connection IPC should succeed");
+
+        let open_result: OpenConnectionResultDto = invoke_tauri_command(
+            &webview,
+            "open_connection",
+            json!({
+                "payload": {
+                    "profileId": profile_id,
+                }
+            }),
+        )
+        .expect("open_connection IPC should succeed");
+
+        let response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+            &webview,
+            "fetch_table_data",
+            json!({
+                "connectionId": open_result.session_id,
+                "database": "pi_management",
+                "table": "users",
+                "page": 1,
+                "pageSize": 50,
+                "sortColumn": null,
+                "sortDirection": null,
+                "filterModel": null
+            }),
+        )
+        .expect("fetch_table_data IPC should succeed");
+
+        assert_eq!(response.total_rows, 1);
+        assert_eq!(response.rows.len(), 1);
+        assert_eq!(response.rows[0][1], serde_json::json!(1));
+
+        set_test_pool_factory(None);
+    }
 }
 
 #[cfg(coverage)]
@@ -1371,6 +1476,7 @@ fn make_column_meta(name: &str, data_type: &str) -> TableDataColumnMeta {
     TableDataColumnMeta {
         name: name.to_string(),
         data_type: data_type.to_string(),
+        is_boolean_alias: false,
         enum_values: None,
         is_nullable: true,
         is_primary_key: false,

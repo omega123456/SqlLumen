@@ -39,6 +39,8 @@ To run a single Vitest test file: `pnpm vitest run src/tests/path/to/file.test.t
 
 **After every code change** (before treating work as done), run the full check below. Do not skip this: Vitest coverage thresholds must pass, Rust tests must pass, and **Playwright** E2E (`e2e/`) must pass — including **`e2e/screenshots.spec.ts`** (visual regression). The `test:all` script runs `pnpm test:e2e`, which executes **every** `*.spec.ts` in `e2e/`, so screenshot tests are always part of `test:all`.
 
+**Critical:** If `pnpm test:all` fails, you must fix **every** failure before finishing — not only failures you think your diff caused. Do not treat unrelated suites, flaky-looking tests, or “already red” main as out of scope: diagnose, repair, update baselines when the change is intentional, or get explicit user direction. The bar is a **fully green** `test:all`, not “green for the files I touched.”
+
 ```bash
 pnpm test:all    # Vitest+coverage, Rust unit tests, then full Playwright (functional + screenshot baselines)
 ```
@@ -202,7 +204,7 @@ The app has **no separate routes**; “screens” are distinct UI states (welcom
 
 **Exceptions:** Skip **screenshots** only when output is unchanged (e.g. refactor with identical DOM/CSS) or the change is non-visual plumbing. Skip **Vitest/unit tests** only for comment-only edits, renames with no behavior change, or generated boilerplate with no custom logic. Purely cosmetic UI still needs updated screenshot baselines if pixels change. When in doubt, add coverage.
 
-- **Workflow:** After every substantive change, run `pnpm test:all` and fix failures or coverage gaps before finishing (Vitest, Rust, Playwright functional **and** screenshot baselines).
+- **Workflow:** After every substantive change, run `pnpm test:all` and fix **all** failures or coverage gaps before finishing (Vitest, Rust, Playwright functional **and** screenshot baselines) — including any that pre-existed or appear unrelated to your edits; see the **Critical** note under Commands.
 - React tests: Vitest + jsdom + `@testing-library/react`. Setup file: `src/tests/setup.ts`
 - E2E: Playwright in `e2e/`; `playwright.config.ts` runs `pnpm dev` as the web server with `VITE_PLAYWRIGHT=true`. **`pnpm test:e2e` and therefore `pnpm test:all` always run `e2e/screenshots.spec.ts`** alongside functional specs.
 - Coverage thresholds: 90% lines/functions/statements. Branch threshold is intentionally omitted.

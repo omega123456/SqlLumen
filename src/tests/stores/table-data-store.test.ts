@@ -27,6 +27,7 @@ const mockColumns: TableDataColumnMeta[] = [
   {
     name: 'id',
     dataType: 'INT',
+    isBooleanAlias: false,
     isNullable: false,
     isPrimaryKey: true,
     isUniqueKey: false,
@@ -38,6 +39,7 @@ const mockColumns: TableDataColumnMeta[] = [
   {
     name: 'name',
     dataType: 'VARCHAR',
+    isBooleanAlias: false,
     isNullable: true,
     isPrimaryKey: false,
     isUniqueKey: false,
@@ -67,6 +69,33 @@ const mockResponse: TableDataResponse = {
   primaryKey: mockPrimaryKey,
   executionTimeMs: 42,
 }
+
+const booleanAliasColumns: TableDataColumnMeta[] = [
+  {
+    name: 'id',
+    dataType: 'INT',
+    isBooleanAlias: false,
+    isNullable: false,
+    isPrimaryKey: true,
+    isUniqueKey: false,
+    hasDefault: false,
+    columnDefault: null,
+    isBinary: false,
+    isAutoIncrement: true,
+  },
+  {
+    name: 'is_admin',
+    dataType: 'TINYINT',
+    isBooleanAlias: true,
+    isNullable: true,
+    isPrimaryKey: false,
+    isUniqueKey: false,
+    hasDefault: false,
+    columnDefault: null,
+    isBinary: false,
+    isAutoIncrement: false,
+  },
+]
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -227,6 +256,24 @@ describe('useTableDataStore — fetchPage', () => {
 
     expect(useTableDataStore.getState().tabs['tab-1']).toBeUndefined()
   })
+
+  it('normalizes boolean alias cells to integers when loading table data', async () => {
+    ;(fetchTableData as Mock).mockResolvedValueOnce({
+      columns: booleanAliasColumns,
+      rows: [[1, true]],
+      totalRows: 1,
+      currentPage: 1,
+      totalPages: 1,
+      pageSize: 1000,
+      primaryKey: mockPrimaryKey,
+      executionTimeMs: 12,
+    })
+
+    useTableDataStore.getState().initTab('tab-bool', 'conn-1', 'mydb', 'users')
+    await useTableDataStore.getState().fetchPage('tab-bool', 1)
+
+    expect(useTableDataStore.getState().tabs['tab-bool'].rows).toEqual([[1, 1]])
+  })
 })
 
 describe('useTableDataStore — startEditing', () => {
@@ -344,6 +391,39 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
     // The temp row should be replaced with the returned data
     expect(tab.rows[tab.rows.length - 1]).toEqual([3, 'Charlie'])
     expect(tab.totalRows).toBe(3) // incremented
+  })
+
+  it('normalizes boolean alias cells when replacing temp row after insert', async () => {
+    ;(insertTableRow as Mock).mockResolvedValueOnce([
+      ['id', 3],
+      ['is_admin', true],
+    ])
+
+    useTableDataStore.getState().initTab('tab-insert-bool', 'conn-1', 'mydb', 'users')
+    useTableDataStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        'tab-insert-bool': {
+          ...state.tabs['tab-insert-bool'],
+          columns: booleanAliasColumns,
+          rows: [[null, null]],
+          totalRows: 0,
+          primaryKey: mockPrimaryKey,
+          editState: {
+            rowKey: { __tempId: 'tmp-1' },
+            originalValues: {},
+            currentValues: { is_admin: true },
+            modifiedColumns: new Set(['is_admin']),
+            isNewRow: true,
+            tempId: 'tmp-1',
+          },
+        },
+      },
+    }))
+
+    await useTableDataStore.getState().saveCurrentRow('tab-insert-bool')
+
+    expect(useTableDataStore.getState().tabs['tab-insert-bool'].rows).toEqual([[3, 1]])
   })
 
   it('sets saveError on insert failure', async () => {
