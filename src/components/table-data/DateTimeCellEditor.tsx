@@ -164,6 +164,22 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
     setPickerOpen(true)
   }, [editor.isNull])
 
+  const handleInputBlur = useCallback(
+    (relatedTarget: EventTarget | null) => {
+      if (relatedTarget instanceof Node && containerRef.current?.contains(relatedTarget)) {
+        return
+      }
+
+      const pickerPopup = document.querySelector('[data-testid="date-time-picker-popup"]')
+      if (relatedTarget instanceof Node && pickerPopup?.contains(relatedTarget)) {
+        return
+      }
+
+      params.api.stopEditing()
+    },
+    [params.api]
+  )
+
   // -----------------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------------
@@ -178,12 +194,14 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
         className="td-cell-editor-input"
         value={displayValue}
         onChange={(e) => editor.handleChange(e.target.value)}
+        onBlur={(e) => handleInputBlur(e.relatedTarget)}
         onKeyDown={handleKeyDown}
       />
       {params.isNullable && (
         <button
           type="button"
           className={`td-null-toggle ${editor.isNull ? 'td-null-active' : ''}`}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={handleToggleNull}
           tabIndex={-1}
         >
@@ -193,6 +211,7 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
       <button
         type="button"
         className={styles.calendarBtn}
+        onMouseDown={(e) => e.preventDefault()}
         onClick={handleCalendarClick}
         disabled={editor.isNull}
         tabIndex={-1}

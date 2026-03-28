@@ -16,6 +16,7 @@ import {
 } from 'react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import type {
+  CellClickedEvent,
   ColDef,
   SortChangedEvent,
   RowClickedEvent,
@@ -27,6 +28,7 @@ import type {
   GetRowIdParams,
 } from 'ag-grid-community'
 import { AgGridReact } from 'ag-grid-react'
+import { flushSync } from 'react-dom'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { getTemporalColumnType } from '../../lib/date-utils'
 import { useToastStore } from '../../stores/toast-store'
@@ -167,6 +169,7 @@ const NullableCellEditor = forwardRef(function NullableCellEditor(
   const [isNull, setIsNull] = useState(initialNull)
   const [value, setValue] = useState(initialNull ? '' : String(props.value ?? ''))
   const inputRef = useRef<HTMLInputElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const updateCellValue = useTableDataStore((state) => state.updateCellValue)
   const fieldName = props.colDef?.field
   const tabId = props.context?.tabId as string | undefined
@@ -215,13 +218,25 @@ const NullableCellEditor = forwardRef(function NullableCellEditor(
 
   const displayValue = isNull ? '' : value
 
+  const handleBlur = useCallback(
+    (relatedTarget: EventTarget | null) => {
+      if (relatedTarget instanceof Node && wrapperRef.current?.contains(relatedTarget)) {
+        return
+      }
+
+      props.api.stopEditing()
+    },
+    [props.api]
+  )
+
   return (
-    <div className={styles.cellEditorWrapper}>
+    <div ref={wrapperRef} className={styles.cellEditorWrapper}>
       <input
         ref={inputRef}
         className="td-cell-editor-input"
         value={displayValue}
         onChange={(e) => handleChange(e.target.value)}
+        onBlur={(e) => handleBlur(e.relatedTarget)}
         onKeyDown={(e) => {
           // Let AG Grid handle Tab/Enter/Escape
           if (e.key === 'Tab' || e.key === 'Enter' || e.key === 'Escape') {
@@ -240,6 +255,7 @@ const NullableCellEditor = forwardRef(function NullableCellEditor(
         <button
           type="button"
           className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={handleToggleNull}
           tabIndex={-1}
         >
@@ -261,6 +277,7 @@ const EnumCellEditor = forwardRef(function EnumCellEditor(
   const [isNull, setIsNull] = useState(initialNull)
   const [value, setValue] = useState(initialValue ?? getEnumFallbackValue(props.columnMeta))
   const selectRef = useRef<HTMLSelectElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const updateCellValue = useTableDataStore((state) => state.updateCellValue)
   const fieldName = props.colDef?.field
   const tabId = props.context?.tabId as string | undefined
@@ -306,12 +323,24 @@ const EnumCellEditor = forwardRef(function EnumCellEditor(
     }
   }, [enumValues, initialValue, isNull, syncValue])
 
+  const handleBlur = useCallback(
+    (relatedTarget: EventTarget | null) => {
+      if (relatedTarget instanceof Node && wrapperRef.current?.contains(relatedTarget)) {
+        return
+      }
+
+      props.api.stopEditing()
+    },
+    [props.api]
+  )
+
   return (
-    <div className={styles.cellEditorWrapper}>
+    <div ref={wrapperRef} className={styles.cellEditorWrapper}>
       <select
         ref={selectRef}
         className="td-cell-editor-select"
         value={isNull ? ENUM_NULL_SENTINEL : value}
+        onBlur={(e) => handleBlur(e.relatedTarget)}
         onChange={(e) => {
           if (e.target.value === ENUM_NULL_SENTINEL) {
             setIsNull(true)
@@ -339,6 +368,7 @@ const EnumCellEditor = forwardRef(function EnumCellEditor(
         <button
           type="button"
           className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={handleToggleNull}
           tabIndex={-1}
         >
@@ -358,6 +388,11 @@ interface TableDataGridProps {
   isReadOnly: boolean
 }
 
+interface ActiveEditingCell {
+  rowKey: Record<string, unknown>
+  field: string
+}
+
 export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const tabState = useTableDataStore((state) => state.tabs[tabId])
   const startEditing = useTableDataStore((state) => state.startEditing)
@@ -370,6 +405,8 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const clearEditStateIfUnmodified = useTableDataStore((state) => state.clearEditStateIfUnmodified)
   const showError = useToastStore((state) => state.showError)
   const showSuccess = useToastStore((state) => state.showSuccess)
+  const [, setActiveEditingCell] = useState<ActiveEditingCell | null>(null)
+  const activeEditingCellRef = useRef<ActiveEditingCell | null>(null)
 
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
   const rows = useMemo(() => tabState?.rows ?? [], [tabState?.rows])
@@ -477,16 +514,26 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   // When a cell starts editing
   const onCellEditingStarted = useCallback(
     async (event: CellEditingStartedEvent) => {
-      if (!event.data) return
+      if (!event.data || !event.colDef?.field) return
       const currentState = useTableDataStore.getState().tabs[tabId]
       const currentEditState = currentState?.editState ?? null
       const newRowKey = getRowKey(event.data, pkColumns)
       const currentEditRowKey = currentEditState?.rowKey ?? null
+      const nextActiveCell = { rowKey: newRowKey, field: event.colDef.field }
+
+      activeEditingCellRef.current = nextActiveCell
+      flushSync(() => {
+        setActiveEditingCell(nextActiveCell)
+      })
 
       // Only commit + start new edit if switching to a DIFFERENT row
       if (!isSameRowKey(newRowKey, currentEditRowKey)) {
         const validationError = getTemporalValidationResult(currentEditState, columns)
         if (validationError) {
+          activeEditingCellRef.current = null
+          flushSync(() => {
+            setActiveEditingCell(null)
+          })
           showError('Invalid date value', `${validationError.columnName}: ${validationError.error}`)
           if (currentEditState) {
             setSelectedRow(tabId, currentEditState.rowKey)
@@ -504,6 +551,10 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         // Check if save failed — if so, snap back to the failed row
         const updatedState = useTableDataStore.getState().tabs[tabId]
         if (updatedState?.saveError) {
+          activeEditingCellRef.current = null
+          flushSync(() => {
+            setActiveEditingCell(null)
+          })
           showError('Save failed', updatedState.saveError)
           // Save failed — cancel editing the new cell and restore selection
           // to the failed row. editState remains on the original row.
@@ -546,20 +597,67 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       const colName = event.colDef.field
       const newValue = event.newValue
       const rowKey = event.data ? getRowKey(event.data, pkColumns) : null
+      const currentActiveCell = activeEditingCellRef.current
+
+      if (
+        currentActiveCell &&
+        rowKey &&
+        currentActiveCell.field === colName &&
+        isSameRowKey(currentActiveCell.rowKey, rowKey)
+      ) {
+        activeEditingCellRef.current = null
+        setActiveEditingCell(null)
+      }
 
       // Double-update guard: cell editors (DateTimeCellEditor, NullableCellEditor)
       // sync values to the store on every change. If the store already has this
       // value, skip the redundant updateCellValue call.
       const currentState = useTableDataStore.getState().tabs[tabId]
-      const currentStoreValue = currentState?.editState?.currentValues[colName]
+      const currentEditState = currentState?.editState ?? null
 
-      if (event.oldValue !== newValue && currentStoreValue !== newValue) {
-        updateCellValue(tabId, colName, newValue)
-      } else if (rowKey) {
+      if (!currentEditState || !rowKey || !isSameRowKey(rowKey, currentEditState.rowKey)) {
+        return
+      }
+
+      const currentStoreValue = currentEditState.currentValues[colName]
+
+      if (event.oldValue !== newValue) {
+        if (currentStoreValue !== newValue) {
+          updateCellValue(tabId, colName, newValue)
+        }
+      } else {
         clearEditStateIfUnmodified(tabId, rowKey)
       }
     },
     [tabId, updateCellValue, clearEditStateIfUnmodified, pkColumns]
+  )
+
+  const handleCellClicked = useCallback(
+    (event: CellClickedEvent) => {
+      if (!event.data || !event.colDef?.field) return
+      if (!event.colDef.editable) return
+
+      const rowIndex = event.node?.rowIndex
+      if (rowIndex == null) return
+
+      const clickedRowKey = getRowKey(event.data, pkColumns)
+      const currentActiveCell = activeEditingCellRef.current
+
+      if (
+        currentActiveCell &&
+        currentActiveCell.field === event.colDef.field &&
+        isSameRowKey(currentActiveCell.rowKey, clickedRowKey)
+      ) {
+        return
+      }
+
+      if (currentActiveCell) {
+        return
+      }
+
+      event.api.startEditingCell({ rowIndex, colKey: event.colDef.field })
+    },
+    [pkColumns]
   )
 
   // Handle row click — update selection
@@ -629,8 +727,10 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         headerHeight={32}
         rowHeight={28}
         suppressMovableColumns={true}
-        singleClickEdit={true}
+        singleClickEdit={false}
+        suppressClickEdit={true}
         stopEditingWhenCellsLoseFocus={true}
+        onCellClicked={handleCellClicked}
         onCellEditingStarted={onCellEditingStarted}
         onCellEditingStopped={onCellEditingStopped}
         onRowClicked={handleRowClicked}

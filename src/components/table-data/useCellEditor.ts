@@ -73,6 +73,7 @@ export function useCellEditor(
   const inputRef = useRef<HTMLInputElement>(null)
 
   const updateCellValue = useTableDataStore((state) => state.updateCellValue)
+  const syncCellValue = useTableDataStore((state) => state.syncCellValue)
   const fieldName = params.colDef?.field
   const tabId = params.context?.tabId as string | undefined
 
@@ -100,9 +101,10 @@ export function useCellEditor(
       setValue(nextValue)
       if (tabId && fieldName) {
         updateCellValue(tabId, fieldName, nextValue)
+        syncCellValue(tabId, params.data, fieldName, nextValue)
       }
     },
-    [fieldName, tabId, updateCellValue]
+    [fieldName, params.data, syncCellValue, tabId, updateCellValue]
   )
 
   const handleToggleNull = useCallback(() => {
@@ -113,6 +115,7 @@ export function useCellEditor(
       setValue(prefill)
       if (tabId && fieldName) {
         updateCellValue(tabId, fieldName, prefill)
+        syncCellValue(tabId, params.data, fieldName, prefill)
       }
       setTimeout(() => inputRef.current?.focus(), 0)
     } else {
@@ -121,17 +124,19 @@ export function useCellEditor(
       setValue(null)
       if (tabId && fieldName) {
         updateCellValue(tabId, fieldName, null)
+        syncCellValue(tabId, params.data, fieldName, null)
       }
     }
-  }, [fieldName, isNull, tabId, temporalType, updateCellValue])
+  }, [fieldName, isNull, params.data, syncCellValue, tabId, temporalType, updateCellValue])
 
   const restoreOriginalValue = useCallback(() => {
     setIsNull(initialNull)
     setValue(initialNull ? null : String(initialValue ?? ''))
     if (tabId && fieldName) {
       updateCellValue(tabId, fieldName, initialValue)
+      syncCellValue(tabId, params.data, fieldName, initialValue)
     }
-  }, [fieldName, initialNull, initialValue, tabId, updateCellValue])
+  }, [fieldName, initialNull, initialValue, params.data, syncCellValue, tabId, updateCellValue])
 
   return {
     value,

@@ -65,7 +65,8 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
 
   const hasPk = primaryKey !== null
   const isMutationDisabled = isConnectionReadOnly || !hasPk
-  const hasModifications = editState !== null && editState.modifiedColumns.size > 0
+  const hasModifications =
+    editState !== null && (editState.modifiedColumns.size > 0 || editState.isNewRow)
 
   // Delete targets the visually selected row; disable for unsaved new rows
   const selectedIsNewRow = selectedRowKey !== null && '__tempId' in selectedRowKey

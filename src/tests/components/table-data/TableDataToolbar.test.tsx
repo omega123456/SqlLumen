@@ -213,6 +213,22 @@ describe('TableDataToolbar', () => {
     expect(screen.getByTestId('btn-save')).toBeDisabled()
   })
 
+  it('Save button stays enabled for new rows seeded only by defaults', () => {
+    setupConnection()
+    setupTabState({
+      editState: {
+        rowKey: { __tempId: 'temp-1' },
+        originalValues: {},
+        currentValues: { status: 'active' },
+        modifiedColumns: new Set<string>(),
+        isNewRow: true,
+        tempId: 'temp-1',
+      },
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+    expect(screen.getByTestId('btn-save')).not.toBeDisabled()
+  })
+
   it('Pagination prev disabled on page 1', () => {
     setupConnection()
     setupTabState({ currentPage: 1, totalPages: 3 })

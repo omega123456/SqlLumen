@@ -191,10 +191,6 @@
 }
 
 /* Modified cell indicator — corner triangle via ::before pseudo-element */
-.ag-theme-precision .ag-cell.td-modified-cell {
-  position: relative;
-}
-
 .ag-theme-precision .ag-cell.td-modified-cell::before {
   content: '';
   position: absolute;
@@ -234,6 +230,7 @@
 /* Edit mode input styling (cell editor) */
 .ag-theme-precision .td-cell-editor-input {
   width: 100%;
+  min-width: 0;
   height: 100%;
   border: none;
   background: transparent;
@@ -246,6 +243,7 @@
 
 .ag-theme-precision .td-cell-editor-select {
   width: 100%;
+  min-width: 0;
   height: 100%;
   border: none;
   background: transparent;

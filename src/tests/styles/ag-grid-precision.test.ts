@@ -16,4 +16,10 @@ describe('ag-grid-precision table-data editing styles', () => {
       /\.ag-theme-precision \.ag-row\.td-new-row\s*\{[^}]*border-left:/s
     )
   })
+
+  it('does not alter the ag-row display mode for editing rows', () => {
+    expect(agGridPrecisionCss).not.toMatch(
+      /\.ag-theme-precision \.ag-row\.td-editing-row\s*\{[^}]*display:/s
+    )
+  })
 })

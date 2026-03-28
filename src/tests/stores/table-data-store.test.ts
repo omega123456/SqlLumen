@@ -316,6 +316,16 @@ describe('useTableDataStore — updateCellValue', () => {
     useTableDataStore.getState().updateCellValue('tab-1', 'name', 'Updated')
     expect(useTableDataStore.getState().tabs['tab-1'].editState).toBeNull()
   })
+
+  it('syncCellValue updates the underlying row immediately for existing rows', async () => {
+    await setupTabWithData()
+
+    useTableDataStore
+      .getState()
+      .syncCellValue('tab-1', { id: 1, name: 'Alice', __rowIndex: 0 }, 'name', 'Updated')
+
+    expect(useTableDataStore.getState().tabs['tab-1'].rows[0]).toEqual([1, 'Updated'])
+  })
 })
 
 describe('useTableDataStore — saveCurrentRow (UPDATE path)', () => {
@@ -486,6 +496,72 @@ describe('useTableDataStore — insertNewRow', () => {
     expect(tab.editState!.isNewRow).toBe(true)
     expect(tab.editState!.tempId).toBeDefined()
     expect(tab.editState!.rowKey).toHaveProperty('__tempId')
+  })
+
+  it('prepopulates column defaults in new rows', async () => {
+    const responseWithDefaults: TableDataResponse = {
+      ...mockResponse,
+      columns: [
+        mockColumns[0],
+        {
+          name: 'status',
+          dataType: 'ENUM',
+          isNullable: false,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: true,
+          columnDefault: 'active',
+          isBinary: false,
+          isAutoIncrement: false,
+          enumValues: ['active', 'disabled'],
+        },
+      ],
+      rows: [
+        [1, 'active'],
+        [2, 'disabled'],
+      ],
+    }
+    ;(fetchTableData as Mock).mockResolvedValueOnce(responseWithDefaults)
+
+    await setupTabWithData()
+
+    useTableDataStore.getState().insertNewRow('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.rows[tab.rows.length - 1]).toEqual([null, 'active'])
+    expect(tab.editState?.currentValues).toEqual({ id: null, status: 'active' })
+    expect(tab.editState?.modifiedColumns).toEqual(new Set(['status']))
+  })
+
+  it('preserves empty-string defaults in new rows', async () => {
+    const responseWithEmptyDefault: TableDataResponse = {
+      ...mockResponse,
+      columns: [
+        mockColumns[0],
+        {
+          name: 'nickname',
+          dataType: 'VARCHAR',
+          isNullable: false,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: true,
+          columnDefault: '',
+          isBinary: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [[1, '']],
+    }
+    ;(fetchTableData as Mock).mockResolvedValueOnce(responseWithEmptyDefault)
+
+    await setupTabWithData()
+
+    useTableDataStore.getState().insertNewRow('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.rows[tab.rows.length - 1]).toEqual([null, ''])
+    expect(tab.editState?.currentValues).toEqual({ id: null, nickname: '' })
+    expect(tab.editState?.modifiedColumns).toEqual(new Set(['nickname']))
   })
 
   it('selects the temp row when inserting a new row', async () => {

@@ -11,6 +11,7 @@ import {
   insertTableRow as insertTableRowCmd,
   deleteTableRow as deleteTableRowCmd,
 } from '../lib/table-data-commands'
+import { getTemporalColumnType, getTodayMysqlString } from '../lib/date-utils'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,6 +88,21 @@ function normalizeTableDataRows(columns: TableDataColumnMeta[], rows: unknown[][
   })
 }
 
+function getRowKeyFromData(
+  rowData: Record<string, unknown>,
+  pkColumns: string[]
+): Record<string, unknown> {
+  if ('__tempId' in rowData) {
+    return { __tempId: rowData.__tempId }
+  }
+
+  const key: Record<string, unknown> = {}
+  for (const col of pkColumns) {
+    key[col] = rowData[col]
+  }
+  return key
+}
+
 // Exported for testing
 export { isSameRowKey, findRowIndexByKey, normalizeTableDataRows }
 
@@ -101,11 +117,54 @@ function buildInsertPayload(
 ): Record<string, unknown> {
   const values: Record<string, unknown> = {}
   for (const col of columns) {
+    if (!editState.modifiedColumns.has(col.name)) {
+      continue
+    }
     if (editState.currentValues[col.name] !== undefined) {
       values[col.name] = editState.currentValues[col.name]
     }
   }
   return values
+}
+
+function normalizeColumnDefaultValue(columnDefault: string): unknown {
+  const trimmedDefault = columnDefault.trim()
+
+  if (/^null$/i.test(trimmedDefault)) {
+    return null
+  }
+
+  const quotedMatch = trimmedDefault.match(/^'(.*)'$/s)
+  if (quotedMatch) {
+    return quotedMatch[1].replace(/''/g, "'")
+  }
+
+  return trimmedDefault
+}
+
+function getInitialValueForNewRow(column: TableDataColumnMeta): unknown {
+  if (column.isAutoIncrement) {
+    return null
+  }
+
+  if (column.columnDefault == null) {
+    return null
+  }
+
+  const temporalType = getTemporalColumnType(column.dataType)
+  if (temporalType) {
+    if (/^current_timestamp(?:\(\d+\))?$/i.test(column.columnDefault)) {
+      return getTodayMysqlString(temporalType)
+    }
+    if (/^current_date(?:\(\))?$/i.test(column.columnDefault) && temporalType === 'DATE') {
+      return getTodayMysqlString('DATE')
+    }
+    if (/^current_time(?:\(\))?$/i.test(column.columnDefault) && temporalType === 'TIME') {
+      return getTodayMysqlString('TIME')
+    }
+  }
+
+  return normalizeColumnDefaultValue(column.columnDefault)
 }
 
 /** Build the payload for an UPDATE operation. */
@@ -223,6 +282,12 @@ export interface TableDataStore {
     currentValues: Record<string, unknown>
   ) => void
   updateCellValue: (tabId: string, column: string, value: unknown) => void
+  syncCellValue: (
+    tabId: string,
+    rowData: Record<string, unknown> | undefined,
+    column: string,
+    value: unknown
+  ) => void
   clearEditStateIfUnmodified: (tabId: string, rowKey: Record<string, unknown>) => void
   saveCurrentRow: (tabId: string) => Promise<void>
   discardCurrentRow: (tabId: string) => void
@@ -415,6 +480,27 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       })
     },
 
+    // ------ syncCellValue ------
+
+    syncCellValue: (tabId, rowData, column, value) => {
+      const tab = get().tabs[tabId]
+      if (!tab || !rowData) return
+
+      const colIdx = tab.columns.findIndex((c) => c.name === column)
+      if (colIdx < 0) return
+
+      const rowKey = getRowKeyFromData(rowData, tab.primaryKey?.keyColumns ?? [])
+      const rowIdx = findRowIndexByKey(tab.rows, tab.columns, rowKey)
+      if (rowIdx < 0) return
+
+      const nextRows = [...tab.rows]
+      const nextRow = [...nextRows[rowIdx]]
+      nextRow[colIdx] = value
+      nextRows[rowIdx] = nextRow
+
+      patchTab(tabId, { rows: nextRows })
+    },
+
     // ------ clearEditStateIfUnmodified ------
 
     clearEditStateIfUnmodified: (tabId, rowKey) => {
@@ -557,14 +643,18 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
       const tempId = 'new-' + Date.now()
 
-      // Create an empty row (all nulls) matching current column count
-      const newRow = tab.columns.map(() => null)
+      // Create a new row seeded from column defaults where available.
+      const newRow = tab.columns.map((column) => getInitialValueForNewRow(column))
       const newRows = [...tab.rows, newRow]
 
-      // Build currentValues map with all columns set to null
+      // Build currentValues map from the seeded row values.
       const currentValues: Record<string, unknown> = {}
-      for (const col of tab.columns) {
-        currentValues[col.name] = null
+      const seededColumns = new Set<string>()
+      for (let index = 0; index < tab.columns.length; index += 1) {
+        currentValues[tab.columns[index].name] = newRow[index]
+        if (tab.columns[index].columnDefault != null && !tab.columns[index].isAutoIncrement) {
+          seededColumns.add(tab.columns[index].name)
+        }
       }
 
       // Update rows first
@@ -581,6 +671,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             ...updatedTab.editState,
             isNewRow: true,
             tempId,
+            modifiedColumns: seededColumns,
           },
         })
       }

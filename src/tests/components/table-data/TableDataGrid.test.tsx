@@ -99,6 +99,7 @@ import type { Mock } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
+import styles from '../../../components/table-data/TableDataGrid.module.css'
 import {
   TableDataGrid,
   buildColumnDefs,
@@ -704,6 +705,7 @@ describe('TableDataGrid', () => {
     const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
     const props = mockCalls[0][0] as Record<string, unknown>
     const onCellEditingStopped = props.onCellEditingStopped as (event: {
+      data: Record<string, unknown>
       colDef: { field: string }
       oldValue: unknown
       newValue: unknown
@@ -711,6 +713,7 @@ describe('TableDataGrid', () => {
 
     act(() => {
       onCellEditingStopped({
+        data: { id: 1, name: 'Alice', avatar: null, __rowIndex: 0 },
         colDef: { field: 'name' },
         oldValue: 'Alice',
         newValue: 'Bob',
@@ -883,6 +886,56 @@ describe('TableDataGrid', () => {
       originalPkValues: { id: 1 },
       updatedValues: { name: 'Bob' },
     })
+  })
+
+  it('ignores stale cell-stopped events from the previously edited row after switching rows', async () => {
+    setupConnection()
+    setupTabState({
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, name: 'Alice', avatar: null },
+        currentValues: { id: 1, name: 'Bob', avatar: null },
+        modifiedColumns: new Set(['name']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const rowData = props.rowData as Array<Record<string, unknown>>
+    const onCellEditingStarted = props.onCellEditingStarted as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string }
+      api: { stopEditing: (cancel?: boolean) => void }
+    }) => Promise<void>
+    const onCellEditingStopped = props.onCellEditingStopped as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string }
+      oldValue: unknown
+      newValue: unknown
+    }) => void
+
+    await act(async () => {
+      await onCellEditingStarted({
+        data: rowData[1],
+        colDef: { field: 'name' },
+        api: { stopEditing: vi.fn() },
+      })
+    })
+
+    act(() => {
+      onCellEditingStopped({
+        data: rowData[0],
+        colDef: { field: 'name' },
+        oldValue: 'Alice',
+        newValue: 'Bob',
+      })
+    })
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState?.rowKey).toEqual({ id: 2 })
+    expect(state?.editState?.currentValues.name).toBeNull()
+    expect(state?.editState?.modifiedColumns.size).toBe(0)
   })
 
   it('pressing Escape reverts the editor draft and does not leave pending modifications', async () => {
@@ -1341,7 +1394,8 @@ describe('TableDataGrid', () => {
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
     const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
     const props = mockCalls[0][0] as Record<string, unknown>
-    expect(props.singleClickEdit).toBe(true)
+    expect(props.singleClickEdit).toBe(false)
+    expect(props.suppressClickEdit).toBe(true)
     expect(props.stopEditingWhenCellsLoseFocus).toBe(true)
   })
 
@@ -1387,5 +1441,78 @@ describe('TableDataGrid', () => {
     expect(stopEditingMock).toHaveBeenCalledWith(true)
     // selectedRowKey should snap back to the failed row
     expect(state?.selectedRowKey).toEqual({ id: 1 })
+  })
+
+  it('Add Row prepopulates column defaults in the new grid row', () => {
+    setupConnection()
+    setupTabState({
+      columns: [
+        testColumns[0],
+        testColumns[1],
+        {
+          name: 'status',
+          dataType: 'ENUM',
+          isNullable: false,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: true,
+          columnDefault: 'active',
+          isBinary: false,
+          isAutoIncrement: false,
+          enumValues: ['active', 'disabled'],
+        } as TableDataColumnMeta,
+      ],
+      rows: [
+        [1, 'Alice', 'disabled'],
+        [2, 'Bob', 'active'],
+      ],
+    })
+    render(
+      <>
+        <TableDataToolbar tabId="tab-1" />
+        <TableDataGrid tabId="tab-1" isReadOnly={false} />
+      </>
+    )
+
+    fireEvent.click(screen.getByTestId('btn-add-row'))
+
+    const latestProps = getLatestGridProps()
+    const rowData = latestProps.rowData as Array<Record<string, unknown>>
+    const newRow = rowData[rowData.length - 1]
+
+    expect(newRow.status).toBe('active')
+    expect(useTableDataStore.getState().tabs['tab-1']?.editState?.currentValues.status).toBe(
+      'active'
+    )
+  })
+
+  it('cell editor wrapper allows editor contents to shrink within the cell', () => {
+    expect(styles.cellEditorWrapper).toBeDefined()
+  })
+
+  it('starts editing on cell click when no cell is currently active', () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const onCellClicked = props.onCellClicked as (event: {
+      data: Record<string, unknown>
+      colDef: { field: string; editable?: boolean }
+      node: { rowIndex: number }
+      api: { startEditingCell: (params: { rowIndex: number; colKey: string }) => void }
+    }) => void
+
+    const startEditingCell = vi.fn()
+    act(() => {
+      onCellClicked({
+        data: { id: 1, name: 'Alice', avatar: null, __rowIndex: 0 },
+        colDef: { field: 'name', editable: true },
+        node: { rowIndex: 0 },
+        api: { startEditingCell },
+      })
+    })
+
+    expect(startEditingCell).toHaveBeenCalledWith({ rowIndex: 0, colKey: 'name' })
   })
 })

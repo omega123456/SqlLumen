@@ -12,8 +12,10 @@
   display: flex;
   align-items: center;
   width: 100%;
+  min-width: 0;
   height: 100%;
   gap: 2px;
+  overflow: hidden;
 }
 
 /* Calendar/clock icon button in DateTimeCellEditor */
