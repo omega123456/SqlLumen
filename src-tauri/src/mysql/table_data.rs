@@ -37,6 +37,7 @@ const JS_SAFE_INTEGER_MIN: i64 = -JS_SAFE_INTEGER_MAX;
 pub struct TableDataColumnMeta {
     pub name: String,
     pub data_type: String,
+    pub enum_values: Option<Vec<String>>,
     pub is_nullable: bool,
     pub is_primary_key: bool,
     pub is_unique_key: bool,
@@ -358,6 +359,50 @@ fn is_binary_data_type(data_type: &str) -> bool {
         upper.as_str(),
         "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" | "BINARY" | "VARBINARY"
     )
+}
+
+#[cfg(not(coverage))]
+pub fn parse_enum_values(column_type: &str) -> Option<Vec<String>> {
+    let trimmed = column_type.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("enum(") || !trimmed.ends_with(')') {
+        return None;
+    }
+
+    let inner = &trimmed[5..trimmed.len() - 1];
+    let mut values = Vec::new();
+    let mut current = String::new();
+    let mut chars = inner.chars().peekable();
+    let mut in_quote = false;
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\'' => {
+                if in_quote {
+                    if matches!(chars.peek(), Some('\'')) {
+                        current.push('\'');
+                        chars.next();
+                    } else {
+                        in_quote = false;
+                    }
+                } else {
+                    in_quote = true;
+                }
+            }
+            ',' if !in_quote => {
+                values.push(current.clone());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    if in_quote {
+        return None;
+    }
+
+    values.push(current);
+    Some(values)
 }
 
 // ── Real implementations (excluded from coverage builds) ──────────────────────
@@ -703,7 +748,7 @@ pub async fn fetch_table_pk_impl(
     table: &str,
 ) -> Result<(Option<PrimaryKeyInfo>, Vec<TableDataColumnMeta>), String> {
     // ── 1. Fetch all column metadata ───────────────────────────────────────
-    let col_sql = "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_KEY, \
+    let col_sql = "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, \
                    COLUMN_DEFAULT, EXTRA \
                    FROM INFORMATION_SCHEMA.COLUMNS \
                    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? \
@@ -730,10 +775,12 @@ pub async fn fetch_table_pk_impl(
     for row in &col_rows {
         let name = decode_text(row, 0);
         let data_type = decode_text(row, 1).to_uppercase();
-        let is_nullable = decode_text(row, 2) == "YES";
-        let column_key = decode_text(row, 3);
-        let column_default = decode_optional_text(row, 4);
-        let extra = decode_text(row, 5).to_lowercase();
+        let column_type = decode_text(row, 2);
+        let enum_values = parse_enum_values(&column_type);
+        let is_nullable = decode_text(row, 3) == "YES";
+        let column_key = decode_text(row, 4);
+        let column_default = decode_optional_text(row, 5);
+        let extra = decode_text(row, 6).to_lowercase();
 
         let is_binary = is_binary_data_type(&data_type);
         let is_auto_increment = extra.contains("auto_increment");
@@ -746,6 +793,7 @@ pub async fn fetch_table_pk_impl(
         columns.push(TableDataColumnMeta {
             name,
             data_type,
+            enum_values,
             is_nullable,
             is_primary_key,
             is_unique_key,

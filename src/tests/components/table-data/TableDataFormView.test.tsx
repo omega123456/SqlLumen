@@ -581,6 +581,109 @@ describe('TableDataFormView', () => {
     expect(state?.editState?.currentValues.name).toBe('NewName')
   })
 
+  it('enum fields render as dropdowns and update through selection', () => {
+    const enumColumns: TableDataColumnMeta[] = [
+      mockColumns[0],
+      {
+        name: 'status',
+        dataType: 'ENUM',
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+        enumValues: ['active', 'disabled'],
+      } as TableDataColumnMeta,
+    ]
+
+    setupStore({
+      columns: enumColumns,
+      rows: [[1, 'active']],
+      selectedRowKey: { id: 1 },
+    })
+    renderFormView()
+
+    const statusField = screen.getByTestId('form-input-status')
+    expect(statusField.tagName).toBe('SELECT')
+
+    fireEvent.focus(statusField)
+    fireEvent.change(statusField, { target: { value: 'disabled' } })
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState).not.toBeNull()
+    expect(state?.editState?.currentValues.status).toBe('disabled')
+  })
+
+  it('nullable enum select writes null when NULL option is selected', () => {
+    const enumColumns: TableDataColumnMeta[] = [
+      mockColumns[0],
+      {
+        name: 'status',
+        dataType: 'ENUM',
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+        enumValues: ['active', 'disabled'],
+      } as TableDataColumnMeta,
+    ]
+
+    setupStore({
+      columns: enumColumns,
+      rows: [[1, 'active']],
+      selectedRowKey: { id: 1 },
+    })
+    renderFormView()
+
+    const statusField = screen.getByTestId('form-input-status') as HTMLSelectElement
+    fireEvent.focus(statusField)
+    fireEvent.change(statusField, { target: { value: '__MYSQL_CLIENT_ENUM_NULL__' } })
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState?.currentValues.status).toBeNull()
+  })
+
+  it('NULL toggle off on enum field picks the first enum option instead of empty string', () => {
+    const enumColumn = {
+      name: 'status',
+      dataType: 'ENUM',
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+      enumValues: ['active', 'disabled'],
+    } as TableDataColumnMeta
+
+    const editState: RowEditState = {
+      rowKey: { id: 1 },
+      originalValues: { id: 1, status: null },
+      currentValues: { id: 1, status: null },
+      modifiedColumns: new Set<string>(),
+      isNewRow: false,
+    }
+
+    setupStore({
+      columns: [mockColumns[0], enumColumn],
+      rows: [[1, null]],
+      selectedRowKey: { id: 1 },
+      editState,
+    })
+    renderFormView()
+
+    fireEvent.click(screen.getByTestId('btn-form-null-status'))
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState?.currentValues.status).toBe('active')
+  })
+
   it('null values remain editable in form view', () => {
     setupStore({
       rows: [[1, null, '[BLOB - 128 bytes]']],

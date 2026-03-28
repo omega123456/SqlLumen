@@ -491,7 +491,8 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           },
           {
             name: 'status',
-            dataType: 'VARCHAR',
+            dataType: 'ENUM',
+            enumValues: ['active', 'inactive'],
             isNullable: false,
             isPrimaryKey: false,
             isUniqueKey: false,

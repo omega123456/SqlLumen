@@ -2,6 +2,9 @@ import { test, expect, type Page } from '@playwright/test'
 
 const APP_READY_MS = 60_000
 const SUGGESTION_SETTLE_MS = 500
+const AUTOCOMPLETE_OPEN_RETRIES = 8
+const AUTOCOMPLETE_OPEN_TIMEOUT_MS = 10_000
+const AUTOCOMPLETE_RETRY_DELAY_MS = 300
 
 function trackSqlParserConsoleErrors(page: Page) {
   const errors: string[] = []
@@ -102,16 +105,25 @@ async function openQueryEditorTab(page: Page) {
 async function openAutocomplete(page: Page, expectedText?: string) {
   const suggestWidget = page.locator('.suggest-widget.visible')
 
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < AUTOCOMPLETE_OPEN_RETRIES; attempt++) {
     await page.keyboard.press('Control+Space')
-    await expect(suggestWidget).toBeVisible({ timeout: 10_000 })
+
+    const isVisible = await expect(suggestWidget)
+      .toBeVisible({ timeout: AUTOCOMPLETE_OPEN_TIMEOUT_MS })
+      .then(() => true)
+      .catch(() => false)
+
+    if (!isVisible) {
+      await page.waitForTimeout(AUTOCOMPLETE_RETRY_DELAY_MS)
+      continue
+    }
 
     const text = (await suggestWidget.textContent()) ?? ''
     if (!text.includes('Loading...') && (!expectedText || text.includes(expectedText))) {
       return suggestWidget
     }
 
-    await page.waitForTimeout(300)
+    await page.waitForTimeout(AUTOCOMPLETE_RETRY_DELAY_MS)
   }
 
   return suggestWidget

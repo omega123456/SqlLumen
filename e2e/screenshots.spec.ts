@@ -4,6 +4,8 @@ const themes = ['light', 'dark'] as const
 
 /** Dev server + async `main.tsx` (dynamic imports, IPC mock, theme) under many parallel workers can exceed the default 5s expect timeout. */
 const APP_READY_MS = 60_000
+const AUTOCOMPLETE_OPEN_RETRIES = 8
+const AUTOCOMPLETE_RETRY_DELAY_MS = 300
 
 /** Many parallel workers can briefly see net::ERR_CONNECTION_FAILED if the first goto races the Vite server. */
 const GOTO_RETRY_ATTEMPTS = 5
@@ -186,16 +188,25 @@ async function openQueryEditorTab(page: Page) {
 async function waitForAutocomplete(page: Page, expectedText?: string) {
   const suggestWidget = page.locator('.suggest-widget.visible')
 
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < AUTOCOMPLETE_OPEN_RETRIES; attempt++) {
     await page.keyboard.press('Control+Space')
-    await expect(suggestWidget).toBeVisible({ timeout: APP_READY_MS })
+
+    const isVisible = await expect(suggestWidget)
+      .toBeVisible({ timeout: APP_READY_MS })
+      .then(() => true)
+      .catch(() => false)
+
+    if (!isVisible) {
+      await page.waitForTimeout(AUTOCOMPLETE_RETRY_DELAY_MS)
+      continue
+    }
 
     const text = (await suggestWidget.textContent()) ?? ''
     if (!text.includes('Loading...') && (!expectedText || text.includes(expectedText))) {
       return suggestWidget
     }
 
-    await page.waitForTimeout(300)
+    await page.waitForTimeout(AUTOCOMPLETE_RETRY_DELAY_MS)
   }
 
   return suggestWidget

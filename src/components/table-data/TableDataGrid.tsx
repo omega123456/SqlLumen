@@ -33,6 +33,7 @@ import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import type { TableDataColumnMeta, PrimaryKeyInfo, AgGridFilterModel } from '../../types/schema'
 import DateTimeCellEditor from './DateTimeCellEditor'
+import { ENUM_NULL_SENTINEL, getEnumFallbackValue, isEnumColumn } from './enum-field-utils'
 import styles from './TableDataGrid.module.css'
 
 // Register AG Grid Community modules (idempotent)
@@ -118,6 +119,8 @@ export function buildColumnDefs(
       const temporalType = getTemporalColumnType(col.dataType)
       if (temporalType) {
         colDef.cellEditor = 'dateTimeCellEditor'
+      } else if (isEnumColumn(col)) {
+        colDef.cellEditor = 'enumCellEditor'
       } else {
         colDef.cellEditor = 'nullableCellEditor'
       }
@@ -247,6 +250,105 @@ const NullableCellEditor = forwardRef(function NullableCellEditor(
   )
 })
 
+const EnumCellEditor = forwardRef(function EnumCellEditor(
+  props: NullableCellEditorProps,
+  ref: React.Ref<{ getValue: () => unknown }>
+) {
+  const enumValues = props.columnMeta?.enumValues ?? []
+  const isNullable = props.isNullable ?? false
+  const initialNull = isNullish(props.value)
+  const initialValue = initialNull ? null : String(props.value ?? '')
+  const [isNull, setIsNull] = useState(initialNull)
+  const [value, setValue] = useState(initialValue ?? getEnumFallbackValue(props.columnMeta))
+  const selectRef = useRef<HTMLSelectElement>(null)
+  const updateCellValue = useTableDataStore((state) => state.updateCellValue)
+  const fieldName = props.colDef?.field
+  const tabId = props.context?.tabId as string | undefined
+
+  useImperativeHandle(ref, () => ({
+    getValue: () => (isNull ? null : value),
+    isCancelBeforeStart: () => false,
+    isCancelAfterEnd: () => false,
+  }))
+
+  useEffect(() => {
+    selectRef.current?.focus()
+  }, [])
+
+  const syncValue = useCallback(
+    (nextValue: string | null) => {
+      if (tabId && fieldName) {
+        updateCellValue(tabId, fieldName, nextValue)
+      }
+    },
+    [fieldName, tabId, updateCellValue]
+  )
+
+  const handleChange = useCallback(
+    (nextValue: string) => {
+      setIsNull(false)
+      setValue(nextValue)
+      syncValue(nextValue)
+    },
+    [syncValue]
+  )
+
+  const handleToggleNull = useCallback(() => {
+    if (isNull) {
+      const fallbackValue = initialValue ?? getEnumFallbackValue(props.columnMeta)
+      setIsNull(false)
+      setValue(fallbackValue)
+      syncValue(fallbackValue)
+      setTimeout(() => selectRef.current?.focus(), 0)
+    } else {
+      setIsNull(true)
+      syncValue(null)
+    }
+  }, [enumValues, initialValue, isNull, syncValue])
+
+  return (
+    <div className={styles.cellEditorWrapper}>
+      <select
+        ref={selectRef}
+        className="td-cell-editor-select"
+        value={isNull ? ENUM_NULL_SENTINEL : value}
+        onChange={(e) => {
+          if (e.target.value === ENUM_NULL_SENTINEL) {
+            setIsNull(true)
+            syncValue(null)
+            return
+          }
+          handleChange(e.target.value)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            setIsNull(initialNull)
+            setValue(initialValue ?? getEnumFallbackValue(props.columnMeta))
+            syncValue(initialValue)
+          }
+        }}
+      >
+        {isNullable && <option value={ENUM_NULL_SENTINEL}>NULL</option>}
+        {enumValues.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+      {isNullable && (
+        <button
+          type="button"
+          className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+          onClick={handleToggleNull}
+          tabIndex={-1}
+        >
+          NULL
+        </button>
+      )}
+    </div>
+  )
+})
+
 // ---------------------------------------------------------------------------
 // TableDataGrid component
 // ---------------------------------------------------------------------------
@@ -283,6 +385,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
     () => ({
       tableDataCellRenderer: TableDataCellRenderer,
       nullableCellEditor: NullableCellEditor,
+      enumCellEditor: EnumCellEditor,
       dateTimeCellEditor: DateTimeCellEditor,
     }),
     []

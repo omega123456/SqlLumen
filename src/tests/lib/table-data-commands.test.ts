@@ -7,30 +7,32 @@ import {
   deleteTableRow,
   exportTableData,
 } from '../../lib/table-data-commands'
-import type { AgGridFilterModel, PrimaryKeyInfo } from '../../types/schema'
+import type { AgGridFilterModel, PrimaryKeyInfo, TableDataResponse } from '../../types/schema'
 
-const mockFetchTableDataFn = vi.fn(() => ({
-  columns: [
-    {
-      name: 'id',
-      dataType: 'INT',
-      isNullable: false,
-      isPrimaryKey: true,
-      isUniqueKey: false,
-      hasDefault: false,
-      columnDefault: null,
-      isBinary: false,
-      isAutoIncrement: true,
-    },
-  ],
-  rows: [[1], [2]],
-  totalRows: 2,
-  currentPage: 1,
-  totalPages: 1,
-  pageSize: 1000,
-  primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
-  executionTimeMs: 10,
-}))
+const mockFetchTableDataFn = vi.fn(
+  (): TableDataResponse => ({
+    columns: [
+      {
+        name: 'id',
+        dataType: 'INT',
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: true,
+      },
+    ],
+    rows: [[1], [2]],
+    totalRows: 2,
+    currentPage: 1,
+    totalPages: 1,
+    pageSize: 1000,
+    primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+    executionTimeMs: 10,
+  })
+)
 const mockUpdateTableRowFn = vi.fn(() => null)
 const mockInsertTableRowFn = vi.fn(() => [
   ['id', 3],
@@ -161,6 +163,42 @@ describe('fetchTableData', () => {
     expect(sentFilter.sport.filterCondition).toBe('equals')
     expect(sentFilter.sport.filterType).toBe('text')
     expect(sentFilter.sport.filter).toBe('Swimming')
+  })
+
+  it('preserves enumValues from fetch_table_data responses', async () => {
+    mockFetchTableDataFn.mockReturnValueOnce({
+      columns: [
+        {
+          name: 'status',
+          dataType: 'ENUM',
+          enumValues: ['active', 'disabled'],
+          isNullable: true,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [['active']],
+      totalRows: 1,
+      currentPage: 1,
+      totalPages: 1,
+      pageSize: 1000,
+      primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+      executionTimeMs: 10,
+    })
+
+    const result = await fetchTableData({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      table: 'users',
+      page: 1,
+      pageSize: 1000,
+    })
+
+    expect(result.columns[0].enumValues).toEqual(['active', 'disabled'])
   })
 })
 

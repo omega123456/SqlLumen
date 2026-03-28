@@ -25,6 +25,7 @@ import { writeClipboardText } from '../../lib/context-menu-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import { DateTimePicker } from './DateTimePicker'
+import { ENUM_NULL_SENTINEL, getEnumFallbackValue, isEnumColumn } from './enum-field-utils'
 import type { TableDataColumnMeta } from '../../types/schema'
 import styles from './TableDataFormView.module.css'
 
@@ -254,6 +255,8 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
         const temporalType = getTemporalColumnType(col.dataType)
         if (temporalType) {
           updateCellValue(tabId, col.name, getTodayMysqlString(temporalType))
+        } else if (isEnumColumn(col)) {
+          updateCellValue(tabId, col.name, getEnumFallbackValue(col))
         } else {
           updateCellValue(tabId, col.name, '')
         }
@@ -414,6 +417,7 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
             const isFieldReadonly = isBlobField || !isEditable
             const temporalType = getTemporalColumnType(col.dataType)
             const isTemporalEditable = temporalType !== null && !isFieldReadonly && !isBlobField
+            const isEnumEditable = isEnumColumn(col) && !isFieldReadonly && !isBlobField
 
             // Label suffix
             let labelSuffix = ''
@@ -458,6 +462,37 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
                     >
                       {isNull ? 'NULL' : displayValue(rawValue)}
                     </div>
+                  ) : isEnumEditable ? (
+                    <select
+                      className={[
+                        styles.fieldInput,
+                        styles.fieldSelect,
+                        isModified ? styles.fieldInputModified : '',
+                        isNull ? styles.fieldInputNull : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      value={isNull ? '' : displayValue(rawValue)}
+                      onFocus={() => handleInputFocus(col.name)}
+                      onChange={(e) => {
+                        const nextValue = e.target.value
+                        if (nextValue === ENUM_NULL_SENTINEL) {
+                          if (!currentRow || !currentRowKey) return
+                          ensureEditing(currentRowKey, currentRow)
+                          updateCellValue(tabId, col.name, null)
+                          return
+                        }
+                        handleInputChange(col.name, nextValue)
+                      }}
+                      data-testid={`form-input-${col.name}`}
+                    >
+                      {col.isNullable && <option value={ENUM_NULL_SENTINEL}>NULL</option>}
+                      {col.enumValues.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
                   ) : (
                     <input
                       type="text"

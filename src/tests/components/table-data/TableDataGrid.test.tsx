@@ -416,6 +416,90 @@ describe('TableDataGrid', () => {
     expect(defs[2].cellEditorParams).toBeUndefined()
   })
 
+  it('uses enumCellEditor for enum columns with options', () => {
+    const enumColumn = {
+      name: 'status',
+      dataType: 'ENUM',
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+      enumValues: ['active', 'disabled'],
+    } as TableDataColumnMeta
+
+    const defs = buildColumnDefs([enumColumn], false, true)
+
+    expect(defs[0].cellEditor).toBe('enumCellEditor')
+    expect(defs[0].cellEditorParams).toEqual({
+      isNullable: true,
+      columnMeta: enumColumn,
+    })
+  })
+
+  it('enumCellEditor writes null when NULL option is selected', () => {
+    setupConnection()
+    setupTabState({
+      columns: [
+        testColumns[0],
+        {
+          name: 'status',
+          dataType: 'ENUM',
+          isNullable: true,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: false,
+          enumValues: ['active', 'disabled'],
+        } as TableDataColumnMeta,
+      ],
+      rows: [[1, 'active']],
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, status: 'active' },
+        currentValues: { id: 1, status: 'active' },
+        modifiedColumns: new Set<string>(),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const components = props.components as Record<string, ComponentType<Record<string, unknown>>>
+    const EnumEditor = components.enumCellEditor
+
+    const editor = render(
+      <EnumEditor
+        value="active"
+        isNullable={true}
+        columnMeta={{
+          name: 'status',
+          dataType: 'ENUM',
+          isNullable: true,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: false,
+          enumValues: ['active', 'disabled'],
+        }}
+        colDef={{ field: 'status' }}
+        context={{ tabId: 'tab-1' }}
+      />
+    )
+
+    fireEvent.change(editor.getByRole('combobox'), {
+      target: { value: '__MYSQL_CLIENT_ENUM_NULL__' },
+    })
+
+    expect(useTableDataStore.getState().tabs['tab-1']?.editState?.currentValues.status).toBeNull()
+  })
+
   it('non-editable columns do not get cellEditor or cellEditorParams', () => {
     const defs = buildColumnDefs(testColumns, true, true) // read-only
     defs.forEach((d) => {

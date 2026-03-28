@@ -244,6 +244,24 @@
   padding: 0 4px;
 }
 
+.ag-theme-precision .td-cell-editor-select {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  outline: none;
+  padding: 0 4px;
+}
+
+.ag-theme-precision .td-cell-editor-select:focus {
+  background: rgba(var(--primary-rgb), 0.04);
+  outline: 1px solid rgba(var(--primary-rgb), 0.3);
+  outline-offset: -1px;
+}
+
 .ag-theme-precision .td-cell-editor-input:focus {
   background: rgba(var(--primary-rgb), 0.04);
   outline: 1px solid rgba(var(--primary-rgb), 0.3);
