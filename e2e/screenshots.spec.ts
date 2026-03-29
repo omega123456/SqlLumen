@@ -706,6 +706,37 @@ for (const theme of themes) {
       )
     })
 
+    test('QueryEditorTab — edit mode toolbar with detected tables', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+      // Wait for analysis to complete — dropdown should be visible with "Read Only"
+      await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('result-toolbar')).toHaveScreenshot(
+        `query-editor-result-toolbar-edit-mode-dropdown-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('QueryEditorTab — grid with edit mode active (lock icons, dimmed non-editable)', async ({
+      page,
+    }) => {
+      await openQueryEditorWithResults(page)
+      // Wait for analysis to populate detected tables
+      await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Select the detected table for editing
+      await page.getByTestId('edit-mode-dropdown').selectOption({ index: 1 })
+
+      // Wait for edit mode to apply — look for read-only column header lock icons
+      await expect(
+        page.getByTestId('result-grid-view').locator('.col-readonly').first()
+      ).toBeVisible({ timeout: APP_READY_MS })
+
+      await expect(page.getByTestId('result-grid-view')).toHaveScreenshot(
+        `query-editor-result-grid-edit-mode-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('StatusBar — query info after execution', async ({ page }) => {
       await openQueryEditorWithResults(page)
       // The status bar should now show query rows/time info
@@ -778,6 +809,39 @@ for (const theme of themes) {
       await expect(page.getByTestId('result-form-view')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('result-form-view')).toHaveScreenshot(
         `result-form-view-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('ResultFormView — form view in edit mode (editable vs non-editable fields)', async ({
+      page,
+    }) => {
+      await openQueryEditorWithResults(page)
+      // Wait for analysis to populate detected tables
+      await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Select the detected table for editing
+      await page.getByTestId('edit-mode-dropdown').selectOption({ index: 1 })
+
+      // Wait for edit mode to apply
+      await expect(
+        page.getByTestId('result-grid-view').locator('.col-readonly').first()
+      ).toBeVisible({ timeout: APP_READY_MS })
+
+      // Switch to form view
+      await page.getByTestId('view-mode-form').click()
+      await expect(page.getByTestId('result-form-view')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Click on an editable field to start editing the row
+      const editableInput = page.getByTestId('form-input-1')
+      await expect(editableInput).toBeVisible({ timeout: APP_READY_MS })
+      await editableInput.click()
+
+      // Wait for edit actions to appear (save/discard buttons)
+      await expect(page.getByTestId('form-edit-actions')).toBeVisible({ timeout: APP_READY_MS })
+
+      await expect(page.getByTestId('result-form-view')).toHaveScreenshot(
+        `result-form-view-edit-mode-${theme}.png`,
         { animations: 'disabled' }
       )
     })

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
@@ -26,6 +26,15 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   selectedRowIndex: null,
   exportDialogOpen: false,
   lastExecutedSql: null,
+  editMode: null,
+  editTableMetadata: {},
+  editState: null,
+  isAnalyzingQuery: false,
+  editableColumnMap: new Map(),
+  pendingNavigationAction: null,
+  saveError: null,
+  editConnectionId: null,
+  editingRowIndex: null,
 }
 
 /** Helper to set up store state for a tab. */
@@ -351,5 +360,103 @@ describe('ResultToolbar', () => {
     expect(screen.getByTestId('page-size-selector')).toBeInTheDocument()
     expect(screen.getByTestId('prev-page-button')).toBeInTheDocument()
     expect(screen.getByTestId('next-page-button')).toBeInTheDocument()
+  })
+
+  // --- Unsaved-change protection for pagination ---
+
+  describe('pagination unsaved-change guard', () => {
+    it('defers prev page via requestNavigationAction when edits are pending', () => {
+      const requestNavSpy = vi.fn()
+      setupTabState(tabId, {
+        status: 'success',
+        currentPage: 2,
+        totalPages: 3,
+        queryId: 'q1',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        editState: {
+          rowKey: { id: 1 },
+          originalValues: { name: 'Alice' },
+          currentValues: { name: 'Changed' },
+          modifiedColumns: new Set(['name']),
+          isNewRow: false,
+        },
+      })
+      useQueryStore.setState({ requestNavigationAction: requestNavSpy })
+
+      render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+      fireEvent.click(screen.getByLabelText('Previous page'))
+
+      expect(requestNavSpy).toHaveBeenCalledWith(tabId, expect.any(Function))
+    })
+
+    it('defers next page via requestNavigationAction when edits are pending', () => {
+      const requestNavSpy = vi.fn()
+      setupTabState(tabId, {
+        status: 'success',
+        currentPage: 1,
+        totalPages: 3,
+        queryId: 'q1',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        editState: {
+          rowKey: { id: 1 },
+          originalValues: { name: 'Alice' },
+          currentValues: { name: 'Changed' },
+          modifiedColumns: new Set(['name']),
+          isNewRow: false,
+        },
+      })
+      useQueryStore.setState({ requestNavigationAction: requestNavSpy })
+
+      render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+      fireEvent.click(screen.getByLabelText('Next page'))
+
+      expect(requestNavSpy).toHaveBeenCalledWith(tabId, expect.any(Function))
+    })
+
+    it('defers page size change via requestNavigationAction when edits are pending', () => {
+      const requestNavSpy = vi.fn()
+      setupTabState(tabId, {
+        status: 'success',
+        currentPage: 1,
+        totalPages: 1,
+        queryId: 'q1',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        pageSize: 1000,
+        editState: {
+          rowKey: { id: 1 },
+          originalValues: { name: 'Alice' },
+          currentValues: { name: 'Changed' },
+          modifiedColumns: new Set(['name']),
+          isNewRow: false,
+        },
+      })
+      useQueryStore.setState({ requestNavigationAction: requestNavSpy })
+
+      render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+      fireEvent.change(screen.getByTestId('page-size-selector'), {
+        target: { value: '500' },
+      })
+
+      expect(requestNavSpy).toHaveBeenCalledWith(tabId, expect.any(Function))
+    })
+
+    it('executes pagination immediately when no edits are pending', () => {
+      setupTabState(tabId, {
+        status: 'success',
+        currentPage: 1,
+        totalPages: 3,
+        queryId: 'q1',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        // No editState — no pending edits
+      })
+
+      render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+      fireEvent.click(screen.getByLabelText('Next page'))
+
+      // With no pending edits, requestNavigationAction executes the action
+      // immediately rather than storing it as pendingNavigationAction
+      const tab = useQueryStore.getState().tabs[tabId]
+      expect(tab?.pendingNavigationAction).toBeNull()
+    })
   })
 })

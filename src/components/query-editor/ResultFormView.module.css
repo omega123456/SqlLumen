@@ -1,6 +1,6 @@
 /* ============================================================
-   ResultFormView — read-only form for single-record display
-   Adapted from the editable_form_view design (read-only: no inputs)
+   ResultFormView — form view for single-record display
+   Supports both read-only and editable states when edit mode is active.
    ============================================================ */
 
 .container {
@@ -28,6 +28,12 @@
   color: var(--on-surface);
   margin: 0;
   letter-spacing: -0.01em;
+}
+
+.navGroup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .navigation {
@@ -79,16 +85,27 @@
 
 /* Individual field row (label + value + copy) */
 .field {
-  display: grid;
-  grid-template-columns: 1fr 3fr;
-  align-items: center;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 0;
   border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.15);
 }
 
 .field:last-child {
   border-bottom: none;
+}
+
+/* Non-editable field dimming in edit mode */
+.fieldNonEditable {
+  opacity: 0.55;
+}
+
+/* Field label row — contains label, modified dot, null toggle */
+.fieldLabelRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .fieldLabel {
@@ -98,8 +115,56 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-family: var(--font-headline);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
+.lockIcon {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+/* Modified dot indicator next to label */
+.modifiedDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  flex-shrink: 0;
+}
+
+/* NULL toggle button */
+.nullToggle {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.nullToggle:hover {
+  color: var(--primary);
+  border-color: rgba(var(--primary-rgb), 0.4);
+}
+
+.nullToggleActive {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+/* Field value row */
 .fieldValueRow {
   display: flex;
   align-items: center;
@@ -115,6 +180,45 @@
 }
 
 .nullValue {
+  font-style: italic;
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+}
+
+/* Editable field input */
+.fieldInput {
+  flex: 1;
+  background: var(--background);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
+  color: var(--on-surface);
+  font-size: var(--type-size-md);
+  font-family: var(--font-mono);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  width: 100%;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.fieldSelect {
+  appearance: auto;
+}
+
+.fieldInput:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+/* Modified field glow */
+.fieldInputModified {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.25);
+}
+
+/* NULL state input */
+.fieldInputNull {
   font-style: italic;
   color: var(--on-surface-variant);
   opacity: 0.6;
@@ -141,6 +245,117 @@
 .copyButton:hover {
   color: var(--primary);
   background: rgba(var(--primary-rgb), 0.08);
+}
+
+/* Per-field date/time picker button */
+.calendarButton {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.calendarButton:hover {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+.calendarButton:disabled {
+  opacity: 0.35;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Form action buttons (Save / Discard) — in edit mode header */
+.formButtons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.discardButton {
+  padding: 6px 16px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.discardButton:hover:not(:disabled) {
+  color: var(--on-surface);
+  border-color: rgba(var(--outline-variant-rgb), 0.4);
+}
+
+.discardButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.saveButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: var(--primary);
+  color: var(--on-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(var(--primary-rgb), 0.2);
+  transition:
+    filter 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.saveButton:hover:not(:disabled) {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 18px rgba(var(--primary-rgb), 0.3);
+}
+
+.saveButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+  filter: none;
+}
+
+/* "Unsaved change detected" note */
+.modifiedNote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.modifiedNoteIcon {
+  font-size: 14px;
+  line-height: 1;
 }
 
 /* ---- Light theme overrides ---- */
@@ -170,4 +385,13 @@
 [data-theme='light'] .navButton:hover:not(:disabled) {
   color: var(--primary);
   background: #f1f5f9;
+}
+
+[data-theme='light'] .fieldInput {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+[data-theme='light'] .fieldInput:focus {
+  border-color: var(--primary);
 }

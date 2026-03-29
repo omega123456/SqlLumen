@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { UnsavedChangesDialog } from '../../../components/table-data/UnsavedChangesDialog'
+import { UnsavedChangesDialog } from '../../../components/shared/UnsavedChangesDialog'
 
 beforeEach(() => {
   vi.clearAllMocks()

@@ -61,6 +61,10 @@ mysql-client-test-integration = [
   "session_select_database_integration",
   "--test",
   "table_data_integration",
+  "--test",
+  "sql_table_parser_integration",
+  "--test",
+  "query_edit_integration",
 ]
 
 mysql-client-llvm-cov = [
@@ -121,6 +125,10 @@ mysql-client-llvm-cov = [
   "session_select_database_integration",
   "--test",
   "table_data_integration",
+  "--test",
+  "sql_table_parser_integration",
+  "--test",
+  "query_edit_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",

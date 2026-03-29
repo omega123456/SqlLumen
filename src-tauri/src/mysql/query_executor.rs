@@ -3,6 +3,7 @@
 
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 #[cfg(not(coverage))]
 use sqlx::mysql::types::MySqlTime;
 #[cfg(not(coverage))]
@@ -98,6 +99,16 @@ pub struct SchemaMetadata {
     pub tables: std::collections::HashMap<String, Vec<TableInfo>>,
     pub columns: std::collections::HashMap<String, Vec<ColumnMeta>>,
     pub routines: std::collections::HashMap<String, Vec<RoutineMeta>>,
+}
+
+/// Metadata for a table detected in a SQL query, used for inline editing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryTableEditInfo {
+    pub database: String,
+    pub table: String,
+    pub columns: Vec<crate::mysql::table_data::TableDataColumnMeta>,
+    pub primary_key: Option<crate::mysql::table_data::PrimaryKeyInfo>,
 }
 
 // ── SQL comment stripping & keyword helpers ─────────────────────────────────────
@@ -1261,6 +1272,189 @@ pub fn sort_results_impl(
         page: 1,
         total_pages,
     })
+}
+
+// ── Analyze query for edit ─────────────────────────────────────────────────────
+
+/// Analyze a SQL query and return table metadata for inline editing.
+///
+/// Extracts table references from the SQL, resolves their databases, and
+/// fetches primary key / column metadata for each table via `fetch_table_pk_impl`.
+#[cfg(not(coverage))]
+pub async fn analyze_query_for_edit_impl(
+    state: &AppState,
+    connection_id: &str,
+    sql: &str,
+) -> Result<Vec<QueryTableEditInfo>, String> {
+    use crate::mysql::sql_table_parser;
+
+    let table_refs = sql_table_parser::extract_tables(sql);
+    tracing::debug!(
+        sql = %sql,
+        table_count = table_refs.len(),
+        "analyze_query_for_edit: parsed SQL"
+    );
+    if table_refs.is_empty() {
+        tracing::debug!("analyze_query_for_edit: no table refs found, returning empty");
+        return Ok(vec![]);
+    }
+
+    let pool = state
+        .registry
+        .get_pool(connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+
+    let params = state.registry.get_connection_params(connection_id);
+    let default_database = params.and_then(|p| p.default_database);
+
+    // Fallback: if no default database stored in registry, query the MySQL
+    // session's current database via SELECT DATABASE().
+    let default_database = if default_database.is_some() {
+        default_database
+    } else {
+        match sqlx::query("SELECT DATABASE()")
+            .fetch_one(&pool)
+            .await
+        {
+            Ok(row) => match row.try_get::<String, _>(0) {
+                Ok(db) => {
+                    tracing::debug!(database = %db, "analyze_query_for_edit: resolved current database via SELECT DATABASE()");
+                    Some(db)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "analyze_query_for_edit: SELECT DATABASE() returned non-string (NULL?)"
+                    );
+                    None
+                }
+            },
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "analyze_query_for_edit: SELECT DATABASE() query failed"
+                );
+                None
+            }
+        }
+    };
+
+    tracing::debug!(
+        default_database = ?default_database,
+        "analyze_query_for_edit: resolved default database"
+    );
+
+    let mut results = Vec::new();
+
+    for table_ref in &table_refs {
+        let database = table_ref
+            .database
+            .as_deref()
+            .or(default_database.as_deref());
+
+        let Some(database) = database else {
+            tracing::warn!(
+                table = %table_ref.table,
+                "analyze_query_for_edit: skipping table — no database could be resolved"
+            );
+            continue;
+        };
+
+        match crate::mysql::table_data::fetch_table_pk_impl(&pool, database, &table_ref.table)
+            .await
+        {
+            Ok((pk_info, columns)) => {
+                tracing::debug!(
+                    table = %table_ref.table,
+                    database = %database,
+                    column_count = columns.len(),
+                    has_pk = pk_info.is_some(),
+                    "analyze_query_for_edit: fetched table metadata"
+                );
+                results.push(QueryTableEditInfo {
+                    database: database.to_string(),
+                    table: table_ref.table.clone(),
+                    columns,
+                    primary_key: pk_info,
+                });
+            }
+            Err(e) => {
+                tracing::warn!(
+                    table = %table_ref.table,
+                    database = %database,
+                    error = %e,
+                    "analyze_query_for_edit: skipping table due to metadata fetch failure"
+                );
+                continue;
+            }
+        }
+    }
+
+    tracing::debug!(
+        result_count = results.len(),
+        "analyze_query_for_edit: returning results"
+    );
+    Ok(results)
+}
+
+/// Coverage stub: exercises the SQL parser and connection validation without
+/// calling `fetch_table_pk_impl` (which is gated behind `#[cfg(not(coverage))]`).
+#[cfg(coverage)]
+pub async fn analyze_query_for_edit_impl(
+    state: &AppState,
+    connection_id: &str,
+    sql: &str,
+) -> Result<Vec<QueryTableEditInfo>, String> {
+    use crate::mysql::sql_table_parser;
+
+    // Exercise the parser — mirrors the real impl's early return for empty tables
+    let table_refs = sql_table_parser::extract_tables(sql);
+    if table_refs.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Validate connection exists (only reached when tables were found)
+    state
+        .registry
+        .get_pool(connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+
+    // Cannot call fetch_table_pk_impl under coverage — return empty
+    Ok(vec![])
+}
+
+// ── Update result cell ─────────────────────────────────────────────────────────
+
+/// Update specific cells in a cached result set after a save operation.
+///
+/// Acquires a write lock on `state.results`, finds the stored result by
+/// `(connection_id, tab_id)`, and sets each specified cell to its new value.
+pub fn update_result_cell_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    row_index: usize,
+    updates: HashMap<usize, serde_json::Value>,
+) -> Result<(), String> {
+    let mut results = state.results.write().expect("results lock poisoned");
+    let stored = results
+        .get_mut(&(connection_id.to_string(), tab_id.to_string()))
+        .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+
+    if row_index >= stored.rows.len() {
+        return Err(format!(
+            "Row index {row_index} out of bounds (total rows: {})",
+            stored.rows.len()
+        ));
+    }
+
+    for (col_index, new_value) in updates {
+        if col_index < stored.rows[row_index].len() {
+            stored.rows[row_index][col_index] = new_value;
+        }
+    }
+
+    Ok(())
 }
 
 // ── Unit tests ─────────────────────────────────────────────────────────────────

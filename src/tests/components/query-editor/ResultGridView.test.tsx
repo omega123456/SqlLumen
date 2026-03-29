@@ -89,6 +89,17 @@ describe('ResultGridView', () => {
     selectedRowIndex: null as number | null,
     currentPage: 1,
     pageSize: 1000,
+    tabId: 'tab-test',
+    editMode: null as string | null,
+    editableColumnMap: new Map<number, boolean>(),
+    editState: null,
+    editingRowIndex: null as number | null,
+    editTableColumns: [],
+    onStartEditing: vi.fn(),
+    onUpdateCellValue: vi.fn(),
+    onSyncCellValue: vi.fn(),
+    onAutoSave: vi.fn().mockResolvedValue(true),
+    onRequestNavigationAction: vi.fn(),
   }
 
   beforeEach(() => {
@@ -221,18 +232,39 @@ describe('ResultGridView', () => {
     expect(colDefs).toHaveLength(0)
   })
 
-  it('has cellClassRules for null detection', () => {
+  it('has cellClassRules for null detection in defaultColDef', () => {
     render(<ResultGridView {...defaultProps} />)
     const props = getLatestAgGridProps()
-    const colDefs = props.columnDefs as Array<{
+    const defaultColDef = props.defaultColDef as {
       cellClassRules: Record<string, (params: { value: unknown }) => boolean>
-    }>
-    // Each column should have 'ag-cell-null' rule
-    colDefs.forEach((col) => {
-      expect(col.cellClassRules['ag-cell-null']).toBeDefined()
-      expect(col.cellClassRules['ag-cell-null']({ value: null })).toBe(true)
-      expect(col.cellClassRules['ag-cell-null']({ value: 'hello' })).toBe(false)
-    })
+    }
+    // 'ag-cell-null' rule should be in defaultColDef
+    expect(defaultColDef.cellClassRules['ag-cell-null']).toBeDefined()
+    expect(defaultColDef.cellClassRules['ag-cell-null']({ value: null })).toBe(true)
+    expect(defaultColDef.cellClassRules['ag-cell-null']({ value: 'hello' })).toBe(false)
+  })
+
+  it('cell-modified rule returns false in read-only mode', () => {
+    render(<ResultGridView {...defaultProps} />)
+    const props = getLatestAgGridProps()
+    const defaultColDef = props.defaultColDef as {
+      cellClassRules: Record<
+        string,
+        (params: {
+          colDef?: { field?: string }
+          node?: { rowIndex?: number }
+          value?: unknown
+        }) => boolean
+      >
+    }
+    expect(defaultColDef.cellClassRules['cell-modified']).toBeDefined()
+    // In read-only mode (editMode=null), should always return false
+    expect(
+      defaultColDef.cellClassRules['cell-modified']({
+        colDef: { field: 'col_0' },
+        node: { rowIndex: 0 },
+      })
+    ).toBe(false)
   })
 
   it('has valueFormatter that returns "NULL" for null values', () => {
@@ -343,7 +375,7 @@ describe('ResultGridView', () => {
     expect(onSortChanged).not.toHaveBeenCalled()
   })
 
-  it('getRowClass returns selected class for matching row index', () => {
+  it('getRowClass does NOT return selected class in read-only mode (editMode=null)', () => {
     render(
       <ResultGridView {...defaultProps} selectedRowIndex={1} currentPage={1} pageSize={1000} />
     )
@@ -352,15 +384,43 @@ describe('ResultGridView', () => {
       rowIndex: number | undefined
     }) => string | undefined
 
-    // Local row 1 should be selected (absolute 1, page 1, size 1000 → local = 1)
+    // In read-only mode, no row should get the selected highlight
+    expect(getRowClass({ rowIndex: 1 })).toBeUndefined()
+    expect(getRowClass({ rowIndex: 0 })).toBeUndefined()
+  })
+
+  it('getRowClass returns selected class when editMode is active', () => {
+    render(
+      <ResultGridView
+        {...defaultProps}
+        editMode="users"
+        selectedRowIndex={1}
+        currentPage={1}
+        pageSize={1000}
+      />
+    )
+    const props = getLatestAgGridProps()
+    const getRowClass = props.getRowClass as (params: {
+      rowIndex: number | undefined
+    }) => string | undefined
+
+    // In edit mode, selected row should get the highlight
     expect(getRowClass({ rowIndex: 1 })).toBe('ag-row-precision-selected')
     // Other rows should not be selected
     expect(getRowClass({ rowIndex: 0 })).toBeUndefined()
     expect(getRowClass({ rowIndex: 2 })).toBeUndefined()
   })
 
-  it('getRowClass handles page-offset conversion for selection', () => {
-    render(<ResultGridView {...defaultProps} selectedRowIndex={15} currentPage={2} pageSize={10} />)
+  it('getRowClass handles page-offset conversion for selection in edit mode', () => {
+    render(
+      <ResultGridView
+        {...defaultProps}
+        editMode="users"
+        selectedRowIndex={15}
+        currentPage={2}
+        pageSize={10}
+      />
+    )
     const props = getLatestAgGridProps()
     const getRowClass = props.getRowClass as (params: {
       rowIndex: number | undefined

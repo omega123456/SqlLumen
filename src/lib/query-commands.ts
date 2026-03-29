@@ -1,5 +1,10 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { QueryResultMeta, ResultPage, SchemaMetadataResponse } from '../types/schema'
+import type {
+  QueryResultMeta,
+  QueryTableEditInfo,
+  ResultPage,
+  SchemaMetadataResponse,
+} from '../types/schema'
 
 export interface ExecuteQueryResult extends QueryResultMeta {
   firstPage: unknown[][]
@@ -50,4 +55,20 @@ export async function readFile(path: string): Promise<string> {
 
 export async function writeFile(path: string, content: string): Promise<void> {
   return invoke<void>('write_file', { path, content })
+}
+
+export async function analyzeQueryForEdit(
+  connectionId: string,
+  sql: string
+): Promise<QueryTableEditInfo[]> {
+  return invoke<QueryTableEditInfo[]>('analyze_query_for_edit', { connectionId, sql })
+}
+
+export async function updateResultCell(
+  connectionId: string,
+  tabId: string,
+  rowIndex: number,
+  updates: Record<number, unknown>
+): Promise<void> {
+  return invoke<void>('update_result_cell', { connectionId, tabId, rowIndex, updates })
 }

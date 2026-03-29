@@ -4,7 +4,10 @@ import { forwardRef, createRef } from 'react'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import type { TableDataColumnMeta } from '../../../types/schema'
 import { useCellEditor } from '../../../components/table-data/useCellEditor'
-import type { CellEditorParams } from '../../../components/table-data/useCellEditor'
+import type {
+  CellEditorParams,
+  CellEditorCallbacks,
+} from '../../../components/table-data/useCellEditor'
 
 // Mock date-utils — keep real implementations except getTodayMysqlString
 vi.mock('../../../lib/date-utils', async () => {
@@ -68,7 +71,13 @@ const TestEditor = forwardRef(function TestEditor(
   props: { params: CellEditorParams },
   ref: React.ForwardedRef<unknown>
 ) {
-  const editor = useCellEditor(props.params, ref)
+  const store = useTableDataStore.getState()
+  const callbacks: CellEditorCallbacks = {
+    tabId: ((props.params.context as Record<string, unknown> | undefined)?.tabId as string) ?? '',
+    updateCellValue: store.updateCellValue,
+    syncCellValue: store.syncCellValue,
+  }
+  const editor = useCellEditor(props.params, ref, callbacks)
   return (
     <div>
       <input

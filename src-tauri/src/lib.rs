@@ -147,6 +147,8 @@ pub fn run() {
             commands::query::read_file,
             commands::query::write_file,
             commands::query::sort_results,
+            commands::query::analyze_query_for_edit,
+            commands::query::update_result_cell,
             commands::export::export_results,
             commands::table_data::fetch_table_data,
             commands::table_data::update_table_row,

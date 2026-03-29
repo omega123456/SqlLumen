@@ -39,3 +39,15 @@ identifier = "allow-sort-results"
 description = "Enables the sort_results command without any pre-configured scope."
 commands.allow = ["sort_results"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-analyze-query-for-edit"
+description = "Enables the analyze_query_for_edit command without any pre-configured scope."
+commands.allow = ["analyze_query_for_edit"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-update-result-cell"
+description = "Enables the update_result_cell command without any pre-configured scope."
+commands.allow = ["update_result_cell"]
+commands.deny = []

@@ -392,6 +392,63 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         totalPages: 1,
       }
 
+    case 'analyze_query_for_edit':
+      return [
+        {
+          database: 'ecommerce_db',
+          table: 'users',
+          columns: [
+            {
+              name: 'id',
+              dataType: 'INT',
+              isBooleanAlias: false,
+              enumValues: null,
+              isNullable: false,
+              isPrimaryKey: true,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: true,
+            },
+            {
+              name: 'name',
+              dataType: 'VARCHAR',
+              isBooleanAlias: false,
+              enumValues: null,
+              isNullable: true,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+            {
+              name: 'email',
+              dataType: 'VARCHAR',
+              isBooleanAlias: false,
+              enumValues: null,
+              isNullable: true,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+          ],
+          primaryKey: {
+            keyColumns: ['id'],
+            hasAutoIncrement: true,
+            isUniqueKeyFallback: false,
+          },
+        },
+      ]
+
+    case 'update_result_cell':
+      return null
+
     case 'export_results':
       return { bytesWritten: 1024, rowsExported: 5 }
 

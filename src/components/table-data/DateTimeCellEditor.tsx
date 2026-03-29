@@ -25,6 +25,9 @@
  * subsequently calls onCellEditingStopped, the grid's handler compares
  * the new value against the current store value and skips the redundant
  * updateCellValue call if they match.
+ *
+ * Decoupled from useTableDataStore — reads callbacks from AG Grid
+ * context (GridEditContext) and passes them to useCellEditor.
  */
 
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
@@ -33,6 +36,8 @@ import { getTemporalColumnType } from '../../lib/date-utils'
 import type { TemporalColumnType } from '../../lib/date-utils'
 import { useCellEditor } from './useCellEditor'
 import type { CellEditorParams } from './useCellEditor'
+import type { GridEditContext } from '../shared/grid-cell-editors'
+import sharedStyles from '../shared/grid-cell-editors.module.css'
 import { DateTimePicker } from './DateTimePicker'
 import styles from './TableDataGrid.module.css'
 
@@ -47,8 +52,16 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
   const col = params.columnMeta
   const temporalType: TemporalColumnType = getTemporalColumnType(col.dataType)
 
+  // Read callbacks from AG Grid context
+  const context = params.context as GridEditContext | undefined
+  const callbacks = {
+    tabId: context?.tabId ?? '',
+    updateCellValue: context?.updateCellValue ?? (() => {}),
+    syncCellValue: context?.syncCellValue ?? (() => {}),
+  }
+
   // Shared cell editor logic (value, null, store sync, imperative handle)
-  const editor = useCellEditor(params, ref)
+  const editor = useCellEditor(params, ref, callbacks)
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -188,21 +201,25 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
   const IconComponent = temporalType === 'TIME' ? Clock : CalendarBlank
 
   return (
-    <div ref={containerRef} className={styles.cellEditorWrapper} data-testid="datetime-cell-editor">
+    <div
+      ref={containerRef}
+      className={sharedStyles.cellEditorWrapper}
+      data-testid="datetime-cell-editor"
+    >
       <div className="td-cell-editor-shell">
         <input
           ref={editor.inputRef}
           className="td-cell-editor-input"
           value={displayValue}
           onChange={(e) => editor.handleChange(e.target.value)}
-        onBlur={(e) => handleInputBlur(e.relatedTarget)}
+          onBlur={(e) => handleInputBlur(e.relatedTarget)}
           onKeyDown={handleKeyDown}
         />
         {params.isNullable && (
           <button
             type="button"
             className={`td-null-toggle ${editor.isNull ? 'td-null-active' : ''}`}
-          onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleToggleNull}
             tabIndex={-1}
           >

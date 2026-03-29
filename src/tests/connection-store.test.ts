@@ -7,6 +7,10 @@ vi.mock('../stores/toast-store', () => ({
 }))
 
 import { useConnectionStore, _resetListenersSetup } from '../stores/connection-store'
+import { useWorkspaceStore } from '../stores/workspace-store'
+import { useQueryStore } from '../stores/query-store'
+import { useTableDataStore } from '../stores/table-data-store'
+import { showErrorToast } from '../stores/toast-store'
 import type { SavedConnection, ConnectionGroup } from '../types/connection'
 
 // Mock the Tauri event system
@@ -611,5 +615,238 @@ describe('useConnectionStore — setActiveDatabase', () => {
     expect(useConnectionStore.getState().activeConnections['sess-1'].sessionDatabase).toBe(
       mockSavedConnection.defaultDatabase
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// closeConnection — aborts when save fails
+// ---------------------------------------------------------------------------
+
+describe('useConnectionStore — closeConnection aborts on failed save', () => {
+  it('does not close connection when query-editor saveCurrentRow fails', async () => {
+    const closeConnectionSpy = vi.fn()
+    mockIPC((cmd) => {
+      if (cmd === 'close_connection') {
+        closeConnectionSpy()
+        return null
+      }
+      return null
+    })
+
+    // Set up active connection
+    useConnectionStore.setState({
+      activeConnections: {
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+      },
+      activeTabId: 'sess-1',
+    })
+
+    // Set up workspace tab
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'sess-1': [{ id: 'qt-1', type: 'query-editor', label: 'Query 1', connectionId: 'sess-1' }],
+      },
+    })
+
+    // Set up query store with pending edits that will fail to save
+    useQueryStore.setState({
+      tabs: {
+        'qt-1': {
+          ...useQueryStore.getState().getTabState('qt-1'),
+          editMode: 'testdb.users',
+          editConnectionId: 'sess-1',
+          editingRowIndex: 0,
+          editState: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1, name: 'Alice' },
+            currentValues: { id: 1, name: 'Changed' },
+            modifiedColumns: new Set(['name']),
+            isNewRow: false,
+          },
+          editTableMetadata: {
+            'testdb.users': {
+              database: 'testdb',
+              table: 'users',
+              columns: [],
+              primaryKey: null, // No PK → save will fail
+            },
+          },
+        },
+      },
+    })
+
+    await useConnectionStore.getState().closeConnection('sess-1')
+
+    // Connection should NOT have been closed
+    expect(closeConnectionSpy).not.toHaveBeenCalled()
+    expect(useConnectionStore.getState().activeConnections['sess-1']).toBeDefined()
+    expect(showErrorToast).toHaveBeenCalledWith(
+      'Connection not closed',
+      expect.stringContaining('Could not save pending edits')
+    )
+  })
+
+  it('does not close connection when table-data saveCurrentRow fails', async () => {
+    const closeConnectionSpy = vi.fn()
+    mockIPC((cmd) => {
+      if (cmd === 'close_connection') {
+        closeConnectionSpy()
+        return null
+      }
+      return null
+    })
+
+    // Set up active connection
+    useConnectionStore.setState({
+      activeConnections: {
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+      },
+      activeTabId: 'sess-1',
+    })
+
+    // Set up workspace tab (table-data type)
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'sess-1': [
+          {
+            id: 'td-1',
+            type: 'table-data' as const,
+            label: 'users',
+            connectionId: 'sess-1',
+            databaseName: 'testdb',
+            objectName: 'users',
+            objectType: 'table' as const,
+          },
+        ],
+      },
+    })
+
+    // Set up table data store with pending edits — no PK so save will fail
+    useTableDataStore.setState({
+      tabs: {
+        'td-1': {
+          connectionId: 'sess-1',
+          database: 'testdb',
+          table: 'users',
+          columns: [],
+          rows: [],
+          totalRows: 0,
+          currentPage: 1,
+          totalPages: 1,
+          pageSize: 100,
+          executionTimeMs: 0,
+          primaryKey: null, // No PK → save will fail
+          viewMode: 'grid',
+          selectedRowKey: null,
+          isExportDialogOpen: false,
+          filterModel: {},
+          sort: null,
+          isLoading: false,
+          error: null,
+          pendingNavigationAction: null,
+          editState: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1, name: 'Alice' },
+            currentValues: { id: 1, name: 'Changed' },
+            modifiedColumns: new Set(['name']),
+            isNewRow: false,
+          },
+          saveError: null,
+        },
+      },
+    })
+
+    await useConnectionStore.getState().closeConnection('sess-1')
+
+    // Connection should NOT have been closed
+    expect(closeConnectionSpy).not.toHaveBeenCalled()
+    expect(useConnectionStore.getState().activeConnections['sess-1']).toBeDefined()
+    expect(showErrorToast).toHaveBeenCalledWith(
+      'Connection not closed',
+      expect.stringContaining('Could not save pending edits')
+    )
+  })
+
+  it('proceeds with close when saveCurrentRow succeeds', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'close_connection') return null
+      if (cmd === 'update_table_row') return null
+      if (cmd === 'update_result_cell') return null
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    // Set up active connection
+    useConnectionStore.setState({
+      activeConnections: {
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+      },
+      activeTabId: 'sess-1',
+    })
+
+    // Set up workspace tab
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'sess-1': [{ id: 'qt-1', type: 'query-editor', label: 'Query 1', connectionId: 'sess-1' }],
+      },
+    })
+
+    // Set up query store with pending edits that will succeed
+    useQueryStore.setState({
+      tabs: {
+        'qt-1': {
+          ...useQueryStore.getState().getTabState('qt-1'),
+          editMode: 'testdb.users',
+          editConnectionId: 'sess-1',
+          editingRowIndex: 0,
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          rows: [[1, 'Alice']],
+          currentPage: 1,
+          pageSize: 1000,
+          editState: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1, name: 'Alice' },
+            currentValues: { id: 1, name: 'Updated' },
+            modifiedColumns: new Set(['name']),
+            isNewRow: false,
+          },
+          editTableMetadata: {
+            'testdb.users': {
+              database: 'testdb',
+              table: 'users',
+              columns: [],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    await useConnectionStore.getState().closeConnection('sess-1')
+
+    // Connection should have been closed
+    expect(useConnectionStore.getState().activeConnections['sess-1']).toBeUndefined()
   })
 })

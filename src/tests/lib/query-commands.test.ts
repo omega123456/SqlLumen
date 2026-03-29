@@ -9,6 +9,8 @@ import {
   writeFile,
   sortResults,
   selectDatabase,
+  analyzeQueryForEdit,
+  updateResultCell,
 } from '../../lib/query-commands'
 
 const mockExecuteQueryFn = vi.fn(() => ({
@@ -35,6 +37,29 @@ const mockReadFileFn = vi.fn(() => 'SELECT 1;')
 const mockWriteFileFn = vi.fn(() => null)
 const mockSortResultsFn = vi.fn(() => ({ rows: [[1], [2], [3]], page: 1, totalPages: 1 }))
 const mockSelectDatabaseFn = vi.fn(() => null)
+const mockAnalyzeQueryForEditFn = vi.fn(() => [
+  {
+    database: 'mydb',
+    table: 'users',
+    columns: [
+      {
+        name: 'id',
+        dataType: 'INT',
+        isBooleanAlias: false,
+        enumValues: null,
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: true,
+      },
+    ],
+    primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+  },
+])
+const mockUpdateResultCellFn = vi.fn(() => null)
 
 beforeEach(() => {
   mockExecuteQueryFn.mockClear()
@@ -45,6 +70,8 @@ beforeEach(() => {
   mockWriteFileFn.mockClear()
   mockSortResultsFn.mockClear()
   mockSelectDatabaseFn.mockClear()
+  mockAnalyzeQueryForEditFn.mockClear()
+  mockUpdateResultCellFn.mockClear()
 
   mockIPC((cmd) => {
     switch (cmd) {
@@ -64,6 +91,10 @@ beforeEach(() => {
         return mockSortResultsFn()
       case 'select_database':
         return mockSelectDatabaseFn()
+      case 'analyze_query_for_edit':
+        return mockAnalyzeQueryForEditFn()
+      case 'update_result_cell':
+        return mockUpdateResultCellFn()
       default:
         return null
     }
@@ -116,5 +147,19 @@ describe('query-commands', () => {
   it('selectDatabase invokes select_database command', async () => {
     await selectDatabase('conn-1', 'analytics_db')
     expect(mockSelectDatabaseFn).toHaveBeenCalled()
+  })
+
+  it('analyzeQueryForEdit invokes analyze_query_for_edit command', async () => {
+    const result = await analyzeQueryForEdit('conn-1', 'SELECT * FROM users')
+    expect(result).toHaveLength(1)
+    expect(result[0].database).toBe('mydb')
+    expect(result[0].table).toBe('users')
+    expect(result[0].primaryKey).toBeDefined()
+    expect(mockAnalyzeQueryForEditFn).toHaveBeenCalled()
+  })
+
+  it('updateResultCell invokes update_result_cell command', async () => {
+    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'updated value' })
+    expect(mockUpdateResultCellFn).toHaveBeenCalled()
   })
 })

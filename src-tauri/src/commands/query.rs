@@ -6,12 +6,14 @@
 
 #[cfg(not(coverage))]
 use crate::mysql::query_executor::{
-    evict_results_impl, execute_query_impl, fetch_result_page_impl, fetch_schema_metadata_impl,
-    read_file_impl, sort_results_impl, write_file_impl, ExecuteQueryResult, FetchPageResult,
-    SchemaMetadata,
+    analyze_query_for_edit_impl, evict_results_impl, execute_query_impl, fetch_result_page_impl,
+    fetch_schema_metadata_impl, read_file_impl, sort_results_impl, update_result_cell_impl,
+    write_file_impl, ExecuteQueryResult, FetchPageResult, QueryTableEditInfo, SchemaMetadata,
 };
 #[cfg(not(coverage))]
 use crate::state::AppState;
+#[cfg(not(coverage))]
+use std::collections::HashMap;
 
 // ── execute_query ─────────────────────────────────────────────────────────────
 
@@ -98,4 +100,30 @@ pub fn sort_results(
     state: tauri::State<'_, AppState>,
 ) -> Result<FetchPageResult, String> {
     sort_results_impl(&state, &connection_id, &tab_id, &column_name, &direction)
+}
+
+// ── analyze_query_for_edit ────────────────────────────────────────────────────
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn analyze_query_for_edit(
+    connection_id: String,
+    sql: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<QueryTableEditInfo>, String> {
+    analyze_query_for_edit_impl(&state, &connection_id, &sql).await
+}
+
+// ── update_result_cell ────────────────────────────────────────────────────────
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub fn update_result_cell(
+    connection_id: String,
+    tab_id: String,
+    row_index: usize,
+    updates: HashMap<usize, serde_json::Value>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    update_result_cell_impl(&state, &connection_id, &tab_id, row_index, updates)
 }

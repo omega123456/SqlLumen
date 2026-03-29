@@ -64,6 +64,7 @@ interface EditorHandle {
 }
 
 function makeMockParams(overrides: Record<string, unknown> = {}) {
+  const store = useTableDataStore.getState()
   return {
     value: '2023-11-24',
     stopEditing: vi.fn(),
@@ -71,7 +72,11 @@ function makeMockParams(overrides: Record<string, unknown> = {}) {
     node: { data: { id: 1 } },
     column: { getColId: () => 'created_at' },
     colDef: { field: 'created_at' },
-    context: { tabId: 'tab-1' },
+    context: {
+      tabId: 'tab-1',
+      updateCellValue: store.updateCellValue,
+      syncCellValue: store.syncCellValue,
+    },
     isNullable: true,
     columnMeta: makeColumnMeta('created_at', 'DATETIME', { isNullable: true }),
     ...overrides,

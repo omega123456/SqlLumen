@@ -289,7 +289,7 @@ export interface TableDataStore {
     value: unknown
   ) => void
   clearEditStateIfUnmodified: (tabId: string, rowKey: Record<string, unknown>) => void
-  saveCurrentRow: (tabId: string) => Promise<void>
+  saveCurrentRow: (tabId: string) => Promise<boolean>
   discardCurrentRow: (tabId: string) => void
   insertNewRow: (tabId: string) => void
   deleteRow: (
@@ -515,14 +515,14 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     // ------ saveCurrentRow ------
 
-    saveCurrentRow: async (tabId) => {
+    saveCurrentRow: async (tabId): Promise<boolean> => {
       const tab = get().tabs[tabId]
-      if (!tab?.editState) return
+      if (!tab?.editState) return true
 
       // Nothing modified — just clear editState
       if (tab.editState.modifiedColumns.size === 0) {
         patchTab(tabId, { editState: null, saveError: null })
-        return
+        return true
       }
 
       const { editState, columns, primaryKey } = tab
@@ -542,7 +542,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             pkInfo: primaryKey,
           })
 
-          if (!get().tabs[tabId]) return
+          if (!get().tabs[tabId]) return true
 
           const newRows = applyInsertedRow(tab.rows, columns, returnedData)
 
@@ -552,12 +552,14 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             editState: null,
             saveError: null,
           })
+          return true
         } catch (err) {
-          if (!get().tabs[tabId]) return
+          if (!get().tabs[tabId]) return false
 
           patchTab(tabId, {
             saveError: err instanceof Error ? err.message : String(err),
           })
+          return false
         }
       } else {
         // ── UPDATE path ──
@@ -578,7 +580,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             updatedValues,
           })
 
-          if (!get().tabs[tabId]) return
+          if (!get().tabs[tabId]) return true
 
           const newRows = applyUpdatedRow(tab.rows, columns, editState)
           patchTab(tabId, {
@@ -586,12 +588,14 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             editState: null,
             saveError: null,
           })
+          return true
         } catch (err) {
-          if (!get().tabs[tabId]) return
+          if (!get().tabs[tabId]) return false
 
           patchTab(tabId, {
             saveError: err instanceof Error ? err.message : String(err),
           })
+          return false
         }
       }
     },

@@ -528,7 +528,7 @@ describe('useQueryStore — sortResults', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
-    expect(consoleSpy).toHaveBeenCalledWith('sortResults failed:', expect.any(Error))
+    expect(consoleSpy).toHaveBeenCalledWith('[query-store] sortResults failed:', expect.any(Error))
     consoleSpy.mockRestore()
   })
 

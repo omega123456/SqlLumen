@@ -202,6 +202,26 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       useTableDataStore.getState().cleanupTab(tabId)
     }
 
+    // Handle query-editor tabs: check for unsaved result edits before closing
+    if (closingTab.type === 'query-editor') {
+      const queryTabState = useQueryStore.getState().tabs[tabId]
+      if (queryTabState?.editState && queryTabState.editState.modifiedColumns.size > 0) {
+        // Defer close — mark tab as pending and prompt user
+        set((s) => ({
+          tabsByConnection: {
+            ...s.tabsByConnection,
+            [connectionId]: (s.tabsByConnection[connectionId] || []).map((t) =>
+              t.id === tabId ? { ...t, pendingClose: true } : t
+            ),
+          },
+        }))
+        useQueryStore.getState().requestNavigationAction(tabId, () => {
+          get().forceCloseTab(connectionId, tabId)
+        })
+        return
+      }
+    }
+
     const remaining = tabs.filter((t) => t.id !== tabId)
     let newActive = state.activeTabByConnection[connectionId]
 

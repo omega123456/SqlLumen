@@ -1,0 +1,115 @@
+/* UnsavedChangesDialog — confirmation dialog styles */
+
+.root {
+  margin: -24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.header {
+  padding: 20px 24px 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--type-size-xl);
+  font-weight: 700;
+  font-family: var(--font-headline);
+  color: var(--on-surface);
+  letter-spacing: -0.01em;
+}
+
+.body {
+  padding: 16px 24px;
+}
+
+.message {
+  margin: 0;
+  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  line-height: 1.5;
+}
+
+.error {
+  margin-top: 12px;
+  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  color: var(--error);
+  padding: 8px 12px;
+  background: rgba(var(--error-rgb), 0.08);
+  border-radius: 6px;
+  border: 1px solid rgba(var(--error-rgb), 0.2);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+}
+
+.cancelButton {
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s ease;
+}
+
+.cancelButton:hover {
+  color: var(--on-surface);
+}
+
+.discardButton {
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--error);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(var(--error-rgb), 0.2);
+  border-radius: var(--radius-sm);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.discardButton:hover {
+  background: rgba(var(--error-rgb), 0.06);
+  border-color: rgba(var(--error-rgb), 0.4);
+}
+
+.saveButton {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-container));
+  color: var(--on-primary-container);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.2);
+  transition:
+    filter 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.saveButton:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.saveButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

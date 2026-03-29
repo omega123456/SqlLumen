@@ -159,6 +159,15 @@ describe('StatusBar', () => {
       selectedRowIndex: null,
       exportDialogOpen: false,
       lastExecutedSql: null,
+      editMode: null,
+      editTableMetadata: {},
+      editState: null,
+      isAnalyzingQuery: false,
+      editableColumnMap: new Map(),
+      pendingNavigationAction: null,
+      saveError: null,
+      editConnectionId: null,
+      editingRowIndex: null,
     }
 
     function setupQueryEditorTab() {

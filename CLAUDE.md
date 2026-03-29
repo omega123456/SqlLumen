@@ -177,6 +177,13 @@ Theme is applied by setting `data-theme="light|dark"` on `document.documentEleme
 - **Global:** Zustand stores (`src/stores/`)
 - **Layout:** `react-resizable-panels` v4 — use `Group`/`Panel`/`Separator` components; sizes as strings (`"20%"`); panel refs via `usePanelRef()`
 
+### Error handling and logging
+
+**Silent error handling must always be logged** so failures are visible in devtools (frontend) and log files / stderr (Rust). “Silent” means the user sees no feedback and the error is not rethrown — e.g. empty `catch`, `.catch(() => {})`, `let _ = result`, `if let Err(_) = …` with no follow-up, or `Result`/`Option` dropped after an error branch.
+
+- **Rust:** Use `tracing` at an appropriate level (`warn!`, `error!`, etc.) and include context (operation, ids, `?` on errors). Do not swallow errors without a log line unless the user explicitly asked for that behavior in the task.
+- **TypeScript / React:** Use `console.error` or `console.warn` with a short, stable prefix (e.g. `[module-name]`) so grepping logs is easy. Prefer the same pattern when IPC or async work fails but the UI intentionally continues.
+
 ## Testing Conventions
 
 ### New code requires tests

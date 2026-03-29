@@ -13,11 +13,13 @@
  * The hook does NOT handle Escape key events directly — each consumer
  * implements its own key handling (e.g., DateTimeCellEditor has two-stage
  * Escape: close picker first, then cancel edit).
+ *
+ * The hook is decoupled from any specific store — it receives its
+ * update callbacks as parameters (typically sourced from AG Grid context).
  */
 
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import type { ICellEditorParams } from 'ag-grid-community'
-import { useTableDataStore } from '../../stores/table-data-store'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
 import type { TableDataColumnMeta } from '../../types/schema'
 
@@ -28,6 +30,18 @@ import type { TableDataColumnMeta } from '../../types/schema'
 export interface CellEditorParams extends ICellEditorParams {
   isNullable: boolean
   columnMeta: TableDataColumnMeta
+}
+
+/** Callbacks that the hook needs — typically read from AG Grid context. */
+export interface CellEditorCallbacks {
+  tabId: string
+  updateCellValue: (tabId: string, column: string, value: unknown) => void
+  syncCellValue: (
+    tabId: string,
+    rowData: Record<string, unknown> | undefined,
+    column: string,
+    value: unknown
+  ) => void
 }
 
 export interface CellEditorResult {
@@ -59,7 +73,8 @@ export interface CellEditorResult {
 
 export function useCellEditor(
   params: CellEditorParams,
-  ref: React.ForwardedRef<unknown>
+  ref: React.ForwardedRef<unknown>,
+  callbacks: CellEditorCallbacks
 ): CellEditorResult {
   const col = params.columnMeta
   const temporalType = getTemporalColumnType(col.dataType)
@@ -72,10 +87,8 @@ export function useCellEditor(
 
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const updateCellValue = useTableDataStore((state) => state.updateCellValue)
-  const syncCellValue = useTableDataStore((state) => state.syncCellValue)
+  const { updateCellValue, syncCellValue, tabId } = callbacks
   const fieldName = params.colDef?.field
-  const tabId = params.context?.tabId as string | undefined
 
   // Expose AG Grid cell editor interface
   useImperativeHandle(ref, () => ({

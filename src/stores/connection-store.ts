@@ -16,6 +16,8 @@ import type {
 } from '../types/connection'
 import { useSchemaStore } from './schema-store'
 import { useWorkspaceStore } from './workspace-store'
+import { useQueryStore } from './query-store'
+import { useTableDataStore } from './table-data-store'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { invalidateCache } from '../components/query-editor/schema-metadata-cache'
 
@@ -110,6 +112,39 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
 
   closeConnection: async (id: string) => {
     try {
+      // Auto-save any pending edits in query-editor tabs before closing
+      const workspaceTabs = useWorkspaceStore.getState().tabsByConnection[id] ?? []
+      for (const tab of workspaceTabs) {
+        if (tab.type === 'query-editor') {
+          const queryTabState = useQueryStore.getState().tabs[tab.id]
+          if (queryTabState?.editState && queryTabState.editState.modifiedColumns.size > 0) {
+            const saved = await useQueryStore.getState().saveCurrentRow(tab.id)
+            if (!saved) {
+              showErrorToast(
+                'Connection not closed',
+                'Could not save pending edits. Fix or discard changes before closing.'
+              )
+              return
+            }
+          }
+        } else if (tab.type === 'table-data') {
+          const tableDataTabState = useTableDataStore.getState().tabs[tab.id]
+          if (
+            tableDataTabState?.editState &&
+            tableDataTabState.editState.modifiedColumns.size > 0
+          ) {
+            const saved = await useTableDataStore.getState().saveCurrentRow(tab.id)
+            if (!saved) {
+              showErrorToast(
+                'Connection not closed',
+                'Could not save pending edits. Fix or discard changes before closing.'
+              )
+              return
+            }
+          }
+        }
+      }
+
       await closeConnectionIPC(id)
 
       // Clear dependent store state for this connection
@@ -284,8 +319,11 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         get().updateConnectionStatus(event.payload)
       })
       return unlisten
-    } catch {
-      // Silently ignore — listen is unavailable outside Tauri runtime (browser/test)
+    } catch (err) {
+      console.warn(
+        '[connection-store] connection-status-changed listen unavailable (non-Tauri or tests):',
+        err
+      )
       listenersSetup = false
       return undefined
     }

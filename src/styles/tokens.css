@@ -385,6 +385,10 @@
   --td-readonly-badge-bg: var(--surface-container-highest);
   --td-readonly-badge-text: var(--on-surface-variant);
 
+  /* ---------- Query Result Grid Editing ---------- */
+  --color-cell-readonly-bg: rgba(255, 255, 255, 0.03);
+  --color-cell-readonly-opacity: 0.65;
+
   /* ---------- Autocomplete doc panel tokens ---------- */
   --autocomplete-bg: var(--surface-container-high);
   --autocomplete-border: rgba(var(--outline-variant-rgb), 0.2);
@@ -650,4 +654,8 @@
   --autocomplete-bg: color-mix(in srgb, var(--surface-container-low) 95%, transparent);
   --autocomplete-border: rgba(var(--outline-variant-rgb), 0.2);
   --autocomplete-backdrop: blur(20px);
+
+  /* Query Result Grid Editing — light */
+  --color-cell-readonly-bg: rgba(0, 0, 0, 0.03);
+  --color-cell-readonly-opacity: 0.65;
 }

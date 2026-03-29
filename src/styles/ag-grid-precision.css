@@ -378,3 +378,67 @@
   color: var(--primary);
   background: rgba(var(--primary-rgb), 0.1);
 }
+
+/* ==========================================================================
+   Query Result Grid Editing
+   ========================================================================== */
+
+/* Read-only columns in edit mode */
+.ag-theme-precision .ag-cell.col-readonly {
+  background-color: var(--color-cell-readonly-bg);
+  opacity: var(--color-cell-readonly-opacity);
+  cursor: default;
+}
+
+.ag-theme-precision .ag-header-cell.col-readonly {
+  opacity: var(--color-cell-readonly-opacity);
+}
+
+/* Editable columns */
+.ag-theme-precision .ag-cell.col-editable {
+  cursor: text;
+}
+
+/* Modified cell indicator — reuses td-modified-cell theming patterns */
+.ag-theme-precision .ag-cell.cell-modified {
+  position: relative;
+}
+
+/* Light: dot + ring */
+[data-theme='light'] .ag-theme-precision .ag-cell.cell-modified::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  background: var(--td-modified-cell-indicator);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--surface-container-lowest);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Dark: top-left corner tick */
+[data-theme='dark'] .ag-theme-precision .ag-cell.cell-modified::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--td-modified-cell-indicator);
+  border-left: 1px solid var(--td-modified-cell-indicator);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Editing row highlight (query result grid) */
+.ag-theme-precision .ag-row.result-editing-row {
+  background-color: var(--td-editing-row-bg) !important;
+}
+
+[data-theme='dark'] .ag-theme-precision .ag-row.result-editing-row {
+  border-left: 2px solid var(--primary) !important;
+}

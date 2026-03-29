@@ -99,7 +99,7 @@ import type { Mock } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
-import styles from '../../../components/table-data/TableDataGrid.module.css'
+import sharedStyles from '../../../components/shared/grid-cell-editors.module.css'
 import {
   TableDataGrid,
   buildColumnDefs,
@@ -498,7 +498,11 @@ describe('TableDataGrid', () => {
           enumValues: ['active', 'disabled'],
         }}
         colDef={{ field: 'status' }}
-        context={{ tabId: 'tab-1' }}
+        context={{
+          tabId: 'tab-1',
+          updateCellValue: useTableDataStore.getState().updateCellValue,
+          syncCellValue: useTableDataStore.getState().syncCellValue,
+        }}
       />
     )
 
@@ -848,7 +852,11 @@ describe('TableDataGrid', () => {
         isNullable={true}
         columnMeta={testColumns[1]}
         colDef={{ field: 'name' }}
-        context={{ tabId: 'tab-1' }}
+        context={{
+          tabId: 'tab-1',
+          updateCellValue: useTableDataStore.getState().updateCellValue,
+          syncCellValue: useTableDataStore.getState().syncCellValue,
+        }}
       />
     )
     const input = editor.getByRole('textbox') as HTMLInputElement
@@ -972,7 +980,11 @@ describe('TableDataGrid', () => {
         isNullable={true}
         columnMeta={testColumns[1]}
         colDef={{ field: 'name' }}
-        context={{ tabId: 'tab-1' }}
+        context={{
+          tabId: 'tab-1',
+          updateCellValue: useTableDataStore.getState().updateCellValue,
+          syncCellValue: useTableDataStore.getState().syncCellValue,
+        }}
       />
     )
     const input = editor.getByRole('textbox') as HTMLInputElement
@@ -1468,7 +1480,7 @@ describe('TableDataGrid', () => {
   })
 
   it('cell editor wrapper allows editor contents to shrink within the cell', () => {
-    expect(styles.cellEditorWrapper).toBeDefined()
+    expect(sharedStyles.cellEditorWrapper).toBeDefined()
   })
 
   it('starts editing on cell click when no cell is currently active', () => {

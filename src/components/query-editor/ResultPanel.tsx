@@ -2,6 +2,13 @@
  * Result display panel — shows query results in different states:
  * idle (placeholder), running (spinner), success (toolbar + grid/form/text),
  * or error (toolbar + error message).
+ *
+ * Wires edit mode state from the query store to ResultGridView and
+ * ResultFormView, and renders the UnsavedChangesDialog when pending
+ * edit navigation is deferred.
+ *
+ * When switching to text view while edits are pending, auto-saves the
+ * current row before completing the view mode switch.
  */
 
 import { useCallback } from 'react'
@@ -11,14 +18,17 @@ import { ResultToolbar } from './ResultToolbar'
 import { ResultGridView } from './ResultGridView'
 import { ResultFormView } from './ResultFormView'
 import { ResultTextView } from './ResultTextView'
+import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import ExportDialog from '../dialogs/ExportDialog'
-import type { ColumnMeta } from '../../types/schema'
+import type { ColumnMeta, TableDataColumnMeta } from '../../types/schema'
 import styles from './ResultPanel.module.css'
 
 interface ResultPanelProps {
   tabId: string
   connectionId: string
 }
+
+const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
 
 export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const tabState = useQueryStore((state) => state.tabs[tabId])
@@ -38,11 +48,24 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const totalPages = tabState?.totalPages ?? 1
   const pageSize = tabState?.pageSize ?? 1000
 
+  // Edit mode state
+  const editMode = tabState?.editMode ?? null
+  const editableColumnMap = tabState?.editableColumnMap ?? new Map<number, boolean>()
+  const editState = tabState?.editState ?? null
+  const editingRowIndex = tabState?.editingRowIndex ?? null
+  const pendingNavigationAction = tabState?.pendingNavigationAction ?? null
+  const saveError = tabState?.saveError ?? null
+  const editTableColumns =
+    editMode && tabState?.editTableMetadata?.[editMode]?.columns
+      ? tabState.editTableMetadata[editMode].columns
+      : EMPTY_TABLE_COLUMNS
+
+  // Wrap sort handler with navigation action guard (handles pending edits)
   const handleSortChanged = useCallback(
     (column: string, direction: 'asc' | 'desc' | null) => {
-      // All sort state transitions (reset selection, update sort column/direction,
-      // IPC call, row replacement) are handled inside the store action.
-      store.sortResults(connectionId, tabId, column, direction)
+      store.requestNavigationAction(tabId, () => {
+        store.sortResults(connectionId, tabId, column, direction)
+      })
     },
     [store, connectionId, tabId]
   )
@@ -85,6 +108,71 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
     [store, connectionId, tabId, selectedRowIndex, totalRows, currentPage, totalPages, pageSize]
   )
 
+  // --- Edit mode callbacks ---
+
+  const handleStartEditing = useCallback(
+    (rowIndex: number) => {
+      store.startEditingRow(tabId, rowIndex)
+    },
+    [store, tabId]
+  )
+
+  const handleUpdateCellValue = useCallback(
+    (columnName: string, value: unknown) => {
+      store.updateCellValue(tabId, columnName, value)
+    },
+    [store, tabId]
+  )
+
+  const handleSyncCellValue = useCallback(
+    (columnName: string, value: unknown) => {
+      store.syncCellValue(tabId, columnName, value)
+    },
+    [store, tabId]
+  )
+
+  /**
+   * Auto-save the current editing row. Returns true if save succeeded
+   * (or nothing to save), false if save failed.
+   */
+  const handleAutoSave = useCallback(async (): Promise<boolean> => {
+    return await store.saveCurrentRow(tabId)
+  }, [store, tabId])
+
+  const handleRequestNavigationAction = useCallback(
+    (action: () => void) => {
+      store.requestNavigationAction(tabId, action)
+    },
+    [store, tabId]
+  )
+
+  // --- UnsavedChangesDialog handlers ---
+
+  const handleDialogSave = useCallback(async () => {
+    await store.confirmNavigation(tabId, true)
+  }, [store, tabId])
+
+  const handleDialogDiscard = useCallback(() => {
+    store.confirmNavigation(tabId, false)
+  }, [store, tabId])
+
+  const handleDialogCancel = useCallback(() => {
+    store.cancelNavigation(tabId)
+  }, [store, tabId])
+
+  /**
+   * Save the current editing row (form view). Returns true on success.
+   */
+  const handleFormSave = useCallback(async (): Promise<boolean> => {
+    await store.saveCurrentRow(tabId)
+    const tab = useQueryStore.getState().tabs[tabId]
+    return !tab?.saveError
+  }, [store, tabId])
+
+  const handleFormDiscard = useCallback(() => {
+    store.discardCurrentRow(tabId)
+  }, [store, tabId])
+
   return (
     <div className={styles.container} data-testid="result-panel">
       {status === 'idle' && (
@@ -117,6 +205,17 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
                   selectedRowIndex={selectedRowIndex}
                   currentPage={currentPage}
                   pageSize={pageSize}
+                  tabId={tabId}
+                  editMode={editMode}
+                  editableColumnMap={editableColumnMap}
+                  editState={editState}
+                  editingRowIndex={editingRowIndex}
+                  editTableColumns={editTableColumns}
+                  onStartEditing={handleStartEditing}
+                  onUpdateCellValue={handleUpdateCellValue}
+                  onSyncCellValue={handleSyncCellValue}
+                  onAutoSave={handleAutoSave}
+                  onRequestNavigationAction={handleRequestNavigationAction}
                 />
               )}
               {viewMode === 'form' && (
@@ -129,6 +228,15 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
                   totalPages={totalPages}
                   onNavigate={handleFormNavigate}
                   tabId={tabId}
+                  editMode={editMode}
+                  editableColumnMap={editableColumnMap}
+                  editState={editState}
+                  editingRowIndex={editingRowIndex}
+                  editTableColumns={editTableColumns}
+                  onStartEdit={handleStartEditing}
+                  onUpdateCell={handleUpdateCellValue}
+                  onSaveRow={handleFormSave}
+                  onDiscardRow={handleFormDiscard}
                 />
               )}
               {viewMode === 'text' && <ResultTextView columns={columns} rows={rows} />}
@@ -162,6 +270,16 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
           columnCount={columns.length}
           totalRows={totalRows}
           onClose={() => store.closeExportDialog(tabId)}
+        />
+      )}
+
+      {pendingNavigationAction !== null && (
+        <UnsavedChangesDialog
+          tabId={tabId}
+          onSave={handleDialogSave}
+          onDiscard={handleDialogDiscard}
+          onCancel={handleDialogCancel}
+          error={saveError}
         />
       )}
     </div>

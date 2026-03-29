@@ -1,6 +1,9 @@
 /**
  * Toolbar above the Monaco editor with Execute, Execute All, Save, Open,
  * History (placeholder), and Format actions.
+ *
+ * Execute actions are guarded by the query store's requestNavigationAction
+ * so pending row edits trigger the unsaved changes dialog before executing.
  */
 
 import { useState } from 'react'
@@ -42,6 +45,7 @@ export function EditorToolbar({
   const setContent = useQueryStore((state) => state.setContent)
   const setFilePath = useQueryStore((state) => state.setFilePath)
   const executeQuery = useQueryStore((state) => state.executeQuery)
+  const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
 
   const isRunning = status === 'running'
@@ -54,24 +58,28 @@ export function EditorToolbar({
     const stmt = findStatementAtCursor(statements, offset)
     const sql = stmt?.sql ?? content.trim()
     if (sql) {
-      await executeQuery(connectionId, tabId, sql)
+      requestNavigationAction(tabId, () => {
+        executeQuery(connectionId, tabId, sql)
+      })
     }
   }
 
   // Execute all statements in the editor sequentially
   async function handleExecuteAll() {
     if (isRunning || !content.trim()) return
-    const statements = splitStatements(content)
-    for (const stmt of statements) {
-      if (!stmt.sql.trim()) continue
-      // Skip DELIMITER directives themselves
-      if (/^DELIMITER\s/i.test(stmt.sql.trim())) continue
-      await executeQuery(connectionId, tabId, stmt.sql)
-      // Check if tab was closed mid-execution or last execution errored
-      const tabState = useQueryStore.getState().tabs[tabId]
-      if (!tabState) break // Tab was closed
-      if (tabState.status === 'error') break
-    }
+    requestNavigationAction(tabId, async () => {
+      const statements = splitStatements(content)
+      for (const stmt of statements) {
+        if (!stmt.sql.trim()) continue
+        // Skip DELIMITER directives themselves
+        if (/^DELIMITER\s/i.test(stmt.sql.trim())) continue
+        await executeQuery(connectionId, tabId, stmt.sql)
+        // Check if tab was closed mid-execution or last execution errored
+        const tabState = useQueryStore.getState().tabs[tabId]
+        if (!tabState) break // Tab was closed
+        if (tabState.status === 'error') break
+      }
+    })
   }
 
   // Save editor content to file
@@ -86,8 +94,8 @@ export function EditorToolbar({
         await writeFile(path, content)
         setFilePath(tabId, path)
       }
-    } catch {
-      // User cancelled or error — no-op
+    } catch (err) {
+      console.warn('[editor-toolbar] save or save dialog failed:', err)
     } finally {
       setIsSaving(false)
     }
@@ -113,8 +121,8 @@ export function EditorToolbar({
           useQueryStore.getState().setFilePath(newTabId, path)
         }
       }
-    } catch {
-      // User cancelled or error — no-op
+    } catch (err) {
+      console.warn('[editor-toolbar] open file or open dialog failed:', err)
     } finally {
       setIsOpening(false)
     }
@@ -126,8 +134,8 @@ export function EditorToolbar({
     try {
       const formatted = formatSQL(content, { language: 'mysql', tabWidth: 2 })
       setContent(tabId, formatted)
-    } catch {
-      // Format error — no-op, keep original content
+    } catch (err) {
+      console.warn('[editor-toolbar] format SQL failed:', err)
     }
   }
 

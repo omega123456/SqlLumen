@@ -352,3 +352,18 @@ export interface TableDataTabState {
   // Unsaved changes dialog state
   pendingNavigationAction: (() => void) | null
 }
+
+// ---------------------------------------------------------------------------
+// Query Result Editing types
+// ---------------------------------------------------------------------------
+
+/** Metadata for a table detected in a SQL query, used for inline editing. */
+export interface QueryTableEditInfo {
+  database: string
+  table: string
+  columns: TableDataColumnMeta[]
+  primaryKey: PrimaryKeyInfo | null
+}
+
+/** Map of result-set column index → whether the column is editable. */
+export type QueryEditableColumnMap = Map<number, boolean>

@@ -4,3 +4,8 @@
   width: 100%;
   overflow: hidden;
 }
+
+/* Editing row highlight — applied via getRowClass (matches table-data pattern) */
+.editingRow {
+  background-color: var(--td-editing-row-bg) !important;
+}

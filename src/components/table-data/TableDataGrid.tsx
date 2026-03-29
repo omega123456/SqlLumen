@@ -5,15 +5,7 @@
  * Handles cell editing, NULL display, modified cell indicators, and row management.
  */
 
-import {
-  useCallback,
-  useMemo,
-  useState,
-  useRef,
-  useImperativeHandle,
-  forwardRef,
-  useEffect,
-} from 'react'
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import type {
   CellClickedEvent,
@@ -22,8 +14,6 @@ import type {
   RowClickedEvent,
   CellEditingStartedEvent,
   CellEditingStoppedEvent,
-  ICellEditorParams,
-  ICellRendererParams,
   FilterChangedEvent,
   GetRowIdParams,
 } from 'ag-grid-community'
@@ -35,9 +25,15 @@ import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import type { TableDataColumnMeta, PrimaryKeyInfo, AgGridFilterModel } from '../../types/schema'
 import DateTimeCellEditor from './DateTimeCellEditor'
-import { ENUM_NULL_SENTINEL, getEnumFallbackValue, isEnumColumn } from './enum-field-utils'
+import { isEnumColumn } from './enum-field-utils'
 import { getTableDataGridCellClass, isNumericSqlType } from '../../lib/grid-column-style'
 import { useGridAgDimensions } from '../../hooks/use-grid-ag-dimensions'
+import {
+  TableDataCellRenderer,
+  NullableCellEditor,
+  EnumCellEditor,
+} from '../shared/grid-cell-editors'
+import type { GridEditContext } from '../shared/grid-cell-editors'
 import styles from './TableDataGrid.module.css'
 
 // Register AG Grid Community modules (idempotent)
@@ -63,10 +59,6 @@ function getRowKey(data: Record<string, unknown>, pkColumns: string[]): Record<s
     key[col] = data[col]
   }
   return key
-}
-
-function isNullish(value: unknown): value is null | undefined {
-  return value === null || value === undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -125,253 +117,6 @@ export function buildColumnDefs(
 }
 
 // ---------------------------------------------------------------------------
-// Custom cell renderer — NULL/BLOB display
-// ---------------------------------------------------------------------------
-
-function TableDataCellRenderer(props: ICellRendererParams) {
-  if (isNullish(props.value)) {
-    return <span className="td-null-value">NULL</span>
-  }
-  if (typeof props.value === 'string' && props.value.startsWith('[BLOB')) {
-    return <span className="td-blob-value">{props.value}</span>
-  }
-  return <span>{String(props.value)}</span>
-}
-
-// ---------------------------------------------------------------------------
-// Custom cell editor — input + NULL toggle
-// ---------------------------------------------------------------------------
-
-interface NullableCellEditorProps extends ICellEditorParams {
-  isNullable?: boolean
-  columnMeta?: TableDataColumnMeta
-}
-
-const NullableCellEditor = forwardRef(function NullableCellEditor(
-  props: NullableCellEditorProps,
-  ref: React.Ref<{ getValue: () => unknown }>
-) {
-  const isNullable = props.isNullable ?? false
-  const initialNull = isNullish(props.value)
-  const initialValue = initialNull ? null : props.value
-  const [isNull, setIsNull] = useState(initialNull)
-  const [value, setValue] = useState(initialNull ? '' : String(props.value ?? ''))
-  const inputRef = useRef<HTMLInputElement>(null)
-  const wrapperRef = useRef<HTMLDivElement>(null)
-  const updateCellValue = useTableDataStore((state) => state.updateCellValue)
-  const fieldName = props.colDef?.field
-  const tabId = props.context?.tabId as string | undefined
-
-  useImperativeHandle(ref, () => ({
-    getValue: () => (isNull ? null : value),
-    isCancelBeforeStart: () => false,
-    isCancelAfterEnd: () => false,
-  }))
-
-  useEffect(() => {
-    // Auto-focus the input after the editor mounts
-    inputRef.current?.focus()
-    inputRef.current?.select()
-  }, [])
-
-  const handleToggleNull = useCallback(() => {
-    if (isNull) {
-      setIsNull(false)
-      if (tabId && fieldName) {
-        updateCellValue(tabId, fieldName, '')
-      }
-      // Restore with empty string
-      setTimeout(() => inputRef.current?.focus(), 0)
-    } else {
-      setIsNull(true)
-      setValue('')
-      if (tabId && fieldName) {
-        updateCellValue(tabId, fieldName, null)
-      }
-    }
-  }, [fieldName, isNull, tabId, updateCellValue])
-
-  const handleChange = useCallback(
-    (nextValue: string) => {
-      if (isNull) {
-        setIsNull(false)
-      }
-      setValue(nextValue)
-      if (tabId && fieldName) {
-        updateCellValue(tabId, fieldName, nextValue)
-      }
-    },
-    [fieldName, isNull, tabId, updateCellValue]
-  )
-
-  const displayValue = isNull ? '' : value
-
-  const handleBlur = useCallback(
-    (relatedTarget: EventTarget | null) => {
-      if (relatedTarget instanceof Node && wrapperRef.current?.contains(relatedTarget)) {
-        return
-      }
-
-      props.api.stopEditing()
-    },
-    [props.api]
-  )
-
-  return (
-    <div ref={wrapperRef} className={styles.cellEditorWrapper}>
-      <div className="td-cell-editor-shell">
-        <input
-          ref={inputRef}
-          className="td-cell-editor-input"
-          value={displayValue}
-          onChange={(e) => handleChange(e.target.value)}
-          onBlur={(e) => handleBlur(e.relatedTarget)}
-          onKeyDown={(e) => {
-            // Let AG Grid handle Tab/Enter/Escape
-            if (e.key === 'Tab' || e.key === 'Enter' || e.key === 'Escape') {
-              if (e.key === 'Escape') {
-                setIsNull(initialNull)
-                setValue(initialNull ? '' : String(initialValue ?? ''))
-                if (tabId && fieldName) {
-                  updateCellValue(tabId, fieldName, initialValue)
-                }
-              }
-              return
-            }
-          }}
-        />
-        {isNullable && (
-          <button
-            type="button"
-            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handleToggleNull}
-            tabIndex={-1}
-          >
-            NULL
-          </button>
-        )}
-      </div>
-    </div>
-  )
-})
-
-const EnumCellEditor = forwardRef(function EnumCellEditor(
-  props: NullableCellEditorProps,
-  ref: React.Ref<{ getValue: () => unknown }>
-) {
-  const enumValues = props.columnMeta?.enumValues ?? []
-  const isNullable = props.isNullable ?? false
-  const initialNull = isNullish(props.value)
-  const initialValue = initialNull ? null : String(props.value ?? '')
-  const [isNull, setIsNull] = useState(initialNull)
-  const [value, setValue] = useState(initialValue ?? getEnumFallbackValue(props.columnMeta))
-  const selectRef = useRef<HTMLSelectElement>(null)
-  const wrapperRef = useRef<HTMLDivElement>(null)
-  const updateCellValue = useTableDataStore((state) => state.updateCellValue)
-  const fieldName = props.colDef?.field
-  const tabId = props.context?.tabId as string | undefined
-
-  useImperativeHandle(ref, () => ({
-    getValue: () => (isNull ? null : value),
-    isCancelBeforeStart: () => false,
-    isCancelAfterEnd: () => false,
-  }))
-
-  useEffect(() => {
-    selectRef.current?.focus()
-  }, [])
-
-  const syncValue = useCallback(
-    (nextValue: string | null) => {
-      if (tabId && fieldName) {
-        updateCellValue(tabId, fieldName, nextValue)
-      }
-    },
-    [fieldName, tabId, updateCellValue]
-  )
-
-  const handleChange = useCallback(
-    (nextValue: string) => {
-      setIsNull(false)
-      setValue(nextValue)
-      syncValue(nextValue)
-    },
-    [syncValue]
-  )
-
-  const handleToggleNull = useCallback(() => {
-    if (isNull) {
-      const fallbackValue = initialValue ?? getEnumFallbackValue(props.columnMeta)
-      setIsNull(false)
-      setValue(fallbackValue)
-      syncValue(fallbackValue)
-      setTimeout(() => selectRef.current?.focus(), 0)
-    } else {
-      setIsNull(true)
-      syncValue(null)
-    }
-  }, [enumValues, initialValue, isNull, syncValue])
-
-  const handleBlur = useCallback(
-    (relatedTarget: EventTarget | null) => {
-      if (relatedTarget instanceof Node && wrapperRef.current?.contains(relatedTarget)) {
-        return
-      }
-
-      props.api.stopEditing()
-    },
-    [props.api]
-  )
-
-  return (
-    <div ref={wrapperRef} className={styles.cellEditorWrapper}>
-      <div className="td-cell-editor-shell">
-        <select
-          ref={selectRef}
-          className="td-cell-editor-select"
-          value={isNull ? ENUM_NULL_SENTINEL : value}
-          onBlur={(e) => handleBlur(e.relatedTarget)}
-          onChange={(e) => {
-            if (e.target.value === ENUM_NULL_SENTINEL) {
-              setIsNull(true)
-              syncValue(null)
-              return
-            }
-            handleChange(e.target.value)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setIsNull(initialNull)
-              setValue(initialValue ?? getEnumFallbackValue(props.columnMeta))
-              syncValue(initialValue)
-            }
-          }}
-        >
-          {isNullable && <option value={ENUM_NULL_SENTINEL}>NULL</option>}
-          {enumValues.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-        {isNullable && (
-          <button
-            type="button"
-            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handleToggleNull}
-            tabIndex={-1}
-          >
-            NULL
-          </button>
-        )}
-      </div>
-    </div>
-  )
-})
-
-// ---------------------------------------------------------------------------
 // TableDataGrid component
 // ---------------------------------------------------------------------------
 
@@ -390,6 +135,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const tabState = useTableDataStore((state) => state.tabs[tabId])
   const startEditing = useTableDataStore((state) => state.startEditing)
   const updateCellValue = useTableDataStore((state) => state.updateCellValue)
+  const syncCellValue = useTableDataStore((state) => state.syncCellValue)
   const commitEditingRowIfNeeded = useTableDataStore((state) => state.commitEditingRowIfNeeded)
   const setSelectedRow = useTableDataStore((state) => state.setSelectedRow)
   const requestNavigationAction = useTableDataStore((state) => state.requestNavigationAction)
@@ -429,6 +175,16 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       dateTimeCellEditor: DateTimeCellEditor,
     }),
     []
+  )
+
+  // AG Grid context — provides callbacks to cell editors
+  const gridContext: GridEditContext = useMemo(
+    () => ({
+      tabId,
+      updateCellValue,
+      syncCellValue,
+    }),
+    [tabId, updateCellValue, syncCellValue]
   )
 
   // Build column definitions
@@ -746,7 +502,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         rowData={rowData}
         defaultColDef={defaultColDef}
         components={components}
-        context={{ tabId }}
+        context={gridContext}
         suppressMultiSort={true}
         animateRows={false}
         headerHeight={headerHeight}
