@@ -33,6 +33,8 @@ export interface DateTimePickerProps {
   disabled?: boolean
   /** Anchor element used for positioning the popup. */
   anchorEl: HTMLElement | null
+  /** Optional ref that will be set to the popup's outermost portal element. */
+  popupRef?: React.RefObject<HTMLDivElement | null>
   /** Called with the formatted MySQL string when the user clicks Apply. */
   onApply: (value: string) => void
   /** Called when the user cancels (click outside, Escape, or Cancel button). */
@@ -116,6 +118,7 @@ export function DateTimePicker({
   columnType,
   disabled = false,
   anchorEl,
+  popupRef: externalPopupRef,
   onApply,
   onCancel,
 }: DateTimePickerProps) {
@@ -125,7 +128,19 @@ export function DateTimePicker({
   const [timeInput, setTimeInput] = useState<string>(
     initialDate ? formatTime(initialDate) : '00:00:00'
   )
-  const popupRef = useRef<HTMLDivElement>(null)
+  const internalPopupRef = useRef<HTMLDivElement>(null)
+
+  // Callback ref that sets both the internal ref and the optional external ref.
+  const mergedPopupRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      internalPopupRef.current = node
+      if (externalPopupRef) {
+        ;(externalPopupRef as React.MutableRefObject<HTMLDivElement | null>).current = node
+      }
+    },
+    [externalPopupRef]
+  )
+
   const [position, setPosition] = useState<{ top: number; left: number; flipUp: boolean }>({
     top: 0,
     left: 0,
@@ -182,7 +197,7 @@ export function DateTimePicker({
   }, [anchorEl, onCancel])
 
   // --- Click outside (delegated to shared hook) ---
-  useDismissOnOutsideClick(popupRef, !disabled, onCancel)
+  useDismissOnOutsideClick(internalPopupRef, !disabled, onCancel)
 
   // --- Auto-focus: move focus into the picker so keyboard navigation works ---
   // react-datepicker natively handles arrow keys, Page Up/Down, Enter/Space
@@ -191,8 +206,8 @@ export function DateTimePicker({
   useEffect(() => {
     if (disabled) return
     const timer = setTimeout(() => {
-      if (!popupRef.current) return
-      const focusable = popupRef.current.querySelector<HTMLElement>(
+      if (!internalPopupRef.current) return
+      const focusable = internalPopupRef.current.querySelector<HTMLElement>(
         'button, [tabindex]:not([tabindex="-1"]), input'
       )
       if (focusable) focusable.focus()
@@ -292,8 +307,8 @@ export function DateTimePicker({
 
   const popup = (
     <div
-      ref={popupRef}
-      className={`${styles.pickerPortal} ag-custom-component-popup ${disabled ? styles.disabled : ''}`}
+      ref={mergedPopupRef}
+      className={`${styles.pickerPortal} ${disabled ? styles.disabled : ''}`}
       style={{ top: position.top, left: position.left }}
       data-testid="date-time-picker-popup"
     >

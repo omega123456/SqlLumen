@@ -7,7 +7,7 @@ import {
   deleteTableRow,
   exportTableData,
 } from '../../lib/table-data-commands'
-import type { AgGridFilterModel, PrimaryKeyInfo, TableDataResponse } from '../../types/schema'
+import type { FilterCondition, PrimaryKeyInfo, TableDataResponse } from '../../types/schema'
 
 const mockFetchTableDataFn = vi.fn(
   (): TableDataResponse => ({
@@ -84,9 +84,7 @@ describe('fetchTableData', () => {
   })
 
   it('invokes with sort and filter params', async () => {
-    const filterModel: AgGridFilterModel = {
-      name: { filterType: 'text', type: 'contains', filter: 'Alice' },
-    }
+    const filterModel: FilterCondition[] = [{ column: 'name', operator: 'LIKE', value: '%Alice%' }]
 
     await fetchTableData({
       connectionId: 'conn-1',
@@ -101,7 +99,7 @@ describe('fetchTableData', () => {
     expect(mockFetchTableDataFn).toHaveBeenCalled()
   })
 
-  it('maps filter model type field to filterCondition for Rust backend', async () => {
+  it('maps filter conditions to backend format', async () => {
     let capturedArgs: Record<string, unknown> = {}
     mockIPC((cmd, args) => {
       if (cmd === 'fetch_table_data') {
@@ -111,9 +109,7 @@ describe('fetchTableData', () => {
       return null
     })
 
-    const filterModel: AgGridFilterModel = {
-      name: { filterType: 'text', type: 'contains', filter: 'Alice' },
-    }
+    const filterModel: FilterCondition[] = [{ column: 'name', operator: '==', value: 'Alice' }]
 
     await fetchTableData({
       connectionId: 'conn-1',
@@ -124,13 +120,18 @@ describe('fetchTableData', () => {
       filterModel,
     })
 
-    const sentFilter = capturedArgs.filterModel as Record<string, Record<string, unknown>>
-    expect(sentFilter.name.filterCondition).toBe('contains')
-    expect(sentFilter.name.filterType).toBe('text')
-    expect(sentFilter.name.filter).toBe('Alice')
+    const sentFilter = capturedArgs.filterModel as {
+      column: string
+      operator: string
+      value: string
+    }[]
+    expect(sentFilter).toHaveLength(1)
+    expect(sentFilter[0].column).toBe('name')
+    expect(sentFilter[0].operator).toBe('==')
+    expect(sentFilter[0].value).toBe('Alice')
   })
 
-  it('maps AG Grid combined filter model (conditions[]) using first condition', async () => {
+  it('sends multiple filter conditions including same column', async () => {
     let capturedArgs: Record<string, unknown> = {}
     mockIPC((cmd, args) => {
       if (cmd === 'fetch_table_data') {
@@ -140,16 +141,10 @@ describe('fetchTableData', () => {
       return null
     })
 
-    const filterModel: AgGridFilterModel = {
-      sport: {
-        filterType: 'text',
-        operator: 'OR',
-        conditions: [
-          { filterType: 'text', type: 'equals', filter: 'Swimming' },
-          { filterType: 'text', type: 'equals', filter: 'Gymnastics' },
-        ],
-      },
-    }
+    const filterModel: FilterCondition[] = [
+      { column: 'price', operator: '>', value: '10' },
+      { column: 'price', operator: '<', value: '100' },
+    ]
 
     await fetchTableData({
       connectionId: 'conn-1',
@@ -160,10 +155,14 @@ describe('fetchTableData', () => {
       filterModel,
     })
 
-    const sentFilter = capturedArgs.filterModel as Record<string, Record<string, unknown>>
-    expect(sentFilter.sport.filterCondition).toBe('equals')
-    expect(sentFilter.sport.filterType).toBe('text')
-    expect(sentFilter.sport.filter).toBe('Swimming')
+    const sentFilter = capturedArgs.filterModel as {
+      column: string
+      operator: string
+      value: string
+    }[]
+    expect(sentFilter).toHaveLength(2)
+    expect(sentFilter[0].operator).toBe('>')
+    expect(sentFilter[1].operator).toBe('<')
   })
 
   it('preserves enumValues from fetch_table_data responses', async () => {
@@ -320,9 +319,7 @@ describe('exportTableData', () => {
       return null
     })
 
-    const filterModel: AgGridFilterModel = {
-      status: { filterType: 'text', type: 'equals', filter: 'active' },
-    }
+    const filterModel: FilterCondition[] = [{ column: 'status', operator: '==', value: 'active' }]
 
     await exportTableData({
       connectionId: 'conn-1',
@@ -339,8 +336,14 @@ describe('exportTableData', () => {
 
     expect(capturedArgs.sortColumn).toBe('name')
     expect(capturedArgs.sortDirection).toBe('desc')
-    const sentFilter = capturedArgs.filterModel as Record<string, Record<string, unknown>>
-    expect(sentFilter.status.filterCondition).toBe('equals')
+    const sentFilter = capturedArgs.filterModel as {
+      column: string
+      operator: string
+      value: string
+    }[]
+    expect(sentFilter).toHaveLength(1)
+    expect(sentFilter[0].column).toBe('status')
+    expect(sentFilter[0].operator).toBe('==')
   })
 
   it('maps sql-insert format to sql for the backend', async () => {

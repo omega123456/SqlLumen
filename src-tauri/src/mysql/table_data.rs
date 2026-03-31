@@ -79,14 +79,13 @@ pub struct SortInfo {
     pub direction: String,
 }
 
-/// AG Grid filter model entry for a single column.
+/// A single filter condition from the frontend filter dialog.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FilterModelEntry {
-    pub filter_type: String,
-    pub filter_condition: String,
-    pub filter: Option<String>,
-    pub filter_to: Option<String>,
+pub struct FilterCondition {
+    pub column: String,
+    pub operator: String,
+    pub value: String,
 }
 
 /// A WHERE clause fragment with bound parameter values.
@@ -107,24 +106,24 @@ pub struct ExportTableOptions {
     pub file_path: String,
     pub include_headers: bool,
     pub table_name_for_sql: String,
-    pub filter_model: HashMap<String, FilterModelEntry>,
+    pub filter_model: Vec<FilterCondition>,
     pub sort: Option<SortInfo>,
 }
 
 // ── Pure functions (always available) ──────────────────────────────────────────
 
-/// Describes how a filter condition maps to SQL.
+/// Describes how a filter operator maps to SQL.
 enum FilterOp {
-    /// Simple comparison operator: `col <op> ?` (e.g., `=`, `!=`, `<`, `>`)
-    Operator(&'static str),
-    /// LIKE pattern with prefix/suffix: `col LIKE ?` with value `{prefix}{val}{suffix}`
-    Like(&'static str, &'static str),
-    /// `col IS NULL OR col = ''`
-    Blank,
-    /// `col IS NOT NULL AND col != ''`
-    NotBlank,
-    /// `col >= ? AND col <= ?` using filter and filter_to
-    InRange,
+    /// Simple comparison: `col <op> ?`
+    Comparison(&'static str),
+    /// `col LIKE ?` — value passed as-is (user provides wildcards)
+    Like,
+    /// `col NOT LIKE ?` — value passed as-is (user provides wildcards)
+    NotLike,
+    /// `col IS NULL` (no value binding)
+    IsNull,
+    /// `col IS NOT NULL` (no value binding)
+    IsNotNull,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,93 +160,30 @@ fn is_boolean_alias_column(data_type: &str, column_type: &str) -> bool {
         || (normalized_data_type == "TINYINT" && normalized_column_type.starts_with("TINYINT(1)"))
 }
 
-/// Map an AG Grid filter condition string to its SQL operation.
-fn get_filter_op(condition: &str) -> Option<FilterOp> {
-    match condition {
-        "equals" => Some(FilterOp::Operator("=")),
-        "notEqual" => Some(FilterOp::Operator("!=")),
-        "lessThan" => Some(FilterOp::Operator("<")),
-        "greaterThan" => Some(FilterOp::Operator(">")),
-        "lessThanOrEqual" => Some(FilterOp::Operator("<=")),
-        "greaterThanOrEqual" => Some(FilterOp::Operator(">=")),
-        "contains" => Some(FilterOp::Like("%", "%")),
-        "notContains" => Some(FilterOp::Like("%", "%")),
-        "startsWith" => Some(FilterOp::Like("", "%")),
-        "endsWith" => Some(FilterOp::Like("%", "")),
-        "blank" => Some(FilterOp::Blank),
-        "notBlank" => Some(FilterOp::NotBlank),
-        "inRange" => Some(FilterOp::InRange),
+/// Map a filter operator string from the frontend to its SQL operation.
+fn get_filter_op(operator: &str) -> Option<FilterOp> {
+    match operator {
+        ">" => Some(FilterOp::Comparison(">")),
+        ">=" => Some(FilterOp::Comparison(">=")),
+        "<" => Some(FilterOp::Comparison("<")),
+        "<=" => Some(FilterOp::Comparison("<=")),
+        "==" => Some(FilterOp::Comparison("=")),
+        "LIKE" => Some(FilterOp::Like),
+        "NOT LIKE" => Some(FilterOp::NotLike),
+        "IS NULL" => Some(FilterOp::IsNull),
+        "IS NOT NULL" => Some(FilterOp::IsNotNull),
         _ => None,
     }
 }
 
-/// Convert an AG Grid filter model to a SQL WHERE clause with bound params.
+/// Convert a slice of `FilterCondition` to a SQL WHERE clause with bound params.
 ///
-/// Entries are sorted by column name for deterministic SQL output.
+/// Conditions are processed in order (the frontend controls ordering).
 /// Column names are backtick-quoted via `safe_identifier`.
-/// If the filter model is empty, returns an empty `FilterClause`.
+/// If the slice is empty, returns an empty `FilterClause`.
 pub fn translate_filter_model(
-    filter_model: &HashMap<String, FilterModelEntry>,
+    conditions: &[FilterCondition],
 ) -> FilterClause {
-    if filter_model.is_empty() {
-        return FilterClause {
-            sql: String::new(),
-            params: vec![],
-        };
-    }
-
-    let mut entries: Vec<(&String, &FilterModelEntry)> = filter_model.iter().collect();
-    entries.sort_by_key(|(k, _)| (*k).clone());
-
-    let mut conditions = Vec::new();
-    let mut params = Vec::new();
-
-    for (col_name, entry) in entries {
-        let safe_col = match safe_identifier(col_name) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-
-        let op = match get_filter_op(entry.filter_condition.as_str()) {
-            Some(op) => op,
-            None => continue, // Unknown condition — skip
-        };
-
-        match op {
-            FilterOp::Operator(sql_op) => {
-                if let Some(ref val) = entry.filter {
-                    conditions.push(format!("{safe_col} {sql_op} ?"));
-                    params.push(serde_json::Value::String(val.clone()));
-                }
-            }
-            FilterOp::Like(prefix, suffix) => {
-                if let Some(ref val) = entry.filter {
-                    let is_not = entry.filter_condition == "notContains";
-                    let like_kw = if is_not { "NOT LIKE" } else { "LIKE" };
-                    conditions.push(format!("{safe_col} {like_kw} ?"));
-                    params.push(serde_json::Value::String(format!(
-                        "{prefix}{val}{suffix}"
-                    )));
-                }
-            }
-            FilterOp::Blank => {
-                conditions.push(format!("({safe_col} IS NULL OR {safe_col} = '')"));
-            }
-            FilterOp::NotBlank => {
-                conditions.push(format!(
-                    "({safe_col} IS NOT NULL AND {safe_col} != '')"
-                ));
-            }
-            FilterOp::InRange => {
-                if let (Some(ref from), Some(ref to)) = (&entry.filter, &entry.filter_to) {
-                    conditions.push(format!("{safe_col} >= ? AND {safe_col} <= ?"));
-                    params.push(serde_json::Value::String(from.clone()));
-                    params.push(serde_json::Value::String(to.clone()));
-                }
-            }
-        }
-    }
-
     if conditions.is_empty() {
         return FilterClause {
             sql: String::new(),
@@ -255,26 +191,76 @@ pub fn translate_filter_model(
         };
     }
 
-    FilterClause {
-        sql: conditions.join(" AND "),
-        params,
-    }
-}
+    let mut sql_parts = Vec::new();
+    let mut params = Vec::new();
 
-/// Convert an AG Grid filter model to a SQL WHERE clause using column metadata
-/// when the caller has it available.
-pub fn translate_filter_model_with_columns(
-    filter_model: &HashMap<String, FilterModelEntry>,
-    columns: &[TableDataColumnMeta],
-) -> FilterClause {
-    if filter_model.is_empty() {
+    for entry in conditions {
+        let safe_col = match safe_identifier(&entry.column) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let op = match get_filter_op(&entry.operator) {
+            Some(op) => op,
+            None => continue,
+        };
+
+        match op {
+            FilterOp::Comparison(sql_op) => {
+                sql_parts.push(format!("{safe_col} {sql_op} ?"));
+                params.push(serde_json::Value::String(entry.value.clone()));
+            }
+            FilterOp::Like => {
+                sql_parts.push(format!("{safe_col} LIKE ?"));
+                params.push(serde_json::Value::String(entry.value.clone()));
+            }
+            FilterOp::NotLike => {
+                sql_parts.push(format!("{safe_col} NOT LIKE ?"));
+                params.push(serde_json::Value::String(entry.value.clone()));
+            }
+            FilterOp::IsNull => {
+                sql_parts.push(format!("({safe_col} IS NULL OR {safe_col} = '')"));
+            }
+            FilterOp::IsNotNull => {
+                sql_parts.push(format!(
+                    "({safe_col} IS NOT NULL AND {safe_col} != '')"
+                ));
+            }
+        }
+    }
+
+    if sql_parts.is_empty() {
         return FilterClause {
             sql: String::new(),
             params: vec![],
         };
     }
 
-    let column_kinds: HashMap<&str, ColumnFilterKind> = columns
+    FilterClause {
+        sql: sql_parts.join(" AND "),
+        params,
+    }
+}
+
+/// Convert a slice of `FilterCondition` to a SQL WHERE clause using column metadata.
+///
+/// This variant uses column type information to generate type-appropriate SQL
+/// for IS NULL / IS NOT NULL operators:
+/// - TextLike columns: IS NULL maps to `(col IS NULL OR col = '')`, IS NOT NULL maps to
+///   `(col IS NOT NULL AND col != '')`
+/// - NonText columns: IS NULL maps to `col IS NULL`, IS NOT NULL maps to `col IS NOT NULL`
+pub fn translate_filter_model_with_columns(
+    conditions: &[FilterCondition],
+    columns: &[TableDataColumnMeta],
+) -> FilterClause {
+    if conditions.is_empty() {
+        return FilterClause {
+            sql: String::new(),
+            params: vec![],
+        };
+    }
+
+    let column_kinds: std::collections::HashMap<&str, ColumnFilterKind> = columns
         .iter()
         .map(|column| {
             (
@@ -284,72 +270,58 @@ pub fn translate_filter_model_with_columns(
         })
         .collect();
 
-    let mut entries: Vec<(&String, &FilterModelEntry)> = filter_model.iter().collect();
-    entries.sort_by_key(|(k, _)| (*k).clone());
-
-    let mut conditions = Vec::new();
+    let mut sql_parts = Vec::new();
     let mut params = Vec::new();
 
-    for (col_name, entry) in entries {
-        let safe_col = match safe_identifier(col_name) {
+    for entry in conditions {
+        let safe_col = match safe_identifier(&entry.column) {
             Ok(c) => c,
             Err(_) => continue,
         };
 
-        let op = match get_filter_op(entry.filter_condition.as_str()) {
+        let op = match get_filter_op(&entry.operator) {
             Some(op) => op,
             None => continue,
         };
 
         let column_kind = column_kinds
-            .get(col_name.as_str())
+            .get(entry.column.as_str())
             .copied()
             .unwrap_or(ColumnFilterKind::TextLike);
 
         match op {
-            FilterOp::Operator(sql_op) => {
-                if let Some(ref val) = entry.filter {
-                    conditions.push(format!("{safe_col} {sql_op} ?"));
-                    params.push(serde_json::Value::String(val.clone()));
-                }
+            FilterOp::Comparison(sql_op) => {
+                sql_parts.push(format!("{safe_col} {sql_op} ?"));
+                params.push(serde_json::Value::String(entry.value.clone()));
             }
-            FilterOp::Like(prefix, suffix) => {
-                if let Some(ref val) = entry.filter {
-                    let is_not = entry.filter_condition == "notContains";
-                    let like_kw = if is_not { "NOT LIKE" } else { "LIKE" };
-                    conditions.push(format!("{safe_col} {like_kw} ?"));
-                    params.push(serde_json::Value::String(format!(
-                        "{prefix}{val}{suffix}"
-                    )));
-                }
+            FilterOp::Like => {
+                sql_parts.push(format!("{safe_col} LIKE ?"));
+                params.push(serde_json::Value::String(entry.value.clone()));
             }
-            FilterOp::Blank => {
+            FilterOp::NotLike => {
+                sql_parts.push(format!("{safe_col} NOT LIKE ?"));
+                params.push(serde_json::Value::String(entry.value.clone()));
+            }
+            FilterOp::IsNull => {
                 if column_kind == ColumnFilterKind::TextLike {
-                    conditions.push(format!("({safe_col} IS NULL OR {safe_col} = '')"));
+                    sql_parts.push(format!("({safe_col} IS NULL OR {safe_col} = '')"));
                 } else {
-                    conditions.push(format!("{safe_col} IS NULL"));
+                    sql_parts.push(format!("{safe_col} IS NULL"));
                 }
             }
-            FilterOp::NotBlank => {
+            FilterOp::IsNotNull => {
                 if column_kind == ColumnFilterKind::TextLike {
-                    conditions.push(format!(
+                    sql_parts.push(format!(
                         "({safe_col} IS NOT NULL AND {safe_col} != '')"
                     ));
                 } else {
-                    conditions.push(format!("{safe_col} IS NOT NULL"));
-                }
-            }
-            FilterOp::InRange => {
-                if let (Some(ref from), Some(ref to)) = (&entry.filter, &entry.filter_to) {
-                    conditions.push(format!("{safe_col} >= ? AND {safe_col} <= ?"));
-                    params.push(serde_json::Value::String(from.clone()));
-                    params.push(serde_json::Value::String(to.clone()));
+                    sql_parts.push(format!("{safe_col} IS NOT NULL"));
                 }
             }
         }
     }
 
-    if conditions.is_empty() {
+    if sql_parts.is_empty() {
         return FilterClause {
             sql: String::new(),
             params: vec![],
@@ -357,7 +329,7 @@ pub fn translate_filter_model_with_columns(
     }
 
     FilterClause {
-        sql: conditions.join(" AND "),
+        sql: sql_parts.join(" AND "),
         params,
     }
 }
@@ -949,7 +921,7 @@ pub async fn fetch_table_data_impl(
     page: u32,
     page_size: u32,
     sort: Option<SortInfo>,
-    filter_model: HashMap<String, FilterModelEntry>,
+    filter_model: Vec<FilterCondition>,
     _connection_id: &str,
 ) -> Result<TableDataResponse, String> {
     let start = std::time::Instant::now();
@@ -1069,7 +1041,7 @@ pub async fn fetch_table_data_impl(
     page: u32,
     page_size: u32,
     _sort: Option<SortInfo>,
-    _filter_model: HashMap<String, FilterModelEntry>,
+    _filter_model: Vec<FilterCondition>,
     _connection_id: &str,
 ) -> Result<TableDataResponse, String> {
     Ok(TableDataResponse {

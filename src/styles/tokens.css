@@ -364,7 +364,7 @@
   --result-grid-row-selected-accent: var(--primary);
   --result-status-success-fg: var(--tertiary);
 
-  /* AG Grid — inline_editable_grid_dark_mode_pro_sync_v2 */
+  /* Grid — inline_editable_grid_dark_mode_pro_sync_v2 */
   --grid-cell-padding-x: var(--space-lg);
   --grid-cell-padding-y: var(--space-sm);
   /* Must include px: unitless values break line-height (interpreted as font-size multiplier). */

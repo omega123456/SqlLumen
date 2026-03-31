@@ -1,47 +1,31 @@
 /**
- * Tests for shared AG Grid cell editors (NullableCellEditor, EnumCellEditor).
+ * Tests for shared cell editors (NullableCellEditor, EnumCellEditor).
  *
  * Verifies that both editors call updateCellValue AND syncCellValue
- * on the AG Grid context when the user edits a value, matching the
- * behaviour of DateTimeCellEditor / useCellEditor.
+ * via their explicit callback props when the user edits a value,
+ * and that they follow the react-data-grid editor protocol
+ * (onRowChange, onClose).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import { createRef } from 'react'
-import { NullableCellEditor, EnumCellEditor } from '../../../components/shared/grid-cell-editors'
-import type { GridEditContext } from '../../../components/shared/grid-cell-editors'
+import {
+  NullableCellEditor,
+  EnumCellEditor,
+  getCellEditorForColumn,
+} from '../../../components/shared/grid-cell-editors'
+import type { CellEditorBaseProps } from '../../../components/shared/grid-cell-editors'
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-interface EditorHandle {
-  getValue: () => unknown
-}
-
-function makeContext(overrides: Partial<GridEditContext> = {}): GridEditContext {
+function makeEditorProps(overrides: Partial<CellEditorBaseProps> = {}): CellEditorBaseProps {
   return {
-    tabId: 'tab-1',
-    updateCellValue: vi.fn(),
-    syncCellValue: vi.fn(),
-    ...overrides,
-  }
-}
-
-function makeEditorParams(
-  context: GridEditContext,
-  overrides: Record<string, unknown> = {}
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): any {
-  return {
-    value: 'original',
-    colDef: { field: 'col_1' },
-    context,
-    api: { stopEditing: vi.fn() },
-    node: { data: { col_0: 1, col_1: 'original' } },
-    data: { col_0: 1, col_1: 'original' },
-    column: { getColId: () => 'col_1' },
+    row: { col_0: 1, col_1: 'original' },
+    column: { key: 'col_1' },
+    onRowChange: vi.fn(),
+    onClose: vi.fn(),
     isNullable: true,
     columnMeta: {
       name: 'name',
@@ -55,6 +39,9 @@ function makeEditorParams(
       isBooleanAlias: false,
       isAutoIncrement: false,
     },
+    tabId: 'tab-1',
+    updateCellValue: vi.fn(),
+    syncCellValue: vi.fn(),
     ...overrides,
   }
 }
@@ -68,74 +55,79 @@ describe('NullableCellEditor — store syncing', () => {
     vi.clearAllMocks()
   })
 
-  it('calls updateCellValue on the context when the user types', () => {
-    const ctx = makeContext()
-    const ref = createRef<EditorHandle>()
-    const params = makeEditorParams(ctx)
-
-    render(<NullableCellEditor ref={ref} {...params} />)
+  it('calls updateCellValue on the props when the user types', () => {
+    const props = makeEditorProps()
+    render(<NullableCellEditor {...props} />)
 
     const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
     expect(input).toBeTruthy()
 
     fireEvent.change(input, { target: { value: 'Updated' } })
 
-    expect(ctx.updateCellValue).toHaveBeenCalledWith('tab-1', 'col_1', 'Updated')
+    expect(props.updateCellValue).toHaveBeenCalledWith('tab-1', 'col_1', 'Updated')
   })
 
-  it('calls syncCellValue on the context when the user types', () => {
-    const ctx = makeContext()
-    const ref = createRef<EditorHandle>()
-    const params = makeEditorParams(ctx)
-
-    render(<NullableCellEditor ref={ref} {...params} />)
+  it('calls syncCellValue on the props when the user types', () => {
+    const props = makeEditorProps()
+    render(<NullableCellEditor {...props} />)
 
     const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'Updated' } })
 
     // syncCellValue must be called alongside updateCellValue so the
     // backing row data stays in sync (matching useCellEditor behaviour).
-    expect(ctx.syncCellValue).toHaveBeenCalledWith(
+    expect(props.syncCellValue).toHaveBeenCalledWith(
       'tab-1',
-      expect.any(Object), // rowData
+      expect.any(Object), // row
       'col_1',
       'Updated'
     )
   })
 
-  it('calls syncCellValue when toggling NULL on', () => {
-    const ctx = makeContext()
-    const ref = createRef<EditorHandle>()
-    const params = makeEditorParams(ctx)
+  it('calls onRowChange when the user types (react-data-grid preview)', () => {
+    const props = makeEditorProps()
+    render(<NullableCellEditor {...props} />)
 
-    render(<NullableCellEditor ref={ref} {...params} />)
+    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'Updated' } })
+
+    expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_1: 'Updated' })
+  })
+
+  it('calls syncCellValue when toggling NULL on', () => {
+    const props = makeEditorProps()
+    render(<NullableCellEditor {...props} />)
 
     const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
     fireEvent.click(nullBtn)
 
-    expect(ctx.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_1', null)
+    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_1', null)
+  })
+
+  it('calls onRowChange with null when toggling NULL on', () => {
+    const props = makeEditorProps()
+    render(<NullableCellEditor {...props} />)
+
+    const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
+    fireEvent.click(nullBtn)
+
+    expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_1: null })
   })
 
   it('calls syncCellValue when toggling NULL off', () => {
-    const ctx = makeContext()
-    const ref = createRef<EditorHandle>()
-    const params = makeEditorParams(ctx, { value: null })
-
-    render(<NullableCellEditor ref={ref} {...params} />)
+    const props = makeEditorProps({ row: { col_0: 1, col_1: null } })
+    render(<NullableCellEditor {...props} />)
 
     const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
     fireEvent.click(nullBtn)
 
     // When toggling NULL off, the editor restores with empty string
-    expect(ctx.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_1', '')
+    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_1', '')
   })
 
   it('calls syncCellValue when Escape restores original value', () => {
-    const ctx = makeContext()
-    const ref = createRef<EditorHandle>()
-    const params = makeEditorParams(ctx)
-
-    render(<NullableCellEditor ref={ref} {...params} />)
+    const props = makeEditorProps()
+    render(<NullableCellEditor {...props} />)
 
     const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
     // Type something first
@@ -145,24 +137,65 @@ describe('NullableCellEditor — store syncing', () => {
     // Press Escape to restore
     fireEvent.keyDown(input, { key: 'Escape' })
 
-    expect(ctx.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_1', 'original')
+    expect(props.syncCellValue).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(Object),
+      'col_1',
+      'original'
+    )
+  })
+
+  it('calls onClose(false, false) on Escape', () => {
+    const props = makeEditorProps()
+    render(<NullableCellEditor {...props} />)
+
+    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(props.onClose).toHaveBeenCalledWith(false, false)
+  })
+
+  it('calls onRowChange with commit=true on Tab', () => {
+    const props = makeEditorProps()
+    render(<NullableCellEditor {...props} />)
+
+    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    fireEvent.keyDown(input, { key: 'Tab' })
+
+    expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_1: 'original' }, true)
+  })
+
+  it('calls onRowChange with commit=true on Enter', () => {
+    const props = makeEditorProps()
+    render(<NullableCellEditor {...props} />)
+
+    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_1: 'original' }, true)
   })
 
   it('does NOT call updateCellValue or syncCellValue when tabId is falsy (guard behaviour)', () => {
     // Verifies the safety guard: if tabId is ever empty, store calls are skipped.
-    // The ResultGridView fix ensures this never happens in practice.
-    const ctx = makeContext({ tabId: '' })
-    const ref = createRef<EditorHandle>()
-    const params = makeEditorParams(ctx)
-
-    render(<NullableCellEditor ref={ref} {...params} />)
+    const props = makeEditorProps({ tabId: '' })
+    render(<NullableCellEditor {...props} />)
 
     const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'Changed' } })
 
     // With empty tabId, the cell editor guards prevent the call
-    expect(ctx.updateCellValue).not.toHaveBeenCalled()
-    expect(ctx.syncCellValue).not.toHaveBeenCalled()
+    expect(props.updateCellValue).not.toHaveBeenCalled()
+    expect(props.syncCellValue).not.toHaveBeenCalled()
+  })
+
+  it('calls onClose(true, false) on blur to outside', () => {
+    const props = makeEditorProps()
+    render(<NullableCellEditor {...props} />)
+
+    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    fireEvent.blur(input, { relatedTarget: null })
+
+    expect(props.onClose).toHaveBeenCalledWith(true, false)
   })
 })
 
@@ -175,19 +208,12 @@ describe('EnumCellEditor — store syncing', () => {
     vi.clearAllMocks()
   })
 
-  function makeEnumParams(
-    context: GridEditContext,
-    overrides: Record<string, unknown> = {}
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): any {
+  function makeEnumProps(overrides: Partial<CellEditorBaseProps> = {}): CellEditorBaseProps {
     return {
-      value: 'active',
-      colDef: { field: 'col_2' },
-      context,
-      api: { stopEditing: vi.fn() },
-      node: { data: { col_0: 1, col_2: 'active' } },
-      data: { col_0: 1, col_2: 'active' },
-      column: { getColId: () => 'col_2' },
+      row: { col_0: 1, col_2: 'active' },
+      column: { key: 'col_2' },
+      onRowChange: vi.fn(),
+      onClose: vi.fn(),
       isNullable: true,
       columnMeta: {
         name: 'status',
@@ -202,35 +228,149 @@ describe('EnumCellEditor — store syncing', () => {
         isBooleanAlias: false,
         isAutoIncrement: false,
       },
+      tabId: 'tab-1',
+      updateCellValue: vi.fn(),
+      syncCellValue: vi.fn(),
       ...overrides,
     }
   }
 
   it('calls syncCellValue when selecting a new enum value', () => {
-    const ctx = makeContext()
-    const ref = createRef<EditorHandle>()
-    const params = makeEnumParams(ctx)
-
-    render(<EnumCellEditor ref={ref} {...params} />)
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
 
     const select = document.querySelector('.td-cell-editor-select') as HTMLSelectElement
     expect(select).toBeTruthy()
 
     fireEvent.change(select, { target: { value: 'inactive' } })
 
-    expect(ctx.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_2', 'inactive')
+    expect(props.syncCellValue).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(Object),
+      'col_2',
+      'inactive'
+    )
+  })
+
+  it('calls onRowChange when selecting a new enum value', () => {
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
+
+    const select = document.querySelector('.td-cell-editor-select') as HTMLSelectElement
+    fireEvent.change(select, { target: { value: 'inactive' } })
+
+    expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_2: 'inactive' })
   })
 
   it('calls syncCellValue when toggling NULL on', () => {
-    const ctx = makeContext()
-    const ref = createRef<EditorHandle>()
-    const params = makeEnumParams(ctx)
-
-    render(<EnumCellEditor ref={ref} {...params} />)
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
 
     const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
     fireEvent.click(nullBtn)
 
-    expect(ctx.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_2', null)
+    expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_2', null)
+  })
+
+  it('calls onRowChange with null when toggling NULL on', () => {
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
+
+    const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
+    fireEvent.click(nullBtn)
+
+    expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_2: null })
+  })
+
+  it('calls onClose(false, false) on Escape', () => {
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
+
+    const select = document.querySelector('.td-cell-editor-select') as HTMLSelectElement
+    fireEvent.keyDown(select, { key: 'Escape' })
+
+    expect(props.onClose).toHaveBeenCalledWith(false, false)
+  })
+
+  it('calls onRowChange with commit=true on Tab', () => {
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
+
+    const select = document.querySelector('.td-cell-editor-select') as HTMLSelectElement
+    fireEvent.keyDown(select, { key: 'Tab' })
+
+    expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_2: 'active' }, true)
+  })
+})
+
+describe('getCellEditorForColumn', () => {
+  const callbacks = {
+    tabId: 'tab-1',
+    updateCellValue: vi.fn(),
+    syncCellValue: vi.fn(),
+  }
+
+  it('disables closeOnExternalRowChange for nullable editors', () => {
+    const config = getCellEditorForColumn(
+      {
+        name: 'name',
+        dataType: 'VARCHAR',
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isBooleanAlias: false,
+        isAutoIncrement: false,
+      },
+      callbacks
+    )
+
+    expect(config.editorOptions).toEqual({ closeOnExternalRowChange: false })
+  })
+
+  it('disables closeOnExternalRowChange and outside-click commit for temporal editors', () => {
+    const config = getCellEditorForColumn(
+      {
+        name: 'created_at',
+        dataType: 'DATETIME',
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isBooleanAlias: false,
+        isAutoIncrement: false,
+      },
+      callbacks
+    )
+
+    expect(config.editorOptions).toEqual({
+      closeOnExternalRowChange: false,
+      commitOnOutsideClick: false,
+    })
+  })
+
+  it('disables closeOnExternalRowChange for enum editors', () => {
+    const config = getCellEditorForColumn(
+      {
+        name: 'status',
+        dataType: 'ENUM',
+        enumValues: ['active', 'inactive'],
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isBooleanAlias: false,
+        isAutoIncrement: false,
+      },
+      callbacks
+    )
+
+    expect(config.editorOptions).toEqual({ closeOnExternalRowChange: false })
   })
 })

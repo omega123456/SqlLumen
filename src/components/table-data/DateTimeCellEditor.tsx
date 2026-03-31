@@ -1,42 +1,37 @@
 /**
- * DateTimeCellEditor — AG Grid cell editor for MySQL temporal columns.
+ * DateTimeCellEditor — react-data-grid cell editor for MySQL temporal columns.
  *
  * Uses the shared useCellEditor hook for value state, NULL toggle, and
  * store syncing. Adds a calendar/clock icon button that opens the
  * DateTimePicker popup via portal rendering.
  *
- * Focus management (belt-and-suspenders):
+ * Focus management:
  *
- * 1. `ag-custom-component-popup` class on the portal root — AG Grid's
- *    native mechanism. AG Grid treats any popup with this class as an
- *    extension of the cell editor, so `stopEditingWhenCellsLoseFocus`
- *    won't terminate the edit when focus moves to picker controls.
+ * 1. The column definition includes `editorOptions: { commitOnOutsideClick: false }`
+ *    which prevents react-data-grid from prematurely committing the editor
+ *    when the user clicks inside the portal-rendered DateTimePicker popup.
+ *    The editor manages its own commit/close lifecycle via onClose().
  *
  * 2. `mousedown` + `preventDefault()` handler on the portal container —
- *    a well-established pattern that prevents the browser from moving
- *    focus away from the cell editor's input when the user clicks
- *    non-focusable areas within the picker (calendar background, labels,
- *    etc.). We only call `preventDefault()` for non-focusable targets so
- *    that interactive elements like the time input and buttons still
- *    receive focus normally.
+ *    prevents the browser from moving focus away from the cell editor's input
+ *    when the user clicks non-focusable areas within the picker (calendar
+ *    background, labels, etc.).
  *
  * Double-update guard: When the picker applies a value, it calls
- * editor.handleChange which updates the store immediately. When AG Grid
- * subsequently calls onCellEditingStopped, the grid's handler compares
- * the new value against the current store value and skips the redundant
- * updateCellValue call if they match.
+ * editor.handleChange which updates the store immediately. When the grid's
+ * onRowsChange handler fires, it compares the new value against the current
+ * store value and skips redundant updateCellValue calls if they match.
  *
- * Decoupled from useTableDataStore — reads callbacks from AG Grid
- * context (GridEditContext) and passes them to useCellEditor.
+ * Decoupled from useTableDataStore — reads callbacks from props
+ * (provided via closures in column definitions).
  */
 
-import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CalendarBlank, Clock } from '@phosphor-icons/react'
 import { getTemporalColumnType } from '../../lib/date-utils'
 import type { TemporalColumnType } from '../../lib/date-utils'
 import { useCellEditor } from './useCellEditor'
-import type { CellEditorParams } from './useCellEditor'
-import type { GridEditContext } from '../shared/grid-cell-editors'
+import type { CellEditorParams, CellEditorCallbacks } from './useCellEditor'
 import sharedStyles from '../shared/grid-cell-editors.module.css'
 import { DateTimePicker } from './DateTimePicker'
 import styles from './TableDataGrid.module.css'
@@ -45,42 +40,42 @@ import styles from './TableDataGrid.module.css'
 // Component
 // ---------------------------------------------------------------------------
 
-const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
-  params: CellEditorParams,
-  ref: React.ForwardedRef<unknown>
-) {
-  const col = params.columnMeta
+export default function DateTimeCellEditor(props: CellEditorParams & CellEditorCallbacks) {
+  const col = props.columnMeta
   const temporalType: TemporalColumnType = getTemporalColumnType(col.dataType)
 
-  // Read callbacks from AG Grid context
-  const context = params.context as GridEditContext | undefined
-  const callbacks = {
-    tabId: context?.tabId ?? '',
-    updateCellValue: context?.updateCellValue ?? (() => {}),
-    syncCellValue: context?.syncCellValue ?? (() => {}),
+  // Split props into editor params and callbacks for useCellEditor
+  const editorParams: CellEditorParams = {
+    row: props.row,
+    column: props.column,
+    onRowChange: props.onRowChange,
+    onClose: props.onClose,
+    isNullable: props.isNullable,
+    columnMeta: props.columnMeta,
+  }
+  const callbacks: CellEditorCallbacks = {
+    tabId: props.tabId,
+    updateCellValue: props.updateCellValue,
+    syncCellValue: props.syncCellValue,
   }
 
-  // Shared cell editor logic (value, null, store sync, imperative handle)
-  const editor = useCellEditor(params, ref, callbacks)
+  // Shared cell editor logic (value, null, store sync)
+  const editor = useCellEditor(editorParams, callbacks)
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const pickerPopupRef = useRef<HTMLDivElement>(null)
 
   // -----------------------------------------------------------------------
-  // Focus management (belt-and-suspenders): In addition to the
-  // ag-custom-component-popup class on the portal root, we attach a
-  // mousedown handler that calls preventDefault() for clicks on
-  // non-focusable areas. This prevents the browser from pulling focus
-  // away from the cell editor's input when the user clicks calendar
-  // backgrounds, labels, or other passive elements.  For focusable
-  // elements (inputs, buttons, etc.) we let the event through so they
-  // can receive focus normally — the ag-custom-component-popup class
-  // keeps AG Grid from stopping the edit.
+  // Focus management: attach a mousedown handler to the portal that calls
+  // preventDefault() for clicks on non-focusable areas (keeps focus on cell
+  // editor input when the user clicks calendar background, labels, etc.).
+  // Note: commitOnOutsideClick is disabled in the column definition, so
+  // we no longer need stopPropagation() to prevent RDG's outside-click
+  // detection from firing.
   // -----------------------------------------------------------------------
   useEffect(() => {
     if (!pickerOpen) return
-
-    let portalEl: HTMLElement | null = null
 
     const handleMouseDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement
@@ -93,7 +88,7 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
 
     // Use setTimeout(0) so the portal DOM has been flushed by React
     const timer = setTimeout(() => {
-      portalEl = document.querySelector('[data-testid="date-time-picker-popup"]')
+      const portalEl = pickerPopupRef.current
       if (portalEl) {
         portalEl.addEventListener('mousedown', handleMouseDown)
       }
@@ -101,6 +96,7 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
 
     return () => {
       clearTimeout(timer)
+      const portalEl = pickerPopupRef.current
       if (portalEl) {
         portalEl.removeEventListener('mousedown', handleMouseDown)
       }
@@ -108,14 +104,14 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
   }, [pickerOpen])
 
   // -----------------------------------------------------------------------
-  // Scroll-close: close the picker if the AG Grid body scrolls, since
+  // Scroll-close: close the picker if the grid body scrolls, since
   // repositioning the popup on scroll would be complex and closing is the
   // convention in desktop data tools.
   // -----------------------------------------------------------------------
   useEffect(() => {
     if (!pickerOpen) return
 
-    const gridBody = document.querySelector('.ag-body-viewport')
+    const gridBody = containerRef.current?.closest('.rdg')
     if (!gridBody) return
 
     const closeOnScroll = () => setPickerOpen(false)
@@ -150,13 +146,20 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
           // Picker already closed (or was never open): cancel the cell edit
           // and restore the original value.
           editor.restoreOriginalValue()
-          params.api.stopEditing(true)
+          // Discard edit, don't refocus grid
+          props.onClose(false, false)
         }
         return
       }
-      // Let AG Grid handle Tab/Enter
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        // Commit and focus grid for navigation
+        const fieldName = props.column.key
+        const committedValue = editor.isNull ? null : editor.value
+        props.onRowChange({ ...props.row, [fieldName]: committedValue }, true)
+        return
+      }
     },
-    [editor, params.api, pickerOpen]
+    [editor, pickerOpen, props]
   )
 
   const handlePickerApply = useCallback(
@@ -183,14 +186,15 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
         return
       }
 
-      const pickerPopup = document.querySelector('[data-testid="date-time-picker-popup"]')
+      const pickerPopup = pickerPopupRef.current
       if (relatedTarget instanceof Node && pickerPopup?.contains(relatedTarget)) {
         return
       }
 
-      params.api.stopEditing()
+      // Commit without refocusing the grid
+      props.onClose(true, false)
     },
-    [params.api]
+    [props]
   )
 
   // -----------------------------------------------------------------------
@@ -215,7 +219,7 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
           onBlur={(e) => handleInputBlur(e.relatedTarget)}
           onKeyDown={handleKeyDown}
         />
-        {params.isNullable && (
+        {props.isNullable && (
           <button
             type="button"
             className={`td-null-toggle ${editor.isNull ? 'td-null-active' : ''}`}
@@ -246,12 +250,11 @@ const DateTimeCellEditor = forwardRef(function DateTimeCellEditor(
           columnType={temporalType}
           disabled={editor.isNull}
           anchorEl={containerRef.current}
+          popupRef={pickerPopupRef}
           onApply={handlePickerApply}
           onCancel={handlePickerCancel}
         />
       )}
     </div>
   )
-})
-
-export default DateTimeCellEditor
+}

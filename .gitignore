@@ -51,5 +51,6 @@ Thumbs.db
 CONTEXT.md
 opencode.json
 .opencode/
-.cursor/
+.cursor
+!.cursor/mcp.json
 .cargo

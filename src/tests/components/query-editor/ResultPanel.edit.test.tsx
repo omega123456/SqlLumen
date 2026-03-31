@@ -194,22 +194,6 @@ describe('ResultPanel edit mode callbacks', () => {
     saveCurrentRowSpy.mockRestore()
   })
 
-  it('passes onRequestNavigationAction that calls store.requestNavigationAction', () => {
-    const requestNavSpy = vi.spyOn(useQueryStore.getState(), 'requestNavigationAction')
-    renderWithEditState()
-
-    const onRequestNavigationAction = capturedGridProps.onRequestNavigationAction as (
-      action: () => void
-    ) => void
-    expect(onRequestNavigationAction).toBeDefined()
-
-    const action = vi.fn()
-    onRequestNavigationAction(action)
-
-    expect(requestNavSpy).toHaveBeenCalledWith('tab-1', action)
-    requestNavSpy.mockRestore()
-  })
-
   it('passes editMode and editableColumnMap from store to ResultGridView', () => {
     renderWithEditState()
 

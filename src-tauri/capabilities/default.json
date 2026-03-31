@@ -4,6 +4,7 @@
   "description": "Capability for the main window",
   "windows": ["main"],
   "permissions": [
+    "mcp-bridge:default",
     "core:default",
     "clipboard-manager:default",
     "allow-get-setting",

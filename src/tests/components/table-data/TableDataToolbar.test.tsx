@@ -22,21 +22,6 @@ vi.mock('../../../stores/toast-store', () => ({
   }),
 }))
 
-// Mock AG Grid
-vi.mock('ag-grid-community', () => ({
-  AllCommunityModule: {},
-  ModuleRegistry: { registerModules: vi.fn() },
-}))
-
-vi.mock('ag-grid-react', async () => {
-  const React = await import('react')
-  return {
-    AgGridReact: vi.fn(() => {
-      return React.createElement('div', { 'data-testid': 'ag-grid-inner' }, 'Grid Mock')
-    }),
-  }
-})
-
 // Mock table-data-commands
 vi.mock('../../../lib/table-data-commands', () => ({
   fetchTableData: vi.fn().mockResolvedValue({
@@ -120,7 +105,7 @@ function makeDefaultTabState(overrides: Partial<TableDataTabState> = {}): TableD
     editState: null,
     viewMode: 'grid',
     selectedRowKey: null,
-    filterModel: {},
+    filterModel: [],
     sort: null,
     isLoading: false,
     error: null,
@@ -844,5 +829,122 @@ describe('TableDataToolbar — Save validation', () => {
     await waitFor(() => {
       expect(mockShowError).not.toHaveBeenCalled()
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Filter button tests
+// ---------------------------------------------------------------------------
+
+describe('TableDataToolbar — Filter button', () => {
+  it('filter button renders', () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataToolbar tabId="tab-1" />)
+    expect(screen.getByTestId('btn-filter')).toBeInTheDocument()
+  })
+
+  it('badge is hidden when no conditions', () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataToolbar tabId="tab-1" />)
+    expect(screen.queryByTestId('filter-badge')).not.toBeInTheDocument()
+  })
+
+  it('clicking filter button opens FilterDialog', () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataToolbar tabId="tab-1" />)
+    fireEvent.click(screen.getByTestId('btn-filter'))
+    expect(screen.getByTestId('filter-dialog')).toBeInTheDocument()
+  })
+
+  it('applying conditions sets the badge count', async () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    // Open filter dialog
+    fireEvent.click(screen.getByTestId('btn-filter'))
+    expect(screen.getByTestId('filter-dialog')).toBeInTheDocument()
+
+    // Add a condition
+    fireEvent.click(screen.getByTestId('filter-add-button'))
+    // Apply
+    fireEvent.click(screen.getByTestId('filter-apply-button'))
+
+    // Dialog should close
+    await waitFor(() => {
+      expect(screen.queryByTestId('filter-dialog')).not.toBeInTheDocument()
+    })
+
+    // Badge should show count
+    const badge = screen.getByTestId('filter-badge')
+    expect(badge).toBeInTheDocument()
+    expect(badge.textContent).toBe('1')
+  })
+
+  it('badge shows count when conditions exist', async () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    // Open and add 2 conditions
+    fireEvent.click(screen.getByTestId('btn-filter'))
+    fireEvent.click(screen.getByTestId('filter-add-button'))
+    fireEvent.click(screen.getByTestId('filter-add-button'))
+    fireEvent.click(screen.getByTestId('filter-apply-button'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('filter-dialog')).not.toBeInTheDocument()
+    })
+
+    const badge = screen.getByTestId('filter-badge')
+    expect(badge.textContent).toBe('2')
+  })
+
+  it('icon weight is regular when no conditions and fill when conditions exist', async () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    // Initially regular weight — the Funnel icon should not have "fill" weight
+    const filterBtn = screen.getByTestId('btn-filter')
+    // Check that the SVG exists (Phosphor renders an SVG)
+    const svg = filterBtn.querySelector('svg')
+    expect(svg).toBeTruthy()
+
+    // Apply one condition
+    fireEvent.click(filterBtn)
+    fireEvent.click(screen.getByTestId('filter-add-button'))
+    fireEvent.click(screen.getByTestId('filter-apply-button'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('filter-dialog')).not.toBeInTheDocument()
+    })
+
+    // Badge should exist, indicating active filters
+    expect(screen.getByTestId('filter-badge')).toBeInTheDocument()
+  })
+
+  it('filter button is disabled when columns are empty', () => {
+    setupConnection()
+    setupTabState({ columns: [] })
+    render(<TableDataToolbar tabId="tab-1" />)
+    expect(screen.getByTestId('btn-filter')).toBeDisabled()
+  })
+
+  it('cancelling FilterDialog does not change badge state', () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    // Open and cancel
+    fireEvent.click(screen.getByTestId('btn-filter'))
+    expect(screen.getByTestId('filter-dialog')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('filter-cancel-button'))
+
+    // No badge
+    expect(screen.queryByTestId('filter-badge')).not.toBeInTheDocument()
   })
 })

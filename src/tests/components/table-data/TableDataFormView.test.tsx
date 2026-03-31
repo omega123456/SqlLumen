@@ -21,21 +21,6 @@ vi.mock('../../../stores/toast-store', () => ({
   }),
 }))
 
-// Mock AG Grid (needed because store imports may trigger AG Grid refs)
-vi.mock('ag-grid-community', () => ({
-  AllCommunityModule: {},
-  ModuleRegistry: { registerModules: vi.fn() },
-}))
-
-vi.mock('ag-grid-react', async () => {
-  const React = await import('react')
-  return {
-    AgGridReact: vi.fn(() =>
-      React.createElement('div', { 'data-testid': 'ag-grid-inner' }, 'Grid Mock')
-    ),
-  }
-})
-
 // Mock table-data-commands
 vi.mock('../../../lib/table-data-commands', () => ({
   fetchTableData: vi.fn().mockResolvedValue({
@@ -157,7 +142,7 @@ function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabS
     editState: null,
     viewMode: 'form',
     selectedRowKey: { id: 1 },
-    filterModel: {},
+    filterModel: [],
     sort: null,
     isLoading: false,
     error: null,

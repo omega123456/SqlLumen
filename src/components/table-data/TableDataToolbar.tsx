@@ -17,12 +17,15 @@ import {
   CheckCircle,
   CaretLeft,
   CaretRight,
+  Funnel,
 } from '@phosphor-icons/react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
+import { FilterDialog } from '../dialogs/FilterDialog'
+import type { FilterCondition } from '../../types/schema'
 import styles from './TableDataToolbar.module.css'
 
 interface TableDataToolbarProps {
@@ -33,6 +36,7 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
   const tabState = useTableDataStore((state) => state.tabs[tabId])
 
   const requestNavigationAction = useTableDataStore((state) => state.requestNavigationAction)
+  const applyFilters = useTableDataStore((state) => state.applyFilters)
   const fetchPage = useTableDataStore((state) => state.fetchPage)
   const insertNewRow = useTableDataStore((state) => state.insertNewRow)
   const deleteRow = useTableDataStore((state) => state.deleteRow)
@@ -59,9 +63,18 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
   const pageSize = tabState?.pageSize ?? 1000
   const selectedRowKey = tabState?.selectedRowKey ?? null
   const columns = tabState?.columns ?? []
+  const filterModel: FilterCondition[] = tabState?.filterModel ?? []
 
   const showError = useToastStore((s) => s.showError)
   const showSuccess = useToastStore((s) => s.showSuccess)
+
+  // Navigation guard helper — wraps an action with unsaved-changes check.
+  const withNavigationGuard = useCallback(
+    (action: () => void) => {
+      requestNavigationAction(tabId, action)
+    },
+    [tabId, requestNavigationAction]
+  )
 
   const hasPk = primaryKey !== null
   const isMutationDisabled = isConnectionReadOnly || !hasPk
@@ -72,6 +85,10 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
   const selectedIsNewRow = selectedRowKey !== null && '__tempId' in selectedRowKey
   const isEditingNewRow = editState?.isNewRow ?? false
 
+  // --- Filter dialog state (only open/close is local) ---
+
+  const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
+
   // --- Delete confirmation state ---
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -79,10 +96,10 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
   // --- Handlers ---
 
   const handleAddRow = useCallback(() => {
-    requestNavigationAction(tabId, () => {
+    withNavigationGuard(() => {
       insertNewRow(tabId)
     })
-  }, [requestNavigationAction, insertNewRow, tabId])
+  }, [withNavigationGuard, insertNewRow, tabId])
 
   const handleDeleteRow = useCallback(() => {
     if (!selectedRowKey) return
@@ -137,18 +154,18 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
   }, [discardCurrentRow, tabId])
 
   const handleRefresh = useCallback(() => {
-    requestNavigationAction(tabId, () => {
+    withNavigationGuard(() => {
       refreshData(tabId)
     })
-  }, [requestNavigationAction, refreshData, tabId])
+  }, [withNavigationGuard, refreshData, tabId])
 
   const handleViewMode = useCallback(
     (mode: 'grid' | 'form') => {
-      requestNavigationAction(tabId, () => {
+      withNavigationGuard(() => {
         setViewMode(tabId, mode)
       })
     },
-    [requestNavigationAction, setViewMode, tabId]
+    [withNavigationGuard, setViewMode, tabId]
   )
 
   const handleExport = useCallback(() => {
@@ -158,28 +175,38 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
   const handlePageSizeChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       const newSize = parseInt(e.target.value, 10)
-      requestNavigationAction(tabId, () => {
+      withNavigationGuard(() => {
         setPageSize(tabId, newSize)
       })
     },
-    [requestNavigationAction, setPageSize, tabId]
+    [withNavigationGuard, setPageSize, tabId]
   )
 
   const handlePrevPage = useCallback(() => {
     if (currentPage > 1) {
-      requestNavigationAction(tabId, () => {
+      withNavigationGuard(() => {
         fetchPage(tabId, currentPage - 1)
       })
     }
-  }, [currentPage, requestNavigationAction, fetchPage, tabId])
+  }, [currentPage, withNavigationGuard, fetchPage, tabId])
 
   const handleNextPage = useCallback(() => {
     if (currentPage < totalPages) {
-      requestNavigationAction(tabId, () => {
+      withNavigationGuard(() => {
         fetchPage(tabId, currentPage + 1)
       })
     }
-  }, [currentPage, totalPages, requestNavigationAction, fetchPage, tabId])
+  }, [currentPage, totalPages, withNavigationGuard, fetchPage, tabId])
+
+  const handleFilterApply = useCallback(
+    (conditions: FilterCondition[]) => {
+      withNavigationGuard(() => {
+        setIsFilterDialogOpen(false)
+        applyFilters(tabId, conditions)
+      })
+    },
+    [withNavigationGuard, applyFilters, tabId]
+  )
 
   const canDelete = !isMutationDisabled && selectedRowKey !== null && !selectedIsNewRow
 
@@ -284,8 +311,32 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
         </button>
       </div>
 
-      {/* Right section: View mode + Export + Pagination */}
+      {/* Right section: Filter + View mode + Export + Pagination */}
       <div className={styles.rightSection}>
+        {/* Filter button */}
+        <div
+          className={`${styles.filterButtonWrapper} ${filterModel.length > 0 ? styles.filterButtonActive : ''}`}
+        >
+          <button
+            type="button"
+            className={styles.toolbarButton}
+            onClick={() => setIsFilterDialogOpen(true)}
+            disabled={columns.length === 0}
+            title="Filter"
+            data-testid="btn-filter"
+          >
+            <Funnel size={14} weight={filterModel.length > 0 ? 'fill' : 'regular'} />
+            <span>Filter</span>
+          </button>
+          {filterModel.length > 0 && (
+            <span className={styles.filterBadge} data-testid="filter-badge">
+              {filterModel.length}
+            </span>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div className={styles.divider} />
         {/* View mode toggle */}
         <div className={styles.viewModeGroup}>
           <button
@@ -372,6 +423,15 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
         isDestructive={true}
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
+      />
+
+      {/* Filter Dialog */}
+      <FilterDialog
+        isOpen={isFilterDialogOpen}
+        initialConditions={filterModel}
+        columns={columns.map((c) => c.name)}
+        onApply={handleFilterApply}
+        onCancel={() => setIsFilterDialogOpen(false)}
       />
     </div>
   )

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { createRef } from 'react'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import type { TableDataColumnMeta } from '../../../types/schema'
 
@@ -57,28 +56,18 @@ function makeColumnMeta(
   }
 }
 
-interface EditorHandle {
-  getValue: () => unknown
-  isCancelBeforeStart: () => boolean
-  isCancelAfterEnd: () => boolean
-}
-
-function makeMockParams(overrides: Record<string, unknown> = {}) {
+function makeMockProps(overrides: Record<string, unknown> = {}) {
   const store = useTableDataStore.getState()
   return {
-    value: '2023-11-24',
-    stopEditing: vi.fn(),
-    api: { stopEditing: vi.fn() },
-    node: { data: { id: 1 } },
-    column: { getColId: () => 'created_at' },
-    colDef: { field: 'created_at' },
-    context: {
-      tabId: 'tab-1',
-      updateCellValue: store.updateCellValue,
-      syncCellValue: store.syncCellValue,
-    },
+    row: { id: 1, created_at: '2023-11-24' } as Record<string, unknown>,
+    column: { key: 'created_at' },
+    onRowChange: vi.fn(),
+    onClose: vi.fn(),
     isNullable: true,
     columnMeta: makeColumnMeta('created_at', 'DATETIME', { isNullable: true }),
+    tabId: 'tab-1',
+    updateCellValue: store.updateCellValue,
+    syncCellValue: store.syncCellValue,
     ...overrides,
   }
 }
@@ -110,7 +99,7 @@ function setupStore() {
         },
         viewMode: 'grid',
         selectedRowKey: null,
-        filterModel: {},
+        filterModel: [],
         sort: null,
         isLoading: false,
         error: null,
@@ -134,8 +123,8 @@ beforeEach(() => {
 describe('DateTimeCellEditor', () => {
   it('renders text input with calendar button', () => {
     setupStore()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={createRef()} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     expect(screen.getByTestId('datetime-cell-editor')).toBeInTheDocument()
     expect(screen.getByRole('textbox')).toBeInTheDocument()
@@ -144,47 +133,29 @@ describe('DateTimeCellEditor', () => {
 
   it('displays Clock icon for TIME columns', () => {
     setupStore()
-    const params = makeMockParams({
-      value: '14:30:00',
+    const props = makeMockProps({
+      row: { id: 1, login_time: '14:30:00' },
+      column: { key: 'login_time' },
       columnMeta: makeColumnMeta('login_time', 'TIME', { isNullable: true }),
-      colDef: { field: 'login_time' },
     })
-    render(<DateTimeCellEditor ref={createRef()} {...(params as any)} />)
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     expect(screen.getByTestId('grid-calendar-btn')).toBeInTheDocument()
   })
 
-  it('getValue() returns the initial value', () => {
+  it('displays the initial value in the input', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
-    expect(ref.current!.getValue()).toBe('2023-11-24')
-  })
-
-  it('isCancelBeforeStart returns false', () => {
-    setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
-
-    expect(ref.current!.isCancelBeforeStart()).toBe(false)
-  })
-
-  it('isCancelAfterEnd returns false', () => {
-    setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
-
-    expect(ref.current!.isCancelAfterEnd()).toBe(false)
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('2023-11-24')
   })
 
   it('clicking calendar button shows picker (renders mock DateTimePicker)', () => {
     setupStore()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={createRef()} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     // Picker should NOT be visible yet
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
@@ -198,9 +169,8 @@ describe('DateTimeCellEditor', () => {
 
   it('picker onApply updates value and closes picker; calls updateCellValue', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     // Open picker
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
@@ -212,8 +182,14 @@ describe('DateTimeCellEditor', () => {
     // Picker should be closed
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
 
-    // Value should be updated
-    expect(ref.current!.getValue()).toBe('2023-11-24 14:30:00')
+    // Input should show new value
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('2023-11-24 14:30:00')
+
+    // onRowChange should have been called (preview)
+    expect(props.onRowChange).toHaveBeenCalledWith(
+      expect.objectContaining({ created_at: '2023-11-24 14:30:00' })
+    )
 
     // updateCellValue should have been called
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -222,9 +198,8 @@ describe('DateTimeCellEditor', () => {
 
   it('picker onCancel closes picker without updating value', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     // Open picker
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
@@ -237,14 +212,14 @@ describe('DateTimeCellEditor', () => {
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
 
     // Value should remain unchanged
-    expect(ref.current!.getValue()).toBe('2023-11-24')
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('2023-11-24')
   })
 
   it('toggling NULL on while picker is open closes the picker', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     // Open picker
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
@@ -255,14 +230,15 @@ describe('DateTimeCellEditor', () => {
     fireEvent.click(nullToggle)
 
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
-    expect(ref.current!.getValue()).toBeNull()
+
+    // onRowChange should have been called with null
+    expect(props.onRowChange).toHaveBeenCalledWith(expect.objectContaining({ created_at: null }))
   })
 
   it('NULL toggle behavior: toggling null on sets value to null', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     // Should have NULL toggle since isNullable=true
     const nullToggle = screen.getByText('NULL')
@@ -270,7 +246,6 @@ describe('DateTimeCellEditor', () => {
 
     // Toggle NULL on
     fireEvent.click(nullToggle)
-    expect(ref.current!.getValue()).toBeNull()
 
     // Input should be empty
     const input = screen.getByRole('textbox') as HTMLInputElement
@@ -279,12 +254,12 @@ describe('DateTimeCellEditor', () => {
 
   it('NULL toggle off calls getTodayMysqlString for temporal pre-fill', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams({ value: null })
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
+    const props = makeMockProps({ row: { id: 1, created_at: null } })
+    render(<DateTimeCellEditor {...(props as any)} />)
 
-    // Should start as null
-    expect(ref.current!.getValue()).toBeNull()
+    // Should start as null (empty input)
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('')
 
     // Toggle NULL off
     const nullToggle = screen.getByText('NULL')
@@ -292,35 +267,35 @@ describe('DateTimeCellEditor', () => {
 
     // Should have called getTodayMysqlString and set the value
     expect(getTodayMysqlString).toHaveBeenCalledWith('DATETIME')
-    expect(ref.current!.getValue()).toBe('2025-06-15 10:00:00')
+    expect(input.value).toBe('2025-06-15 10:00:00')
   })
 
   it('does NOT show NULL toggle when isNullable is false', () => {
     setupStore()
-    const params = makeMockParams({
+    const props = makeMockProps({
       isNullable: false,
       columnMeta: makeColumnMeta('created_at', 'DATETIME', { isNullable: false }),
     })
-    render(<DateTimeCellEditor ref={createRef()} {...(params as any)} />)
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     expect(screen.queryByText('NULL')).not.toBeInTheDocument()
   })
 
-  it('Escape key calls params.api.stopEditing(true) when picker is NOT open', () => {
+  it('Escape key calls onClose(false, false) when picker is NOT open', () => {
     setupStore()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={createRef()} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     const input = screen.getByRole('textbox')
     fireEvent.keyDown(input, { key: 'Escape' })
 
-    expect(params.api.stopEditing).toHaveBeenCalledWith(true)
+    expect(props.onClose).toHaveBeenCalledWith(false, false)
   })
 
   it('first Escape when picker is open closes only the picker (not the cell edit)', () => {
     setupStore()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={createRef()} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     // Open picker
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
@@ -333,14 +308,14 @@ describe('DateTimeCellEditor', () => {
     // Picker should be closed
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
 
-    // But cell editing should NOT have been stopped
-    expect(params.api.stopEditing).not.toHaveBeenCalled()
+    // But onClose should NOT have been called
+    expect(props.onClose).not.toHaveBeenCalled()
   })
 
   it('second Escape (after picker closed) cancels the cell edit', () => {
     setupStore()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={createRef()} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     // Open picker
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
@@ -351,39 +326,42 @@ describe('DateTimeCellEditor', () => {
     // First Escape: close picker only
     fireEvent.keyDown(input, { key: 'Escape' })
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
-    expect(params.api.stopEditing).not.toHaveBeenCalled()
+    expect(props.onClose).not.toHaveBeenCalled()
 
     // Second Escape: cancel cell edit
     fireEvent.keyDown(input, { key: 'Escape' })
-    expect(params.api.stopEditing).toHaveBeenCalledWith(true)
+    expect(props.onClose).toHaveBeenCalledWith(false, false)
   })
 
   it('direct typing in text input works', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     const input = screen.getByRole('textbox') as HTMLInputElement
     fireEvent.change(input, { target: { value: '2024-01-01 12:00:00' } })
 
     expect(input.value).toBe('2024-01-01 12:00:00')
-    expect(ref.current!.getValue()).toBe('2024-01-01 12:00:00')
+
+    // onRowChange should have been called for preview
+    expect(props.onRowChange).toHaveBeenCalledWith(
+      expect.objectContaining({ created_at: '2024-01-01 12:00:00' })
+    )
   })
 
-  it('getValue() returns null when isNull is true', () => {
+  it('input shows empty string when row value is null', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams({ value: null })
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
+    const props = makeMockProps({ row: { id: 1, created_at: null } })
+    render(<DateTimeCellEditor {...(props as any)} />)
 
-    expect(ref.current!.getValue()).toBeNull()
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('')
   })
 
   it('auto-focuses input on mount', () => {
     setupStore()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={createRef()} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     const input = screen.getByRole('textbox')
     expect(input).toHaveFocus()
@@ -391,23 +369,22 @@ describe('DateTimeCellEditor', () => {
 
   it('typing in input when null clears null state', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams({ value: null })
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
+    const props = makeMockProps({ row: { id: 1, created_at: null } })
+    render(<DateTimeCellEditor {...(props as any)} />)
 
-    expect(ref.current!.getValue()).toBeNull()
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('')
 
-    const input = screen.getByRole('textbox')
     fireEvent.change(input, { target: { value: '2024-01-01' } })
 
     // Should no longer be null
-    expect(ref.current!.getValue()).toBe('2024-01-01')
+    expect(input.value).toBe('2024-01-01')
   })
 
   it('calendar button is disabled when isNull is true', () => {
     setupStore()
-    const params = makeMockParams({ value: null })
-    render(<DateTimeCellEditor ref={createRef()} {...(params as any)} />)
+    const props = makeMockProps({ row: { id: 1, created_at: null } })
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     const calBtn = screen.getByTestId('grid-calendar-btn')
     expect(calBtn).toBeDisabled()
@@ -415,8 +392,8 @@ describe('DateTimeCellEditor', () => {
 
   it('clicking disabled calendar button does NOT open picker when null', () => {
     setupStore()
-    const params = makeMockParams({ value: null })
-    render(<DateTimeCellEditor ref={createRef()} {...(params as any)} />)
+    const props = makeMockProps({ row: { id: 1, created_at: null } })
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
@@ -424,8 +401,8 @@ describe('DateTimeCellEditor', () => {
 
   it('calendar button is enabled when value is not null', () => {
     setupStore()
-    const params = makeMockParams({ value: '2023-11-24' })
-    render(<DateTimeCellEditor ref={createRef()} {...(params as any)} />)
+    const props = makeMockProps({ row: { id: 1, created_at: '2023-11-24' } })
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     const calBtn = screen.getByTestId('grid-calendar-btn')
     expect(calBtn).not.toBeDisabled()
@@ -433,42 +410,62 @@ describe('DateTimeCellEditor', () => {
 
   it('Escape key restores original value', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams({ value: '2023-11-24' })
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
+    const props = makeMockProps({ row: { id: 1, created_at: '2023-11-24' } })
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     // Type a new value
     const input = screen.getByRole('textbox')
     fireEvent.change(input, { target: { value: '2099-12-31' } })
-    expect(ref.current!.getValue()).toBe('2099-12-31')
 
     // Press Escape to revert
     fireEvent.keyDown(input, { key: 'Escape' })
 
-    // The stopEditing(true) is called — AG Grid would cancel the edit.
-    // The internal value should be restored.
-    expect(params.api.stopEditing).toHaveBeenCalledWith(true)
+    // onClose should be called to discard
+    expect(props.onClose).toHaveBeenCalledWith(false, false)
   })
 
-  it('double-update guard: getValue returns already-applied picker value', () => {
+  it('Tab key commits the current value', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams()
-    render(<DateTimeCellEditor ref={ref} {...(params as any)} />)
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
+
+    const input = screen.getByRole('textbox')
+    fireEvent.keyDown(input, { key: 'Tab' })
+
+    expect(props.onRowChange).toHaveBeenCalledWith(
+      expect.objectContaining({ created_at: '2023-11-24' }),
+      true
+    )
+  })
+
+  it('Enter key commits the current value', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
+
+    const input = screen.getByRole('textbox')
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(props.onRowChange).toHaveBeenCalledWith(
+      expect.objectContaining({ created_at: '2023-11-24' }),
+      true
+    )
+  })
+
+  it('double-update guard: onRowChange receives already-applied picker value', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...(props as any)} />)
 
     // Open picker and apply
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
     fireEvent.click(screen.getByTestId('mock-apply'))
 
-    // getValue should return the new value
-    const appliedValue = ref.current!.getValue()
-    expect(appliedValue).toBe('2023-11-24 14:30:00')
+    // The input should show the new value
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('2023-11-24 14:30:00')
 
     // The store was already updated by the picker's Apply (via editor.handleChange).
-    // When AG Grid's onCellEditingStopped fires in TableDataGrid, the grid handler
-    // compares event.newValue (from getValue()) against the current store value.
-    // Since the store already has this value, the guard skips the redundant
-    // updateCellValue call.
     const state = useTableDataStore.getState().tabs['tab-1']
     expect(state?.editState?.currentValues.created_at).toBe('2023-11-24 14:30:00')
   })

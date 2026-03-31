@@ -117,6 +117,12 @@ describe('DateTimePicker', () => {
     expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
   })
 
+  it('does not have ag-custom-component-popup class', () => {
+    renderPicker()
+    const popup = screen.getByTestId('date-time-picker-popup')
+    expect(popup.className).not.toContain('ag-custom-component-popup')
+  })
+
   it('renders calendar section in DATE mode', () => {
     renderPicker({ value: '2023-11-24', columnType: 'DATE' })
     expect(screen.getByTestId('calendar-section')).toBeInTheDocument()

@@ -2,11 +2,10 @@
 
 use mysql_client_lib::mysql::table_data::{
     translate_filter_model, translate_filter_model_with_columns, ExportTableOptions,
-    FilterModelEntry, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
+    FilterCondition, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
 };
 #[cfg(not(coverage))]
 use mysql_client_lib::mysql::table_data::parse_enum_values;
-use std::collections::HashMap;
 
 mod common;
 
@@ -91,7 +90,7 @@ mod type_aware_filter_integration {
         page_size: u32,
         sort_column: Option<String>,
         sort_direction: Option<String>,
-        filter_model: Option<HashMap<String, mysql_client_lib::mysql::table_data::FilterModelEntry>>,
+        filter_model: Option<Vec<mysql_client_lib::mysql::table_data::FilterCondition>>,
     ) -> Result<mysql_client_lib::mysql::table_data::TableDataResponse, String> {
         table_data_commands::fetch_table_data(
             state,
@@ -284,14 +283,13 @@ mod type_aware_filter_integration {
                 "pageSize": 50,
                 "sortColumn": null,
                 "sortDirection": null,
-                "filterModel": {
-                    "email_verified_at": {
-                        "filterType": "text",
-                        "filterCondition": "notBlank",
-                        "filter": null,
-                        "filterTo": null
+                "filterModel": [
+                    {
+                        "column": "email_verified_at",
+                        "operator": "IS NOT NULL",
+                        "value": ""
                     }
-                }
+                ]
             }),
         )
         .expect("type-aware timestamp notBlank filter should succeed");
@@ -653,6 +651,7 @@ mod command_wrapper_coverage {
     use serde::de::DeserializeOwned;
     use serde_json::json;
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+    use std::collections::HashMap;
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
     use tauri::webview::InvokeRequest;
@@ -749,7 +748,7 @@ mod command_wrapper_coverage {
         page_size: u32,
         sort_column: Option<String>,
         sort_direction: Option<String>,
-        filter_model: Option<HashMap<String, mysql_client_lib::mysql::table_data::FilterModelEntry>>,
+        filter_model: Option<Vec<mysql_client_lib::mysql::table_data::FilterCondition>>,
     ) -> Result<mysql_client_lib::mysql::table_data::TableDataResponse, String> {
         table_data_commands::fetch_table_data(
             state,
@@ -830,7 +829,7 @@ mod command_wrapper_coverage {
         file_path: String,
         include_headers: bool,
         table_name_for_sql: String,
-        filter_model: Option<HashMap<String, mysql_client_lib::mysql::table_data::FilterModelEntry>>,
+        filter_model: Option<Vec<mysql_client_lib::mysql::table_data::FilterCondition>>,
         sort_column: Option<String>,
         sort_direction: Option<String>,
     ) -> Result<(), String> {
@@ -901,14 +900,13 @@ mod command_wrapper_coverage {
                 "pageSize": 25,
                 "sortColumn": "name",
                 "sortDirection": "asc",
-                "filterModel": {
-                    "name": {
-                        "filterType": "text",
-                        "filterCondition": "contains",
-                        "filter": "ali",
-                        "filterTo": null
+                "filterModel": [
+                    {
+                        "column": "name",
+                        "operator": "LIKE",
+                        "value": "%ali%"
                     }
-                }
+                ]
             }),
         )
         .expect("fetch should succeed");
@@ -1020,14 +1018,13 @@ mod command_wrapper_coverage {
                 "filePath": "ignored.csv",
                 "includeHeaders": true,
                 "tableNameForSql": "users",
-                "filterModel": {
-                    "name": {
-                        "filterType": "text",
-                        "filterCondition": "startsWith",
-                        "filter": "A",
-                        "filterTo": null
+                "filterModel": [
+                    {
+                        "column": "name",
+                        "operator": "LIKE",
+                        "value": "A%"
                     }
-                },
+                ],
                 "sortColumn": "id",
                 "sortDirection": "desc"
             }),
@@ -1133,26 +1130,21 @@ mod command_wrapper_coverage {
 
 #[test]
 fn translate_filter_model_empty() {
-    let model: HashMap<String, FilterModelEntry> = HashMap::new();
-    let clause = translate_filter_model(&model);
+    let conditions: Vec<FilterCondition> = vec![];
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.is_empty());
     assert!(clause.params.is_empty());
 }
 
 #[test]
-fn translate_filter_model_contains() {
-    let mut model = HashMap::new();
-    model.insert(
-        "name".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "contains".to_string(),
-            filter: Some("alice".to_string()),
-            filter_to: None,
-        },
-    );
+fn translate_filter_model_like() {
+    let conditions = vec![FilterCondition {
+        column: "name".to_string(),
+        operator: "LIKE".to_string(),
+        value: "%alice%".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.contains("LIKE ?"));
     assert!(clause.sql.contains("`name`"));
     assert_eq!(clause.params.len(), 1);
@@ -1160,128 +1152,80 @@ fn translate_filter_model_contains() {
 }
 
 #[test]
-fn translate_filter_model_not_contains() {
-    let mut model = HashMap::new();
-    model.insert(
-        "name".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "notContains".to_string(),
-            filter: Some("bob".to_string()),
-            filter_to: None,
-        },
-    );
+fn translate_filter_model_not_like() {
+    let conditions = vec![FilterCondition {
+        column: "name".to_string(),
+        operator: "NOT LIKE".to_string(),
+        value: "%bob%".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.contains("NOT LIKE ?"));
     assert_eq!(clause.params[0], serde_json::json!("%bob%"));
 }
 
 #[test]
 fn translate_filter_model_equals() {
-    let mut model = HashMap::new();
-    model.insert(
-        "status".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "equals".to_string(),
-            filter: Some("active".to_string()),
-            filter_to: None,
-        },
-    );
+    let conditions = vec![FilterCondition {
+        column: "status".to_string(),
+        operator: "==".to_string(),
+        value: "active".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.contains("`status` = ?"));
     assert_eq!(clause.params.len(), 1);
     assert_eq!(clause.params[0], serde_json::json!("active"));
 }
 
 #[test]
-fn translate_filter_model_not_equal() {
-    let mut model = HashMap::new();
-    model.insert(
-        "status".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "notEqual".to_string(),
-            filter: Some("inactive".to_string()),
-            filter_to: None,
-        },
-    );
+fn translate_filter_model_like_starts_with() {
+    let conditions = vec![FilterCondition {
+        column: "name".to_string(),
+        operator: "LIKE".to_string(),
+        value: "Al%".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
-    assert!(clause.sql.contains("`status` != ?"));
-    assert_eq!(clause.params[0], serde_json::json!("inactive"));
-}
-
-#[test]
-fn translate_filter_model_starts_with() {
-    let mut model = HashMap::new();
-    model.insert(
-        "name".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "startsWith".to_string(),
-            filter: Some("Al".to_string()),
-            filter_to: None,
-        },
-    );
-
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.contains("`name` LIKE ?"));
     assert_eq!(clause.params[0], serde_json::json!("Al%"));
 }
 
 #[test]
-fn translate_filter_model_ends_with() {
-    let mut model = HashMap::new();
-    model.insert(
-        "email".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "endsWith".to_string(),
-            filter: Some(".com".to_string()),
-            filter_to: None,
-        },
-    );
+fn translate_filter_model_like_ends_with() {
+    let conditions = vec![FilterCondition {
+        column: "email".to_string(),
+        operator: "LIKE".to_string(),
+        value: "%.com".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.contains("`email` LIKE ?"));
     assert_eq!(clause.params[0], serde_json::json!("%.com"));
 }
 
 #[test]
-fn translate_filter_model_blank() {
-    let mut model = HashMap::new();
-    model.insert(
-        "notes".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "blank".to_string(),
-            filter: None,
-            filter_to: None,
-        },
-    );
+fn translate_filter_model_is_null() {
+    let conditions = vec![FilterCondition {
+        column: "notes".to_string(),
+        operator: "IS NULL".to_string(),
+        value: "".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.contains("`notes` IS NULL OR `notes` = ''"));
     assert!(clause.params.is_empty());
 }
 
 #[test]
-fn translate_filter_model_not_blank() {
-    let mut model = HashMap::new();
-    model.insert(
-        "notes".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "notBlank".to_string(),
-            filter: None,
-            filter_to: None,
-        },
-    );
+fn translate_filter_model_is_not_null() {
+    let conditions = vec![FilterCondition {
+        column: "notes".to_string(),
+        operator: "IS NOT NULL".to_string(),
+        value: "".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(
         clause
             .sql
@@ -1292,88 +1236,71 @@ fn translate_filter_model_not_blank() {
 
 #[test]
 fn translate_filter_model_less_than() {
-    let mut model = HashMap::new();
-    model.insert(
-        "age".to_string(),
-        FilterModelEntry {
-            filter_type: "number".to_string(),
-            filter_condition: "lessThan".to_string(),
-            filter: Some("30".to_string()),
-            filter_to: None,
-        },
-    );
+    let conditions = vec![FilterCondition {
+        column: "age".to_string(),
+        operator: "<".to_string(),
+        value: "30".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.contains("`age` < ?"));
     assert_eq!(clause.params[0], serde_json::json!("30"));
 }
 
 #[test]
 fn translate_filter_model_greater_than() {
-    let mut model = HashMap::new();
-    model.insert(
-        "salary".to_string(),
-        FilterModelEntry {
-            filter_type: "number".to_string(),
-            filter_condition: "greaterThan".to_string(),
-            filter: Some("50000".to_string()),
-            filter_to: None,
-        },
-    );
+    let conditions = vec![FilterCondition {
+        column: "salary".to_string(),
+        operator: ">".to_string(),
+        value: "50000".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.contains("`salary` > ?"));
     assert_eq!(clause.params[0], serde_json::json!("50000"));
 }
 
 #[test]
 fn translate_filter_model_less_than_or_equal() {
-    let mut model = HashMap::new();
-    model.insert(
-        "score".to_string(),
-        FilterModelEntry {
-            filter_type: "number".to_string(),
-            filter_condition: "lessThanOrEqual".to_string(),
-            filter: Some("100".to_string()),
-            filter_to: None,
-        },
-    );
+    let conditions = vec![FilterCondition {
+        column: "score".to_string(),
+        operator: "<=".to_string(),
+        value: "100".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.contains("`score` <= ?"));
 }
 
 #[test]
 fn translate_filter_model_greater_than_or_equal() {
-    let mut model = HashMap::new();
-    model.insert(
-        "score".to_string(),
-        FilterModelEntry {
-            filter_type: "number".to_string(),
-            filter_condition: "greaterThanOrEqual".to_string(),
-            filter: Some("0".to_string()),
-            filter_to: None,
-        },
-    );
+    let conditions = vec![FilterCondition {
+        column: "score".to_string(),
+        operator: ">=".to_string(),
+        value: "0".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.contains("`score` >= ?"));
 }
 
 #[test]
-fn translate_filter_model_in_range() {
-    let mut model = HashMap::new();
-    model.insert(
-        "price".to_string(),
-        FilterModelEntry {
-            filter_type: "number".to_string(),
-            filter_condition: "inRange".to_string(),
-            filter: Some("10".to_string()),
-            filter_to: Some("100".to_string()),
+fn translate_filter_model_in_range_two_conditions() {
+    // In the new model, an "in range" filter is expressed as two separate conditions
+    let conditions = vec![
+        FilterCondition {
+            column: "price".to_string(),
+            operator: ">=".to_string(),
+            value: "10".to_string(),
         },
-    );
+        FilterCondition {
+            column: "price".to_string(),
+            operator: "<=".to_string(),
+            value: "100".to_string(),
+        },
+    ];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     assert!(clause.sql.contains("`price` >= ?"));
     assert!(clause.sql.contains("`price` <= ?"));
     assert_eq!(clause.params.len(), 2);
@@ -1383,91 +1310,41 @@ fn translate_filter_model_in_range() {
 
 #[test]
 fn translate_filter_model_multiple_columns() {
-    let mut model = HashMap::new();
-    model.insert(
-        "name".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "contains".to_string(),
-            filter: Some("alice".to_string()),
-            filter_to: None,
+    let conditions = vec![
+        FilterCondition {
+            column: "name".to_string(),
+            operator: "LIKE".to_string(),
+            value: "%alice%".to_string(),
         },
-    );
-    model.insert(
-        "age".to_string(),
-        FilterModelEntry {
-            filter_type: "number".to_string(),
-            filter_condition: "greaterThan".to_string(),
-            filter: Some("25".to_string()),
-            filter_to: None,
+        FilterCondition {
+            column: "age".to_string(),
+            operator: ">".to_string(),
+            value: "25".to_string(),
         },
-    );
+    ];
 
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
     // Both conditions should be present, joined by AND
     assert!(clause.sql.contains(" AND "));
     assert!(clause.sql.contains("`name` LIKE ?"));
     assert!(clause.sql.contains("`age` > ?"));
     assert_eq!(clause.params.len(), 2);
 
-    // Since entries are sorted by column name, "age" comes before "name"
-    assert_eq!(clause.params[0], serde_json::json!("25"));
-    assert_eq!(clause.params[1], serde_json::json!("%alice%"));
+    // Conditions are processed in order (name before age)
+    assert_eq!(clause.params[0], serde_json::json!("%alice%"));
+    assert_eq!(clause.params[1], serde_json::json!("25"));
 }
 
 #[test]
-fn translate_filter_model_unknown_condition_skipped() {
-    let mut model = HashMap::new();
-    model.insert(
-        "name".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "unknownFilter".to_string(),
-            filter: Some("test".to_string()),
-            filter_to: None,
-        },
-    );
+fn translate_filter_model_unknown_operator_skipped() {
+    let conditions = vec![FilterCondition {
+        column: "name".to_string(),
+        operator: "unknownFilter".to_string(),
+        value: "test".to_string(),
+    }];
 
-    let clause = translate_filter_model(&model);
-    // Unknown condition is skipped — empty result
-    assert!(clause.sql.is_empty());
-    assert!(clause.params.is_empty());
-}
-
-#[test]
-fn translate_filter_model_missing_value_for_value_based_filter() {
-    let mut model = HashMap::new();
-    // "equals" with filter = None should be skipped
-    model.insert(
-        "name".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "equals".to_string(),
-            filter: None,
-            filter_to: None,
-        },
-    );
-
-    let clause = translate_filter_model(&model);
-    assert!(clause.sql.is_empty());
-    assert!(clause.params.is_empty());
-}
-
-#[test]
-fn translate_filter_model_in_range_missing_filter_to() {
-    let mut model = HashMap::new();
-    // inRange with filter_to = None should be skipped
-    model.insert(
-        "price".to_string(),
-        FilterModelEntry {
-            filter_type: "number".to_string(),
-            filter_condition: "inRange".to_string(),
-            filter: Some("10".to_string()),
-            filter_to: None,
-        },
-    );
-
-    let clause = translate_filter_model(&model);
+    let clause = translate_filter_model(&conditions);
+    // Unknown operator is skipped — empty result
     assert!(clause.sql.is_empty());
     assert!(clause.params.is_empty());
 }
@@ -1489,35 +1366,24 @@ fn make_column_meta(name: &str, data_type: &str) -> TableDataColumnMeta {
 }
 
 #[test]
-fn translate_filter_model_with_columns_not_blank_uses_type_aware_sql() {
-    let mut model = HashMap::new();
-    model.insert(
-        "email_verified_at".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "notBlank".to_string(),
-            filter: None,
-            filter_to: None,
+fn translate_filter_model_with_columns_is_not_null_uses_type_aware_sql() {
+    let conditions = vec![
+        FilterCondition {
+            column: "email_verified_at".to_string(),
+            operator: "IS NOT NULL".to_string(),
+            value: "".to_string(),
         },
-    );
-    model.insert(
-        "notes".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "notBlank".to_string(),
-            filter: None,
-            filter_to: None,
+        FilterCondition {
+            column: "notes".to_string(),
+            operator: "IS NOT NULL".to_string(),
+            value: "".to_string(),
         },
-    );
-    model.insert(
-        "login_count".to_string(),
-        FilterModelEntry {
-            filter_type: "number".to_string(),
-            filter_condition: "notBlank".to_string(),
-            filter: None,
-            filter_to: None,
+        FilterCondition {
+            column: "login_count".to_string(),
+            operator: "IS NOT NULL".to_string(),
+            value: "".to_string(),
         },
-    );
+    ];
 
     let columns = vec![
         make_column_meta("email_verified_at", "TIMESTAMP"),
@@ -1525,7 +1391,7 @@ fn translate_filter_model_with_columns_not_blank_uses_type_aware_sql() {
         make_column_meta("login_count", "INT"),
     ];
 
-    let clause = translate_filter_model_with_columns(&model, &columns);
+    let clause = translate_filter_model_with_columns(&conditions, &columns);
     assert!(clause.sql.contains("`email_verified_at` IS NOT NULL"));
     assert!(!clause.sql.contains("`email_verified_at` != ''"));
     assert!(clause.sql.contains("`notes` IS NOT NULL AND `notes` != ''"));
@@ -1535,35 +1401,24 @@ fn translate_filter_model_with_columns_not_blank_uses_type_aware_sql() {
 }
 
 #[test]
-fn translate_filter_model_with_columns_blank_uses_type_aware_sql() {
-    let mut model = HashMap::new();
-    model.insert(
-        "published_on".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "blank".to_string(),
-            filter: None,
-            filter_to: None,
+fn translate_filter_model_with_columns_is_null_uses_type_aware_sql() {
+    let conditions = vec![
+        FilterCondition {
+            column: "published_on".to_string(),
+            operator: "IS NULL".to_string(),
+            value: "".to_string(),
         },
-    );
-    model.insert(
-        "title".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "blank".to_string(),
-            filter: None,
-            filter_to: None,
+        FilterCondition {
+            column: "title".to_string(),
+            operator: "IS NULL".to_string(),
+            value: "".to_string(),
         },
-    );
-    model.insert(
-        "price".to_string(),
-        FilterModelEntry {
-            filter_type: "number".to_string(),
-            filter_condition: "blank".to_string(),
-            filter: None,
-            filter_to: None,
+        FilterCondition {
+            column: "price".to_string(),
+            operator: "IS NULL".to_string(),
+            value: "".to_string(),
         },
-    );
+    ];
 
     let columns = vec![
         make_column_meta("published_on", "DATE"),
@@ -1571,7 +1426,7 @@ fn translate_filter_model_with_columns_blank_uses_type_aware_sql() {
         make_column_meta("price", "DECIMAL"),
     ];
 
-    let clause = translate_filter_model_with_columns(&model, &columns);
+    let clause = translate_filter_model_with_columns(&conditions, &columns);
     assert!(clause.sql.contains("`published_on` IS NULL"));
     assert!(!clause.sql.contains("`published_on` = ''"));
     assert!(clause.sql.contains("`title` IS NULL OR `title` = ''"));
@@ -1581,41 +1436,31 @@ fn translate_filter_model_with_columns_blank_uses_type_aware_sql() {
 }
 
 #[test]
-fn translate_filter_model_with_columns_json_blank_is_null_only() {
-    let mut model = HashMap::new();
-    model.insert(
-        "profile".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "blank".to_string(),
-            filter: None,
-            filter_to: None,
-        },
-    );
+fn translate_filter_model_with_columns_json_is_null_only() {
+    let conditions = vec![FilterCondition {
+        column: "profile".to_string(),
+        operator: "IS NULL".to_string(),
+        value: "".to_string(),
+    }];
 
     let columns = vec![make_column_meta("profile", "JSON")];
 
-    let clause = translate_filter_model_with_columns(&model, &columns);
+    let clause = translate_filter_model_with_columns(&conditions, &columns);
     assert!(clause.sql.contains("`profile` IS NULL"));
     assert!(!clause.sql.contains("`profile` = ''"));
 }
 
 #[test]
-fn translate_filter_model_with_columns_json_not_blank_is_not_null_only() {
-    let mut model = HashMap::new();
-    model.insert(
-        "profile".to_string(),
-        FilterModelEntry {
-            filter_type: "text".to_string(),
-            filter_condition: "notBlank".to_string(),
-            filter: None,
-            filter_to: None,
-        },
-    );
+fn translate_filter_model_with_columns_json_is_not_null_only() {
+    let conditions = vec![FilterCondition {
+        column: "profile".to_string(),
+        operator: "IS NOT NULL".to_string(),
+        value: "".to_string(),
+    }];
 
     let columns = vec![make_column_meta("profile", "JSON")];
 
-    let clause = translate_filter_model_with_columns(&model, &columns);
+    let clause = translate_filter_model_with_columns(&conditions, &columns);
     assert!(clause.sql.contains("`profile` IS NOT NULL"));
     assert!(!clause.sql.contains("`profile` != ''"));
 }
@@ -1664,17 +1509,17 @@ fn sort_info_roundtrip() {
 }
 
 #[test]
-fn filter_model_entry_roundtrip() {
-    let entry = FilterModelEntry {
-        filter_type: "text".to_string(),
-        filter_condition: "contains".to_string(),
-        filter: Some("test".to_string()),
-        filter_to: None,
+fn filter_condition_roundtrip() {
+    let entry = FilterCondition {
+        column: "name".to_string(),
+        operator: "LIKE".to_string(),
+        value: "%test%".to_string(),
     };
     let json = serde_json::to_string(&entry).expect("serialize");
-    let deserialized: FilterModelEntry = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(deserialized.filter_condition, "contains");
-    assert_eq!(deserialized.filter, Some("test".to_string()));
+    let deserialized: FilterCondition = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(deserialized.column, "name");
+    assert_eq!(deserialized.operator, "LIKE");
+    assert_eq!(deserialized.value, "%test%");
 }
 
 #[test]
@@ -1687,7 +1532,7 @@ fn export_table_options_serializes() {
         file_path: "/tmp/export.csv".to_string(),
         include_headers: true,
         table_name_for_sql: "users".to_string(),
-        filter_model: HashMap::new(),
+        filter_model: vec![],
         sort: None,
     };
     let json = serde_json::to_string(&opts).expect("serialize");
@@ -1705,6 +1550,7 @@ mod coverage_stubs {
         insert_table_row_impl, update_table_row_impl,
     };
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+    use std::collections::HashMap;
 
     fn dummy_lazy_pool() -> sqlx::MySqlPool {
         let opts = MySqlConnectOptions::new()
@@ -1725,7 +1571,7 @@ mod coverage_stubs {
             1,
             100,
             None,
-            HashMap::new(),
+            vec![],
             "conn-1",
         )
         .await;
@@ -1744,16 +1590,11 @@ mod coverage_stubs {
     #[tokio::test]
     async fn fetch_table_data_impl_stub_with_sort_and_filter() {
         let pool = dummy_lazy_pool();
-        let mut filter = HashMap::new();
-        filter.insert(
-            "name".to_string(),
-            FilterModelEntry {
-                filter_type: "text".to_string(),
-                filter_condition: "contains".to_string(),
-                filter: Some("test".to_string()),
-                filter_to: None,
-            },
-        );
+        let filter = vec![FilterCondition {
+            column: "name".to_string(),
+            operator: "LIKE".to_string(),
+            value: "%test%".to_string(),
+        }];
 
         let sort = Some(SortInfo {
             column: "id".to_string(),
@@ -1844,7 +1685,7 @@ mod coverage_stubs {
             file_path: "/tmp/test_export.csv".to_string(),
             include_headers: true,
             table_name_for_sql: "users".to_string(),
-            filter_model: HashMap::new(),
+            filter_model: vec![],
             sort: None,
         };
 

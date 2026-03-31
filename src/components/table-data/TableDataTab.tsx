@@ -84,7 +84,10 @@ export function TableDataTab({ tab }: TableDataTabProps) {
         filePath: options.filePath,
         includeHeaders: options.includeHeaders,
         tableNameForSql: options.tableName,
-        filterModel: tabState?.filterModel,
+        filterModel:
+          tabState?.filterModel && tabState.filterModel.length > 0
+            ? tabState.filterModel
+            : undefined,
         sortColumn: tabState?.sort?.column,
         sortDirection: tabState?.sort?.direction,
       })

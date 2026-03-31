@@ -749,7 +749,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
           viewMode: 'grid',
           selectedRowKey: null,
           isExportDialogOpen: false,
-          filterModel: {},
+          filterModel: [],
           sort: null,
           isLoading: false,
           error: null,

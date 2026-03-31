@@ -5,25 +5,32 @@ import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
 import { fetchResultPage } from '../../../lib/query-commands'
 
-// Mock AG Grid modules
-vi.mock('ag-grid-community', () => ({
-  AllCommunityModule: {},
-  ModuleRegistry: { registerModules: vi.fn() },
-}))
-
-vi.mock('ag-grid-react', async () => {
+// Mock react-data-grid (used by the shared DataGrid wrapper via ResultGridView)
+vi.mock('react-data-grid', async () => {
   const React = await import('react')
   return {
-    AgGridReact: vi.fn((props: Record<string, unknown>) =>
+    DataGrid: React.forwardRef((props: Record<string, unknown>, _ref: unknown) =>
       React.createElement(
         'div',
         {
-          'data-testid': 'ag-grid-inner',
+          'data-testid': (props['data-testid'] as string) ?? 'rdg-inner',
+          className: props.className as string,
           onClick: () => {
-            const onRowClicked = props.onRowClicked as
-              | ((e: { rowIndex: number; data: unknown }) => void)
+            const onCellClick = props.onCellClick as
+              | ((args: Record<string, unknown>, event: Record<string, unknown>) => void)
               | undefined
-            onRowClicked?.({ rowIndex: 0, data: {} })
+            onCellClick?.(
+              {
+                row: { __rowIdx: 0 },
+                rowIdx: 0,
+                column: { key: 'col_0', idx: 0 },
+                selectCell: () => {},
+              },
+              {
+                preventGridDefault: () => {},
+                isGridDefaultPrevented: () => false,
+              }
+            )
           },
         },
         'Grid Mock'
@@ -325,9 +332,10 @@ describe('ResultPanel', () => {
     })
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 
-    // Our AG Grid mock calls onRowClicked({ rowIndex: 0 }) on click.
+    // Our react-data-grid mock calls onCellClick({ rowIdx: 0 }) on click.
+    // In ResultGridView, handleCellClick calls onRowSelected(0).
     // In the ResultPanel, handleRowSelected converts local 0 → absolute (2-1)*10+0 = 10
-    const gridInner = screen.getByTestId('ag-grid-inner')
+    const gridInner = screen.getByTestId('result-grid-inner')
     fireEvent.click(gridInner)
 
     const state = useQueryStore.getState().tabs['tab-1']
@@ -493,8 +501,8 @@ describe('ResultPanel', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 
     // The handleSortChanged callback is passed through to ResultGridView which
-    // passes it to AG Grid. We verify the sort mechanism works end-to-end
-    // via the AgGridReact mock's onSortChanged prop
+    // passes it to the DataGrid wrapper. We verify the sort mechanism works end-to-end
+    // via the DataGrid mock's onSortColumnsChange prop
     sortResultsSpy.mockRestore()
   })
 
@@ -709,8 +717,8 @@ describe('ResultPanel', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 
     // The handleSortChanged should call requestNavigationAction
-    // We can verify this by checking the spy was called via the AG Grid mock
-    // The mock triggers onSortChanged when sort changes
+    // We can verify this by checking the spy was called via the DataGrid mock
+    // The mock triggers onSortColumnsChange when sort changes
     // For now, verify the spy is properly set up
     expect(requestNavigationActionSpy).toBeDefined()
     requestNavigationActionSpy.mockRestore()

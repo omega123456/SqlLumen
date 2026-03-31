@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type {
   TableDataColumnMeta,
   TableDataTabState,
-  AgGridFilterModel,
+  FilterCondition,
   RowEditState,
 } from '../types/schema'
 import {
@@ -251,7 +251,7 @@ function createDefaultTabState(
     editState: null,
     viewMode: 'grid',
     selectedRowKey: null,
-    filterModel: {},
+    filterModel: [],
     sort: null,
     isLoading: false,
     error: null,
@@ -273,7 +273,7 @@ export interface TableDataStore {
   loadTableData: (tabId: string) => Promise<void>
   fetchPage: (tabId: string, page: number) => Promise<void>
   sortByColumn: (tabId: string, column: string, direction: 'asc' | 'desc' | null) => Promise<void>
-  applyFilters: (tabId: string, filterModel: AgGridFilterModel) => Promise<void>
+  applyFilters: (tabId: string, conditions: FilterCondition[]) => Promise<void>
   refreshData: (tabId: string) => Promise<void>
 
   startEditing: (
@@ -391,7 +391,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           pageSize: tab.pageSize,
           sortColumn: tab.sort?.column,
           sortDirection: tab.sort?.direction,
-          filterModel: Object.keys(tab.filterModel).length > 0 ? tab.filterModel : undefined,
+          filterModel: tab.filterModel.length > 0 ? tab.filterModel : undefined,
         })
 
         // Guard: tab may have been cleaned up during the async call
@@ -431,8 +431,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     // ------ applyFilters ------
 
-    applyFilters: async (tabId, filterModel) => {
-      patchTab(tabId, { filterModel })
+    applyFilters: async (tabId, conditions) => {
+      patchTab(tabId, { filterModel: conditions })
       await get().fetchPage(tabId, 1)
     },
 

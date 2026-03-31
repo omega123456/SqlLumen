@@ -1,56 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 
-// Mock AG Grid modules before importing the component
-vi.mock('ag-grid-community', () => ({
-  AllCommunityModule: {},
-  ModuleRegistry: { registerModules: vi.fn() },
-}))
-
-vi.mock('ag-grid-react', async () => {
+// Mock the shared DataGrid wrapper
+vi.mock('../../../components/shared/DataGrid', async () => {
   const React = await import('react')
   return {
-    AgGridReact: vi.fn((props: Record<string, unknown>) => {
-      // Render a simplified mock that exposes the column defs and row data
-      const colDefs = props.columnDefs as Array<{ headerName: string; field: string }>
-      const rowData = props.rowData as Array<Record<string, unknown>>
-
+    DataGrid: vi.fn((props: Record<string, unknown>) => {
+      const rows = (props.rows as Array<Record<string, unknown>>) ?? []
       return React.createElement(
         'div',
-        { 'data-testid': 'ag-grid-inner' },
-        // Render headers
-        React.createElement(
-          'div',
-          { 'data-testid': 'ag-grid-headers' },
-          colDefs?.map((col: { headerName: string; field: string }) =>
-            React.createElement('span', { key: col.field, 'data-field': col.field }, col.headerName)
-          )
-        ),
-        // Render rows
-        React.createElement(
-          'div',
-          { 'data-testid': 'ag-grid-rows' },
-          rowData?.map((row: Record<string, unknown>, i: number) =>
-            React.createElement(
-              'div',
-              {
-                key: i,
-                'data-testid': `ag-grid-row-${i}`,
-                onClick: () => {
-                  const onRowClicked = props.onRowClicked as
-                    | ((e: { rowIndex: number; data: unknown }) => void)
-                    | undefined
-                  onRowClicked?.({ rowIndex: i, data: row })
-                },
-              },
-              ...Object.entries(row).map(([key, val]) =>
+        { 'data-testid': props['data-testid'] },
+        rows.map((row: Record<string, unknown>, i: number) =>
+          React.createElement(
+            'div',
+            { key: i, 'data-testid': `grid-row-${i}` },
+            ...Object.entries(row)
+              .filter(([k]: [string, unknown]) => !k.startsWith('__'))
+              .map(([k, v]: [string, unknown]) =>
                 React.createElement(
                   'span',
-                  { key, 'data-field': key },
-                  val === null ? 'NULL' : String(val)
+                  { key: k, 'data-key': k },
+                  v === null ? 'NULL' : String(v)
                 )
               )
-            )
           )
         )
       )
@@ -59,7 +31,7 @@ vi.mock('ag-grid-react', async () => {
 })
 
 import { ResultGridView } from '../../../components/query-editor/ResultGridView'
-import { AgGridReact } from 'ag-grid-react'
+import { DataGrid } from '../../../components/shared/DataGrid'
 
 const columns = [
   { name: 'id', dataType: 'INT' },
@@ -73,8 +45,8 @@ const rows: unknown[][] = [
   [3, 'Charlie', 'charlie@example.com'],
 ]
 
-function getLatestAgGridProps(): Record<string, unknown> {
-  const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
+function getLatestDataGridProps(): Record<string, unknown> {
+  const mockCalls = (DataGrid as unknown as ReturnType<typeof vi.fn>).mock.calls
   return mockCalls[mockCalls.length - 1][0] as Record<string, unknown>
 }
 
@@ -99,7 +71,6 @@ describe('ResultGridView', () => {
     onUpdateCellValue: vi.fn(),
     onSyncCellValue: vi.fn(),
     onAutoSave: vi.fn().mockResolvedValue(true),
-    onRequestNavigationAction: vi.fn(),
   }
 
   beforeEach(() => {
@@ -111,106 +82,128 @@ describe('ResultGridView', () => {
     expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
   })
 
-  it('has ag-theme-precision class on container', () => {
+  it('passes correct number of column defs to DataGrid', () => {
     render(<ResultGridView {...defaultProps} />)
-    const container = screen.getByTestId('result-grid-view')
-    expect(container.className).toContain('ag-theme-precision')
-  })
-
-  it('passes correct number of column defs to AgGridReact', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const mockCalls = (AgGridReact as unknown as ReturnType<typeof vi.fn>).mock.calls
-    expect(mockCalls.length).toBeGreaterThanOrEqual(1)
-    const props = getLatestAgGridProps()
-    const colDefs = props.columnDefs as Array<{ headerName: string; field: string }>
+    const props = getLatestDataGridProps()
+    const colDefs = props.columns as Array<{ key: string; name: string }>
     expect(colDefs).toHaveLength(3)
   })
 
-  it('maps column names to headerName', () => {
+  it('maps column names to name property', () => {
     render(<ResultGridView {...defaultProps} />)
-    const props = getLatestAgGridProps()
-    const colDefs = props.columnDefs as Array<{ headerName: string; field: string }>
-    expect(colDefs[0].headerName).toBe('id')
-    expect(colDefs[1].headerName).toBe('name')
-    expect(colDefs[2].headerName).toBe('email')
+    const props = getLatestDataGridProps()
+    const colDefs = props.columns as Array<{ name: string }>
+    expect(colDefs[0].name).toBe('id')
+    expect(colDefs[1].name).toBe('name')
+    expect(colDefs[2].name).toBe('email')
   })
 
-  it('uses index-based field names to handle duplicate columns', () => {
+  it('uses index-based keys (col_N) for columns', () => {
     render(<ResultGridView {...defaultProps} />)
-    const props = getLatestAgGridProps()
-    const colDefs = props.columnDefs as Array<{ headerName: string; field: string }>
-    expect(colDefs[0].field).toBe('col_0')
-    expect(colDefs[1].field).toBe('col_1')
-    expect(colDefs[2].field).toBe('col_2')
+    const props = getLatestDataGridProps()
+    const colDefs = props.columns as Array<{ key: string }>
+    expect(colDefs[0].key).toBe('col_0')
+    expect(colDefs[1].key).toBe('col_1')
+    expect(colDefs[2].key).toBe('col_2')
   })
 
-  it('transforms row arrays into keyed objects for AG Grid', () => {
+  it('transforms row arrays into keyed objects with __rowIdx', () => {
     render(<ResultGridView {...defaultProps} />)
-    const props = getLatestAgGridProps()
-    const rowData = props.rowData as Array<Record<string, unknown>>
+    const props = getLatestDataGridProps()
+    const rowData = props.rows as Array<Record<string, unknown>>
     expect(rowData).toHaveLength(3)
-    expect(rowData[0]).toEqual({ col_0: 1, col_1: 'Alice', col_2: 'alice@example.com' })
-    expect(rowData[1]).toEqual({ col_0: 2, col_1: 'Bob', col_2: null })
+    expect(rowData[0]).toEqual({
+      __rowIdx: 0,
+      col_0: 1,
+      col_1: 'Alice',
+      col_2: 'alice@example.com',
+    })
+    expect(rowData[1]).toEqual({ __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null })
   })
 
   it('sets sortable: true on all column defs', () => {
     render(<ResultGridView {...defaultProps} />)
-    const props = getLatestAgGridProps()
-    const colDefs = props.columnDefs as Array<{ sortable: boolean }>
+    const props = getLatestDataGridProps()
+    const colDefs = props.columns as Array<{ sortable: boolean }>
     colDefs.forEach((col) => {
       expect(col.sortable).toBe(true)
     })
   })
 
-  it('disables client-side sort via comparator returning 0', () => {
+  it('sets resizable: true on all column defs', () => {
     render(<ResultGridView {...defaultProps} />)
-    const props = getLatestAgGridProps()
-    const colDefs = props.columnDefs as Array<{ comparator: () => number }>
+    const props = getLatestDataGridProps()
+    const colDefs = props.columns as Array<{ resizable: boolean }>
     colDefs.forEach((col) => {
-      expect(col.comparator()).toBe(0)
+      expect(col.resizable).toBe(true)
     })
   })
 
-  it('sets suppressMultiSort to true', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const props = getLatestAgGridProps()
-    expect(props.suppressMultiSort).toBe(true)
-  })
-
-  it('applies sort direction to matching column from sortColumn/sortDirection props', () => {
+  it('derives sortColumns from sortColumn/sortDirection props (ASC conversion)', () => {
     render(<ResultGridView {...defaultProps} sortColumn="name" sortDirection="asc" />)
-    const props = getLatestAgGridProps()
-    const colDefs = props.columnDefs as Array<{
-      headerName: string
-      sort: string | undefined
-    }>
-    // "name" column (index 1) should have sort: 'asc'
-    expect(colDefs[1].sort).toBe('asc')
-    // Other columns should have no sort
-    expect(colDefs[0].sort).toBeUndefined()
-    expect(colDefs[2].sort).toBeUndefined()
+    const props = getLatestDataGridProps()
+    const sortColumns = props.sortColumns as Array<{ columnKey: string; direction: string }>
+    expect(sortColumns).toEqual([{ columnKey: 'col_1', direction: 'ASC' }])
   })
 
-  it('calls onRowSelected when a row is clicked', () => {
+  it('derives sortColumns from sortColumn/sortDirection props (DESC conversion)', () => {
+    render(<ResultGridView {...defaultProps} sortColumn="id" sortDirection="desc" />)
+    const props = getLatestDataGridProps()
+    const sortColumns = props.sortColumns as Array<{ columnKey: string; direction: string }>
+    expect(sortColumns).toEqual([{ columnKey: 'col_0', direction: 'DESC' }])
+  })
+
+  it('has empty sortColumns when no sort is active', () => {
+    render(<ResultGridView {...defaultProps} />)
+    const props = getLatestDataGridProps()
+    const sortColumns = props.sortColumns as Array<{ columnKey: string; direction: string }>
+    expect(sortColumns).toEqual([])
+  })
+
+  it('calls onRowSelected when a cell is clicked', async () => {
     const onRowSelected = vi.fn()
     render(<ResultGridView {...defaultProps} onRowSelected={onRowSelected} />)
-    // Click the first row via our mock
-    const row0 = screen.getByTestId('ag-grid-row-0')
-    row0.click()
+    const props = getLatestDataGridProps()
+    const onCellClick = props.onCellClick as (args: unknown, event: unknown) => void
+
+    await act(async () => {
+      onCellClick(
+        {
+          row: { __rowIdx: 0 },
+          rowIdx: 0,
+          column: { key: 'col_0', idx: 0 },
+          selectCell: vi.fn(),
+        },
+        { preventGridDefault: vi.fn(), isGridDefaultPrevented: () => false }
+      )
+    })
+
     expect(onRowSelected).toHaveBeenCalledWith(0)
   })
 
-  it('calls onRowSelected with correct index for different rows', () => {
+  it('calls onRowSelected with correct index for different rows', async () => {
     const onRowSelected = vi.fn()
     render(<ResultGridView {...defaultProps} onRowSelected={onRowSelected} />)
-    const row2 = screen.getByTestId('ag-grid-row-2')
-    row2.click()
+    const props = getLatestDataGridProps()
+    const onCellClick = props.onCellClick as (args: unknown, event: unknown) => void
+
+    await act(async () => {
+      onCellClick(
+        {
+          row: { __rowIdx: 2 },
+          rowIdx: 2,
+          column: { key: 'col_0', idx: 0 },
+          selectCell: vi.fn(),
+        },
+        { preventGridDefault: vi.fn(), isGridDefaultPrevented: () => false }
+      )
+    })
+
     expect(onRowSelected).toHaveBeenCalledWith(2)
   })
 
   it('renders NULL values as "NULL" in mock output', () => {
     render(<ResultGridView {...defaultProps} />)
-    // Our mock renders NULL values as "NULL" string
     const nullCells = screen.getAllByText('NULL')
     expect(nullCells.length).toBeGreaterThanOrEqual(1)
   })
@@ -218,76 +211,51 @@ describe('ResultGridView', () => {
   it('renders with empty rows', () => {
     render(<ResultGridView {...defaultProps} rows={[]} />)
     expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
-    // Verify row data is empty
-    const props = getLatestAgGridProps()
-    const rowData = props.rowData as Array<Record<string, unknown>>
+    const props = getLatestDataGridProps()
+    const rowData = props.rows as Array<Record<string, unknown>>
     expect(rowData).toHaveLength(0)
   })
 
   it('renders with empty columns', () => {
     render(<ResultGridView {...defaultProps} columns={[]} rows={[]} />)
     expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
-    const props = getLatestAgGridProps()
-    const colDefs = props.columnDefs as Array<{ headerName: string }>
+    const props = getLatestDataGridProps()
+    const colDefs = props.columns as Array<{ key: string }>
     expect(colDefs).toHaveLength(0)
   })
 
-  it('has cellClassRules for null detection in defaultColDef', () => {
+  it('cellClass function returns rdg-cell-null for null values', () => {
     render(<ResultGridView {...defaultProps} />)
-    const props = getLatestAgGridProps()
-    const defaultColDef = props.defaultColDef as {
-      cellClassRules: Record<string, (params: { value: unknown }) => boolean>
-    }
-    // 'ag-cell-null' rule should be in defaultColDef
-    expect(defaultColDef.cellClassRules['ag-cell-null']).toBeDefined()
-    expect(defaultColDef.cellClassRules['ag-cell-null']({ value: null })).toBe(true)
-    expect(defaultColDef.cellClassRules['ag-cell-null']({ value: 'hello' })).toBe(false)
-  })
-
-  it('cell-modified rule returns false in read-only mode', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const props = getLatestAgGridProps()
-    const defaultColDef = props.defaultColDef as {
-      cellClassRules: Record<
-        string,
-        (params: {
-          colDef?: { field?: string }
-          node?: { rowIndex?: number }
-          value?: unknown
-        }) => boolean
-      >
-    }
-    expect(defaultColDef.cellClassRules['cell-modified']).toBeDefined()
-    // In read-only mode (editMode=null), should always return false
-    expect(
-      defaultColDef.cellClassRules['cell-modified']({
-        colDef: { field: 'col_0' },
-        node: { rowIndex: 0 },
-      })
-    ).toBe(false)
-  })
-
-  it('has valueFormatter that returns "NULL" for null values', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const props = getLatestAgGridProps()
-    const colDefs = props.columnDefs as Array<{
-      valueFormatter: (params: { value: unknown }) => string
+    const props = getLatestDataGridProps()
+    const colDefs = props.columns as Array<{
+      cellClass: (row: Record<string, unknown>) => string
     }>
-    expect(colDefs[0].valueFormatter({ value: null })).toBe('NULL')
-    expect(colDefs[0].valueFormatter({ value: 42 })).toBe('42')
-    expect(colDefs[0].valueFormatter({ value: 'hello' })).toBe('hello')
+    // Column 2 (email) — row 1 has null email
+    const result = colDefs[2].cellClass({ __rowIdx: 1, col_2: null })
+    expect(result).toContain('rdg-cell-null')
   })
 
-  it('enables column resizing', () => {
+  it('cellClass function does not include rdg-cell-null for non-null values', () => {
     render(<ResultGridView {...defaultProps} />)
-    const props = getLatestAgGridProps()
-    const colDefs = props.columnDefs as Array<{ resizable: boolean }>
-    colDefs.forEach((col) => {
-      expect(col.resizable).toBe(true)
-    })
+    const props = getLatestDataGridProps()
+    const colDefs = props.columns as Array<{
+      cellClass: (row: Record<string, unknown>) => string
+    }>
+    const result = colDefs[0].cellClass({ __rowIdx: 0, col_0: 1 })
+    expect(result).not.toContain('rdg-cell-null')
   })
 
-  it('calls onRowSelected with page-local row index (parent converts to absolute)', () => {
+  it('cellClass includes data-type class from getResultGridCellClass', () => {
+    render(<ResultGridView {...defaultProps} />)
+    const props = getLatestDataGridProps()
+    const colDefs = props.columns as Array<{
+      cellClass: (row: Record<string, unknown>) => string
+    }>
+    // INT column → td-cell-mono-muted
+    expect(colDefs[0].cellClass({ __rowIdx: 0, col_0: 1 })).toContain('td-cell-mono-muted')
+  })
+
+  it('calls onRowSelected with page-local row index (parent converts to absolute)', async () => {
     const onRowSelected = vi.fn()
     render(
       <ResultGridView
@@ -297,9 +265,21 @@ describe('ResultGridView', () => {
         pageSize={10}
       />
     )
-    // Click the first row (local index 0) on page 2
-    const row0 = screen.getByTestId('ag-grid-row-0')
-    row0.click()
+    const props = getLatestDataGridProps()
+    const onCellClick = props.onCellClick as (args: unknown, event: unknown) => void
+
+    await act(async () => {
+      onCellClick(
+        {
+          row: { __rowIdx: 0 },
+          rowIdx: 0,
+          column: { key: 'col_0', idx: 0 },
+          selectCell: vi.fn(),
+        },
+        { preventGridDefault: vi.fn(), isGridDefaultPrevented: () => false }
+      )
+    })
+
     // The grid itself reports local index 0 to onRowSelected
     // (The parent ResultPanel converts to absolute: (2-1)*10 + 0 = 10)
     expect(onRowSelected).toHaveBeenCalledWith(0)
@@ -307,89 +287,92 @@ describe('ResultGridView', () => {
 
   it('passes currentPage and pageSize props to the component', () => {
     render(<ResultGridView {...defaultProps} currentPage={3} pageSize={50} />)
-    // Component should render without errors with these props
     expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
   })
 
-  it('handleSortChanged calls onSortChanged with column name and direction', () => {
+  it('onSortColumnsChange calls onSortChanged with column name and lowercase direction', () => {
     const onSortChanged = vi.fn()
     render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} />)
-    const props = getLatestAgGridProps()
-    const handleSortChanged = props.onSortChanged as (event: {
-      api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
-    }) => void
+    const props = getLatestDataGridProps()
+    const onSortColumnsChange = props.onSortColumnsChange as (
+      cols: Array<{ columnKey: string; direction: string }>
+    ) => void
 
-    // Simulate sort on col_1 (name) ascending
-    handleSortChanged({
-      api: {
-        getColumnState: () => [
-          { colId: 'col_0', sort: null },
-          { colId: 'col_1', sort: 'asc' },
-          { colId: 'col_2', sort: null },
-        ],
-      },
-    })
+    // react-data-grid passes uppercase direction
+    onSortColumnsChange([{ columnKey: 'col_1', direction: 'ASC' }])
 
+    // App expects lowercase
     expect(onSortChanged).toHaveBeenCalledWith('name', 'asc')
   })
 
-  it('handleSortChanged calls onSortChanged with null when sort is cleared', () => {
+  it('onSortColumnsChange handles DESC direction', () => {
+    const onSortChanged = vi.fn()
+    render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} />)
+    const props = getLatestDataGridProps()
+    const onSortColumnsChange = props.onSortColumnsChange as (
+      cols: Array<{ columnKey: string; direction: string }>
+    ) => void
+
+    onSortColumnsChange([{ columnKey: 'col_0', direction: 'DESC' }])
+    expect(onSortChanged).toHaveBeenCalledWith('id', 'desc')
+  })
+
+  it('onSortColumnsChange enforces single-sort by keeping only the last column', () => {
+    const onSortChanged = vi.fn()
+    render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} />)
+    const props = getLatestDataGridProps()
+    const onSortColumnsChange = props.onSortColumnsChange as (
+      cols: Array<{ columnKey: string; direction: string }>
+    ) => void
+
+    // Simulate multi-sort attempt
+    onSortColumnsChange([
+      { columnKey: 'col_0', direction: 'ASC' },
+      { columnKey: 'col_1', direction: 'DESC' },
+    ])
+
+    // Should keep only the last (col_1 → name)
+    expect(onSortChanged).toHaveBeenCalledWith('name', 'desc')
+  })
+
+  it('onSortColumnsChange calls onSortChanged with null when sort is cleared', () => {
     const onSortChanged = vi.fn()
     render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} sortColumn="name" />)
-    const props = getLatestAgGridProps()
-    const handleSortChanged = props.onSortChanged as (event: {
-      api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
-    }) => void
+    const props = getLatestDataGridProps()
+    const onSortColumnsChange = props.onSortColumnsChange as (
+      cols: Array<{ columnKey: string; direction: string }>
+    ) => void
 
-    // Simulate sort cleared — no column has sort
-    handleSortChanged({
-      api: {
-        getColumnState: () => [
-          { colId: 'col_0', sort: null },
-          { colId: 'col_1', sort: null },
-          { colId: 'col_2', sort: null },
-        ],
-      },
-    })
-
+    // Empty array means sort cleared
+    onSortColumnsChange([])
     expect(onSortChanged).toHaveBeenCalledWith('name', null)
   })
 
-  it('handleSortChanged does nothing when sort cleared and no previous sortColumn', () => {
+  it('onSortColumnsChange does nothing when sort cleared and no previous sortColumn', () => {
     const onSortChanged = vi.fn()
     render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} sortColumn={null} />)
-    const props = getLatestAgGridProps()
-    const handleSortChanged = props.onSortChanged as (event: {
-      api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
-    }) => void
+    const props = getLatestDataGridProps()
+    const onSortColumnsChange = props.onSortColumnsChange as (
+      cols: Array<{ columnKey: string; direction: string }>
+    ) => void
 
-    handleSortChanged({
-      api: {
-        getColumnState: () => [
-          { colId: 'col_0', sort: null },
-          { colId: 'col_1', sort: null },
-        ],
-      },
-    })
-
+    onSortColumnsChange([])
     expect(onSortChanged).not.toHaveBeenCalled()
   })
 
-  it('getRowClass does NOT return selected class in read-only mode (editMode=null)', () => {
+  it('rowClass returns selected class in read-only mode (editMode=null)', () => {
     render(
       <ResultGridView {...defaultProps} selectedRowIndex={1} currentPage={1} pageSize={1000} />
     )
-    const props = getLatestAgGridProps()
-    const getRowClass = props.getRowClass as (params: {
-      rowIndex: number | undefined
-    }) => string | undefined
+    const props = getLatestDataGridProps()
+    const rowClass = props.rowClass as (row: Record<string, unknown>) => string | undefined
 
-    // In read-only mode, no row should get the selected highlight
-    expect(getRowClass({ rowIndex: 1 })).toBeUndefined()
-    expect(getRowClass({ rowIndex: 0 })).toBeUndefined()
+    // Selected row should get the highlight regardless of edit mode
+    expect(rowClass({ __rowIdx: 1 })).toBe('rdg-row-precision-selected')
+    expect(rowClass({ __rowIdx: 0 })).toBeUndefined()
   })
 
-  it('getRowClass returns selected class when editMode is active', () => {
+  it('rowClass returns selected class when editMode is active', () => {
     render(
       <ResultGridView
         {...defaultProps}
@@ -399,19 +382,17 @@ describe('ResultGridView', () => {
         pageSize={1000}
       />
     )
-    const props = getLatestAgGridProps()
-    const getRowClass = props.getRowClass as (params: {
-      rowIndex: number | undefined
-    }) => string | undefined
+    const props = getLatestDataGridProps()
+    const rowClass = props.rowClass as (row: Record<string, unknown>) => string | undefined
 
     // In edit mode, selected row should get the highlight
-    expect(getRowClass({ rowIndex: 1 })).toBe('ag-row-precision-selected')
+    expect(rowClass({ __rowIdx: 1 })).toBe('rdg-row-precision-selected')
     // Other rows should not be selected
-    expect(getRowClass({ rowIndex: 0 })).toBeUndefined()
-    expect(getRowClass({ rowIndex: 2 })).toBeUndefined()
+    expect(rowClass({ __rowIdx: 0 })).toBeUndefined()
+    expect(rowClass({ __rowIdx: 2 })).toBeUndefined()
   })
 
-  it('getRowClass handles page-offset conversion for selection in edit mode', () => {
+  it('rowClass handles page-offset conversion for selection in edit mode', () => {
     render(
       <ResultGridView
         {...defaultProps}
@@ -421,44 +402,38 @@ describe('ResultGridView', () => {
         pageSize={10}
       />
     )
-    const props = getLatestAgGridProps()
-    const getRowClass = props.getRowClass as (params: {
-      rowIndex: number | undefined
-    }) => string | undefined
+    const props = getLatestDataGridProps()
+    const rowClass = props.rowClass as (row: Record<string, unknown>) => string | undefined
 
     // Absolute index 15 on page 2 (size 10) → local = 15 - (2-1)*10 = 5
-    expect(getRowClass({ rowIndex: 5 })).toBe('ag-row-precision-selected')
-    expect(getRowClass({ rowIndex: 4 })).toBeUndefined()
+    expect(rowClass({ __rowIdx: 5 })).toBe('rdg-row-precision-selected')
+    expect(rowClass({ __rowIdx: 4 })).toBeUndefined()
   })
 
-  it('getRowClass returns undefined when no row is selected', () => {
+  it('rowClass returns undefined when no row is selected', () => {
     render(<ResultGridView {...defaultProps} selectedRowIndex={null} />)
-    const props = getLatestAgGridProps()
-    const getRowClass = props.getRowClass as (params: {
-      rowIndex: number | undefined
-    }) => string | undefined
+    const props = getLatestDataGridProps()
+    const rowClass = props.rowClass as (row: Record<string, unknown>) => string | undefined
 
-    expect(getRowClass({ rowIndex: 0 })).toBeUndefined()
-    expect(getRowClass({ rowIndex: undefined })).toBeUndefined()
+    expect(rowClass({ __rowIdx: 0 })).toBeUndefined()
   })
 
-  it('handleSortChanged handles desc sort direction', () => {
-    const onSortChanged = vi.fn()
-    render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} />)
-    const props = getLatestAgGridProps()
-    const handleSortChanged = props.onSortChanged as (event: {
-      api: { getColumnState: () => Array<{ colId: string; sort: string | null }> }
-    }) => void
+  it('provides a rowKeyGetter that returns __rowIdx', () => {
+    render(<ResultGridView {...defaultProps} />)
+    const props = getLatestDataGridProps()
+    const rowKeyGetter = props.rowKeyGetter as (row: Record<string, unknown>) => number
 
-    handleSortChanged({
-      api: {
-        getColumnState: () => [
-          { colId: 'col_0', sort: 'desc' },
-          { colId: 'col_1', sort: null },
-        ],
-      },
+    expect(rowKeyGetter({ __rowIdx: 5, col_0: 1 })).toBe(5)
+    expect(rowKeyGetter({ __rowIdx: 0, col_0: 2 })).toBe(0)
+  })
+
+  it('has renderCell on all columns (TableDataCellRenderer)', () => {
+    render(<ResultGridView {...defaultProps} />)
+    const props = getLatestDataGridProps()
+    const colDefs = props.columns as Array<{ renderCell: unknown }>
+    colDefs.forEach((col) => {
+      expect(col.renderCell).toBeDefined()
+      expect(typeof col.renderCell).toBe('function')
     })
-
-    expect(onSortChanged).toHaveBeenCalledWith('id', 'desc')
   })
 })

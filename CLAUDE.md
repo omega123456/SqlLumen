@@ -8,7 +8,7 @@ A cross-platform desktop MySQL/MariaDB client built with **Tauri v2** (Rust back
 
 **Target:** Mac + Windows — in active development.
 
-**Currently in the codebase:** local app data (SQLite + migrations), saved connections and groups, live MySQL sessions and pooling, object browser, SQL query editor (Monaco with SQL completion), result panel (AG Grid grid view, form view, text view) with server-side sort/paging and export (CSV / JSON / XLSX / SQL INSERT), schema info tab, and a **table data** workspace (paginated AG Grid + form editing, filters/sort via backend, unsaved-changes flow). Further polish and features continue by phase.
+**Currently in the codebase:** local app data (SQLite + migrations), saved connections and groups, live MySQL sessions and pooling, object browser, SQL query editor (Monaco with SQL completion), result panel (react-data-grid grid view, form view, text view) with server-side sort/paging and export (CSV / JSON / XLSX / SQL INSERT), schema info tab, and a **table data** workspace (paginated react-data-grid + form editing, filters/sort via backend, unsaved-changes flow). Further polish and features continue by phase.
 
 ## Commands
 
@@ -156,7 +156,7 @@ src/
     global.css
     fonts.css
     reset.css
-    ag-grid-precision.css   # AG Grid “Precision Studio” theme overrides (with ag-theme-alpine)
+    data-grid-precision.css # react-data-grid “Precision Studio” theme overrides
   types/
   tests/              # Mirrors src/; setup in tests/setup.ts
 ```
@@ -170,7 +170,7 @@ Theme is applied by setting `data-theme="light|dark"` on `document.documentEleme
 - Component styles use CSS Modules (`*.module.css`)
 - Design tokens are CSS custom properties in `src/styles/tokens.css`, scoped under `[data-theme="light"]` and `[data-theme="dark"]`
 - Font: JetBrains Mono (`@fontsource/jetbrains-mono`)
-- **AG Grid:** use `theme="legacy"` on `AgGridReact`, import base AG Grid CSS plus `ag-theme-alpine` (sort icons), then layer `ag-grid-precision.css` for token-aligned styling. Query results and table data both use this pattern; client-side reordering is disabled where the backend owns sort order.
+- **react-data-grid:** use the shared `DataGrid` wrapper (`src/components/shared/DataGrid.tsx`) which applies the `rdg-precision` CSS class and reads row/header heights from CSS tokens. Sort icons are Phosphor ArrowUp/ArrowDown via a custom `SortStatusRenderer`. Theme styling is in `data-grid-precision.css`. Client-side reordering is disabled where the backend owns sort order.
 
 ### State Management
 

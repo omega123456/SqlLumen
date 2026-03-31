@@ -1,10 +1,9 @@
 /**
- * useCellEditor — shared hook for AG Grid cell editors with NULL toggle support.
+ * useCellEditor — shared hook for react-data-grid cell editors with NULL toggle support.
  *
  * Encapsulates the common logic shared between NullableCellEditor and
  * DateTimeCellEditor:
- * - Initial value/null state derivation from AG Grid params
- * - useImperativeHandle for the AG Grid cell editor interface
+ * - Initial value/null state derivation from row data
  * - Focus-on-mount behavior
  * - Store syncing (updateCellValue on value change)
  * - Null toggle logic with temporal pre-fill
@@ -15,11 +14,11 @@
  * Escape: close picker first, then cancel edit).
  *
  * The hook is decoupled from any specific store — it receives its
- * update callbacks as parameters (typically sourced from AG Grid context).
+ * update callbacks as parameters (typically provided via closures in
+ * column definitions).
  */
 
-import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
-import type { ICellEditorParams } from 'ag-grid-community'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
 import type { TableDataColumnMeta } from '../../types/schema'
 
@@ -27,12 +26,20 @@ import type { TableDataColumnMeta } from '../../types/schema'
 // Types
 // ---------------------------------------------------------------------------
 
-export interface CellEditorParams extends ICellEditorParams {
+/** Props that react-data-grid passes to editor components. */
+export interface RdgEditorProps {
+  row: Record<string, unknown>
+  column: { key: string }
+  onRowChange: (row: Record<string, unknown>, commitChanges?: boolean) => void
+  onClose: (commitChanges?: boolean, shouldFocusCell?: boolean) => void
+}
+
+export interface CellEditorParams extends RdgEditorProps {
   isNullable: boolean
   columnMeta: TableDataColumnMeta
 }
 
-/** Callbacks that the hook needs — typically read from AG Grid context. */
+/** Callbacks that the hook needs — typically provided via closures in column defs. */
 export interface CellEditorCallbacks {
   tabId: string
   updateCellValue: (tabId: string, column: string, value: unknown) => void
@@ -63,7 +70,7 @@ export interface CellEditorResult {
   inputRef: React.RefObject<HTMLInputElement | null>
   /** Whether the cell started in NULL state. */
   initialNull: boolean
-  /** The original value from AG Grid params. */
+  /** The original value from row data. */
   initialValue: unknown
 }
 
@@ -73,29 +80,24 @@ export interface CellEditorResult {
 
 export function useCellEditor(
   params: CellEditorParams,
-  ref: React.ForwardedRef<unknown>,
   callbacks: CellEditorCallbacks
 ): CellEditorResult {
   const col = params.columnMeta
   const temporalType = getTemporalColumnType(col.dataType)
 
-  const initialNull = params.value === null || params.value === undefined
-  const initialValue = initialNull ? null : params.value
+  const { row, column, onRowChange } = params
+  const fieldName = column.key
+  const rawValue = row[fieldName]
+
+  const initialNull = rawValue === null || rawValue === undefined
+  const initialValue = initialNull ? null : rawValue
 
   const [isNull, setIsNull] = useState(initialNull)
-  const [value, setValue] = useState<string | null>(initialNull ? null : String(params.value ?? ''))
+  const [value, setValue] = useState<string | null>(initialNull ? null : String(rawValue ?? ''))
 
   const inputRef = useRef<HTMLInputElement>(null)
 
   const { updateCellValue, syncCellValue, tabId } = callbacks
-  const fieldName = params.colDef?.field
-
-  // Expose AG Grid cell editor interface
-  useImperativeHandle(ref, () => ({
-    getValue: () => (isNull ? null : value),
-    isCancelBeforeStart: () => false,
-    isCancelAfterEnd: () => false,
-  }))
 
   // Auto-focus the text input on mount
   useEffect(() => {
@@ -112,12 +114,15 @@ export function useCellEditor(
       // setIsNull(false) is idempotent — safe to call even when already non-null
       setIsNull(false)
       setValue(nextValue)
+      // Preview change in grid
+      onRowChange({ ...row, [fieldName]: nextValue })
+      // Sync to store
       if (tabId && fieldName) {
         updateCellValue(tabId, fieldName, nextValue)
-        syncCellValue(tabId, params.data, fieldName, nextValue)
+        syncCellValue(tabId, row, fieldName, nextValue)
       }
     },
-    [fieldName, params.data, syncCellValue, tabId, updateCellValue]
+    [fieldName, onRowChange, row, syncCellValue, tabId, updateCellValue]
   )
 
   const handleToggleNull = useCallback(() => {
@@ -126,30 +131,45 @@ export function useCellEditor(
       const prefill = temporalType ? getTodayMysqlString(temporalType) : ''
       setIsNull(false)
       setValue(prefill)
+      // Preview change in grid
+      onRowChange({ ...row, [fieldName]: prefill })
       if (tabId && fieldName) {
         updateCellValue(tabId, fieldName, prefill)
-        syncCellValue(tabId, params.data, fieldName, prefill)
+        syncCellValue(tabId, row, fieldName, prefill)
       }
       setTimeout(() => inputRef.current?.focus(), 0)
     } else {
       // Turning NULL on
       setIsNull(true)
       setValue(null)
+      // Preview change in grid
+      onRowChange({ ...row, [fieldName]: null })
       if (tabId && fieldName) {
         updateCellValue(tabId, fieldName, null)
-        syncCellValue(tabId, params.data, fieldName, null)
+        syncCellValue(tabId, row, fieldName, null)
       }
     }
-  }, [fieldName, isNull, params.data, syncCellValue, tabId, temporalType, updateCellValue])
+  }, [fieldName, isNull, onRowChange, row, syncCellValue, tabId, temporalType, updateCellValue])
 
   const restoreOriginalValue = useCallback(() => {
     setIsNull(initialNull)
     setValue(initialNull ? null : String(initialValue ?? ''))
+    // Preview restored value in grid
+    onRowChange({ ...row, [fieldName]: initialValue })
     if (tabId && fieldName) {
       updateCellValue(tabId, fieldName, initialValue)
-      syncCellValue(tabId, params.data, fieldName, initialValue)
+      syncCellValue(tabId, row, fieldName, initialValue)
     }
-  }, [fieldName, initialNull, initialValue, params.data, syncCellValue, tabId, updateCellValue])
+  }, [
+    fieldName,
+    initialNull,
+    initialValue,
+    onRowChange,
+    row,
+    syncCellValue,
+    tabId,
+    updateCellValue,
+  ])
 
   return {
     value,

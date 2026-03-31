@@ -77,6 +77,16 @@ pub fn run() {
 
     builder = builder.plugin(prevent_default_plugin());
 
+    // Hypothesi MCP bridge: WebSocket for @hypothesi/tauri-mcp-server (see .cursor/mcp.json, opencode.json).
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.plugin(
+            tauri_plugin_mcp_bridge::Builder::new()
+                .bind_address("127.0.0.1")
+                .build(),
+        );
+    }
+
     builder
         .setup(|app| {
             let dir = app.path().app_data_dir()?;

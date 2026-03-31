@@ -32,7 +32,7 @@ async function openQueryEditorWithResults(page: Page) {
   await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
 }
 
-test('result grid wires an AG Grid icon font so sort indicators render', async ({ page }) => {
+test('result grid renders Phosphor sort arrow icons when column is sorted', async ({ page }) => {
   test.setTimeout(APP_READY_MS * 3)
 
   await waitForApp(page)
@@ -69,15 +69,16 @@ test('result grid wires an AG Grid icon font so sort indicators render', async (
     }))
   })
 
-  const visibleAscendingIcon = page
-    .getByTestId('result-grid-view')
-    .locator('.ag-sort-ascending-icon:not(.ag-hidden)')
-    .first()
-  await expect(visibleAscendingIcon).toBeVisible({ timeout: APP_READY_MS })
+  // react-data-grid uses a custom SortStatusRenderer that renders a Phosphor ArrowUp SVG
+  // for ASC sort direction. The ArrowUp icon is inside the header sort cell.
+  const resultGrid = page.getByTestId('result-grid-view')
+  const sortArrowUp = resultGrid.locator('.rdg-header-row svg').first()
+  await expect(sortArrowUp).toBeVisible({ timeout: APP_READY_MS })
 
-  const iconFontFamily = await page.getByTestId('result-grid-view').evaluate((el) => {
-    return getComputedStyle(el).getPropertyValue('--ag-icon-font-family').trim()
-  })
+  // Verify react-data-grid grid structure is present
+  const headerRow = resultGrid.locator('.rdg-header-row')
+  await expect(headerRow).toBeVisible({ timeout: APP_READY_MS })
 
-  expect(iconFontFamily).toBeTruthy()
+  const dataRows = resultGrid.locator('.rdg-row')
+  await expect(dataRows.first()).toBeVisible({ timeout: APP_READY_MS })
 })

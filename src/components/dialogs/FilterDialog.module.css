@@ -1,0 +1,258 @@
+/* FilterDialog — filter conditions modal.
+   Uses DialogShell for the outer chrome; this file handles inner sections. */
+
+/* Cancel out DialogShell's 24px padding so we get edge-to-edge sections */
+.root {
+  margin: -24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  background: var(--surface-container-high);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--type-size-xl);
+  font-weight: 700;
+  font-family: var(--font-headline);
+  color: var(--on-surface);
+  letter-spacing: -0.01em;
+}
+
+.closeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.closeButton:hover {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+/* ── Body ───────────────────────────────────────────────────────────────── */
+
+.body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  max-height: 60vh;
+}
+
+/* ── Condition rows ─────────────────────────────────────────────────────── */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Shared select / input base styling */
+.columnSelect,
+.operatorSelect,
+.valueInput {
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 var(--ui-input-padding-x);
+  border: var(--control-border);
+  border-radius: var(--ui-input-radius);
+  background: var(--ui-input-bg);
+  color: var(--ui-input-fg);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  line-height: var(--ui-input-line-height);
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.columnSelect:focus,
+.operatorSelect:focus,
+.valueInput:focus {
+  border-color: var(--primary);
+  box-shadow: var(--ui-input-focus-shadow);
+}
+
+.columnSelect {
+  flex: 3;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.operatorSelect {
+  flex: 2;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.valueInput {
+  flex: 3;
+  min-width: 0;
+}
+
+.valueInput::placeholder {
+  color: rgba(var(--on-surface-rgb), var(--ui-input-placeholder-opacity));
+}
+
+.valueInputDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.valueInputDisabled::placeholder {
+  font-style: italic;
+}
+
+/* ── Remove button ──────────────────────────────────────────────────────── */
+
+.removeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.removeButton:hover {
+  color: var(--error);
+  background: rgba(var(--error-rgb), 0.08);
+}
+
+/* ── Add Condition button ───────────────────────────────────────────────── */
+
+.addButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--primary);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.addButton:hover {
+  background: rgba(var(--primary-rgb), 0.06);
+}
+
+/* ── Empty state ────────────────────────────────────────────────────────── */
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-2xl) 0;
+}
+
+.emptyIcon {
+  color: var(--on-surface-variant);
+  opacity: 0.4;
+}
+
+.emptyTitle {
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+}
+
+.emptyHelp {
+  font-family: var(--font-body);
+  font-size: var(--type-size-xs);
+  color: var(--on-surface-variant);
+  opacity: 0.4;
+  text-align: center;
+  max-width: 340px;
+  line-height: 1.5;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: rgba(var(--outline-variant-rgb), 0.08);
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.05);
+}
+
+.footerLeft {
+  display: flex;
+  align-items: center;
+}
+
+.footerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clearAllButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.clearAllButton:hover {
+  color: var(--error);
+  background: rgba(var(--error-rgb), 0.06);
+}

@@ -5,10 +5,9 @@ import { useThemeStore } from './stores/theme-store'
 import { useConnectionStore } from './stores/connection-store'
 import { useSystemTheme } from './hooks/use-system-theme'
 
-// AG Grid base structural styles, Alpine icon font, + Precision Studio custom theme
-import 'ag-grid-community/styles/ag-grid.css'
-import 'ag-grid-community/styles/ag-theme-alpine.css'
-import './styles/ag-grid-precision.css'
+// react-data-grid base styles + Precision Studio custom theme
+import 'react-data-grid/lib/styles.css'
+import './styles/data-grid-precision.css'
 
 function App() {
   const initialize = useThemeStore((state) => state.initialize)

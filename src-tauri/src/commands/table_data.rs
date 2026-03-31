@@ -18,7 +18,7 @@ pub async fn fetch_table_data(
     page_size: u32,
     sort_column: Option<String>,
     sort_direction: Option<String>,
-    filter_model: Option<HashMap<String, table_data::FilterModelEntry>>,
+    filter_model: Option<Vec<table_data::FilterCondition>>,
 ) -> Result<table_data::TableDataResponse, String> {
     if page_size == 0 {
         return Err("page_size must be at least 1".to_string());
@@ -131,7 +131,7 @@ pub async fn export_table_data(
     file_path: String,
     include_headers: bool,
     table_name_for_sql: String,
-    filter_model: Option<HashMap<String, table_data::FilterModelEntry>>,
+    filter_model: Option<Vec<table_data::FilterCondition>>,
     sort_column: Option<String>,
     sort_direction: Option<String>,
 ) -> Result<(), String> {

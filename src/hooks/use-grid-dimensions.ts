@@ -1,5 +1,5 @@
 /**
- * Reads --grid-row-height / --grid-header-height from :root so AG Grid props
+ * Reads --grid-row-height / --grid-header-height from :root so grid components
  * stay aligned with tokens.css (theme switches update documentElement).
  */
 
@@ -9,7 +9,7 @@ import { useThemeStore } from '../stores/theme-store'
 const FALLBACK_ROW = 32
 const FALLBACK_HEADER = 32
 
-export function useGridAgDimensions(): { rowHeight: number; headerHeight: number } {
+export function useGridDimensions(): { rowHeight: number; headerHeight: number } {
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
   const [dims, setDims] = useState({ rowHeight: FALLBACK_ROW, headerHeight: FALLBACK_HEADER })
 

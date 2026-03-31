@@ -32,7 +32,22 @@ const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
 
 export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const tabState = useQueryStore((state) => state.tabs[tabId])
-  const store = useQueryStore()
+
+  // Individual action selectors — stable references that never change,
+  // unlike `useQueryStore()` which subscribes to all state and causes
+  // every useCallback to get a new identity on each store update.
+  const requestNavigationAction = useQueryStore((s) => s.requestNavigationAction)
+  const sortResults = useQueryStore((s) => s.sortResults)
+  const setSelectedRow = useQueryStore((s) => s.setSelectedRow)
+  const fetchPage = useQueryStore((s) => s.fetchPage)
+  const startEditingRow = useQueryStore((s) => s.startEditingRow)
+  const updateCellValue = useQueryStore((s) => s.updateCellValue)
+  const syncCellValue = useQueryStore((s) => s.syncCellValue)
+  const saveCurrentRow = useQueryStore((s) => s.saveCurrentRow)
+  const confirmNavigation = useQueryStore((s) => s.confirmNavigation)
+  const cancelNavigation = useQueryStore((s) => s.cancelNavigation)
+  const discardCurrentRow = useQueryStore((s) => s.discardCurrentRow)
+  const closeExportDialog = useQueryStore((s) => s.closeExportDialog)
 
   const status = tabState?.status ?? 'idle'
   const columns = (tabState?.columns ?? []) as ColumnMeta[]
@@ -63,20 +78,20 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   // Wrap sort handler with navigation action guard (handles pending edits)
   const handleSortChanged = useCallback(
     (column: string, direction: 'asc' | 'desc' | null) => {
-      store.requestNavigationAction(tabId, () => {
-        store.sortResults(connectionId, tabId, column, direction)
+      requestNavigationAction(tabId, () => {
+        sortResults(connectionId, tabId, column, direction)
       })
     },
-    [store, connectionId, tabId]
+    [requestNavigationAction, sortResults, connectionId, tabId]
   )
 
   const handleRowSelected = useCallback(
     (localRowIndex: number) => {
       // Convert page-local index to absolute index across the full result set
       const absoluteIndex = (currentPage - 1) * pageSize + localRowIndex
-      store.setSelectedRow(tabId, absoluteIndex)
+      setSelectedRow(tabId, absoluteIndex)
     },
-    [store, tabId, currentPage, pageSize]
+    [setSelectedRow, tabId, currentPage, pageSize]
   )
 
   /**
@@ -98,37 +113,47 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
       const pageEnd = pageStart + pageSize - 1
 
       if (newIndex < pageStart && currentPage > 1) {
-        store.fetchPage(connectionId, tabId, currentPage - 1)
+        fetchPage(connectionId, tabId, currentPage - 1)
       } else if (newIndex > pageEnd && currentPage < totalPages) {
-        store.fetchPage(connectionId, tabId, currentPage + 1)
+        fetchPage(connectionId, tabId, currentPage + 1)
       }
 
-      store.setSelectedRow(tabId, newIndex)
+      setSelectedRow(tabId, newIndex)
     },
-    [store, connectionId, tabId, selectedRowIndex, totalRows, currentPage, totalPages, pageSize]
+    [
+      fetchPage,
+      setSelectedRow,
+      connectionId,
+      tabId,
+      selectedRowIndex,
+      totalRows,
+      currentPage,
+      totalPages,
+      pageSize,
+    ]
   )
 
   // --- Edit mode callbacks ---
 
   const handleStartEditing = useCallback(
     (rowIndex: number) => {
-      store.startEditingRow(tabId, rowIndex)
+      startEditingRow(tabId, rowIndex)
     },
-    [store, tabId]
+    [startEditingRow, tabId]
   )
 
   const handleUpdateCellValue = useCallback(
     (columnName: string, value: unknown) => {
-      store.updateCellValue(tabId, columnName, value)
+      updateCellValue(tabId, columnName, value)
     },
-    [store, tabId]
+    [updateCellValue, tabId]
   )
 
   const handleSyncCellValue = useCallback(
     (columnName: string, value: unknown) => {
-      store.syncCellValue(tabId, columnName, value)
+      syncCellValue(tabId, columnName, value)
     },
-    [store, tabId]
+    [syncCellValue, tabId]
   )
 
   /**
@@ -136,42 +161,35 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
    * (or nothing to save), false if save failed.
    */
   const handleAutoSave = useCallback(async (): Promise<boolean> => {
-    return await store.saveCurrentRow(tabId)
-  }, [store, tabId])
-
-  const handleRequestNavigationAction = useCallback(
-    (action: () => void) => {
-      store.requestNavigationAction(tabId, action)
-    },
-    [store, tabId]
-  )
+    return await saveCurrentRow(tabId)
+  }, [saveCurrentRow, tabId])
 
   // --- UnsavedChangesDialog handlers ---
 
   const handleDialogSave = useCallback(async () => {
-    await store.confirmNavigation(tabId, true)
-  }, [store, tabId])
+    await confirmNavigation(tabId, true)
+  }, [confirmNavigation, tabId])
 
   const handleDialogDiscard = useCallback(() => {
-    store.confirmNavigation(tabId, false)
-  }, [store, tabId])
+    confirmNavigation(tabId, false)
+  }, [confirmNavigation, tabId])
 
   const handleDialogCancel = useCallback(() => {
-    store.cancelNavigation(tabId)
-  }, [store, tabId])
+    cancelNavigation(tabId)
+  }, [cancelNavigation, tabId])
 
   /**
    * Save the current editing row (form view). Returns true on success.
    */
   const handleFormSave = useCallback(async (): Promise<boolean> => {
-    await store.saveCurrentRow(tabId)
+    await saveCurrentRow(tabId)
     const tab = useQueryStore.getState().tabs[tabId]
     return !tab?.saveError
-  }, [store, tabId])
+  }, [saveCurrentRow, tabId])
 
   const handleFormDiscard = useCallback(() => {
-    store.discardCurrentRow(tabId)
-  }, [store, tabId])
+    discardCurrentRow(tabId)
+  }, [discardCurrentRow, tabId])
 
   return (
     <div className={styles.container} data-testid="result-panel">
@@ -215,7 +233,6 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
                   onUpdateCellValue={handleUpdateCellValue}
                   onSyncCellValue={handleSyncCellValue}
                   onAutoSave={handleAutoSave}
-                  onRequestNavigationAction={handleRequestNavigationAction}
                 />
               )}
               {viewMode === 'form' && (
@@ -269,7 +286,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
           tabId={tabId}
           columnCount={columns.length}
           totalRows={totalRows}
-          onClose={() => store.closeExportDialog(tabId)}
+          onClose={() => closeExportDialog(tabId)}
         />
       )}
 

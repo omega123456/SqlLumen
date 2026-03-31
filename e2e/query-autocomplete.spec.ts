@@ -271,7 +271,7 @@ function expectAutocomplete(
 
 test.describe('Monaco SQL autocomplete', () => {
   // The first test in this serial project absorbs the cold-start cost: Vite module
-  // transforms, V8 compilation of React/Monaco/AG Grid, AND the autocomplete code paths
+  // transforms, V8 compilation of React/Monaco/react-data-grid, AND the autocomplete code paths
   // (completion provider, suggestion widget rendering).  Each subsequent test gets a fresh
   // page but reuses V8's compiled bytecode from the same browser instance.
   test('warm-up: full autocomplete flow to prime all browser caches', async ({ page }) => {

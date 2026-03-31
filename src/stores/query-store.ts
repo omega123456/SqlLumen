@@ -295,7 +295,7 @@ interface QueryState {
   /** Update a cell value in the current edit state (editState only). */
   updateCellValue: (tabId: string, columnName: string, value: unknown) => void
 
-  /** Update a cell value and also sync the local rows array for AG Grid re-render. */
+  /** Update a cell value and also sync the local rows array for grid re-render. */
   syncCellValue: (tabId: string, columnName: string, value: unknown) => void
 
   /** Save the currently editing row to the database. Returns true on success, false on failure. */
@@ -865,7 +865,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         newModified.add(columnName)
       }
 
-      // Also update the local row in the rows array for AG Grid re-render
+      // Also update the local row in the rows array for grid re-render
       const colIdx = tab.columns.findIndex((c) => c.name === columnName)
       let nextRows = tab.rows
       if (colIdx !== -1 && tab.editingRowIndex < tab.rows.length) {

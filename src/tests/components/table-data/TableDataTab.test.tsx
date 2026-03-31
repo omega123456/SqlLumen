@@ -51,17 +51,12 @@ vi.mock('../../../lib/table-data-commands', () => ({
   exportTableData: vi.fn().mockResolvedValue(undefined),
 }))
 
-// Mock AG Grid
-vi.mock('ag-grid-community', () => ({
-  AllCommunityModule: {},
-  ModuleRegistry: { registerModules: vi.fn() },
-}))
-
-vi.mock('ag-grid-react', async () => {
+// Mock the shared DataGrid wrapper (used by TableDataGrid)
+vi.mock('../../../components/shared/DataGrid', async () => {
   const React = await import('react')
   return {
-    AgGridReact: vi.fn(() => {
-      return React.createElement('div', { 'data-testid': 'ag-grid-inner' }, 'Grid Mock')
+    DataGrid: React.forwardRef((_props: Record<string, unknown>, _ref: React.Ref<unknown>) => {
+      return React.createElement('div', { 'data-testid': 'data-grid-mock' }, 'Grid Mock')
     }),
   }
 })
@@ -161,7 +156,7 @@ function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabS
     editState: null,
     viewMode: 'grid',
     selectedRowKey: null,
-    filterModel: {},
+    filterModel: [],
     sort: null,
     isLoading: false,
     error: null,

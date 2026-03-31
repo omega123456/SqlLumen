@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { forwardRef, createRef } from 'react'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import type { TableDataColumnMeta } from '../../../types/schema'
 import { useCellEditor } from '../../../components/table-data/useCellEditor'
@@ -45,39 +44,34 @@ function makeColumnMeta(
   }
 }
 
-function makeMockParams(overrides: Record<string, unknown> = {}): CellEditorParams {
+function makeMockParams(overrides: Partial<CellEditorParams> = {}): CellEditorParams {
   return {
-    value: '2023-11-24',
-    stopEditing: vi.fn(),
-    api: { stopEditing: vi.fn() },
-    node: { data: { id: 1 } },
-    column: { getColId: () => 'created_at' },
-    colDef: { field: 'created_at' },
-    context: { tabId: 'tab-1' },
+    row: { id: 1, created_at: '2023-11-24' },
+    column: { key: 'created_at' },
+    onRowChange: vi.fn(),
+    onClose: vi.fn(),
     isNullable: true,
     columnMeta: makeColumnMeta('created_at', 'DATETIME', { isNullable: true }),
     ...overrides,
-  } as unknown as CellEditorParams
+  }
 }
 
-interface EditorHandle {
-  getValue: () => unknown
-  isCancelBeforeStart: () => boolean
-  isCancelAfterEnd: () => boolean
+/** Helper to get the effective editor value from the test wrapper DOM. */
+function getEditorValue(): string | null {
+  const isNull = screen.getByTestId('is-null').textContent === 'true'
+  if (isNull) return null
+  return screen.getByTestId('value').textContent
 }
 
 /** Test wrapper component that exposes hook state via the DOM. */
-const TestEditor = forwardRef(function TestEditor(
-  props: { params: CellEditorParams },
-  ref: React.ForwardedRef<unknown>
-) {
+function TestEditor(props: { params: CellEditorParams }) {
   const store = useTableDataStore.getState()
   const callbacks: CellEditorCallbacks = {
-    tabId: ((props.params.context as Record<string, unknown> | undefined)?.tabId as string) ?? '',
+    tabId: 'tab-1',
     updateCellValue: store.updateCellValue,
     syncCellValue: store.syncCellValue,
   }
-  const editor = useCellEditor(props.params, ref, callbacks)
+  const editor = useCellEditor(props.params, callbacks)
   return (
     <div>
       <input
@@ -96,7 +90,7 @@ const TestEditor = forwardRef(function TestEditor(
       <span data-testid="value">{String(editor.value)}</span>
     </div>
   )
-})
+}
 
 function setupStore() {
   useTableDataStore.setState({
@@ -125,7 +119,7 @@ function setupStore() {
         },
         viewMode: 'grid',
         selectedRowKey: null,
-        filterModel: {},
+        filterModel: [],
         sort: null,
         isLoading: false,
         error: null,
@@ -149,142 +143,130 @@ beforeEach(() => {
 describe('useCellEditor', () => {
   it('initializes with the provided value', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
     const params = makeMockParams()
-    render(<TestEditor ref={ref} params={params} />)
+    render(<TestEditor params={params} />)
 
-    expect(ref.current!.getValue()).toBe('2023-11-24')
+    expect(getEditorValue()).toBe('2023-11-24')
     expect(screen.getByTestId('is-null')).toHaveTextContent('false')
   })
 
-  it('initializes as null when params.value is null', () => {
+  it('initializes as null when row value is null', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams({ value: null })
-    render(<TestEditor ref={ref} params={params} />)
+    const params = makeMockParams({ row: { id: 1, created_at: null } })
+    render(<TestEditor params={params} />)
 
-    expect(ref.current!.getValue()).toBeNull()
+    expect(getEditorValue()).toBeNull()
     expect(screen.getByTestId('is-null')).toHaveTextContent('true')
-  })
-
-  it('isCancelBeforeStart returns false', () => {
-    setupStore()
-    const ref = createRef<EditorHandle>()
-    render(<TestEditor ref={ref} params={makeMockParams()} />)
-    expect(ref.current!.isCancelBeforeStart()).toBe(false)
-  })
-
-  it('isCancelAfterEnd returns false', () => {
-    setupStore()
-    const ref = createRef<EditorHandle>()
-    render(<TestEditor ref={ref} params={makeMockParams()} />)
-    expect(ref.current!.isCancelAfterEnd()).toBe(false)
   })
 
   it('auto-focuses input on mount', () => {
     setupStore()
-    render(<TestEditor ref={createRef()} params={makeMockParams()} />)
+    render(<TestEditor params={makeMockParams()} />)
     expect(screen.getByTestId('test-input')).toHaveFocus()
   })
 
   it('handleChange updates value and syncs to store', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    render(<TestEditor ref={ref} params={makeMockParams()} />)
+    render(<TestEditor params={makeMockParams()} />)
 
     const input = screen.getByTestId('test-input')
     fireEvent.change(input, { target: { value: '2024-01-01 12:00:00' } })
 
-    expect(ref.current!.getValue()).toBe('2024-01-01 12:00:00')
+    expect(getEditorValue()).toBe('2024-01-01 12:00:00')
 
     const state = useTableDataStore.getState().tabs['tab-1']
     expect(state?.editState?.currentValues.created_at).toBe('2024-01-01 12:00:00')
   })
 
+  it('handleChange calls onRowChange to preview value in grid', () => {
+    setupStore()
+    const params = makeMockParams()
+    render(<TestEditor params={params} />)
+
+    const input = screen.getByTestId('test-input')
+    fireEvent.change(input, { target: { value: '2024-01-01 12:00:00' } })
+
+    expect(params.onRowChange).toHaveBeenCalledWith({ id: 1, created_at: '2024-01-01 12:00:00' })
+  })
+
   it('handleChange clears null state when typing', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams({ value: null })
-    render(<TestEditor ref={ref} params={params} />)
+    const params = makeMockParams({ row: { id: 1, created_at: null } })
+    render(<TestEditor params={params} />)
 
-    expect(ref.current!.getValue()).toBeNull()
+    expect(getEditorValue()).toBeNull()
 
     const input = screen.getByTestId('test-input')
     fireEvent.change(input, { target: { value: '2024-01-01' } })
 
-    expect(ref.current!.getValue()).toBe('2024-01-01')
+    expect(getEditorValue()).toBe('2024-01-01')
     expect(screen.getByTestId('is-null')).toHaveTextContent('false')
   })
 
   it('handleToggleNull: toggle on sets value to null', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    render(<TestEditor ref={ref} params={makeMockParams()} />)
+    render(<TestEditor params={makeMockParams()} />)
 
     fireEvent.click(screen.getByTestId('toggle-null'))
 
-    expect(ref.current!.getValue()).toBeNull()
+    expect(getEditorValue()).toBeNull()
     expect(screen.getByTestId('is-null')).toHaveTextContent('true')
   })
 
   it('handleToggleNull: toggle off prefills temporal with today', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams({ value: null })
-    render(<TestEditor ref={ref} params={params} />)
+    const params = makeMockParams({ row: { id: 1, created_at: null } })
+    render(<TestEditor params={params} />)
 
     // Start as null, toggle off
     fireEvent.click(screen.getByTestId('toggle-null'))
 
     expect(getTodayMysqlString).toHaveBeenCalledWith('DATETIME')
-    expect(ref.current!.getValue()).toBe('2025-06-15 10:00:00')
+    expect(getEditorValue()).toBe('2025-06-15 10:00:00')
   })
 
   it('handleToggleNull: toggle off for non-temporal sets empty string', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
     const params = makeMockParams({
-      value: null,
+      row: { id: 1, name: null },
+      column: { key: 'name' },
       columnMeta: makeColumnMeta('name', 'VARCHAR', { isNullable: true }),
-      colDef: { field: 'name' },
     })
-    render(<TestEditor ref={ref} params={params} />)
+    render(<TestEditor params={params} />)
 
     fireEvent.click(screen.getByTestId('toggle-null'))
 
-    expect(ref.current!.getValue()).toBe('')
+    expect(getEditorValue()).toBe('')
   })
 
   it('restoreOriginalValue restores to initial state', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    render(<TestEditor ref={ref} params={makeMockParams()} />)
+    render(<TestEditor params={makeMockParams()} />)
 
     // Change value
     const input = screen.getByTestId('test-input')
     fireEvent.change(input, { target: { value: '2099-12-31' } })
-    expect(ref.current!.getValue()).toBe('2099-12-31')
+    expect(getEditorValue()).toBe('2099-12-31')
 
     // Restore
     fireEvent.click(screen.getByTestId('restore'))
 
-    expect(ref.current!.getValue()).toBe('2023-11-24')
+    expect(getEditorValue()).toBe('2023-11-24')
   })
 
   it('restoreOriginalValue restores null state when initially null', () => {
     setupStore()
-    const ref = createRef<EditorHandle>()
-    const params = makeMockParams({ value: null })
-    render(<TestEditor ref={ref} params={params} />)
+    const params = makeMockParams({ row: { id: 1, created_at: null } })
+    render(<TestEditor params={params} />)
 
     // Toggle null off (sets a value)
     fireEvent.click(screen.getByTestId('toggle-null'))
-    expect(ref.current!.getValue()).toBe('2025-06-15 10:00:00')
+    expect(getEditorValue()).toBe('2025-06-15 10:00:00')
 
     // Restore
     fireEvent.click(screen.getByTestId('restore'))
 
-    expect(ref.current!.getValue()).toBeNull()
+    expect(getEditorValue()).toBeNull()
     expect(screen.getByTestId('is-null')).toHaveTextContent('true')
   })
 })

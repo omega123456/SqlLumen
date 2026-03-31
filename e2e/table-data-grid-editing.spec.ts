@@ -62,16 +62,107 @@ async function openTableDataTab(page: Page) {
   })
 }
 
-/**
- * Click a grid cell by dispatching a click event directly on the cell DOM
- * element via evaluate, bypassing Playwright's coordinate-based hit test.
- * This avoids issues with AG Grid's absolute positioning causing stale
- * coordinates after cell editing modifies column widths.
- */
-async function clickCellByColId(page: Page, grid: ReturnType<Page['locator']>, colId: string) {
-  const cell = grid.locator(`.ag-row[row-index="0"] .ag-cell[col-id="${colId}"]`)
+async function openQueryEditorWithResults(page: Page) {
+  await connectToSample(page)
+  await page.getByTestId('new-query-tab-button').click()
+  await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('editor-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+
+  await page.evaluate(() => {
+    const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => {
+        tabsByConnection: Record<string, { id: string; type: string }[]>
+      }
+    }
+    const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+    const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+    if (!queryTab) {
+      throw new Error('Query tab not found')
+    }
+
+    const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+      getState: () => { setContent: (id: string, c: string) => void }
+    }
+    qStore.getState().setContent(queryTab.id, 'SELECT * FROM users;')
+  })
+
+  await expect(page.getByTestId('toolbar-execute')).toBeEnabled({ timeout: APP_READY_MS })
+  await page.getByTestId('toolbar-execute').click()
+  await expect(page.getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
+  const editModeDropdown = page.getByTestId('edit-mode-dropdown')
+  await expect(editModeDropdown).toBeVisible({ timeout: APP_READY_MS })
+  await expect(editModeDropdown.locator('option')).toHaveCount(2, { timeout: APP_READY_MS })
+  await editModeDropdown.selectOption({ index: 1 })
+  await expect(editModeDropdown).not.toHaveValue('', { timeout: APP_READY_MS })
+  await expect(page.getByTestId('result-grid-view').locator('.col-editable').first()).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+}
+
+async function getCellByColumnName(
+  grid: ReturnType<Page['locator']>,
+  rowIndex: number,
+  columnName: string
+) {
+  const headerCells = grid.locator('.rdg-header-row .rdg-cell')
+  const headerCount = await headerCells.count()
+
+  let targetColIdx = -1
+  for (let i = 0; i < headerCount; i++) {
+    const text = await headerCells.nth(i).textContent()
+    if (text?.trim() === columnName) {
+      targetColIdx = i
+      break
+    }
+  }
+
+  if (targetColIdx === -1) {
+    throw new Error(`Column "${columnName}" not found in header`)
+  }
+
+  const row = grid.locator('.rdg-row').nth(rowIndex)
+  const cell = row.locator('.rdg-cell').nth(targetColIdx)
   await expect(cell).toBeVisible({ timeout: APP_READY_MS })
-  await cell.dispatchEvent('click')
+  return cell
+}
+
+/**
+ * Find a column header cell by name and double-click the corresponding body cell
+ * in a given row. react-data-grid opens cell editors on double-click by default.
+ */
+async function clickCellByColumnName(
+  page: Page,
+  grid: ReturnType<Page['locator']>,
+  rowIndex: number,
+  columnName: string
+) {
+  const cell = await getCellByColumnName(grid, rowIndex, columnName)
+  await cell.dblclick()
+}
+
+async function activateCellEditor(
+  page: Page,
+  grid: ReturnType<Page['locator']>,
+  rowIndex: number,
+  columnName: string
+) {
+  await clickCellByColumnName(page, grid, rowIndex, columnName)
+}
+
+async function expectEditorKeepsFocusAcrossTyping(page: Page, text: string) {
+  const editor = page.locator('.td-cell-editor-input').first()
+  await expect(editor).toBeVisible({ timeout: APP_READY_MS })
+  await expect(editor).toBeFocused()
+
+  let expected = ''
+  for (const char of text) {
+    expected += char
+    await page.keyboard.type(char)
+    await expect(editor).toBeVisible({ timeout: APP_READY_MS })
+    await expect(editor).toBeFocused()
+    await expect(editor).toHaveValue(expected)
+  }
 }
 
 test('editing a cell then clicking the next cell keeps editing on the clicked cell', async ({
@@ -83,33 +174,123 @@ test('editing a cell then clicking the next cell keeps editing on the clicked ce
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
-  const nameCell = grid.locator('.ag-row[row-index="0"] .ag-cell[col-id="name"]')
-  const emailCell = grid.locator('.ag-row[row-index="0"] .ag-cell[col-id="email"]')
-  const statusCell = grid.locator('.ag-row[row-index="0"] .ag-cell[col-id="status"]')
-
-  await expect(nameCell).toBeVisible({ timeout: APP_READY_MS })
-  await expect(emailCell).toBeVisible({ timeout: APP_READY_MS })
-  await expect(statusCell).toBeVisible({ timeout: APP_READY_MS })
+  // Wait for grid data to render (at least one row)
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
 
   for (let index = 0; index < 3; index += 1) {
-    // Click the name cell via dispatchEvent to avoid coordinate drift
-    await clickCellByColId(page, grid, 'name')
+    // Click the name cell in the first row
+    await clickCellByColumnName(page, grid, 0, 'name')
 
-    const nameEditor = page.locator('.ag-cell-inline-editing[col-id="name"] .td-cell-editor-input')
+    const nameEditor = page.locator('.td-cell-editor-input').first()
     await expect(nameEditor).toBeVisible({ timeout: APP_READY_MS })
     await nameEditor.fill(`Julian Thorne ${index}`)
 
-    // Click the email cell via dispatchEvent to transition editing
-    await clickCellByColId(page, grid, 'email')
+    // Click the email cell in the first row — transition editing to email
+    await clickCellByColumnName(page, grid, 0, 'email')
 
-    const emailEditor = page.locator(
-      '.ag-cell-inline-editing[col-id="email"] .td-cell-editor-input'
-    )
-
+    const emailEditor = page.locator('.td-cell-editor-input').first()
     await expect(emailEditor).toBeVisible({ timeout: APP_READY_MS })
     await expect(emailEditor).toBeEnabled()
-    await expect(page.locator('.ag-cell-inline-editing[col-id="status"]')).toHaveCount(0)
 
     await emailEditor.fill(`julian-${index}@example.com`)
   }
+})
+
+test('table data grid editor keeps focus across multiple keypresses', async ({ page }) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  await activateCellEditor(page, grid, 0, 'name')
+  await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
+})
+
+test('query result grid editor keeps focus across multiple keypresses', async ({ page }) => {
+  await waitForApp(page)
+  await openQueryEditorWithResults(page)
+
+  const grid = page.getByTestId('result-grid-view')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  await activateCellEditor(page, grid, 0, 'name')
+  await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
+})
+
+test('filter dialog — open, add conditions, apply, verify badge, and clear', async ({ page }) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  // Verify filter button exists
+  const filterButton = page.getByTestId('btn-filter')
+  await expect(filterButton).toBeVisible({ timeout: APP_READY_MS })
+
+  // No badge initially
+  await expect(page.getByTestId('filter-badge')).not.toBeVisible()
+
+  // Open filter dialog
+  await filterButton.click()
+  await expect(page.getByTestId('filter-dialog')).toBeVisible({ timeout: APP_READY_MS })
+
+  // Verify empty state is shown
+  await expect(page.getByTestId('filter-empty-state')).toBeVisible()
+
+  // Add a filter condition
+  await page.getByTestId('filter-add-button').first().click()
+  await expect(page.getByTestId('filter-row')).toBeVisible({ timeout: APP_READY_MS })
+
+  // Verify the condition row has column select, operator select, value input
+  await expect(page.getByTestId('filter-column-select')).toBeVisible()
+  await expect(page.getByTestId('filter-operator-select')).toBeVisible()
+  await expect(page.getByTestId('filter-value-input')).toBeVisible()
+
+  // Set column to "name"
+  await page.getByTestId('filter-column-select').selectOption('name')
+
+  // Set operator to "LIKE"
+  await page.getByTestId('filter-operator-select').selectOption('LIKE')
+
+  // Set value
+  await page.getByTestId('filter-value-input').fill('%Julian%')
+
+  // Apply
+  await page.getByTestId('filter-apply-button').click()
+
+  // Dialog should close
+  await expect(page.getByTestId('filter-dialog')).not.toBeVisible()
+
+  // Badge should show "1"
+  const badge = page.getByTestId('filter-badge')
+  await expect(badge).toBeVisible({ timeout: APP_READY_MS })
+  await expect(badge).toHaveText('1')
+
+  // Re-open and add another condition
+  await filterButton.click()
+  await expect(page.getByTestId('filter-dialog')).toBeVisible({ timeout: APP_READY_MS })
+  await page.getByTestId('filter-add-button').click()
+
+  // Should now have 2 condition rows
+  await expect(page.getByTestId('filter-row')).toHaveCount(2)
+
+  // Apply again
+  await page.getByTestId('filter-apply-button').click()
+  await expect(page.getByTestId('filter-dialog')).not.toBeVisible()
+
+  // Badge should show "2"
+  await expect(badge).toHaveText('2')
+
+  // Clear all filters
+  await filterButton.click()
+  await expect(page.getByTestId('filter-dialog')).toBeVisible({ timeout: APP_READY_MS })
+  await page.getByTestId('filter-clear-all-button').click()
+
+  // Apply the empty filter set
+  await page.getByTestId('filter-apply-button').click()
+  await expect(page.getByTestId('filter-dialog')).not.toBeVisible()
+
+  // Badge should be gone
+  await expect(page.getByTestId('filter-badge')).not.toBeVisible()
 })

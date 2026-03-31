@@ -275,23 +275,28 @@ export interface TableDataResponse {
   executionTimeMs: number
 }
 
-/**
- * AG Grid filter model entry per column — either a simple filter (`type` + values)
- * or a combined model with `conditions` + `operator` (no top-level `type`).
- * @see https://www.ag-grid.com/javascript-data-grid/filter-text/#text-filter-model
- */
-export interface AgGridFilterEntry {
-  filterType?: string
-  /** Simple filter option key, e.g. `contains`, `equals`. */
-  type?: string | null
-  filter?: string | number
-  filterTo?: string | number
-  operator?: 'AND' | 'OR'
-  conditions?: AgGridFilterEntry[]
-}
+// ---------------------------------------------------------------------------
+// Filter types
+// ---------------------------------------------------------------------------
 
-/** Full AG Grid filter model (keyed by column name). */
-export type AgGridFilterModel = Record<string, AgGridFilterEntry>
+/** Supported filter operators for the table data filter dialog. */
+export type FilterOperator =
+  | '>'
+  | '>='
+  | '<'
+  | '<='
+  | '=='
+  | 'LIKE'
+  | 'NOT LIKE'
+  | 'IS NULL'
+  | 'IS NOT NULL'
+
+/** A single filter condition applied to a column. */
+export interface FilterCondition {
+  column: string
+  operator: FilterOperator
+  value: string
+}
 
 /** Tracks the currently-editing row. */
 export interface RowEditState {
@@ -340,7 +345,7 @@ export interface TableDataTabState {
   selectedRowKey: Record<string, unknown> | null
 
   // Filter/sort
-  filterModel: AgGridFilterModel
+  filterModel: FilterCondition[]
   sort: TableDataSortInfo | null
 
   // UI state

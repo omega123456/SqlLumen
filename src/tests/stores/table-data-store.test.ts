@@ -145,7 +145,7 @@ describe('useTableDataStore — initTab', () => {
     expect(tab.editState).toBeNull()
     expect(tab.viewMode).toBe('grid')
     expect(tab.selectedRowKey).toBeNull()
-    expect(tab.filterModel).toEqual({})
+    expect(tab.filterModel).toEqual([])
     expect(tab.sort).toBeNull()
     expect(tab.isLoading).toBe(false)
     expect(tab.error).toBeNull()
@@ -825,14 +825,12 @@ describe('useTableDataStore — applyFilters', () => {
     await setupTabWithData()
     ;(fetchTableData as Mock).mockResolvedValueOnce(mockResponse)
 
-    const filterModel = {
-      name: { filterType: 'text', type: 'contains', filter: 'Al' },
-    }
+    const conditions = [{ column: 'name', operator: '==' as const, value: 'Al' }]
 
-    await useTableDataStore.getState().applyFilters('tab-1', filterModel)
+    await useTableDataStore.getState().applyFilters('tab-1', conditions)
 
     const tab = useTableDataStore.getState().tabs['tab-1']
-    expect(tab.filterModel).toEqual(filterModel)
+    expect(tab.filterModel).toEqual(conditions)
   })
 })
 

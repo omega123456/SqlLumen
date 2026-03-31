@@ -693,11 +693,9 @@ for (const theme of themes) {
         }))
       })
 
+      // react-data-grid renders Phosphor ArrowUp SVG for ASC sort via SortStatusRenderer
       await expect(
-        page
-          .getByTestId('result-grid-view')
-          .locator('.ag-sort-ascending-icon:not(.ag-hidden)')
-          .first()
+        page.getByTestId('result-grid-view').locator('.rdg-header-row svg').first()
       ).toBeVisible({ timeout: APP_READY_MS })
 
       await expect(page.getByTestId('result-grid-view')).toHaveScreenshot(
@@ -879,10 +877,10 @@ for (const theme of themes) {
 
     test('TableDataGrid — grid view with data', async ({ page }) => {
       await openTableDataTab(page)
-      // Wait for the AG Grid to be rendered with data
+      // Wait for the react-data-grid to be rendered with data
       await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
       // Wait for at least one data row to render
-      await expect(page.getByTestId('table-data-grid').locator('.ag-row').first()).toBeVisible({
+      await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
         timeout: APP_READY_MS,
       })
       await resetChromeScrollPositions(page)
@@ -907,7 +905,7 @@ for (const theme of themes) {
     test('full app layout — table data grid', async ({ page }) => {
       await openTableDataTab(page)
       await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('table-data-grid').locator('.ag-row').first()).toBeVisible({
+      await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
         timeout: APP_READY_MS,
       })
       await resetChromeScrollPositions(page)
@@ -923,6 +921,54 @@ for (const theme of themes) {
         `table-data-toolbar-${theme}.png`,
         { animations: 'disabled' }
       )
+    })
+
+    // --- Filter Dialog screenshots ---
+
+    test('FilterDialog — empty state', async ({ page }) => {
+      await openTableDataTab(page)
+      // Open filter dialog
+      await page.getByTestId('btn-filter').click()
+      await expect(page.getByTestId('filter-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('filter-empty-state')).toBeVisible()
+
+      // Reset scroll positions for stable screenshots
+      await resetChromeScrollPositions(page)
+
+      // Full viewport screenshot — dialog is a modal
+      await expect(page).toHaveScreenshot(`filter-dialog-empty-${theme}.png`, {
+        animations: 'disabled',
+      })
+    })
+
+    test('FilterDialog — with conditions', async ({ page }) => {
+      await openTableDataTab(page)
+      // Open filter dialog
+      await page.getByTestId('btn-filter').click()
+      await expect(page.getByTestId('filter-dialog')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Add a condition
+      await page.getByTestId('filter-add-button').first().click()
+      await expect(page.getByTestId('filter-row')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Set values for the condition
+      await page.getByTestId('filter-column-select').selectOption('name')
+      await page.getByTestId('filter-operator-select').selectOption('LIKE')
+      await page.getByTestId('filter-value-input').fill('%test%')
+
+      // Blur any focused input for stable screenshot
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+
+      // Reset scroll positions for stable screenshots
+      await resetChromeScrollPositions(page)
+
+      // Full viewport screenshot — dialog with condition rows
+      await expect(page).toHaveScreenshot(`filter-dialog-with-conditions-${theme}.png`, {
+        animations: 'disabled',
+      })
     })
   })
 }
@@ -980,22 +1026,35 @@ test.describe('Date picker', () => {
       test('DateTimePicker — Grid View (calendar popup open)', async ({ page }) => {
         await openTableDataTab(page)
 
-        // Grid view is the default — wait for data rows
+        // Grid view is the default — wait for data rows (react-data-grid)
         await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
-        await expect(page.getByTestId('table-data-grid').locator('.ag-row').first()).toBeVisible({
+        await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
           timeout: APP_READY_MS,
         })
 
         // Dismiss any lingering toasts before interaction
         await dismissAllToasts(page)
 
-        // Click on the created_at cell in the first data row to start editing
-        // AG Grid uses col-id attribute matching the field name
-        const createdAtCell = page
-          .getByTestId('table-data-grid')
-          .locator('.ag-row[row-index="0"] .ag-cell[col-id="created_at"]')
+        // Click on the created_at cell in the first data row to start editing.
+        // Find the column index by matching header text, then click the body cell.
+        const headerCells = page.getByTestId('table-data-grid').locator('.rdg-header-row .rdg-cell')
+        const headerCount = await headerCells.count()
+        let createdAtColIdx = -1
+        for (let i = 0; i < headerCount; i++) {
+          const text = await headerCells.nth(i).textContent()
+          if (text?.trim() === 'created_at') {
+            createdAtColIdx = i
+            break
+          }
+        }
+        expect(createdAtColIdx).toBeGreaterThanOrEqual(0)
+        const firstRow = page.getByTestId('table-data-grid').locator('.rdg-row').first()
+        const createdAtCell = firstRow.locator('.rdg-cell').nth(createdAtColIdx)
         await expect(createdAtCell).toBeVisible({ timeout: APP_READY_MS })
-        await createdAtCell.click()
+        // Double-click to trigger editor opening (react-data-grid opens editors on double-click)
+        await createdAtCell.dblclick()
+        // The editor opening is async (guard → startEditing → selectCell) — wait a bit
+        await page.waitForTimeout(500)
 
         // Wait for the DateTimeCellEditor to mount with the calendar button
         const gridCalendarBtn = page.getByTestId('grid-calendar-btn')
