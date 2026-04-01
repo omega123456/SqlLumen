@@ -167,62 +167,8 @@
 }
 
 /* ==========================================================================
-   Table Data Editing
+   Table Data & Query Result Editing — Unified Classes
    ========================================================================== */
-
-/* Editing row highlight */
-.rdg-precision .td-editing-row {
-  background-color: var(--td-editing-row-bg) !important;
-}
-
-[data-theme='dark'] .rdg-precision .td-editing-row {
-  border-left: 2px solid var(--primary) !important;
-}
-
-/* Modified cell indicator */
-.rdg-precision .td-modified-cell {
-  position: relative;
-}
-
-/* Light: dot + ring */
-[data-theme='light'] .rdg-precision .td-modified-cell::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  right: 5px;
-  width: 6px;
-  height: 6px;
-  background: var(--td-modified-cell-indicator);
-  border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--surface-container-lowest);
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Dark: top-left corner tick */
-[data-theme='dark'] .rdg-precision .td-modified-cell::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 6px;
-  height: 6px;
-  box-sizing: border-box;
-  border-top: 1px solid var(--td-modified-cell-indicator);
-  border-left: 1px solid var(--td-modified-cell-indicator);
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Editable cell cursor */
-.rdg-precision .td-editable-cell {
-  cursor: text;
-}
-
-/* New row */
-.rdg-precision .td-new-row {
-  background-color: var(--td-editing-row-bg) !important;
-}
 
 /* Cell editor shell */
 .rdg-precision .td-cell-editor-shell {
@@ -334,33 +280,38 @@
   background: rgba(var(--primary-rgb), 0.1);
 }
 
-/* ==========================================================================
-   Query Result Grid Editing
-   ========================================================================== */
+/* Editing row highlight */
+.rdg-precision .rdg-editing-row {
+  background-color: var(--td-editing-row-bg) !important;
+}
 
-/* Read-only columns in edit mode */
-.rdg-precision .col-readonly {
+[data-theme='dark'] .rdg-precision .rdg-editing-row {
+  border-left: 2px solid var(--primary) !important;
+}
+
+/* Editable cell cursor */
+.rdg-precision .rdg-editable-cell {
+  cursor: text;
+}
+
+/* Read-only cell */
+.rdg-precision .rdg-readonly-cell {
   background-color: var(--color-cell-readonly-bg);
   opacity: var(--color-cell-readonly-opacity);
   cursor: default;
 }
 
-.rdg-precision .rdg-header-row .col-readonly {
+.rdg-precision .rdg-header-row .rdg-readonly-cell {
   opacity: var(--color-cell-readonly-opacity);
 }
 
-/* Editable columns */
-.rdg-precision .col-editable {
-  cursor: text;
-}
-
-/* Modified cell indicator (query result grid variant) */
-.rdg-precision .cell-modified {
+/* Modified cell indicator */
+.rdg-precision .rdg-modified-cell {
   position: relative;
 }
 
 /* Light: dot + ring */
-[data-theme='light'] .rdg-precision .cell-modified::after {
+[data-theme='light'] .rdg-precision .rdg-modified-cell::after {
   content: '';
   position: absolute;
   top: 3px;
@@ -375,7 +326,7 @@
 }
 
 /* Dark: top-left corner tick */
-[data-theme='dark'] .rdg-precision .cell-modified::before {
+[data-theme='dark'] .rdg-precision .rdg-modified-cell::before {
   content: '';
   position: absolute;
   top: 0;
@@ -389,13 +340,9 @@
   z-index: 1;
 }
 
-/* Editing row highlight (query result grid) */
-.rdg-precision .result-editing-row {
+/* New row */
+.rdg-precision .rdg-new-row {
   background-color: var(--td-editing-row-bg) !important;
-}
-
-[data-theme='dark'] .rdg-precision .result-editing-row {
-  border-left: 2px solid var(--primary) !important;
 }
 
 /* ---------- Light theme ---------- */

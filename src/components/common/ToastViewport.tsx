@@ -93,7 +93,12 @@ export function ToastViewport() {
   }
 
   return (
-    <div className={styles.viewport} data-testid="toast-stack" aria-live="polite" aria-relevant="additions">
+    <div
+      className={styles.viewport}
+      data-testid="toast-stack"
+      aria-live="polite"
+      aria-relevant="additions"
+    >
       <div className={styles.stack}>
         {toasts.map((item) => (
           <ToastCard key={item.id} item={item} onDismiss={dismiss} />

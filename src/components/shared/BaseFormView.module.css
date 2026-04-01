@@ -1,5 +1,6 @@
 /* ============================================================
-   TableDataFormView — editable single-record form
+   BaseFormView — shared editable single-record form
+   Based on TableDataFormView design with lock icon support.
    ============================================================ */
 
 .formView {
@@ -159,7 +160,7 @@
   border-bottom: none;
 }
 
-/* Field label row (label + suffix + NULL toggle) */
+/* Field label row (label + suffix + lock + NULL toggle + modified dot) */
 .fieldLabelRow {
   display: flex;
   align-items: center;
@@ -174,6 +175,9 @@
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-family: var(--font-headline);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .fieldLabelSuffix {
@@ -184,6 +188,22 @@
   letter-spacing: 0.05em;
 }
 
+/* Lock icon for non-editable columns in edit mode */
+.lockIcon {
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+/* Modified dot indicator next to label */
+.modifiedDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  flex-shrink: 0;
+}
+
+/* NULL toggle button */
 .fieldNullBtn {
   margin-left: auto;
   padding: 2px 8px;
@@ -213,13 +233,14 @@
   background: rgba(var(--primary-rgb), 0.08);
 }
 
-/* Field input row (input + copy button) */
-.fieldInputRow {
+/* Field value row (input + copy button + calendar button) */
+.fieldValueRow {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
+/* Text input / select */
 .fieldInput {
   flex: 1;
   background: var(--background);
@@ -257,7 +278,7 @@
   color: var(--td-null-text-color);
 }
 
-/* Read-only display div (BLOB fields) */
+/* Read-only display div */
 .fieldInputReadonly {
   flex: 1;
   background: var(--background);

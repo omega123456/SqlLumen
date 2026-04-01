@@ -118,8 +118,8 @@ export function CreateDatabaseDialog({
             onChange={handleNameChange}
             placeholder="my_new_database"
             maxLength={64}
-          autoFocus={!isPlaywright}
-          data-testid="create-db-name-input"
+            autoFocus={!isPlaywright}
+            data-testid="create-db-name-input"
           />
           {nameError && (
             <div className={styles.validationError} data-testid="create-db-name-error">

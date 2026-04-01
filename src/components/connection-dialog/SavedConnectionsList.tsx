@@ -486,7 +486,12 @@ export function SavedConnectionsList({
                   role="menuitem"
                   onClick={() => handleRenameGroup(contextMenu.groupId!)}
                 >
-                  <PencilSimple className="ui-context-menu__icon" size={18} weight="regular" aria-hidden />
+                  <PencilSimple
+                    className="ui-context-menu__icon"
+                    size={18}
+                    weight="regular"
+                    aria-hidden
+                  />
                   <span>Rename</span>
                 </button>
                 <div

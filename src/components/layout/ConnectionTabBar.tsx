@@ -30,8 +30,7 @@ export function ConnectionTabBar() {
     tabsByProfileId.set(pid, list)
   }
   const tabDisplayName = (c: (typeof tabs)[0]) => {
-    const baseName =
-      c.profile.name.trim() !== '' ? c.profile.name.trim() : 'Unnamed connection'
+    const baseName = c.profile.name.trim() !== '' ? c.profile.name.trim() : 'Unnamed connection'
     const list = tabsByProfileId.get(c.profile.id) ?? []
     if (list.length <= 1) {
       return baseName
@@ -67,9 +66,7 @@ export function ConnectionTabBar() {
                   key={conn.id}
                   data-testid={`connection-session-tab-${conn.id}`}
                   active={isActive}
-                  indicatorColor={
-                    isActive && conn.profile.color ? conn.profile.color : undefined
-                  }
+                  indicatorColor={isActive && conn.profile.color ? conn.profile.color : undefined}
                   onSelect={() => switchTab(conn.id)}
                   title={`${displayName} (${conn.profile.host}:${conn.profile.port})`}
                   prefix={

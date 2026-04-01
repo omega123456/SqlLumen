@@ -246,7 +246,7 @@ describe('TableDataToolbar', () => {
     setupConnection()
     setupTabState({ currentPage: 2, totalPages: 5 })
     render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('page-indicator')).toHaveTextContent('2 / 5')
+    expect(screen.getByTestId('page-indicator')).toHaveTextContent('Page 2 of 5')
   })
 
   it('shows read-only badge when connection is read-only', () => {
@@ -288,8 +288,8 @@ describe('TableDataToolbar', () => {
     setupConnection()
     setupTabState()
     render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('btn-grid-view')).toBeInTheDocument()
-    expect(screen.getByTestId('btn-form-view')).toBeInTheDocument()
+    expect(screen.getByTestId('view-mode-grid')).toBeInTheDocument()
+    expect(screen.getByTestId('view-mode-form')).toBeInTheDocument()
   })
 
   it('export button exists', () => {
@@ -524,7 +524,7 @@ describe('TableDataToolbar', () => {
     setupConnection()
     setupTabState({ viewMode: 'form' })
     render(<TableDataToolbar tabId="tab-1" />)
-    fireEvent.click(screen.getByTestId('btn-grid-view'))
+    fireEvent.click(screen.getByTestId('view-mode-grid'))
     // No crash — view mode toggled via requestNavigationAction
   })
 
@@ -532,7 +532,7 @@ describe('TableDataToolbar', () => {
     setupConnection()
     setupTabState({ viewMode: 'grid' })
     render(<TableDataToolbar tabId="tab-1" />)
-    fireEvent.click(screen.getByTestId('btn-form-view'))
+    fireEvent.click(screen.getByTestId('view-mode-form'))
     // No crash
   })
 
@@ -611,7 +611,7 @@ describe('TableDataToolbar', () => {
     setupConnection()
     setupTabState({ viewMode: 'grid' })
     render(<TableDataToolbar tabId="tab-1" />)
-    const gridBtn = screen.getByTestId('btn-grid-view')
+    const gridBtn = screen.getByTestId('view-mode-grid')
     expect(gridBtn.className).toContain('Active')
   })
 
@@ -619,7 +619,7 @@ describe('TableDataToolbar', () => {
     setupConnection()
     setupTabState({ viewMode: 'form' })
     render(<TableDataToolbar tabId="tab-1" />)
-    const formBtn = screen.getByTestId('btn-form-view')
+    const formBtn = screen.getByTestId('view-mode-form')
     expect(formBtn.className).toContain('Active')
   })
 

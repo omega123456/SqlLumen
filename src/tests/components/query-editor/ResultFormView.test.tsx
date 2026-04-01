@@ -5,11 +5,13 @@ import { ResultFormView } from '../../../components/query-editor/ResultFormView'
 import { useQueryStore } from '../../../stores/query-store'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../../types/schema'
 
-// Mock the clipboard utility
-const mockWriteClipboardText = vi.fn().mockResolvedValue(undefined)
-vi.mock('../../../lib/context-menu-utils', () => ({
-  writeClipboardText: (...args: unknown[]) => mockWriteClipboardText(...args),
-}))
+// Mock navigator.clipboard for BaseFormView's copy handler
+const mockClipboardWriteText = vi.fn().mockResolvedValue(undefined)
+Object.defineProperty(navigator, 'clipboard', {
+  value: { writeText: mockClipboardWriteText },
+  writable: true,
+  configurable: true,
+})
 
 const columns: ColumnMeta[] = [
   { name: 'id', dataType: 'INT' },
@@ -76,6 +78,8 @@ function buildTabState(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks()
   mockIPC(() => null)
+  // Re-assign clipboard mock after clearAllMocks
+  mockClipboardWriteText.mockResolvedValue(undefined)
   // Set up query store with tab state (so pageSize is accessible)
   useQueryStore.setState({
     tabs: {
@@ -114,93 +118,91 @@ describe('ResultFormView', () => {
 
   it('shows all values for the selected row', () => {
     render(<ResultFormView {...defaultProps} selectedRowIndex={0} />)
-    expect(screen.getByTestId('field-value-0')).toHaveTextContent('1')
-    expect(screen.getByTestId('field-value-1')).toHaveTextContent('Alice')
-    expect(screen.getByTestId('field-value-2')).toHaveTextContent('alice@example.com')
+    // In BaseFormView, read-only fields use form-input-{displayName}
+    expect(screen.getByTestId('form-input-id')).toHaveTextContent('1')
+    expect(screen.getByTestId('form-input-name')).toHaveTextContent('Alice')
+    expect(screen.getByTestId('form-input-email')).toHaveTextContent('alice@example.com')
   })
 
-  it('shows NULL as italic "NULL" for null values', () => {
+  it('shows NULL as "NULL" text for null values', () => {
     // Row index 1: [2, 'Bob', null] — email is null
     render(<ResultFormView {...defaultProps} selectedRowIndex={1} />)
-    const emailField = screen.getByTestId('field-value-2')
+    const emailField = screen.getByTestId('form-input-email')
     expect(emailField).toHaveTextContent('NULL')
-    // Check that it has the null styling class
-    expect(emailField.className).toContain('nullValue')
   })
 
-  it('shows NULL for undefined values', () => {
+  it('shows NULL for null/undefined values', () => {
     // Row index 4: [5, null, 'eve@example.com'] — name is null
     render(<ResultFormView {...defaultProps} selectedRowIndex={4} />)
-    const nameField = screen.getByTestId('field-value-1')
+    const nameField = screen.getByTestId('form-input-name')
     expect(nameField).toHaveTextContent('NULL')
-    expect(nameField.className).toContain('nullValue')
   })
 
   it('Previous button calls onNavigate("prev")', () => {
     const onNavigate = vi.fn()
     render(<ResultFormView {...defaultProps} selectedRowIndex={2} onNavigate={onNavigate} />)
-    fireEvent.click(screen.getByTestId('prev-record-button'))
+    fireEvent.click(screen.getByTestId('btn-form-previous'))
     expect(onNavigate).toHaveBeenCalledWith('prev')
   })
 
   it('Next button calls onNavigate("next")', () => {
     const onNavigate = vi.fn()
     render(<ResultFormView {...defaultProps} selectedRowIndex={2} onNavigate={onNavigate} />)
-    fireEvent.click(screen.getByTestId('next-record-button'))
+    fireEvent.click(screen.getByTestId('btn-form-next'))
     expect(onNavigate).toHaveBeenCalledWith('next')
   })
 
   it('Previous button is disabled on first record', () => {
     render(<ResultFormView {...defaultProps} selectedRowIndex={0} />)
-    expect(screen.getByTestId('prev-record-button')).toBeDisabled()
+    expect(screen.getByTestId('btn-form-previous')).toBeDisabled()
   })
 
   it('Next button is disabled on last record', () => {
     render(<ResultFormView {...defaultProps} selectedRowIndex={4} />)
-    expect(screen.getByTestId('next-record-button')).toBeDisabled()
+    expect(screen.getByTestId('btn-form-next')).toBeDisabled()
   })
 
   it('both navigation buttons enabled for middle records', () => {
     render(<ResultFormView {...defaultProps} selectedRowIndex={2} />)
-    expect(screen.getByTestId('prev-record-button')).not.toBeDisabled()
-    expect(screen.getByTestId('next-record-button')).not.toBeDisabled()
+    expect(screen.getByTestId('btn-form-previous')).not.toBeDisabled()
+    expect(screen.getByTestId('btn-form-next')).not.toBeDisabled()
   })
 
-  it('copy button calls writeClipboardText with field value', async () => {
+  it('copy button calls clipboard.writeText with field value', async () => {
     render(<ResultFormView {...defaultProps} selectedRowIndex={0} />)
-    fireEvent.click(screen.getByTestId('copy-field-1'))
+    fireEvent.click(screen.getByTestId('btn-copy-name'))
     await waitFor(() => {
-      expect(mockWriteClipboardText).toHaveBeenCalledWith('Alice')
+      expect(mockClipboardWriteText).toHaveBeenCalledWith('Alice')
     })
   })
 
   it('copy button copies "NULL" for null values', async () => {
     render(<ResultFormView {...defaultProps} selectedRowIndex={1} />)
-    // email field (index 2) is null for row 1
-    fireEvent.click(screen.getByTestId('copy-field-2'))
+    // email field is null for row 1
+    fireEvent.click(screen.getByTestId('btn-copy-email'))
     await waitFor(() => {
-      expect(mockWriteClipboardText).toHaveBeenCalledWith('NULL')
+      expect(mockClipboardWriteText).toHaveBeenCalledWith('NULL')
     })
   })
 
-  it('renders with empty rows without crashing', () => {
+  it('renders with empty rows showing empty state', () => {
     render(<ResultFormView {...defaultProps} rows={[]} totalRows={0} />)
     expect(screen.getByTestId('result-form-view')).toBeInTheDocument()
-    expect(screen.getByText('Record 1 of 0')).toBeInTheDocument()
+    expect(screen.getByText('No rows to display')).toBeInTheDocument()
   })
 
   it('shows correct values for different selected rows', () => {
     // Select row 2 (Charlie)
     render(<ResultFormView {...defaultProps} selectedRowIndex={2} />)
-    expect(screen.getByTestId('field-value-0')).toHaveTextContent('3')
-    expect(screen.getByTestId('field-value-1')).toHaveTextContent('Charlie')
-    expect(screen.getByTestId('field-value-2')).toHaveTextContent('charlie@example.com')
+    expect(screen.getByTestId('form-input-id')).toHaveTextContent('3')
+    expect(screen.getByTestId('form-input-name')).toHaveTextContent('Charlie')
+    expect(screen.getByTestId('form-input-email')).toHaveTextContent('charlie@example.com')
   })
 
   it('has copy buttons for all fields', () => {
     render(<ResultFormView {...defaultProps} />)
-    columns.forEach((_, i) => {
-      expect(screen.getByTestId(`copy-field-${i}`)).toBeInTheDocument()
+    columns.forEach((col) => {
+      expect(screen.getByTestId(`btn-copy-${col.name}`)).toBeInTheDocument()
     })
   })
 
@@ -290,41 +292,46 @@ function buildEditProps(overrides: Record<string, unknown> = {}) {
 describe('ResultFormView — Edit Mode', () => {
   it('renders editable inputs for editable columns when edit mode is active', () => {
     render(<ResultFormView {...defaultProps} {...buildEditProps()} />)
-    // 'name' (index 1) and 'email' (index 2) should be inputs
-    expect(screen.getByTestId('form-input-1')).toBeInTheDocument()
-    expect(screen.getByTestId('form-input-2')).toBeInTheDocument()
-    // 'id' (index 0) should be read-only (field-value)
-    expect(screen.getByTestId('field-value-0')).toBeInTheDocument()
+    // 'name' and 'email' should be inputs
+    const nameInput = screen.getByTestId('form-input-name')
+    expect(nameInput.tagName).toBe('INPUT')
+    const emailInput = screen.getByTestId('form-input-email')
+    expect(emailInput.tagName).toBe('INPUT')
+    // 'id' should be a read-only div
+    const idField = screen.getByTestId('form-input-id')
+    expect(idField.tagName).toBe('DIV')
   })
 
   it('renders lock icon on non-editable columns', () => {
     render(<ResultFormView {...defaultProps} {...buildEditProps()} />)
-    expect(screen.getByTestId('lock-icon-0')).toBeInTheDocument()
+    expect(screen.getByTestId('lock-icon-id')).toBeInTheDocument()
     // Editable columns should not have lock icons
-    expect(screen.queryByTestId('lock-icon-1')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('lock-icon-2')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('lock-icon-name')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('lock-icon-email')).not.toBeInTheDocument()
   })
 
-  it('applies non-editable dimming class to non-editable fields', () => {
+  it('renders non-editable columns as read-only divs and editable as inputs', () => {
     render(<ResultFormView {...defaultProps} {...buildEditProps()} />)
-    const field0 = screen.getByTestId('form-field-0')
-    expect(field0.className).toContain('fieldNonEditable')
-    const field1 = screen.getByTestId('form-field-1')
-    expect(field1.className).not.toContain('fieldNonEditable')
+    // id (non-editable) should be a read-only div
+    const idField = screen.getByTestId('form-input-id')
+    expect(idField.tagName).toBe('DIV')
+    // name (editable) should be an input
+    const nameField = screen.getByTestId('form-input-name')
+    expect(nameField.tagName).toBe('INPUT')
   })
 
   it('populates editable inputs with current values', () => {
     render(<ResultFormView {...defaultProps} {...buildEditProps()} />)
-    const nameInput = screen.getByTestId('form-input-1') as HTMLInputElement
+    const nameInput = screen.getByTestId('form-input-name') as HTMLInputElement
     expect(nameInput.value).toBe('Alice')
-    const emailInput = screen.getByTestId('form-input-2') as HTMLInputElement
+    const emailInput = screen.getByTestId('form-input-email') as HTMLInputElement
     expect(emailInput.value).toBe('alice@example.com')
   })
 
   it('calls onUpdateCell when input value changes', () => {
     const onUpdateCell = vi.fn()
     render(<ResultFormView {...defaultProps} {...buildEditProps({ onUpdateCell })} />)
-    fireEvent.change(screen.getByTestId('form-input-1'), { target: { value: 'Bob' } })
+    fireEvent.change(screen.getByTestId('form-input-name'), { target: { value: 'Bob' } })
     expect(onUpdateCell).toHaveBeenCalledWith('name', 'Bob')
   })
 
@@ -336,24 +343,24 @@ describe('ResultFormView — Edit Mode', () => {
         {...buildEditProps({ onStartEdit, editState: null, editingRowIndex: null })}
       />
     )
-    fireEvent.focus(screen.getByTestId('form-input-1'))
+    fireEvent.focus(screen.getByTestId('form-input-name'))
     expect(onStartEdit).toHaveBeenCalledWith(0)
   })
 
   it('shows NULL toggle for nullable editable columns', () => {
     render(<ResultFormView {...defaultProps} {...buildEditProps()} />)
-    // 'name' (index 1) is nullable — should have NULL toggle
-    expect(screen.getByTestId('null-toggle-1')).toBeInTheDocument()
-    // 'email' (index 2) is nullable — should have NULL toggle
-    expect(screen.getByTestId('null-toggle-2')).toBeInTheDocument()
-    // 'id' (index 0) is not editable — should NOT have NULL toggle
-    expect(screen.queryByTestId('null-toggle-0')).not.toBeInTheDocument()
+    // 'name' is nullable — should have NULL toggle
+    expect(screen.getByTestId('btn-null-name')).toBeInTheDocument()
+    // 'email' is nullable — should have NULL toggle
+    expect(screen.getByTestId('btn-null-email')).toBeInTheDocument()
+    // 'id' is not editable — should NOT have NULL toggle
+    expect(screen.queryByTestId('btn-null-id')).not.toBeInTheDocument()
   })
 
   it('NULL toggle calls onUpdateCell with null when value is non-null', () => {
     const onUpdateCell = vi.fn()
     render(<ResultFormView {...defaultProps} {...buildEditProps({ onUpdateCell })} />)
-    fireEvent.click(screen.getByTestId('null-toggle-1'))
+    fireEvent.click(screen.getByTestId('btn-null-name'))
     expect(onUpdateCell).toHaveBeenCalledWith('name', null)
   })
 
@@ -364,7 +371,7 @@ describe('ResultFormView — Edit Mode', () => {
       currentValues: { name: null, email: 'alice@example.com' },
     }
     render(<ResultFormView {...defaultProps} {...buildEditProps({ editState, onUpdateCell })} />)
-    fireEvent.click(screen.getByTestId('null-toggle-1'))
+    fireEvent.click(screen.getByTestId('btn-null-name'))
     // Toggling NULL off should set to empty string
     expect(onUpdateCell).toHaveBeenCalledWith('name', '')
   })
@@ -376,28 +383,27 @@ describe('ResultFormView — Edit Mode', () => {
       modifiedColumns: new Set(['name']),
     }
     render(<ResultFormView {...defaultProps} {...buildEditProps({ editState })} />)
-    expect(screen.getByTestId('modified-indicator-1')).toBeInTheDocument()
-    expect(screen.getByTestId('modified-note-1')).toBeInTheDocument()
-    expect(screen.getByTestId('modified-note-1')).toHaveTextContent('Unsaved change detected')
+    expect(screen.getByTestId('modified-dot-name')).toBeInTheDocument()
+    expect(screen.getByTestId('modified-note-name')).toBeInTheDocument()
+    expect(screen.getByTestId('modified-note-name')).toHaveTextContent('Unsaved change detected')
     // Unmodified column should not have indicator
-    expect(screen.queryByTestId('modified-indicator-2')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('modified-dot-email')).not.toBeInTheDocument()
   })
 
-  it('shows Save/Discard buttons when edits are pending', () => {
+  it('shows Save/Discard buttons when in edit mode', () => {
     const editState: RowEditState = {
       ...baseEditState,
       currentValues: { name: 'Modified', email: 'alice@example.com' },
       modifiedColumns: new Set(['name']),
     }
     render(<ResultFormView {...defaultProps} {...buildEditProps({ editState })} />)
-    expect(screen.getByTestId('form-edit-actions')).toBeInTheDocument()
-    expect(screen.getByTestId('form-save-button')).toBeInTheDocument()
-    expect(screen.getByTestId('form-discard-button')).toBeInTheDocument()
+    expect(screen.getByTestId('btn-form-save')).toBeInTheDocument()
+    expect(screen.getByTestId('btn-form-discard')).toBeInTheDocument()
   })
 
   it('Save button is disabled when no modifications', () => {
     render(<ResultFormView {...defaultProps} {...buildEditProps()} />)
-    expect(screen.getByTestId('form-save-button')).toBeDisabled()
+    expect(screen.getByTestId('btn-form-save')).toBeDisabled()
   })
 
   it('Save button is enabled when modifications exist', () => {
@@ -407,7 +413,7 @@ describe('ResultFormView — Edit Mode', () => {
       modifiedColumns: new Set(['name']),
     }
     render(<ResultFormView {...defaultProps} {...buildEditProps({ editState })} />)
-    expect(screen.getByTestId('form-save-button')).not.toBeDisabled()
+    expect(screen.getByTestId('btn-form-save')).not.toBeDisabled()
   })
 
   it('calls onSaveRow when Save button is clicked', async () => {
@@ -418,7 +424,7 @@ describe('ResultFormView — Edit Mode', () => {
       modifiedColumns: new Set(['name']),
     }
     render(<ResultFormView {...defaultProps} {...buildEditProps({ editState, onSaveRow })} />)
-    fireEvent.click(screen.getByTestId('form-save-button'))
+    fireEvent.click(screen.getByTestId('btn-form-save'))
     await waitFor(() => {
       expect(onSaveRow).toHaveBeenCalled()
     })
@@ -426,8 +432,14 @@ describe('ResultFormView — Edit Mode', () => {
 
   it('calls onDiscardRow when Discard button is clicked', () => {
     const onDiscardRow = vi.fn()
-    render(<ResultFormView {...defaultProps} {...buildEditProps({ onDiscardRow })} />)
-    fireEvent.click(screen.getByTestId('form-discard-button'))
+    // Need modifications so Discard button is enabled
+    const editState: RowEditState = {
+      ...baseEditState,
+      currentValues: { name: 'Modified', email: 'alice@example.com' },
+      modifiedColumns: new Set(['name']),
+    }
+    render(<ResultFormView {...defaultProps} {...buildEditProps({ onDiscardRow, editState })} />)
+    fireEvent.click(screen.getByTestId('btn-form-discard'))
     expect(onDiscardRow).toHaveBeenCalled()
   })
 
@@ -447,7 +459,7 @@ describe('ResultFormView — Edit Mode', () => {
         {...buildEditProps({ onSaveRow, editState })}
       />
     )
-    fireEvent.click(screen.getByTestId('next-record-button'))
+    fireEvent.click(screen.getByTestId('btn-form-next'))
     // Should auto-save first
     await waitFor(() => expect(onSaveRow).toHaveBeenCalled())
     // Then navigate
@@ -466,7 +478,7 @@ describe('ResultFormView — Edit Mode', () => {
       />
     )
     // editState exists but no modifications — should discard and navigate
-    fireEvent.click(screen.getByTestId('next-record-button'))
+    fireEvent.click(screen.getByTestId('btn-form-next'))
     expect(onDiscardRow).toHaveBeenCalled()
     expect(onNavigate).toHaveBeenCalledWith('next')
   })
@@ -487,7 +499,7 @@ describe('ResultFormView — Edit Mode', () => {
         {...buildEditProps({ onSaveRow, editState })}
       />
     )
-    fireEvent.click(screen.getByTestId('next-record-button'))
+    fireEvent.click(screen.getByTestId('btn-form-next'))
     await waitFor(() => expect(onSaveRow).toHaveBeenCalled())
     // Navigation should NOT happen because save failed
     expect(onNavigate).not.toHaveBeenCalled()
@@ -503,20 +515,23 @@ describe('ResultFormView — Edit Mode', () => {
         editMode={null}
       />
     )
-    fireEvent.click(screen.getByTestId('next-record-button'))
+    fireEvent.click(screen.getByTestId('btn-form-next'))
     expect(onNavigate).toHaveBeenCalledWith('next')
   })
 
   it('does not show edit-mode UI when editMode is null', () => {
     render(<ResultFormView {...defaultProps} editMode={null} />)
     // No lock icons
-    expect(screen.queryByTestId('lock-icon-0')).not.toBeInTheDocument()
-    // No inputs — all fields are read-only values
-    expect(screen.queryByTestId('form-input-1')).not.toBeInTheDocument()
-    expect(screen.getByTestId('field-value-0')).toBeInTheDocument()
-    expect(screen.getByTestId('field-value-1')).toBeInTheDocument()
+    expect(screen.queryByTestId('lock-icon-id')).not.toBeInTheDocument()
+    // All fields render as read-only (form-input-{name} testIDs present)
+    expect(screen.getByTestId('form-input-id')).toBeInTheDocument()
+    expect(screen.getByTestId('form-input-name')).toBeInTheDocument()
+    expect(screen.getByTestId('form-input-email')).toBeInTheDocument()
     // No null toggles
-    expect(screen.queryByTestId('null-toggle-1')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-null-name')).not.toBeInTheDocument()
+    // No save/discard buttons
+    expect(screen.queryByTestId('btn-form-save')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-form-discard')).not.toBeInTheDocument()
   })
 
   it('renders enum column as select dropdown', () => {
@@ -542,7 +557,7 @@ describe('ResultFormView — Edit Mode', () => {
         {...buildEditProps({ editTableColumns: enumTableColumns })}
       />
     )
-    const selectEl = screen.getByTestId('form-input-2') as HTMLSelectElement
+    const selectEl = screen.getByTestId('form-input-email') as HTMLSelectElement
     expect(selectEl.tagName).toBe('SELECT')
   })
 
@@ -553,15 +568,16 @@ describe('ResultFormView — Edit Mode', () => {
       modifiedColumns: new Set(['name', 'email']),
     }
     render(<ResultFormView {...defaultProps} {...buildEditProps({ editState })} />)
-    const nameInput = screen.getByTestId('form-input-1') as HTMLInputElement
+    const nameInput = screen.getByTestId('form-input-name') as HTMLInputElement
     expect(nameInput.value).toBe('EditedName')
-    const emailInput = screen.getByTestId('form-input-2') as HTMLInputElement
+    const emailInput = screen.getByTestId('form-input-email') as HTMLInputElement
     expect(emailInput.value).toBe('edited@example.com')
   })
 
   it('does not show Save/Discard when not in edit mode', () => {
     render(<ResultFormView {...defaultProps} />)
-    expect(screen.queryByTestId('form-edit-actions')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-form-save')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-form-discard')).not.toBeInTheDocument()
   })
 
   it('enum select onChange fires onUpdateCell with selected value', () => {
@@ -588,7 +604,7 @@ describe('ResultFormView — Edit Mode', () => {
         {...buildEditProps({ editTableColumns: enumTableColumns, onUpdateCell })}
       />
     )
-    fireEvent.change(screen.getByTestId('form-input-2'), {
+    fireEvent.change(screen.getByTestId('form-input-email'), {
       target: { value: 'bob@example.com' },
     })
     expect(onUpdateCell).toHaveBeenCalledWith('email', 'bob@example.com')
@@ -619,7 +635,7 @@ describe('ResultFormView — Edit Mode', () => {
       />
     )
     // Simulate selecting the NULL sentinel
-    fireEvent.change(screen.getByTestId('form-input-2'), {
+    fireEvent.change(screen.getByTestId('form-input-email'), {
       target: { value: '__MYSQL_CLIENT_ENUM_NULL__' },
     })
     expect(onUpdateCell).toHaveBeenCalledWith('email', null)
@@ -658,8 +674,8 @@ describe('ResultFormView — Edit Mode', () => {
         })}
       />
     )
-    // Toggle NULL off for email (index 2)
-    fireEvent.click(screen.getByTestId('null-toggle-2'))
+    // Toggle NULL off for email
+    fireEvent.click(screen.getByTestId('btn-null-email'))
     // Should restore with first enum value
     expect(onUpdateCell).toHaveBeenCalledWith('email', 'alice@example.com')
   })
@@ -681,7 +697,7 @@ describe('ResultFormView — Edit Mode', () => {
         })}
       />
     )
-    const nameInput = screen.getByTestId('form-input-1') as HTMLInputElement
+    const nameInput = screen.getByTestId('form-input-name') as HTMLInputElement
     expect(nameInput.value).toBe('{"foo":"bar"}')
   })
 
@@ -702,7 +718,7 @@ describe('ResultFormView — Edit Mode', () => {
         })}
       />
     )
-    const nameInput = screen.getByTestId('form-input-1') as HTMLInputElement
+    const nameInput = screen.getByTestId('form-input-name') as HTMLInputElement
     expect(nameInput.value).toBe('42')
   })
 
@@ -712,10 +728,10 @@ describe('ResultFormView — Edit Mode', () => {
       currentValues: { name: null, email: 'alice@example.com' },
     }
     render(<ResultFormView {...defaultProps} {...buildEditProps({ editState })} />)
-    // Copy the name field (index 1) which is null in edit state
-    fireEvent.click(screen.getByTestId('copy-field-1'))
+    // Copy the name field which is null in edit state
+    fireEvent.click(screen.getByTestId('btn-copy-name'))
     await waitFor(() => {
-      expect(mockWriteClipboardText).toHaveBeenCalledWith('NULL')
+      expect(mockClipboardWriteText).toHaveBeenCalledWith('NULL')
     })
   })
 })
@@ -848,19 +864,19 @@ describe('ResultFormView — Temporal Fields', () => {
 
   it('renders calendar button for DATETIME columns', () => {
     render(<ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps()} />)
-    expect(screen.getByTestId('calendar-btn-1')).toBeInTheDocument()
+    expect(screen.getByTestId('calendar-btn-created_at')).toBeInTheDocument()
     // DATETIME and DATE both get "Open date picker" — verify at least one exists
     expect(screen.getAllByLabelText('Open date picker')).toHaveLength(2)
   })
 
   it('renders calendar button for DATE columns', () => {
     render(<ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps()} />)
-    expect(screen.getByTestId('calendar-btn-2')).toBeInTheDocument()
+    expect(screen.getByTestId('calendar-btn-birth_date')).toBeInTheDocument()
   })
 
   it('renders clock button for TIME columns', () => {
     render(<ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps()} />)
-    expect(screen.getByTestId('calendar-btn-3')).toBeInTheDocument()
+    expect(screen.getByTestId('calendar-btn-login_time')).toBeInTheDocument()
     expect(screen.getByLabelText('Open time picker')).toBeInTheDocument()
   })
 
@@ -879,21 +895,21 @@ describe('ResultFormView — Temporal Fields', () => {
         {...buildTemporalEditProps({ editState: nullEditState })}
       />
     )
-    expect(screen.getByTestId('calendar-btn-1')).toBeDisabled()
+    expect(screen.getByTestId('calendar-btn-created_at')).toBeDisabled()
   })
 
   it('does not render calendar button for non-temporal editable columns', () => {
     // Render with the original non-temporal columns
     render(<ResultFormView {...defaultProps} {...buildEditProps()} />)
-    // name (index 1) and email (index 2) are VARCHAR — no calendar buttons
-    expect(screen.queryByTestId('calendar-btn-1')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('calendar-btn-2')).not.toBeInTheDocument()
+    // name and email are VARCHAR — no calendar buttons
+    expect(screen.queryByTestId('calendar-btn-name')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('calendar-btn-email')).not.toBeInTheDocument()
   })
 
   it('does not render calendar button for read-only temporal columns', () => {
-    // id (index 0) is not editable — no calendar button even though INT
+    // id (index 0) is not editable — no calendar button
     render(<ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps()} />)
-    expect(screen.queryByTestId('calendar-btn-0')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('calendar-btn-id')).not.toBeInTheDocument()
   })
 
   it('toggles NULL off with today date for temporal columns', () => {
@@ -915,8 +931,8 @@ describe('ResultFormView — Temporal Fields', () => {
         })}
       />
     )
-    // Toggle NULL off for created_at (DATETIME column, index 1)
-    fireEvent.click(screen.getByTestId('null-toggle-1'))
+    // Toggle NULL off for created_at (DATETIME column)
+    fireEvent.click(screen.getByTestId('btn-null-created_at'))
     // Should be called with a date string (not empty string)
     expect(onUpdateCell).toHaveBeenCalledWith(
       'created_at',
@@ -926,8 +942,8 @@ describe('ResultFormView — Temporal Fields', () => {
 
   it('clicking calendar button opens date picker for non-null temporal field', () => {
     render(<ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps()} />)
-    // Click the calendar button for created_at (DATETIME, index 1) which is non-null
-    fireEvent.click(screen.getByTestId('calendar-btn-1'))
+    // Click the calendar button for created_at (DATETIME) which is non-null
+    fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
     // The DateTimePicker should now be rendered (portal-based)
     // Verify picker controls appear (Apply / Cancel buttons from DateTimePicker)
     expect(screen.getByText('Apply')).toBeInTheDocument()
@@ -937,7 +953,7 @@ describe('ResultFormView — Temporal Fields', () => {
   it('closing date picker via Cancel resets picker state', () => {
     render(<ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps()} />)
     // Open picker
-    fireEvent.click(screen.getByTestId('calendar-btn-1'))
+    fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
     expect(screen.getByText('Cancel')).toBeInTheDocument()
     // Click Cancel
     fireEvent.click(screen.getByText('Cancel'))
@@ -950,8 +966,8 @@ describe('ResultFormView — Temporal Fields', () => {
     render(
       <ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps({ onUpdateCell })} />
     )
-    // Open picker for created_at (DATETIME, index 1)
-    fireEvent.click(screen.getByTestId('calendar-btn-1'))
+    // Open picker for created_at (DATETIME)
+    fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
     expect(screen.getByText('Apply')).toBeInTheDocument()
     // Click Apply to close the picker with the current value
     fireEvent.click(screen.getByText('Apply'))
@@ -967,10 +983,10 @@ describe('ResultFormView — Temporal Fields', () => {
       <ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps({ onUpdateCell })} />
     )
     // Open picker for created_at
-    fireEvent.click(screen.getByTestId('calendar-btn-1'))
+    fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
     expect(screen.getByText('Apply')).toBeInTheDocument()
     // Toggle NULL on for created_at
-    fireEvent.click(screen.getByTestId('null-toggle-1'))
+    fireEvent.click(screen.getByTestId('btn-null-created_at'))
     // Picker should be dismissed (toggling NULL closes open picker)
     expect(screen.queryByText('Apply')).not.toBeInTheDocument()
     // Should have set value to null
@@ -979,7 +995,7 @@ describe('ResultFormView — Temporal Fields', () => {
 
   it('clicking temporal input opens picker on first focus (first-click-open)', () => {
     render(<ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps()} />)
-    const input = screen.getByTestId('form-input-1') // created_at DATETIME
+    const input = screen.getByTestId('form-input-created_at') // created_at DATETIME
     // Click the input — this fires focus + click; since input wasn't already focused,
     // the onClick handler should open the picker
     fireEvent.click(input)
@@ -989,11 +1005,11 @@ describe('ResultFormView — Temporal Fields', () => {
 
   it('blurring temporal input resets focus tracking', () => {
     render(<ResultFormView {...temporalDefaultProps} {...buildTemporalEditProps()} />)
-    const input = screen.getByTestId('form-input-1') // created_at DATETIME
+    const input = screen.getByTestId('form-input-created_at') // created_at DATETIME
     // Focus and then blur to exercise the onBlur handler
     fireEvent.focus(input)
     fireEvent.blur(input)
     // No crash; the ref is reset — verify component is still rendered
-    expect(screen.getByTestId('form-input-1')).toBeInTheDocument()
+    expect(screen.getByTestId('form-input-created_at')).toBeInTheDocument()
   })
 })

@@ -274,14 +274,32 @@ describe('SavedConnectionsList', () => {
       const innerWidth = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320)
       const innerHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(240)
 
-      const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
-        this: HTMLElement
-      ) {
-        if (this.getAttribute('data-testid') === 'saved-connections-context-menu') {
-          return { width: 280, height: 40, top: 0, left: 0, right: 280, bottom: 40, x: 0, y: 0 } as DOMRect
-        }
-        return { width: 100, height: 32, top: 0, left: 0, right: 100, bottom: 32, x: 0, y: 0 } as DOMRect
-      })
+      const rectSpy = vi
+        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+        .mockImplementation(function (this: HTMLElement) {
+          if (this.getAttribute('data-testid') === 'saved-connections-context-menu') {
+            return {
+              width: 280,
+              height: 40,
+              top: 0,
+              left: 0,
+              right: 280,
+              bottom: 40,
+              x: 0,
+              y: 0,
+            } as DOMRect
+          }
+          return {
+            width: 100,
+            height: 32,
+            top: 0,
+            left: 0,
+            right: 100,
+            bottom: 32,
+            x: 0,
+            y: 0,
+          } as DOMRect
+        })
 
       const conn = makeConnection({ id: 'c1', name: 'Right Click Me' })
 
@@ -330,9 +348,20 @@ describe('SavedConnectionsList', () => {
         toJSON: () => '',
       } as DOMRect)
 
-      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+        this: HTMLElement
+      ) {
         if (this.getAttribute('data-testid') === 'saved-connections-context-menu') {
-          return { width: 200, height: 40, top: 0, left: 0, right: 200, bottom: 40, x: 0, y: 0 } as DOMRect
+          return {
+            width: 200,
+            height: 40,
+            top: 0,
+            left: 0,
+            right: 200,
+            bottom: 40,
+            x: 0,
+            y: 0,
+          } as DOMRect
         }
         return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0 } as DOMRect
       })

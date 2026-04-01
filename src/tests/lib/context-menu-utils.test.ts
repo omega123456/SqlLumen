@@ -102,9 +102,7 @@ describe('positionContextMenuInPortal', () => {
   it('uses viewport clamping when portal is document.body', () => {
     const innerWidth = vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(320)
     const innerHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(240)
-    expect(
-      positionContextMenuInPortal(document.body, 300, 200, 280, 40)
-    ).toEqual({ x: 36, y: 196 })
+    expect(positionContextMenuInPortal(document.body, 300, 200, 280, 40)).toEqual({ x: 36, y: 196 })
     innerWidth.mockRestore()
     innerHeight.mockRestore()
   })

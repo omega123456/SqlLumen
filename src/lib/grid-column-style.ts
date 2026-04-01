@@ -45,24 +45,19 @@ export function isStringishPrimarySqlType(dataType: string): boolean {
   )
 }
 
-export function getTableDataGridCellClass(
-  col: TableDataColumnMeta,
-  pkColumnNames: string[]
+/**
+ * Consolidated cell class resolver for all data grids (table data + query result).
+ *
+ * When `pkColumnNames` is provided and `columnName` is in that list the column
+ * gets the same mono-muted treatment as numeric types — matching the original
+ * `getTableDataGridCellClass` behaviour.
+ */
+export function getGridCellClass(
+  columnName: string,
+  dataType: string,
+  pkColumnNames?: string[]
 ): string {
-  if (pkColumnNames.includes(col.name) || isNumericSqlType(col.dataType)) {
-    return 'td-cell-mono-muted'
-  }
-  if (getTemporalColumnType(col.dataType)) {
-    return 'td-cell-mono'
-  }
-  if (isStringishPrimarySqlType(col.dataType)) {
-    return 'td-cell-body td-cell-primary'
-  }
-  return 'td-cell-body'
-}
-
-export function getResultGridCellClass(dataType: string): string {
-  if (isNumericSqlType(dataType)) {
+  if ((pkColumnNames && pkColumnNames.includes(columnName)) || isNumericSqlType(dataType)) {
     return 'td-cell-mono-muted'
   }
   if (getTemporalColumnType(dataType)) {

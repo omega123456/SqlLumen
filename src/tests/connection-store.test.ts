@@ -74,7 +74,7 @@ beforeEach(() => {
   _resetListenersSetup()
   // Real Tauri injects this; jsdom does not. setupEventListeners must still call the mocked `listen`.
   ;(
-    window as Window & {
+    window as unknown as Window & {
       __TAURI_INTERNALS__: { transformCallback: (cb: unknown, once?: boolean) => string }
     }
   ).__TAURI_INTERNALS__ = {

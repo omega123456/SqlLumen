@@ -21,40 +21,40 @@ export function ForeignKeysPanel({ foreignKeys }: ForeignKeysPanelProps) {
     <div className={styles.container} data-testid="foreign-keys-panel">
       <DataTableContainer>
         <table className={styles.table}>
-        <thead>
-          <tr>
-            <th className={styles.th}>Name</th>
-            <th className={styles.th}>Column</th>
-            <th className={styles.th}>Referenced Table</th>
-            <th className={styles.th}>Referenced Column</th>
-            <th className={styles.th}>On Delete</th>
-            <th className={styles.th}>On Update</th>
-          </tr>
-        </thead>
-        <tbody>
-          {foreignKeys.map((fk) => (
-            <tr key={`${fk.name}:${fk.columnName}`} className={styles.row}>
-              <td className={styles.td}>
-                <span className={styles.fkName}>{fk.name}</span>
-              </td>
-              <td className={styles.td}>
-                <span className={styles.columnRef}>{fk.columnName}</span>
-              </td>
-              <td className={styles.td}>
-                <span className={styles.refTable}>{fk.referencedTable}</span>
-              </td>
-              <td className={styles.td}>
-                <span className={styles.columnRef}>{fk.referencedColumn}</span>
-              </td>
-              <td className={styles.td}>
-                <span className={styles.action}>{fk.onDelete}</span>
-              </td>
-              <td className={styles.td}>
-                <span className={styles.action}>{fk.onUpdate}</span>
-              </td>
+          <thead>
+            <tr>
+              <th className={styles.th}>Name</th>
+              <th className={styles.th}>Column</th>
+              <th className={styles.th}>Referenced Table</th>
+              <th className={styles.th}>Referenced Column</th>
+              <th className={styles.th}>On Delete</th>
+              <th className={styles.th}>On Update</th>
             </tr>
-          ))}
-        </tbody>
+          </thead>
+          <tbody>
+            {foreignKeys.map((fk) => (
+              <tr key={`${fk.name}:${fk.columnName}`} className={styles.row}>
+                <td className={styles.td}>
+                  <span className={styles.fkName}>{fk.name}</span>
+                </td>
+                <td className={styles.td}>
+                  <span className={styles.columnRef}>{fk.columnName}</span>
+                </td>
+                <td className={styles.td}>
+                  <span className={styles.refTable}>{fk.referencedTable}</span>
+                </td>
+                <td className={styles.td}>
+                  <span className={styles.columnRef}>{fk.referencedColumn}</span>
+                </td>
+                <td className={styles.td}>
+                  <span className={styles.action}>{fk.onDelete}</span>
+                </td>
+                <td className={styles.td}>
+                  <span className={styles.action}>{fk.onUpdate}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
         </table>
       </DataTableContainer>
     </div>

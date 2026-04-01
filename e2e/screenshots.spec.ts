@@ -745,7 +745,7 @@ for (const theme of themes) {
 
       // Wait for edit mode to apply — look for read-only column header lock icons
       await expect(
-        page.getByTestId('result-grid-view').locator('.col-readonly').first()
+        page.getByTestId('result-grid-view').locator('.rdg-readonly-cell').first()
       ).toBeVisible({ timeout: APP_READY_MS })
 
       await expect(page.getByTestId('result-grid-view')).toHaveScreenshot(
@@ -842,7 +842,7 @@ for (const theme of themes) {
 
       // Wait for edit mode to apply
       await expect(
-        page.getByTestId('result-grid-view').locator('.col-readonly').first()
+        page.getByTestId('result-grid-view').locator('.rdg-readonly-cell').first()
       ).toBeVisible({ timeout: APP_READY_MS })
 
       // Switch to form view
@@ -850,12 +850,12 @@ for (const theme of themes) {
       await expect(page.getByTestId('result-form-view')).toBeVisible({ timeout: APP_READY_MS })
 
       // Click on an editable field to start editing the row
-      const editableInput = page.getByTestId('form-input-1')
+      const editableInput = page.getByTestId('form-input-name')
       await expect(editableInput).toBeVisible({ timeout: APP_READY_MS })
       await editableInput.click()
 
-      // Wait for edit actions to appear (save/discard buttons)
-      await expect(page.getByTestId('form-edit-actions')).toBeVisible({ timeout: APP_READY_MS })
+      // Wait for save/discard buttons to appear (always visible in edit mode)
+      await expect(page.getByTestId('btn-form-save')).toBeVisible({ timeout: APP_READY_MS })
 
       await expect(page.getByTestId('result-form-view')).toHaveScreenshot(
         `result-form-view-edit-mode-${theme}.png`,
@@ -912,7 +912,7 @@ for (const theme of themes) {
     test('TableDataFormView — form view with record', async ({ page }) => {
       await openTableDataTab(page)
       // Switch to form view
-      await page.getByTestId('btn-form-view').click()
+      await page.getByTestId('view-mode-form').click()
       await expect(page.getByTestId('table-data-form-view')).toBeVisible({ timeout: APP_READY_MS })
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
@@ -1008,7 +1008,7 @@ test.describe('Date picker', () => {
         await openTableDataTab(page)
 
         // Switch to form view
-        await page.getByTestId('btn-form-view').click()
+        await page.getByTestId('view-mode-form').click()
         await expect(page.getByTestId('table-data-form-view')).toBeVisible({
           timeout: APP_READY_MS,
         })

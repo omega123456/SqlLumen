@@ -22,6 +22,7 @@ import {
   isEnumColumn,
 } from '../table-data/enum-field-utils'
 import DateTimeCellEditor from '../table-data/DateTimeCellEditor'
+import { useEditorCallbacks } from './editor-callbacks-context'
 import styles from './grid-cell-editors.module.css'
 
 // ---------------------------------------------------------------------------
@@ -74,7 +75,15 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
-  const { updateCellValue, syncCellValue, tabId } = props
+  // Resolve callbacks: prefer props when tabId is set, fallback to context
+  const contextCallbacks = useEditorCallbacks()
+  const tabId = props.tabId || contextCallbacks?.tabId || ''
+  const updateCellValue = props.tabId
+    ? props.updateCellValue
+    : (contextCallbacks?.updateCellValue ?? props.updateCellValue)
+  const syncCellValue = props.tabId
+    ? props.syncCellValue
+    : (contextCallbacks?.syncCellValue ?? props.syncCellValue)
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -193,7 +202,15 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
   const selectRef = useRef<HTMLSelectElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
-  const { updateCellValue, syncCellValue, tabId } = props
+  // Resolve callbacks: prefer props when tabId is set, fallback to context
+  const contextCallbacks = useEditorCallbacks()
+  const tabId = props.tabId || contextCallbacks?.tabId || ''
+  const updateCellValue = props.tabId
+    ? props.updateCellValue
+    : (contextCallbacks?.updateCellValue ?? props.updateCellValue)
+  const syncCellValue = props.tabId
+    ? props.syncCellValue
+    : (contextCallbacks?.syncCellValue ?? props.syncCellValue)
 
   useEffect(() => {
     selectRef.current?.focus()

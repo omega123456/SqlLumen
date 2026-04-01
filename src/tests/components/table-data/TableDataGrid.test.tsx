@@ -93,7 +93,7 @@ import type { Mock } from 'vitest'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import sharedStyles from '../../../components/shared/grid-cell-editors.module.css'
-import { TableDataGrid, buildColumnDefs } from '../../../components/table-data/TableDataGrid'
+import { TableDataGrid, buildColumnDescriptors } from '../../../components/table-data/TableDataGrid'
 import { TableDataToolbar } from '../../../components/table-data/TableDataToolbar'
 import { NullableCellEditor, EnumCellEditor } from '../../../components/shared/grid-cell-editors'
 import { updateTableRow } from '../../../lib/table-data-commands'
@@ -250,54 +250,73 @@ beforeEach(() => {
   mockIPC(() => null)
 })
 
-describe('buildColumnDefs', () => {
-  it('creates correct column definitions', () => {
-    const defs = buildColumnDefs(testColumns, false, true)
+describe('buildColumnDescriptors', () => {
+  it('creates correct column descriptors', () => {
+    const defs = buildColumnDescriptors(testColumns, false, true)
     expect(defs).toHaveLength(3)
     expect(defs[0].key).toBe('id')
-    expect(defs[0].name).toBe('id')
+    expect(defs[0].displayName).toBe('id')
     expect(defs[1].key).toBe('name')
     expect(defs[2].key).toBe('avatar')
   })
 
   it('marks binary columns as NOT editable', () => {
-    const defs = buildColumnDefs(testColumns, false, true)
-    expect(defs[0]._editable).toBe(true) // id (non-binary)
-    expect(defs[1]._editable).toBe(true) // name (non-binary)
-    expect(defs[2]._editable).toBe(false) // avatar (binary)
+    const defs = buildColumnDescriptors(testColumns, false, true)
+    expect(defs[0].editable).toBe(true) // id (non-binary)
+    expect(defs[1].editable).toBe(true) // name (non-binary)
+    expect(defs[2].editable).toBe(false) // avatar (binary)
   })
 
   it('all columns non-editable when read-only', () => {
-    const defs = buildColumnDefs(testColumns, true, true)
+    const defs = buildColumnDescriptors(testColumns, true, true)
     defs.forEach((d) => {
-      expect(d._editable).toBe(false)
+      expect(d.editable).toBe(false)
     })
   })
 
   it('all columns non-editable when no PK', () => {
-    const defs = buildColumnDefs(testColumns, false, false)
+    const defs = buildColumnDescriptors(testColumns, false, false)
     defs.forEach((d) => {
-      expect(d._editable).toBe(false)
+      expect(d.editable).toBe(false)
     })
   })
 
-  it('assigns body/primary vs mono-muted cell classes from column types and PK', () => {
-    const defs = buildColumnDefs(testColumns, false, true, ['id'])
-    expect(defs[0].cellClass).toBe('td-cell-mono-muted')
-    expect(defs[1].cellClass).toBe('td-cell-body td-cell-primary')
-    expect(defs[2].cellClass).toBe('td-cell-body')
+  it('assigns body/primary vs mono-muted cell classes via rendered column defs', () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{
+      key: string
+      cellClass: (row: Record<string, unknown>) => string
+    }>
+    // PK column → mono-muted
+    expect(colDefs[0].cellClass({})).toContain('td-cell-mono-muted')
+    // varchar column → body + primary
+    expect(colDefs[1].cellClass({})).toContain('td-cell-body')
+    expect(colDefs[1].cellClass({})).toContain('td-cell-primary')
+    // blob column → body
+    expect(colDefs[2].cellClass({})).toContain('td-cell-body')
   })
 
-  it('has sensible column widths', () => {
-    const defs = buildColumnDefs(testColumns, false, true)
-    defs.forEach((d) => {
+  it('has sensible column widths via rendered column defs', () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{ key: string; width: number }>
+    colDefs.forEach((d) => {
       expect(d.width).toBeGreaterThan(0)
     })
   })
 
-  it('all columns are sortable and resizable', () => {
-    const defs = buildColumnDefs(testColumns, false, true)
-    defs.forEach((d) => {
+  it('all columns are sortable and resizable via rendered column defs', () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{ key: string; sortable: boolean; resizable: boolean }>
+    colDefs.forEach((d) => {
       expect(d.sortable).toBe(true)
       expect(d.resizable).toBe(true)
     })
@@ -480,7 +499,7 @@ describe('TableDataGrid', () => {
     const props = getLatestGridProps()
     const rowClass = props.rowClass as (row: Record<string, unknown>) => string | undefined
     // Row matching editState
-    expect(rowClass({ id: 1, __rowIndex: 0 })).toBe('td-editing-row')
+    expect(rowClass({ id: 1, __rowIndex: 0 })).toBe('rdg-editing-row')
     // Different row
     expect(rowClass({ id: 2, __rowIndex: 1 })).toBeUndefined()
   })
@@ -499,10 +518,10 @@ describe('TableDataGrid', () => {
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
     const props = getLatestGridProps()
     const rowClass = props.rowClass as (row: Record<string, unknown>) => string | undefined
-    expect(rowClass({ __tempId: 'temp-1', __rowIndex: 0 })).toBe('td-editing-row td-new-row')
+    expect(rowClass({ __tempId: 'temp-1', __rowIndex: 0 })).toBe('rdg-editing-row rdg-new-row')
   })
 
-  it('cellClass includes td-modified-cell for modified cells', () => {
+  it('cellClass includes rdg-modified-cell for modified cells', () => {
     setupConnection()
     const editState: RowEditState = {
       rowKey: { id: 1 },
@@ -520,15 +539,15 @@ describe('TableDataGrid', () => {
     }>
     const nameCol = colDefs.find((d) => d.key === 'name')!
     // Modified column on matching row
-    expect(nameCol.cellClass({ id: 1 })).toContain('td-modified-cell')
+    expect(nameCol.cellClass({ id: 1 })).toContain('rdg-modified-cell')
     // Unmodified column on matching row
     const idCol = colDefs.find((d) => d.key === 'id')!
-    expect(idCol.cellClass({ id: 1 })).not.toContain('td-modified-cell')
+    expect(idCol.cellClass({ id: 1 })).not.toContain('rdg-modified-cell')
     // Modified column on different row
-    expect(nameCol.cellClass({ id: 2 })).not.toContain('td-modified-cell')
+    expect(nameCol.cellClass({ id: 2 })).not.toContain('rdg-modified-cell')
   })
 
-  it('cellClass includes td-editable-cell when writable with PK', () => {
+  it('cellClass includes rdg-editable-cell when writable with PK', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
@@ -537,10 +556,10 @@ describe('TableDataGrid', () => {
       key: string
       cellClass: (row: Record<string, unknown>) => string
     }>
-    expect(colDefs[0].cellClass({ id: 1 })).toContain('td-editable-cell')
+    expect(colDefs[0].cellClass({ id: 1 })).toContain('rdg-editable-cell')
   })
 
-  it('cellClass does not include td-editable-cell when readOnly', () => {
+  it('cellClass does not include rdg-editable-cell when readOnly', () => {
     setupConnection()
     setupTabState()
     render(<TableDataGrid tabId="tab-1" isReadOnly={true} />)
@@ -549,7 +568,7 @@ describe('TableDataGrid', () => {
       key: string
       cellClass: (row: Record<string, unknown>) => string
     }>
-    expect(colDefs[0].cellClass({ id: 1 })).not.toContain('td-editable-cell')
+    expect(colDefs[0].cellClass({ id: 1 })).not.toContain('rdg-editable-cell')
   })
 
   it('onCellClick starts editing in the store', async () => {
@@ -558,7 +577,11 @@ describe('TableDataGrid', () => {
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
     const props = getLatestGridProps()
     const onCellClick = props.onCellClick as (
-      args: { row: Record<string, unknown>; column: { key: string; idx: number } },
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
       event: { preventGridDefault: () => void }
     ) => Promise<void>
 
@@ -567,6 +590,7 @@ describe('TableDataGrid', () => {
         {
           row: { id: 1, name: 'Alice', avatar: null, __rowIndex: 0 },
           column: { key: 'name', idx: 1 },
+          rowIdx: 0,
         },
         { preventGridDefault: vi.fn() }
       )
@@ -583,7 +607,11 @@ describe('TableDataGrid', () => {
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
     const props = getLatestGridProps()
     const onCellClick = props.onCellClick as (
-      args: { row: Record<string, unknown>; column: { key: string; idx: number } },
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
       event: { preventGridDefault: () => void }
     ) => Promise<void>
 
@@ -592,6 +620,7 @@ describe('TableDataGrid', () => {
         {
           row: { id: 2, name: null, avatar: '[BLOB 32 bytes]', __rowIndex: 1 },
           column: { key: 'name', idx: 1 },
+          rowIdx: 1,
         },
         { preventGridDefault: vi.fn() }
       )
@@ -614,7 +643,11 @@ describe('TableDataGrid', () => {
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
     const props = getLatestGridProps()
     const onCellClick = props.onCellClick as (
-      args: { row: Record<string, unknown>; column: { key: string; idx: number } },
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
       event: { preventGridDefault: () => void }
     ) => Promise<void>
 
@@ -623,6 +656,7 @@ describe('TableDataGrid', () => {
         {
           row: { id: 1, name: 'Modified', avatar: null, __rowIndex: 0, __editingRowKey: { id: 1 } },
           column: { key: 'id', idx: 0 },
+          rowIdx: 0,
         },
         { preventGridDefault: vi.fn() }
       )
@@ -780,7 +814,11 @@ describe('TableDataGrid', () => {
     // Start editing row 1
     const props = getLatestGridProps()
     const onCellClick = props.onCellClick as (
-      args: { row: Record<string, unknown>; column: { key: string; idx: number } },
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
       event: { preventGridDefault: () => void }
     ) => Promise<void>
 
@@ -789,6 +827,7 @@ describe('TableDataGrid', () => {
         {
           row: { id: 1, name: null, avatar: null, __rowIndex: 0 },
           column: { key: 'name', idx: 1 },
+          rowIdx: 0,
         },
         { preventGridDefault: vi.fn() }
       )
@@ -828,6 +867,7 @@ describe('TableDataGrid', () => {
         {
           row: { id: 2, name: null, avatar: '[BLOB 32 bytes]', __rowIndex: 1 },
           column: { key: 'name', idx: 1 },
+          rowIdx: 1,
         },
         { preventGridDefault: vi.fn() }
       )
@@ -856,7 +896,11 @@ describe('TableDataGrid', () => {
     // Start editing
     const props = getLatestGridProps()
     const onCellClick = props.onCellClick as (
-      args: { row: Record<string, unknown>; column: { key: string; idx: number } },
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
       event: { preventGridDefault: () => void }
     ) => Promise<void>
 
@@ -865,6 +909,7 @@ describe('TableDataGrid', () => {
         {
           row: { id: 1, name: null, avatar: null, __rowIndex: 0 },
           column: { key: 'name', idx: 1 },
+          rowIdx: 0,
         },
         { preventGridDefault: vi.fn() }
       )
@@ -928,7 +973,11 @@ describe('TableDataGrid', () => {
 
     // Click same row, different column
     const onCellClick = props.onCellClick as (
-      args: { row: Record<string, unknown>; column: { key: string; idx: number } },
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
       event: { preventGridDefault: () => void }
     ) => Promise<void>
 
@@ -937,6 +986,7 @@ describe('TableDataGrid', () => {
         {
           row: rowData[0],
           column: { key: 'name', idx: 1 },
+          rowIdx: 0,
         },
         { preventGridDefault: vi.fn() }
       )
@@ -983,7 +1033,11 @@ describe('TableDataGrid', () => {
     const props = getLatestGridProps()
     const rowData = props.rows as Array<Record<string, unknown>>
     const onCellClick = props.onCellClick as (
-      args: { row: Record<string, unknown>; column: { key: string; idx: number } },
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
       event: { preventGridDefault: () => void }
     ) => Promise<void>
 
@@ -992,6 +1046,7 @@ describe('TableDataGrid', () => {
         {
           row: rowData[1],
           column: { key: 'created_at', idx: 1 },
+          rowIdx: 1,
         },
         { preventGridDefault: vi.fn() }
       )
@@ -1042,7 +1097,11 @@ describe('TableDataGrid', () => {
     const props = getLatestGridProps()
     const rowData = props.rows as Array<Record<string, unknown>>
     const onCellClick = props.onCellClick as (
-      args: { row: Record<string, unknown>; column: { key: string; idx: number } },
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
       event: { preventGridDefault: () => void }
     ) => Promise<void>
 
@@ -1051,6 +1110,7 @@ describe('TableDataGrid', () => {
         {
           row: rowData[1],
           column: { key: 'created_at', idx: 1 },
+          rowIdx: 1,
         },
         { preventGridDefault: vi.fn() }
       )
@@ -1082,7 +1142,11 @@ describe('TableDataGrid', () => {
     const props = getLatestGridProps()
     const rowData = props.rows as Array<Record<string, unknown>>
     const onCellClick = props.onCellClick as (
-      args: { row: Record<string, unknown>; column: { key: string; idx: number } },
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
       event: { preventGridDefault: () => void }
     ) => Promise<void>
 
@@ -1091,6 +1155,7 @@ describe('TableDataGrid', () => {
         {
           row: rowData[1],
           column: { key: 'name', idx: 1 },
+          rowIdx: 1,
         },
         { preventGridDefault: vi.fn() }
       )
@@ -1124,7 +1189,11 @@ describe('TableDataGrid', () => {
     render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
     const props = getLatestGridProps()
     const onCellClick = props.onCellClick as (
-      args: { row: Record<string, unknown>; column: { key: string; idx: number } },
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
       event: { preventGridDefault: () => void }
     ) => Promise<void>
 
@@ -1133,6 +1202,7 @@ describe('TableDataGrid', () => {
         {
           row: { id: 2, name: 'Bob', avatar: null, __rowIndex: 1 },
           column: { key: 'name', idx: 1 },
+          rowIdx: 1,
         },
         { preventGridDefault: vi.fn() }
       )
@@ -1235,7 +1305,11 @@ describe('TableDataGrid', () => {
     const props = getLatestGridProps()
     const rowData = props.rows as Array<Record<string, unknown>>
     const onCellClick = props.onCellClick as (
-      args: { row: Record<string, unknown>; column: { key: string; idx: number } },
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
       event: { preventGridDefault: () => void }
     ) => Promise<void>
 
@@ -1245,6 +1319,7 @@ describe('TableDataGrid', () => {
         {
           row: rowData[1],
           column: { key: 'name', idx: 1 },
+          rowIdx: 1,
         },
         { preventGridDefault: vi.fn() }
       )

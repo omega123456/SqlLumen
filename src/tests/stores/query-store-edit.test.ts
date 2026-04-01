@@ -947,7 +947,8 @@ describe('useQueryStore — executeQuery background analysis', () => {
     // Execute first query — analysis starts
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users')
     const firstResolve = analysisResolve!
-    analysisResolve = null
+    // Clear analysisResolve so second executeQuery produces a new one
+    analysisResolve = null // eslint-disable-line no-useless-assignment
 
     // Execute second query — new analysis starts, queryId changes
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM orders')

@@ -72,7 +72,9 @@ describe('StatsRow', () => {
   })
 
   it('renders column count card next to row count when columnCount is set', () => {
-    const { container } = render(<StatsRow metadata={makeMetadata({ tableRows: 100 })} columnCount={12} />)
+    const { container } = render(
+      <StatsRow metadata={makeMetadata({ tableRows: 100 })} columnCount={12} />
+    )
 
     expect(screen.getByTestId('stats-columns-card')).toBeInTheDocument()
     expect(screen.getByText('Column count')).toBeInTheDocument()

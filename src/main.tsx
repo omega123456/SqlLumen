@@ -28,7 +28,7 @@ loader.config({ monaco })
 // ---------------------------------------------------------------------------
 const origCreateWebWorker = monaco.editor.createWebWorker.bind(monaco.editor)
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 monaco.editor.createWebWorker = function patchedCreateWebWorker<T extends object>(
   opts: Parameters<typeof origCreateWebWorker>[0]
 ): monaco.editor.MonacoWebWorker<T> {

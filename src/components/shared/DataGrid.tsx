@@ -116,7 +116,7 @@ function DataGridInner<R, SR = unknown>(
  * Shared DataGrid wrapper with forwardRef to expose DataGridHandle.
  * Applies the rdg-precision theme and reads row/header heights from CSS tokens.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export const DataGrid = forwardRef(DataGridInner) as <R, SR = unknown>(
   props: DataGridWrapperProps<R, SR> & { ref?: React.Ref<DataGridHandle> }
 ) => React.ReactElement | null

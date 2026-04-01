@@ -95,7 +95,9 @@ async function openQueryEditorWithResults(page: Page) {
   await expect(editModeDropdown.locator('option')).toHaveCount(2, { timeout: APP_READY_MS })
   await editModeDropdown.selectOption({ index: 1 })
   await expect(editModeDropdown).not.toHaveValue('', { timeout: APP_READY_MS })
-  await expect(page.getByTestId('result-grid-view').locator('.col-editable').first()).toBeVisible({
+  await expect(
+    page.getByTestId('result-grid-view').locator('.rdg-editable-cell').first()
+  ).toBeVisible({
     timeout: APP_READY_MS,
   })
 }

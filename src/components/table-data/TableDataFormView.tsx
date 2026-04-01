@@ -1,33 +1,23 @@
 /**
- * TableDataFormView — editable single-record form for the table data browser.
+ * TableDataFormView — thin wrapper around BaseFormView for the table data browser.
  *
- * Displays one row at a time with editable inputs for each column.
- * Supports NULL toggle, modified-field indicators, copy-to-clipboard,
- * record navigation (including cross-page), and save/discard actions.
- *
- * Uses the same edit state in the store as the grid view, so switching
- * between views preserves in-progress edits.
+ * Reads from useTableDataStore + useConnectionStore, adapts the rich store
+ * state into the shared BaseFormViewProps shape, and delegates all rendering
+ * to BaseFormView.  Toast notifications and temporal-validation on save live
+ * here (BaseFormView is store-free and toast-free).
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react'
-import {
-  CaretLeft,
-  CaretRight,
-  CopySimple,
-  Info,
-  CalendarBlank,
-  Clock,
-} from '@phosphor-icons/react'
+import { useCallback, useMemo } from 'react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useToastStore } from '../../stores/toast-store'
-import { writeClipboardText } from '../../lib/context-menu-utils'
-import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
-import { DateTimePicker } from './DateTimePicker'
-import { ENUM_NULL_SENTINEL, getEnumFallbackValue, isEnumColumn } from './enum-field-utils'
+import { BaseFormView } from '../shared/BaseFormView'
+import type {
+  GridColumnDescriptor,
+  RowEditState as SharedRowEditState,
+} from '../../types/shared-data-view'
 import type { TableDataColumnMeta } from '../../types/schema'
-import styles from './TableDataFormView.module.css'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,24 +48,31 @@ function rowToValues(row: unknown[], columns: TableDataColumnMeta[]): Record<str
   return values
 }
 
-/** Format a cell value for display in the form. */
-function displayValue(value: unknown): string {
-  if (value === null || value === undefined) return ''
-  if (typeof value === 'string') return value
-  if (typeof value === 'object') return JSON.stringify(value)
-  return String(value)
-}
-
-function isNullish(value: unknown): value is null | undefined {
-  return value === null || value === undefined
-}
-
 function escapeForAttributeSelector(value: string): string {
   if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
     return CSS.escape(value)
   }
-
   return value.replace(/(["\\])/g, '\\$1')
+}
+
+// ---------------------------------------------------------------------------
+// Column adapter
+// ---------------------------------------------------------------------------
+
+/** Convert TableDataColumnMeta[] → GridColumnDescriptor[]. */
+function toGridColumns(columns: TableDataColumnMeta[]): GridColumnDescriptor[] {
+  return columns.map((col) => ({
+    key: col.name,
+    displayName: col.name,
+    dataType: col.dataType,
+    editable: true, // BaseFormView further restricts with hasEditCapability && !isBlobField
+    isBinary: col.isBinary,
+    isNullable: col.isNullable,
+    isPrimaryKey: col.isPrimaryKey,
+    isUniqueKey: col.isUniqueKey && !col.isPrimaryKey,
+    enumValues: col.enumValues,
+    tableColumnMeta: col,
+  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -108,29 +105,30 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
   const totalPages = tabState?.totalPages ?? 1
   const pageSize = tabState?.pageSize ?? 1000
   const primaryKey = tabState?.primaryKey ?? null
-  const editState = tabState?.editState ?? null
+  const storeEditState = tabState?.editState ?? null
   const selectedRowKey = tabState?.selectedRowKey ?? null
   const isLoading = tabState?.isLoading ?? false
 
   const hasPk = primaryKey !== null
   const isEditable = !isConnectionReadOnly && hasPk
-
   const pkColumns = primaryKey?.keyColumns ?? []
 
-  // --- Date/time picker state ---
-  const [openPickerState, setOpenPickerState] = useState<{
-    field: string
-    anchorEl: HTMLElement
-  } | null>(null)
+  // When a temp/new row exists, totalRows from the server doesn't include it.
+  // Add 1 so the display and navigation bounds are correct ("Record 3 of 3" not "Record 3 of 2").
+  const hasTempRow = storeEditState?.isNewRow === true
+  const effectiveTotalRows = hasTempRow ? totalRows + 1 : totalRows
 
-  // --- Focus-tracking ref for first-click-open on temporal fields ---
-  // Tracks whether each temporal input was already focused before a click,
-  // so the picker only auto-opens on the initial focus-granting click.
-  const inputFocusedRef = useRef<Record<string, boolean>>({})
+  // --- Grid columns (stable) ---
+  const gridColumns = useMemo(() => toGridColumns(columns), [columns])
 
-  // Find local index of selected row
+  // --- Find local index of selected row ---
   const localIndex = useMemo(() => {
     if (!selectedRowKey || rows.length === 0) return 0
+    // Handle temp rows (new row insert): selectedRowKey = { __tempId: 'temp-...' }
+    // New rows are always appended at the end of the rows array
+    if ('__tempId' in selectedRowKey) {
+      return rows.length - 1
+    }
     const idx = rows.findIndex((row) => {
       const key = getRowKeyFromArray(row, columns, pkColumns)
       return isSameRowKey(key, selectedRowKey)
@@ -138,37 +136,48 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
     return idx >= 0 ? idx : 0
   }, [selectedRowKey, rows, columns, pkColumns])
 
-  const absolutePosition = (currentPage - 1) * pageSize + localIndex + 1
+  const absoluteIndex = (currentPage - 1) * pageSize + localIndex
+  // Use effectiveTotalRows so temp rows are counted in the display total
   const currentRow = rows.length > 0 ? rows[localIndex] : null
 
-  // Determine if this is the very first / last record across all pages
-  const isFirstRecord = currentPage === 1 && localIndex === 0
-  const isLastRecord = currentPage >= totalPages && localIndex >= rows.length - 1
-
-  // Current row key
+  // Current row key (for edit-state matching)
   const currentRowKey = useMemo(() => {
-    if (editState?.isNewRow) return editState.rowKey
+    if (storeEditState?.isNewRow) return storeEditState.rowKey
     if (!currentRow || pkColumns.length === 0) return null
     return getRowKeyFromArray(currentRow, columns, pkColumns)
-  }, [editState, currentRow, columns, pkColumns])
+  }, [storeEditState, currentRow, columns, pkColumns])
 
   // Is the current row being edited?
   const isEditingCurrentRow = useMemo(() => {
-    if (!editState || !currentRowKey) return false
-    return isSameRowKey(editState.rowKey, currentRowKey)
-  }, [editState, currentRowKey])
+    if (!storeEditState || !currentRowKey) return false
+    return isSameRowKey(storeEditState.rowKey, currentRowKey)
+  }, [storeEditState, currentRowKey])
 
-  // --- Navigation ---
+  // --- Adapt store RowEditState → shared RowEditState ---
+  const sharedEditState: SharedRowEditState | null = useMemo(() => {
+    if (!storeEditState || !isEditingCurrentRow) return null
+    return {
+      rowKey: JSON.stringify(storeEditState.rowKey),
+      currentValues: storeEditState.currentValues,
+      originalValues: storeEditState.originalValues,
+    }
+  }, [storeEditState, isEditingCurrentRow])
 
+  // --- Navigation boundary flags ---
+  // Fold isLoading into the first/last flags so BaseFormView disables buttons
+  const isFirstRecord = (currentPage === 1 && localIndex === 0) || isLoading
+  const isLastRecord = (currentPage >= totalPages && localIndex >= rows.length - 1) || isLoading
+
+  // --- Navigation handlers ---
   const navigateRelative = useCallback(
     (direction: -1 | 1) => {
       if (!tabState || isLoading) return
 
-      const absoluteIndex = (currentPage - 1) * pageSize + localIndex
-      const newAbsoluteIndex = absoluteIndex + direction
+      const absoluteIdx = (currentPage - 1) * pageSize + localIndex
+      const newAbsoluteIndex = absoluteIdx + direction
 
-      // Boundary check
-      if (newAbsoluteIndex < 0 || newAbsoluteIndex >= totalRows) return
+      // Boundary check — use effectiveTotalRows so navigation accounts for temp rows
+      if (newAbsoluteIndex < 0 || newAbsoluteIndex >= effectiveTotalRows) return
 
       const newPage = Math.floor(newAbsoluteIndex / pageSize) + 1
       const newLocalIndex = newAbsoluteIndex % pageSize
@@ -179,7 +188,6 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
         }
         const updatedState = useTableDataStore.getState().tabs[tabId]
         if (updatedState && updatedState.rows.length > 0) {
-          // Use computed index, clamped to actual row count for safety
           const targetIndex = Math.min(newLocalIndex, updatedState.rows.length - 1)
           const targetRow = updatedState.rows[targetIndex]
           if (targetRow) {
@@ -197,7 +205,7 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
       localIndex,
       currentPage,
       pageSize,
-      totalRows,
+      effectiveTotalRows,
       tabId,
       fetchPage,
       pkColumns,
@@ -206,95 +214,40 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
     ]
   )
 
-  const navigatePrevious = useCallback(() => navigateRelative(-1), [navigateRelative])
-  const navigateNext = useCallback(() => navigateRelative(1), [navigateRelative])
+  const onNavigatePrev = useCallback(() => navigateRelative(-1), [navigateRelative])
+  const onNavigateNext = useCallback(() => navigateRelative(1), [navigateRelative])
 
-  // --- Editing ---
+  // --- Editing callbacks ---
 
-  const ensureEditing = useCallback(
-    (rowKey: Record<string, unknown>, row: unknown[]) => {
-      if (!isEditable) return
-      // If already editing this row, skip
-      if (editState && isSameRowKey(editState.rowKey, rowKey)) return
-      const values = rowToValues(row, columns)
-      startEditing(tabId, rowKey, values)
-    },
-    [isEditable, editState, columns, startEditing, tabId]
-  )
+  /** Shared logic: if the current row is editable and not already being edited, start editing. */
+  const ensureEditingCurrentRow = useCallback(() => {
+    if (!isEditable || !currentRow || !currentRowKey) return
+    if (storeEditState && isSameRowKey(storeEditState.rowKey, currentRowKey)) return
+    const values = rowToValues(currentRow, columns)
+    startEditing(tabId, currentRowKey, values)
+  }, [isEditable, currentRow, currentRowKey, storeEditState, columns, startEditing, tabId])
 
-  const handleInputFocus = useCallback(
-    (colName: string) => {
-      void colName // colName not needed for start editing — just ensure editing
+  const onEnsureEditing = useCallback(() => {
+    ensureEditingCurrentRow()
+  }, [ensureEditingCurrentRow])
+
+  const onUpdateCell = useCallback(
+    (columnKey: string, value: unknown) => {
       if (!currentRow || !currentRowKey) return
-      ensureEditing(currentRowKey, currentRow)
+      // Ensure editing is started before updating
+      ensureEditingCurrentRow()
+      updateCellValue(tabId, columnKey, value)
     },
-    [currentRow, currentRowKey, ensureEditing]
+    [currentRow, currentRowKey, ensureEditingCurrentRow, updateCellValue, tabId]
   )
 
-  const handleInputChange = useCallback(
-    (colName: string, value: string) => {
-      if (!currentRow || !currentRowKey) return
-      ensureEditing(currentRowKey, currentRow)
-      updateCellValue(tabId, colName, value)
-    },
-    [currentRow, currentRowKey, ensureEditing, updateCellValue, tabId]
-  )
-
-  const handleNullToggle = useCallback(
-    (col: TableDataColumnMeta) => {
-      if (!currentRow || !currentRowKey) return
-      ensureEditing(currentRowKey, currentRow)
-
-      // Determine current value for this column
-      const currentVal = isEditingCurrentRow
-        ? editState?.currentValues[col.name]
-        : currentRow[columns.findIndex((c) => c.name === col.name)]
-
-      if (currentVal === null) {
-        // Toggling NULL off — use today's date/time for temporal columns
-        const temporalType = getTemporalColumnType(col.dataType)
-        if (temporalType) {
-          updateCellValue(tabId, col.name, getTodayMysqlString(temporalType))
-        } else if (isEnumColumn(col)) {
-          updateCellValue(tabId, col.name, getEnumFallbackValue(col))
-        } else {
-          updateCellValue(tabId, col.name, '')
-        }
-      } else {
-        // Toggling NULL on — close picker if it's open for this field
-        if (openPickerState?.field === col.name) {
-          setOpenPickerState(null)
-        }
-        updateCellValue(tabId, col.name, null)
-      }
-    },
-    [
-      currentRow,
-      currentRowKey,
-      ensureEditing,
-      isEditingCurrentRow,
-      editState,
-      columns,
-      updateCellValue,
-      tabId,
-      openPickerState,
-    ]
-  )
-
-  const handleCopy = useCallback(async (value: unknown) => {
-    const text = value === null || value === undefined ? 'NULL' : displayValue(value)
-    try {
-      await writeClipboardText(text)
-    } catch {
-      // Clipboard unavailable — silently fail
-    }
-  }, [])
-
+  // --- Save / Discard with toast feedback ---
   const showError = useToastStore((s) => s.showError)
   const showSuccess = useToastStore((s) => s.showSuccess)
 
-  const handleSave = useCallback(async () => {
-    const validationError = getTemporalValidationResult(editState, columns)
+  const onSave = useCallback(async () => {
+    // Temporal validation uses the store's RowEditState (with modifiedColumns)
+    const validationError = getTemporalValidationResult(storeEditState, columns)
     if (validationError) {
       showError('Invalid date value', `${validationError.columnName}: ${validationError.error}`)
       // Focus the problematic field
@@ -302,7 +255,7 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
         `[data-testid="form-input-${escapeForAttributeSelector(validationError.columnName)}"]`
       ) as HTMLElement
       input?.focus()
-      return // Block save
+      return
     }
 
     await saveCurrentRow(tabId)
@@ -312,292 +265,33 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
       return
     }
 
-    // Show success toast if no saveError (check state after save)
     if (newState && !newState.saveError && !newState.editState) {
       showSuccess('Row saved', 'Changes saved successfully.')
     }
-  }, [saveCurrentRow, tabId, editState, columns, showError, showSuccess])
+  }, [saveCurrentRow, tabId, storeEditState, columns, showError, showSuccess])
 
-  const handleDiscard = useCallback(() => {
+  const onDiscard = useCallback(() => {
     discardCurrentRow(tabId)
   }, [discardCurrentRow, tabId])
 
-  // --- Derived state ---
-
-  const hasModifications = editState !== null && editState.modifiedColumns.size > 0
-  const canSave = isEditingCurrentRow && hasModifications
-  const canDiscard = isEditingCurrentRow && editState !== null
-
-  // Empty state
-  if (rows.length === 0 && !isLoading) {
-    return (
-      <div className={styles.formView} data-testid="table-data-form-view">
-        <div className={styles.emptyState}>No rows to display</div>
-      </div>
-    )
-  }
-
+  // --- Render ---
   return (
-    <div className={styles.formView} data-testid="table-data-form-view">
-      {/* Record navigation header */}
-      <div className={styles.recordNav} data-testid="form-record-nav">
-        <h2 className={styles.recordTitle}>
-          Record {absolutePosition} of {totalRows}
-        </h2>
-
-        <div className={styles.navGroup}>
-          <div className={styles.navButtonGroup}>
-            <button
-              type="button"
-              className={styles.navButton}
-              disabled={isFirstRecord || isLoading}
-              onClick={navigatePrevious}
-              aria-label="Previous record"
-              data-testid="btn-form-previous"
-            >
-              <CaretLeft size={14} weight="bold" />
-              <span>Previous</span>
-            </button>
-            <button
-              type="button"
-              className={styles.navButton}
-              disabled={isLastRecord || isLoading}
-              onClick={navigateNext}
-              aria-label="Next record"
-              data-testid="btn-form-next"
-            >
-              <span>Next</span>
-              <CaretRight size={14} weight="bold" />
-            </button>
-          </div>
-
-          <div className={styles.formButtons}>
-            <button
-              type="button"
-              className={styles.discardButton}
-              disabled={!canDiscard}
-              onClick={handleDiscard}
-              data-testid="btn-form-discard"
-            >
-              Discard
-            </button>
-            <button
-              type="button"
-              className={styles.saveButton}
-              disabled={!canSave}
-              onClick={handleSave}
-              data-testid="btn-form-save"
-            >
-              Save Changes
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Scrollable form fields */}
-      <div className={styles.formContent}>
-        <div className={styles.formCard}>
-          {columns.map((col, colIdx) => {
-            // Determine the value to display
-            const rawValue =
-              isEditingCurrentRow && editState
-                ? editState.currentValues[col.name]
-                : currentRow
-                  ? currentRow[colIdx]
-                  : null
-
-            const isNull = isNullish(rawValue)
-            const isModified = isEditingCurrentRow
-              ? (editState?.modifiedColumns.has(col.name) ?? false)
-              : false
-            const isBlobField = col.isBinary
-            const isNullable = col.isNullable
-            const isPk = col.isPrimaryKey
-            const isUnique = col.isUniqueKey && !col.isPrimaryKey
-            const isFieldReadonly = isBlobField || !isEditable
-            const temporalType = getTemporalColumnType(col.dataType)
-            const isTemporalEditable = temporalType !== null && !isFieldReadonly && !isBlobField
-            const isEnumEditable = isEnumColumn(col) && !isFieldReadonly && !isBlobField
-
-            // Label suffix
-            let labelSuffix = ''
-            if (isPk) labelSuffix = '(Primary Key)'
-            else if (isUnique) labelSuffix = '(Unique Key)'
-
-            return (
-              <div
-                key={col.name}
-                className={styles.fieldGroup}
-                data-testid={`form-field-${col.name}`}
-              >
-                {/* Label row */}
-                <div className={styles.fieldLabelRow}>
-                  <span className={styles.fieldLabel}>{col.name.toUpperCase()}</span>
-                  {labelSuffix && <span className={styles.fieldLabelSuffix}>{labelSuffix}</span>}
-                  {isNullable && isEditable && !isBlobField && (
-                    <button
-                      type="button"
-                      className={`${styles.fieldNullBtn} ${isNull ? styles.fieldNullBtnActive : ''}`}
-                      onClick={() => handleNullToggle(col)}
-                      data-testid={`btn-form-null-${col.name}`}
-                    >
-                      NULL
-                    </button>
-                  )}
-                </div>
-
-                {/* Input row */}
-                <div className={styles.fieldInputRow}>
-                  {isBlobField ? (
-                    <div
-                      className={styles.fieldBlobReadonly}
-                      data-testid={`form-input-${col.name}`}
-                    >
-                      {rawValue != null ? String(rawValue) : '(BLOB data)'}
-                    </div>
-                  ) : isFieldReadonly ? (
-                    <div
-                      className={styles.fieldInputReadonly}
-                      data-testid={`form-input-${col.name}`}
-                    >
-                      {isNull ? 'NULL' : displayValue(rawValue)}
-                    </div>
-                  ) : isEnumEditable ? (
-                    <select
-                      className={[
-                        styles.fieldInput,
-                        styles.fieldSelect,
-                        isModified ? styles.fieldInputModified : '',
-                        isNull ? styles.fieldInputNull : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                      value={isNull ? '' : displayValue(rawValue)}
-                      onFocus={() => handleInputFocus(col.name)}
-                      onChange={(e) => {
-                        const nextValue = e.target.value
-                        if (nextValue === ENUM_NULL_SENTINEL) {
-                          if (!currentRow || !currentRowKey) return
-                          ensureEditing(currentRowKey, currentRow)
-                          updateCellValue(tabId, col.name, null)
-                          return
-                        }
-                        handleInputChange(col.name, nextValue)
-                      }}
-                      data-testid={`form-input-${col.name}`}
-                    >
-                      {col.isNullable && <option value={ENUM_NULL_SENTINEL}>NULL</option>}
-                      {col.enumValues.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      className={[
-                        styles.fieldInput,
-                        isModified ? styles.fieldInputModified : '',
-                        isNull ? styles.fieldInputNull : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                      value={displayValue(rawValue)}
-                      onFocus={() => {
-                        handleInputFocus(col.name)
-                        // Mark as focused AFTER the focus event fires so the
-                        // onClick handler can distinguish first-click vs re-click.
-                        // Use setTimeout(0) so the flag is set after the synchronous
-                        // onClick that may fire in the same event loop tick.
-                        setTimeout(() => {
-                          if (isTemporalEditable) {
-                            inputFocusedRef.current[col.name] = true
-                          }
-                        }, 0)
-                      }}
-                      onBlur={() => {
-                        if (isTemporalEditable) {
-                          inputFocusedRef.current[col.name] = false
-                        }
-                      }}
-                      onClick={
-                        isTemporalEditable
-                          ? (e) => {
-                              // Don't open picker when the field is NULL
-                              if (isNull) return
-                              // Open picker only on the click that first grants focus
-                              // (i.e., the input was not already focused before this click).
-                              if (!inputFocusedRef.current[col.name]) {
-                                const anchorEl = (e.currentTarget.parentElement ??
-                                  e.currentTarget) as HTMLElement
-                                setOpenPickerState({ field: col.name, anchorEl })
-                              }
-                            }
-                          : undefined
-                      }
-                      onChange={(e) => handleInputChange(col.name, e.target.value)}
-                      data-testid={`form-input-${col.name}`}
-                    />
-                  )}
-
-                  {isTemporalEditable && (
-                    <button
-                      type="button"
-                      className={styles.fieldCalendarBtn}
-                      disabled={isNull}
-                      onClick={(e) => {
-                        if (isNull) return
-                        const anchorEl = (e.currentTarget.parentElement ??
-                          e.currentTarget) as HTMLElement
-                        setOpenPickerState({ field: col.name, anchorEl })
-                      }}
-                      data-testid={`calendar-btn-${col.name}`}
-                      aria-label={temporalType === 'TIME' ? 'Open time picker' : 'Open date picker'}
-                    >
-                      {temporalType === 'TIME' ? <Clock size={14} /> : <CalendarBlank size={14} />}
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    className={styles.fieldCopyBtn}
-                    onClick={() => handleCopy(rawValue)}
-                    title={`Copy ${col.name}`}
-                    aria-label={`Copy ${col.name}`}
-                    data-testid={`btn-form-copy-${col.name}`}
-                  >
-                    <CopySimple size={14} />
-                  </button>
-                </div>
-
-                {/* Date/time picker popup (rendered via portal) */}
-                {openPickerState?.field === col.name && temporalType && (
-                  <DateTimePicker
-                    value={isNullish(rawValue) ? null : displayValue(rawValue)}
-                    columnType={temporalType}
-                    disabled={isNull}
-                    anchorEl={openPickerState.anchorEl}
-                    onApply={(val) => {
-                      handleInputChange(col.name, val)
-                      setOpenPickerState(null)
-                    }}
-                    onCancel={() => setOpenPickerState(null)}
-                  />
-                )}
-
-                {/* Modified indicator */}
-                {isModified && (
-                  <div className={styles.fieldModifiedNote}>
-                    <Info size={14} weight="fill" className={styles.fieldModifiedNoteIcon} />
-                    <span>Unsaved change detected</span>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    </div>
+    <BaseFormView
+      columns={gridColumns}
+      currentRow={currentRow}
+      totalRows={effectiveTotalRows}
+      currentAbsoluteIndex={absoluteIndex}
+      isFirstRecord={isFirstRecord}
+      isLastRecord={isLastRecord}
+      onNavigatePrev={onNavigatePrev}
+      onNavigateNext={onNavigateNext}
+      editState={sharedEditState}
+      onEnsureEditing={onEnsureEditing}
+      onUpdateCell={onUpdateCell}
+      onSave={isEditable ? onSave : undefined}
+      onDiscard={isEditable ? onDiscard : undefined}
+      readOnly={!isEditable}
+      testId="table-data-form-view"
+    />
   )
 }

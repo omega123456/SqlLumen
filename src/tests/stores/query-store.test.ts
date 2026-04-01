@@ -186,11 +186,7 @@ describe('useQueryStore — executeQuery', () => {
       return null
     })
 
-    await useQueryStore.getState().executeQuery(
-      'conn-1',
-      'tab-null-analyze',
-      'SELECT id FROM t'
-    )
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-null-analyze', 'SELECT id FROM t')
 
     await vi.waitFor(() => {
       expect(useQueryStore.getState().getTabState('tab-null-analyze').isAnalyzingQuery).toBe(false)

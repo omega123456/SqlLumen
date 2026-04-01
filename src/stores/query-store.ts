@@ -19,12 +19,12 @@ import {
 } from '../lib/query-edit-utils'
 
 /**
- * Strip leading SQL comments (block `/* ... *​/`, line `-- ...`, and `# ...`)
+ * Strip leading SQL comments (block, line `-- ...`, and `# ...`)
  * so we can identify the first real keyword for editability checks.
  */
 function stripLeadingSqlComments(sql: string): string {
   let s = sql
-  // eslint-disable-next-line no-constant-condition
+
   while (true) {
     s = s.trimStart()
     if (s.startsWith('/*')) {
@@ -64,7 +64,7 @@ function stripLeadingSqlComments(sql: string): string {
  * potentially be used for inline editing. Returns false for SHOW, DESCRIBE,
  * EXPLAIN, DML, DDL, etc.
  *
- * Strips leading SQL comments (`/* ... *​/`, `-- ...`, `# ...`) before
+ * Strips leading SQL comments (block, line `-- ...`, `# ...`) before
  * checking the first keyword.
  */
 export function isEditableSelectSql(sql: string | null): boolean {

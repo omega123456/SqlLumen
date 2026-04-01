@@ -189,7 +189,10 @@ describe('ConnectionTabBar', () => {
   })
 
   it('does not render vertical color accent on active tab when profile has color', () => {
-    const conn = makeActiveConnection({ id: 'sess-1', profile: makeSavedConnection({ color: '#3b82f6' }) })
+    const conn = makeActiveConnection({
+      id: 'sess-1',
+      profile: makeSavedConnection({ color: '#3b82f6' }),
+    })
 
     useConnectionStore.setState({
       activeConnections: { 'sess-1': conn },

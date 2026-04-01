@@ -34,7 +34,7 @@ import { useCellEditor } from './useCellEditor'
 import type { CellEditorParams, CellEditorCallbacks } from './useCellEditor'
 import sharedStyles from '../shared/grid-cell-editors.module.css'
 import { DateTimePicker } from './DateTimePicker'
-import styles from './TableDataGrid.module.css'
+import styles from '../shared/BaseGridView.module.css'
 
 // ---------------------------------------------------------------------------
 // Component

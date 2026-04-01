@@ -2,38 +2,26 @@
  * Toolbar above the result grid — shows view mode toggle, edit mode dropdown,
  * Save/Discard buttons, query status, export action, page size selector,
  * and pagination controls.
+ *
+ * Composes shared toolbar item components (ViewModeGroup, PaginationGroup,
+ * ExportButton, StatusArea) for view mode, pagination, export, and status
+ * display while keeping query-specific controls inline.
  */
 
 import { useCallback } from 'react'
-import {
-  Table,
-  Rows,
-  Code,
-  Export,
-  CheckCircle,
-  XCircle,
-  CaretLeft,
-  CaretRight,
-  FloppyDisk,
-} from '@phosphor-icons/react'
+import { FloppyDisk } from '@phosphor-icons/react'
 import { useQueryStore } from '../../stores/query-store'
 import { EditModeDropdown } from './EditModeDropdown'
-import type { ViewMode } from '../../types/schema'
+import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
+import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
+import { ExportButton } from '../shared/toolbar/ExportButton'
+import { StatusArea } from '../shared/toolbar/StatusArea'
+import type { ViewMode, StatusType } from '../../types/shared-data-view'
 import styles from './ResultToolbar.module.css'
 
 interface ResultToolbarProps {
   tabId: string
   connectionId: string
-}
-
-function getSuccessText(totalRows: number, affectedRows: number, columnsCount: number): string {
-  if (columnsCount === 0 && affectedRows > 0) {
-    return `${affectedRows} ROWS AFFECTED`
-  }
-  if (columnsCount === 0 && affectedRows === 0 && totalRows === 0) {
-    return 'QUERY OK'
-  }
-  return `SUCCESS: ${totalRows} ROWS`
 }
 
 export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
@@ -70,6 +58,26 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
   const showPagination = status === 'success' && columnsCount > 0
   const hasResults = status === 'success'
 
+  // Map query status to StatusArea status type
+  const statusAreaStatus: StatusType =
+    status === 'success' ? 'success' : status === 'error' ? 'error' : 'idle'
+
+  // Map totalRows for StatusArea based on result type
+  let statusTotalRows: number | undefined = undefined
+  if (status === 'success') {
+    if (columnsCount > 0) {
+      statusTotalRows = totalRows
+    } else if (affectedRows > 0) {
+      statusTotalRows = affectedRows
+    }
+    // DDL (no columns, no affected rows) → undefined → shows "Success"
+  }
+
+  // Auto-limit custom content
+  const autoLimitContent = autoLimitApplied ? (
+    <span className={styles.autoLimit}>(1000 row limit applied)</span>
+  ) : undefined
+
   const handleViewMode = useCallback(
     (mode: ViewMode) => {
       setViewMode(tabId, mode)
@@ -82,8 +90,7 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
   }, [openExportDialog, tabId])
 
   const handlePageSizeChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const size = parseInt(e.target.value, 10)
+    (size: number) => {
       requestNavigationAction(tabId, () => {
         changePageSize(connectionId, tabId, size)
       })
@@ -117,36 +124,13 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
 
   return (
     <div className={styles.toolbar} data-testid="result-toolbar">
-      {/* Left: View mode toggle */}
-      <div className={styles.viewModeGroup}>
-        <button
-          type="button"
-          className={`${styles.viewModeButton} ${viewMode === 'grid' ? styles.viewModeActive : ''}`}
-          onClick={() => handleViewMode('grid')}
-          title="Grid view"
-          data-testid="view-mode-grid"
-        >
-          <Table size={14} weight={viewMode === 'grid' ? 'fill' : 'regular'} />
-        </button>
-        <button
-          type="button"
-          className={`${styles.viewModeButton} ${viewMode === 'form' ? styles.viewModeActive : ''}`}
-          onClick={() => handleViewMode('form')}
-          title="Form view"
-          data-testid="view-mode-form"
-        >
-          <Rows size={14} weight={viewMode === 'form' ? 'fill' : 'regular'} />
-        </button>
-        <button
-          type="button"
-          className={`${styles.viewModeButton} ${viewMode === 'text' ? styles.viewModeActive : ''}`}
-          onClick={() => handleViewMode('text')}
-          title="Text view"
-          data-testid="view-mode-text"
-        >
-          <Code size={14} weight={viewMode === 'text' ? 'fill' : 'regular'} />
-        </button>
-      </div>
+      {/* Left: View mode toggle — shared component */}
+      <ViewModeGroup
+        currentMode={viewMode}
+        availableModes={['grid', 'form', 'text']}
+        onModeChange={handleViewMode}
+        testIdPrefix="view-mode"
+      />
 
       {/* Edit mode dropdown — between view mode and status area */}
       <EditModeDropdown tabId={tabId} connectionId={connectionId} />
@@ -178,81 +162,32 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
         </div>
       )}
 
-      {/* Center-left: status text */}
-      <div className={styles.statusArea}>
-        {status === 'success' ? (
-          <>
-            <span className={styles.successStatus}>
-              <CheckCircle size={14} weight="fill" />
-              <span>{getSuccessText(totalRows, affectedRows, columnsCount)}</span>
-            </span>
-            {executionTimeMs != null && (
-              <span className={styles.executionTime}>({executionTimeMs}ms)</span>
-            )}
-            {autoLimitApplied && <span className={styles.autoLimit}>(1000 row limit applied)</span>}
-          </>
-        ) : status === 'error' ? (
-          <span className={styles.errorStatus}>
-            <XCircle size={14} weight="fill" />
-            <span>{truncatedError}</span>
-          </span>
-        ) : null}
+      {/* Center-left: status — shared component */}
+      <div className={styles.statusWrapper}>
+        <StatusArea
+          status={statusAreaStatus}
+          totalRows={statusTotalRows}
+          executionTimeMs={
+            executionTimeMs != null && executionTimeMs > 0 ? executionTimeMs : undefined
+          }
+          errorMessage={truncatedError || undefined}
+          customContent={autoLimitContent}
+        />
       </div>
 
-      {/* Center-right: Export button */}
-      <button
-        type="button"
-        className={styles.exportButton}
-        disabled={!hasResults}
-        onClick={handleExport}
-        data-testid="export-button"
-      >
-        <Export size={14} weight="regular" />
-        <span>Export</span>
-      </button>
+      {/* Center-right: Export — shared component */}
+      <ExportButton disabled={!hasResults} onClick={handleExport} testId="export-button" />
 
-      {/* Right: Page size + pagination */}
+      {/* Right: Page size + pagination — shared component */}
       {showPagination && (
-        <div className={styles.paginationGroup}>
-          <select
-            className={styles.pageSizeSelect}
-            value={pageSize}
-            onChange={handlePageSizeChange}
-            data-testid="page-size-selector"
-            aria-label="Page size"
-          >
-            <option value={100}>100</option>
-            <option value={500}>500</option>
-            <option value={1000}>1000</option>
-            <option value={5000}>5000</option>
-          </select>
-
-          <div className={styles.pagination}>
-            <button
-              type="button"
-              className={styles.pageButton}
-              disabled={currentPage <= 1}
-              onClick={handlePrevPage}
-              aria-label="Previous page"
-              data-testid="prev-page-button"
-            >
-              <CaretLeft size={14} weight="bold" />
-            </button>
-            <span className={styles.pageText}>
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              type="button"
-              className={styles.pageButton}
-              disabled={currentPage >= totalPages}
-              onClick={handleNextPage}
-              aria-label="Next page"
-              data-testid="next-page-button"
-            >
-              <CaretRight size={14} weight="bold" />
-            </button>
-          </div>
-        </div>
+        <PaginationGroup
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          onPageSizeChange={handlePageSizeChange}
+          onPrevPage={handlePrevPage}
+          onNextPage={handleNextPage}
+        />
       )}
     </div>
   )

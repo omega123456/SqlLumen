@@ -7,7 +7,11 @@ export interface UnderlineTabBarProps {
   'data-testid'?: string
 }
 
-export function UnderlineTabBar({ children, className, 'data-testid': testId }: UnderlineTabBarProps) {
+export function UnderlineTabBar({
+  children,
+  className,
+  'data-testid': testId,
+}: UnderlineTabBarProps) {
   const barClass = className ? `${styles.bar} ${className}` : styles.bar
   return (
     <div className={barClass} data-testid={testId}>
@@ -51,11 +55,7 @@ export function UnderlineTab({
   const handleSelect = onSelect ?? onClick
 
   if (split) {
-    const cellClass = [
-      styles.cell,
-      active ? styles.cellActive : '',
-      className ?? '',
-    ]
+    const cellClass = [styles.cell, active ? styles.cellActive : '', className ?? '']
       .filter(Boolean)
       .join(' ')
 
@@ -90,11 +90,7 @@ export function UnderlineTab({
     )
   }
 
-  const simpleClass = [
-    styles.simple,
-    active ? styles.simpleActive : '',
-    className ?? '',
-  ]
+  const simpleClass = [styles.simple, active ? styles.simpleActive : '', className ?? '']
     .filter(Boolean)
     .join(' ')
 

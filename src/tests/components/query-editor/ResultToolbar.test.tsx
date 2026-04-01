@@ -76,7 +76,7 @@ describe('ResultToolbar', () => {
       ],
     })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
-    expect(screen.getByText(/SUCCESS: 42 ROWS/)).toBeInTheDocument()
+    expect(screen.getByText('42 Rows')).toBeInTheDocument()
   })
 
   it('renders error status with error message', () => {
@@ -232,7 +232,7 @@ describe('ResultToolbar', () => {
     expect(displayed.textContent!.length).toBeLessThanOrEqual(201) // 200 + ellipsis char
   })
 
-  it('shows "ROWS AFFECTED" for DML results', () => {
+  it('shows row count for DML results with affected rows', () => {
     setupTabState(tabId, {
       status: 'success',
       totalRows: 0,
@@ -240,10 +240,11 @@ describe('ResultToolbar', () => {
       columns: [],
     })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
-    expect(screen.getByText('5 ROWS AFFECTED')).toBeInTheDocument()
+    // Shared StatusArea shows "{N} Rows" when totalRows is provided
+    expect(screen.getByText('5 Rows')).toBeInTheDocument()
   })
 
-  it('shows "QUERY OK" for DDL results with no affected rows', () => {
+  it('shows "Success" for DDL results with no affected rows', () => {
     setupTabState(tabId, {
       status: 'success',
       totalRows: 0,
@@ -251,7 +252,8 @@ describe('ResultToolbar', () => {
       columns: [],
     })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
-    expect(screen.getByText('QUERY OK')).toBeInTheDocument()
+    // Shared StatusArea shows "Success" when no totalRows
+    expect(screen.getByText('Success')).toBeInTheDocument()
   })
 
   it('hides pagination in error state', () => {
@@ -340,7 +342,7 @@ describe('ResultToolbar', () => {
       pageSize: 1000,
     })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
-    expect(screen.getByTestId('page-size-selector')).toBeInTheDocument()
+    expect(screen.getByTestId('page-size-select')).toBeInTheDocument()
   })
 
   it('page size selector has correct options', () => {
@@ -349,7 +351,7 @@ describe('ResultToolbar', () => {
       columns: [{ name: 'id', dataType: 'INT' }],
     })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
-    const select = screen.getByTestId('page-size-selector') as HTMLSelectElement
+    const select = screen.getByTestId('page-size-select') as HTMLSelectElement
     const options = Array.from(select.options).map((o) => o.value)
     expect(options).toEqual(['100', '500', '1000', '5000'])
   })
@@ -361,7 +363,7 @@ describe('ResultToolbar', () => {
       affectedRows: 3,
     })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
-    expect(screen.queryByTestId('page-size-selector')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('page-size-select')).not.toBeInTheDocument()
   })
 
   // --- Data testid verification ---
@@ -377,9 +379,9 @@ describe('ResultToolbar', () => {
     expect(screen.getByTestId('view-mode-form')).toBeInTheDocument()
     expect(screen.getByTestId('view-mode-text')).toBeInTheDocument()
     expect(screen.getByTestId('export-button')).toBeInTheDocument()
-    expect(screen.getByTestId('page-size-selector')).toBeInTheDocument()
-    expect(screen.getByTestId('prev-page-button')).toBeInTheDocument()
-    expect(screen.getByTestId('next-page-button')).toBeInTheDocument()
+    expect(screen.getByTestId('page-size-select')).toBeInTheDocument()
+    expect(screen.getByTestId('pagination-prev')).toBeInTheDocument()
+    expect(screen.getByTestId('pagination-next')).toBeInTheDocument()
   })
 
   // --- Unsaved-change protection for pagination ---
@@ -453,7 +455,7 @@ describe('ResultToolbar', () => {
       useQueryStore.setState({ requestNavigationAction: requestNavSpy })
 
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
-      fireEvent.change(screen.getByTestId('page-size-selector'), {
+      fireEvent.change(screen.getByTestId('page-size-select'), {
         target: { value: '500' },
       })
 

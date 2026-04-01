@@ -3,28 +3,25 @@
  *
  * Shows status, CRUD action buttons, view mode toggle, export,
  * page size selector, and pagination controls.
+ *
+ * Composes shared toolbar item components (ViewModeGroup, PaginationGroup,
+ * ExportButton, StatusArea) for view mode, pagination, export, and status
+ * display while keeping table-data-specific controls inline.
  */
 
 import { useCallback, useState } from 'react'
-import {
-  Table,
-  Rows,
-  Plus,
-  Trash,
-  FloppyDisk,
-  ArrowCounterClockwise,
-  Export,
-  CheckCircle,
-  CaretLeft,
-  CaretRight,
-  Funnel,
-} from '@phosphor-icons/react'
+import { Plus, Trash, FloppyDisk, ArrowCounterClockwise, Funnel } from '@phosphor-icons/react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { FilterDialog } from '../dialogs/FilterDialog'
+import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
+import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
+import { ExportButton } from '../shared/toolbar/ExportButton'
+import { StatusArea } from '../shared/toolbar/StatusArea'
+import type { ViewMode } from '../../types/shared-data-view'
 import type { FilterCondition } from '../../types/schema'
 import styles from './TableDataToolbar.module.css'
 
@@ -160,9 +157,9 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
   }, [withNavigationGuard, refreshData, tabId])
 
   const handleViewMode = useCallback(
-    (mode: 'grid' | 'form') => {
+    (mode: ViewMode) => {
       withNavigationGuard(() => {
-        setViewMode(tabId, mode)
+        setViewMode(tabId, mode as 'grid' | 'form')
       })
     },
     [withNavigationGuard, setViewMode, tabId]
@@ -173,8 +170,7 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
   }, [openExportDialog, tabId])
 
   const handlePageSizeChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const newSize = parseInt(e.target.value, 10)
+    (newSize: number) => {
       withNavigationGuard(() => {
         setPageSize(tabId, newSize)
       })
@@ -214,25 +210,12 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
     <div className={styles.toolbar} data-testid="table-data-toolbar">
       {/* Left section: Status + action buttons */}
       <div className={styles.leftSection}>
-        {/* Status */}
-        <div className={styles.statusArea}>
-          {isLoading ? (
-            <span className={styles.loadingStatus}>
-              <span className={styles.miniSpinner} />
-              <span>Loading...</span>
-            </span>
-          ) : (
-            <>
-              <span className={styles.successStatus}>
-                <CheckCircle size={14} weight="fill" />
-                <span>{totalRows} Rows</span>
-              </span>
-              {executionTimeMs > 0 && (
-                <span className={styles.executionTime}>({executionTimeMs}ms)</span>
-              )}
-            </>
-          )}
-        </div>
+        {/* Status — shared component */}
+        <StatusArea
+          status={isLoading ? 'loading' : 'success'}
+          totalRows={totalRows}
+          executionTimeMs={executionTimeMs > 0 ? executionTimeMs : undefined}
+        />
 
         {/* Read-only badge */}
         {isConnectionReadOnly && (
@@ -337,81 +320,28 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
 
         {/* Divider */}
         <div className={styles.divider} />
-        {/* View mode toggle */}
-        <div className={styles.viewModeGroup}>
-          <button
-            type="button"
-            className={`${styles.viewModeButton} ${viewMode === 'grid' ? styles.viewModeActive : ''}`}
-            onClick={() => handleViewMode('grid')}
-            title="Grid view"
-            data-testid="btn-grid-view"
-          >
-            <Table size={14} weight={viewMode === 'grid' ? 'fill' : 'regular'} />
-          </button>
-          <button
-            type="button"
-            className={`${styles.viewModeButton} ${viewMode === 'form' ? styles.viewModeActive : ''}`}
-            onClick={() => handleViewMode('form')}
-            title="Form view"
-            data-testid="btn-form-view"
-          >
-            <Rows size={14} weight={viewMode === 'form' ? 'fill' : 'regular'} />
-          </button>
-        </div>
 
-        {/* Export */}
-        <button
-          type="button"
-          className={styles.toolbarButton}
-          onClick={handleExport}
-          disabled={isLoading || totalRows === 0}
-          data-testid="btn-export"
-        >
-          <Export size={14} weight="regular" />
-          <span>Export</span>
-        </button>
+        {/* View mode toggle — shared component */}
+        <ViewModeGroup
+          currentMode={viewMode}
+          availableModes={['grid', 'form']}
+          onModeChange={handleViewMode}
+          testIdPrefix="view-mode"
+        />
 
-        {/* Pagination group */}
-        <div className={styles.paginationGroup}>
-          <select
-            className={styles.pageSizeSelect}
-            value={pageSize}
-            onChange={handlePageSizeChange}
-            data-testid="page-size-select"
-            aria-label="Page size"
-          >
-            <option value={100}>100</option>
-            <option value={500}>500</option>
-            <option value={1000}>1000</option>
-            <option value={5000}>5000</option>
-          </select>
+        {/* Export — shared component */}
+        <ExportButton disabled={isLoading || totalRows === 0} onClick={handleExport} />
 
-          <div className={styles.pagination}>
-            <button
-              type="button"
-              className={styles.pageButton}
-              disabled={currentPage <= 1 || isLoading}
-              onClick={handlePrevPage}
-              aria-label="Previous page"
-              data-testid="pagination-prev"
-            >
-              <CaretLeft size={14} weight="bold" />
-            </button>
-            <span className={styles.pageText} data-testid="page-indicator">
-              {currentPage} / {totalPages}
-            </span>
-            <button
-              type="button"
-              className={styles.pageButton}
-              disabled={currentPage >= totalPages || isLoading}
-              onClick={handleNextPage}
-              aria-label="Next page"
-              data-testid="pagination-next"
-            >
-              <CaretRight size={14} weight="bold" />
-            </button>
-          </div>
-        </div>
+        {/* Pagination — shared component */}
+        <PaginationGroup
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          disabled={isLoading}
+          onPageSizeChange={handlePageSizeChange}
+          onPrevPage={handlePrevPage}
+          onNextPage={handleNextPage}
+        />
       </div>
 
       {/* Delete Confirmation Dialog */}

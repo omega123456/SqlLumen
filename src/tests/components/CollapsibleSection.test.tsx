@@ -8,7 +8,7 @@ describe('CollapsibleSection', () => {
     const { container } = render(
       <CollapsibleSection title="Section A">
         <p>Inner</p>
-      </CollapsibleSection>,
+      </CollapsibleSection>
     )
 
     const root = container.firstElementChild
@@ -21,7 +21,7 @@ describe('CollapsibleSection', () => {
     render(
       <CollapsibleSection title="SSL certificate files">
         <p>File fields</p>
-      </CollapsibleSection>,
+      </CollapsibleSection>
     )
 
     const trigger = screen.getByRole('button', { name: /SSL certificate files/ })

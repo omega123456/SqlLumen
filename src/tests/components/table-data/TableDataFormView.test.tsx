@@ -39,15 +39,6 @@ vi.mock('../../../lib/table-data-commands', () => ({
   exportTableData: vi.fn().mockResolvedValue(undefined),
 }))
 
-// Mock clipboard
-vi.mock('../../../lib/context-menu-utils', async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>
-  return {
-    ...actual,
-    writeClipboardText: vi.fn().mockResolvedValue(undefined),
-  }
-})
-
 // Mock DateTimePicker — avoids portal + react-datepicker complexity in unit tests
 vi.mock('../../../components/table-data/DateTimePicker', async () => {
   const React = await import('react')
@@ -77,7 +68,6 @@ vi.mock('../../../components/table-data/DateTimePicker', async () => {
 })
 
 import { TableDataFormView } from '../../../components/table-data/TableDataFormView'
-import { writeClipboardText } from '../../../lib/context-menu-utils'
 import { updateTableRow, fetchTableData } from '../../../lib/table-data-commands'
 
 // ---------------------------------------------------------------------------
@@ -291,6 +281,13 @@ beforeEach(() => {
   useConnectionStore.setState({ activeConnections: {}, activeTabId: null })
   mockIPC(() => null)
   vi.clearAllMocks()
+
+  // Mock navigator.clipboard for copy tests (BaseFormView uses navigator.clipboard.writeText)
+  Object.assign(navigator, {
+    clipboard: {
+      writeText: vi.fn().mockResolvedValue(undefined),
+    },
+  })
 })
 
 describe('TableDataFormView', () => {
@@ -299,7 +296,6 @@ describe('TableDataFormView', () => {
     renderFormView()
 
     expect(screen.getByTestId('table-data-form-view')).toBeInTheDocument()
-    expect(screen.getByTestId('form-record-nav')).toBeInTheDocument()
     expect(screen.getByText('Record 1 of 1')).toBeInTheDocument()
   })
 
@@ -334,7 +330,7 @@ describe('TableDataFormView', () => {
     renderFormView()
 
     // 'name' is nullable, so it should have a NULL toggle
-    expect(screen.getByTestId('btn-form-null-name')).toBeInTheDocument()
+    expect(screen.getByTestId('btn-null-name')).toBeInTheDocument()
   })
 
   it('NULL toggle button NOT shown for non-nullable fields', () => {
@@ -342,14 +338,14 @@ describe('TableDataFormView', () => {
     renderFormView()
 
     // 'id' is not nullable
-    expect(screen.queryByTestId('btn-form-null-id')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-null-id')).not.toBeInTheDocument()
   })
 
   it('clicking NULL toggle updates cell value to null', () => {
     setupStore()
     renderFormView()
 
-    const nullBtn = screen.getByTestId('btn-form-null-name')
+    const nullBtn = screen.getByTestId('btn-null-name')
     fireEvent.click(nullBtn)
 
     // After clicking NULL toggle, the store should have an editState with null for 'name'
@@ -414,10 +410,10 @@ describe('TableDataFormView', () => {
     setupStore()
     renderFormView()
 
-    const copyBtn = screen.getByTestId('btn-form-copy-name')
+    const copyBtn = screen.getByTestId('btn-copy-name')
     fireEvent.click(copyBtn)
 
-    expect(writeClipboardText).toHaveBeenCalledWith('Alice')
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Alice')
   })
 
   it('shows empty state when rows is empty', () => {
@@ -463,7 +459,7 @@ describe('TableDataFormView', () => {
     setupStore()
     renderFormView()
 
-    expect(screen.queryByTestId('btn-form-null-avatar')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-null-avatar')).not.toBeInTheDocument()
   })
 
   it('fields are read-only when connection is read-only', () => {
@@ -672,7 +668,7 @@ describe('TableDataFormView', () => {
     })
     renderFormView()
 
-    fireEvent.click(screen.getByTestId('btn-form-null-status'))
+    fireEvent.click(screen.getByTestId('btn-null-status'))
 
     const state = useTableDataStore.getState().tabs['tab-1']
     expect(state?.editState?.currentValues.status).toBe('active')
@@ -709,6 +705,20 @@ describe('TableDataFormView', () => {
     expect(nameInput.value).toBe('')
   })
 
+  it('temp row shows correct "Record N of M" with effectiveTotalRows', () => {
+    // Server says totalRows=1, but after inserting a new temp row, rows.length=2
+    // The form should show "Record 2 of 2" not "Record 2 of 1"
+    setupStore()
+    useTableDataStore.getState().insertNewRow('tab-1')
+    useTableDataStore.getState().setViewMode('tab-1', 'form')
+    renderFormView()
+
+    // After insert, totalRows=1 from server, but temp row makes effectiveTotalRows=2
+    // The temp row is selected and is at localIndex=1, absoluteIndex=1
+    // Display: "Record 2 of 2"
+    expect(screen.getByText('Record 2 of 2')).toBeInTheDocument()
+  })
+
   it('null toggle OFF sets value to empty string', () => {
     // Start with a row where name is null
     const editState: RowEditState = {
@@ -726,7 +736,7 @@ describe('TableDataFormView', () => {
     renderFormView()
 
     // Click NULL toggle on 'name' — should set value to empty string
-    const nullBtn = screen.getByTestId('btn-form-null-name')
+    const nullBtn = screen.getByTestId('btn-null-name')
     fireEvent.click(nullBtn)
 
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -740,10 +750,10 @@ describe('TableDataFormView', () => {
     })
     renderFormView()
 
-    const copyBtn = screen.getByTestId('btn-form-copy-name')
+    const copyBtn = screen.getByTestId('btn-copy-name')
     fireEvent.click(copyBtn)
 
-    expect(writeClipboardText).toHaveBeenCalledWith('NULL')
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('NULL')
   })
 
   it('Save button calls saveCurrentRow', async () => {
@@ -880,7 +890,7 @@ describe('TableDataFormView', () => {
     })
     renderFormView()
 
-    expect(screen.queryByTestId('btn-form-null-name')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-null-name')).not.toBeInTheDocument()
   })
 
   it('handles cross-page navigation next', async () => {
@@ -1059,7 +1069,7 @@ describe('TableDataFormView — DateTimePicker integration', () => {
     renderFormView()
 
     // Click NULL toggle on created_at (which is currently null → toggles NULL off)
-    const nullBtn = screen.getByTestId('btn-form-null-created_at')
+    const nullBtn = screen.getByTestId('btn-null-created_at')
     fireEvent.click(nullBtn)
 
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -1173,7 +1183,7 @@ describe('TableDataFormView — DateTimePicker integration', () => {
     expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
 
     // Click NULL toggle for created_at — this sets the value to null
-    const nullBtn = screen.getByTestId('btn-form-null-created_at')
+    const nullBtn = screen.getByTestId('btn-null-created_at')
     fireEvent.click(nullBtn)
 
     // Picker should be closed because the field is now NULL

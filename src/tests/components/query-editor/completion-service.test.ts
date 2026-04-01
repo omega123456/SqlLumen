@@ -180,7 +180,7 @@ function buildEntityWithAlias(
 }
 
 // Shorthand to call completionService with common mocking patterns
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 async function callService(
   text: string,
   position: { lineNumber: number; column: number },

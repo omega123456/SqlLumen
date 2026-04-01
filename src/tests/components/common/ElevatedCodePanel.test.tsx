@@ -5,7 +5,11 @@ import { ElevatedCodePanel } from '../../../components/common/ElevatedCodePanel'
 describe('ElevatedCodePanel', () => {
   it('renders elevated shell, table-style header, and code body', () => {
     render(
-      <ElevatedCodePanel data-testid="code-panel" label="DDL" headerActions={<button type="button">Copy</button>}>
+      <ElevatedCodePanel
+        data-testid="code-panel"
+        label="DDL"
+        headerActions={<button type="button">Copy</button>}
+      >
         <span>SELECT 1</span>
       </ElevatedCodePanel>
     )

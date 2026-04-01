@@ -49,7 +49,7 @@ export function Dropdown({ id, labelledBy, options, value, onChange, disabled }:
 
   const openWithHighlight = useCallback(() => {
     const enabled = enabledIndices(options)
-    const preferred = enabled.includes(selectedIndex) ? selectedIndex : enabled[0] ?? 0
+    const preferred = enabled.includes(selectedIndex) ? selectedIndex : (enabled[0] ?? 0)
     setHighlightedIndex(preferred)
     setOpen(true)
   }, [options, selectedIndex])

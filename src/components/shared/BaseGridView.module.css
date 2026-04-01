@@ -1,11 +1,17 @@
-/* TableDataGrid — react-data-grid wrapper with editing */
+/* BaseGridView — shared react-data-grid wrapper */
 
 .container {
   flex: 1;
   height: 100%;
   width: 100%;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
+
+/* ------------------------------------------------------------------ */
+/* DateTime editor styles (relocated from TableDataGrid.module.css)   */
+/* ------------------------------------------------------------------ */
 
 .dateTimeEditorWrapper {
   display: grid;

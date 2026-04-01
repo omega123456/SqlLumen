@@ -9,32 +9,34 @@ import { fetchResultPage } from '../../../lib/query-commands'
 vi.mock('react-data-grid', async () => {
   const React = await import('react')
   return {
-    DataGrid: React.forwardRef((props: Record<string, unknown>, _ref: unknown) =>
-      React.createElement(
-        'div',
-        {
-          'data-testid': (props['data-testid'] as string) ?? 'rdg-inner',
-          className: props.className as string,
-          onClick: () => {
-            const onCellClick = props.onCellClick as
-              | ((args: Record<string, unknown>, event: Record<string, unknown>) => void)
-              | undefined
-            onCellClick?.(
-              {
-                row: { __rowIdx: 0 },
-                rowIdx: 0,
-                column: { key: 'col_0', idx: 0 },
-                selectCell: () => {},
-              },
-              {
-                preventGridDefault: () => {},
-                isGridDefaultPrevented: () => false,
-              }
-            )
+    DataGrid: React.forwardRef(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      (props: Record<string, unknown>, _ref: unknown) =>
+        React.createElement(
+          'div',
+          {
+            'data-testid': (props['data-testid'] as string) ?? 'rdg-inner',
+            className: props.className as string,
+            onClick: () => {
+              const onCellClick = props.onCellClick as
+                | ((args: Record<string, unknown>, event: Record<string, unknown>) => void)
+                | undefined
+              onCellClick?.(
+                {
+                  row: { __rowIdx: 0 },
+                  rowIdx: 0,
+                  column: { key: 'col_0', idx: 0 },
+                  selectCell: () => {},
+                },
+                {
+                  preventGridDefault: () => {},
+                  isGridDefaultPrevented: () => false,
+                }
+              )
+            },
           },
-        },
-        'Grid Mock'
-      )
+          'Grid Mock'
+        )
     ),
   }
 })
@@ -162,7 +164,7 @@ describe('ResultPanel', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
-    expect(screen.getByText(/SUCCESS: 2 ROWS/)).toBeInTheDocument()
+    expect(screen.getByText('2 Rows')).toBeInTheDocument()
   })
 
   it('shows error state with toolbar and error message', () => {
@@ -335,7 +337,7 @@ describe('ResultPanel', () => {
     // Our react-data-grid mock calls onCellClick({ rowIdx: 0 }) on click.
     // In ResultGridView, handleCellClick calls onRowSelected(0).
     // In the ResultPanel, handleRowSelected converts local 0 → absolute (2-1)*10+0 = 10
-    const gridInner = screen.getByTestId('result-grid-inner')
+    const gridInner = screen.getByTestId('result-grid-view-inner')
     fireEvent.click(gridInner)
 
     const state = useQueryStore.getState().tabs['tab-1']
@@ -360,7 +362,7 @@ describe('ResultPanel', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 
     // Click next in form view
-    const nextBtn = screen.getByTestId('next-record-button')
+    const nextBtn = screen.getByTestId('btn-form-next')
     fireEvent.click(nextBtn)
 
     const state = useQueryStore.getState().tabs['tab-1']
@@ -385,7 +387,7 @@ describe('ResultPanel', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 
     // Click previous in form view
-    const prevBtn = screen.getByTestId('prev-record-button')
+    const prevBtn = screen.getByTestId('btn-form-previous')
     fireEvent.click(prevBtn)
 
     const state = useQueryStore.getState().tabs['tab-1']
@@ -410,7 +412,7 @@ describe('ResultPanel', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 
     // Previous button should be disabled at first record
-    const prevBtn = screen.getByTestId('prev-record-button')
+    const prevBtn = screen.getByTestId('btn-form-previous')
     expect(prevBtn).toBeDisabled()
   })
 
@@ -432,7 +434,7 @@ describe('ResultPanel', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 
     // Next button should be disabled at last record
-    const nextBtn = screen.getByTestId('next-record-button')
+    const nextBtn = screen.getByTestId('btn-form-next')
     expect(nextBtn).toBeDisabled()
   })
 
@@ -528,7 +530,7 @@ describe('ResultPanel', () => {
 
     // Navigating next from row index 1 on page 1 (pageSize=2) → index 2
     // That's beyond page end (0-1), so should trigger page fetch
-    const nextBtn = screen.getByTestId('next-record-button')
+    const nextBtn = screen.getByTestId('btn-form-next')
     fireEvent.click(nextBtn)
 
     const state = useQueryStore.getState().tabs['tab-1']
@@ -560,7 +562,7 @@ describe('ResultPanel', () => {
 
     // Navigating previous from row index 2 on page 2 (pageSize=2) → index 1
     // That's below page start (2), so should trigger page fetch
-    const prevBtn = screen.getByTestId('prev-record-button')
+    const prevBtn = screen.getByTestId('btn-form-previous')
     fireEvent.click(prevBtn)
 
     const state = useQueryStore.getState().tabs['tab-1']

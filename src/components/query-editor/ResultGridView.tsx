@@ -1,26 +1,28 @@
 /**
- * react-data-grid wrapper for displaying query results.
+ * ResultGridView — thin wrapper around the shared BaseGridView for query results.
  *
- * Uses the shared DataGrid wrapper with the Precision Studio theme.
- * Sorting is managed externally (server-side) — react-data-grid's built-in
- * sort indicators are driven by controlled `sortColumns` while the
- * `onSortColumnsChange` handler converts direction casing (ASC/DESC → asc/desc)
- * and enforces single-sort.
+ * Responsibilities:
+ * - Transforms array-of-arrays rows into keyed Record<string, unknown>[] with col_N keys
+ * - Builds GridColumnDescriptor[] from ColumnMeta[] + editableColumnMap
+ * - Translates col_N ↔ real column names in sort, cell click guard, and onRowsChange
+ * - Adapts the rich RowEditState (schema.ts) to the simple RowEditState (shared-data-view.ts)
+ * - Provides isModifiedCell and getRowClass callbacks
  *
- * When `editMode` is set, columns are decorated with editable/read-only
- * styling and cell editors from the shared module are wired up.
+ * The external props interface remains unchanged — ResultPanel.tsx does not need modification.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CellMouseArgs, CellMouseEvent } from 'react-data-grid'
-import { DataGrid } from '../shared/DataGrid'
-import type { Column, SortColumn, DataGridHandle } from '../shared/DataGrid'
-import { TableDataCellRenderer } from '../shared/grid-cell-renderers'
-import { ReadOnlyColumnHeaderCell } from '../shared/grid-header-renderers'
-import { getCellEditorForColumn } from '../shared/grid-cell-editors'
-import { getResultGridCellClass, getDefaultColumnWidth } from '../../lib/grid-column-style'
+import { useCallback, useMemo, useRef } from 'react'
+import { BaseGridView } from '../shared/BaseGridView'
+import type { DataGridHandle } from '../shared/DataGrid'
+import { colKey, colIndexFromKey, buildTableColLookup } from '../../lib/col-key-utils'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
-import styles from './ResultGridView.module.css'
+import type {
+  GridColumnDescriptor,
+  RowEditState as SharedRowEditState,
+  CellClickGuardArgs,
+  CellClickGuardResult,
+} from '../../types/shared-data-view'
+import type { RowsChangeData } from 'react-data-grid'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -80,59 +82,36 @@ export function ResultGridView({
   selectedRowIndex,
   currentPage,
   pageSize,
-  tabId,
+  // tabId is received from ResultPanel but not currently used directly in this component
+  tabId: _tabId, // eslint-disable-line @typescript-eslint/no-unused-vars
   editMode = null,
   editableColumnMap = EMPTY_EDITABLE_MAP,
   editState = null,
   editingRowIndex = null,
   editTableColumns = EMPTY_TABLE_COLUMNS,
   onStartEditing,
-  onUpdateCellValue,
+  // onUpdateCellValue is wired via EditorCallbacksContext, not called directly here
+  onUpdateCellValue: _onUpdateCellValue, // eslint-disable-line @typescript-eslint/no-unused-vars
   onSyncCellValue,
   onAutoSave,
 }: ResultGridViewProps) {
   const gridRef = useRef<DataGridHandle | null>(null)
 
-  // ---------------------------------------------------------------------------
-  // Refs for editState/editingRowIndex: read inside cellClass closures without
-  // adding them as useMemo dependencies.  This prevents rdgColumns from
-  // recomputing on every keystroke (which would create new renderEditCell
-  // function references and cause React to unmount/remount the editor → focus
-  // loss).  Cell re-rendering still works because rowData depends on editState,
-  // so cells call cellClass(row) which reads from the ref.
-  // ---------------------------------------------------------------------------
+  // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
   editStateRef.current = editState
   const editingRowIndexRef = useRef(editingRowIndex)
   editingRowIndexRef.current = editingRowIndex
 
   // ---------------------------------------------------------------------------
-  // Controlled column-width state: tracks user-resized widths per column key.
-  // Reset to defaults whenever the column set changes (new query result).
-  // NOTE: intentionally does NOT depend on `rows` — row data changes during
-  // cell editing (syncCellValue) and resetting widths there would cause an
-  // extra render cycle that destabilises column definitions.
-  // ---------------------------------------------------------------------------
-  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
-
-  useEffect(() => {
-    setColumnWidths({})
-  }, [columns])
-
-  const handleColumnResize = useCallback((column: { key: string }, width: number) => {
-    setColumnWidths((prev) => ({ ...prev, [column.key]: width }))
-  }, [])
-
-  // ---------------------------------------------------------------------------
-  // Row data: transform array-of-arrays to array-of-objects for react-data-grid.
-  // Each row includes a __rowIdx property for stable identification.
+  // Row data: transform array-of-arrays to array-of-objects with col_N keys.
   // Overlays editState current values on the editing row.
   // ---------------------------------------------------------------------------
   const rowData: ResultRow[] = useMemo(() => {
     return rows.map((row, rowIdx) => {
       const obj: ResultRow = { __rowIdx: rowIdx }
       columns.forEach((_, i) => {
-        obj[`col_${i}`] = row[i] ?? null
+        obj[colKey(i)] = row[i] ?? null
       })
 
       // Overlay editState values for the editing row
@@ -140,7 +119,7 @@ export function ResultGridView({
         for (const [colName, value] of Object.entries(editState.currentValues)) {
           const colIdx = columns.findIndex((c) => c.name === colName)
           if (colIdx !== -1) {
-            obj[`col_${colIdx}`] = value
+            obj[colKey(colIdx)] = value
           }
         }
       }
@@ -150,266 +129,235 @@ export function ResultGridView({
   }, [rows, columns, editState, editingRowIndex])
 
   // ---------------------------------------------------------------------------
-  // Sort columns: derive from sortColumn/sortDirection props.
-  // react-data-grid uses uppercase 'ASC'/'DESC'; app uses lowercase 'asc'/'desc'.
+  // Table column lookup map — case-insensitive name → TableDataColumnMeta.
+  // Used by column descriptors and shared with the form view pattern.
   // ---------------------------------------------------------------------------
-  const sortColumnsRdg: readonly SortColumn[] = useMemo(() => {
-    if (sortColumn && sortDirection) {
-      const colIdx = columns.findIndex((c) => c.name === sortColumn)
-      if (colIdx >= 0) {
-        return [
-          {
-            columnKey: `col_${colIdx}`,
-            direction: sortDirection.toUpperCase() as 'ASC' | 'DESC',
-          },
-        ]
-      }
-    }
-    return []
-  }, [sortColumn, sortDirection, columns])
+  const tableColLookup = useMemo(() => buildTableColLookup(editTableColumns), [editTableColumns])
 
   // ---------------------------------------------------------------------------
-  // Wrapped callbacks for cell editors: translate col_N → real column name.
+  // Column descriptors: build GridColumnDescriptor[] from ColumnMeta[].
   // ---------------------------------------------------------------------------
-  const wrappedUpdateCellValue = useCallback(
-    (_tabId: string, fieldName: string, value: unknown) => {
-      const colIndex = parseInt(fieldName.replace('col_', ''), 10)
-      const realName = columns[colIndex]?.name ?? fieldName
-      onUpdateCellValue(realName, value)
-    },
-    [columns, onUpdateCellValue]
-  )
-
-  const wrappedSyncCellValue = useCallback(
-    (
-      _tabId: string,
-      _rowData: Record<string, unknown> | undefined,
-      fieldName: string,
-      value: unknown
-    ) => {
-      const colIndex = parseInt(fieldName.replace('col_', ''), 10)
-      const realName = columns[colIndex]?.name ?? fieldName
-      onSyncCellValue(realName, value)
-    },
-    [columns, onSyncCellValue]
-  )
-
-  // ---------------------------------------------------------------------------
-  // Column definitions: build react-data-grid Column[] from ColumnMeta[].
-  // Uses a helper to compute edit-mode properties before constructing the
-  // readonly Column object.
-  // ---------------------------------------------------------------------------
-  const rdgColumns: readonly Column<ResultRow>[] = useMemo(() => {
+  const gridColumns: GridColumnDescriptor[] = useMemo(() => {
     return columns.map((col, i) => {
-      const key = `col_${i}`
-      const colWidth = columnWidths[key] ?? getDefaultColumnWidth(col.dataType)
+      const key = colKey(i)
+      const isEditable =
+        editMode !== null && editableColumnMap.size > 0
+          ? (editableColumnMap.get(i) ?? false)
+          : false
 
-      // Shared cellClass function
-      const cellClass = (row: ResultRow) => {
-        const classes = [getResultGridCellClass(col.dataType)]
-        const value = row[key]
-        if (value === null || value === undefined) {
-          classes.push('rdg-cell-null')
-        }
+      // Find matching table column meta for cell editor via lookup map
+      const tableColMeta = isEditable ? tableColLookup.get(col.name.toLowerCase()) : undefined
 
-        if (editMode && editableColumnMap.size > 0) {
-          const isEditable = editableColumnMap.get(i) ?? false
-          if (isEditable) {
-            classes.push('col-editable')
-          } else {
-            classes.push('col-readonly')
-          }
-        }
-
-        // Cell modified indicator — reads from refs to avoid triggering
-        // rdgColumns recomputation on every keystroke.
-        if (editMode && editStateRef.current && editingRowIndexRef.current !== null) {
-          const rowIdx = row.__rowIdx as number
-          if (rowIdx === editingRowIndexRef.current) {
-            const realName = columns[i]?.name
-            if (realName && editStateRef.current.modifiedColumns.has(realName)) {
-              classes.push('cell-modified')
-            }
-          }
-        }
-
-        return classes.join(' ')
-      }
-
-      // Compute edit-mode properties
-      if (editMode && editableColumnMap.size > 0) {
-        const isEditable = editableColumnMap.get(i) ?? false
-
-        if (isEditable) {
-          // Find matching table column for cell editor type
-          const tableCol = editTableColumns.find(
-            (tc) => tc.name.toLowerCase() === col.name.toLowerCase()
-          )
-
-          // Use the shared factory — col_N → real column name translation
-          // stays here (wrappedUpdateCellValue / wrappedSyncCellValue).
-          const editorConfig = getCellEditorForColumn(tableCol, {
-            tabId,
-            updateCellValue: wrappedUpdateCellValue,
-            syncCellValue: wrappedSyncCellValue,
-          })
-
-          return {
-            key,
-            name: col.name,
-            resizable: true,
-            sortable: true,
-            width: colWidth,
-            renderCell: TableDataCellRenderer,
-            cellClass,
-            renderEditCell: editorConfig.renderEditCell,
-            ...(editorConfig.editorOptions && { editorOptions: editorConfig.editorOptions }),
-          } as Column<ResultRow>
-        } else {
-          // Non-editable column in edit mode: lock icon header
-          return {
-            key,
-            name: col.name,
-            resizable: true,
-            sortable: true,
-            width: colWidth,
-            renderCell: TableDataCellRenderer,
-            cellClass,
-            headerCellClass: 'col-readonly',
-            renderHeaderCell: ReadOnlyColumnHeaderCell,
-          } as Column<ResultRow>
-        }
-      }
-
-      // Read-only mode: basic column
       return {
         key,
-        name: col.name,
-        resizable: true,
-        sortable: true,
-        width: colWidth,
-        renderCell: TableDataCellRenderer,
-        cellClass,
-      } as Column<ResultRow>
+        displayName: col.name,
+        dataType: col.dataType,
+        editable: isEditable,
+        isBinary: false,
+        isNullable: tableColMeta?.isNullable ?? true,
+        isPrimaryKey: tableColMeta?.isPrimaryKey ?? false,
+        isUniqueKey: tableColMeta?.isUniqueKey ?? false,
+        enumValues: tableColMeta?.enumValues,
+        tableColumnMeta: tableColMeta,
+      } as GridColumnDescriptor
     })
-  }, [
-    columns,
-    columnWidths,
-    editMode,
-    editableColumnMap,
-    editTableColumns,
-    tabId,
-    wrappedUpdateCellValue,
-    wrappedSyncCellValue,
-  ])
+  }, [columns, editMode, editableColumnMap, tableColLookup])
 
   // ---------------------------------------------------------------------------
-  // Sort change handler: convert direction casing, enforce single-sort.
+  // Sort state: translate between app (lowercase, real names) and BaseGridView
+  // (uppercase, col_N keys).
   // ---------------------------------------------------------------------------
-  const handleSortColumnsChange = useCallback(
-    (newSortColumns: SortColumn[]) => {
-      // Single-sort enforcement: keep only the LAST element
-      const lastSort =
-        newSortColumns.length > 0 ? newSortColumns[newSortColumns.length - 1] : undefined
+  const sortColumnKey = useMemo(() => {
+    if (sortColumn && sortDirection) {
+      const colIdx = columns.findIndex((c) => c.name === sortColumn)
+      if (colIdx >= 0) return colKey(colIdx)
+    }
+    return null
+  }, [sortColumn, sortDirection, columns])
 
-      if (!lastSort) {
+  const sortDirectionUpper = useMemo(() => {
+    if (sortDirection) return sortDirection.toUpperCase() as 'ASC' | 'DESC'
+    return null
+  }, [sortDirection])
+
+  const handleSortChange = useCallback(
+    (colKey_: string | null, direction: 'ASC' | 'DESC' | null) => {
+      if (!colKey_) {
         // Sort was cleared — pass the previously sorted column with null direction
         if (sortColumn) {
           onSortChanged(sortColumn, null)
         }
         return
       }
-
-      const colIndex = parseInt(lastSort.columnKey.replace('col_', ''), 10)
+      const colIndex = colIndexFromKey(colKey_)
       const colName = columns[colIndex]?.name
       if (colName) {
-        // Convert uppercase direction to lowercase for app convention
-        const direction = lastSort.direction.toLowerCase() as 'asc' | 'desc'
-        onSortChanged(colName, direction)
+        const dir = direction ? (direction.toLowerCase() as 'asc' | 'desc') : null
+        onSortChanged(colName, dir)
       }
     },
     [columns, sortColumn, onSortChanged]
   )
 
   // ---------------------------------------------------------------------------
-  // Cell click handler: row selection + edit-mode cell editing.
-  // Uses the async edit-guard pattern from the brief.
+  // Adapt rich RowEditState (schema.ts) to simple RowEditState (shared-data-view.ts).
+  // Values are keyed by col_N in the shared version.
   // ---------------------------------------------------------------------------
-  const handleCellClick = useCallback(
-    async (args: CellMouseArgs<ResultRow>, event: CellMouseEvent) => {
-      const rowIdx = args.rowIdx
-
-      // Read-only mode: just notify row selection immediately
-      if (!editMode) {
-        onRowSelected(rowIdx)
-        return
+  const sharedEditState: SharedRowEditState | null = useMemo(() => {
+    if (!editState) return null
+    // Build a col_N-keyed currentValues/originalValues for BaseGridView
+    const currentValues: Record<string, unknown> = {}
+    const originalValues: Record<string, unknown> = {}
+    for (const [colName, value] of Object.entries(editState.currentValues)) {
+      const colIdx = columns.findIndex((c) => c.name === colName)
+      if (colIdx !== -1) {
+        currentValues[colKey(colIdx)] = value
       }
+    }
+    for (const [colName, value] of Object.entries(editState.originalValues)) {
+      const colIdx = columns.findIndex((c) => c.name === colName)
+      if (colIdx !== -1) {
+        originalValues[colKey(colIdx)] = value
+      }
+    }
+    // Use a serialised rowKey string
+    const rowKey =
+      typeof editState.rowKey === 'object'
+        ? JSON.stringify(editState.rowKey)
+        : String(editState.rowKey)
+    return { rowKey, currentValues, originalValues }
+  }, [editState, columns])
 
-      // Edit mode: ALWAYS run the guard before changing row selection,
-      // regardless of whether the clicked column is editable.
-      event.preventGridDefault()
+  // ---------------------------------------------------------------------------
+  // isModifiedCell: detect modified cells using the rich editState.
+  // ---------------------------------------------------------------------------
+  const isModifiedCell = useCallback(
+    (rowData: Record<string, unknown>, columnKey: string) => {
+      if (!editMode) return false
+      const currentEditState = editStateRef.current
+      const currentEditingRowIndex = editingRowIndexRef.current
+      if (!currentEditState || currentEditingRowIndex === null) return false
 
-      // Capture target row index and column index BEFORE any async await
-      const targetRowIdx = rowIdx
-      const targetColIdx = args.column.idx
-      const colKey = args.column.key
-      const colIndex = parseInt(colKey.replace('col_', ''), 10)
+      const rowIdx = rowData.__rowIdx as number
+      if (rowIdx !== currentEditingRowIndex) return false
+
+      // Translate col_N → real column name
+      const colIndex = colIndexFromKey(columnKey)
+      const realName = columns[colIndex]?.name
+      if (!realName) return false
+
+      return currentEditState.modifiedColumns.has(realName)
+    },
+    [editMode, columns]
+  )
+
+  // ---------------------------------------------------------------------------
+  // Cell click guard: handles row selection, auto-save, and edit initiation.
+  // ---------------------------------------------------------------------------
+  const cellClickGuard = useMemo(() => {
+    if (!editMode) return undefined
+
+    return async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
+      const { rowIdx, columnKey } = args
+
+      const colIndex = colIndexFromKey(columnKey)
       const isEditable = editableColumnMap.get(colIndex) ?? false
 
+      // Determine target column index for selectCell
+      const targetColIdx = columns.findIndex((_, i) => colKey(i) === columnKey)
+
       // Run async guard (save, validate) if switching rows
-      if (editingRowIndex !== null && editingRowIndex !== targetRowIdx) {
-        if (editState && editState.modifiedColumns.size > 0) {
+      const currentEditingRow = editingRowIndexRef.current
+      const currentEditState = editStateRef.current
+      if (currentEditingRow !== null && currentEditingRow !== rowIdx) {
+        if (currentEditState && currentEditState.modifiedColumns.size > 0) {
           const saveSucceeded = await onAutoSave()
           if (!saveSucceeded) {
-            return // Save failed, stay on current row — do NOT move selection
+            return { proceed: false, targetRowIdx: rowIdx, targetColIdx, enableEditor: false }
           }
         }
       }
 
-      // Guard passed — NOW update selection
-      onRowSelected(targetRowIdx)
+      // Update selection
+      onRowSelected(rowIdx)
 
       // Only start editing and enter editor for editable columns
       if (isEditable) {
-        // Start editing the new row if different
-        if (editingRowIndex !== targetRowIdx) {
-          onStartEditing(targetRowIdx)
+        if (currentEditingRow !== rowIdx) {
+          onStartEditing(rowIdx)
         }
+        return { proceed: true, targetRowIdx: rowIdx, targetColIdx, enableEditor: true }
+      }
 
-        // DO NOT use args.selectCell(true) after an async gap — args may be stale
-        gridRef.current?.selectCell(
-          { rowIdx: targetRowIdx, idx: targetColIdx },
-          { enableEditor: true }
-        )
+      // Non-editable column: select but don't edit
+      return { proceed: true, targetRowIdx: rowIdx, targetColIdx, enableEditor: false }
+    }
+  }, [editMode, editableColumnMap, columns, onAutoSave, onRowSelected, onStartEditing])
+
+  // In read-only mode, we still need a simple cell click handler for row selection.
+  // BaseGridView only calls onCellClickGuard; when it's undefined, RDG default behavior
+  // applies (no row selection callback). So for read-only mode we provide a minimal guard.
+  const readOnlyCellClickGuard = useCallback(
+    async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
+      onRowSelected(args.rowIdx)
+      // Allow selectCell so the cell gets focus/selection, but don't open an editor
+      const targetColIdx = columns.findIndex((_, i) => colKey(i) === args.columnKey)
+      return {
+        proceed: true,
+        targetRowIdx: args.rowIdx,
+        targetColIdx: targetColIdx >= 0 ? targetColIdx : 0,
+        enableEditor: false,
       }
     },
-    [
-      editMode,
-      editableColumnMap,
-      editingRowIndex,
-      editState,
-      onAutoSave,
-      onStartEditing,
-      onRowSelected,
-    ]
+    [onRowSelected, columns]
   )
 
   // ---------------------------------------------------------------------------
-  // Row key getter: use array index (stable for read-only query results).
+  // onRowsChange: handle cell editor updates via RDG's onRowChange protocol.
+  // When a cell editor changes a value, RDG fires onRowsChange. We detect
+  // which col_N changed and call onSyncCellValue with the real column name.
   // ---------------------------------------------------------------------------
-  const rowKeyGetter = useCallback((row: ResultRow) => row.__rowIdx as number, [])
+  const handleRowsChange = useCallback(
+    (newRows: Record<string, unknown>[], data: RowsChangeData<Record<string, unknown>>) => {
+      // data.indexes contains the indices of changed rows
+      if (!data.indexes || data.indexes.length === 0) return
+
+      for (const changedIdx of data.indexes) {
+        const newRow = newRows[changedIdx]
+        const oldRow = rowData[changedIdx]
+        if (!newRow || !oldRow) continue
+
+        // Find which col_N value changed
+        for (let i = 0; i < columns.length; i++) {
+          const key = colKey(i)
+          if (newRow[key] !== oldRow[key]) {
+            const realName = columns[i]?.name
+            if (realName) {
+              onSyncCellValue(realName, newRow[key])
+            }
+          }
+        }
+      }
+    },
+    [columns, rowData, onSyncCellValue]
+  )
+
+  // ---------------------------------------------------------------------------
+  // Row key getter: return string for BaseGridView compatibility.
+  // ---------------------------------------------------------------------------
+  const rowKeyGetter = useCallback((row: Record<string, unknown>) => String(row.__rowIdx), [])
 
   // ---------------------------------------------------------------------------
   // Row class: editing row + selected row highlight.
   // ---------------------------------------------------------------------------
-  const rowClass = useCallback(
-    (row: ResultRow) => {
+  const getRowClass = useCallback(
+    (row: Record<string, unknown>) => {
       const rowIdx = row.__rowIdx as number
       const classes: string[] = []
 
       // Editing row highlight
       if (editingRowIndex !== null && rowIdx === editingRowIndex) {
-        classes.push('result-editing-row')
+        classes.push('rdg-editing-row')
       }
 
       // Selected row highlight
@@ -426,19 +374,21 @@ export function ResultGridView({
   )
 
   return (
-    <div className={styles.container} data-testid="result-grid-view">
-      <DataGrid<ResultRow>
-        ref={gridRef}
-        columns={rdgColumns}
-        rows={rowData}
-        sortColumns={sortColumnsRdg}
-        onSortColumnsChange={handleSortColumnsChange}
-        onCellClick={handleCellClick}
-        onColumnResize={handleColumnResize}
-        rowKeyGetter={rowKeyGetter}
-        rowClass={rowClass}
-        data-testid="result-grid-inner"
-      />
-    </div>
+    <BaseGridView
+      ref={gridRef}
+      rows={rowData}
+      columns={gridColumns}
+      editState={sharedEditState}
+      sortColumn={sortColumnKey}
+      sortDirection={sortDirectionUpper}
+      onSortChange={handleSortChange}
+      onCellClickGuard={editMode ? cellClickGuard : readOnlyCellClickGuard}
+      onRowsChange={handleRowsChange}
+      rowKeyGetter={rowKeyGetter}
+      getRowClass={getRowClass}
+      isModifiedCell={isModifiedCell}
+      showReadOnlyHeaders={!!editMode}
+      testId="result-grid-view"
+    />
   )
 }

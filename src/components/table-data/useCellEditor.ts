@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
+import { useEditorCallbacks } from '../shared/editor-callbacks-context'
 import type { TableDataColumnMeta } from '../../types/schema'
 
 // ---------------------------------------------------------------------------
@@ -97,7 +98,17 @@ export function useCellEditor(
 
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const { updateCellValue, syncCellValue, tabId } = callbacks
+  // Resolve callbacks: prefer props when tabId is set, fallback to context
+  // (BaseGridView passes NOOP callbacks with tabId='', so editors fall back
+  // to the context provided by the wrapper component).
+  const contextCallbacks = useEditorCallbacks()
+  const tabId = callbacks.tabId || contextCallbacks?.tabId || ''
+  const updateCellValue = callbacks.tabId
+    ? callbacks.updateCellValue
+    : (contextCallbacks?.updateCellValue ?? callbacks.updateCellValue)
+  const syncCellValue = callbacks.tabId
+    ? callbacks.syncCellValue
+    : (contextCallbacks?.syncCellValue ?? callbacks.syncCellValue)
 
   // Auto-focus the text input on mount
   useEffect(() => {

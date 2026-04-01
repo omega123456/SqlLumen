@@ -55,9 +55,12 @@ vi.mock('../../../lib/table-data-commands', () => ({
 vi.mock('../../../components/shared/DataGrid', async () => {
   const React = await import('react')
   return {
-    DataGrid: React.forwardRef((_props: Record<string, unknown>, _ref: React.Ref<unknown>) => {
-      return React.createElement('div', { 'data-testid': 'data-grid-mock' }, 'Grid Mock')
-    }),
+    DataGrid: React.forwardRef(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      (_props: Record<string, unknown>, _ref: React.Ref<unknown>) => {
+        return React.createElement('div', { 'data-testid': 'data-grid-mock' }, 'Grid Mock')
+      }
+    ),
   }
 })
 

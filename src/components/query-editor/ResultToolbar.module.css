@@ -1,3 +1,7 @@
+/* ResultToolbar — toolbar above the result grid */
+/* Shared toolbar item styles (view mode, pagination, export, status) are in
+   components/shared/toolbar/toolbar-items.module.css via the shared components. */
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -9,203 +13,19 @@
   gap: 8px;
 }
 
-/* View mode toggle group */
-.viewModeGroup {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-  border-right: 1px solid rgba(var(--outline-variant-rgb), 0.12);
-  padding-right: 8px;
-  margin-right: 4px;
-}
-
-.viewModeButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: none;
-  background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition:
-    color 0.15s ease,
-    background 0.15s ease;
-  position: relative;
-}
-
-.viewModeButton:hover {
-  color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.06);
-}
-
-.viewModeActive {
-  color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.1);
-}
-
-.viewModeActive::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 4px;
-  right: 4px;
-  height: 2px;
-  background: var(--primary);
-  border-radius: 1px;
-}
-
-/* Status area */
-.statusArea {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/* Status wrapper — provides flex expansion for the status area */
+.statusWrapper {
   flex: 1;
   min-width: 0;
-  font-size: 11px;
-  text-transform: uppercase;
-  font-weight: 700;
-  letter-spacing: 0.04em;
 }
 
-.successStatus {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--result-status-success-fg);
-}
-
-.executionTime {
-  font-size: 10px;
-  color: var(--on-surface-variant);
-  opacity: 0.6;
-  text-transform: none;
-  font-weight: 400;
-}
-
+/* Auto-limit indicator (query-specific) */
 .autoLimit {
   font-size: 10px;
   color: var(--on-surface-variant);
   opacity: 0.6;
   text-transform: none;
   font-weight: 400;
-}
-
-.errorStatus {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--error);
-  font-size: 11px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Export button */
-.exportButton {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 26px;
-  padding: 0 10px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 500;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.exportButton:hover:not(:disabled) {
-  color: var(--primary);
-  border-color: rgba(var(--primary-rgb), 0.35);
-  background: rgba(var(--primary-rgb), 0.06);
-}
-
-.exportButton:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* Pagination group: page size + prev/next */
-.paginationGroup {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  border-left: 1px solid rgba(var(--outline-variant-rgb), 0.12);
-  padding-left: 8px;
-}
-
-/* Page size selector */
-.pageSizeSelect {
-  height: 24px;
-  padding: 0 4px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  background: transparent;
-  color: var(--on-surface-variant);
-  font-size: 11px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  outline: none;
-}
-
-.pageSizeSelect:focus {
-  border-color: var(--primary);
-}
-
-.pageSizeSelect option {
-  background: var(--surface-container);
-  color: var(--on-surface);
-}
-
-/* Pagination controls */
-.pagination {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.pageButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--on-surface-variant);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: color 0.15s ease;
-}
-
-.pageButton:hover:not(:disabled) {
-  color: var(--primary);
-}
-
-.pageButton:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.pageText {
-  font-size: 11px;
-  color: var(--on-surface-variant);
-  white-space: nowrap;
-  user-select: none;
 }
 
 /* Edit actions group (Save / Discard) */

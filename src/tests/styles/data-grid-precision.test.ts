@@ -7,24 +7,24 @@ const dataGridPrecisionCss = readFileSync(
   'utf8'
 )
 
-describe('data-grid-precision table-data editing styles', () => {
+describe('data-grid-precision editing styles', () => {
   it('uses dark-theme left border accent on editing rows', () => {
     expect(dataGridPrecisionCss).toMatch(
-      /\[data-theme='dark'\][\s\S]*?\.rdg-precision \.td-editing-row[\s\S]*?border-left:\s*2px solid var\(--primary\)/
+      /\[data-theme='dark'\][\s\S]*?\.rdg-precision \.rdg-editing-row[\s\S]*?border-left:\s*2px solid var\(--primary\)/
     )
   })
 
   it('has base editing-row rule with background', () => {
-    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.td-editing-row/)
+    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.rdg-editing-row/)
     expect(dataGridPrecisionCss).toMatch(/--td-editing-row-bg/)
   })
 
   it('has theme-specific modified cell markers', () => {
     expect(dataGridPrecisionCss).toMatch(
-      /\[data-theme='light'\][\s\S]*?\.rdg-precision \.td-modified-cell::after/
+      /\[data-theme='light'\][\s\S]*?\.rdg-precision \.rdg-modified-cell::after/
     )
     expect(dataGridPrecisionCss).toMatch(
-      /\[data-theme='dark'\][\s\S]*?\.rdg-precision \.td-modified-cell::before/
+      /\[data-theme='dark'\][\s\S]*?\.rdg-precision \.rdg-modified-cell::before/
     )
   })
 
@@ -53,10 +53,24 @@ describe('data-grid-precision table-data editing styles', () => {
     expect(dataGridPrecisionCss).toMatch(/\[data-theme='light'\] \.rdg-precision/)
   })
 
-  it('has query result grid editing styles', () => {
-    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.result-editing-row/)
-    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.cell-modified/)
-    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.col-readonly/)
-    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.col-editable/)
+  it('has unified editing class names', () => {
+    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.rdg-editing-row/)
+    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.rdg-modified-cell/)
+    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.rdg-readonly-cell/)
+    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.rdg-editable-cell/)
+    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.rdg-new-row/)
+  })
+
+  it('does not contain deprecated class names', () => {
+    // Old table-data specific class names should be removed
+    expect(dataGridPrecisionCss).not.toMatch(/\.rdg-precision \.td-editing-row\b/)
+    expect(dataGridPrecisionCss).not.toMatch(/\.rdg-precision \.td-modified-cell\b/)
+    expect(dataGridPrecisionCss).not.toMatch(/\.rdg-precision \.td-editable-cell\b/)
+    expect(dataGridPrecisionCss).not.toMatch(/\.rdg-precision \.td-new-row\b/)
+    // Old query-result specific class names should be removed
+    expect(dataGridPrecisionCss).not.toMatch(/\.rdg-precision \.result-editing-row\b/)
+    expect(dataGridPrecisionCss).not.toMatch(/\.rdg-precision \.cell-modified\b/)
+    expect(dataGridPrecisionCss).not.toMatch(/\.rdg-precision \.col-readonly\b/)
+    expect(dataGridPrecisionCss).not.toMatch(/\.rdg-precision \.col-editable\b/)
   })
 })
