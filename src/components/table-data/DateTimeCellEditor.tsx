@@ -207,7 +207,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
   return (
     <div
       ref={containerRef}
-      className={sharedStyles.cellEditorWrapper}
+      className={`${sharedStyles.cellEditorWrapper} ${styles.dateTimeEditorWrapper}`}
       data-testid="datetime-cell-editor"
     >
       <div className="td-cell-editor-shell">

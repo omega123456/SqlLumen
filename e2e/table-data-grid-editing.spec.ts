@@ -100,29 +100,36 @@ async function openQueryEditorWithResults(page: Page) {
   })
 }
 
+async function getColumnIndexByName(grid: ReturnType<Page['locator']>, columnName: string) {
+  const headerCells = grid.locator('.rdg-header-row .rdg-cell')
+  const headerCount = await headerCells.count()
+
+  for (let i = 0; i < headerCount; i++) {
+    const text = await headerCells.nth(i).textContent()
+    if (text?.trim() === columnName) {
+      return i
+    }
+  }
+
+  throw new Error(`Column "${columnName}" not found in header`)
+}
+
 async function getCellByColumnName(
   grid: ReturnType<Page['locator']>,
   rowIndex: number,
   columnName: string
 ) {
-  const headerCells = grid.locator('.rdg-header-row .rdg-cell')
-  const headerCount = await headerCells.count()
-
-  let targetColIdx = -1
-  for (let i = 0; i < headerCount; i++) {
-    const text = await headerCells.nth(i).textContent()
-    if (text?.trim() === columnName) {
-      targetColIdx = i
-      break
-    }
-  }
-
-  if (targetColIdx === -1) {
-    throw new Error(`Column "${columnName}" not found in header`)
-  }
+  const targetColIdx = await getColumnIndexByName(grid, columnName)
 
   const row = grid.locator('.rdg-row').nth(rowIndex)
   const cell = row.locator('.rdg-cell').nth(targetColIdx)
+  await expect(cell).toBeVisible({ timeout: APP_READY_MS })
+  return cell
+}
+
+async function getHeaderCellByColumnName(grid: ReturnType<Page['locator']>, columnName: string) {
+  const targetColIdx = await getColumnIndexByName(grid, columnName)
+  const cell = grid.locator('.rdg-header-row .rdg-cell').nth(targetColIdx)
   await expect(cell).toBeVisible({ timeout: APP_READY_MS })
   return cell
 }
@@ -197,6 +204,53 @@ test('table data grid editor keeps focus across multiple keypresses', async ({ p
 
   await clickCellByColumnName(grid, 0, 'name')
   await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
+})
+
+test('table data grid auto-sizes columns from visible data by default', async ({ page }) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  const nameHeader = await getHeaderCellByColumnName(grid, 'name')
+  const emailHeader = await getHeaderCellByColumnName(grid, 'email')
+
+  const nameBox = await nameHeader.boundingBox()
+  const emailBox = await emailHeader.boundingBox()
+
+  expect(nameBox).not.toBeNull()
+  expect(emailBox).not.toBeNull()
+  expect(emailBox!.width).toBeGreaterThan(nameBox!.width)
+})
+
+test('table data datetime editor gives the input enough width for the full field value', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  const createdAtCell = await getCellByColumnName(grid, 0, 'created_at')
+  await createdAtCell.click()
+
+  const editorInput = createdAtCell.locator('input.td-cell-editor-input')
+  const calendarButton = createdAtCell.getByTestId('grid-calendar-btn')
+
+  await expect(editorInput).toBeVisible({ timeout: APP_READY_MS })
+  await expect(calendarButton).toBeVisible({ timeout: APP_READY_MS })
+
+  const cellBox = await createdAtCell.boundingBox()
+  const inputBox = await editorInput.boundingBox()
+
+  expect(cellBox).not.toBeNull()
+  expect(inputBox).not.toBeNull()
+  expect(inputBox!.width).toBeGreaterThan(120)
+  expect(inputBox!.width / cellBox!.width).toBeGreaterThan(0.55)
 })
 
 test('query result grid editor keeps focus across multiple keypresses', async ({ page }) => {

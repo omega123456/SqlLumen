@@ -20,7 +20,11 @@ import { getCellEditorForColumn } from '../shared/grid-cell-editors'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
-import { getTableDataGridCellClass, getDefaultColumnWidth } from '../../lib/grid-column-style'
+import {
+  getAutoSizedColumnWidth,
+  getTableDataGridCellClass,
+  getDefaultColumnWidth,
+} from '../../lib/grid-column-style'
 import type { TableDataColumnMeta, PrimaryKeyInfo } from '../../types/schema'
 import styles from './TableDataGrid.module.css'
 
@@ -133,10 +137,22 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   // extra render cycle that destabilises column definitions.
   // ---------------------------------------------------------------------------
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({})
+  const [autoColumnWidths, setAutoColumnWidths] = useState<Record<string, number>>({})
 
   useEffect(() => {
     setColumnWidths({})
+    setAutoColumnWidths({})
   }, [columns])
+
+  useEffect(() => {
+    if (editState) return
+
+    setAutoColumnWidths(
+      Object.fromEntries(
+        columns.map((column, index) => [column.name, getAutoSizedColumnWidth(column, index, rows)])
+      )
+    )
+  }, [columns, rows, editState])
 
   const handleColumnResize = useCallback((column: { key: string }, width: number) => {
     setColumnWidths((prev) => ({ ...prev, [column.key]: width }))
@@ -263,7 +279,8 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
     return columns.map((col) => {
       const editable = !isReadOnly && hasPk && !col.isBinary
       const baseCellClass = getTableDataGridCellClass(col, pkColumns)
-      const colWidth = columnWidths[col.name] ?? getDefaultColumnWidth(col.dataType)
+      const colWidth =
+        columnWidths[col.name] ?? autoColumnWidths[col.name] ?? getDefaultColumnWidth(col.dataType)
 
       // Dynamic cell class function
       const cellClass = (row: TableDataRow) => {
@@ -319,7 +336,17 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         cellClass,
       } as Column<TableDataRow>
     })
-  }, [columns, columnWidths, isReadOnly, hasPk, pkColumns, tabId, updateCellValue, syncCellValue])
+  }, [
+    columns,
+    columnWidths,
+    autoColumnWidths,
+    isReadOnly,
+    hasPk,
+    pkColumns,
+    tabId,
+    updateCellValue,
+    syncCellValue,
+  ])
 
   // ---------------------------------------------------------------------------
   // onRowsChange: called when an editor commits — used to clear no-op edits

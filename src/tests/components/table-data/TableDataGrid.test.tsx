@@ -178,6 +178,26 @@ const testColumns: TableDataColumnMeta[] = [
   },
 ]
 
+function makeColumnMeta(
+  name: string,
+  dataType: string,
+  overrides: Partial<TableDataColumnMeta> = {}
+): TableDataColumnMeta {
+  return {
+    name,
+    dataType,
+    isNullable: true,
+    isPrimaryKey: false,
+    isUniqueKey: false,
+    hasDefault: false,
+    columnDefault: null,
+    isBinary: false,
+    isBooleanAlias: false,
+    isAutoIncrement: false,
+    ...overrides,
+  }
+}
+
 function setupTabState(overrides: Partial<TableDataTabState> = {}) {
   const defaultState: TableDataTabState = {
     columns: testColumns,
@@ -313,6 +333,45 @@ describe('TableDataGrid', () => {
     const props = getLatestGridProps()
     const colDefs = props.columns as Array<{ key: string }>
     expect(colDefs).toHaveLength(3)
+  })
+
+  it('auto-sizes columns from visible row data by default', () => {
+    setupConnection()
+    setupTabState({
+      columns: [testColumns[0], testColumns[1], makeColumnMeta('email', 'varchar')],
+      rows: [
+        [1, 'Al', 'avery.long.email.address@example.com'],
+        [2, 'Bob', 'b@example.com'],
+      ],
+    })
+
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{ key: string; width: number }>
+    const nameCol = colDefs.find((d) => d.key === 'name')
+    const emailCol = colDefs.find((d) => d.key === 'email')
+
+    expect(nameCol).toBeDefined()
+    expect(emailCol).toBeDefined()
+    expect(emailCol!.width).toBeGreaterThan(nameCol!.width)
+  })
+
+  it('gives temporal columns a wider default width for inline editing controls', () => {
+    setupConnection()
+    setupTabState({
+      columns: [testColumns[0], makeColumnMeta('created_at', 'DATETIME')],
+      rows: [[1, '2023-11-24 14:30:00']],
+    })
+
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{ key: string; width: number }>
+    const createdAtCol = colDefs.find((d) => d.key === 'created_at')
+
+    expect(createdAtCol).toBeDefined()
+    expect(createdAtCol!.width).toBeGreaterThanOrEqual(240)
   })
 
   it('renders NULL values via mock display', () => {

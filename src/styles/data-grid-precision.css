@@ -94,6 +94,11 @@
   contain: style;
 }
 
+/* RDG edit cells already manage their own layout; do not re-apply body-cell padding */
+.rdg-precision .rdg-editor-container {
+  padding: 0;
+}
+
 /* Cell type classes — td-cell-* styling for grid cells */
 .rdg-precision .td-cell-mono-muted {
   font-family: var(--font-mono);
@@ -219,13 +224,19 @@
   background-color: var(--td-editing-row-bg) !important;
 }
 
-/* Cell editor shell — light */
-[data-theme='light'] .rdg-precision .td-cell-editor-shell {
+/* Cell editor shell */
+.rdg-precision .td-cell-editor-shell {
   display: flex;
   align-items: center;
   flex: 1;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   gap: 4px;
+}
+
+/* Cell editor shell — light */
+[data-theme='light'] .rdg-precision .td-cell-editor-shell {
   padding: 4px 8px;
   background: var(--surface-container-lowest);
   border: 1px solid rgba(var(--primary-rgb), 0.5);
@@ -237,20 +248,18 @@
 
 /* Cell editor shell — dark */
 [data-theme='dark'] .rdg-precision .td-cell-editor-shell {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  gap: 4px;
   padding: 2px 8px;
   background: var(--surface-container-highest);
   border: 1px solid rgba(var(--primary-rgb), 0.5);
   border-radius: var(--radius-sm);
 }
 
-/* Cell editor input */
-.rdg-precision .td-cell-editor-input {
+/* Cell editor input/select */
+.rdg-precision .td-cell-editor-input,
+.rdg-precision .td-cell-editor-select {
   flex: 1;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   height: auto;
   border: none;
@@ -271,21 +280,6 @@
 [data-theme='dark'] .rdg-precision .td-cell-editor-shell .td-cell-editor-input,
 [data-theme='dark'] .rdg-precision .td-cell-editor-shell .td-cell-editor-select {
   color: var(--primary);
-}
-
-/* Cell editor select (enum) */
-.rdg-precision .td-cell-editor-select {
-  flex: 1;
-  min-width: 0;
-  height: auto;
-  border: none;
-  background: transparent;
-  color: var(--on-surface);
-  font-family: var(--font-mono);
-  font-size: var(--type-size-md);
-  outline: none;
-  padding: 0;
-  line-height: 1.25;
 }
 
 .rdg-precision .td-cell-editor-select:focus,

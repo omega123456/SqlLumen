@@ -7,6 +7,12 @@
   overflow: hidden;
 }
 
+.dateTimeEditorWrapper {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: 100%;
+}
+
 /* Calendar/clock icon button in DateTimeCellEditor */
 .calendarBtn {
   display: flex;
