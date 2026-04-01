@@ -75,6 +75,22 @@ export function isEditableSelectSql(sql: string | null): boolean {
   return firstToken === 'SELECT' || firstToken === 'WITH'
 }
 
+/** Ensures IPC returned a usable result page (avoids TypeError on null mocks). */
+function parseResultPagePayload(value: unknown): {
+  rows: unknown[][]
+  page: number
+  totalPages: number
+} | null {
+  if (value == null || typeof value !== 'object') {
+    return null
+  }
+  const o = value as Record<string, unknown>
+  if (!Array.isArray(o.rows) || typeof o.page !== 'number' || typeof o.totalPages !== 'number') {
+    return null
+  }
+  return { rows: o.rows, page: o.page, totalPages: o.totalPages }
+}
+
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
 
 export interface TabQueryState {
@@ -349,7 +365,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     const generation = ++_analysisGeneration
     patchTab(tabId, { isAnalyzingQuery: true })
     try {
-      const tables = await analyzeQueryForEditCmd(connectionId, sql)
+      const raw = await analyzeQueryForEditCmd(connectionId, sql)
+      const tables = Array.isArray(raw) ? raw : []
 
       // Guard: tab closed or a newer query has replaced this one
       const currentTab = get().tabs[tabId]
@@ -474,7 +491,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       if (!tabState?.queryId) return
 
       try {
-        const result = await fetchResultPageCmd(connectionId, tabId, tabState.queryId, page)
+        const raw = await fetchResultPageCmd(connectionId, tabId, tabState.queryId, page)
+        const result = parseResultPagePayload(raw)
+        if (!result) {
+          console.error(
+            '[query-store] fetchPage failed: invalid fetch_result_page payload (expected rows, page, totalPages)'
+          )
+          return
+        }
         const normalizedRows = normalizeQueryRows(tabState.columns, result.rows)
 
         // Guard: if the tab was closed while fetching, skip the update
@@ -632,7 +656,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
         const currentColumns = get().tabs[tabId]?.columns ?? []
 
-        const result = await sortResultsCmd(connectionId, tabId, column, direction)
+        const raw = await sortResultsCmd(connectionId, tabId, column, direction)
+        const result = parseResultPagePayload(raw)
+        if (!result) {
+          console.error(
+            '[query-store] sortResults failed: invalid sort_results payload (expected rows, page, totalPages)'
+          )
+          return
+        }
         const normalizedRows = normalizeQueryRows(currentColumns, result.rows)
 
         // Guard: if the tab was closed while sorting, skip the update

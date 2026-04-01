@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
 import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
@@ -154,7 +154,13 @@ describe('ResultToolbar', () => {
     expect(screen.getByLabelText('Next page')).not.toBeDisabled()
   })
 
-  it('calls fetchPage via store when prev button clicked', () => {
+  it('calls fetchPage via store when prev button clicked', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'fetch_result_page') {
+        return { rows: [[1]], page: 1, totalPages: 3 }
+      }
+      return null
+    })
     setupTabState(tabId, {
       status: 'success',
       currentPage: 2,
@@ -164,10 +170,20 @@ describe('ResultToolbar', () => {
     })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     fireEvent.click(screen.getByLabelText('Previous page'))
-    // fetchPage is async and calls IPC — just verify no crash
+    await waitFor(() => {
+      const tab = useQueryStore.getState().getTabState(tabId)
+      expect(tab.currentPage).toBe(1)
+      expect(tab.rows).toEqual([[1]])
+    })
   })
 
-  it('calls fetchPage via store when next button clicked', () => {
+  it('calls fetchPage via store when next button clicked', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'fetch_result_page') {
+        return { rows: [[2]], page: 2, totalPages: 3 }
+      }
+      return null
+    })
     setupTabState(tabId, {
       status: 'success',
       currentPage: 1,
@@ -177,7 +193,11 @@ describe('ResultToolbar', () => {
     })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     fireEvent.click(screen.getByLabelText('Next page'))
-    // fetchPage is async and calls IPC — just verify no crash
+    await waitFor(() => {
+      const tab = useQueryStore.getState().getTabState(tabId)
+      expect(tab.currentPage).toBe(2)
+      expect(tab.rows).toEqual([[2]])
+    })
   })
 
   it('shows page text', () => {

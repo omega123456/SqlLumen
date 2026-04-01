@@ -161,6 +161,48 @@ describe('useQueryStore — executeQuery', () => {
 
     expect(useQueryStore.getState().getTabState('tab-bool').rows).toEqual([[1, 0, 'flagged']])
   })
+
+  it('treats missing or non-array analyze_query_for_edit result as no edit tables', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-analyze-null',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          totalRows: 1,
+          executionTimeMs: 1,
+          affectedRows: 0,
+          firstPage: [[1]],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') {
+        return null
+      }
+      if (cmd === 'evict_results') {
+        return null
+      }
+      return null
+    })
+
+    await useQueryStore.getState().executeQuery(
+      'conn-1',
+      'tab-null-analyze',
+      'SELECT id FROM t'
+    )
+
+    await vi.waitFor(() => {
+      expect(useQueryStore.getState().getTabState('tab-null-analyze').isAnalyzingQuery).toBe(false)
+    })
+
+    expect(useQueryStore.getState().getTabState('tab-null-analyze').editTableMetadata).toEqual({})
+    const analyzeErrors = errSpy.mock.calls.filter(
+      (c) => typeof c[0] === 'string' && c[0].includes('analyze_query_for_edit')
+    )
+    expect(analyzeErrors).toHaveLength(0)
+    errSpy.mockRestore()
+  })
 })
 
 describe('useQueryStore — fetchPage', () => {
@@ -177,6 +219,40 @@ describe('useQueryStore — fetchPage', () => {
   it('does nothing when no queryId', async () => {
     await useQueryStore.getState().fetchPage('conn-1', 'no-query-tab', 1)
     // Should not throw
+  })
+
+  it('handles null fetch_result_page without throwing', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockIPC((cmd) => {
+      switch (cmd) {
+        case 'execute_query':
+          return {
+            queryId: 'q-null-fetch',
+            columns: [{ name: 'id', dataType: 'INT' }],
+            totalRows: 1,
+            executionTimeMs: 1,
+            affectedRows: 0,
+            firstPage: [[1]],
+            totalPages: 2,
+            autoLimitApplied: false,
+          }
+        case 'fetch_result_page':
+          return null
+        case 'evict_results':
+          return null
+        default:
+          return null
+      }
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-null-fetch', 'SELECT 1')
+    await useQueryStore.getState().fetchPage('conn-1', 'tab-null-fetch', 2)
+
+    expect(useQueryStore.getState().getTabState('tab-null-fetch').currentPage).toBe(1)
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[query-store] fetchPage failed: invalid fetch_result_page payload (expected rows, page, totalPages)'
+    )
+    consoleSpy.mockRestore()
   })
 
   it('normalizes tinyint boolean aliases to integer rows on fetchPage', async () => {
@@ -529,6 +605,42 @@ describe('useQueryStore — sortResults', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
     expect(consoleSpy).toHaveBeenCalledWith('[query-store] sortResults failed:', expect.any(Error))
+    consoleSpy.mockRestore()
+  })
+
+  it('handles null sort_results payload without throwing', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockIPC((cmd) => {
+      switch (cmd) {
+        case 'execute_query':
+          return {
+            queryId: 'q-sort-null',
+            columns: [{ name: 'id', dataType: 'INT' }],
+            totalRows: 2,
+            executionTimeMs: 1,
+            affectedRows: 0,
+            firstPage: [[2], [1]],
+            totalPages: 1,
+            autoLimitApplied: false,
+          }
+        case 'sort_results':
+          return null
+        case 'evict_results':
+          return null
+        default:
+          return null
+      }
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-sort-null', 'SELECT id FROM t')
+    await useQueryStore.getState().sortResults('conn-1', 'tab-sort-null', 'id', 'asc')
+
+    const state = useQueryStore.getState().getTabState('tab-sort-null')
+    expect(state.sortColumn).toBeNull()
+    expect(state.rows).toEqual([[2], [1]])
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[query-store] sortResults failed: invalid sort_results payload (expected rows, page, totalPages)'
+    )
     consoleSpy.mockRestore()
   })
 

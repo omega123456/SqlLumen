@@ -23,6 +23,17 @@ import { invalidateCache } from '../components/query-editor/schema-metadata-cach
 
 let listenersSetup = false
 
+/** Tauri’s `listen()` requires injected internals; absent in jsdom / Vitest / plain Vite. */
+function canUseTauriEventListen(): boolean {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  return (
+    '__TAURI_INTERNALS__' in window &&
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ != null
+  )
+}
+
 /** Reset the listeners flag — for testing only */
 export function _resetListenersSetup() {
   listenersSetup = false
@@ -314,6 +325,10 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     if (listenersSetup) return undefined
     listenersSetup = true
 
+    if (!canUseTauriEventListen()) {
+      return undefined
+    }
+
     try {
       const unlisten = await listen<ConnectionStatusEvent>('connection-status-changed', (event) => {
         get().updateConnectionStatus(event.payload)
@@ -321,7 +336,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       return unlisten
     } catch (err) {
       console.warn(
-        '[connection-store] connection-status-changed listen unavailable (non-Tauri or tests):',
+        '[connection-store] connection-status-changed listen failed (unexpected Tauri error):',
         err
       )
       listenersSetup = false

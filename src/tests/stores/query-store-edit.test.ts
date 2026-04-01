@@ -854,6 +854,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
   })
 
   it('handles analysis failure gracefully', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockIPC((cmd) => {
       if (cmd === 'execute_query') {
         return {
@@ -874,6 +875,12 @@ describe('useQueryStore — executeQuery background analysis', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT 1')
     await flushMicrotasks()
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[query-edit] analyze_query_for_edit failed:',
+      expect.any(Error)
+    )
+    consoleSpy.mockRestore()
 
     const tab = useQueryStore.getState().getTabState('tab-1')
     expect(tab.isAnalyzingQuery).toBe(false)
