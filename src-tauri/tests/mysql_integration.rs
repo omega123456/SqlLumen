@@ -462,3 +462,94 @@ async fn test_schema_text_decode_accepts_varbinary_like_information_schema() {
 
     pool.close().await;
 }
+
+/// `insert_table_row_impl` must use the driver's `last_insert_id()` (`u64`). Decoding
+/// `SELECT LAST_INSERT_ID()` as `i64` fails when the AI column is `BIGINT UNSIGNED`.
+#[cfg(not(coverage))]
+#[tokio::test]
+async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
+    let url = match std::env::var("MYSQL_TEST_URL") {
+        Ok(u) => u,
+        Err(_) => {
+            eprintln!(
+                "Skipping insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk: MYSQL_TEST_URL not set"
+            );
+            return;
+        }
+    };
+
+    let db_name = {
+        let after_scheme = match url.strip_prefix("mysql://") {
+            Some(s) => s,
+            None => {
+                eprintln!("Skipping: MYSQL_TEST_URL must start with mysql://");
+                return;
+            }
+        };
+        let host_and_rest = match after_scheme.split_once('@') {
+            Some((_, r)) => r,
+            None => after_scheme,
+        };
+        let Some((_host_port, path)) = host_and_rest.split_once('/') else {
+            eprintln!("Skipping: MYSQL_TEST_URL has no database path");
+            return;
+        };
+        let db = path.split('?').next().unwrap_or(path).trim();
+        if db.is_empty() {
+            eprintln!("Skipping: MYSQL_TEST_URL must include a database name");
+            return;
+        }
+        db.to_string()
+    };
+
+    use mysql_client_lib::mysql::table_data::{insert_table_row_impl, PrimaryKeyInfo};
+    use std::collections::HashMap;
+
+    let pool = MySqlPoolOptions::new()
+        .max_connections(1)
+        .connect(&url)
+        .await
+        .expect("connect MYSQL_TEST_URL");
+
+    let table = format!(
+        "__ins_unsigned_ai_{}",
+        uuid::Uuid::new_v4().simple()
+    );
+
+    let create_sql = format!(
+        "CREATE TABLE `{}`.`{}` ( \
+         `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, \
+         `label` VARCHAR(64) NOT NULL, \
+         PRIMARY KEY (`id`) \
+         ) ENGINE=InnoDB",
+        db_name, table
+    );
+    sqlx::query(&create_sql)
+        .execute(&pool)
+        .await
+        .expect("CREATE TABLE for unsigned AI insert test");
+
+    let mut values = HashMap::new();
+    values.insert("label".to_string(), serde_json::json!("unsigned_ai_smoke"));
+    let pk = PrimaryKeyInfo {
+        key_columns: vec!["id".to_string()],
+        has_auto_increment: true,
+        is_unique_key_fallback: false,
+    };
+
+    let insert_outcome = insert_table_row_impl(&pool, &db_name, &table, &values, &pk).await;
+
+    let _ = sqlx::query(&format!("DROP TABLE `{}`.`{}`", db_name, table))
+        .execute(&pool)
+        .await;
+
+    pool.close().await;
+
+    let row_vec = insert_outcome.expect("insert should succeed for BIGINT UNSIGNED AUTO_INCREMENT PK");
+    let id_cell = row_vec.iter().find(|(c, _)| c == "id").map(|(_, v)| v);
+    assert!(
+        id_cell.is_some_and(|v| v.as_u64().is_some_and(|n| n >= 1)),
+        "expected positive numeric id in returned row, got {:?}",
+        id_cell
+    );
+}

@@ -7,26 +7,45 @@ const APP_READY_MS = 5_000
 const AUTOCOMPLETE_OPEN_RETRIES = 4
 const AUTOCOMPLETE_OPEN_TIMEOUT_MS = 1_500
 const AUTOCOMPLETE_RETRY_DELAY_MS = 300
+const APP_READY_RETRY_ATTEMPTS = 3
 
 /** Many parallel workers can briefly see net::ERR_CONNECTION_FAILED if the first goto races the Vite server. */
 const GOTO_RETRY_ATTEMPTS = 2
 const GOTO_RETRY_DELAY_MS = 500
 
 async function waitForApp(page: Page) {
-  for (let attempt = 0; attempt < GOTO_RETRY_ATTEMPTS; attempt++) {
+  let lastError: unknown
+
+  for (let readyAttempt = 0; readyAttempt < APP_READY_RETRY_ATTEMPTS; readyAttempt++) {
     try {
-      await page.goto('/', { waitUntil: 'load', timeout: APP_READY_MS })
-      break
+      for (let gotoAttempt = 0; gotoAttempt < GOTO_RETRY_ATTEMPTS; gotoAttempt++) {
+        try {
+          await page.goto('/', { waitUntil: 'load', timeout: APP_READY_MS })
+          break
+        } catch (err) {
+          if (gotoAttempt === GOTO_RETRY_ATTEMPTS - 1) {
+            throw err
+          }
+          await page.waitForTimeout(GOTO_RETRY_DELAY_MS)
+        }
+      }
+
+      await expect(page.getByTestId('app-layout')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('status-bar')).toContainText('Ready', { timeout: APP_READY_MS })
+      await page.evaluate(() => document.fonts.ready)
+      return
     } catch (err) {
-      if (attempt === GOTO_RETRY_ATTEMPTS - 1) {
+      lastError = err
+
+      if (readyAttempt === APP_READY_RETRY_ATTEMPTS - 1) {
         throw err
       }
-      await new Promise((r) => setTimeout(r, GOTO_RETRY_DELAY_MS))
+
+      await page.waitForTimeout(GOTO_RETRY_DELAY_MS)
     }
   }
-  await expect(page.getByTestId('app-layout')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('status-bar')).toContainText('Ready', { timeout: APP_READY_MS })
-  await page.evaluate(() => document.fonts.ready)
+
+  throw lastError
 }
 
 async function ensureTheme(page: Page, theme: 'light' | 'dark') {
@@ -1036,7 +1055,11 @@ test.describe('Date picker', () => {
         await dismissAllToasts(page)
 
         // Click on the created_at cell in the first data row to start editing.
-        // Find the column index by matching header text, then click the body cell.
+        // The grid enters edit mode on single click via its custom onCellClick
+        // handler. Avoid double-click here: once the editor mounts, the second
+        // click can land on inline controls (NULL toggle / calendar button)
+        // inside narrow temporal cells and flip the editor into an unintended
+        // state before the screenshot is taken.
         const headerCells = page.getByTestId('table-data-grid').locator('.rdg-header-row .rdg-cell')
         const headerCount = await headerCells.count()
         let createdAtColIdx = -1
@@ -1051,8 +1074,7 @@ test.describe('Date picker', () => {
         const firstRow = page.getByTestId('table-data-grid').locator('.rdg-row').first()
         const createdAtCell = firstRow.locator('.rdg-cell').nth(createdAtColIdx)
         await expect(createdAtCell).toBeVisible({ timeout: APP_READY_MS })
-        // Double-click to trigger editor opening (react-data-grid opens editors on double-click)
-        await createdAtCell.dblclick()
+        await createdAtCell.click()
         // The editor opening is async (guard → startEditing → selectCell) — wait a bit
         await page.waitForTimeout(500)
 

@@ -128,26 +128,17 @@ async function getCellByColumnName(
 }
 
 /**
- * Find a column header cell by name and double-click the corresponding body cell
- * in a given row. react-data-grid opens cell editors on double-click by default.
+ * Find a column header cell by name and click the corresponding body cell in a
+ * given row. The app intentionally enables single-click editing via the grid's
+ * custom onCellClick handler.
  */
 async function clickCellByColumnName(
-  page: Page,
   grid: ReturnType<Page['locator']>,
   rowIndex: number,
   columnName: string
 ) {
   const cell = await getCellByColumnName(grid, rowIndex, columnName)
-  await cell.dblclick()
-}
-
-async function activateCellEditor(
-  page: Page,
-  grid: ReturnType<Page['locator']>,
-  rowIndex: number,
-  columnName: string
-) {
-  await clickCellByColumnName(page, grid, rowIndex, columnName)
+  await cell.click()
 }
 
 async function expectEditorKeepsFocusAcrossTyping(page: Page, text: string) {
@@ -179,14 +170,14 @@ test('editing a cell then clicking the next cell keeps editing on the clicked ce
 
   for (let index = 0; index < 3; index += 1) {
     // Click the name cell in the first row
-    await clickCellByColumnName(page, grid, 0, 'name')
+    await clickCellByColumnName(grid, 0, 'name')
 
     const nameEditor = page.locator('.td-cell-editor-input').first()
     await expect(nameEditor).toBeVisible({ timeout: APP_READY_MS })
     await nameEditor.fill(`Julian Thorne ${index}`)
 
     // Click the email cell in the first row — transition editing to email
-    await clickCellByColumnName(page, grid, 0, 'email')
+    await clickCellByColumnName(grid, 0, 'email')
 
     const emailEditor = page.locator('.td-cell-editor-input').first()
     await expect(emailEditor).toBeVisible({ timeout: APP_READY_MS })
@@ -204,7 +195,7 @@ test('table data grid editor keeps focus across multiple keypresses', async ({ p
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
   await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
 
-  await activateCellEditor(page, grid, 0, 'name')
+  await clickCellByColumnName(grid, 0, 'name')
   await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
 })
 
@@ -216,7 +207,7 @@ test('query result grid editor keeps focus across multiple keypresses', async ({
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
   await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
 
-  await activateCellEditor(page, grid, 0, 'name')
+  await clickCellByColumnName(grid, 0, 'name')
   await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
 })
 

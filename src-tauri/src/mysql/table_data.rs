@@ -715,6 +715,8 @@ fn bind_json_value<'q>(
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 query.bind(i)
+            } else if let Some(u) = n.as_u64() {
+                query.bind(u)
             } else if let Some(f) = n.as_f64() {
                 query.bind(f)
             } else {
@@ -1201,18 +1203,9 @@ pub async fn insert_table_row_impl(
 
     // Re-fetch the inserted row
     let refetch_row = if pk_info.has_auto_increment {
-        // Get LAST_INSERT_ID()
-        const LAST_ID_SQL: &str = "SELECT LAST_INSERT_ID() AS id";
-        crate::mysql::query_log::log_outgoing_sql(LAST_ID_SQL);
-        let id_row = sqlx::query(LAST_ID_SQL)
-            .fetch_one(pool)
-            .await
-            .map_err(|e| format!("Failed to get LAST_INSERT_ID: {e}"))?;
-        crate::mysql::query_log::log_mysql_row(&id_row);
-
-        let last_id: i64 = id_row
-            .try_get(0)
-            .map_err(|e| format!("Failed to read LAST_INSERT_ID: {e}"))?;
+        // Use the connection's insert id from the driver (`u64`). A separate
+        // `SELECT LAST_INSERT_ID()` decodes as `BIGINT UNSIGNED` and breaks when read as `i64`.
+        let last_id = insert_result.last_insert_id();
 
         // Build WHERE using LAST_INSERT_ID for missing PK cols, provided values for rest
         let mut where_parts = Vec::new();

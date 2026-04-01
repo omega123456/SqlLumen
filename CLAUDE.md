@@ -224,6 +224,12 @@ The app has **no separate routes**; “screens” are distinct UI states (welcom
 - Rust tests: only in `src-tauri/tests/` (Nextest via `.cargo/config.toml`); no tests inside `src-tauri/src/`. Commands / DB tests use in-memory SQLite (`Connection::open_in_memory()`) — never mock the database layer.
 - Tests are built alongside features in each phase — not deferred.
 
+### Tracing visual bugs in the live app (MCP)
+
+When a bug is **visual** or **desktop-specific** (layout, focus, scrolling, react-data-grid cell editing, short-lived toasts, or anything that does not reproduce cleanly in Playwright’s web build), trace it against the **real Tauri app** using the **Hypothesi Tauri MCP** workflow. Follow **`mcp_testing.md`** at the repository root for prerequisites, `driver_session`, webview interaction, log locations, and table-data grid/form automation notes.
+
+**Maintain the documentation:** If you discover additional steps, pitfalls, stable selectors, or log paths that **`mcp_testing.md`** does not yet record, **update that file** in the same change set so the next agent or developer gets an accurate playbook.
+
 ## Key Gotchas
 
 - **ESLint 10 + react-hooks**: `pnpm.peerDependencyRules.allowedVersions.eslint: "10"` is set in `package.json` because `eslint-plugin-react-hooks` hasn't declared ESLint 10 support yet. Don't remove it.
