@@ -50,6 +50,9 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'get_all_settings':
       return {}
 
+    case 'log_frontend':
+      return null
+
     // --- Connection management ---
     case 'list_connections':
       return [PLAYWRIGHT_MOCK_CONNECTION]

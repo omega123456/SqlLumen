@@ -1,0 +1,5 @@
+[[permission]]
+identifier = "allow-log-frontend"
+description = "Enables the log_frontend command without any pre-configured scope."
+commands.allow = ["log_frontend"]
+commands.deny = []

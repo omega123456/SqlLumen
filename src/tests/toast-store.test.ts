@@ -1,8 +1,18 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+
+const { logFrontendMock } = vi.hoisted(() => ({
+  logFrontendMock: vi.fn(),
+}))
+
+vi.mock('../lib/app-log-commands', () => ({
+  logFrontend: logFrontendMock,
+}))
+
 import { useToastStore, _resetToastTimeoutsForTests } from '../stores/toast-store'
 
 describe('useToastStore', () => {
   beforeEach(() => {
+    logFrontendMock.mockClear()
     _resetToastTimeoutsForTests()
     useToastStore.setState({ toasts: [] })
   })
@@ -23,6 +33,16 @@ describe('useToastStore', () => {
     expect(toasts[0].variant).toBe('success')
     expect(toasts[0].title).toBe('Saved')
     expect(toasts[0].message).toBe('Details')
+  })
+
+  it('showError logs to application logger at error level', () => {
+    useToastStore.getState().showError('Title', 'Body')
+    expect(logFrontendMock).toHaveBeenCalledWith('error', 'Title: Body')
+  })
+
+  it('showError log line uses title only when message is omitted', () => {
+    useToastStore.getState().showError('Only')
+    expect(logFrontendMock).toHaveBeenCalledWith('error', 'Only')
   })
 
   it('dismiss removes a toast', () => {

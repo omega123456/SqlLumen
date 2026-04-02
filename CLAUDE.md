@@ -62,7 +62,7 @@ The frontend **never** touches SQLite or MySQL directly. All persistence and dat
 1. Implement a `*_impl(state: &AppState, ...)` function in `src-tauri/src/commands/` (or the relevant `src-tauri/src/mysql/` / `src-tauri/src/db/` helper), testable without the Tauri runtime where practical.
 2. Write a thin `#[tauri::command]` wrapper that calls the `*_impl`.
 3. Register it in `tauri::generate_handler![...]` in `src-tauri/src/lib.rs`.
-4. Add a typed wrapper in the appropriate `src/lib/*-commands.ts` file (`connection-commands.ts`, `schema-commands.ts`, `query-commands.ts`, `export-commands.ts`, `table-data-commands.ts`, etc.). Use `tauri-commands.ts` only for settings/theme helpers.
+4. Add a typed wrapper in the appropriate `src/lib/*-commands.ts` file (`connection-commands.ts`, `schema-commands.ts`, `query-commands.ts`, `export-commands.ts`, `table-data-commands.ts`, `app-log-commands.ts` for `log_frontend`, etc.). Use `tauri-commands.ts` only for settings/theme helpers.
 
 Playwright runs the web build with `VITE_PLAYWRIGHT=true`; extend **`src/lib/playwright-ipc-mock.ts`** when new UI depends on IPC so E2E stays deterministic.
 
@@ -125,6 +125,7 @@ src/
   main.tsx            # React entry; Monaco worker / Playwright hooks as needed
   lib/
     tauri-commands.ts       # Settings + theme persistence
+    app-log-commands.ts     # log_frontend — application logger from UI (tracing)
     connection-commands.ts  # Saved connections, groups, open/close session
     schema-commands.ts      # Databases, objects, schema info, DDL helpers
     query-commands.ts       # executeQuery, result paging, sort, select DB, …
@@ -183,6 +184,13 @@ Theme is applied by setting `data-theme="light|dark"` on `document.documentEleme
 
 - **Rust:** Use `tracing` at an appropriate level (`warn!`, `error!`, etc.) and include context (operation, ids, `?` on errors). Do not swallow errors without a log line unless the user explicitly asked for that behavior in the task.
 - **TypeScript / React:** Use `console.error` or `console.warn` with a short, stable prefix (e.g. `[module-name]`) so grepping logs is easy. Prefer the same pattern when IPC or async work fails but the UI intentionally continues.
+
+**Frontend application logger (`log_frontend`):** The UI can emit lines into the same tracing pipeline as the backend via `logFrontend` in `app-log-commands.ts`. Supported levels (aligned with Rust tracing) are **`error`**, **`warn`**, **`info`**, **`debug`**, and **`trace`**. Invalid level strings are rejected by the backend.
+
+- **Error toasts** should go through **`showError`** (or the store’s `showError`), which records an **`error`**-level application log line via `log_frontend` (title and optional message as one line).
+- **`console.error` / `console.warn`** remain fine for DevTools detail. For **operational or user-visible failures**, also emit the appropriate level through **`logFrontend`** — **not the console alone**.
+
+Invoke failures from `logFrontend` are logged with the stable prefix **`[app-log]`**.
 
 ## Testing Conventions
 

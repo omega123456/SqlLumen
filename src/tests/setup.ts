@@ -1,6 +1,16 @@
 import '@testing-library/jest-dom'
-import { afterEach, vi } from 'vitest'
-import { clearMocks } from '@tauri-apps/api/mocks'
+import { afterEach, beforeEach, vi } from 'vitest'
+import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
+
+// Default IPC: allow log_frontend (toast / app log) without noise; other commands must mock explicitly.
+beforeEach(() => {
+  mockIPC((cmd) => {
+    if (cmd === 'log_frontend') {
+      return undefined
+    }
+    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
+  })
+})
 
 // ---------------------------------------------------------------------------
 // Monaco Editor mocks for Vitest (jsdom doesn't support Monaco workers)

@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 
+import { logFrontend } from '../lib/app-log-commands'
+
 export type ToastVariant = 'success' | 'error' | 'info'
 
 export interface ToastItem {
@@ -56,6 +58,8 @@ export const useToastStore = create<ToastState>()((set, get) => ({
   },
 
   showError: (title, message, durationMs = DEFAULT_DURATION_MS) => {
+    const logLine = message ? `${title}: ${message}` : title
+    logFrontend('error', logLine)
     const id = crypto.randomUUID()
     const item: ToastItem = { id, variant: 'error', title, message, durationMs }
     set((state) => {

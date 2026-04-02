@@ -1,6 +1,7 @@
 pub mod connection_groups;
 pub mod connections;
 pub mod export;
+pub mod frontend_log;
 pub mod mysql;
 pub mod query;
 pub mod schema;

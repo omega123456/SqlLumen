@@ -165,6 +165,7 @@ pub fn run() {
             commands::table_data::insert_table_row,
             commands::table_data::delete_table_row,
             commands::table_data::export_table_data,
+            commands::frontend_log::log_frontend,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

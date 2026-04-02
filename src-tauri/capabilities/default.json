@@ -53,6 +53,7 @@
     "allow-insert-table-row",
     "allow-delete-table-row",
     "allow-export-table-data",
+    "allow-log-frontend",
     "dialog:allow-save",
     "dialog:allow-open"
   ]
