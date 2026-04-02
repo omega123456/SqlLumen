@@ -180,7 +180,7 @@ function buildEntityWithAlias(
 }
 
 // Shorthand to call completionService with common mocking patterns
- 
+
 async function callService(
   text: string,
   position: { lineNumber: number; column: number },
@@ -692,6 +692,109 @@ describe('completionService — column suggestions broad fallback', () => {
     expect(labels).toContain('title')
     expect(labels).toContain('event_id')
   })
+
+  it('scopes broad SELECT-list column suggestions to the active database', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
+        status: 'connected',
+      },
+    }
+
+    const items = await callService(
+      'SELECT ',
+      pos(1, 8),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: [],
+      }),
+      null
+    )
+
+    const colItems = items.filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Field)
+    const labels = colItems.map(getLabel)
+
+    expect(labels).toContain('id')
+    expect(labels).toContain('email')
+    expect(labels).toContain('name')
+    expect(labels).toContain('title')
+    expect(labels).not.toContain('event_id')
+    expect(labels).not.toContain('event_type')
+  })
+
+  it('falls back to the selected schema database when no active database is set', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: null },
+        sessionDatabase: null,
+        status: 'connected',
+      },
+    }
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:analytics_db:analytics_db',
+        },
+      },
+    } as never)
+
+    const items = await callService(
+      'SELECT ',
+      pos(1, 8),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: [],
+      }),
+      null
+    )
+
+    const colItems = items.filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Field)
+    const labels = colItems.map(getLabel)
+
+    expect(labels).toContain('event_id')
+    expect(labels).toContain('event_type')
+    expect(labels).not.toContain('email')
+    expect(labels).not.toContain('title')
+  })
+
+  it('scopes SELECT-list Ctrl+Space suggestions to tables referenced later in the same statement', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
+        status: 'connected',
+      },
+    }
+
+    const items = await callService(
+      'SELECT  FROM users u',
+      pos(1, 8),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: [],
+      }),
+      null
+    )
+
+    const colItems = items.filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Field)
+    const labels = colItems.map(getLabel)
+
+    expect(labels).toContain('id')
+    expect(labels).toContain('email')
+    expect(labels).toContain('name')
+    expect(labels).not.toContain('title')
+    expect(labels).not.toContain('event_id')
+  })
 })
 
 describe('completionService — function suggestions', () => {
@@ -1130,6 +1233,37 @@ describe('completionService — text-based alias fallback (entities null)', () =
     const labels = items.map(getLabel)
     expect(labels).toContain('event_id')
     expect(labels).toContain('event_type')
+  })
+
+  it('resolves aliases declared later in the same statement when editing the SELECT list', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
+        status: 'connected',
+      },
+    }
+
+    const items = await callService(
+      'SELECT u. FROM users u',
+      pos(1, 10),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: [],
+      }),
+      null,
+      '.'
+    )
+
+    const labels = items.map(getLabel)
+    expect(labels).toContain('id')
+    expect(labels).toContain('email')
+    expect(labels).toContain('name')
+    expect(labels).not.toContain('title')
+    expect(labels).not.toContain('event_id')
   })
 })
 

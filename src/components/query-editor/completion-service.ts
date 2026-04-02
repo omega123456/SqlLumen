@@ -114,6 +114,15 @@ function getCurrentStatementPrefix(model: editor.IReadOnlyModel, position: Posit
   return sql.slice(statementStart, caretOffset)
 }
 
+function getCurrentStatementText(model: editor.IReadOnlyModel, position: Position): string {
+  const sql = model.getValue()
+  const caretOffset = model.getOffsetAt(position)
+  const statements = splitStatements(sql)
+  const statement = findStatementAtCursor(statements, caretOffset)
+
+  return statement?.sql ?? sql
+}
+
 function isInTableReferenceClause(statementPrefix: string): boolean {
   return /\b(?:FROM|JOIN|UPDATE|INTO|TABLE|DESCRIBE|DESC)\s+(?:[\w`"']+\.)?[\w`"']*$/i.test(
     statementPrefix.trimEnd()
@@ -278,6 +287,7 @@ export const completionService: CompletionService = async (
   const selectedDatabase = getSelectedDatabase(connectionId)
   const scopedResolutionDatabase = activeDatabase ?? selectedDatabase
   const currentStatementPrefix = getCurrentStatementPrefix(model, position)
+  const currentStatementText = getCurrentStatementText(model, position)
 
   // Build alias map from entities (pure function — no side effects)
   const aliasMap = buildAliasMap(entities, scopedResolutionDatabase)
@@ -357,7 +367,8 @@ export const completionService: CompletionService = async (
       connectionId,
       aliasMap,
       scopedResolutionDatabase,
-      currentStatementPrefix
+      currentStatementPrefix,
+      currentStatementText
     )
     if (dotResult.length > 0) return dotResult
     if (isInTableReferenceClause(currentStatementPrefix)) {
@@ -431,7 +442,11 @@ export const completionService: CompletionService = async (
       }
     } else if (ctxType === EntityContextType.COLUMN) {
       // Try to scope columns by tables in the current caret statement
-      const scopedTables = findTablesInCaretStatement(entities)
+      const scopedTables = findTablesInCaretStatement(
+        entities,
+        currentStatementText,
+        scopedResolutionDatabase
+      )
       if (scopedTables.length > 0) {
         for (const tableRef of scopedTables) {
           addColumnsForTable(
@@ -444,8 +459,13 @@ export const completionService: CompletionService = async (
           )
         }
       } else {
-        // Broad fallback: all columns from all tables
-        for (const db of cache.databases) {
+        // Broad fallback: prefer the current database context, otherwise all databases.
+        const fallbackDatabases =
+          scopedResolutionDatabase && cache.databases.includes(scopedResolutionDatabase)
+            ? [scopedResolutionDatabase]
+            : cache.databases
+
+        for (const db of fallbackDatabases) {
           const tables = cache.tables[db] ?? []
           for (const table of tables) {
             const cols = cache.columns[`${db}.${table.name}`] ?? []
@@ -502,7 +522,8 @@ function handleDotNotation(
   connectionId: string,
   aliasMap: AliasMap,
   activeDatabase: string | null,
-  currentStatementPrefix: string
+  currentStatementPrefix: string,
+  currentStatementText: string
 ): ICompletionItem[] {
   const cache = getCache(connectionId)
   if (cache.status !== 'ready') return []
@@ -538,11 +559,10 @@ function handleDotNotation(
     return cols.map((col) => columnItem(col.name))
   }
 
-  // 1b. Text-based alias fallback: when the parser doesn't provide entities
-  //     (e.g. no syntax suggestions), extract aliases from the SQL text.
-  //     Pass caretOffset to scope scanning to text before the cursor.
-  const caretOffset = model.getOffsetAt(position)
-  const textAliasMap = buildAliasMapFromText(model.getValue(), activeDatabase, caretOffset)
+  // 1b. Text-based alias fallback: when the parser doesn't provide entities,
+  //     extract aliases from the current statement so aliases declared later
+  //     in the same statement still resolve while avoiding cross-statement bleed.
+  const textAliasMap = buildAliasMapFromText(currentStatementText, activeDatabase)
   const textAliasResolution = textAliasMap.get(prefixLower)
   if (textAliasResolution && !isInTableReferenceClause(currentStatementPrefix)) {
     const cols = cache.columns[`${textAliasResolution.database}.${textAliasResolution.table}`] ?? []
@@ -589,26 +609,67 @@ function handleDotNotation(
 // Find TABLE entities in the statement containing the caret
 // ---------------------------------------------------------------------------
 
-function findTablesInCaretStatement(entities: EntityContext[] | null): TableRef[] {
-  if (!entities) return []
+function findTablesInCaretStatement(
+  entities: EntityContext[] | null,
+  currentStatementText: string,
+  activeDatabase: string | null
+): TableRef[] {
   const tableRefs: TableRef[] = []
-  for (const entity of entities) {
-    if (entity.entityContextType === EntityContextType.TABLE && entity.belongStmt?.isContainCaret) {
-      const text = entity.text
-      if (!text) continue
-      if (text.includes('.')) {
-        // Qualified: "db.table" or "`db`.`table`"
-        const parts = text.split('.')
-        tableRefs.push({
-          database: stripQuotes(parts[0]),
-          table: stripQuotes(parts[parts.length - 1]),
-        })
-      } else {
-        // Unqualified: "table" or "`table`"
-        tableRefs.push({ database: null, table: stripQuotes(text) })
+
+  if (entities) {
+    for (const entity of entities) {
+      if (
+        entity.entityContextType === EntityContextType.TABLE &&
+        entity.belongStmt?.isContainCaret
+      ) {
+        const text = entity.text
+        if (!text) continue
+        const tableRef = parseTableRefText(text)
+        if (!tableRef) continue
+        tableRefs.push(tableRef)
       }
     }
   }
+
+  if (tableRefs.length > 0) return tableRefs
+
+  return findTablesInStatementText(currentStatementText, activeDatabase)
+}
+
+function parseTableRefText(text: string): TableRef | null {
+  if (text.includes('.')) {
+    const parts = text.split('.')
+    const database = stripQuotes(parts[0].trim())
+    const table = stripQuotes(parts[parts.length - 1].trim())
+    if (!database || !table) return null
+    return { database, table }
+  }
+
+  const table = stripQuotes(text.trim())
+  if (!table) return null
+  return { database: null, table }
+}
+
+function findTablesInStatementText(
+  currentStatementText: string,
+  activeDatabase: string | null
+): TableRef[] {
+  const tableRefs: TableRef[] = []
+  const seen = new Set<string>()
+  const pattern = /\b(?:FROM|JOIN|UPDATE|INTO)\s+([\w`"']+(?:\s*\.\s*[\w`"']+)?)/gi
+
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(currentStatementText)) !== null) {
+    const tableRef = parseTableRefText(match[1])
+    if (!tableRef) continue
+
+    const dedupeKey = `${tableRef.database ?? activeDatabase ?? ''}.${tableRef.table}`.toLowerCase()
+    if (seen.has(dedupeKey)) continue
+
+    seen.add(dedupeKey)
+    tableRefs.push(tableRef)
+  }
+
   return tableRefs
 }
 
