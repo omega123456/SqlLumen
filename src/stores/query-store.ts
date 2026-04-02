@@ -12,7 +12,9 @@ import { updateTableRow as updateTableRowCmd } from '../lib/table-data-commands'
 import { showErrorToast, showInfoToast, showSuccessToast } from './toast-store'
 import {
   findAmbiguousColumns,
+  buildBoundColumnIndexMap,
   buildEditableColumnMap,
+  buildQueryEditColumnBindings,
   validateKeyColumnsPresent,
   buildRowEditState,
   buildUpdatePayload,
@@ -149,6 +151,10 @@ export interface TabQueryState {
   isAnalyzingQuery: boolean
   /** Column index → editable boolean for the selected edit table. */
   editableColumnMap: Map<number, boolean>
+  /** Result column index → bound source-table column name for the edit target. */
+  editColumnBindings: Map<number, string>
+  /** Bound source-table column name → result column index. */
+  editBoundColumnIndexMap: Map<string, number>
   /** Deferred action waiting on unsaved changes dialog. */
   pendingNavigationAction: (() => void) | null
   /** Last save error message. */
@@ -188,6 +194,8 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),
+  editColumnBindings: new Map(),
+  editBoundColumnIndexMap: new Map(),
   pendingNavigationAction: null,
   saveError: null,
   editConnectionId: null,
@@ -201,6 +209,8 @@ const EDIT_STATE_DEFAULTS: Partial<TabQueryState> = {
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),
+  editColumnBindings: new Map(),
+  editBoundColumnIndexMap: new Map(),
   pendingNavigationAction: null,
   saveError: null,
   editConnectionId: null,
@@ -210,6 +220,28 @@ const EDIT_STATE_DEFAULTS: Partial<TabQueryState> = {
 /** Build a stable composite key for edit table metadata: `database.table`. */
 function compositeTableKey(database: string, table: string): string {
   return `${database}.${table}`
+}
+
+function buildEditBindingContext(
+  tab: TabQueryState,
+  tableInfo: QueryTableEditInfo,
+  metadataSource: Record<string, QueryTableEditInfo> = tab.editTableMetadata
+): {
+  columnBindings: Map<number, string>
+  boundColumnIndexMap: Map<string, number>
+} {
+  const queryTablesInOrder = Object.values(metadataSource)
+  const columnBindings = buildQueryEditColumnBindings(
+    tab.lastExecutedSql,
+    tab.columns,
+    tableInfo,
+    queryTablesInOrder
+  )
+
+  return {
+    columnBindings,
+    boundColumnIndexMap: buildBoundColumnIndexMap(columnBindings),
+  }
 }
 
 function isTinyIntBooleanAlias(dataType: string): boolean {
@@ -309,10 +341,10 @@ interface QueryState {
   startEditingRow: (tabId: string, rowIndex: number) => void
 
   /** Update a cell value in the current edit state (editState only). */
-  updateCellValue: (tabId: string, columnName: string, value: unknown) => void
+  updateCellValue: (tabId: string, resultColumnIndex: number, value: unknown) => void
 
   /** Update a cell value and also sync the local rows array for grid re-render. */
-  syncCellValue: (tabId: string, columnName: string, value: unknown) => void
+  syncCellValue: (tabId: string, resultColumnIndex: number, value: unknown) => void
 
   /** Save the currently editing row to the database. Returns true on success, false on failure. */
   saveCurrentRow: (tabId: string) => Promise<boolean>
@@ -610,6 +642,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             patchTab(tabId, {
               editMode: null,
               editableColumnMap: new Map(),
+              editColumnBindings: new Map(),
+              editBoundColumnIndexMap: new Map(),
               editTableMetadata: {},
               editState: null,
               editingRowIndex: null,
@@ -689,6 +723,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       patchTab(tabId, {
         editMode: null,
         editableColumnMap: new Map(),
+        editColumnBindings: new Map(),
+        editBoundColumnIndexMap: new Map(),
         editTableMetadata: {},
         editState: null,
         editingRowIndex: null,
@@ -752,6 +788,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         patchTab(tabId, {
           editMode: null,
           editableColumnMap: new Map(),
+          editColumnBindings: new Map(),
+          editBoundColumnIndexMap: new Map(),
           editState: null,
           editConnectionId: null,
           editingRowIndex: null,
@@ -793,31 +831,38 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         return
       }
 
+      const currentTab = get().tabs[tabId]
+      if (!currentTab) return
+
       // Find ambiguous columns in the result set (local — not persisted in state)
-      const ambiguous = findAmbiguousColumns(tab.columns)
+      const ambiguous = findAmbiguousColumns(currentTab.columns)
+      const metadataSource =
+        tableName in currentTab.editTableMetadata
+          ? currentTab.editTableMetadata
+          : {
+              ...currentTab.editTableMetadata,
+              ...((tableInfo ? { [tableName]: tableInfo } : {}) as Record<
+                string,
+                QueryTableEditInfo
+              >),
+            }
+      const { columnBindings, boundColumnIndexMap } = buildEditBindingContext(
+        currentTab,
+        tableInfo,
+        metadataSource
+      )
 
       // Validate PK columns are present and non-ambiguous
       const validation = validateKeyColumnsPresent(
         tableInfo.primaryKey.keyColumns,
-        tab.columns,
-        ambiguous
+        currentTab.columns,
+        ambiguous,
+        boundColumnIndexMap
       )
       if (!validation.valid) {
         showErrorToast(
           'Edit mode failed',
           `Cannot edit ${tableName}: result set does not contain the unique key columns (${validation.missingColumns.join(', ')})`
-        )
-        return
-      }
-
-      // Check if any key columns are ambiguous
-      const ambiguousKeyColumns = tableInfo.primaryKey.keyColumns.filter((k) =>
-        ambiguous.has(k.toLowerCase())
-      )
-      if (ambiguousKeyColumns.length > 0) {
-        showErrorToast(
-          'Edit mode failed',
-          `Cannot edit ${tableName}: unique key columns are ambiguous (duplicate names in result set)`
         )
         return
       }
@@ -836,11 +881,18 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       }
 
       // Build editable column map
-      const editableMap = buildEditableColumnMap(tab.columns, tableInfo.columns, ambiguous)
+      const editableMap = buildEditableColumnMap(
+        currentTab.columns,
+        tableInfo.columns,
+        ambiguous,
+        columnBindings
+      )
 
       patchTab(tabId, {
         editMode: tableName,
         editableColumnMap: editableMap,
+        editColumnBindings: columnBindings,
+        editBoundColumnIndexMap: boundColumnIndexMap,
         editState: null,
         editConnectionId: connectionId,
         editingRowIndex: null,
@@ -857,47 +909,65 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       const tableInfo = tab.editTableMetadata[tab.editMode]
       const pkColumns = tableInfo.primaryKey?.keyColumns ?? []
-
-      const editState = buildRowEditState(row, tab.columns, tab.editableColumnMap, pkColumns)
+      const editState = buildRowEditState(
+        row,
+        tab.columns,
+        tab.editableColumnMap,
+        pkColumns,
+        tab.editColumnBindings,
+        tab.editBoundColumnIndexMap
+      )
 
       patchTab(tabId, { editState, editingRowIndex: rowIndex, saveError: null })
     },
 
-    updateCellValue: (tabId: string, columnName: string, value: unknown) => {
+    updateCellValue: (tabId: string, resultColumnIndex: number, value: unknown) => {
       const tab = get().tabs[tabId]
       if (!tab?.editState) return
 
+      const resolvedColumnName =
+        tab.editColumnBindings.get(resultColumnIndex) ?? tab.columns[resultColumnIndex]?.name
+      if (!resolvedColumnName) return
+
       const newModified = new Set(tab.editState.modifiedColumns)
-      if (JSON.stringify(tab.editState.originalValues[columnName]) === JSON.stringify(value)) {
-        newModified.delete(columnName)
+      if (
+        JSON.stringify(tab.editState.originalValues[resolvedColumnName]) === JSON.stringify(value)
+      ) {
+        newModified.delete(resolvedColumnName)
       } else {
-        newModified.add(columnName)
+        newModified.add(resolvedColumnName)
       }
 
       patchTab(tabId, {
         editState: {
           ...tab.editState,
-          currentValues: { ...tab.editState.currentValues, [columnName]: value },
+          currentValues: { ...tab.editState.currentValues, [resolvedColumnName]: value },
           modifiedColumns: newModified,
         },
         saveError: null,
       })
     },
 
-    syncCellValue: (tabId: string, columnName: string, value: unknown) => {
+    syncCellValue: (tabId: string, resultColumnIndex: number, value: unknown) => {
       const tab = get().tabs[tabId]
       if (!tab?.editState || tab.editingRowIndex === null) return
 
+      const resolvedColumnName =
+        tab.editColumnBindings.get(resultColumnIndex) ?? tab.columns[resultColumnIndex]?.name
+      if (!resolvedColumnName) return
+
       // Update editState (same logic as updateCellValue)
       const newModified = new Set(tab.editState.modifiedColumns)
-      if (JSON.stringify(tab.editState.originalValues[columnName]) === JSON.stringify(value)) {
-        newModified.delete(columnName)
+      if (
+        JSON.stringify(tab.editState.originalValues[resolvedColumnName]) === JSON.stringify(value)
+      ) {
+        newModified.delete(resolvedColumnName)
       } else {
-        newModified.add(columnName)
+        newModified.add(resolvedColumnName)
       }
 
       // Also update the local row in the rows array for grid re-render
-      const colIdx = tab.columns.findIndex((c) => c.name === columnName)
+      const colIdx = resultColumnIndex
       let nextRows = tab.rows
       if (colIdx !== -1 && tab.editingRowIndex < tab.rows.length) {
         nextRows = [...tab.rows]
@@ -910,7 +980,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         rows: nextRows,
         editState: {
           ...tab.editState,
-          currentValues: { ...tab.editState.currentValues, [columnName]: value },
+          currentValues: { ...tab.editState.currentValues, [resolvedColumnName]: value },
           modifiedColumns: newModified,
         },
         saveError: null,
@@ -956,7 +1026,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         const newRows = [...tab.rows]
         const updatedRow = [...newRows[tab.editingRowIndex]]
         for (const colName of tab.editState.modifiedColumns) {
-          const colIdx = tab.columns.findIndex((c) => c.name === colName)
+          const colIdx = tab.editBoundColumnIndexMap.get(colName.toLowerCase()) ?? -1
           if (colIdx !== -1) {
             updatedRow[colIdx] = tab.editState.currentValues[colName]
           }
@@ -967,7 +1037,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         const absoluteRowIndex = (tab.currentPage - 1) * tab.pageSize + tab.editingRowIndex
         const columnUpdates: Record<number, unknown> = {}
         for (const colName of tab.editState.modifiedColumns) {
-          const colIdx = tab.columns.findIndex((c) => c.name === colName)
+          const colIdx = tab.editBoundColumnIndexMap.get(colName.toLowerCase()) ?? -1
           if (colIdx !== -1) {
             columnUpdates[colIdx] = tab.editState.currentValues[colName]
           }
@@ -1015,7 +1085,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         const newRows = [...tab.rows]
         const restoredRow = [...newRows[tab.editingRowIndex]]
         for (const [colName, value] of Object.entries(tab.editState.originalValues)) {
-          const colIdx = tab.columns.findIndex((c) => c.name === colName)
+          const colIdx = tab.editBoundColumnIndexMap.get(colName.toLowerCase()) ?? -1
           if (colIdx !== -1) {
             restoredRow[colIdx] = value
           }

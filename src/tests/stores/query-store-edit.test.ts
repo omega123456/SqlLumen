@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useQueryStore, isEditableSelectSql } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
@@ -53,12 +53,67 @@ const mockPrimaryKey: PrimaryKeyInfo = {
   isUniqueKeyFallback: false,
 }
 
+const mockOrderColumns: TableDataColumnMeta[] = [
+  {
+    name: 'id',
+    dataType: 'INT',
+    isBooleanAlias: false,
+    isNullable: false,
+    isPrimaryKey: true,
+    isUniqueKey: false,
+    hasDefault: false,
+    columnDefault: null,
+    isBinary: false,
+    isAutoIncrement: true,
+  },
+  {
+    name: 'user_id',
+    dataType: 'INT',
+    isBooleanAlias: false,
+    isNullable: false,
+    isPrimaryKey: false,
+    isUniqueKey: false,
+    hasDefault: false,
+    columnDefault: null,
+    isBinary: false,
+    isAutoIncrement: false,
+  },
+  {
+    name: 'total',
+    dataType: 'DECIMAL',
+    isBooleanAlias: false,
+    isNullable: false,
+    isPrimaryKey: false,
+    isUniqueKey: false,
+    hasDefault: false,
+    columnDefault: null,
+    isBinary: false,
+    isAutoIncrement: false,
+  },
+]
+
+const mockOrderPrimaryKey: PrimaryKeyInfo = {
+  keyColumns: ['id'],
+  hasAutoIncrement: true,
+  isUniqueKeyFallback: false,
+}
+
 const mockAnalyzeResult: QueryTableEditInfo[] = [
   {
     database: 'testdb',
     table: 'users',
     columns: mockTableColumns,
     primaryKey: mockPrimaryKey,
+  },
+]
+
+const mockJoinAnalyzeResult: QueryTableEditInfo[] = [
+  ...mockAnalyzeResult,
+  {
+    database: 'testdb',
+    table: 'orders',
+    columns: mockOrderColumns,
+    primaryKey: mockOrderPrimaryKey,
   },
 ]
 
@@ -110,6 +165,10 @@ beforeEach(() => {
   })
 })
 
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 /**
  * Helper: execute a query and wait for background analysis to complete.
  */
@@ -142,6 +201,8 @@ describe('useQueryStore — setEditMode', () => {
     const tab = useQueryStore.getState().getTabState('tab-1')
     expect(tab.editMode).toBeNull()
     expect(tab.editableColumnMap.size).toBe(0)
+    expect(tab.editColumnBindings.size).toBe(0)
+    expect(tab.editBoundColumnIndexMap.size).toBe(0)
     expect(tab.editConnectionId).toBeNull()
   })
 
@@ -284,6 +345,268 @@ describe('useQueryStore — setEditMode', () => {
     expect(toasts.some((t) => t.variant === 'info' && t.message?.includes('ambiguous'))).toBe(true)
   })
 
+  it('enables edit mode for joined SELECT * results when the selected table key is duplicated by another table', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+            { name: 'id', dataType: 'INT' },
+            { name: 'user_id', dataType: 'INT' },
+            { name: 'total', dataType: 'DECIMAL' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[1, 'Alice', 'alice@test.com', 101, 1, '99.95']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockJoinAnalyzeResult
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore
+      .getState()
+      .executeQuery(
+        'conn-1',
+        'tab-1',
+        'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id'
+      )
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    let tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editMode).toBe('testdb.users')
+
+    useQueryStore.getState().startEditingRow('tab-1', 0)
+    tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editState?.rowKey).toEqual({ id: 1 })
+    expect(tab.editState?.originalValues).toMatchObject({
+      id: 1,
+      name: 'Alice',
+      email: 'alice@test.com',
+    })
+  })
+
+  it('enables edit mode when joined key columns are aliased in the query result', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [
+            { name: 'user_id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+            { name: 'order_id', dataType: 'INT' },
+            { name: 'total', dataType: 'DECIMAL' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockJoinAnalyzeResult
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore
+      .getState()
+      .executeQuery(
+        'conn-1',
+        'tab-1',
+        'SELECT users.id AS user_id, users.name, users.email, orders.id AS order_id, orders.total FROM users JOIN orders ON users.id = orders.user_id'
+      )
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    let tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editMode).toBe('testdb.users')
+
+    useQueryStore.getState().startEditingRow('tab-1', 0)
+    tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editState?.rowKey).toEqual({ id: 1 })
+    expect(tab.editState?.originalValues).toMatchObject({
+      id: 1,
+      name: 'Alice',
+      email: 'alice@test.com',
+    })
+  })
+
+  it('does not enable edit mode when only another joined table contributes the key column name', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[101]],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockJoinAnalyzeResult
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore
+      .getState()
+      .executeQuery(
+        'conn-1',
+        'tab-1',
+        'SELECT orders.id FROM users JOIN orders ON users.id = orders.user_id'
+      )
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    const tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editMode).toBeNull()
+    expect(tab.editColumnBindings.size).toBe(0)
+  })
+
+  it('does not enable edit mode when an expression aliases itself to a key column name', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [
+            { name: 'id', dataType: 'BIGINT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[5, 'Alice']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockAnalyzeResult
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore
+      .getState()
+      .executeQuery('conn-1', 'tab-1', 'SELECT COUNT(*) AS id, users.name FROM users')
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    const tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editMode).toBeNull()
+    expect(tab.editColumnBindings.size).toBe(0)
+    expect(
+      useToastStore.getState().toasts.some((t) => t.message?.includes('unique key columns'))
+    ).toBe(true)
+  })
+
+  it('does not enable edit mode for single-table expression aliases that mimic key columns', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [{ name: 'id', dataType: 'BIGINT' }],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[5]],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockAnalyzeResult
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore
+      .getState()
+      .executeQuery('conn-1', 'tab-1', 'SELECT COUNT(*) AS id FROM users')
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    const tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editMode).toBeNull()
+    expect(tab.editColumnBindings.size).toBe(0)
+  })
+
+  it('does not enable edit mode for expression aliases without AS that mimic key columns', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [{ name: 'id', dataType: 'BIGINT' }],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[5]],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockAnalyzeResult
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT id + 1 id FROM users')
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    const tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editMode).toBeNull()
+    expect(tab.editColumnBindings.size).toBe(0)
+  })
+
+  it('does not enable edit mode for unresolved wildcard subquery projections', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [
+            { name: 'id', dataType: 'BIGINT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[5, 'Alice']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockAnalyzeResult
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore
+      .getState()
+      .executeQuery(
+        'conn-1',
+        'tab-1',
+        'SELECT x.* FROM (SELECT COUNT(*) AS id, MAX(name) AS name FROM users) x'
+      )
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    const tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editMode).toBeNull()
+    expect(tab.editColumnBindings.size).toBe(0)
+  })
+
   it('uses cached metadata on second call', async () => {
     let analyzeCallCount = 0
     mockIPC((cmd) => {
@@ -335,6 +658,46 @@ describe('useQueryStore — setEditMode', () => {
     // Let me verify: The setEditMode(null) only clears specific fields, not editTableMetadata.
     // So the metadata should still be cached.
     expect(countAfterFirst).toBe(countBefore) // background already populated it
+  })
+
+  it('enables joined edit mode on the first attempt without waiting for background analysis', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+            { name: 'id', dataType: 'INT' },
+            { name: 'user_id', dataType: 'INT' },
+            { name: 'total', dataType: 'DECIMAL' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[1, 'Alice', 'alice@test.com', 101, 1, '99.95']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockJoinAnalyzeResult
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore
+      .getState()
+      .executeQuery(
+        'conn-1',
+        'tab-1',
+        'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id'
+      )
+
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    const tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editMode).toBe('testdb.users')
   })
 
   it('shows error toast when no primary key exists', async () => {
@@ -415,7 +778,7 @@ describe('useQueryStore — updateCellValue', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Charlie')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Charlie')
 
     const tab = useQueryStore.getState().getTabState('tab-1')
     expect(tab.editState!.currentValues.name).toBe('Charlie')
@@ -427,12 +790,12 @@ describe('useQueryStore — updateCellValue', () => {
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
 
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Charlie')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Charlie')
     expect(
       useQueryStore.getState().getTabState('tab-1').editState!.modifiedColumns.has('name')
     ).toBe(true)
 
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Alice')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Alice')
     expect(
       useQueryStore.getState().getTabState('tab-1').editState!.modifiedColumns.has('name')
     ).toBe(false)
@@ -440,7 +803,7 @@ describe('useQueryStore — updateCellValue', () => {
 
   it('does nothing when no editState', async () => {
     await executeAndAnalyze()
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Charlie')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Charlie')
     // Should not throw
     expect(useQueryStore.getState().getTabState('tab-1').editState).toBeNull()
   })
@@ -455,7 +818,7 @@ describe('useQueryStore — syncCellValue', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().syncCellValue('tab-1', 'name', 'Dave')
+    useQueryStore.getState().syncCellValue('tab-1', 1, 'Dave')
 
     const tab = useQueryStore.getState().getTabState('tab-1')
     expect(tab.editState!.currentValues.name).toBe('Dave')
@@ -469,13 +832,13 @@ describe('useQueryStore — syncCellValue', () => {
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
 
-    useQueryStore.getState().syncCellValue('tab-1', 'name', 'Changed')
+    useQueryStore.getState().syncCellValue('tab-1', 1, 'Changed')
     expect(
       useQueryStore.getState().getTabState('tab-1').editState!.modifiedColumns.has('name')
     ).toBe(true)
 
     // Revert to original value
-    useQueryStore.getState().syncCellValue('tab-1', 'name', 'Alice')
+    useQueryStore.getState().syncCellValue('tab-1', 1, 'Alice')
     expect(
       useQueryStore.getState().getTabState('tab-1').editState!.modifiedColumns.has('name')
     ).toBe(false)
@@ -491,7 +854,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Updated')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Updated')
 
     const result = await useQueryStore.getState().saveCurrentRow('tab-1')
 
@@ -508,7 +871,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Saved Value')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Saved Value')
 
     await useQueryStore.getState().saveCurrentRow('tab-1')
 
@@ -546,7 +909,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Updated')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Updated')
 
     const result = await useQueryStore.getState().saveCurrentRow('tab-1')
 
@@ -611,6 +974,75 @@ describe('useQueryStore — saveCurrentRow', () => {
     const toasts = useToastStore.getState().toasts
     expect(toasts.some((t) => t.variant === 'error' && t.title === 'Save failed')).toBe(true)
   })
+
+  it('saves aliased joined columns using bound source names and result indexes', async () => {
+    const updateTableRowSpy = vi.fn()
+    const updateResultCellSpy = vi.fn()
+
+    mockIPC((cmd, args) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [
+            { name: 'user_id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+            { name: 'order_id', dataType: 'INT' },
+            { name: 'total', dataType: 'DECIMAL' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockJoinAnalyzeResult
+      if (cmd === 'update_table_row') {
+        updateTableRowSpy(args)
+        return null
+      }
+      if (cmd === 'update_result_cell') {
+        updateResultCellSpy(args)
+        return null
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore
+      .getState()
+      .executeQuery(
+        'conn-1',
+        'tab-1',
+        'SELECT users.id AS user_id, users.name, users.email, orders.id AS order_id, orders.total FROM users JOIN orders ON users.id = orders.user_id'
+      )
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().startEditingRow('tab-1', 0)
+    useQueryStore.getState().syncCellValue('tab-1', 0, 5)
+
+    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+
+    expect(result).toBe(true)
+    expect(updateTableRowSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        originalPkValues: { id: 1 },
+        updatedValues: { id: 5 },
+      })
+    )
+    expect(updateResultCellSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rowIndex: 0,
+        updates: { 0: 5 },
+      })
+    )
+
+    const tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.rows[0][0]).toBe(5)
+    expect(tab.rows[0][3]).toBe(101)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -622,7 +1054,7 @@ describe('useQueryStore — discardCurrentRow', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().syncCellValue('tab-1', 'name', 'Modified')
+    useQueryStore.getState().syncCellValue('tab-1', 1, 'Modified')
 
     // Verify the row was modified
     expect(useQueryStore.getState().getTabState('tab-1').rows[0][1]).toBe('Modified')
@@ -633,6 +1065,52 @@ describe('useQueryStore — discardCurrentRow', () => {
     expect(tab.editState).toBeNull()
     expect(tab.editingRowIndex).toBeNull()
     expect(tab.rows[0][1]).toBe('Alice') // restored
+  })
+
+  it('restores the correct aliased joined column on discard', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [
+            { name: 'user_id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+            { name: 'order_id', dataType: 'INT' },
+            { name: 'total', dataType: 'DECIMAL' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[1, 'Alice', 'alice@test.com', 101, '99.95']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockJoinAnalyzeResult
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore
+      .getState()
+      .executeQuery(
+        'conn-1',
+        'tab-1',
+        'SELECT users.id AS user_id, users.name, users.email, orders.id AS order_id, orders.total FROM users JOIN orders ON users.id = orders.user_id'
+      )
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().startEditingRow('tab-1', 0)
+    useQueryStore.getState().syncCellValue('tab-1', 0, 5)
+
+    expect(useQueryStore.getState().getTabState('tab-1').rows[0][0]).toBe(5)
+
+    useQueryStore.getState().discardCurrentRow('tab-1')
+
+    const tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.rows[0][0]).toBe(1)
+    expect(tab.rows[0][3]).toBe(101)
   })
 
   it('does nothing when no editState', async () => {
@@ -702,7 +1180,7 @@ describe('useQueryStore — requestNavigationAction', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Changed')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
 
     const action = vi.fn()
     useQueryStore.getState().requestNavigationAction('tab-1', action)
@@ -720,7 +1198,7 @@ describe('useQueryStore — confirmNavigation', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Saved')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Saved')
 
     const action = vi.fn()
     useQueryStore.getState().requestNavigationAction('tab-1', action)
@@ -735,7 +1213,7 @@ describe('useQueryStore — confirmNavigation', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().syncCellValue('tab-1', 'name', 'Discardable')
+    useQueryStore.getState().syncCellValue('tab-1', 1, 'Discardable')
 
     const action = vi.fn()
     useQueryStore.getState().requestNavigationAction('tab-1', action)
@@ -755,7 +1233,7 @@ describe('useQueryStore — cancelNavigation', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Changed')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
 
     const action = vi.fn()
     useQueryStore.getState().requestNavigationAction('tab-1', action)
@@ -775,7 +1253,7 @@ describe('useQueryStore — clearEditState', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Changed')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
 
     useQueryStore.getState().clearEditState('tab-1')
 
@@ -794,7 +1272,7 @@ describe('useQueryStore — clearEditState', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Changed')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
 
     // Verify edit state is active
     expect(useQueryStore.getState().getTabState('tab-1').editMode).toBe('testdb.users')
@@ -1080,7 +1558,7 @@ describe('useQueryStore — changePageSize clears edit state', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Changed')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
 
     // Verify edit state is active
     const before = useQueryStore.getState().getTabState('tab-1')
@@ -1097,6 +1575,8 @@ describe('useQueryStore — changePageSize clears edit state', () => {
     expect(after.editMode).toBeNull()
     expect(after.editState).toBeNull()
     expect(after.editableColumnMap.size).toBe(0)
+    expect(after.editColumnBindings.size).toBe(0)
+    expect(after.editBoundColumnIndexMap.size).toBe(0)
     // editTableMetadata is cleared then repopulated by background analysis
     // After flushMicrotasks it should be repopulated
     expect(after.editingRowIndex).toBeNull()
@@ -1113,7 +1593,7 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
     await executeAndAnalyze()
     await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
     useQueryStore.getState().startEditingRow('tab-1', 0)
-    useQueryStore.getState().updateCellValue('tab-1', 'name', 'Changed')
+    useQueryStore.getState().updateCellValue('tab-1', 1, 'Changed')
 
     // Verify edit state is active
     const before = useQueryStore.getState().getTabState('tab-1')
@@ -1127,6 +1607,8 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
     expect(after.editMode).toBeNull()
     expect(after.editState).toBeNull()
     expect(after.editableColumnMap.size).toBe(0)
+    expect(after.editColumnBindings.size).toBe(0)
+    expect(after.editBoundColumnIndexMap.size).toBe(0)
     expect(after.editingRowIndex).toBeNull()
     expect(after.status).toBe('success')
   })

@@ -114,6 +114,7 @@ describe('ResultGridView edit mode', () => {
     tabId: 'tab-42',
     editMode: null as string | null,
     editableColumnMap: new Map<number, boolean>(),
+    editColumnBindings: new Map<number, string>(),
     editState: null as RowEditState | null,
     editingRowIndex: null as number | null,
     editTableColumns: [] as TableDataColumnMeta[],
@@ -156,6 +157,43 @@ describe('ResultGridView edit mode', () => {
     expect(colDefs[0].editable).toBe(false) // id — not editable
     expect(colDefs[1].editable).toBe(true) // name — editable
     expect(colDefs[2].editable).toBe(true) // email — editable
+  })
+
+  it('uses bound source metadata for aliased editable columns', () => {
+    const aliasColumns = [
+      { name: 'user_id', dataType: 'INT' },
+      { name: 'name', dataType: 'VARCHAR' },
+      { name: 'email', dataType: 'VARCHAR' },
+    ]
+    const aliasRows: unknown[][] = [[1, 'Alice', 'alice@example.com']]
+    const editableMap = new Map<number, boolean>([
+      [0, true],
+      [1, true],
+      [2, true],
+    ])
+    const bindings = new Map<number, string>([
+      [0, 'id'],
+      [1, 'name'],
+      [2, 'email'],
+    ])
+
+    render(
+      <ResultGridView
+        {...baseProps}
+        columns={aliasColumns}
+        rows={aliasRows}
+        editMode="users"
+        editableColumnMap={editableMap}
+        editColumnBindings={bindings}
+        editTableColumns={editTableColumns}
+      />
+    )
+
+    const props = getLatestBaseGridProps()
+    const colDefs = props.columns as GridColumnDescriptor[]
+    expect(colDefs[0].editable).toBe(true)
+    expect(colDefs[0].tableColumnMeta?.name).toBe('id')
+    expect(colDefs[0].tableColumnMeta?.isPrimaryKey).toBe(true)
   })
 
   it('passes tableColumnMeta only for editable columns', () => {
@@ -471,6 +509,13 @@ describe('ResultGridView edit mode', () => {
           ])
         }
         editTableColumns={editTableColumns}
+        editColumnBindings={
+          new Map<number, string>([
+            [0, 'id'],
+            [1, 'name'],
+            [2, 'email'],
+          ])
+        }
         editState={editState}
         editingRowIndex={0}
       />
@@ -522,6 +567,13 @@ describe('ResultGridView edit mode', () => {
           ])
         }
         editTableColumns={editTableColumns}
+        editColumnBindings={
+          new Map<number, string>([
+            [0, 'id'],
+            [1, 'name'],
+            [2, 'email'],
+          ])
+        }
         editState={editState}
         editingRowIndex={0}
       />
@@ -532,6 +584,56 @@ describe('ResultGridView edit mode', () => {
     expect(rowData[0].col_1).toBe('Alice Updated')
     // Row 1 should be unchanged
     expect(rowData[1].col_1).toBe('Bob')
+  })
+
+  it('does not mark unbound duplicate columns as modified when bindings target an alias', () => {
+    const joinedColumns = [
+      { name: 'id', dataType: 'INT' },
+      { name: 'user_id', dataType: 'INT' },
+      { name: 'name', dataType: 'VARCHAR' },
+    ]
+    const joinedRows: unknown[][] = [[100, 1, 'Alice']]
+    const joinedEditState: RowEditState = {
+      rowKey: { id: 1 },
+      originalValues: { id: 1, name: 'Alice' },
+      currentValues: { id: 5, name: 'Alice' },
+      modifiedColumns: new Set(['id']),
+      isNewRow: false,
+    }
+
+    render(
+      <ResultGridView
+        {...baseProps}
+        columns={joinedColumns}
+        rows={joinedRows}
+        editMode="users"
+        editableColumnMap={
+          new Map<number, boolean>([
+            [0, false],
+            [1, true],
+            [2, true],
+          ])
+        }
+        editColumnBindings={
+          new Map<number, string>([
+            [1, 'id'],
+            [2, 'name'],
+          ])
+        }
+        editTableColumns={editTableColumns}
+        editState={joinedEditState}
+        editingRowIndex={0}
+      />
+    )
+
+    const props = getLatestBaseGridProps()
+    const isModifiedCell = props.isModifiedCell as (
+      rowData: Record<string, unknown>,
+      columnKey: string
+    ) => boolean
+
+    expect(isModifiedCell({ __rowIdx: 0, col_0: 100 }, 'col_0')).toBe(false)
+    expect(isModifiedCell({ __rowIdx: 0, col_1: 5 }, 'col_1')).toBe(true)
   })
 
   // --- getRowClass editing row tests ---
@@ -582,7 +684,7 @@ describe('ResultGridView edit mode', () => {
 
   // --- onRowsChange tests (cell editor store sync) ---
 
-  it('onRowsChange translates col_N changes to onSyncCellValue with real column name', () => {
+  it('onRowsChange translates col_N changes to onSyncCellValue with result column index', () => {
     const onSyncCellValue = vi.fn()
     const editableMap = new Map<number, boolean>([
       [0, false],
@@ -611,8 +713,7 @@ describe('ResultGridView edit mode', () => {
     ]
     onRowsChange(modifiedRows, { indexes: [0] })
 
-    // Should call onSyncCellValue with the real column name
-    expect(onSyncCellValue).toHaveBeenCalledWith('name', 'Alice Modified')
+    expect(onSyncCellValue).toHaveBeenCalledWith(1, 'Alice Modified')
   })
 
   it('provides a cell clipboard edit handler that pastes into editable query result cells', async () => {
@@ -671,7 +772,7 @@ describe('ResultGridView edit mode', () => {
     expect(onAutoSave).toHaveBeenCalled()
     expect(onRowSelected).toHaveBeenCalledWith(1)
     expect(onStartEditing).toHaveBeenCalledWith(1)
-    expect(onSyncCellValue).toHaveBeenCalledWith('name', 'Pasted Name')
+    expect(onSyncCellValue).toHaveBeenCalledWith(1, 'Pasted Name')
   })
 
   it('does not call onCellClick edit logic in read-only mode', async () => {
@@ -787,6 +888,13 @@ describe('ResultGridView edit mode', () => {
           ])
         }
         editTableColumns={editTableColumns}
+        editColumnBindings={
+          new Map<number, string>([
+            [0, 'id'],
+            [1, 'name'],
+            [2, 'email'],
+          ])
+        }
         editState={editState}
         editingRowIndex={0}
       />

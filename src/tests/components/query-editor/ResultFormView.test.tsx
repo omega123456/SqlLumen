@@ -67,6 +67,8 @@ function buildTabState(overrides: Record<string, unknown> = {}) {
     editState: null,
     isAnalyzingQuery: false,
     editableColumnMap: new Map<number, boolean>(),
+    editColumnBindings: new Map<number, string>(),
+    editBoundColumnIndexMap: new Map<string, number>(),
     pendingNavigationAction: null,
     saveError: null,
     editConnectionId: null,
@@ -278,6 +280,11 @@ function buildEditProps(overrides: Record<string, unknown> = {}) {
   return {
     editMode: 'users' as string | null,
     editableColumnMap,
+    editColumnBindings: new Map<number, string>([
+      [0, 'id'],
+      [1, 'name'],
+      [2, 'email'],
+    ]),
     editState: baseEditState as RowEditState | null,
     editingRowIndex: 0 as number | null,
     editTableColumns,
@@ -332,7 +339,87 @@ describe('ResultFormView — Edit Mode', () => {
     const onUpdateCell = vi.fn()
     render(<ResultFormView {...defaultProps} {...buildEditProps({ onUpdateCell })} />)
     fireEvent.change(screen.getByTestId('form-input-name'), { target: { value: 'Bob' } })
-    expect(onUpdateCell).toHaveBeenCalledWith('name', 'Bob')
+    expect(onUpdateCell).toHaveBeenCalledWith(1, 'Bob')
+  })
+
+  it('uses bound source values for aliased editable fields', () => {
+    const aliasColumns: ColumnMeta[] = [
+      { name: 'user_id', dataType: 'INT' },
+      { name: 'name', dataType: 'VARCHAR' },
+      { name: 'email', dataType: 'VARCHAR' },
+    ]
+    const aliasRows = [[1, 'Alice', 'alice@example.com']]
+    const aliasEditState: RowEditState = {
+      rowKey: { id: 1 },
+      originalValues: { id: 1, name: 'Alice', email: 'alice@example.com' },
+      currentValues: { id: 5, name: 'Alice', email: 'alice@example.com' },
+      modifiedColumns: new Set(['id']),
+      isNewRow: false,
+    }
+
+    render(
+      <ResultFormView
+        {...defaultProps}
+        columns={aliasColumns}
+        rows={aliasRows}
+        {...buildEditProps({
+          editableColumnMap: new Map([
+            [0, true],
+            [1, true],
+            [2, true],
+          ]),
+          editColumnBindings: new Map([
+            [0, 'id'],
+            [1, 'name'],
+            [2, 'email'],
+          ]),
+          editState: aliasEditState,
+        })}
+      />
+    )
+
+    const userIdInput = screen.getByTestId('form-input-user_id') as HTMLInputElement
+    expect(userIdInput.value).toBe('5')
+  })
+
+  it('does not render unbound duplicate columns as editable during aliased join editing', () => {
+    const joinedColumns: ColumnMeta[] = [
+      { name: 'id', dataType: 'INT' },
+      { name: 'user_id', dataType: 'INT' },
+      { name: 'name', dataType: 'VARCHAR' },
+    ]
+    const joinedRows = [[100, 1, 'Alice']]
+    const joinedEditState: RowEditState = {
+      rowKey: { id: 1 },
+      originalValues: { id: 1, name: 'Alice' },
+      currentValues: { id: 5, name: 'Alice' },
+      modifiedColumns: new Set(['id']),
+      isNewRow: false,
+    }
+
+    render(
+      <ResultFormView
+        {...defaultProps}
+        columns={joinedColumns}
+        rows={joinedRows}
+        totalRows={1}
+        {...buildEditProps({
+          editableColumnMap: new Map([
+            [0, false],
+            [1, true],
+            [2, true],
+          ]),
+          editColumnBindings: new Map([
+            [1, 'id'],
+            [2, 'name'],
+          ]),
+          editState: joinedEditState,
+        })}
+      />
+    )
+
+    expect(screen.getByTestId('form-input-id').tagName).toBe('DIV')
+    expect((screen.getByTestId('form-input-user_id') as HTMLInputElement).value).toBe('5')
   })
 
   it('calls onStartEdit when editable input receives focus', () => {
@@ -361,7 +448,7 @@ describe('ResultFormView — Edit Mode', () => {
     const onUpdateCell = vi.fn()
     render(<ResultFormView {...defaultProps} {...buildEditProps({ onUpdateCell })} />)
     fireEvent.click(screen.getByTestId('btn-null-name'))
-    expect(onUpdateCell).toHaveBeenCalledWith('name', null)
+    expect(onUpdateCell).toHaveBeenCalledWith(1, null)
   })
 
   it('NULL toggle calls onUpdateCell with empty string when value is null', () => {
@@ -373,7 +460,7 @@ describe('ResultFormView — Edit Mode', () => {
     render(<ResultFormView {...defaultProps} {...buildEditProps({ editState, onUpdateCell })} />)
     fireEvent.click(screen.getByTestId('btn-null-name'))
     // Toggling NULL off should set to empty string
-    expect(onUpdateCell).toHaveBeenCalledWith('name', '')
+    expect(onUpdateCell).toHaveBeenCalledWith(1, '')
   })
 
   it('shows modified indicator when a column is modified', () => {
@@ -607,7 +694,7 @@ describe('ResultFormView — Edit Mode', () => {
     fireEvent.change(screen.getByTestId('form-input-email'), {
       target: { value: 'bob@example.com' },
     })
-    expect(onUpdateCell).toHaveBeenCalledWith('email', 'bob@example.com')
+    expect(onUpdateCell).toHaveBeenCalledWith(2, 'bob@example.com')
   })
 
   it('enum select onChange sends null when NULL sentinel is selected', () => {
@@ -638,7 +725,7 @@ describe('ResultFormView — Edit Mode', () => {
     fireEvent.change(screen.getByTestId('form-input-email'), {
       target: { value: '__MYSQL_CLIENT_ENUM_NULL__' },
     })
-    expect(onUpdateCell).toHaveBeenCalledWith('email', null)
+    expect(onUpdateCell).toHaveBeenCalledWith(2, null)
   })
 
   it('NULL toggle on enum column restores enum fallback value', () => {
@@ -677,7 +764,7 @@ describe('ResultFormView — Edit Mode', () => {
     // Toggle NULL off for email
     fireEvent.click(screen.getByTestId('btn-null-email'))
     // Should restore with first enum value
-    expect(onUpdateCell).toHaveBeenCalledWith('email', 'alice@example.com')
+    expect(onUpdateCell).toHaveBeenCalledWith(2, 'alice@example.com')
   })
 
   it('handles object values in editable input', () => {
@@ -838,6 +925,12 @@ function buildTemporalEditProps(overrides: Record<string, unknown> = {}) {
   return {
     editMode: 'testdb.events' as string | null,
     editableColumnMap: temporalEditableMap,
+    editColumnBindings: new Map<number, string>([
+      [0, 'id'],
+      [1, 'created_at'],
+      [2, 'birth_date'],
+      [3, 'login_time'],
+    ]),
     editState: temporalEditState as RowEditState | null,
     editingRowIndex: 0 as number | null,
     editTableColumns: temporalTableColumns,
@@ -935,7 +1028,7 @@ describe('ResultFormView — Temporal Fields', () => {
     fireEvent.click(screen.getByTestId('btn-null-created_at'))
     // Should be called with a date string (not empty string)
     expect(onUpdateCell).toHaveBeenCalledWith(
-      'created_at',
+      1,
       expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
     )
   })
@@ -972,7 +1065,7 @@ describe('ResultFormView — Temporal Fields', () => {
     // Click Apply to close the picker with the current value
     fireEvent.click(screen.getByText('Apply'))
     // onUpdateCell should have been called with the value
-    expect(onUpdateCell).toHaveBeenCalledWith('created_at', expect.any(String))
+    expect(onUpdateCell).toHaveBeenCalledWith(1, expect.any(String))
     // Picker should be dismissed
     expect(screen.queryByText('Apply')).not.toBeInTheDocument()
   })
@@ -990,7 +1083,7 @@ describe('ResultFormView — Temporal Fields', () => {
     // Picker should be dismissed (toggling NULL closes open picker)
     expect(screen.queryByText('Apply')).not.toBeInTheDocument()
     // Should have set value to null
-    expect(onUpdateCell).toHaveBeenCalledWith('created_at', null)
+    expect(onUpdateCell).toHaveBeenCalledWith(1, null)
   })
 
   it('clicking temporal input opens picker on first focus (first-click-open)', () => {

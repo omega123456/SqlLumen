@@ -13,7 +13,6 @@
 
 import { useCallback, useMemo, useRef } from 'react'
 import { BaseGridView } from '../shared/BaseGridView'
-import type { DataGridHandle } from '../shared/DataGrid'
 import { colKey, colIndexFromKey, buildTableColLookup } from '../../lib/col-key-utils'
 import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
@@ -62,18 +61,21 @@ interface ResultGridViewProps {
   editingRowIndex: number | null
   /** Column metadata from the edit table (for cell editor selection). */
   editTableColumns: TableDataColumnMeta[]
+  /** Result column index → bound source-table column name. */
+  editColumnBindings: Map<number, string>
   /** Start editing a row by its page-local index. */
   onStartEditing: (rowIndex: number) => void
-  /** Update a cell value in the edit state (real column name). */
-  onUpdateCellValue: (columnName: string, value: unknown) => void
+  /** Update a cell value in the edit state (result column index). */
+  onUpdateCellValue: (columnIndex: number, value: unknown) => void
   /** Sync a cell value to both edit state and local rows. */
-  onSyncCellValue: (columnName: string, value: unknown) => void
+  onSyncCellValue: (columnIndex: number, value: unknown) => void
   /** Auto-save the current editing row (called on row transition). */
   onAutoSave: () => Promise<boolean>
 }
 
 const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
+const EMPTY_BINDINGS = new Map<number, string>()
 
 export function ResultGridView({
   columns,
@@ -85,26 +87,39 @@ export function ResultGridView({
   selectedRowIndex,
   currentPage,
   pageSize,
-  // tabId is received from ResultPanel but not currently used directly in this component
-  tabId: _tabId, // eslint-disable-line @typescript-eslint/no-unused-vars
+  tabId: _tabId,
   editMode = null,
   editableColumnMap = EMPTY_EDITABLE_MAP,
   editState = null,
   editingRowIndex = null,
   editTableColumns = EMPTY_TABLE_COLUMNS,
+  editColumnBindings = EMPTY_BINDINGS,
   onStartEditing,
-  // onUpdateCellValue is wired via EditorCallbacksContext, not called directly here
-  onUpdateCellValue: _onUpdateCellValue, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onUpdateCellValue: _onUpdateCellValue,
   onSyncCellValue,
   onAutoSave,
 }: ResultGridViewProps) {
-  const gridRef = useRef<DataGridHandle | null>(null)
+  void _tabId
+  void _onUpdateCellValue
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
   editStateRef.current = editState
   const editingRowIndexRef = useRef(editingRowIndex)
   editingRowIndexRef.current = editingRowIndex
+
+  // ---------------------------------------------------------------------------
+  // Table column lookup map — case-insensitive name → TableDataColumnMeta.
+  // Used by column descriptors and shared with the form view pattern.
+  // ---------------------------------------------------------------------------
+  const tableColLookup = useMemo(() => buildTableColLookup(editTableColumns), [editTableColumns])
+  const boundColumnIndexLookup = useMemo(() => {
+    const lookup = new Map<string, number>()
+    for (const [index, columnName] of editColumnBindings) {
+      lookup.set(columnName, index)
+    }
+    return lookup
+  }, [editColumnBindings])
 
   // ---------------------------------------------------------------------------
   // Row data: transform array-of-arrays to array-of-objects with col_N keys.
@@ -117,10 +132,9 @@ export function ResultGridView({
         obj[colKey(i)] = row[i] ?? null
       })
 
-      // Overlay editState values for the editing row
       if (editState && editingRowIndex !== null && rowIdx === editingRowIndex) {
         for (const [colName, value] of Object.entries(editState.currentValues)) {
-          const colIdx = columns.findIndex((c) => c.name === colName)
+          const colIdx = boundColumnIndexLookup.get(colName) ?? -1
           if (colIdx !== -1) {
             obj[colKey(colIdx)] = value
           }
@@ -129,19 +143,14 @@ export function ResultGridView({
 
       return obj
     })
-  }, [rows, columns, editState, editingRowIndex])
-
-  // ---------------------------------------------------------------------------
-  // Table column lookup map — case-insensitive name → TableDataColumnMeta.
-  // Used by column descriptors and shared with the form view pattern.
-  // ---------------------------------------------------------------------------
-  const tableColLookup = useMemo(() => buildTableColLookup(editTableColumns), [editTableColumns])
+  }, [rows, columns, editState, editingRowIndex, boundColumnIndexLookup])
 
   const tableMetaByColumnIndex = useMemo(() => {
-    return columns.map((col) => {
-      const tableColMeta = tableColLookup.get(col.name.toLowerCase())
+    return columns.map((col, index) => {
+      const boundName = editColumnBindings.get(index) ?? col.name
+      const tableColMeta = tableColLookup.get(boundName.toLowerCase())
       return (tableColMeta ?? {
-        name: col.name,
+        name: boundName,
         dataType: col.dataType,
         isNullable: true,
         isPrimaryKey: false,
@@ -153,7 +162,7 @@ export function ResultGridView({
         isAutoIncrement: false,
       }) satisfies TableDataColumnMeta
     })
-  }, [columns, tableColLookup])
+  }, [columns, tableColLookup, editColumnBindings])
 
   // ---------------------------------------------------------------------------
   // Column descriptors: build GridColumnDescriptor[] from ColumnMeta[].
@@ -167,7 +176,8 @@ export function ResultGridView({
           : false
 
       // Find matching table column meta for cell editor via lookup map
-      const tableColMeta = isEditable ? tableColLookup.get(col.name.toLowerCase()) : undefined
+      const boundName = editColumnBindings.get(i) ?? col.name
+      const tableColMeta = isEditable ? tableColLookup.get(boundName.toLowerCase()) : undefined
 
       return {
         key,
@@ -182,7 +192,7 @@ export function ResultGridView({
         tableColumnMeta: tableColMeta,
       } as GridColumnDescriptor
     })
-  }, [columns, editMode, editableColumnMap, tableColLookup])
+  }, [columns, editMode, editableColumnMap, tableColLookup, editColumnBindings])
 
   // ---------------------------------------------------------------------------
   // Sort state: translate between app (lowercase, real names) and BaseGridView
@@ -230,13 +240,13 @@ export function ResultGridView({
     const currentValues: Record<string, unknown> = {}
     const originalValues: Record<string, unknown> = {}
     for (const [colName, value] of Object.entries(editState.currentValues)) {
-      const colIdx = columns.findIndex((c) => c.name === colName)
+      const colIdx = boundColumnIndexLookup.get(colName) ?? -1
       if (colIdx !== -1) {
         currentValues[colKey(colIdx)] = value
       }
     }
     for (const [colName, value] of Object.entries(editState.originalValues)) {
-      const colIdx = columns.findIndex((c) => c.name === colName)
+      const colIdx = boundColumnIndexLookup.get(colName) ?? -1
       if (colIdx !== -1) {
         originalValues[colKey(colIdx)] = value
       }
@@ -247,7 +257,7 @@ export function ResultGridView({
         ? JSON.stringify(editState.rowKey)
         : String(editState.rowKey)
     return { rowKey, currentValues, originalValues }
-  }, [editState, columns])
+  }, [editState, boundColumnIndexLookup])
 
   // ---------------------------------------------------------------------------
   // isModifiedCell: detect modified cells using the rich editState.
@@ -262,14 +272,14 @@ export function ResultGridView({
       const rowIdx = rowData.__rowIdx as number
       if (rowIdx !== currentEditingRowIndex) return false
 
-      // Translate col_N → real column name
+      // Only bound source columns can be considered modified query-edit fields.
       const colIndex = colIndexFromKey(columnKey)
-      const realName = columns[colIndex]?.name
-      if (!realName) return false
+      const boundName = editColumnBindings.get(colIndex)
+      if (!boundName) return false
 
-      return currentEditState.modifiedColumns.has(realName)
+      return currentEditState.modifiedColumns.has(boundName)
     },
-    [editMode, columns]
+    [editMode, editColumnBindings]
   )
 
   // ---------------------------------------------------------------------------
@@ -285,7 +295,7 @@ export function ResultGridView({
       const isEditable = editableColumnMap.get(colIndex) ?? false
 
       // Determine target column index for selectCell
-      const targetColIdx = columns.findIndex((_, i) => colKey(i) === columnKey)
+      const targetColIdx = colIndexFromKey(columnKey)
 
       // Run async guard (save, validate) if switching rows
       const currentEditingRow = editingRowIndexRef.current
@@ -322,7 +332,7 @@ export function ResultGridView({
     async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
       onRowSelected(args.rowIdx)
       // Allow selectCell so the cell gets focus/selection, but don't open an editor
-      const targetColIdx = columns.findIndex((_, i) => colKey(i) === args.columnKey)
+      const targetColIdx = colIndexFromKey(args.columnKey)
       return {
         proceed: true,
         targetRowIdx: args.rowIdx,
@@ -352,9 +362,8 @@ export function ResultGridView({
         for (let i = 0; i < columns.length; i++) {
           const key = colKey(i)
           if (newRow[key] !== oldRow[key]) {
-            const realName = columns[i]?.name
-            if (realName) {
-              onSyncCellValue(realName, newRow[key])
+            if (columns[i]) {
+              onSyncCellValue(i, newRow[key])
             }
           }
         }
@@ -383,9 +392,8 @@ export function ResultGridView({
       if (!editMode) return
 
       const colIndex = colIndexFromKey(args.columnKey)
-      const realName = columns[colIndex]?.name
       const isEditable = editableColumnMap.get(colIndex) ?? false
-      if (!realName || !isEditable) return
+      if (!columns[colIndex] || !isEditable) return
 
       const currentEditingRow = editingRowIndexRef.current
       const currentEditState = editStateRef.current
@@ -406,7 +414,7 @@ export function ResultGridView({
         args.action === 'cut'
           ? null
           : (args.text ?? (args.rowData[args.columnKey] as string | null))
-      onSyncCellValue(realName, nextValue)
+      onSyncCellValue(colIndex, nextValue)
     },
     [
       editMode,
@@ -452,7 +460,6 @@ export function ResultGridView({
 
   return (
     <BaseGridView
-      ref={gridRef}
       rows={rowData}
       columns={gridColumns}
       editState={sharedEditState}

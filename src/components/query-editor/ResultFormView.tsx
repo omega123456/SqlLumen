@@ -48,10 +48,12 @@ export interface ResultFormViewProps {
   editingRowIndex?: number | null
   /** Column metadata from the edit table (for cell editor selection). */
   editTableColumns?: TableDataColumnMeta[]
+  /** Result column index → bound source-table column name. */
+  editColumnBindings?: Map<number, string>
   /** Start editing a row by its page-local index. */
   onStartEdit?: (rowIndex: number) => void
   /** Update a cell value in the edit state. */
-  onUpdateCell?: (columnName: string, value: unknown) => void
+  onUpdateCell?: (columnIndex: number, value: unknown) => void
   /** Save current row. */
   onSaveRow?: () => Promise<boolean>
   /** Discard current row edits. */
@@ -60,6 +62,7 @@ export interface ResultFormViewProps {
 
 const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
+const EMPTY_BINDINGS = new Map<number, string>()
 
 // ---------------------------------------------------------------------------
 // Component
@@ -71,7 +74,7 @@ export function ResultFormView({
   selectedRowIndex,
   totalRows,
   currentPage,
-  totalPages,
+  totalPages: _totalPages,
   onNavigate,
   tabId,
   editMode = null,
@@ -79,6 +82,7 @@ export function ResultFormView({
   editState = null,
   editingRowIndex = null,
   editTableColumns = EMPTY_TABLE_COLUMNS,
+  editColumnBindings = EMPTY_BINDINGS,
   onStartEdit,
   onUpdateCell,
   onSaveRow,
@@ -98,8 +102,7 @@ export function ResultFormView({
   const isInEditMode = editMode !== null
   const isEditingCurrentRow = editState !== null && editingRowIndex === clampedLocal
 
-  // Suppress lint: totalPages is used for display / future guard
-  void totalPages
+  void _totalPages
 
   // --- Table column lookup (for column meta enrichment) ---
 
@@ -109,7 +112,8 @@ export function ResultFormView({
 
   const gridColumns: GridColumnDescriptor[] = useMemo(() => {
     return columns.map((col, i) => {
-      const tableCol = tableColLookup.get(col.name.toLowerCase())
+      const boundName = editColumnBindings.get(i) ?? col.name
+      const tableCol = tableColLookup.get(boundName.toLowerCase())
       const isEditable = isInEditMode && editableColumnMap.get(i) === true
       return {
         key: colKey(i),
@@ -124,7 +128,7 @@ export function ResultFormView({
         tableColumnMeta: tableCol,
       }
     })
-  }, [columns, tableColLookup, isInEditMode, editableColumnMap])
+  }, [columns, tableColLookup, isInEditMode, editableColumnMap, editColumnBindings])
 
   // --- Transform edit state: remap real column name keys → col_N keys ---
 
@@ -135,7 +139,8 @@ export function ResultFormView({
     const originalValues: Record<string, unknown> = {}
 
     for (let i = 0; i < columns.length; i++) {
-      const colName = columns[i].name
+      const colName = editColumnBindings.get(i)
+      if (!colName) continue
       const key = colKey(i)
       if (colName in editState.currentValues) {
         currentValues[key] = editState.currentValues[colName]
@@ -150,16 +155,15 @@ export function ResultFormView({
       currentValues,
       originalValues,
     }
-  }, [isEditingCurrentRow, editState, columns])
+  }, [isEditingCurrentRow, editState, columns, editColumnBindings])
 
   // --- Edit callbacks (translate col_N → real column name) ---
 
   const handleUpdateCell = useCallback(
     (colKey_: string, value: unknown) => {
       const colIndex = colIndexFromKey(colKey_)
-      const realColName = columns[colIndex]?.name
-      if (realColName) {
-        onUpdateCell?.(realColName, value)
+      if (columns[colIndex]) {
+        onUpdateCell?.(colIndex, value)
       }
     },
     [columns, onUpdateCell]
@@ -184,29 +188,24 @@ export function ResultFormView({
 
   // --- Navigation with auto-save-before-navigate ---
 
-  const handleNavigatePrev = useCallback(async () => {
-    if (isInEditMode && editState) {
-      if (editState.modifiedColumns.size > 0 && onSaveRow) {
-        const success = await onSaveRow()
-        if (!success) return
-      } else {
-        onDiscardRow?.()
+  const navigateWithAutoSave = useCallback(
+    async (direction: 'prev' | 'next') => {
+      if (isInEditMode && editState) {
+        if (editState.modifiedColumns.size > 0 && onSaveRow) {
+          const success = await onSaveRow()
+          if (!success) return
+        } else {
+          onDiscardRow?.()
+        }
       }
-    }
-    onNavigate('prev')
-  }, [isInEditMode, editState, onSaveRow, onDiscardRow, onNavigate])
+      onNavigate(direction)
+    },
+    [isInEditMode, editState, onSaveRow, onDiscardRow, onNavigate]
+  )
 
-  const handleNavigateNext = useCallback(async () => {
-    if (isInEditMode && editState) {
-      if (editState.modifiedColumns.size > 0 && onSaveRow) {
-        const success = await onSaveRow()
-        if (!success) return
-      } else {
-        onDiscardRow?.()
-      }
-    }
-    onNavigate('next')
-  }, [isInEditMode, editState, onSaveRow, onDiscardRow, onNavigate])
+  const handleNavigatePrev = useCallback(() => navigateWithAutoSave('prev'), [navigateWithAutoSave])
+
+  const handleNavigateNext = useCallback(() => navigateWithAutoSave('next'), [navigateWithAutoSave])
 
   // --- Render ---
 

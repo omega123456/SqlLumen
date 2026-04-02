@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
 import {
+  buildBoundColumnIndexMap,
   findAmbiguousColumns,
   buildEditableColumnMap,
+  buildQueryEditColumnBindings,
   validateKeyColumnsPresent,
   buildRowEditState,
   buildUpdatePayload,
@@ -31,6 +33,27 @@ function tableCol(name: string, overrides: Partial<TableDataColumnMeta> = {}): T
     ...overrides,
   }
 }
+
+function queryTable(
+  table: string,
+  columns: TableDataColumnMeta[],
+  database = 'testdb'
+): {
+  database: string
+  table: string
+  columns: TableDataColumnMeta[]
+  primaryKey: { keyColumns: string[]; hasAutoIncrement: boolean; isUniqueKeyFallback: boolean }
+} {
+  return {
+    database,
+    table,
+    columns,
+    primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+  }
+}
+
+const userTableColumns = [tableCol('id'), tableCol('name'), tableCol('email')]
+const orderTableColumns = [tableCol('id'), tableCol('user_id'), tableCol('total')]
 
 // ---------------------------------------------------------------------------
 // findAmbiguousColumns
@@ -137,6 +160,32 @@ describe('buildEditableColumnMap', () => {
     const map = buildEditableColumnMap(resultCols, tableCols, ambiguous)
     expect(map.size).toBe(3)
   })
+
+  it('uses explicit bindings to allow editing joined duplicate key columns', () => {
+    const resultCols = [
+      col('id'),
+      col('name'),
+      col('email'),
+      col('id'),
+      col('user_id'),
+      col('total'),
+    ]
+    const ambiguous = new Set(['id'])
+    const usersTable = queryTable('users', userTableColumns)
+    const ordersTable = queryTable('orders', orderTableColumns)
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
+      resultCols,
+      usersTable,
+      [usersTable, ordersTable]
+    )
+
+    const map = buildEditableColumnMap(resultCols, userTableColumns, ambiguous, bindings)
+    expect(map.get(0)).toBe(true)
+    expect(map.get(1)).toBe(true)
+    expect(map.get(2)).toBe(true)
+    expect(map.get(3)).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -184,6 +233,411 @@ describe('validateKeyColumnsPresent', () => {
     const result = validateKeyColumnsPresent(['id', 'tenant_id'], resultCols, new Set())
     expect(result.valid).toBe(false)
     expect(result.missingColumns).toEqual(['tenant_id'])
+  })
+
+  it('accepts duplicate joined key columns when an explicit binding resolves them', () => {
+    const resultCols = [col('id'), col('name'), col('id')]
+    const result = validateKeyColumnsPresent(
+      ['id'],
+      resultCols,
+      new Set(['id']),
+      new Map([['id', 0]])
+    )
+
+    expect(result.valid).toBe(true)
+    expect(result.missingColumns).toEqual([])
+  })
+})
+
+describe('buildQueryEditColumnBindings', () => {
+  it('supports leading SQL comments before the SELECT list', () => {
+    const resultCols = [col('id'), col('name')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      '/* lead */\n-- second\n# third\nSELECT id, name FROM users',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(
+      new Map([
+        [0, 'id'],
+        [1, 'name'],
+      ])
+    )
+  })
+
+  it('falls back to direct name matching when sql is unavailable', () => {
+    const resultCols = [col('id'), col('name')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(null, resultCols, usersTable, [usersTable])
+
+    expect(bindings).toEqual(
+      new Map([
+        [0, 'id'],
+        [1, 'name'],
+      ])
+    )
+  })
+
+  it('does not bind aliases when the query has no FROM clause', () => {
+    const resultCols = [col('id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings('SELECT 1 AS id', resultCols, usersTable, [
+      usersTable,
+    ])
+
+    expect(bindings).toEqual(new Map())
+  })
+
+  it('does not bind another joined table column to the target key by name alone', () => {
+    const resultCols = [col('id')]
+    const usersTable = queryTable('users', userTableColumns)
+    const ordersTable = queryTable('orders', orderTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT orders.id FROM users JOIN orders ON users.id = orders.user_id',
+      resultCols,
+      usersTable,
+      [usersTable, ordersTable]
+    )
+
+    expect(bindings).toEqual(new Map())
+  })
+
+  it('does not bind expression aliases to target key columns when the projection is not a source column', () => {
+    const resultCols = [col('id'), col('name')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT COUNT(*) AS id, users.name FROM users',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map([[1, 'name']]))
+  })
+
+  it('does not fall back to direct bindings for single-table expression aliases', () => {
+    const resultCols = [col('id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT COUNT(*) AS id FROM users',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map())
+  })
+
+  it('does not fall back to direct bindings for expression aliases without AS', () => {
+    const resultCols = [col('id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT id + 1 id FROM users',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map())
+  })
+
+  it('does not bind unresolved wildcard subquery projections by name alone', () => {
+    const resultCols = [col('id'), col('name')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT x.* FROM (SELECT COUNT(*) AS id, MAX(name) AS name FROM users) x',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map())
+  })
+
+  it('returns no bindings when leading comments are unterminated', () => {
+    const resultCols = [col('id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings('/* unfinished comment', resultCols, usersTable, [
+      usersTable,
+    ])
+
+    expect(bindings).toEqual(new Map())
+  })
+
+  it('returns no bindings when a leading line comment has no newline', () => {
+    const resultCols = [col('id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings('-- comment only', resultCols, usersTable, [
+      usersTable,
+    ])
+
+    expect(bindings).toEqual(new Map())
+  })
+
+  it('returns no bindings when a leading hash comment has no newline', () => {
+    const resultCols = [col('id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings('# comment only', resultCols, usersTable, [
+      usersTable,
+    ])
+
+    expect(bindings).toEqual(new Map())
+  })
+
+  it('binds joined wildcard columns to the selected table by projection order', () => {
+    const resultCols = [
+      col('id'),
+      col('name'),
+      col('email'),
+      col('id'),
+      col('user_id'),
+      col('total'),
+    ]
+    const usersTable = queryTable('users', userTableColumns)
+    const ordersTable = queryTable('orders', orderTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
+      resultCols,
+      usersTable,
+      [usersTable, ordersTable]
+    )
+
+    expect(bindings).toEqual(
+      new Map([
+        [0, 'id'],
+        [1, 'name'],
+        [2, 'email'],
+      ])
+    )
+  })
+
+  it('resolves wildcard bindings through table aliases', () => {
+    const resultCols = [
+      col('id'),
+      col('name'),
+      col('email'),
+      col('id'),
+      col('user_id'),
+      col('total'),
+    ]
+    const usersTable = queryTable('users', userTableColumns)
+    const ordersTable = queryTable('orders', orderTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT u.*, o.* FROM users AS u JOIN orders o ON u.id = o.user_id',
+      resultCols,
+      usersTable,
+      [usersTable, ordersTable]
+    )
+
+    expect(bindings).toEqual(
+      new Map([
+        [0, 'id'],
+        [1, 'name'],
+        [2, 'email'],
+      ])
+    )
+  })
+
+  it('binds aliased joined key columns back to the selected table column', () => {
+    const resultCols = [col('user_id'), col('name'), col('email'), col('order_id'), col('total')]
+    const usersTable = queryTable('users', userTableColumns)
+    const ordersTable = queryTable('orders', orderTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT users.id AS user_id, users.name, users.email, orders.id AS order_id, orders.total FROM users JOIN orders ON users.id = orders.user_id',
+      resultCols,
+      usersTable,
+      [usersTable, ordersTable]
+    )
+
+    expect(bindings).toEqual(
+      new Map([
+        [0, 'id'],
+        [1, 'name'],
+        [2, 'email'],
+      ])
+    )
+  })
+
+  it('handles inline comments, strings, and schema-qualified identifiers in the select list', () => {
+    const resultCols = [col('literal_text'), col('user_id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      "SELECT /* inline */ 'FROM, literal' AS literal_text, `testdb`.`users`.`id` AS user_id FROM `testdb`.`users`",
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map([[1, 'id']]))
+  })
+
+  it('handles escaped quotes, nested expressions, and double-quoted literals', () => {
+    const resultCols = [col('label'), col('user_id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      `SELECT CONCAT("a, b", 'O\\'Brien', users.name) AS label, users.id AS user_id FROM users`,
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map([[1, 'id']]))
+  })
+
+  it('handles line comments inside the select list', () => {
+    const resultCols = [col('user_id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT -- comment\n users.id AS user_id FROM users',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map([[0, 'id']]))
+  })
+
+  it('handles hash comments inside the select list', () => {
+    const resultCols = [col('user_id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT # comment\n users.id AS user_id FROM users',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map([[0, 'id']]))
+  })
+
+  it('returns no projection bindings when result column count does not match the parsed select list', () => {
+    const resultCols = [col('id'), col('extra')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT users.id FROM users',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map([[0, 'id']]))
+  })
+
+  it('returns no bindings when wildcard projection order does not match the result columns', () => {
+    const resultCols = [
+      col('user_id'),
+      col('name'),
+      col('email'),
+      col('id'),
+      col('user_id'),
+      col('total'),
+    ]
+    const usersTable = queryTable('users', userTableColumns)
+    const ordersTable = queryTable('orders', orderTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
+      resultCols,
+      usersTable,
+      [usersTable, ordersTable]
+    )
+
+    expect(bindings).toEqual(new Map())
+  })
+
+  it('does not bind unresolved wildcard qualifiers by name fallback', () => {
+    const resultCols = [col('id'), col('name')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings('SELECT x.* FROM users', resultCols, usersTable, [
+      usersTable,
+    ])
+
+    expect(bindings).toEqual(new Map())
+  })
+
+  it('resolves schema-qualified wildcard bindings', () => {
+    const resultCols = [col('id'), col('name'), col('email')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT testdb.users.* FROM testdb.users',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(
+      new Map([
+        [0, 'id'],
+        [1, 'name'],
+        [2, 'email'],
+      ])
+    )
+  })
+
+  it('resolves schema-qualified aliases back to the target table', () => {
+    const resultCols = [col('user_id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT u.id AS user_id FROM testdb.users AS u',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map([[0, 'id']]))
+  })
+
+  it('drops duplicate bindings that point to the same target column', () => {
+    const resultCols = [col('id'), col('id_alias')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT users.id, users.id AS id_alias FROM users',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map())
+  })
+
+  it('does not bind DISTINCT-wrapped aliased key columns until projection parsing supports them', () => {
+    const resultCols = [col('user_id')]
+    const usersTable = queryTable('users', userTableColumns)
+
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT DISTINCT users.id AS user_id FROM users',
+      resultCols,
+      usersTable,
+      [usersTable]
+    )
+
+    expect(bindings).toEqual(new Map())
   })
 })
 
@@ -271,6 +725,40 @@ describe('buildRowEditState', () => {
 
     const state = buildRowEditState(row, resultCols, editableMap, ['id'])
     expect(state.rowKey).toEqual({ id: 7 })
+  })
+
+  it('uses explicit bindings for row keys and editable values in joined results', () => {
+    const resultCols = [
+      col('id'),
+      col('name'),
+      col('email'),
+      col('id'),
+      col('user_id'),
+      col('total'),
+    ]
+    const row = [1, 'Alice', 'alice@test.com', 101, 1, '99.95']
+    const usersTable = queryTable('users', userTableColumns)
+    const ordersTable = queryTable('orders', orderTableColumns)
+    const bindings = buildQueryEditColumnBindings(
+      'SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id',
+      resultCols,
+      usersTable,
+      [usersTable, ordersTable]
+    )
+    const boundIndexMap = buildBoundColumnIndexMap(bindings)
+    const editableMap = new Map([
+      [0, true],
+      [1, true],
+      [2, true],
+      [3, false],
+      [4, false],
+      [5, false],
+    ])
+
+    const state = buildRowEditState(row, resultCols, editableMap, ['id'], bindings, boundIndexMap)
+
+    expect(state.rowKey).toEqual({ id: 1 })
+    expect(state.originalValues).toEqual({ id: 1, name: 'Alice', email: 'alice@test.com' })
   })
 })
 

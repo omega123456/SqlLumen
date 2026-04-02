@@ -109,6 +109,8 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),
+  editColumnBindings: new Map(),
+  editBoundColumnIndexMap: new Map(),
   pendingNavigationAction: null,
   saveError: null,
   editConnectionId: null,
@@ -149,6 +151,14 @@ describe('ResultPanel edit-mode callback stability (focus-loss regression)', () 
           editableColumnMap: new Map([
             [0, false],
             [1, true],
+          ]),
+          editColumnBindings: new Map([
+            [0, 'id'],
+            [1, 'name'],
+          ]),
+          editBoundColumnIndexMap: new Map([
+            ['id', 0],
+            ['name', 1],
           ]),
           editTableMetadata: {
             'test_db.users': {
@@ -211,7 +221,7 @@ describe('ResultPanel edit-mode callback stability (focus-loss regression)', () 
 
     // Simulate a cell edit — syncCellValue updates the store's editState and rows
     act(() => {
-      useQueryStore.getState().syncCellValue('tab-1', 'name', 'Alice2')
+      useQueryStore.getState().syncCellValue('tab-1', 1, 'Alice2')
     })
 
     // ResultGridView should have been re-rendered with updated data
@@ -231,7 +241,7 @@ describe('ResultPanel edit-mode callback stability (focus-loss regression)', () 
     const renderCountBefore = capturedCallbacksByRender.length
 
     act(() => {
-      useQueryStore.getState().syncCellValue('tab-1', 'name', 'Alice2')
+      useQueryStore.getState().syncCellValue('tab-1', 1, 'Alice2')
     })
 
     expect(capturedCallbacksByRender.length).toBeGreaterThan(renderCountBefore)
@@ -247,7 +257,7 @@ describe('ResultPanel edit-mode callback stability (focus-loss regression)', () 
     const renderCountBefore = capturedCallbacksByRender.length
 
     act(() => {
-      useQueryStore.getState().syncCellValue('tab-1', 'name', 'Alice2')
+      useQueryStore.getState().syncCellValue('tab-1', 1, 'Alice2')
     })
 
     expect(capturedCallbacksByRender.length).toBeGreaterThan(renderCountBefore)
@@ -263,7 +273,7 @@ describe('ResultPanel edit-mode callback stability (focus-loss regression)', () 
     const renderCountBefore = capturedCallbacksByRender.length
 
     act(() => {
-      useQueryStore.getState().syncCellValue('tab-1', 'name', 'Alice2')
+      useQueryStore.getState().syncCellValue('tab-1', 1, 'Alice2')
     })
 
     expect(capturedCallbacksByRender.length).toBeGreaterThan(renderCountBefore)
@@ -279,13 +289,13 @@ describe('ResultPanel edit-mode callback stability (focus-loss regression)', () 
 
     // Simulate typing multiple characters one by one
     act(() => {
-      useQueryStore.getState().syncCellValue('tab-1', 'name', 'A')
+      useQueryStore.getState().syncCellValue('tab-1', 1, 'A')
     })
     act(() => {
-      useQueryStore.getState().syncCellValue('tab-1', 'name', 'Al')
+      useQueryStore.getState().syncCellValue('tab-1', 1, 'Al')
     })
     act(() => {
-      useQueryStore.getState().syncCellValue('tab-1', 'name', 'Ali')
+      useQueryStore.getState().syncCellValue('tab-1', 1, 'Ali')
     })
 
     const latestCallbacks = capturedCallbacksByRender[capturedCallbacksByRender.length - 1]

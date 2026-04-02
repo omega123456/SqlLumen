@@ -66,6 +66,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   // Edit mode state
   const editMode = tabState?.editMode ?? null
   const editableColumnMap = tabState?.editableColumnMap ?? new Map<number, boolean>()
+  const editColumnBindings = tabState?.editColumnBindings ?? new Map<number, string>()
   const editState = tabState?.editState ?? null
   const editingRowIndex = tabState?.editingRowIndex ?? null
   const pendingNavigationAction = tabState?.pendingNavigationAction ?? null
@@ -143,15 +144,15 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   )
 
   const handleUpdateCellValue = useCallback(
-    (columnName: string, value: unknown) => {
-      updateCellValue(tabId, columnName, value)
+    (columnIndex: number, value: unknown) => {
+      updateCellValue(tabId, columnIndex, value)
     },
     [updateCellValue, tabId]
   )
 
   const handleSyncCellValue = useCallback(
-    (columnName: string, value: unknown) => {
-      syncCellValue(tabId, columnName, value)
+    (columnIndex: number, value: unknown) => {
+      syncCellValue(tabId, columnIndex, value)
     },
     [syncCellValue, tabId]
   )
@@ -226,6 +227,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
                   tabId={tabId}
                   editMode={editMode}
                   editableColumnMap={editableColumnMap}
+                  editColumnBindings={editColumnBindings}
                   editState={editState}
                   editingRowIndex={editingRowIndex}
                   editTableColumns={editTableColumns}
@@ -247,6 +249,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
                   tabId={tabId}
                   editMode={editMode}
                   editableColumnMap={editableColumnMap}
+                  editColumnBindings={editColumnBindings}
                   editState={editState}
                   editingRowIndex={editingRowIndex}
                   editTableColumns={editTableColumns}

@@ -77,6 +77,8 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),
+  editColumnBindings: new Map(),
+  editBoundColumnIndexMap: new Map(),
   pendingNavigationAction: null,
   saveError: null,
   editConnectionId: null,
@@ -132,13 +134,13 @@ describe('ResultPanel edit mode callbacks', () => {
     renderWithEditState()
 
     const onUpdateCellValue = capturedGridProps.onUpdateCellValue as (
-      columnName: string,
+      columnIndex: number,
       value: unknown
     ) => void
     expect(onUpdateCellValue).toBeDefined()
-    onUpdateCellValue('name', 'Bob')
+    onUpdateCellValue(1, 'Bob')
 
-    expect(updateCellValueSpy).toHaveBeenCalledWith('tab-1', 'name', 'Bob')
+    expect(updateCellValueSpy).toHaveBeenCalledWith('tab-1', 1, 'Bob')
     updateCellValueSpy.mockRestore()
   })
 
@@ -147,13 +149,13 @@ describe('ResultPanel edit mode callbacks', () => {
     renderWithEditState()
 
     const onSyncCellValue = capturedGridProps.onSyncCellValue as (
-      columnName: string,
+      columnIndex: number,
       value: unknown
     ) => void
     expect(onSyncCellValue).toBeDefined()
-    onSyncCellValue('name', 'Charlie')
+    onSyncCellValue(1, 'Charlie')
 
-    expect(syncCellValueSpy).toHaveBeenCalledWith('tab-1', 'name', 'Charlie')
+    expect(syncCellValueSpy).toHaveBeenCalledWith('tab-1', 1, 'Charlie')
     syncCellValueSpy.mockRestore()
   })
 
