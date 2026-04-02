@@ -1242,6 +1242,248 @@ describe('TableDataGrid', () => {
     expect(useTableDataStore.getState().tabs['tab-1']?.editState).toBeNull()
   })
 
+  it('committed same-row edits update the visible grid row before save', () => {
+    setupConnection()
+    setupTabState({
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, name: 'Alice', avatar: null },
+        currentValues: { id: 1, name: 'Alice', avatar: null },
+        modifiedColumns: new Set<string>(),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    act(() => {
+      useTableDataStore.getState().updateCellValue('tab-1', 'name', 'Bob')
+    })
+
+    const propsAfterTyping = getLatestGridProps()
+    const onRowsChange = propsAfterTyping.onRowsChange as (
+      rows: Array<Record<string, unknown>>,
+      data: { indexes: number[]; column: { key: string } }
+    ) => void
+
+    act(() => {
+      onRowsChange(
+        [
+          { id: 1, name: 'Bob', avatar: null, __rowIndex: 0 },
+          { id: 2, name: null, avatar: '[BLOB 32 bytes]', __rowIndex: 1 },
+        ],
+        { indexes: [0], column: { key: 'name' } }
+      )
+    })
+
+    const latestProps = getLatestGridProps()
+    const latestRows = latestProps.rows as Array<Record<string, unknown>>
+
+    expect(useTableDataStore.getState().tabs['tab-1']?.rows[0]?.[1]).toBe('Bob')
+    expect(latestRows[0].name).toBe('Bob')
+  })
+
+  it('committed primary-key edits still sync the visible grid row before save', () => {
+    setupConnection()
+    setupTabState({
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, name: 'Alice', avatar: null },
+        currentValues: { id: 10, name: 'Alice', avatar: null },
+        modifiedColumns: new Set<string>(['id']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const onRowsChange = props.onRowsChange as (
+      rows: Array<Record<string, unknown>>,
+      data: { indexes: number[]; column: { key: string } }
+    ) => void
+
+    act(() => {
+      onRowsChange(
+        [
+          { id: 10, name: 'Alice', avatar: null, __rowIndex: 0, __editingRowKey: { id: 1 } },
+          { id: 2, name: null, avatar: '[BLOB 32 bytes]', __rowIndex: 1 },
+        ],
+        { indexes: [0], column: { key: 'id' } }
+      )
+    })
+
+    expect(useTableDataStore.getState().tabs['tab-1']?.rows[0]?.[0]).toBe(10)
+  })
+
+  it('after a primary-key edit commits, the same row remains the active editing row for follow-up edits', async () => {
+    setupConnection()
+    setupTabState({
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, name: 'Alice', avatar: null },
+        currentValues: { id: 10, name: 'Alice', avatar: null },
+        modifiedColumns: new Set<string>(['id']),
+        isNewRow: false,
+      },
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const onRowsChange = props.onRowsChange as (
+      rows: Array<Record<string, unknown>>,
+      data: { indexes: number[]; column: { key: string } }
+    ) => void
+    const onCellClick = props.onCellClick as (
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
+      event: { preventGridDefault: () => void }
+    ) => Promise<void>
+
+    act(() => {
+      onRowsChange(
+        [
+          { id: 10, name: 'Alice', avatar: null, __rowIndex: 0, __editingRowKey: { id: 1 } },
+          { id: 2, name: null, avatar: '[BLOB 32 bytes]', __rowIndex: 1 },
+        ],
+        { indexes: [0], column: { key: 'id' } }
+      )
+    })
+
+    const latestProps = getLatestGridProps()
+    const latestRows = latestProps.rows as Array<Record<string, unknown>>
+
+    await act(async () => {
+      await onCellClick(
+        {
+          row: latestRows[0],
+          column: { key: 'name', idx: 1 },
+          rowIdx: 0,
+        },
+        { preventGridDefault: vi.fn() }
+      )
+    })
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState?.rowKey).toEqual({ id: 10 })
+    expect(state?.editState?.currentValues.id).toBe(10)
+  })
+
+  it('cell clipboard edit pastes into editable table-data cells', async () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const onCellKeyDown = props.onCellKeyDown as (
+      args: {
+        mode: 'SELECT'
+        row: Record<string, unknown>
+        rowIdx: number
+        column: { key: string; idx: number; editable?: boolean }
+        selectCell: (position: { rowIdx: number; idx: number }) => void
+      },
+      event: {
+        key: string
+        ctrlKey?: boolean
+        metaKey?: boolean
+        shiftKey?: boolean
+        preventGridDefault: () => void
+        isGridDefaultPrevented: () => boolean
+      }
+    ) => void
+
+    const prevClipboard = navigator.clipboard
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { readText: vi.fn().mockResolvedValue('Pasted Name'), writeText: vi.fn() },
+    })
+
+    await act(async () => {
+      onCellKeyDown(
+        {
+          mode: 'SELECT',
+          row: { id: 1, name: 'Alice', avatar: null, __rowIndex: 0 },
+          rowIdx: 0,
+          column: { key: 'name', idx: 1, editable: true },
+          selectCell: vi.fn(),
+        },
+        {
+          key: 'v',
+          ctrlKey: true,
+          metaKey: false,
+          shiftKey: false,
+          preventGridDefault: vi.fn(),
+          isGridDefaultPrevented: () => false,
+        }
+      )
+    })
+
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: prevClipboard })
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState?.currentValues.name).toBe('Pasted Name')
+    expect(state?.rows[0]?.[1]).toBe('Pasted Name')
+  })
+
+  it('cell clipboard edit cuts editable table-data cells to NULL', async () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const onCellKeyDown = props.onCellKeyDown as (
+      args: {
+        mode: 'SELECT'
+        row: Record<string, unknown>
+        rowIdx: number
+        column: { key: string; idx: number; editable?: boolean }
+        selectCell: (position: { rowIdx: number; idx: number }) => void
+      },
+      event: {
+        key: string
+        ctrlKey?: boolean
+        metaKey?: boolean
+        shiftKey?: boolean
+        preventGridDefault: () => void
+        isGridDefaultPrevented: () => boolean
+      }
+    ) => void
+
+    const prevClipboard = navigator.clipboard
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined), readText: vi.fn() },
+    })
+
+    await act(async () => {
+      onCellKeyDown(
+        {
+          mode: 'SELECT',
+          row: { id: 1, name: 'Alice', avatar: null, __rowIndex: 0 },
+          rowIdx: 0,
+          column: { key: 'name', idx: 1, editable: true },
+          selectCell: vi.fn(),
+        },
+        {
+          key: 'x',
+          ctrlKey: true,
+          metaKey: false,
+          shiftKey: false,
+          preventGridDefault: vi.fn(),
+          isGridDefaultPrevented: () => false,
+        }
+      )
+    })
+
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: prevClipboard })
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState?.currentValues.name).toBeNull()
+    expect(state?.rows[0]?.[1]).toBeNull()
+  })
+
   it('Add Row prepopulates column defaults in the new grid row', () => {
     setupConnection()
     setupTabState({

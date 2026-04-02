@@ -81,6 +81,14 @@ export interface CellClickGuardResult {
   enableEditor: boolean
 }
 
+export interface CellClipboardEditArgs {
+  rowIdx: number
+  rowData: Record<string, unknown>
+  columnKey: string
+  action: 'paste' | 'cut'
+  text?: string
+}
+
 // ---------------------------------------------------------------------------
 // Auto-size configuration
 // ---------------------------------------------------------------------------
@@ -106,6 +114,7 @@ export interface BaseGridViewProps {
   sortDirection?: 'ASC' | 'DESC' | null
   onSortChange?: (column: string | null, direction: 'ASC' | 'DESC' | null) => void
   onCellClickGuard?: (args: CellClickGuardArgs) => Promise<CellClickGuardResult>
+  onCellClipboardEdit?: (args: CellClipboardEditArgs) => Promise<void> | void
   onColumnResize?: (column: string, width: number) => void
   onRowsChange?: (
     rows: Record<string, unknown>[],

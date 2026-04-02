@@ -326,6 +326,20 @@ describe('useTableDataStore — updateCellValue', () => {
 
     expect(useTableDataStore.getState().tabs['tab-1'].rows[0]).toEqual([1, 'Updated'])
   })
+
+  it('syncCellValue honors the original row key when the primary key value changed', async () => {
+    await setupTabWithData()
+
+    useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
+
+    useTableDataStore
+      .getState()
+      .syncCellValue('tab-1', { id: 10, name: 'Alice', __rowIndex: 0 }, 'id', 10, { id: 1 })
+
+    expect(useTableDataStore.getState().tabs['tab-1'].rows[0]).toEqual([10, 'Alice'])
+    expect(useTableDataStore.getState().tabs['tab-1'].editState?.rowKey).toEqual({ id: 10 })
+    expect(useTableDataStore.getState().tabs['tab-1'].selectedRowKey).toBeNull()
+  })
 })
 
 describe('useTableDataStore — saveCurrentRow (UPDATE path)', () => {
@@ -464,6 +478,22 @@ describe('useTableDataStore — discardCurrentRow', () => {
     expect(tab.editState).toBeNull()
     // Row should be restored to original
     expect(tab.rows[0]).toEqual([1, 'Alice'])
+  })
+
+  it('restores selectedRowKey after discarding a primary-key edit', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
+    useTableDataStore.getState().setSelectedRow('tab-1', { id: 1 })
+    useTableDataStore
+      .getState()
+      .syncCellValue('tab-1', { id: 10, name: 'Alice', __rowIndex: 0 }, 'id', 10, { id: 1 })
+    useTableDataStore.getState().updateCellValue('tab-1', 'id', 10)
+
+    useTableDataStore.getState().discardCurrentRow('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.rows[0]).toEqual([1, 'Alice'])
+    expect(tab.selectedRowKey).toEqual({ id: 1 })
   })
 
   it('removes row from rows for new row', async () => {

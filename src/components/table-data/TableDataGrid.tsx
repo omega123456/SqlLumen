@@ -25,6 +25,7 @@ import type {
   RowEditState as SharedRowEditState,
   CellClickGuardArgs,
   CellClickGuardResult,
+  CellClipboardEditArgs,
   AutoSizeConfig,
 } from '../../types/shared-data-view'
 import type { TableDataColumnMeta } from '../../types/schema'
@@ -334,7 +335,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       if (!col) return null
       const editable = !isReadOnly && hasPk && !col.isBinary
       const targetColIdx = descriptorColumns.findIndex((c) => c.key === columnKey)
-      return { col, editable, targetColIdx }
+      return { editable, targetColIdx }
     },
     [columns, isReadOnly, hasPk, descriptorColumns]
   )
@@ -491,7 +492,35 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   // onRowsChange: called when an editor commits — used to clear no-op edits
   // ---------------------------------------------------------------------------
   const handleRowsChange = useCallback(
-    (newRows: TableDataRow[], data: { indexes: number[] }) => {
+    (newRows: TableDataRow[], data: { indexes: number[]; column?: { key: string } }) => {
+      const changedColumnKey = data.column?.key
+
+      if (changedColumnKey) {
+        for (const idx of data.indexes) {
+          const row = newRows[idx]
+          if (!row) continue
+
+          const currentEditState = useTableDataStore.getState().tabs[tabId]?.editState
+          if (!currentEditState) continue
+
+          const rowKey =
+            (row.__editingRowKey as Record<string, unknown> | undefined) ??
+            getRowKey(row, pkColumns)
+          if (!isSameRowKey(rowKey, currentEditState.rowKey)) continue
+
+          const nextValue = row[changedColumnKey]
+          useTableDataStore
+            .getState()
+            .syncCellValue(
+              tabId,
+              { ...row, __editingRowKey: rowKey },
+              changedColumnKey,
+              nextValue,
+              rowKey
+            )
+        }
+      }
+
       for (const idx of data.indexes) {
         const row = newRows[idx]
         if (!row) continue
@@ -500,6 +529,49 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       }
     },
     [pkColumns, tabId, clearEditStateIfUnmodified]
+  )
+
+  const handleCellClipboardEdit = useCallback(
+    async (args: CellClipboardEditArgs) => {
+      const target = resolveTargetColumn(args.columnKey)
+      if (!target?.editable) return
+
+      const targetRowKey = getRowKey(args.rowData, pkColumns)
+
+      const guardResult = await validateAndCommitCurrentEdit(
+        targetRowKey,
+        args.rowIdx,
+        target.targetColIdx
+      )
+      if (!guardResult.passed) return
+
+      setSelectedRow(tabId, targetRowKey)
+
+      const currentEditRowKey = useTableDataStore.getState().tabs[tabId]?.editState?.rowKey ?? null
+      if (!isSameRowKey(targetRowKey, currentEditRowKey)) {
+        const currentValues: Record<string, unknown> = {}
+        columns.forEach((c) => {
+          currentValues[c.name] = args.rowData[c.name]
+        })
+        startEditing(tabId, targetRowKey, currentValues)
+      }
+
+      const nextValue = args.action === 'cut' ? null : (args.text ?? null)
+      storeUpdateCellValue(tabId, args.columnKey, nextValue)
+      useTableDataStore
+        .getState()
+        .syncCellValue(tabId, args.rowData, args.columnKey, nextValue, targetRowKey)
+    },
+    [
+      resolveTargetColumn,
+      pkColumns,
+      validateAndCommitCurrentEdit,
+      setSelectedRow,
+      tabId,
+      columns,
+      startEditing,
+      storeUpdateCellValue,
+    ]
   )
 
   // ---------------------------------------------------------------------------
@@ -516,6 +588,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         sortDirection={sort ? (sort.direction.toUpperCase() as 'ASC' | 'DESC') : null}
         onSortChange={handleSortChange}
         onCellClickGuard={handleCellClickGuard}
+        onCellClipboardEdit={handleCellClipboardEdit}
         onRowsChange={handleRowsChange}
         rowKeyGetter={rowKeyGetter}
         getRowClass={getRowClass}

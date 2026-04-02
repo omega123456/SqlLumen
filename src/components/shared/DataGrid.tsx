@@ -15,31 +15,38 @@ import type {
   DataGridHandle,
   DataGridProps as RDGProps,
   CalculatedColumn,
-  Column,
   SortColumn,
   Renderers,
   DefaultColumnOptions,
+  ColumnWidth,
 } from 'react-data-grid'
 import { useGridDimensions } from '../../hooks/use-grid-dimensions'
 import { SortStatusRenderer } from './grid-header-renderers'
 import styles from './DataGrid.module.css'
 
 // Re-export types consumers will need
-export type { DataGridHandle, CalculatedColumn, Column, SortColumn }
+export type { DataGridHandle, CalculatedColumn, Column, SortColumn } from 'react-data-grid'
+
+type CellMouseEventHandler<R, SR> = RDGProps<R, SR>['onCellClick']
 
 // ---------------------------------------------------------------------------
 // Props interface
 // ---------------------------------------------------------------------------
 
-type CellMouseEventHandler<R, SR> = RDGProps<R, SR>['onCellClick']
-
 export interface DataGridWrapperProps<R, SR = unknown> {
   columns: RDGProps<R, SR>['columns']
   rows: readonly R[]
+  columnWidths?: ReadonlyMap<string, ColumnWidth>
+  onColumnWidthsChange?: (columnWidths: ReadonlyMap<string, ColumnWidth>) => void
   sortColumns?: readonly SortColumn[]
   onSortColumnsChange?: (sortColumns: SortColumn[]) => void
   onCellClick?: CellMouseEventHandler<R, SR>
   onCellDoubleClick?: CellMouseEventHandler<R, SR>
+  onCellContextMenu?: RDGProps<R, SR>['onCellContextMenu']
+  onCellKeyDown?: RDGProps<R, SR>['onCellKeyDown']
+  onCellCopy?: RDGProps<R, SR>['onCellCopy']
+  onCellPaste?: RDGProps<R, SR>['onCellPaste']
+  onSelectedCellChange?: RDGProps<R, SR>['onSelectedCellChange']
   onRowsChange?: RDGProps<R, SR>['onRowsChange']
   onColumnResize?: (column: CalculatedColumn<R, SR>, width: number) => void
   rowKeyGetter?: RDGProps<R, SR>['rowKeyGetter']
@@ -61,10 +68,17 @@ function DataGridInner<R, SR = unknown>(
   const {
     columns,
     rows,
+    columnWidths,
+    onColumnWidthsChange,
     sortColumns,
     onSortColumnsChange,
     onCellClick,
     onCellDoubleClick,
+    onCellContextMenu,
+    onCellKeyDown,
+    onCellCopy,
+    onCellPaste,
+    onSelectedCellChange,
     onRowsChange,
     onColumnResize,
     rowKeyGetter,
@@ -92,10 +106,17 @@ function DataGridInner<R, SR = unknown>(
         ref={ref}
         columns={columns}
         rows={rows}
+        columnWidths={columnWidths}
+        onColumnWidthsChange={onColumnWidthsChange}
         sortColumns={sortColumns}
         onSortColumnsChange={onSortColumnsChange}
         onCellClick={onCellClick}
         onCellDoubleClick={onCellDoubleClick}
+        onCellContextMenu={onCellContextMenu}
+        onCellKeyDown={onCellKeyDown}
+        onCellCopy={onCellCopy}
+        onCellPaste={onCellPaste}
+        onSelectedCellChange={onSelectedCellChange}
         onRowsChange={onRowsChange}
         onColumnResize={onColumnResize}
         rowKeyGetter={rowKeyGetter}
@@ -116,7 +137,7 @@ function DataGridInner<R, SR = unknown>(
  * Shared DataGrid wrapper with forwardRef to expose DataGridHandle.
  * Applies the rdg-precision theme and reads row/header heights from CSS tokens.
  */
- 
+
 export const DataGrid = forwardRef(DataGridInner) as <R, SR = unknown>(
   props: DataGridWrapperProps<R, SR> & { ref?: React.Ref<DataGridHandle> }
 ) => React.ReactElement | null

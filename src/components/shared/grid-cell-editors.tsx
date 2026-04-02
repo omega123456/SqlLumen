@@ -154,6 +154,8 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
             if (e.key === 'Tab' || e.key === 'Enter') {
               // Commit and focus grid for navigation
               onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
+              onClose(true, true)
+              e.preventDefault()
               return
             }
             if (e.key === 'Escape') {
@@ -283,6 +285,8 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
             if (e.key === 'Tab' || e.key === 'Enter') {
               // Commit and focus grid for navigation
               onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
+              onClose(true, true)
+              e.preventDefault()
               return
             }
             if (e.key === 'Escape') {

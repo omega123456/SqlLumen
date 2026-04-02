@@ -96,6 +96,14 @@ function getRowKeyFromData(
     return { __tempId: rowData.__tempId }
   }
 
+  if (
+    '__editingRowKey' in rowData &&
+    rowData.__editingRowKey &&
+    typeof rowData.__editingRowKey === 'object'
+  ) {
+    return rowData.__editingRowKey as Record<string, unknown>
+  }
+
   const key: Record<string, unknown> = {}
   for (const col of pkColumns) {
     key[col] = rowData[col]
@@ -286,7 +294,8 @@ export interface TableDataStore {
     tabId: string,
     rowData: Record<string, unknown> | undefined,
     column: string,
-    value: unknown
+    value: unknown,
+    rowKeyOverride?: Record<string, unknown>
   ) => void
   clearEditStateIfUnmodified: (tabId: string, rowKey: Record<string, unknown>) => void
   saveCurrentRow: (tabId: string) => Promise<boolean>
@@ -482,14 +491,14 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     // ------ syncCellValue ------
 
-    syncCellValue: (tabId, rowData, column, value) => {
+    syncCellValue: (tabId, rowData, column, value, rowKeyOverride) => {
       const tab = get().tabs[tabId]
       if (!tab || !rowData) return
 
       const colIdx = tab.columns.findIndex((c) => c.name === column)
       if (colIdx < 0) return
 
-      const rowKey = getRowKeyFromData(rowData, tab.primaryKey?.keyColumns ?? [])
+      const rowKey = rowKeyOverride ?? getRowKeyFromData(rowData, tab.primaryKey?.keyColumns ?? [])
       const rowIdx = findRowIndexByKey(tab.rows, tab.columns, rowKey)
       if (rowIdx < 0) return
 
@@ -498,7 +507,25 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       nextRow[colIdx] = value
       nextRows[rowIdx] = nextRow
 
-      patchTab(tabId, { rows: nextRows })
+      const isPrimaryKeyColumn = tab.primaryKey?.keyColumns.includes(column) ?? false
+      const nextRowKey =
+        isPrimaryKeyColumn && !('__tempId' in rowKey) ? { ...rowKey, [column]: value } : rowKey
+
+      const nextEditState =
+        tab.editState && isSameRowKey(tab.editState.rowKey, rowKey)
+          ? { ...tab.editState, rowKey: nextRowKey }
+          : tab.editState
+
+      const nextSelectedRowKey =
+        tab.selectedRowKey && isSameRowKey(tab.selectedRowKey, rowKey)
+          ? nextRowKey
+          : tab.selectedRowKey
+
+      patchTab(tabId, {
+        rows: nextRows,
+        editState: nextEditState,
+        selectedRowKey: nextSelectedRowKey,
+      })
     },
 
     // ------ clearEditStateIfUnmodified ------
@@ -617,21 +644,31 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         })
       } else {
         // Restore original values in the row, then clear editState
-        const rowIdx = findRowIndexByKey(tab.rows, tab.columns, tab.editState.rowKey)
+        const editState = tab.editState
+        const rowIdx = findRowIndexByKey(tab.rows, tab.columns, editState.rowKey)
         if (rowIdx !== -1) {
           const newRows = [...tab.rows]
           const restoredRow = [...newRows[rowIdx]]
-          for (const [colName, value] of Object.entries(tab.editState.originalValues)) {
+          for (const [colName, value] of Object.entries(editState.originalValues)) {
             const colIdx = tab.columns.findIndex((c) => c.name === colName)
             if (colIdx !== -1) {
               restoredRow[colIdx] = value
             }
           }
           newRows[rowIdx] = restoredRow
+
+          const restoredSelectedRowKey =
+            tab.selectedRowKey && isSameRowKey(tab.selectedRowKey, editState.rowKey)
+              ? Object.fromEntries(
+                  Object.keys(editState.rowKey).map((key) => [key, editState.originalValues[key]])
+                )
+              : tab.selectedRowKey
+
           patchTab(tabId, {
             rows: newRows,
             editState: null,
             saveError: null,
+            selectedRowKey: restoredSelectedRowKey,
           })
         } else {
           patchTab(tabId, { editState: null, saveError: null })

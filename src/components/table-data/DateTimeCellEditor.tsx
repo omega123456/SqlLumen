@@ -156,6 +156,8 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
         const fieldName = props.column.key
         const committedValue = editor.isNull ? null : editor.value
         props.onRowChange({ ...props.row, [fieldName]: committedValue }, true)
+        props.onClose(true, true)
+        e.preventDefault()
         return
       }
     },

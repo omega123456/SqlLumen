@@ -14,6 +14,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 
+const { mockWriteClipboardText, mockReadClipboardText } = vi.hoisted(() => ({
+  mockWriteClipboardText: vi.fn().mockResolvedValue(undefined),
+  mockReadClipboardText: vi.fn().mockResolvedValue('Pasted Value'),
+}))
+
+vi.mock('../../../lib/context-menu-utils', async (importOriginal) => {
+  const original = (await importOriginal()) as Record<string, unknown>
+  return {
+    ...original,
+    writeClipboardText: mockWriteClipboardText,
+    readClipboardText: mockReadClipboardText,
+  }
+})
+
 // ---------------------------------------------------------------------------
 // Mock the shared DataGrid wrapper
 // ---------------------------------------------------------------------------
@@ -71,6 +85,7 @@ vi.mock('../../../components/shared/DataGrid', async () => {
 // ---------------------------------------------------------------------------
 
 import { BaseGridView } from '../../../components/shared/BaseGridView'
+import { writeClipboardText } from '../../../lib/context-menu-utils'
 import type { GridColumnDescriptor, RowEditState } from '../../../types/shared-data-view'
 import type { TableDataColumnMeta } from '../../../types/schema'
 
@@ -231,29 +246,34 @@ describe('BaseGridView', () => {
       <BaseGridView columns={testColumns} rows={testRows} editState={null} />
     )
 
-    // Get the onColumnResize handler and resize a column
+    // Simulate RDG controlling resized column widths
     const props1 = getLatestGridProps()
-    const onColumnResize = props1.onColumnResize as (col: { key: string }, width: number) => void
+    const onColumnWidthsChange = props1.onColumnWidthsChange as (
+      widths: Map<string, { type: 'resized' | 'measured'; width: number }>
+    ) => void
 
     act(() => {
-      onColumnResize({ key: 'id' }, 300)
+      onColumnWidthsChange(new Map([['id', { type: 'resized', width: 300 }]]))
     })
 
-    // Verify the custom width is applied
+    // Verify the controlled width map is applied
     const props2 = getLatestGridProps()
-    const colDefs2 = props2.columns as Array<{ key: string; width: number }>
-    expect(colDefs2.find((c) => c.key === 'id')?.width).toBe(300)
+    const widths2 = props2.columnWidths as Map<
+      string,
+      { type: 'resized' | 'measured'; width: number }
+    >
+    expect(widths2.get('id')?.width).toBe(300)
 
     // Change columns — widths should reset
     const newColumns = [makeColumn('email', 'varchar')]
     rerender(<BaseGridView columns={newColumns} rows={[]} editState={null} />)
 
     const props3 = getLatestGridProps()
-    const colDefs3 = props3.columns as Array<{ key: string; width: number }>
-    // 'email' should have default width, not 300
-    const emailCol = colDefs3.find((c) => c.key === 'email')
-    expect(emailCol).toBeDefined()
-    expect(emailCol!.width).not.toBe(300)
+    const widths3 = props3.columnWidths as Map<
+      string,
+      { type: 'resized' | 'measured'; width: number }
+    >
+    expect(widths3.size).toBe(0)
   })
 
   it('preserves column widths when the same columns are re-rendered', () => {
@@ -261,20 +281,25 @@ describe('BaseGridView', () => {
       <BaseGridView columns={testColumns} rows={testRows} editState={null} />
     )
 
-    // Resize a column
+    // Simulate RDG controlling resized column widths
     const props1 = getLatestGridProps()
-    const onColumnResize = props1.onColumnResize as (col: { key: string }, width: number) => void
+    const onColumnWidthsChange = props1.onColumnWidthsChange as (
+      widths: Map<string, { type: 'resized' | 'measured'; width: number }>
+    ) => void
 
     act(() => {
-      onColumnResize({ key: 'name' }, 250)
+      onColumnWidthsChange(new Map([['name', { type: 'resized', width: 250 }]]))
     })
 
     // Re-render with same columns (same reference)
     rerender(<BaseGridView columns={testColumns} rows={testRows} editState={null} />)
 
     const props2 = getLatestGridProps()
-    const colDefs2 = props2.columns as Array<{ key: string; width: number }>
-    expect(colDefs2.find((c) => c.key === 'name')?.width).toBe(250)
+    const widths2 = props2.columnWidths as Map<
+      string,
+      { type: 'resized' | 'measured'; width: number }
+    >
+    expect(widths2.get('name')?.width).toBe(250)
   })
 
   // -----------------------------------------------------------------------
@@ -964,6 +989,167 @@ describe('BaseGridView', () => {
     })
 
     expect(onColumnResize).toHaveBeenCalledWith('name', 350)
+  })
+
+  it('opens the next editable cell editor after tab navigation', () => {
+    render(<BaseGridView columns={testColumns} rows={testRows} editState={null} />)
+
+    const props = getLatestGridProps()
+    const onCellKeyDown = props.onCellKeyDown as (
+      args: {
+        mode: 'EDIT'
+        row: Record<string, unknown>
+        rowIdx: number
+        column: { key: string; idx: number; editable?: boolean }
+        navigate: () => void
+        onClose: (commitChanges?: boolean, shouldFocusCell?: boolean) => void
+      },
+      event: {
+        key: string
+        shiftKey?: boolean
+        ctrlKey?: boolean
+        metaKey?: boolean
+        preventGridDefault: () => void
+        isGridDefaultPrevented: () => boolean
+      }
+    ) => void
+    const onSelectedCellChange = props.onSelectedCellChange as (args: {
+      rowIdx: number
+      row: Record<string, unknown>
+      column: { key: string; idx: number; editable?: boolean }
+    }) => void
+
+    act(() => {
+      onCellKeyDown(
+        {
+          mode: 'EDIT',
+          row: testRows[0],
+          rowIdx: 0,
+          column: { key: 'id', idx: 0, editable: true },
+          navigate: vi.fn(),
+          onClose: vi.fn(),
+        },
+        {
+          key: 'Tab',
+          shiftKey: false,
+          ctrlKey: false,
+          metaKey: false,
+          preventGridDefault: vi.fn(),
+          isGridDefaultPrevented: () => false,
+        }
+      )
+
+      onSelectedCellChange({
+        rowIdx: 0,
+        row: testRows[0],
+        column: { key: 'name', idx: 1, editable: true },
+      })
+    })
+
+    expect(mockSelectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 1 },
+      { enableEditor: true, shouldFocusCell: true }
+    )
+  })
+
+  it('copies the selected cell value with the keyboard shortcut', async () => {
+    render(<BaseGridView columns={testColumns} rows={testRows} editState={null} />)
+
+    const props = getLatestGridProps()
+    const onSelectedCellChange = props.onSelectedCellChange as (args: {
+      rowIdx: number
+      row: Record<string, unknown>
+      column: { key: string; idx: number; editable?: boolean }
+    }) => void
+    const onCellKeyDown = props.onCellKeyDown as (
+      args: {
+        mode: 'SELECT'
+        row: Record<string, unknown>
+        rowIdx: number
+        column: { key: string; idx: number; editable?: boolean }
+        selectCell: (position: { rowIdx: number; idx: number }) => void
+      },
+      event: {
+        key: string
+        ctrlKey?: boolean
+        metaKey?: boolean
+        shiftKey?: boolean
+        preventGridDefault: () => void
+        isGridDefaultPrevented: () => boolean
+      }
+    ) => void
+
+    act(() => {
+      onSelectedCellChange({
+        rowIdx: 0,
+        row: testRows[0],
+        column: { key: 'name', idx: 1, editable: true },
+      })
+    })
+
+    await act(async () => {
+      onCellKeyDown(
+        {
+          mode: 'SELECT',
+          row: testRows[0],
+          rowIdx: 0,
+          column: { key: 'name', idx: 1, editable: true },
+          selectCell: vi.fn(),
+        },
+        {
+          key: 'c',
+          ctrlKey: true,
+          metaKey: false,
+          shiftKey: false,
+          preventGridDefault: vi.fn(),
+          isGridDefaultPrevented: () => false,
+        }
+      )
+    })
+
+    expect(writeClipboardText).toHaveBeenCalledWith('Alice')
+  })
+
+  it('shows a cell context menu and disables cut/paste for read-only cells', () => {
+    const readOnlyColumns = [makeColumn('name', 'varchar', { editable: false })]
+
+    render(<BaseGridView columns={readOnlyColumns} rows={[{ name: 'Alice' }]} editState={null} />)
+
+    const props = getLatestGridProps()
+    const onCellContextMenu = props.onCellContextMenu as (
+      args: {
+        rowIdx: number
+        row: Record<string, unknown>
+        column: { key: string; idx: number; editable?: boolean }
+      },
+      event: {
+        clientX: number
+        clientY: number
+        preventDefault: () => void
+        preventGridDefault: () => void
+      }
+    ) => void
+
+    act(() => {
+      onCellContextMenu(
+        {
+          rowIdx: 0,
+          row: { name: 'Alice' },
+          column: { key: 'name', idx: 0, editable: false },
+        },
+        {
+          clientX: 40,
+          clientY: 50,
+          preventDefault: vi.fn(),
+          preventGridDefault: vi.fn(),
+        }
+      )
+    })
+
+    expect(screen.getByTestId('grid-cell-context-menu')).toBeInTheDocument()
+    expect(screen.getByTestId('grid-cell-context-copy')).toBeEnabled()
+    expect(screen.getByTestId('grid-cell-context-cut')).toBeDisabled()
+    expect(screen.getByTestId('grid-cell-context-paste')).toBeDisabled()
   })
 
   // -----------------------------------------------------------------------

@@ -15,12 +15,15 @@ import { useCallback, useMemo, useRef } from 'react'
 import { BaseGridView } from '../shared/BaseGridView'
 import type { DataGridHandle } from '../shared/DataGrid'
 import { colKey, colIndexFromKey, buildTableColLookup } from '../../lib/col-key-utils'
+import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
   CellClickGuardArgs,
   CellClickGuardResult,
+  CellClipboardEditArgs,
+  AutoSizeConfig,
 } from '../../types/shared-data-view'
 import type { RowsChangeData } from 'react-data-grid'
 
@@ -133,6 +136,24 @@ export function ResultGridView({
   // Used by column descriptors and shared with the form view pattern.
   // ---------------------------------------------------------------------------
   const tableColLookup = useMemo(() => buildTableColLookup(editTableColumns), [editTableColumns])
+
+  const tableMetaByColumnIndex = useMemo(() => {
+    return columns.map((col) => {
+      const tableColMeta = tableColLookup.get(col.name.toLowerCase())
+      return (tableColMeta ?? {
+        name: col.name,
+        dataType: col.dataType,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isBooleanAlias: false,
+        isAutoIncrement: false,
+      }) satisfies TableDataColumnMeta
+    })
+  }, [columns, tableColLookup])
 
   // ---------------------------------------------------------------------------
   // Column descriptors: build GridColumnDescriptor[] from ColumnMeta[].
@@ -342,6 +363,62 @@ export function ResultGridView({
     [columns, rowData, onSyncCellValue]
   )
 
+  const autoSizeConfig: AutoSizeConfig | undefined = useMemo(() => {
+    return {
+      enabled: true,
+      computeWidth: (col, gridRows) => {
+        const index = colIndexFromKey(col.key)
+        const tableMeta = tableMetaByColumnIndex[index]
+        if (!tableMeta) return 150
+        const arrayRows = gridRows.map((row) =>
+          columns.map((_, columnIndex) => row[colKey(columnIndex)])
+        )
+        return getAutoSizedColumnWidth(tableMeta, index, arrayRows)
+      },
+    }
+  }, [columns, tableMetaByColumnIndex])
+
+  const handleCellClipboardEdit = useCallback(
+    async (args: CellClipboardEditArgs) => {
+      if (!editMode) return
+
+      const colIndex = colIndexFromKey(args.columnKey)
+      const realName = columns[colIndex]?.name
+      const isEditable = editableColumnMap.get(colIndex) ?? false
+      if (!realName || !isEditable) return
+
+      const currentEditingRow = editingRowIndexRef.current
+      const currentEditState = editStateRef.current
+      if (currentEditingRow !== null && currentEditingRow !== args.rowIdx) {
+        if (currentEditState && currentEditState.modifiedColumns.size > 0) {
+          const saveSucceeded = await onAutoSave()
+          if (!saveSucceeded) return
+        }
+      }
+
+      onRowSelected(args.rowIdx)
+
+      if (currentEditingRow !== args.rowIdx) {
+        onStartEditing(args.rowIdx)
+      }
+
+      const nextValue =
+        args.action === 'cut'
+          ? null
+          : (args.text ?? (args.rowData[args.columnKey] as string | null))
+      onSyncCellValue(realName, nextValue)
+    },
+    [
+      editMode,
+      columns,
+      editableColumnMap,
+      onAutoSave,
+      onRowSelected,
+      onStartEditing,
+      onSyncCellValue,
+    ]
+  )
+
   // ---------------------------------------------------------------------------
   // Row key getter: return string for BaseGridView compatibility.
   // ---------------------------------------------------------------------------
@@ -384,9 +461,11 @@ export function ResultGridView({
       onSortChange={handleSortChange}
       onCellClickGuard={editMode ? cellClickGuard : readOnlyCellClickGuard}
       onRowsChange={handleRowsChange}
+      onCellClipboardEdit={handleCellClipboardEdit}
       rowKeyGetter={rowKeyGetter}
       getRowClass={getRowClass}
       isModifiedCell={isModifiedCell}
+      autoSizeConfig={autoSizeConfig}
       showReadOnlyHeaders={!!editMode}
       testId="result-grid-view"
     />

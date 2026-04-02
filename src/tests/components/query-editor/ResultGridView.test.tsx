@@ -128,6 +128,32 @@ describe('ResultGridView', () => {
     expect(rowData[1]).toEqual({ __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null })
   })
 
+  it('enables auto-sizing based on the visible query result values', () => {
+    render(<ResultGridView {...defaultProps} />)
+
+    const props = getLatestBaseGridProps()
+    const autoSizeConfig = props.autoSizeConfig as
+      | {
+          enabled: boolean
+          computeWidth: (
+            col: { key: string; displayName: string; dataType: string },
+            rows: Record<string, unknown>[]
+          ) => number
+        }
+      | undefined
+    const rowData = props.rows as Array<Record<string, unknown>>
+    const gridColumns = props.columns as Array<{
+      key: string
+      displayName: string
+      dataType: string
+    }>
+
+    expect(autoSizeConfig?.enabled).toBe(true)
+    expect(autoSizeConfig?.computeWidth(gridColumns[2], rowData)).toBeGreaterThan(
+      autoSizeConfig!.computeWidth(gridColumns[0], rowData)
+    )
+  })
+
   it('passes sortColumn and sortDirection translated to BaseGridView format', () => {
     render(<ResultGridView {...defaultProps} sortColumn="name" sortDirection="asc" />)
     const props = getLatestBaseGridProps()

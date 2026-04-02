@@ -615,6 +615,65 @@ describe('ResultGridView edit mode', () => {
     expect(onSyncCellValue).toHaveBeenCalledWith('name', 'Alice Modified')
   })
 
+  it('provides a cell clipboard edit handler that pastes into editable query result cells', async () => {
+    const onAutoSave = vi.fn().mockResolvedValue(true)
+    const onStartEditing = vi.fn()
+    const onRowSelected = vi.fn()
+    const onSyncCellValue = vi.fn()
+    const editableMap = new Map<number, boolean>([
+      [0, false],
+      [1, true],
+      [2, true],
+    ])
+
+    render(
+      <ResultGridView
+        {...baseProps}
+        editMode="users"
+        editableColumnMap={editableMap}
+        editTableColumns={editTableColumns}
+        editState={{
+          rowKey: { id: 1 },
+          originalValues: { name: 'Alice' },
+          currentValues: { name: 'Alice Updated' },
+          modifiedColumns: new Set(['name']),
+          isNewRow: false,
+        }}
+        editingRowIndex={0}
+        onAutoSave={onAutoSave}
+        onStartEditing={onStartEditing}
+        onRowSelected={onRowSelected}
+        onSyncCellValue={onSyncCellValue}
+      />
+    )
+
+    const props = getLatestBaseGridProps()
+    const onCellClipboardEdit = props.onCellClipboardEdit as
+      | ((args: {
+          rowIdx: number
+          rowData: Record<string, unknown>
+          columnKey: string
+          action: 'paste' | 'cut'
+          text?: string
+        }) => Promise<void>)
+      | undefined
+
+    await act(async () => {
+      await onCellClipboardEdit?.({
+        rowIdx: 1,
+        rowData: { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
+        columnKey: 'col_1',
+        action: 'paste',
+        text: 'Pasted Name',
+      })
+    })
+
+    expect(onAutoSave).toHaveBeenCalled()
+    expect(onRowSelected).toHaveBeenCalledWith(1)
+    expect(onStartEditing).toHaveBeenCalledWith(1)
+    expect(onSyncCellValue).toHaveBeenCalledWith('name', 'Pasted Name')
+  })
+
   it('does not call onCellClick edit logic in read-only mode', async () => {
     const onStartEditing = vi.fn()
     const onRowSelected = vi.fn()
