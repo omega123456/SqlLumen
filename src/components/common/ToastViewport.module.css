@@ -58,6 +58,10 @@
   border: var(--ui-toast-dark-border-success);
 }
 
+.toastWarning {
+  border: var(--ui-toast-dark-border-warning);
+}
+
 .surface {
   display: flex;
   flex-direction: row;
@@ -78,9 +82,9 @@
   justify-content: center;
 }
 
-.iconWellInfo {
-  background: var(--ui-toast-dark-icon-well-info-bg);
-  color: var(--primary);
+.iconWellWarning {
+  background: var(--ui-toast-dark-icon-well-warning-bg);
+  color: var(--warning);
 }
 
 .iconWellError {
@@ -162,8 +166,8 @@
   background: var(--ui-toast-light-progress-error);
 }
 
-.progressInfo {
-  background: var(--ui-toast-light-progress-info);
+.progressWarning {
+  background: var(--ui-toast-light-progress-warning);
 }
 
 /* ---------- Light ---------- */
@@ -182,7 +186,8 @@
 }
 
 :global([data-theme='light']) .toastError,
-:global([data-theme='light']) .toastSuccess {
+:global([data-theme='light']) .toastSuccess,
+:global([data-theme='light']) .toastWarning {
   border: var(--ui-toast-light-border);
 }
 
@@ -194,9 +199,9 @@
   border-radius: 50%;
 }
 
-:global([data-theme='light']) .iconWellInfo {
-  background: var(--secondary-container);
-  color: var(--primary);
+:global([data-theme='light']) .iconWellWarning {
+  background: var(--ui-toast-light-warning-well-bg);
+  color: var(--ui-toast-light-warning-icon-fg);
 }
 
 :global([data-theme='light']) .iconWellError {

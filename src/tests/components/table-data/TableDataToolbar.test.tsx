@@ -15,7 +15,7 @@ vi.mock('../../../stores/toast-store', () => ({
       toasts: [],
       showError: mockShowError,
       showSuccess: mockShowSuccess,
-      showInfo: vi.fn(),
+      showWarning: vi.fn(),
       dismiss: vi.fn(),
     }
     return selector(state)

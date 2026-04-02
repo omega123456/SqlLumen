@@ -15,7 +15,7 @@ describe('ToastViewport', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('renders success, error, and info variants with correct roles', () => {
+  it('renders success, error, and warning variants with correct roles', () => {
     useToastStore.setState({
       toasts: [
         {
@@ -34,7 +34,7 @@ describe('ToastViewport', () => {
         },
         {
           id: 'c',
-          variant: 'info',
+          variant: 'warning',
           title: 'FYI',
           durationMs: 5000,
         },
@@ -48,16 +48,16 @@ describe('ToastViewport', () => {
 
     const success = items.find((el) => el.getAttribute('data-toast-variant') === 'success')
     const err = items.find((el) => el.getAttribute('data-toast-variant') === 'error')
-    const info = items.find((el) => el.getAttribute('data-toast-variant') === 'info')
+    const warn = items.find((el) => el.getAttribute('data-toast-variant') === 'warning')
 
     expect(success).toHaveAttribute('role', 'status')
     expect(err).toHaveAttribute('role', 'alert')
-    expect(info).toHaveAttribute('role', 'status')
+    expect(warn).toHaveAttribute('role', 'status')
 
     expect(within(success!).getByRole('heading', { level: 3 })).toHaveTextContent('Done')
     expect(within(success!).getByText('ok')).toBeInTheDocument()
     expect(within(err!).getByText('bad')).toBeInTheDocument()
-    expect(within(info!).getByRole('heading', { level: 3 })).toHaveTextContent('FYI')
+    expect(within(warn!).getByRole('heading', { level: 3 })).toHaveTextContent('FYI')
   })
 
   it('dismiss button removes that toast', async () => {
@@ -66,7 +66,7 @@ describe('ToastViewport', () => {
       toasts: [
         {
           id: 'x',
-          variant: 'info',
+          variant: 'warning',
           title: 'Close me',
           durationMs: 5000,
         },

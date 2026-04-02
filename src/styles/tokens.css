@@ -330,6 +330,7 @@
   --ui-toast-dark-border-default: 1px solid rgba(255, 255, 255, 0.05);
   --ui-toast-dark-border-error: 1px solid color-mix(in srgb, var(--error) 10%, transparent);
   --ui-toast-dark-border-success: 1px solid color-mix(in srgb, var(--tertiary) 10%, transparent);
+  --ui-toast-dark-border-warning: 1px solid color-mix(in srgb, var(--warning) 10%, transparent);
   --ui-toast-dark-shadow: 0 12px 32px rgba(218, 226, 253, 0.06);
   --ui-toast-dark-radius: 8px;
   --ui-toast-dark-inner-padding: var(--space-md);
@@ -340,7 +341,7 @@
   --ui-toast-dark-close-hover-fg: #cbd5e1;
   --ui-toast-icon-well-size: 40px;
   --ui-toast-dark-icon-well-radius: 4px;
-  --ui-toast-dark-icon-well-info-bg: color-mix(in srgb, var(--primary-container) 20%, transparent);
+  --ui-toast-dark-icon-well-warning-bg: color-mix(in srgb, var(--warning-container) 20%, transparent);
   --ui-toast-dark-icon-well-error-bg: color-mix(in srgb, var(--error-container) 20%, transparent);
   --ui-toast-dark-icon-well-success-bg: color-mix(
     in srgb,
@@ -615,7 +616,9 @@
   --ui-toast-light-progress-track: var(--surface-container-low);
   --ui-toast-light-progress-success: #22c55e;
   --ui-toast-light-progress-error: var(--error);
-  --ui-toast-light-progress-info: var(--primary);
+  --ui-toast-light-warning-well-bg: color-mix(in srgb, var(--warning-container) 55%, transparent);
+  --ui-toast-light-warning-icon-fg: var(--warning);
+  --ui-toast-light-progress-warning: var(--warning);
 
   /* Query editor light overrides */
   --editor-bg: var(--surface-container-lowest);

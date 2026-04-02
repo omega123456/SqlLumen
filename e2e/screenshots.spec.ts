@@ -94,13 +94,13 @@ async function showDesignReferenceToasts(page: Page) {
   await page.evaluate(() => {
     const store = (window as unknown as Record<string, unknown>).__toastStore__ as {
       getState: () => {
-        showInfo: (t: string, m?: string) => void
+        showWarning: (t: string, m?: string) => void
         showError: (t: string, m?: string) => void
         showSuccess: (t: string, m?: string) => void
       }
     }
-    const { showInfo, showError, showSuccess } = store.getState()
-    showInfo('Update Available', 'SQL Architect v2.5.1 is ready for installation.')
+    const { showWarning, showError, showSuccess } = store.getState()
+    showWarning('Update Available', 'SQL Architect v2.5.1 is ready for installation.')
     showError('Authentication Error', 'Invalid credentials for user: admin@localhost')
     showSuccess('Query Executed', 'Successfully retrieved 450 rows in 12ms.')
   })

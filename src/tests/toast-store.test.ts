@@ -8,7 +8,12 @@ vi.mock('../lib/app-log-commands', () => ({
   logFrontend: logFrontendMock,
 }))
 
-import { useToastStore, _resetToastTimeoutsForTests } from '../stores/toast-store'
+import {
+  useToastStore,
+  _resetToastTimeoutsForTests,
+  SUCCESS_TOAST_DURATION_MS,
+  WARNING_ERROR_TOAST_DURATION_MS,
+} from '../stores/toast-store'
 
 describe('useToastStore', () => {
   beforeEach(() => {
@@ -26,13 +31,27 @@ describe('useToastStore', () => {
     expect(useToastStore.getState().toasts).toEqual([])
   })
 
-  it('showSuccess appends a toast', () => {
+  it('showSuccess appends a toast with default short duration', () => {
     useToastStore.getState().showSuccess('Saved', 'Details')
     const { toasts } = useToastStore.getState()
     expect(toasts).toHaveLength(1)
     expect(toasts[0].variant).toBe('success')
     expect(toasts[0].title).toBe('Saved')
     expect(toasts[0].message).toBe('Details')
+    expect(toasts[0].durationMs).toBe(SUCCESS_TOAST_DURATION_MS)
+  })
+
+  it('showError appends with default long duration', () => {
+    useToastStore.getState().showError('Oops')
+    const { toasts } = useToastStore.getState()
+    expect(toasts[0].durationMs).toBe(WARNING_ERROR_TOAST_DURATION_MS)
+  })
+
+  it('showWarning appends with default long duration', () => {
+    useToastStore.getState().showWarning('Heads up', 'Details')
+    const { toasts } = useToastStore.getState()
+    expect(toasts[0].variant).toBe('warning')
+    expect(toasts[0].durationMs).toBe(WARNING_ERROR_TOAST_DURATION_MS)
   })
 
   it('showError logs to application logger at error level', () => {
@@ -40,9 +59,27 @@ describe('useToastStore', () => {
     expect(logFrontendMock).toHaveBeenCalledWith('error', 'Title: Body')
   })
 
+  it('showWarning logs to application logger at warn level', () => {
+    useToastStore.getState().showWarning('Title', 'Body')
+    expect(logFrontendMock).toHaveBeenCalledWith('warn', 'Title: Body')
+  })
+
   it('showError log line uses title only when message is omitted', () => {
     useToastStore.getState().showError('Only')
     expect(logFrontendMock).toHaveBeenCalledWith('error', 'Only')
+  })
+
+  it('showWarning log line uses title only when message is omitted', () => {
+    useToastStore.getState().showWarning('Only')
+    expect(logFrontendMock).toHaveBeenCalledWith('warn', 'Only')
+  })
+
+  it('error and warning accept duration override', () => {
+    useToastStore.getState().showError('e', undefined, 3000)
+    useToastStore.getState().showWarning('w', undefined, 4000)
+    const { toasts } = useToastStore.getState()
+    expect(toasts.find((t) => t.title === 'e')?.durationMs).toBe(3000)
+    expect(toasts.find((t) => t.title === 'w')?.durationMs).toBe(4000)
   })
 
   it('dismiss removes a toast', () => {
@@ -54,7 +91,7 @@ describe('useToastStore', () => {
 
   it('caps visible toasts at 5 (drops oldest)', () => {
     for (let i = 0; i < 6; i++) {
-      useToastStore.getState().showInfo(`msg-${i}`)
+      useToastStore.getState().showWarning(`msg-${i}`)
     }
     const { toasts } = useToastStore.getState()
     expect(toasts).toHaveLength(5)

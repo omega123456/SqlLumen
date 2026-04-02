@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 import { logFrontend } from '../lib/app-log-commands'
 
-export type ToastVariant = 'success' | 'error' | 'info'
+export type ToastVariant = 'success' | 'error' | 'warning'
 
 export interface ToastItem {
   id: string
@@ -12,7 +12,9 @@ export interface ToastItem {
   durationMs: number
 }
 
-const DEFAULT_DURATION_MS = 5000
+export const SUCCESS_TOAST_DURATION_MS = 5000
+export const WARNING_ERROR_TOAST_DURATION_MS = 20_000
+
 const MAX_VISIBLE = 5
 
 const timeouts = new Map<string, ReturnType<typeof setTimeout>>()
@@ -25,80 +27,65 @@ function clearScheduled(id: string) {
   }
 }
 
+type ToastGetter = () => ToastState
+type ToastSetter = (
+  partial:
+    | ToastState
+    | Partial<ToastState>
+    | ((state: ToastState) => ToastState | Partial<ToastState>)
+) => void
+
+function pushToast(set: ToastSetter, get: ToastGetter, item: ToastItem): string {
+  set((state) => {
+    const next = [...state.toasts, item]
+    while (next.length > MAX_VISIBLE) {
+      const removed = next.shift()
+      if (removed) {
+        clearScheduled(removed.id)
+      }
+    }
+    return { toasts: next }
+  })
+  const id = item.id
+  const t = setTimeout(() => {
+    timeouts.delete(id)
+    get().dismiss(id)
+  }, item.durationMs)
+  timeouts.set(id, t)
+  return id
+}
+
 interface ToastState {
   toasts: ToastItem[]
   showSuccess: (title: string, message?: string, durationMs?: number) => string
   showError: (title: string, message?: string, durationMs?: number) => string
-  showInfo: (title: string, message?: string, durationMs?: number) => string
+  showWarning: (title: string, message?: string, durationMs?: number) => string
   dismiss: (id: string) => void
 }
 
 export const useToastStore = create<ToastState>()((set, get) => ({
   toasts: [],
 
-  showSuccess: (title, message, durationMs = DEFAULT_DURATION_MS) => {
+  showSuccess: (title, message, durationMs = SUCCESS_TOAST_DURATION_MS) => {
     const id = crypto.randomUUID()
     const item: ToastItem = { id, variant: 'success', title, message, durationMs }
-    set((state) => {
-      const next = [...state.toasts, item]
-      while (next.length > MAX_VISIBLE) {
-        const removed = next.shift()
-        if (removed) {
-          clearScheduled(removed.id)
-        }
-      }
-      return { toasts: next }
-    })
-    const t = setTimeout(() => {
-      timeouts.delete(id)
-      get().dismiss(id)
-    }, durationMs)
-    timeouts.set(id, t)
-    return id
+    return pushToast(set, get, item)
   },
 
-  showError: (title, message, durationMs = DEFAULT_DURATION_MS) => {
+  showError: (title, message, durationMs = WARNING_ERROR_TOAST_DURATION_MS) => {
     const logLine = message ? `${title}: ${message}` : title
     logFrontend('error', logLine)
     const id = crypto.randomUUID()
     const item: ToastItem = { id, variant: 'error', title, message, durationMs }
-    set((state) => {
-      const next = [...state.toasts, item]
-      while (next.length > MAX_VISIBLE) {
-        const removed = next.shift()
-        if (removed) {
-          clearScheduled(removed.id)
-        }
-      }
-      return { toasts: next }
-    })
-    const t = setTimeout(() => {
-      timeouts.delete(id)
-      get().dismiss(id)
-    }, durationMs)
-    timeouts.set(id, t)
-    return id
+    return pushToast(set, get, item)
   },
 
-  showInfo: (title, message, durationMs = DEFAULT_DURATION_MS) => {
+  showWarning: (title, message, durationMs = WARNING_ERROR_TOAST_DURATION_MS) => {
+    const logLine = message ? `${title}: ${message}` : title
+    logFrontend('warn', logLine)
     const id = crypto.randomUUID()
-    const item: ToastItem = { id, variant: 'info', title, message, durationMs }
-    set((state) => {
-      const next = [...state.toasts, item]
-      while (next.length > MAX_VISIBLE) {
-        const removed = next.shift()
-        if (removed) {
-          clearScheduled(removed.id)
-        }
-      }
-      return { toasts: next }
-    })
-    const t = setTimeout(() => {
-      timeouts.delete(id)
-      get().dismiss(id)
-    }, durationMs)
-    timeouts.set(id, t)
-    return id
+    const item: ToastItem = { id, variant: 'warning', title, message, durationMs }
+    return pushToast(set, get, item)
   },
 
   dismiss: (id) => {
@@ -116,8 +103,8 @@ export function showErrorToast(title: string, message?: string, durationMs?: num
   return useToastStore.getState().showError(title, message, durationMs)
 }
 
-export function showInfoToast(title: string, message?: string, durationMs?: number) {
-  return useToastStore.getState().showInfo(title, message, durationMs)
+export function showWarningToast(title: string, message?: string, durationMs?: number) {
+  return useToastStore.getState().showWarning(title, message, durationMs)
 }
 
 /** Clear all timers — for tests. */

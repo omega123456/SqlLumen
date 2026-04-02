@@ -9,7 +9,7 @@ import {
   updateResultCell as updateResultCellCmd,
 } from '../lib/query-commands'
 import { updateTableRow as updateTableRowCmd } from '../lib/table-data-commands'
-import { showErrorToast, showInfoToast, showSuccessToast } from './toast-store'
+import { showErrorToast, showSuccessToast, showWarningToast } from './toast-store'
 import {
   findAmbiguousColumns,
   buildBoundColumnIndexMap,
@@ -872,10 +872,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         const keyColsLower = new Set(tableInfo.primaryKey.keyColumns.map((k) => k.toLowerCase()))
         const nonKeyAmbiguous = [...ambiguous].filter((a) => !keyColsLower.has(a))
         if (nonKeyAmbiguous.length > 0) {
-          showInfoToast(
+          showWarningToast(
             'Ambiguous columns',
-            `Some columns are ambiguous and cannot be edited: ${nonKeyAmbiguous.join(', ')}`,
-            20000
+            `Some columns are ambiguous and cannot be edited: ${nonKeyAmbiguous.join(', ')}`
           )
         }
       }
@@ -1048,10 +1047,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           // Cache sync is non-critical — the row IS saved in the database
           // but the local cache may be stale until the query is re-run
           console.warn('[query-store] Result cache sync failed:', cacheErr)
-          showInfoToast(
+          showWarningToast(
             'Cache sync warning',
-            'Row saved successfully, but the result cache may be stale. Re-run the query to refresh pagination/sort/export.',
-            10000
+            'Row saved successfully, but the result cache may be stale. Re-run the query to refresh pagination/sort/export.'
           )
         }
 

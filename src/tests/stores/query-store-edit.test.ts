@@ -342,7 +342,7 @@ describe('useQueryStore — setEditMode', () => {
     expect(tab.editMode).toBe('testdb.users') // editing is enabled
 
     const toasts = useToastStore.getState().toasts
-    expect(toasts.some((t) => t.variant === 'info' && t.message?.includes('ambiguous'))).toBe(true)
+    expect(toasts.some((t) => t.variant === 'warning' && t.message?.includes('ambiguous'))).toBe(true)
   })
 
   it('enables edit mode for joined SELECT * results when the selected table key is duplicated by another table', async () => {

@@ -1,47 +1,51 @@
 import type { CSSProperties } from 'react'
-import { X, CheckCircle, Info, XCircle } from '@phosphor-icons/react'
+import { X, CheckCircle, Warning, XCircle } from '@phosphor-icons/react'
 import { useToastStore, type ToastItem } from '../../stores/toast-store'
 import styles from './ToastViewport.module.css'
 
 function variantClass(v: ToastItem['variant']) {
-  if (v === 'error') {
-    return styles.toastError
+  switch (v) {
+    case 'error':
+      return styles.toastError
+    case 'success':
+      return styles.toastSuccess
+    case 'warning':
+      return styles.toastWarning
   }
-  if (v === 'success') {
-    return styles.toastSuccess
-  }
-  return ''
 }
 
 function iconWellClass(v: ToastItem['variant']) {
-  if (v === 'error') {
-    return `${styles.iconWell} ${styles.iconWellError}`
+  switch (v) {
+    case 'error':
+      return `${styles.iconWell} ${styles.iconWellError}`
+    case 'success':
+      return `${styles.iconWell} ${styles.iconWellSuccess}`
+    case 'warning':
+      return `${styles.iconWell} ${styles.iconWellWarning}`
   }
-  if (v === 'success') {
-    return `${styles.iconWell} ${styles.iconWellSuccess}`
-  }
-  return `${styles.iconWell} ${styles.iconWellInfo}`
 }
 
 function progressClass(v: ToastItem['variant']) {
-  if (v === 'error') {
-    return `${styles.progressFill} ${styles.progressError}`
+  switch (v) {
+    case 'error':
+      return `${styles.progressFill} ${styles.progressError}`
+    case 'success':
+      return `${styles.progressFill} ${styles.progressSuccess}`
+    case 'warning':
+      return `${styles.progressFill} ${styles.progressWarning}`
   }
-  if (v === 'success') {
-    return `${styles.progressFill} ${styles.progressSuccess}`
-  }
-  return `${styles.progressFill} ${styles.progressInfo}`
 }
 
 function ToastIcon({ variant }: { variant: ToastItem['variant'] }) {
   const common = { size: 24 as const, weight: 'fill' as const }
-  if (variant === 'success') {
-    return <CheckCircle {...common} aria-hidden />
+  switch (variant) {
+    case 'success':
+      return <CheckCircle {...common} aria-hidden />
+    case 'error':
+      return <XCircle {...common} aria-hidden />
+    case 'warning':
+      return <Warning {...common} aria-hidden />
   }
-  if (variant === 'error') {
-    return <XCircle {...common} aria-hidden />
-  }
-  return <Info {...common} aria-hidden />
 }
 
 function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: string) => void }) {
