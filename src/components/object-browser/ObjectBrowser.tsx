@@ -121,6 +121,34 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
     setContextMenu(CLOSED_MENU)
   }, [])
 
+  const handleDesignTable = useCallback(
+    (databaseName: string, tableName: string) => {
+      openTab({
+        type: 'table-designer',
+        mode: 'alter',
+        objectName: tableName,
+        databaseName,
+        connectionId,
+        label: tableName,
+      })
+    },
+    [connectionId, openTab]
+  )
+
+  const handleCreateTable = useCallback(
+    (databaseName: string) => {
+      openTab({
+        type: 'table-designer',
+        mode: 'create',
+        objectName: '__new_table__',
+        databaseName,
+        connectionId,
+        label: 'New Table',
+      })
+    },
+    [connectionId, openTab]
+  )
+
   // ---------------------------------------------------------------------------
   // Double-click handler — uses node.databaseName (Simplification 5)
   // ---------------------------------------------------------------------------
@@ -228,6 +256,8 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
         onDropTable={actions.onDropTable}
         onTruncateTable={actions.onTruncateTable}
         onRenameTable={actions.onRenameTable}
+        onDesignTable={handleDesignTable}
+        onCreateTable={handleCreateTable}
       />
 
       {actions.dialogs}

@@ -73,6 +73,7 @@ describe('ResultGridView', () => {
     editState: null,
     editingRowIndex: null as number | null,
     editTableColumns: [],
+    editColumnBindings: new Map<number, string>(),
     onStartEditing: vi.fn(),
     onUpdateCellValue: vi.fn(),
     onSyncCellValue: vi.fn(),

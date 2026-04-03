@@ -67,4 +67,63 @@ describe('playwrightIpcMockHandler', () => {
     })
     expect(result).toBeNull()
   })
+
+  it('returns a realistic table designer schema mock', () => {
+    const result = playwrightIpcMockHandler('load_table_for_designer', {
+      connectionId: 'conn-1',
+      database: 'mock_db',
+      tableName: 'users',
+    }) as Record<string, unknown>
+
+    expect(result.tableName).toBe('users')
+    expect(result.properties).toMatchObject({
+      engine: 'InnoDB',
+      charset: 'utf8mb4',
+      collation: 'utf8mb4_unicode_ci',
+      autoIncrement: 1,
+      rowFormat: 'DYNAMIC',
+      comment: 'User accounts table',
+    })
+
+    const columns = result.columns as Array<Record<string, unknown>>
+    expect(columns).toHaveLength(3)
+    expect(columns[0]).toMatchObject({
+      name: 'id',
+      type: 'BIGINT',
+      isPrimaryKey: true,
+      isAutoIncrement: true,
+    })
+
+    const foreignKeys = result.foreignKeys as Array<Record<string, unknown>>
+    expect(foreignKeys[0].isComposite).toBe(false)
+    expect(foreignKeys[1].isComposite).toBe(true)
+  })
+
+  it('returns create-table DDL in create mode', () => {
+    const result = playwrightIpcMockHandler('generate_table_ddl', {
+      request: { mode: 'create' },
+    }) as Record<string, unknown>
+
+    expect(result.ddl).toContain('CREATE TABLE `mock_db`.`__new_table__`')
+    expect(result.warnings).toEqual([])
+  })
+
+  it('returns alter-table DDL in alter mode', () => {
+    const result = playwrightIpcMockHandler('generate_table_ddl', {
+      request: { mode: 'alter' },
+    }) as Record<string, unknown>
+
+    expect(result.ddl).toContain('ALTER TABLE `mock_db`.`users`')
+    expect(result.warnings).toEqual([])
+  })
+
+  it('returns undefined for apply_table_ddl', () => {
+    const result = playwrightIpcMockHandler('apply_table_ddl', {
+      connectionId: 'conn-1',
+      database: 'mock_db',
+      ddl: 'ALTER TABLE `users` MODIFY COLUMN `email` VARCHAR(320) NOT NULL;',
+    })
+
+    expect(result).toBeUndefined()
+  })
 })

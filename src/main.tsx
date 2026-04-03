@@ -28,7 +28,6 @@ loader.config({ monaco })
 // ---------------------------------------------------------------------------
 const origCreateWebWorker = monaco.editor.createWebWorker.bind(monaco.editor)
 
- 
 monaco.editor.createWebWorker = function patchedCreateWebWorker<T extends object>(
   opts: Parameters<typeof origCreateWebWorker>[0]
 ): monaco.editor.MonacoWebWorker<T> {
@@ -60,11 +59,13 @@ async function init() {
     const { useConnectionStore } = await import('./stores/connection-store')
     const { useQueryStore } = await import('./stores/query-store')
     const { useTableDataStore } = await import('./stores/table-data-store')
+    const { useTableDesignerStore } = await import('./stores/table-designer-store')
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
     ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
     ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore
     ;(window as unknown as Record<string, unknown>).__queryStore__ = useQueryStore
     ;(window as unknown as Record<string, unknown>).__tableDataStore__ = useTableDataStore
+    ;(window as unknown as Record<string, unknown>).__tableDesignerStore__ = useTableDesignerStore
   }
 
   // Apply theme before React renders to prevent flash

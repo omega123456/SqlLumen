@@ -1,0 +1,118 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: var(--space-xl);
+  background: var(--surface-container);
+  color: var(--on-surface);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-headline);
+  font-size: var(--type-title-lg);
+  line-height: 1.15;
+}
+
+.description {
+  margin: 0;
+  color: var(--on-surface-variant);
+}
+
+.codeBlock {
+  margin: 0;
+  padding: var(--space-lg);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+  border-radius: var(--radius-md);
+  background: var(--surface-container-low);
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: var(--type-size-sm);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.warningSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--warning-container) 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 20%, transparent);
+}
+
+.warningHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.warningList {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--on-surface);
+}
+
+.warningList li + li {
+  margin-top: 4px;
+}
+
+.error {
+  color: var(--error);
+  font-size: var(--type-size-sm);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.cancelButton {
+  min-width: 120px;
+}
+
+.executeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 168px;
+  padding: 11px 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--primary), var(--primary-container));
+  color: var(--on-primary);
+  font-family: var(--font-body);
+  font-size: var(--type-body-emphasis);
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(var(--primary-rgb), 0.22);
+  transition:
+    transform 0.12s ease,
+    filter 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.executeButton:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.executeButton:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.executeButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

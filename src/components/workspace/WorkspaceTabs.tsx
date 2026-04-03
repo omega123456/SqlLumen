@@ -1,4 +1,5 @@
 import type { WorkspaceTab } from '../../types/schema'
+import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import { Plus } from '@phosphor-icons/react'
@@ -8,6 +9,19 @@ const EMPTY_TABS: WorkspaceTab[] = []
 
 export interface WorkspaceTabsProps {
   connectionId: string
+}
+
+function WorkspaceTabLabel({ tab }: { tab: WorkspaceTab }) {
+  const isDirty = useTableDesignerStore((state) =>
+    tab.type === 'table-designer' ? (state.tabs[tab.id]?.isDirty ?? false) : false
+  )
+
+  return (
+    <span className={styles.tabLabel}>
+      {tab.label}
+      {isDirty && <span className={styles.dirtyIndicator}> ●</span>}
+    </span>
+  )
 }
 
 export function WorkspaceTabs({ connectionId }: WorkspaceTabsProps) {
@@ -45,7 +59,7 @@ export function WorkspaceTabs({ connectionId }: WorkspaceTabsProps) {
               </button>
             }
           >
-            <span className={styles.tabLabel}>{tab.label}</span>
+            <WorkspaceTabLabel tab={tab} />
           </UnderlineTab>
         )
       })}

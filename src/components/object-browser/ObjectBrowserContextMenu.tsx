@@ -9,6 +9,7 @@ import {
   PencilSimple,
   Play,
   PlusCircle,
+  Table,
   Trash,
   Eraser,
   Wrench,
@@ -40,6 +41,8 @@ export interface ObjectBrowserContextMenuProps {
   onDropTable?: (databaseName: string, tableName: string) => void
   onTruncateTable?: (databaseName: string, tableName: string) => void
   onRenameTable?: (databaseName: string, tableName: string) => void
+  onDesignTable?: (databaseName: string, tableName: string) => void
+  onCreateTable?: (databaseName: string) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +89,8 @@ export function ObjectBrowserContextMenu({
   onDropTable,
   onTruncateTable,
   onRenameTable,
+  onDesignTable,
+  onCreateTable,
 }: ObjectBrowserContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const openTab = useWorkspaceStore((state) => state.openTab)
@@ -139,6 +144,12 @@ export function ObjectBrowserContextMenu({
   const databaseName = node?.databaseName ?? parsed.database
   const objectName = node?.objectName ?? parsed.name
   const nodeLabel = node?.label ?? objectName
+  const categoryType =
+    node?.type === 'category' && typeof node.metadata?.categoryType === 'string'
+      ? node.metadata.categoryType
+      : nodeType === 'category'
+        ? parsed.name
+        : undefined
 
   // ---------------------------------------------------------------------------
   // Action helpers
@@ -192,6 +203,7 @@ export function ObjectBrowserContextMenu({
     nodeType,
     databaseName,
     objectName: nodeLabel,
+    categoryType,
     isReadOnly,
     openSchemaInfoTab,
     copyName,
@@ -203,6 +215,8 @@ export function ObjectBrowserContextMenu({
     onDropTable,
     onTruncateTable,
     onRenameTable,
+    onDesignTable,
+    onCreateTable,
     closeMenu,
   })
 
@@ -263,6 +277,7 @@ interface BuildMenuArgs {
   nodeType: NodeType
   databaseName: string
   objectName: string
+  categoryType?: string
   isReadOnly: boolean
   openSchemaInfoTab: () => void
   copyName: () => void
@@ -274,6 +289,8 @@ interface BuildMenuArgs {
   onDropTable?: (databaseName: string, tableName: string) => void
   onTruncateTable?: (databaseName: string, tableName: string) => void
   onRenameTable?: (databaseName: string, tableName: string) => void
+  onDesignTable?: (databaseName: string, tableName: string) => void
+  onCreateTable?: (databaseName: string) => void
   closeMenu: () => void
 }
 
@@ -282,6 +299,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
     nodeType,
     databaseName,
     objectName,
+    categoryType,
     isReadOnly,
     openSchemaInfoTab,
     copyName,
@@ -293,6 +311,8 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
     onDropTable,
     onTruncateTable,
     onRenameTable,
+    onDesignTable,
+    onCreateTable,
     closeMenu,
   } = args
 
@@ -303,6 +323,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         isReadOnly,
         refreshNode,
         onCreateDatabase,
+        onCreateTable,
         onAlterDatabase,
         onRenameDatabase,
         onDropDatabase,
@@ -319,6 +340,8 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         onDropTable,
         onTruncateTable,
         onRenameTable,
+        onDesignTable,
+        onCreateTable,
         closeMenu,
       })
     case 'view':
@@ -336,16 +359,14 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         refreshNode,
       })
     case 'category':
-      return [
-        {
-          key: 'refresh',
-          label: 'Refresh',
-          icon: <ArrowsClockwise size={18} weight="regular" />,
-          disabled: false,
-          destructive: false,
-          action: refreshNode,
-        },
-      ]
+      return buildCategoryMenu({
+        categoryType,
+        databaseName,
+        isReadOnly,
+        refreshNode,
+        onCreateTable,
+        closeMenu,
+      })
     case 'column':
       return [
         {
@@ -370,6 +391,7 @@ function buildDatabaseMenu(args: {
   onAlterDatabase?: (databaseName: string) => void
   onRenameDatabase?: (databaseName: string) => void
   onDropDatabase?: (databaseName: string) => void
+  onCreateTable?: (databaseName: string) => void
   closeMenu: () => void
 }): MenuEntry[] {
   const {
@@ -380,6 +402,7 @@ function buildDatabaseMenu(args: {
     onAlterDatabase,
     onRenameDatabase,
     onDropDatabase,
+    onCreateTable,
     closeMenu,
   } = args
 
@@ -405,6 +428,17 @@ function buildDatabaseMenu(args: {
       destructive: false,
       action: () => {
         onCreateDatabase?.()
+        closeMenu()
+      },
+    },
+    {
+      key: 'create-table',
+      label: 'Create Table...',
+      icon: <Table size={18} weight="regular" />,
+      disabled: !onCreateTable,
+      destructive: false,
+      action: () => {
+        onCreateTable?.(databaseName)
         closeMenu()
       },
     },
@@ -464,6 +498,8 @@ function buildTableMenu(args: {
   onDropTable?: (databaseName: string, tableName: string) => void
   onTruncateTable?: (databaseName: string, tableName: string) => void
   onRenameTable?: (databaseName: string, tableName: string) => void
+  onDesignTable?: (databaseName: string, tableName: string) => void
+  onCreateTable?: (databaseName: string) => void
   closeMenu: () => void
 }): MenuEntry[] {
   const {
@@ -476,6 +512,8 @@ function buildTableMenu(args: {
     onDropTable,
     onTruncateTable,
     onRenameTable,
+    onDesignTable,
+    onCreateTable,
     closeMenu,
   } = args
 
@@ -510,6 +548,17 @@ function buildTableMenu(args: {
 
   return [
     {
+      key: 'create-table',
+      label: 'Create Table...',
+      icon: <Table size={18} weight="regular" />,
+      disabled: !onCreateTable,
+      destructive: false,
+      action: () => {
+        onCreateTable?.(databaseName)
+        closeMenu()
+      },
+    },
+    {
       key: 'select-rows',
       label: 'Select Top 100 Rows',
       icon: <ListNumbers size={18} weight="regular" />,
@@ -523,10 +572,11 @@ function buildTableMenu(args: {
       key: 'design-table',
       label: 'Design Table...',
       icon: <Wrench size={18} weight="regular" />,
-      disabled: true, // Phase 7
+      disabled: !onDesignTable,
       destructive: false,
       action: () => {
-        /* Phase 7 */
+        onDesignTable?.(databaseName, objectName)
+        closeMenu()
       },
     },
     {
@@ -589,6 +639,48 @@ function buildTableMenu(args: {
       action: refreshNode,
     },
   ]
+}
+
+function buildCategoryMenu(args: {
+  categoryType?: string
+  databaseName: string
+  isReadOnly: boolean
+  refreshNode: () => void
+  onCreateTable?: (databaseName: string) => void
+  closeMenu: () => void
+}): MenuEntry[] {
+  const { categoryType, databaseName, isReadOnly, refreshNode, onCreateTable, closeMenu } = args
+
+  const entries: MenuEntry[] = []
+
+  if (categoryType === 'table' && !isReadOnly) {
+    entries.push({
+      key: 'create-table',
+      label: 'Create Table...',
+      icon: <Table size={18} weight="regular" />,
+      disabled: !onCreateTable,
+      destructive: false,
+      action: () => {
+        onCreateTable?.(databaseName)
+        closeMenu()
+      },
+    })
+  }
+
+  if (entries.length > 0) {
+    entries.push({ key: 'sep-1', separator: true })
+  }
+
+  entries.push({
+    key: 'refresh',
+    label: 'Refresh',
+    icon: <ArrowsClockwise size={18} weight="regular" />,
+    disabled: false,
+    destructive: false,
+    action: refreshNode,
+  })
+
+  return entries
 }
 
 function buildViewMenu(args: {

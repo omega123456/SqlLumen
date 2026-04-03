@@ -55,9 +55,15 @@ export function SchemaInfoTab({ tab }: SchemaInfoTabProps) {
     let cancelled = false
 
     // Clear stale state immediately before fetching new data
-    setLoading(true)
-    setData(null)
-    setError(null)
+    queueMicrotask(() => {
+      if (cancelled) {
+        return
+      }
+
+      setLoading(true)
+      setData(null)
+      setError(null)
+    })
 
     getSchemaInfo(tab.connectionId, tab.databaseName, tab.objectName, tab.objectType)
       .then((result) => {

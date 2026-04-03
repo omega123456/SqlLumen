@@ -15,13 +15,7 @@
 
 import { useCallback, useState, useRef, useEffect } from 'react'
 import type { TableDataColumnMeta } from '../../types/schema'
-import { getTemporalColumnType } from '../../lib/date-utils'
-import {
-  ENUM_NULL_SENTINEL,
-  getEnumFallbackValue,
-  isEnumColumn,
-} from '../table-data/enum-field-utils'
-import DateTimeCellEditor from '../table-data/DateTimeCellEditor'
+import { ENUM_NULL_SENTINEL, getEnumFallbackValue } from '../table-data/enum-field-utils'
 import { useEditorCallbacks } from './editor-callbacks-context'
 import styles from './grid-cell-editors.module.css'
 
@@ -322,15 +316,6 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Cell editor factory — selects the correct editor for a column
-// ---------------------------------------------------------------------------
-
-/**
- * Callback props that the factory passes through to each cell editor.
- * Both TableDataGrid and ResultGridView provide these with their own
- * concrete implementations (direct store callbacks vs. wrapped callbacks).
- */
 export interface CellEditorCallbackProps {
   tabId: string
   updateCellValue: (tabId: string, columnName: string, value: unknown) => void
@@ -340,87 +325,4 @@ export interface CellEditorCallbackProps {
     columnName: string,
     value: unknown
   ) => void
-}
-
-/**
- * Return type of getCellEditorForColumn.
- * `editorOptions` may disable RDG's default close-on-external-row-change
- * behaviour, which would otherwise close the active editor whenever the
- * controlled `rows` prop changes during live typing.
- */
-export interface CellEditorConfig {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  renderEditCell: (props: any) => React.ReactElement
-  editorOptions?: {
-    commitOnOutsideClick?: boolean
-    closeOnExternalRowChange?: boolean
-  }
-}
-
-/**
- * Given column metadata and editor callback props, return the correct
- * `renderEditCell` function and optional `editorOptions`:
- *
- * - Temporal column → DateTimeCellEditor  (+ commitOnOutsideClick: false)
- * - Enum column     → EnumCellEditor
- * - Otherwise       → NullableCellEditor
- */
-export function getCellEditorForColumn(
-  col: TableDataColumnMeta | undefined,
-  callbacks: CellEditorCallbackProps
-): CellEditorConfig {
-  const temporalType = col ? getTemporalColumnType(col.dataType) : null
-  const sharedEditorOptions = { closeOnExternalRowChange: false }
-
-  if (temporalType && col) {
-    return {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      renderEditCell: (props: any) => (
-        <DateTimeCellEditor
-          {...props}
-          isNullable={col.isNullable}
-          columnMeta={col}
-          tabId={callbacks.tabId}
-          updateCellValue={callbacks.updateCellValue}
-          syncCellValue={callbacks.syncCellValue}
-        />
-      ),
-      editorOptions: {
-        ...sharedEditorOptions,
-        commitOnOutsideClick: false,
-      },
-    }
-  }
-
-  if (col && isEnumColumn(col)) {
-    return {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      renderEditCell: (props: any) => (
-        <EnumCellEditor
-          {...props}
-          isNullable={col.isNullable}
-          columnMeta={col}
-          tabId={callbacks.tabId}
-          updateCellValue={callbacks.updateCellValue}
-          syncCellValue={callbacks.syncCellValue}
-        />
-      ),
-      editorOptions: sharedEditorOptions,
-    }
-  }
-
-  return {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    renderEditCell: (props: any) => (
-      <NullableCellEditor
-        {...props}
-        isNullable={col?.isNullable ?? false}
-        columnMeta={col}
-        tabId={callbacks.tabId}
-        updateCellValue={callbacks.updateCellValue}
-        syncCellValue={callbacks.syncCellValue}
-      />
-    ),
-    editorOptions: sharedEditorOptions,
-  }
 }

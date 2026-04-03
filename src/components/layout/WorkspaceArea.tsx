@@ -4,10 +4,12 @@ import { WorkspaceTabs } from '../workspace/WorkspaceTabs'
 import { TableDataTab } from '../table-data/TableDataTab'
 import { SchemaInfoTab } from '../schema-info/SchemaInfoTab'
 import { QueryEditorTab } from '../query-editor/QueryEditorTab'
+import { TableDesignerTab as TableDesignerTabComponent } from '../table-designer/TableDesignerTab'
 import type {
   WorkspaceTab,
   SchemaInfoTab as SchemaInfoTabType,
   QueryEditorTab as QueryEditorTabType,
+  TableDesignerTab as TableDesignerTabType,
 } from '../../types/schema'
 import styles from './WorkspaceArea.module.css'
 
@@ -66,6 +68,9 @@ export function WorkspaceArea() {
           )}
           {activeTab?.type === 'query-editor' && (
             <QueryEditorTab key={activeTab.id} tab={activeTab as QueryEditorTabType} />
+          )}
+          {activeTab?.type === 'table-designer' && (
+            <TableDesignerTabComponent key={activeTab.id} tab={activeTab as TableDesignerTabType} />
           )}
           {/* Tabs exist but none active */}
           {tabs.length > 0 && !activeTab && (

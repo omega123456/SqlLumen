@@ -19,6 +19,11 @@ interface UnsavedChangesDialogProps {
   onCancel: () => void
   isSaving?: boolean
   error?: string | null
+  title?: string
+  message?: React.ReactNode
+  saveLabel?: string
+  discardLabel?: string
+  cancelLabel?: string
 }
 
 export function UnsavedChangesDialog({
@@ -27,6 +32,11 @@ export function UnsavedChangesDialog({
   onCancel,
   isSaving: externalIsSaving,
   error: externalError,
+  title = 'Unsaved Changes',
+  message = 'You have unsaved changes on the current row. What would you like to do?',
+  saveLabel = 'Save Changes',
+  discardLabel = 'Discard Changes',
+  cancelLabel = 'Cancel',
 }: UnsavedChangesDialogProps) {
   const [internalSaving, setInternalSaving] = useState(false)
   const [internalError, setInternalError] = useState<string | null>(null)
@@ -57,13 +67,11 @@ export function UnsavedChangesDialog({
     >
       <div className={styles.root}>
         <div className={styles.header}>
-          <h2 className={styles.title}>Unsaved Changes</h2>
+          <h2 className={styles.title}>{title}</h2>
         </div>
 
         <div className={styles.body}>
-          <p className={styles.message}>
-            You have unsaved changes on the current row. What would you like to do?
-          </p>
+          <p className={styles.message}>{message}</p>
 
           {error && (
             <div className={styles.error} data-testid="unsaved-changes-error">
@@ -79,7 +87,7 @@ export function UnsavedChangesDialog({
             onClick={onCancel}
             data-testid="btn-cancel-changes"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             type="button"
@@ -87,7 +95,7 @@ export function UnsavedChangesDialog({
             onClick={onDiscard}
             data-testid="btn-discard-changes"
           >
-            Discard Changes
+            {discardLabel}
           </button>
           <button
             type="button"
@@ -96,7 +104,7 @@ export function UnsavedChangesDialog({
             disabled={isSaving}
             data-testid="btn-save-changes"
           >
-            {isSaving ? 'Saving...' : 'Save Changes'}
+            {isSaving ? 'Saving...' : saveLabel}
           </button>
         </div>
       </div>

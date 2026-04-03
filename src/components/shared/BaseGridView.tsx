@@ -40,8 +40,8 @@ import { DataGrid } from './DataGrid'
 import type { Column, SortColumn, DataGridHandle } from './DataGrid'
 import { TableDataCellRenderer } from './grid-cell-renderers'
 import { ReadOnlyColumnHeaderCell } from './grid-header-renderers'
-import { getCellEditorForColumn } from './grid-cell-editors'
 import type { CellEditorCallbackProps } from './grid-cell-editors'
+import { getCellEditorForColumn } from './grid-column-editor-utils'
 import { getGridCellClass, getDefaultColumnWidth } from '../../lib/grid-column-style'
 import {
   getContextMenuPortalRoot,

@@ -84,6 +84,10 @@ vi.mock('../../components/shared/DataGrid', async () => {
   }
 })
 
+vi.mock('../../components/table-designer/TableDesignerTab', () => ({
+  TableDesignerTab: () => <div data-testid="table-designer-tab">Designer Tab</div>,
+}))
+
 // Mock tauri dialog for EditorToolbar (used by QueryEditorTab)
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   save: vi.fn(() => Promise.resolve(null)),
@@ -256,6 +260,27 @@ describe('WorkspaceArea', () => {
     expect(screen.getByTestId('editor-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('monaco-editor-wrapper')).toBeInTheDocument()
     expect(screen.getByTestId('result-panel')).toBeInTheDocument()
+  })
+
+  it('renders TableDesignerTab for table-designer tab type', () => {
+    const conn = makeActiveConnection()
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': conn },
+      activeTabId: 'conn-1',
+    })
+
+    useWorkspaceStore.getState().openTab({
+      type: 'table-designer',
+      label: 'users',
+      connectionId: 'conn-1',
+      mode: 'alter',
+      databaseName: 'mydb',
+      objectName: 'users',
+    })
+
+    render(<WorkspaceArea />)
+
+    expect(screen.getByTestId('table-designer-tab')).toBeInTheDocument()
   })
 
   it('always shows workspace-tabs and "+" button when connected', () => {

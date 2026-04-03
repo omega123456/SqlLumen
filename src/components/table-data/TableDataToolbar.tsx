@@ -9,7 +9,7 @@
  * display while keeping table-data-specific controls inline.
  */
 
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Plus, Trash, FloppyDisk, ArrowCounterClockwise, Funnel } from '@phosphor-icons/react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -59,7 +59,7 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
   const totalPages = tabState?.totalPages ?? 1
   const pageSize = tabState?.pageSize ?? 1000
   const selectedRowKey = tabState?.selectedRowKey ?? null
-  const columns = tabState?.columns ?? []
+  const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
   const filterModel: FilterCondition[] = tabState?.filterModel ?? []
 
   const showError = useToastStore((s) => s.showError)

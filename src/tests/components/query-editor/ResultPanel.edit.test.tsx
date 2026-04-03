@@ -7,6 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
+import React from 'react'
 import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
 
 // Store captured ResultGridView props for test assertions
@@ -15,7 +16,6 @@ let capturedGridProps: Record<string, unknown> = {}
 // Mock ResultGridView to capture its props
 vi.mock('../../../components/query-editor/ResultGridView', () => ({
   ResultGridView: vi.fn((props: Record<string, unknown>) => {
-    const React = require('react')
     capturedGridProps = props
     return React.createElement('div', { 'data-testid': 'result-grid-view' }, 'Grid Mock')
   }),

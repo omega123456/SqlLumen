@@ -93,11 +93,12 @@ import type { Mock } from 'vitest'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import sharedStyles from '../../../components/shared/grid-cell-editors.module.css'
-import { TableDataGrid, buildColumnDescriptors } from '../../../components/table-data/TableDataGrid'
+import { TableDataGrid } from '../../../components/table-data/TableDataGrid'
 import { TableDataToolbar } from '../../../components/table-data/TableDataToolbar'
 import { NullableCellEditor, EnumCellEditor } from '../../../components/shared/grid-cell-editors'
 import { updateTableRow } from '../../../lib/table-data-commands'
 import type { TableDataColumnMeta, TableDataTabState, RowEditState } from '../../../types/schema'
+import { buildColumnDescriptors } from '../../../components/table-data/table-data-grid-columns'
 
 function getLatestGridProps(): Record<string, unknown> {
   const mockCalls = mockDataGridFn.mock.calls

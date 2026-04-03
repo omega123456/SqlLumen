@@ -9,12 +9,9 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import {
-  NullableCellEditor,
-  EnumCellEditor,
-  getCellEditorForColumn,
-} from '../../../components/shared/grid-cell-editors'
+import { NullableCellEditor, EnumCellEditor } from '../../../components/shared/grid-cell-editors'
 import type { CellEditorBaseProps } from '../../../components/shared/grid-cell-editors'
+import { getCellEditorForColumn } from '../../../components/shared/grid-column-editor-utils'
 
 // ---------------------------------------------------------------------------
 // Helpers

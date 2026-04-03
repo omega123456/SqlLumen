@@ -61,10 +61,19 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
 
   // Shared cell editor logic (value, null, store sync)
   const editor = useCellEditor(editorParams, callbacks)
+  const {
+    isNull,
+    value,
+    inputRef,
+    handleToggleNull: baseHandleToggleNull,
+    handleChange,
+    restoreOriginalValue,
+  } = editor
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const pickerPopupRef = useRef<HTMLDivElement>(null)
+  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null)
 
   // -----------------------------------------------------------------------
   // Focus management: attach a mousedown handler to the portal that calls
@@ -87,8 +96,10 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
     }
 
     // Use setTimeout(0) so the portal DOM has been flushed by React
+    let portalEl: HTMLDivElement | null = null
+
     const timer = setTimeout(() => {
-      const portalEl = pickerPopupRef.current
+      portalEl = pickerPopupRef.current
       if (portalEl) {
         portalEl.addEventListener('mousedown', handleMouseDown)
       }
@@ -96,7 +107,6 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
 
     return () => {
       clearTimeout(timer)
-      const portalEl = pickerPopupRef.current
       if (portalEl) {
         portalEl.removeEventListener('mousedown', handleMouseDown)
       }
@@ -126,12 +136,12 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
   // Wrap the hook's handleToggleNull to close the picker when activating NULL.
   // The hook doesn't own pickerOpen state, so we intercept here.
   const handleToggleNull = useCallback(() => {
-    if (!editor.isNull) {
+    if (!isNull) {
       // About to activate NULL — close picker if open
       setPickerOpen(false)
     }
-    editor.handleToggleNull()
-  }, [editor, setPickerOpen])
+    baseHandleToggleNull()
+  }, [baseHandleToggleNull, isNull])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -145,7 +155,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
         } else {
           // Picker already closed (or was never open): cancel the cell edit
           // and restore the original value.
-          editor.restoreOriginalValue()
+          restoreOriginalValue()
           // Discard edit, don't refocus grid
           props.onClose(false, false)
         }
@@ -154,22 +164,22 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
       if (e.key === 'Tab' || e.key === 'Enter') {
         // Commit and focus grid for navigation
         const fieldName = props.column.key
-        const committedValue = editor.isNull ? null : editor.value
+        const committedValue = isNull ? null : value
         props.onRowChange({ ...props.row, [fieldName]: committedValue }, true)
         props.onClose(true, true)
         e.preventDefault()
         return
       }
     },
-    [editor, pickerOpen, props]
+    [isNull, pickerOpen, props, restoreOriginalValue, value]
   )
 
   const handlePickerApply = useCallback(
     (val: string) => {
-      editor.handleChange(val)
+      handleChange(val)
       setPickerOpen(false)
     },
-    [editor]
+    [handleChange]
   )
 
   const handlePickerCancel = useCallback(() => {
@@ -178,9 +188,9 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
 
   const handleCalendarClick = useCallback(() => {
     // Don't open picker when the field is in NULL state
-    if (editor.isNull) return
+    if (isNull) return
     setPickerOpen(true)
-  }, [editor.isNull])
+  }, [isNull])
 
   const handleInputBlur = useCallback(
     (relatedTarget: EventTarget | null) => {
@@ -203,28 +213,32 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
   // Render
   // -----------------------------------------------------------------------
 
-  const displayValue = editor.isNull ? '' : (editor.value ?? '')
+  const displayValue = isNull ? '' : (value ?? '')
   const IconComponent = temporalType === 'TIME' ? Clock : CalendarBlank
+  const handleContainerRef = useCallback((node: HTMLDivElement | null) => {
+    containerRef.current = node
+    setAnchorEl((current) => (current === node ? current : node))
+  }, [])
 
   return (
     <div
-      ref={containerRef}
+      ref={handleContainerRef}
       className={`${sharedStyles.cellEditorWrapper} ${styles.dateTimeEditorWrapper}`}
       data-testid="datetime-cell-editor"
     >
       <div className="td-cell-editor-shell">
         <input
-          ref={editor.inputRef}
+          ref={inputRef}
           className="td-cell-editor-input"
           value={displayValue}
-          onChange={(e) => editor.handleChange(e.target.value)}
+          onChange={(e) => handleChange(e.target.value)}
           onBlur={(e) => handleInputBlur(e.relatedTarget)}
           onKeyDown={handleKeyDown}
         />
         {props.isNullable && (
           <button
             type="button"
-            className={`td-null-toggle ${editor.isNull ? 'td-null-active' : ''}`}
+            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
             onMouseDown={(e) => e.preventDefault()}
             onClick={handleToggleNull}
             tabIndex={-1}
@@ -238,7 +252,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
         className={styles.calendarBtn}
         onMouseDown={(e) => e.preventDefault()}
         onClick={handleCalendarClick}
-        disabled={editor.isNull}
+        disabled={isNull}
         tabIndex={-1}
         data-testid="grid-calendar-btn"
         aria-label="Open date picker"
@@ -248,10 +262,10 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
 
       {pickerOpen && (
         <DateTimePicker
-          value={editor.value}
+          value={value}
           columnType={temporalType}
-          disabled={editor.isNull}
-          anchorEl={containerRef.current}
+          disabled={isNull}
+          anchorEl={anchorEl}
           popupRef={pickerPopupRef}
           onApply={handlePickerApply}
           onCancel={handlePickerCancel}

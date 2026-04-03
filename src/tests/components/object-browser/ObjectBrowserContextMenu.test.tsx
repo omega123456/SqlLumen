@@ -205,6 +205,7 @@ describe('ObjectBrowserContextMenu', () => {
   it('shows correct items for database node', () => {
     const { nodes, dbId } = makeNodes()
     setNodes(nodes)
+    const onCreateTable = vi.fn()
 
     render(
       <ObjectBrowserContextMenu
@@ -215,19 +216,23 @@ describe('ObjectBrowserContextMenu', () => {
         connectionId={CONN_ID}
         isReadOnly={false}
         onClose={vi.fn()}
+        onCreateTable={onCreateTable}
       />
     )
 
     expect(screen.getByText('Create Database...')).toBeInTheDocument()
+    expect(screen.getByText('Create Table...')).toBeInTheDocument()
     expect(screen.getByText('Alter Database...')).toBeInTheDocument()
     expect(screen.getByText('Rename Database...')).toBeInTheDocument()
     expect(screen.getByText('Drop Database...')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
   })
 
-  it('shows correct items for table node (including disabled items)', () => {
+  it('shows correct items for table node (including enabled designer items)', () => {
     const { nodes, tableId } = makeNodes()
     setNodes(nodes)
+    const onDesignTable = vi.fn()
+    const onCreateTable = vi.fn()
 
     render(
       <ObjectBrowserContextMenu
@@ -238,14 +243,17 @@ describe('ObjectBrowserContextMenu', () => {
         connectionId={CONN_ID}
         isReadOnly={false}
         onClose={vi.fn()}
+        onDesignTable={onDesignTable}
+        onCreateTable={onCreateTable}
       />
     )
 
     // Always-disabled items
     const selectRows = screen.getByText('Select Top 100 Rows')
     expect(selectRows.closest('button')).toBeDisabled()
+    expect(screen.getByText('Create Table...').closest('button')).toBeEnabled()
     const designTable = screen.getByText('Design Table...')
-    expect(designTable.closest('button')).toBeDisabled()
+    expect(designTable.closest('button')).toBeEnabled()
 
     // Enabled items
     expect(screen.getByText('Schema Info')).toBeInTheDocument()
@@ -302,6 +310,7 @@ describe('ObjectBrowserContextMenu', () => {
     // Only refresh should be visible
     expect(screen.getByText('Refresh')).toBeInTheDocument()
     expect(screen.queryByText('Create Database...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Create Table...')).not.toBeInTheDocument()
     expect(screen.queryByText('Drop Database...')).not.toBeInTheDocument()
   })
 
@@ -324,6 +333,8 @@ describe('ObjectBrowserContextMenu', () => {
     expect(screen.getByText('Schema Info')).toBeInTheDocument()
     expect(screen.getByText('Copy Table Name')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
+    expect(screen.queryByText('Create Table...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Design Table...')).not.toBeInTheDocument()
     expect(screen.queryByText('Select Top 100 Rows')).not.toBeInTheDocument()
     expect(screen.queryByText('Truncate Table...')).not.toBeInTheDocument()
     expect(screen.queryByText('Drop Table...')).not.toBeInTheDocument()
@@ -558,6 +569,7 @@ describe('ObjectBrowserContextMenu', () => {
   it('shows correct items for category node', () => {
     const { nodes, catId } = makeNodes()
     setNodes(nodes)
+    const onCreateTable = vi.fn()
 
     render(
       <ObjectBrowserContextMenu
@@ -568,11 +580,46 @@ describe('ObjectBrowserContextMenu', () => {
         connectionId={CONN_ID}
         isReadOnly={false}
         onClose={vi.fn()}
+        onCreateTable={onCreateTable}
       />
     )
 
+    expect(screen.getByText('Create Table...')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
     expect(screen.queryByText('Schema Info')).not.toBeInTheDocument()
+  })
+
+  it('does not show create table for non-table category nodes', () => {
+    const { nodes } = makeNodes()
+    const viewCatId = makeNodeId('category', 'testdb', 'view')
+    setNodes({
+      ...nodes,
+      [viewCatId]: {
+        id: viewCatId,
+        label: 'Views',
+        type: 'category',
+        parentId: makeNodeId('database', 'testdb', 'testdb'),
+        hasChildren: true,
+        isLoaded: true,
+        metadata: { categoryType: 'view', databaseName: 'testdb' },
+      },
+    })
+
+    render(
+      <ObjectBrowserContextMenu
+        visible
+        x={100}
+        y={100}
+        nodeId={viewCatId}
+        connectionId={CONN_ID}
+        isReadOnly={false}
+        onClose={vi.fn()}
+        onCreateTable={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByText('Create Table...')).not.toBeInTheDocument()
+    expect(screen.getByText('Refresh')).toBeInTheDocument()
   })
 
   it('does not render when nodeId is null', () => {

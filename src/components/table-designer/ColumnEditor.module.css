@@ -1,0 +1,322 @@
+.container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--surface-container);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.18);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  background: color-mix(in srgb, var(--surface-container-high) 72%, transparent);
+}
+
+.toolbarButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.toolbarButton:hover:not(:disabled) {
+  background: var(--surface-container-highest);
+}
+
+.toolbarButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.deleteToolbarButton:hover:not(:disabled) {
+  color: var(--error);
+}
+
+.tableScroller {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 980px;
+}
+
+.tableHead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.headerCell {
+  position: sticky;
+  top: 0;
+  padding: 10px 12px;
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.18);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.headerCell:nth-child(6),
+.headerCell:nth-child(7),
+.headerCell:nth-child(8),
+.headerCell:nth-child(2),
+.bodyCell.checkboxCell,
+.rowNumberCell,
+.deleteCell {
+  text-align: center;
+}
+
+.tableBody {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-sm);
+}
+
+.row {
+  color: var(--on-surface);
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--surface-container-low) 70%, transparent);
+}
+
+.row:hover .dragHandle,
+.selectedRow .dragHandle {
+  opacity: 0.9;
+}
+
+.evenRow {
+  background: var(--surface);
+}
+
+.oddRow {
+  background: color-mix(in srgb, var(--surface-container-low) 40%, transparent);
+}
+
+.selectedRow {
+  background: color-mix(in srgb, var(--secondary-container) 30%, transparent);
+}
+
+.bodyCell {
+  position: relative;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  vertical-align: middle;
+}
+
+.dragCell {
+  width: 28px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.rowAccent {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+}
+
+.selectedRow .rowAccent {
+  background: var(--primary);
+}
+
+.dragHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  color: var(--on-surface-variant);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.rowNumberCell {
+  width: 40px;
+  color: var(--on-surface-variant);
+}
+
+.cellFrame {
+  position: relative;
+}
+
+.modifiedCell {
+  position: relative;
+}
+
+.modifiedTriangle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-top: 8px solid var(--primary);
+  border-left: 8px solid transparent;
+}
+
+.cellInput {
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--on-surface);
+  font: inherit;
+  outline: none;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
+}
+
+.inactiveInput {
+  background: transparent;
+}
+
+.activeInput {
+  background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
+}
+
+.cellInput:focus {
+  box-shadow: var(--control-focus-ring-tight);
+  background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);
+}
+
+.inputError {
+  box-shadow: inset 0 0 0 1px var(--error);
+}
+
+.lengthInput {
+  text-align: center;
+}
+
+.checkboxCell {
+  width: 76px;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+.defaultValueCell {
+  position: relative;
+}
+
+.defaultValueButton {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
+  color: var(--on-surface-variant);
+  font: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.defaultValueButton:hover {
+  color: var(--on-surface);
+}
+
+.defaultPopover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 128px;
+  padding: 6px;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.22);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-container-high) 92%, transparent);
+  box-shadow: 0 12px 24px rgba(var(--on-surface-rgb), 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.defaultPopoverButton {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: var(--on-surface);
+  text-align: left;
+}
+
+.defaultPopoverButton:hover {
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+.deleteCell {
+  width: 42px;
+}
+
+.deleteRowButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: var(--on-surface-variant);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.deleteRowButton:hover {
+  color: var(--error);
+  background: rgba(var(--error-rgb), 0.08);
+}
+
+.ghostRow {
+  color: var(--primary);
+  font-style: italic;
+  cursor: pointer;
+}
+
+.ghostRow:hover {
+  background: rgba(var(--primary-rgb), 0.06);
+}
+
+[data-theme='light'] .container {
+  background: var(--surface-container-lowest);
+}
+
+[data-theme='light'] .toolbarButton {
+  background: var(--surface-container-high);
+}
+
+[data-theme='light'] .selectedRow {
+  background: color-mix(in srgb, var(--secondary-container) 30%, transparent);
+}

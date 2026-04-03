@@ -22,6 +22,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
+import React from 'react'
 import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
 
 // Track callback references across renders
@@ -35,7 +36,6 @@ const capturedCallbacksByRender: Array<{
 // Mock ResultGridView to capture props on every render
 vi.mock('../../../components/query-editor/ResultGridView', () => ({
   ResultGridView: vi.fn((props: Record<string, unknown>) => {
-    const React = require('react')
     capturedCallbacksByRender.push({
       onUpdateCellValue: props.onUpdateCellValue,
       onSyncCellValue: props.onSyncCellValue,

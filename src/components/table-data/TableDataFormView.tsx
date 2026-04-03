@@ -98,8 +98,8 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
   const activeConnection = useConnectionStore((state) => state.activeConnections[connectionId])
   const isConnectionReadOnly = activeConnection?.profile?.readOnly ?? false
 
-  const columns = tabState?.columns ?? []
-  const rows = tabState?.rows ?? []
+  const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
+  const rows = useMemo(() => tabState?.rows ?? [], [tabState?.rows])
   const totalRows = tabState?.totalRows ?? 0
   const currentPage = tabState?.currentPage ?? 1
   const totalPages = tabState?.totalPages ?? 1
@@ -111,7 +111,7 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
 
   const hasPk = primaryKey !== null
   const isEditable = !isConnectionReadOnly && hasPk
-  const pkColumns = primaryKey?.keyColumns ?? []
+  const pkColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
 
   // When a temp/new row exists, totalRows from the server doesn't include it.
   // Add 1 so the display and navigation bounds are correct ("Record 3 of 3" not "Record 3 of 2").

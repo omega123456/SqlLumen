@@ -1,0 +1,240 @@
+.container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--surface-container);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.18);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.16);
+  background: color-mix(in srgb, var(--surface-container-high) 72%, transparent);
+}
+
+.toolbarButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.toolbarButton:hover:not(:disabled) {
+  background: var(--surface-container-highest);
+}
+
+.toolbarButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.deleteToolbarButton:hover:not(:disabled) {
+  color: var(--error);
+}
+
+.tableScroller {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  min-width: 1180px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.tableHead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.headerCell {
+  position: sticky;
+  top: 0;
+  padding: 10px 12px;
+  background: var(--surface-container-high);
+  color: var(--on-surface-variant);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.18);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.rowNumberCell,
+.deleteCell,
+.headerCell:nth-child(2),
+.headerCell:last-child {
+  text-align: center;
+}
+
+.tableBody {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-sm);
+}
+
+.row {
+  color: var(--on-surface);
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--surface-container-low) 70%, transparent);
+}
+
+.evenRow {
+  background: var(--surface);
+}
+
+.oddRow {
+  background: color-mix(in srgb, var(--surface-container-low) 40%, transparent);
+}
+
+.selectedRow {
+  background: color-mix(in srgb, var(--secondary-container) 30%, transparent);
+}
+
+.selectedRow .rowAccent {
+  background: var(--primary);
+}
+
+.bodyCell {
+  position: relative;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  vertical-align: middle;
+}
+
+.indicatorCell {
+  width: 16px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.rowAccent {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+}
+
+.rowNumberCell {
+  width: 40px;
+  color: var(--on-surface-variant);
+}
+
+.cellInput,
+.cellSelect {
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--on-surface);
+  font: inherit;
+  outline: none;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
+}
+
+.cellSelect {
+  appearance: none;
+}
+
+.inactiveInput {
+  background: transparent;
+}
+
+.activeInput {
+  background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
+}
+
+.cellInput:focus,
+.cellSelect:focus {
+  box-shadow: var(--control-focus-ring-tight);
+  background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);
+}
+
+.readonlyText {
+  color: var(--on-surface);
+}
+
+.compositeCell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.warningBadge {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning-container) 45%, transparent);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.compositeSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--on-surface-variant);
+}
+
+.deleteCell {
+  width: 42px;
+}
+
+.deleteRowButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: var(--on-surface-variant);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.deleteRowButton:hover {
+  color: var(--error);
+  background: rgba(var(--error-rgb), 0.08);
+}
+
+[data-theme='light'] .container {
+  background: var(--surface-container-lowest);
+}
+
+[data-theme='light'] .toolbarButton {
+  background: var(--surface-container-high);
+}

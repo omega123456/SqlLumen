@@ -13,6 +13,8 @@ export interface DialogShellProps {
   ariaLabel?: string
   /** When true, skip focus trap (used with VITE_PLAYWRIGHT for deterministic screenshots). */
   disableFocusManagement?: boolean
+  /** When true, ignore backdrop clicks and Escape key dismissal. */
+  nonDismissible?: boolean
   children: React.ReactNode
 }
 
@@ -27,6 +29,7 @@ export function DialogShell({
   testId,
   ariaLabel,
   disableFocusManagement = false,
+  nonDismissible = false,
   children,
 }: DialogShellProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -34,11 +37,11 @@ export function DialogShell({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !nonDismissible) {
         onClose()
       }
     },
-    [onClose]
+    [nonDismissible, onClose]
   )
 
   useEffect(() => {
@@ -52,7 +55,7 @@ export function DialogShell({
   if (!isOpen) return null
 
   const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
+    if (e.target === e.currentTarget && !nonDismissible) {
       onClose()
     }
   }

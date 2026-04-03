@@ -315,6 +315,104 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'list_collations':
       return [{ name: 'utf8mb4_general_ci', charset: 'utf8mb4', isDefault: true }]
 
+    // --- Table designer ---
+    case 'load_table_for_designer':
+      return {
+        tableName: 'users',
+        columns: [
+          {
+            name: 'id',
+            type: 'BIGINT',
+            length: '20',
+            nullable: false,
+            isPrimaryKey: true,
+            isAutoIncrement: true,
+            defaultValue: { tag: 'NO_DEFAULT' },
+            comment: '',
+            originalName: 'id',
+          },
+          {
+            name: 'username',
+            type: 'VARCHAR',
+            length: '64',
+            nullable: false,
+            isPrimaryKey: false,
+            isAutoIncrement: false,
+            defaultValue: { tag: 'NO_DEFAULT' },
+            comment: '',
+            originalName: 'username',
+          },
+          {
+            name: 'email',
+            type: 'VARCHAR',
+            length: '255',
+            nullable: true,
+            isPrimaryKey: false,
+            isAutoIncrement: false,
+            defaultValue: { tag: 'NULL_DEFAULT' },
+            comment: '',
+            originalName: 'email',
+          },
+        ],
+        indexes: [
+          {
+            name: 'PRIMARY',
+            indexType: 'PRIMARY',
+            columns: ['id'],
+          },
+          {
+            name: 'uk_username',
+            indexType: 'UNIQUE',
+            columns: ['username'],
+          },
+        ],
+        foreignKeys: [
+          {
+            name: 'fk_orders_user',
+            sourceColumn: 'id',
+            referencedTable: 'roles',
+            referencedColumn: 'id',
+            onDelete: 'CASCADE',
+            onUpdate: 'NO ACTION',
+            isComposite: false,
+          },
+          {
+            name: 'fk_composite_example',
+            sourceColumn: 'id',
+            referencedTable: 'composite_table',
+            referencedColumn: 'id',
+            onDelete: 'NO ACTION',
+            onUpdate: 'NO ACTION',
+            isComposite: true,
+          },
+        ],
+        properties: {
+          engine: 'InnoDB',
+          charset: 'utf8mb4',
+          collation: 'utf8mb4_unicode_ci',
+          autoIncrement: 1,
+          rowFormat: 'DYNAMIC',
+          comment: 'User accounts table',
+        },
+      }
+    case 'generate_table_ddl': {
+      const request = (args as Record<string, unknown>)?.request as { mode?: string } | undefined
+
+      if (request?.mode === 'create') {
+        return {
+          ddl: 'CREATE TABLE `mock_db`.`__new_table__` (\n  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;',
+          warnings: [],
+        }
+      }
+
+      return {
+        ddl: 'ALTER TABLE `mock_db`.`users`\n  MODIFY COLUMN `email` VARCHAR(320) NOT NULL;',
+        warnings: [],
+      }
+    }
+    case 'apply_table_ddl':
+      return undefined
+
     // --- Schema mutating commands ---
     case 'create_database':
     case 'drop_database':

@@ -322,6 +322,78 @@ async function openTableDataTab(page: Page) {
   })
 }
 
+async function openTableDesignerTab(page: Page) {
+  await connectToSample(page)
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-designer',
+      label: 'users',
+      connectionId: 'session-playwright-1',
+      mode: 'alter',
+      databaseName: 'ecommerce_db',
+      objectName: 'users',
+    })
+  })
+
+  await expect(page.getByTestId('table-designer-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('column-editor')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.locator('input[value="username"]').first()).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+}
+
+async function markActiveTableDesignerDirty(page: Page) {
+  await page.evaluate(() => {
+    const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => {
+        activeTabByConnection: Record<string, string | null>
+        tabsByConnection: Record<string, { id: string; type: string }[]>
+      }
+    }
+    const tableDesignerStore = (window as unknown as Record<string, unknown>)
+      .__tableDesignerStore__ as {
+      setState: (
+        updater: (state: { tabs: Record<string, Record<string, unknown>> }) => {
+          tabs: Record<string, Record<string, unknown>>
+        }
+      ) => void
+    }
+
+    const workspaceState = workspaceStore.getState()
+    const activeTabId =
+      workspaceState.activeTabByConnection['session-playwright-1'] ??
+      workspaceState.tabsByConnection['session-playwright-1']?.find(
+        (tab) => tab.type === 'table-designer'
+      )?.id
+
+    if (!activeTabId) {
+      throw new Error('No active table designer tab found')
+    }
+
+    tableDesignerStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        [activeTabId]: {
+          ...state.tabs[activeTabId],
+          isDirty: true,
+          isDdlLoading: false,
+          ddlError: null,
+          ddlWarnings: [],
+          ddl:
+            state.tabs[activeTabId]?.ddl ||
+            'ALTER TABLE `mock_db`.`users`\n  MODIFY COLUMN `email` VARCHAR(320) NOT NULL;',
+        },
+      },
+    }))
+  })
+
+  await expect(page.getByTestId('table-designer-apply')).toBeEnabled({ timeout: APP_READY_MS })
+}
+
 /** Stable scroll for full-layout screenshots (parallel workers otherwise differ on tree scroll). */
 async function resetChromeScrollPositions(page: Page) {
   await page.getByTestId('object-browser-scroll').evaluate((el) => {
@@ -569,13 +641,14 @@ for (const theme of themes) {
       const dbNode = page.getByText('ecommerce_db').first()
       await dbNode.click({ button: 'right' })
       await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
+      await expect(page.getByTestId('ctx-create-table')).toBeVisible()
 
       await expect(page.getByTestId('object-browser-context-menu')).toHaveScreenshot(
         `context-menu-database-${theme}.png`
       )
     })
 
-    test('ObjectBrowserContextMenu — table node', async ({ page }) => {
+    test('ObjectBrowserContextMenu — table node with design action', async ({ page }) => {
       await connectToSample(page)
 
       // Expand database and Tables category to reach table nodes
@@ -587,9 +660,10 @@ for (const theme of themes) {
       // Right-click on a table node
       await page.getByText('users').click({ button: 'right' })
       await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
+      await expect(page.getByTestId('ctx-design-table')).toBeEnabled()
 
       await expect(page.getByTestId('object-browser-context-menu')).toHaveScreenshot(
-        `context-menu-table-${theme}.png`
+        `object-browser-table-context-menu-${theme}.png`
       )
     })
 
@@ -938,6 +1012,75 @@ for (const theme of themes) {
       await openTableDataTab(page)
       await expect(page.getByTestId('table-data-toolbar')).toHaveScreenshot(
         `table-data-toolbar-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('TableDesignerTab — columns view', async ({ page }) => {
+      await openTableDesignerTab(page)
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-designer-tab')).toHaveScreenshot(
+        `table-designer-columns-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('TableDesignerTab — DDL Preview sub-tab', async ({ page }) => {
+      await openTableDesignerTab(page)
+      await page.getByRole('button', { name: 'DDL Preview' }).click()
+      await expect(page.getByTestId('table-designer-ddl-preview')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-designer-tab')).toHaveScreenshot(
+        `table-designer-ddl-preview-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('table-designer-indexes', async ({ page }) => {
+      await openTableDesignerTab(page)
+      await page.getByRole('button', { name: 'Indexes' }).click()
+      await expect(page.getByTestId('index-editor')).toBeVisible({ timeout: APP_READY_MS })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-designer-tab')).toHaveScreenshot(
+        `table-designer-indexes-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('table-designer-fks', async ({ page }) => {
+      await openTableDesignerTab(page)
+      await page.getByRole('button', { name: 'Foreign Keys' }).click()
+      await expect(page.getByTestId('foreign-key-editor')).toBeVisible({ timeout: APP_READY_MS })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-designer-tab')).toHaveScreenshot(
+        `table-designer-fks-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('table-designer-properties', async ({ page }) => {
+      await openTableDesignerTab(page)
+      await page.getByRole('button', { name: 'Table Properties' }).click()
+      await expect(page.getByTestId('table-properties-editor')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-designer-tab')).toHaveScreenshot(
+        `table-designer-properties-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('TableDesignerTab — Apply Schema Changes dialog', async ({ page }) => {
+      await openTableDesignerTab(page)
+      await markActiveTableDesignerDirty(page)
+      await page.getByTestId('table-designer-apply').click()
+      await expect(page.getByTestId('apply-schema-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('apply-schema-dialog')).toHaveScreenshot(
+        `table-designer-apply-dialog-${theme}.png`,
         { animations: 'disabled' }
       )
     })

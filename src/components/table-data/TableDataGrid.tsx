@@ -9,7 +9,7 @@
  * dispatch) lives here — BaseGridView stays store-agnostic.
  */
 
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { BaseGridView } from '../shared/BaseGridView'
 import type { DataGridHandle } from '../shared/DataGrid'
 import {
@@ -29,6 +29,7 @@ import type {
   AutoSizeConfig,
 } from '../../types/shared-data-view'
 import type { TableDataColumnMeta } from '../../types/schema'
+import { buildColumnDescriptors } from './table-data-grid-columns'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,33 +54,6 @@ function getRowKey(data: Record<string, unknown>, pkColumns: string[]): Record<s
     key[col] = data[col]
   }
   return key
-}
-
-// ---------------------------------------------------------------------------
-// Column descriptor builder
-// ---------------------------------------------------------------------------
-
-/**
- * Build GridColumnDescriptor[] from TableDataColumnMeta[].
- * Exported for unit testing.
- */
-export function buildColumnDescriptors(
-  columns: TableDataColumnMeta[],
-  isReadOnly: boolean,
-  hasPk: boolean
-): GridColumnDescriptor[] {
-  return columns.map((col) => ({
-    key: col.name,
-    displayName: col.name,
-    dataType: col.dataType,
-    editable: !isReadOnly && hasPk && !col.isBinary,
-    isBinary: col.isBinary,
-    isNullable: col.isNullable,
-    isPrimaryKey: col.isPrimaryKey,
-    isUniqueKey: col.isUniqueKey,
-    enumValues: col.enumValues,
-    tableColumnMeta: col,
-  }))
 }
 
 // ---------------------------------------------------------------------------
@@ -118,12 +92,6 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
 
   const pkColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
   const hasPk = primaryKey !== null
-  const editSessionKey =
-    editState == null
-      ? 'none'
-      : editState.isNewRow && editState.tempId
-        ? `new:${editState.tempId}`
-        : JSON.stringify(editState.rowKey)
 
   // ---------------------------------------------------------------------------
   // Editor callbacks context — provides real updateCellValue to editors inside
@@ -153,50 +121,37 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   )
 
   // ---------------------------------------------------------------------------
-  // editState ref: read inside rowData useMemo without making editState a dep.
-  // This prevents rowData from recomputing on every keystroke (which would
-  // trigger the autoColumnWidths → rdgColumns recomputation chain that
-  // destabilises renderEditCell references).
-  // ---------------------------------------------------------------------------
-  const editStateRef = useRef(editState)
-  editStateRef.current = editState
-
-  // ---------------------------------------------------------------------------
   // Row data: transform array-of-arrays → array-of-objects for BaseGridView.
   // Overlays editState current values, __editingRowKey, and __tempId.
-  //
-  // CRITICAL: editState is read from a ref — NOT included in deps. This keeps
-  // rows stable during cell editing (only underlying data changes trigger
-  // recomputation). The cell EDITOR component manages its own display value
-  // via local state, so the grid doesn't need row updates on every keystroke.
   // ---------------------------------------------------------------------------
   const rowData: TableDataRow[] = useMemo(() => {
-    const currentEditState = editStateRef.current
     return rows.map((row, rowIdx) => {
       const obj: TableDataRow = { __rowIndex: rowIdx }
       columns.forEach((col, i) => {
         obj[col.name] = row[i] ?? null
       })
       // Carry forward __tempId for new rows
-      if (currentEditState?.isNewRow && currentEditState.tempId && rowIdx === rows.length - 1) {
-        obj.__tempId = currentEditState.tempId
+      if (editState?.isNewRow && editState.tempId && rowIdx === rows.length - 1) {
+        obj.__tempId = editState.tempId
       }
-      if (currentEditState) {
+      if (editState) {
         const rowKey = getRowKey(obj, pkColumns)
-        if (isSameRowKey(rowKey, currentEditState.rowKey)) {
-          obj.__editingRowKey = currentEditState.rowKey
-          for (const [colName, value] of Object.entries(currentEditState.currentValues)) {
+        if (isSameRowKey(rowKey, editState.rowKey)) {
+          obj.__editingRowKey = editState.rowKey
+          for (const [colName, value] of Object.entries(editState.currentValues)) {
             obj[colName] = value
           }
         }
       }
       return obj
     })
-  }, [rows, columns, pkColumns, editSessionKey])
+  }, [rows, columns, pkColumns, editState])
 
   // Keep a ref to the latest rowData for post-async lookups
   const rowDataRef = useRef<TableDataRow[]>(rowData)
-  rowDataRef.current = rowData
+  useEffect(() => {
+    rowDataRef.current = rowData
+  }, [rowData])
 
   // ---------------------------------------------------------------------------
   // Row key getter — CRITICAL: complex row identity logic

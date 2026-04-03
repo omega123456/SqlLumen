@@ -34,6 +34,10 @@
   max-width: 160px;
 }
 
+.dirtyIndicator {
+  color: var(--primary);
+}
+
 .tabClose {
   display: flex;
   align-items: center;

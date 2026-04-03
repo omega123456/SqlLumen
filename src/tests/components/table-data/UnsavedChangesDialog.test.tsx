@@ -65,6 +65,25 @@ describe('UnsavedChangesDialog', () => {
     expect(screen.getByText('Save Changes')).toBeInTheDocument()
   })
 
+  it('renders custom title, message, and button labels', () => {
+    render(
+      <UnsavedChangesDialog
+        {...defaultProps}
+        title="Unsaved Schema Changes"
+        message="You have unsaved table design changes."
+        saveLabel="Apply Changes"
+        discardLabel="Discard Design"
+        cancelLabel="Keep Editing"
+      />
+    )
+
+    expect(screen.getByText('Unsaved Schema Changes')).toBeInTheDocument()
+    expect(screen.getByText('You have unsaved table design changes.')).toBeInTheDocument()
+    expect(screen.getByText('Apply Changes')).toBeInTheDocument()
+    expect(screen.getByText('Discard Design')).toBeInTheDocument()
+    expect(screen.getByText('Keep Editing')).toBeInTheDocument()
+  })
+
   it('has correct data-testid attributes', () => {
     render(<UnsavedChangesDialog {...defaultProps} />)
     expect(screen.getByTestId('unsaved-changes-dialog')).toBeInTheDocument()

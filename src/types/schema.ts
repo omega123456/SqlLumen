@@ -46,7 +46,9 @@ export interface TreeNode {
 // ---------------------------------------------------------------------------
 
 /** The kind of workspace tab. */
-export type TabType = 'schema-info' | 'table-data' | 'query-editor'
+export type TabType = 'schema-info' | 'table-data' | 'query-editor' | 'table-designer'
+
+export type DesignerSubTab = 'columns' | 'indexes' | 'fks' | 'properties' | 'ddl'
 
 /** Database object types (excludes 'column' and 'category'). */
 export type ObjectType = 'table' | 'view' | 'procedure' | 'function' | 'trigger' | 'event'
@@ -82,8 +84,16 @@ export interface QueryEditorTab extends WorkspaceTabBase {
   type: 'query-editor'
 }
 
+/** A table designer tab (CREATE/ALTER TABLE designer). */
+export interface TableDesignerTab extends WorkspaceTabBase {
+  type: 'table-designer'
+  mode: 'create' | 'alter'
+  databaseName: string
+  objectName: string
+}
+
 /** Union of all workspace tab variants. */
-export type WorkspaceTab = SchemaInfoTab | TableDataTab | QueryEditorTab
+export type WorkspaceTab = SchemaInfoTab | TableDataTab | QueryEditorTab | TableDesignerTab
 
 /** Distributive Omit — works correctly on union types. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -273,6 +283,74 @@ export interface TableDataResponse {
   pageSize: number
   primaryKey: PrimaryKeyInfo | null
   executionTimeMs: number
+}
+
+// ---------------------------------------------------------------------------
+// Table Designer types (Phase 7.1)
+// ---------------------------------------------------------------------------
+
+export type DefaultValueModel =
+  | { tag: 'NO_DEFAULT' }
+  | { tag: 'NULL_DEFAULT' }
+  | { tag: 'LITERAL'; value: string }
+  | { tag: 'EXPRESSION'; value: string }
+
+export interface TableDesignerColumnDef {
+  name: string
+  type: string
+  typeModifier?: string
+  length: string
+  nullable: boolean
+  isPrimaryKey: boolean
+  isAutoIncrement: boolean
+  defaultValue: DefaultValueModel
+  comment: string
+  originalName: string
+}
+
+export interface TableDesignerIndexDef {
+  name: string
+  indexType: 'PRIMARY' | 'UNIQUE' | 'INDEX' | 'FULLTEXT'
+  columns: string[]
+}
+
+export interface TableDesignerForeignKeyDef {
+  name: string
+  sourceColumn: string
+  referencedTable: string
+  referencedColumn: string
+  onDelete: string
+  onUpdate: string
+  isComposite: boolean
+}
+
+export interface TableDesignerProperties {
+  engine: string
+  charset: string
+  collation: string
+  autoIncrement: number | null
+  rowFormat: string
+  comment: string
+}
+
+export interface TableDesignerSchema {
+  tableName: string
+  columns: TableDesignerColumnDef[]
+  indexes: TableDesignerIndexDef[]
+  foreignKeys: TableDesignerForeignKeyDef[]
+  properties: TableDesignerProperties
+}
+
+export interface GenerateDdlRequest {
+  originalSchema: TableDesignerSchema | null
+  currentSchema: TableDesignerSchema
+  database: string
+  mode: 'create' | 'alter'
+}
+
+export interface GenerateDdlResponse {
+  ddl: string
+  warnings: string[]
 }
 
 // ---------------------------------------------------------------------------

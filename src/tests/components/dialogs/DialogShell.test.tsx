@@ -65,6 +65,26 @@ describe('DialogShell', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  it('does not call onClose when nonDismissible and Escape is pressed', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<DialogShell {...defaultProps} onClose={onClose} nonDismissible />)
+
+    await user.keyboard('{Escape}')
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('does not call onClose when nonDismissible and backdrop is clicked', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<DialogShell {...defaultProps} onClose={onClose} nonDismissible />)
+
+    await user.click(screen.getByTestId('test-dialog'))
+
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('does not call onClose when dialog content is clicked', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()

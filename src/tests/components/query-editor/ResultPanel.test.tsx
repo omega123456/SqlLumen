@@ -95,6 +95,8 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),
+  editColumnBindings: new Map(),
+  editBoundColumnIndexMap: new Map(),
   pendingNavigationAction: null,
   saveError: null,
   editConnectionId: null,

@@ -63,6 +63,7 @@ export function FilterDialog({
 
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConditions(initialConditions.map((c) => ({ ...c })))
     }
   }, [isOpen, initialConditions])

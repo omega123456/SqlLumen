@@ -108,9 +108,11 @@ function buildChildIndex(nodes: Record<string, TreeNodeType>): Record<string, st
   return index
 }
 
-function setupConnectedState() {
+function setupConnectedState(overrides: Partial<SavedConnection> = {}) {
   useConnectionStore.setState({
-    activeConnections: { [CONN_ID]: makeActiveConnection() },
+    activeConnections: {
+      [CONN_ID]: makeActiveConnection({ profile: makeSavedConnection(overrides) }),
+    },
     activeTabId: CONN_ID,
   })
 }
@@ -442,6 +444,100 @@ describe('ObjectBrowser', () => {
       label: 'users',
       objectType: 'table',
     })
+  })
+
+  it('design table context menu item opens table-designer tab in alter mode', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandToTable()
+
+    render(<ObjectBrowser connectionId={CONN_ID} />)
+
+    await openContextMenu(user, 'users')
+    await user.click(screen.getByText('Design Table...'))
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0]).toMatchObject({
+      type: 'table-designer',
+      mode: 'alter',
+      objectName: 'users',
+      databaseName: 'ecommerce_db',
+      connectionId: CONN_ID,
+      label: 'users',
+    })
+  })
+
+  it('create table context menu item on table node opens designer in create mode', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandToTable()
+
+    render(<ObjectBrowser connectionId={CONN_ID} />)
+
+    await openContextMenu(user, 'users')
+    await user.click(screen.getByText('Create Table...'))
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0]).toMatchObject({
+      type: 'table-designer',
+      mode: 'create',
+      objectName: '__new_table__',
+      databaseName: 'ecommerce_db',
+      connectionId: CONN_ID,
+      label: 'New Table',
+    })
+  })
+
+  it('create table context menu item on database node opens designer in create mode', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+
+    render(<ObjectBrowser connectionId={CONN_ID} />)
+
+    await openContextMenu(user, 'ecommerce_db')
+    await user.click(screen.getByTestId('ctx-create-table'))
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0]).toMatchObject({
+      type: 'table-designer',
+      mode: 'create',
+      objectName: '__new_table__',
+      databaseName: 'ecommerce_db',
+      connectionId: CONN_ID,
+      label: 'New Table',
+    })
+  })
+
+  it('design table item disabled when connection is read-only', async () => {
+    const user = userEvent.setup()
+    setupConnectedState({ readOnly: true })
+    setupDatabaseNodes()
+    expandToTable()
+
+    render(<ObjectBrowser connectionId={CONN_ID} />)
+
+    await openContextMenu(user, 'users')
+
+    expect(screen.queryByText('Design Table...')).not.toBeInTheDocument()
+  })
+
+  it('create table item disabled when connection is read-only', async () => {
+    const user = userEvent.setup()
+    setupConnectedState({ readOnly: true })
+    setupDatabaseNodes()
+    expandToTable()
+
+    render(<ObjectBrowser connectionId={CONN_ID} />)
+
+    await openContextMenu(user, 'users')
+
+    expect(screen.queryByText('Create Table...')).not.toBeInTheDocument()
   })
 
   it('double-clicking a view node opens a schema-info workspace tab', async () => {

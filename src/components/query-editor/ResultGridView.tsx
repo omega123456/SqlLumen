@@ -11,7 +11,7 @@
  * The external props interface remains unchanged — ResultPanel.tsx does not need modification.
  */
 
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { BaseGridView } from '../shared/BaseGridView'
 import { colKey, colIndexFromKey, buildTableColLookup } from '../../lib/col-key-utils'
 import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
@@ -104,9 +104,15 @@ export function ResultGridView({
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
-  editStateRef.current = editState
   const editingRowIndexRef = useRef(editingRowIndex)
-  editingRowIndexRef.current = editingRowIndex
+
+  useEffect(() => {
+    editStateRef.current = editState
+  }, [editState])
+
+  useEffect(() => {
+    editingRowIndexRef.current = editingRowIndex
+  }, [editingRowIndex])
 
   // ---------------------------------------------------------------------------
   // Table column lookup map — case-insensitive name → TableDataColumnMeta.
@@ -329,7 +335,7 @@ export function ResultGridView({
       // Non-editable column: select but don't edit
       return { proceed: true, targetRowIdx: rowIdx, targetColIdx, enableEditor: false }
     }
-  }, [editMode, editableColumnMap, columns, onAutoSave, onRowSelected, onStartEditing])
+  }, [editMode, editableColumnMap, onAutoSave, onRowSelected, onStartEditing])
 
   // In read-only mode, we still need a simple cell click handler for row selection.
   // BaseGridView only calls onCellClickGuard; when it's undefined, RDG default behavior
@@ -346,7 +352,7 @@ export function ResultGridView({
         enableEditor: false,
       }
     },
-    [onRowSelected, columns]
+    [onRowSelected]
   )
 
   // ---------------------------------------------------------------------------
