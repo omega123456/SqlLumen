@@ -16,7 +16,7 @@ import {
   EditorCallbacksContext,
   type EditorCallbacksContextType,
 } from '../shared/editor-callbacks-context'
-import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
+import { useTableDataStore, isSameRowKey, findRowIndexByKey } from '../../stores/table-data-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
@@ -118,6 +118,12 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
 
   const pkColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
   const hasPk = primaryKey !== null
+  const editSessionKey =
+    editState == null
+      ? 'none'
+      : editState.isNewRow && editState.tempId
+        ? `new:${editState.tempId}`
+        : JSON.stringify(editState.rowKey)
 
   // ---------------------------------------------------------------------------
   // Editor callbacks context — provides real updateCellValue to editors inside
@@ -186,7 +192,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       }
       return obj
     })
-  }, [rows, columns, pkColumns])
+  }, [rows, columns, pkColumns, editSessionKey])
 
   // Keep a ref to the latest rowData for post-async lookups
   const rowDataRef = useRef<TableDataRow[]>(rowData)
@@ -354,6 +360,27 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       const currentState = useTableDataStore.getState().tabs[tabId]
       const currentEditState = currentState?.editState ?? null
       const currentEditRowKey = currentEditState?.rowKey ?? null
+      const restoreRowIdx = (() => {
+        if (!currentState?.editState) return fallbackRowIdx
+        if ('__tempId' in currentState.editState.rowKey) {
+          return Math.max(0, currentState.rows.length - 1)
+        }
+
+        const matchedRowIdx = findRowIndexByKey(
+          currentState.rows,
+          currentState.columns,
+          currentState.editState.rowKey
+        )
+
+        return matchedRowIdx >= 0 ? matchedRowIdx : fallbackRowIdx
+      })()
+      const buildRestoreFocusResult = (): CellClickGuardResult => ({
+        proceed: false,
+        targetRowIdx: restoreRowIdx,
+        targetColIdx,
+        enableEditor: true,
+        restoreFocus: true,
+      })
 
       if (!isSameRowKey(targetRowKey, currentEditRowKey) && currentEditRowKey !== null) {
         // Validate temporal columns
@@ -366,12 +393,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
           }
           return {
             passed: false,
-            result: {
-              proceed: false,
-              targetRowIdx: fallbackRowIdx,
-              targetColIdx,
-              enableEditor: false,
-            },
+            result: buildRestoreFocusResult(),
           }
         }
 
@@ -390,12 +412,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
           }
           return {
             passed: false,
-            result: {
-              proceed: false,
-              targetRowIdx: fallbackRowIdx,
-              targetColIdx,
-              enableEditor: false,
-            },
+            result: buildRestoreFocusResult(),
           }
         }
 

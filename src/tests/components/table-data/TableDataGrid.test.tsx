@@ -1216,6 +1216,55 @@ describe('TableDataGrid', () => {
     expect(mockShowError).toHaveBeenCalledWith('Save failed', 'Save failed')
     // selectedRowKey should snap back to the failed row
     expect(state?.selectedRowKey).toEqual({ id: 1 })
+    expect(mockSelectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 1 },
+      expect.objectContaining({ shouldFocusCell: true })
+    )
+  })
+
+  it('preserves the original editing row identity when committing a primary-key edit', async () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const initialProps = getLatestGridProps()
+    const initialRows = initialProps.rows as Array<Record<string, unknown>>
+    const onCellClick = initialProps.onCellClick as (
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
+      event: { preventGridDefault: () => void }
+    ) => Promise<void>
+
+    await act(async () => {
+      await onCellClick(
+        {
+          row: initialRows[0],
+          column: { key: 'id', idx: 0 },
+          rowIdx: 0,
+        },
+        { preventGridDefault: vi.fn() }
+      )
+    })
+
+    const editingProps = getLatestGridProps()
+    const editingRows = editingProps.rows as Array<Record<string, unknown>>
+    const onRowsChange = editingProps.onRowsChange as (
+      rows: Array<Record<string, unknown>>,
+      data: { indexes: number[]; column?: { key: string } }
+    ) => void
+
+    act(() => {
+      const nextRows = [...editingRows]
+      nextRows[0] = { ...editingRows[0], id: 10 }
+      onRowsChange(nextRows, { indexes: [0], column: { key: 'id' } })
+    })
+
+    const state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.editState?.rowKey).toEqual({ id: 10 })
+    expect(state?.selectedRowKey).toEqual({ id: 10 })
   })
 
   it('clears no-op edit state via onRowsChange', () => {

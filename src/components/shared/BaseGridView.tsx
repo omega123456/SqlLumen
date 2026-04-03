@@ -79,6 +79,12 @@ interface CellContextMenuState {
   portalRoot: HTMLElement
 }
 
+interface SelectedCellState {
+  rowIdx: number
+  idx: number
+  editable: boolean
+}
+
 function columnKeysFingerprint(columns: { key: string }[]): string {
   return columns.map((c) => c.key).join('\x00')
 }
@@ -117,6 +123,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   const gridRef = useRef<DataGridHandle | null>(null)
   const contextMenuRef = useRef<HTMLDivElement | null>(null)
   const pendingTabNavigationRef = useRef<{ rowIdx: number; idx: number } | null>(null)
+  const selectedCellRef = useRef<SelectedCellState | null>(null)
 
   useImperativeHandle(ref, () => gridRef.current as DataGridHandle, [])
 
@@ -306,9 +313,25 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
       const result = await onCellClickGuard(guardArgs)
 
       if (result.proceed) {
+        selectedCellRef.current = {
+          rowIdx: result.targetRowIdx,
+          idx: result.targetColIdx,
+          editable: result.enableEditor,
+        }
         gridRef.current?.selectCell(
           { rowIdx: result.targetRowIdx, idx: result.targetColIdx },
           { enableEditor: result.enableEditor }
+        )
+      } else if (result.restoreFocus) {
+        const restoreTarget = selectedCellRef.current ?? {
+          rowIdx: result.targetRowIdx,
+          idx: result.targetColIdx,
+          editable: result.enableEditor,
+        }
+        selectedCellRef.current = restoreTarget
+        gridRef.current?.selectCell(
+          { rowIdx: restoreTarget.rowIdx, idx: restoreTarget.idx },
+          { enableEditor: restoreTarget.editable, shouldFocusCell: true }
         )
       }
     },
@@ -323,15 +346,22 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   )
 
   const handleSelectedCellChange = useCallback((args: CellSelectArgs<GridRow>) => {
-    const target = pendingTabNavigationRef.current
-    if (!target) return
-
     const editable =
       typeof args.column.editable === 'boolean'
         ? args.column.editable
         : args.column.renderEditCell != null
 
+    selectedCellRef.current = {
+      rowIdx: args.rowIdx,
+      idx: args.column.idx,
+      editable,
+    }
+
+    const target = pendingTabNavigationRef.current
+    if (!target) return
+
     if (target.rowIdx === args.rowIdx && target.idx === args.column.idx && editable) {
+      selectedCellRef.current = { rowIdx: args.rowIdx, idx: args.column.idx, editable: true }
       gridRef.current?.selectCell(
         { rowIdx: args.rowIdx, idx: args.column.idx },
         { enableEditor: true, shouldFocusCell: true }

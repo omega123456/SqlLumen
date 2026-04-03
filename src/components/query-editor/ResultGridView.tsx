@@ -304,7 +304,13 @@ export function ResultGridView({
         if (currentEditState && currentEditState.modifiedColumns.size > 0) {
           const saveSucceeded = await onAutoSave()
           if (!saveSucceeded) {
-            return { proceed: false, targetRowIdx: rowIdx, targetColIdx, enableEditor: false }
+            return {
+              proceed: false,
+              targetRowIdx: currentEditingRow,
+              targetColIdx,
+              enableEditor: true,
+              restoreFocus: true,
+            }
           }
         }
       }

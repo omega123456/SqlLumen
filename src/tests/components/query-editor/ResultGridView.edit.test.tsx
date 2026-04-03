@@ -302,7 +302,12 @@ describe('ResultGridView edit mode', () => {
 
     expect(onCellClickGuard).toBeDefined()
 
-    let result: CellClickGuardResult
+    let result: CellClickGuardResult & { restoreFocus?: boolean } = {
+      proceed: true,
+      targetRowIdx: -1,
+      targetColIdx: -1,
+      enableEditor: false,
+    }
     await act(async () => {
       result = await onCellClickGuard({
         rowIdx: 0,
@@ -335,9 +340,14 @@ describe('ResultGridView edit mode', () => {
     const props = getLatestBaseGridProps()
     const onCellClickGuard = props.onCellClickGuard as (
       args: CellClickGuardArgs
-    ) => Promise<CellClickGuardResult>
+    ) => Promise<CellClickGuardResult & { restoreFocus?: boolean }>
 
-    let result: CellClickGuardResult
+    let result: CellClickGuardResult & { restoreFocus?: boolean } = {
+      proceed: true,
+      targetRowIdx: -1,
+      targetColIdx: -1,
+      enableEditor: false,
+    }
     await act(async () => {
       result = await onCellClickGuard({
         rowIdx: 0,
@@ -473,9 +483,14 @@ describe('ResultGridView edit mode', () => {
     const props = getLatestBaseGridProps()
     const onCellClickGuard = props.onCellClickGuard as (
       args: CellClickGuardArgs
-    ) => Promise<CellClickGuardResult>
+    ) => Promise<CellClickGuardResult & { restoreFocus?: boolean }>
 
-    let result: CellClickGuardResult
+    let result: CellClickGuardResult & { restoreFocus?: boolean } = {
+      proceed: true,
+      targetRowIdx: -1,
+      targetColIdx: -1,
+      enableEditor: false,
+    }
     await act(async () => {
       result = await onCellClickGuard({
         rowIdx: 1,
@@ -486,7 +501,9 @@ describe('ResultGridView edit mode', () => {
 
     expect(onAutoSave).toHaveBeenCalled()
     expect(onStartEditing).not.toHaveBeenCalled()
-    expect(result!.proceed).toBe(false)
+    expect(result.proceed).toBe(false)
+    expect(result.targetRowIdx).toBe(0)
+    expect(result.restoreFocus).toBe(true)
   })
 
   it('isModifiedCell detects modified columns via editState ref', () => {

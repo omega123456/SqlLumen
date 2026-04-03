@@ -342,7 +342,9 @@ describe('useQueryStore — setEditMode', () => {
     expect(tab.editMode).toBe('testdb.users') // editing is enabled
 
     const toasts = useToastStore.getState().toasts
-    expect(toasts.some((t) => t.variant === 'warning' && t.message?.includes('ambiguous'))).toBe(true)
+    expect(toasts.some((t) => t.variant === 'warning' && t.message?.includes('ambiguous'))).toBe(
+      true
+    )
   })
 
   it('enables edit mode for joined SELECT * results when the selected table key is duplicated by another table', async () => {
@@ -440,6 +442,98 @@ describe('useQueryStore — setEditMode', () => {
       name: 'Alice',
       email: 'alice@test.com',
     })
+  })
+
+  it('does not warn about ambiguous non-key columns when explicit bindings disambiguate the selected table column', async () => {
+    const usersWithCreatedAt: TableDataColumnMeta[] = [
+      ...mockTableColumns,
+      {
+        name: 'created_at',
+        dataType: 'DATETIME',
+        isBooleanAlias: false,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+    ]
+    const ordersWithCreatedAt: TableDataColumnMeta[] = [
+      ...mockOrderColumns,
+      {
+        name: 'created_at',
+        dataType: 'DATETIME',
+        isBooleanAlias: false,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+    ]
+    const analyzeResultWithCreatedAt: QueryTableEditInfo[] = [
+      {
+        database: 'testdb',
+        table: 'users',
+        columns: usersWithCreatedAt,
+        primaryKey: mockPrimaryKey,
+      },
+      {
+        database: 'testdb',
+        table: 'orders',
+        columns: ordersWithCreatedAt,
+        primaryKey: mockOrderPrimaryKey,
+      },
+    ]
+
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'created_at', dataType: 'DATETIME' },
+            { name: 'id', dataType: 'INT' },
+            { name: 'created_at', dataType: 'DATETIME' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[1, 'Alice', '2025-01-01 12:00:00', 101, '2025-01-02 09:30:00']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return analyzeResultWithCreatedAt
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore
+      .getState()
+      .executeQuery(
+        'conn-1',
+        'tab-1',
+        'SELECT users.id, users.name, users.created_at, orders.id, orders.created_at FROM users JOIN orders ON users.id = orders.user_id'
+      )
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    const tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editMode).toBe('testdb.users')
+    expect(tab.editableColumnMap.get(2)).toBe(true)
+
+    const warnings = useToastStore
+      .getState()
+      .toasts.filter(
+        (toast) => toast.variant === 'warning' && toast.message?.includes('created_at')
+      )
+    expect(warnings).toHaveLength(0)
   })
 
   it('does not enable edit mode when only another joined table contributes the key column name', async () => {

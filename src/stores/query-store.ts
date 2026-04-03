@@ -867,10 +867,17 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         return
       }
 
-      // Warn about ambiguous non-key columns (editing still allowed)
+      // Warn only for selected-table columns that remain ambiguous after binding.
       if (ambiguous.size > 0) {
         const keyColsLower = new Set(tableInfo.primaryKey.keyColumns.map((k) => k.toLowerCase()))
-        const nonKeyAmbiguous = [...ambiguous].filter((a) => !keyColsLower.has(a))
+        const nonKeyAmbiguous = tableInfo.columns
+          .map((column) => column.name)
+          .filter((columnName) => {
+            const lower = columnName.toLowerCase()
+            return (
+              ambiguous.has(lower) && !keyColsLower.has(lower) && !boundColumnIndexMap.has(lower)
+            )
+          })
         if (nonKeyAmbiguous.length > 0) {
           showWarningToast(
             'Ambiguous columns',

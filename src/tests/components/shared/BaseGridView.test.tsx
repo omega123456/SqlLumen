@@ -609,6 +609,109 @@ describe('BaseGridView', () => {
     expect(mockSelectCell).not.toHaveBeenCalled()
   })
 
+  it('restores cell focus when guard blocks navigation but requests focus restoration', async () => {
+    const guard = vi.fn().mockResolvedValue({
+      proceed: false,
+      targetRowIdx: 0,
+      targetColIdx: 1,
+      enableEditor: true,
+      restoreFocus: true,
+    })
+
+    render(
+      <BaseGridView
+        columns={testColumns}
+        rows={testRows}
+        editState={null}
+        onCellClickGuard={guard}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const onCellClick = props.onCellClick as (
+      args: {
+        row: Record<string, unknown>
+        rowIdx: number
+        column: { key: string; idx: number }
+      },
+      event: { preventGridDefault: () => void }
+    ) => Promise<void>
+
+    await act(async () => {
+      await onCellClick(
+        {
+          row: testRows[1],
+          rowIdx: 1,
+          column: { key: 'name', idx: 1 },
+        },
+        { preventGridDefault: vi.fn() }
+      )
+    })
+
+    expect(mockSelectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 1 },
+      { enableEditor: true, shouldFocusCell: true }
+    )
+  })
+
+  it('restores the previously selected cell instead of the clicked target cell', async () => {
+    const guard = vi.fn().mockResolvedValue({
+      proceed: false,
+      targetRowIdx: 1,
+      targetColIdx: 0,
+      enableEditor: false,
+      restoreFocus: true,
+    })
+
+    render(
+      <BaseGridView
+        columns={testColumns}
+        rows={testRows}
+        editState={null}
+        onCellClickGuard={guard}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const onSelectedCellChange = props.onSelectedCellChange as (args: {
+      rowIdx: number
+      row: Record<string, unknown>
+      column: { key: string; idx: number; editable?: boolean }
+    }) => void
+    const onCellClick = props.onCellClick as (
+      args: {
+        row: Record<string, unknown>
+        rowIdx: number
+        column: { key: string; idx: number }
+      },
+      event: { preventGridDefault: () => void }
+    ) => Promise<void>
+
+    act(() => {
+      onSelectedCellChange({
+        rowIdx: 0,
+        row: testRows[0],
+        column: { key: 'name', idx: 1, editable: true },
+      })
+    })
+
+    await act(async () => {
+      await onCellClick(
+        {
+          row: testRows[1],
+          rowIdx: 1,
+          column: { key: 'id', idx: 0 },
+        },
+        { preventGridDefault: vi.fn() }
+      )
+    })
+
+    expect(mockSelectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 1 },
+      { enableEditor: true, shouldFocusCell: true }
+    )
+  })
+
   // -----------------------------------------------------------------------
   // Cell click handler — guard returns proceed=true
   // -----------------------------------------------------------------------
