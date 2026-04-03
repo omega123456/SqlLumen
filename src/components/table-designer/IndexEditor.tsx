@@ -5,6 +5,7 @@ import {
   type TableDesignerTabState,
 } from '../../stores/table-designer-store'
 import type { TableDesignerIndexDef } from '../../types/schema'
+import { Button } from '../common/Button'
 import styles from './IndexEditor.module.css'
 
 interface IndexEditorProps {
@@ -161,9 +162,8 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
   return (
     <div className={styles.container} data-testid="index-editor">
       <div className={styles.toolbar}>
-        <button
-          type="button"
-          className={styles.toolbarButton}
+        <Button
+          variant="toolbar"
           onClick={() => {
             addIndex(tabId)
             const nextStoreIndex = tabState.currentSchema.indexes.length
@@ -173,10 +173,9 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
         >
           <PlusCircle size={16} weight="bold" />
           <span>Add Index</span>
-        </button>
-        <button
-          type="button"
-          className={`${styles.toolbarButton} ${styles.deleteToolbarButton}`}
+        </Button>
+        <Button
+          variant="toolbarDanger"
           onClick={() => {
             if (typeof selectedRow === 'number') {
               handleDelete(selectedRow)
@@ -187,7 +186,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
         >
           <Trash size={16} weight="bold" />
           <span>Delete Selected</span>
-        </button>
+        </Button>
       </div>
 
       <div className={styles.tableScroller}>
@@ -356,9 +355,8 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                     )}
                   </td>
                   <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
-                    <button
-                      type="button"
-                      className={styles.deleteRowButton}
+                    <Button
+                      variant="rowDelete"
                       aria-label={`Delete index ${index.name || visibleIndex + 1}`}
                       data-testid={`index-delete-${visibleIndex}`}
                       onClick={(event) => {
@@ -367,7 +365,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                       }}
                     >
                       <Trash size={14} weight="bold" />
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               )

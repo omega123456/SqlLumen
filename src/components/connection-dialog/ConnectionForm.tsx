@@ -8,6 +8,7 @@ import {
   saveConnection as saveConnectionIPC,
   updateConnection,
 } from '../../lib/connection-commands'
+import { Button } from '../common/Button'
 import { Dropdown } from '../common/Dropdown'
 import { CollapsibleSection } from './CollapsibleSection'
 import { ColorPickerPopover } from './ColorPickerPopover'
@@ -603,32 +604,17 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
       </div>
 
       <footer className={styles.formFooter}>
-        <button
-          type="button"
-          className="ui-button-test"
-          onClick={() => void handleTestConnection()}
-          disabled={isAnyPending}
-        >
+        <Button variant="test" onClick={() => void handleTestConnection()} disabled={isAnyPending}>
           <Database size={20} weight="duotone" aria-hidden />
           {pendingAction === 'test' ? 'Testing…' : 'Test Connection'}
-        </button>
+        </Button>
         <div className={styles.footerActionsRight}>
-          <button
-            type="button"
-            className="ui-button-secondary"
-            onClick={() => void handleSave()}
-            disabled={isAnyPending}
-          >
+          <Button variant="secondary" onClick={() => void handleSave()} disabled={isAnyPending}>
             {pendingAction === 'save' ? 'Saving…' : 'Save'}
-          </button>
-          <button
-            type="button"
-            className="ui-button-primary"
-            onClick={() => void handleConnect()}
-            disabled={isAnyPending}
-          >
+          </Button>
+          <Button variant="primary" onClick={() => void handleConnect()} disabled={isAnyPending}>
             {pendingAction === 'connect' ? 'Connecting…' : 'Connect'}
-          </button>
+          </Button>
         </div>
       </footer>
     </div>

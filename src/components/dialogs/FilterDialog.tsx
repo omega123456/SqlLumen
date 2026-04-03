@@ -11,6 +11,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { Funnel, Plus, X } from '@phosphor-icons/react'
+import { Button } from '../common/Button'
 import { DialogShell } from './DialogShell'
 import type { FilterCondition, FilterOperator } from '../../types/schema'
 import styles from './FilterDialog.module.css'
@@ -246,22 +247,12 @@ export function FilterDialog({
             )}
           </div>
           <div className={styles.footerRight}>
-            <button
-              type="button"
-              className="ui-button-secondary"
-              onClick={onCancel}
-              data-testid="filter-cancel-button"
-            >
+            <Button variant="secondary" onClick={onCancel} data-testid="filter-cancel-button">
               Cancel
-            </button>
-            <button
-              type="button"
-              className="ui-button-primary"
-              onClick={handleApply}
-              data-testid="filter-apply-button"
-            >
+            </Button>
+            <Button variant="primary" onClick={handleApply} data-testid="filter-apply-button">
               Apply
-            </button>
+            </Button>
           </div>
         </div>
       </div>

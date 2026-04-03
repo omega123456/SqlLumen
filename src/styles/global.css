@@ -300,6 +300,130 @@ button {
   background: var(--surface-container-low);
 }
 
+/* Destructive confirm — matches primary layout, error surface tokens */
+.ui-button-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  padding: var(--ui-primary-button-padding);
+  border: none;
+  border-radius: var(--ui-action-button-radius);
+  background: var(--error);
+  color: var(--on-error);
+  font-size: var(--type-body-emphasis);
+  font-family: var(--font-body);
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    filter 0.15s ease,
+    transform 0.1s ease;
+}
+
+.ui-button-danger:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.ui-button-danger:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.ui-button-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Table designer toolbars — compact surface pills */
+.ui-button-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.ui-button-toolbar:hover:not(:disabled) {
+  background: var(--surface-container-highest);
+}
+
+.ui-button-toolbar:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ui-button-toolbar.ui-button-toolbar--danger:hover:not(:disabled) {
+  color: var(--error);
+}
+
+[data-theme='light'] .ui-button-toolbar {
+  background: var(--surface-container-high);
+}
+
+/* DDL preview header — low-emphasis action */
+.ui-button-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.ui-button-ghost:hover:not(:disabled) {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+.ui-button-ghost:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Icon-only circular row delete (table designer grids) */
+.ui-button-row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.ui-button-row-delete:hover:not(:disabled) {
+  color: var(--error);
+  background: rgba(var(--error-rgb), 0.08);
+}
+
 /* ============================================================
    Custom dropdown (combobox) — tokens: --ui-dropdown-*
    ============================================================ */

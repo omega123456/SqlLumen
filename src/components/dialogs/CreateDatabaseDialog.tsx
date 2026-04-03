@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { createDatabase } from '../../lib/schema-commands'
 import { useDatabaseEncoding } from '../../hooks/useDatabaseEncoding'
@@ -161,23 +162,17 @@ export function CreateDatabaseDialog({
         )}
 
         <div className={styles.actions}>
-          <button
-            type="button"
-            className="ui-button-secondary"
-            onClick={onCancel}
-            data-testid="create-db-cancel-button"
-          >
+          <Button variant="secondary" onClick={onCancel} data-testid="create-db-cancel-button">
             Cancel
-          </button>
-          <button
-            type="button"
-            className="ui-button-primary"
+          </Button>
+          <Button
+            variant="primary"
             onClick={handleSubmit}
             disabled={!isValid || isSubmitting}
             data-testid="create-db-submit-button"
           >
             {isSubmitting ? 'Creating...' : 'Create Database'}
-          </button>
+          </Button>
         </div>
       </div>
     </DialogShell>

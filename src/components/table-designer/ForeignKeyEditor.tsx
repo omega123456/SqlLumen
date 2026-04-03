@@ -2,6 +2,7 @@ import { Link, Trash } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { listColumns, listSchemaObjects } from '../../lib/schema-commands'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
+import { Button } from '../common/Button'
 import styles from './ForeignKeyEditor.module.css'
 
 interface ForeignKeyEditorProps {
@@ -172,9 +173,8 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
   return (
     <div className={styles.container} data-testid="foreign-key-editor">
       <div className={styles.toolbar}>
-        <button
-          type="button"
-          className={styles.toolbarButton}
+        <Button
+          variant="toolbar"
           onClick={() => {
             addForeignKey(tabId)
             setSelectedRow(foreignKeys.length)
@@ -183,10 +183,9 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
         >
           <Link size={16} weight="bold" />
           <span>Add FK</span>
-        </button>
-        <button
-          type="button"
-          className={`${styles.toolbarButton} ${styles.deleteToolbarButton}`}
+        </Button>
+        <Button
+          variant="toolbarDanger"
           onClick={() => {
             if (effectiveSelectedRow !== null) {
               handleDelete(effectiveSelectedRow)
@@ -197,7 +196,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
         >
           <Trash size={16} weight="bold" />
           <span>Delete Selected</span>
-        </button>
+        </Button>
       </div>
 
       <div className={styles.tableScroller}>
@@ -420,9 +419,8 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                     </select>
                   </td>
                   <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
-                    <button
-                      type="button"
-                      className={styles.deleteRowButton}
+                    <Button
+                      variant="rowDelete"
                       aria-label={`Delete foreign key ${foreignKey.name || fkIndex + 1}`}
                       data-testid={`fk-delete-${fkIndex}`}
                       onClick={(event) => {
@@ -431,7 +429,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                       }}
                     >
                       <Trash size={14} weight="bold" />
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               )

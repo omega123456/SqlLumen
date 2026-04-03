@@ -15,31 +15,6 @@
   padding: 12px 16px 0;
 }
 
-.copyButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  color: var(--on-surface-variant);
-  font-size: var(--type-size-sm);
-  font-weight: 600;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease,
-    opacity 0.15s ease;
-}
-
-.copyButton:hover:not(:disabled) {
-  color: var(--primary);
-  background: rgba(var(--primary-rgb), 0.08);
-}
-
-.copyButton:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
 .body {
   display: flex;
   flex: 1;

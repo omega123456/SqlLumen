@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { alterDatabase, getDatabaseDetails } from '../../lib/schema-commands'
 import { useDatabaseEncoding } from '../../hooks/useDatabaseEncoding'
@@ -158,23 +159,17 @@ export function AlterDatabaseDialog({
       )}
 
       <div className={styles.actions}>
-        <button
-          type="button"
-          className="ui-button-secondary"
-          onClick={onCancel}
-          data-testid="alter-db-cancel-button"
-        >
+        <Button variant="secondary" onClick={onCancel} data-testid="alter-db-cancel-button">
           Cancel
-        </button>
-        <button
-          type="button"
-          className="ui-button-primary"
+        </Button>
+        <Button
+          variant="primary"
           onClick={handleSubmit}
           disabled={isLoading || isSubmitting}
           data-testid="alter-db-submit-button"
         >
           {isSubmitting ? 'Saving...' : 'Alter Database'}
-        </button>
+        </Button>
       </div>
     </DialogShell>
   )

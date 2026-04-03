@@ -85,34 +85,5 @@
 }
 
 .executeButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   min-width: 168px;
-  padding: 11px 22px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--primary), var(--primary-container));
-  color: var(--on-primary);
-  font-family: var(--font-body);
-  font-size: var(--type-body-emphasis);
-  font-weight: 700;
-  box-shadow: 0 4px 14px rgba(var(--primary-rgb), 0.22);
-  transition:
-    transform 0.12s ease,
-    filter 0.15s ease,
-    opacity 0.15s ease;
-}
-
-.executeButton:hover:not(:disabled) {
-  filter: brightness(1.05);
-}
-
-.executeButton:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.executeButton:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }

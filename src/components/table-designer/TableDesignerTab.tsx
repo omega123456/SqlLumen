@@ -6,6 +6,7 @@ import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useThemeStore } from '../../stores/theme-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { DesignerSubTab, TableDesignerTab as TableDesignerTabType } from '../../types/schema'
+import { Button } from '../common/Button'
 import { UnderlineTab, UnderlineTabBar } from '../common/UnderlineTabs'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import { ApplySchemaChangesDialog } from './ApplySchemaChangesDialog'
@@ -243,23 +244,23 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
           </div>
 
           <div className={styles.headerActions}>
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               className={styles.discardButton}
               onClick={() => discardChanges(tabId)}
               data-testid="table-designer-discard"
             >
               Discard
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="primary"
               className={styles.applyButton}
               disabled={isApplyDisabled}
               onClick={() => void prepareApplyDialog()}
               data-testid="table-designer-apply"
             >
               Apply Changes{resolvedTheme === 'dark' && isDirty ? ' ●' : ''}
-            </button>
+            </Button>
           </div>
         </div>
 

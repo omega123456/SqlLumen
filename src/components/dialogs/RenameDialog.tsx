@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Button } from '../common/Button'
 import { DialogShell } from './DialogShell'
 import styles from './RenameDialog.module.css'
 
@@ -89,23 +90,17 @@ export function RenameDialog({
       )}
 
       <div className={styles.actions}>
-        <button
-          type="button"
-          className="ui-button-secondary"
-          onClick={onCancel}
-          data-testid="rename-cancel-button"
-        >
+        <Button variant="secondary" onClick={onCancel} data-testid="rename-cancel-button">
           Cancel
-        </button>
-        <button
-          type="button"
-          className="ui-button-primary"
+        </Button>
+        <Button
+          variant="primary"
           onClick={handleSubmit}
           disabled={!isValid || isLoading}
           data-testid="rename-confirm-button"
         >
           {isLoading ? 'Renaming...' : 'Rename'}
-        </button>
+        </Button>
       </div>
     </DialogShell>
   )

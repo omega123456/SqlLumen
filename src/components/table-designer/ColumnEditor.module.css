@@ -18,36 +18,6 @@
   background: color-mix(in srgb, var(--surface-container-high) 72%, transparent);
 }
 
-.toolbarButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-container-high);
-  color: var(--on-surface);
-  font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  font-weight: 600;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease,
-    opacity 0.15s ease;
-}
-
-.toolbarButton:hover:not(:disabled) {
-  background: var(--surface-container-highest);
-}
-
-.toolbarButton:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.deleteToolbarButton:hover:not(:disabled) {
-  color: var(--error);
-}
-
 .tableScroller {
   flex: 1;
   min-height: 0;
@@ -281,24 +251,6 @@
   width: 42px;
 }
 
-.deleteRowButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  color: var(--on-surface-variant);
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.deleteRowButton:hover {
-  color: var(--error);
-  background: rgba(var(--error-rgb), 0.08);
-}
-
 .ghostRow {
   color: var(--primary);
   font-style: italic;
@@ -311,10 +263,6 @@
 
 [data-theme='light'] .container {
   background: var(--surface-container-lowest);
-}
-
-[data-theme='light'] .toolbarButton {
-  background: var(--surface-container-high);
 }
 
 [data-theme='light'] .selectedRow {

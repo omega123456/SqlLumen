@@ -61,10 +61,10 @@ describe('ConfirmDialog', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
-  it('isDestructive confirm button has destructive styling', () => {
+  it('isDestructive confirm button has danger variant styling', () => {
     render(<ConfirmDialog {...defaultProps} isDestructive />)
     const btn = screen.getByTestId('confirm-confirm-button')
-    // The destructive button gets a CSS module class instead of ui-button-primary
+    expect(btn.className).toContain('ui-button-danger')
     expect(btn.className).not.toContain('ui-button-primary')
   })
 

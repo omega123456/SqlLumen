@@ -11,6 +11,7 @@ import {
   useTableDesignerStore,
   type TableDesignerTabState,
 } from '../../stores/table-designer-store'
+import { Button } from '../common/Button'
 import { TypeCombobox } from './TypeCombobox'
 import { NUMERIC_TYPES, TYPES_WITHOUT_LENGTH } from './table-designer-type-constants'
 import styles from './ColumnEditor.module.css'
@@ -418,38 +419,30 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
   return (
     <div className={styles.container} data-testid="column-editor" ref={containerRef}>
       <div className={styles.toolbar}>
-        <button
-          type="button"
-          className={styles.toolbarButton}
-          onClick={handleAddColumn}
-          data-testid="column-editor-add"
-        >
+        <Button variant="toolbar" onClick={handleAddColumn} data-testid="column-editor-add">
           <PlusCircle size={16} weight="bold" />
           <span>Add Column</span>
-        </button>
-        <button
-          type="button"
-          className={styles.toolbarButton}
+        </Button>
+        <Button
+          variant="toolbar"
           onClick={() => handleMoveSelected(-1)}
           disabled={!canMoveUp}
           data-testid="column-editor-move-up"
         >
           <ArrowUp size={16} weight="bold" />
           <span>Move Up</span>
-        </button>
-        <button
-          type="button"
-          className={styles.toolbarButton}
+        </Button>
+        <Button
+          variant="toolbar"
           onClick={() => handleMoveSelected(1)}
           disabled={!canMoveDown}
           data-testid="column-editor-move-down"
         >
           <ArrowDown size={16} weight="bold" />
           <span>Move Down</span>
-        </button>
-        <button
-          type="button"
-          className={`${styles.toolbarButton} ${styles.deleteToolbarButton}`}
+        </Button>
+        <Button
+          variant="toolbarDanger"
           onClick={() => {
             if (effectiveSelectedIndex !== null) {
               handleDeleteAtIndex(effectiveSelectedIndex)
@@ -460,7 +453,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
         >
           <Trash size={16} weight="bold" />
           <span>Delete</span>
-        </button>
+        </Button>
       </div>
 
       <div className={styles.tableScroller}>
@@ -832,9 +825,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                     </CellFrame>
                   </td>
                   <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
-                    <button
-                      type="button"
-                      className={styles.deleteRowButton}
+                    <Button
+                      variant="rowDelete"
                       aria-label={`Delete column ${column.name || columnIndex + 1}`}
                       data-testid={`column-delete-${columnIndex}`}
                       onClick={(event) => {
@@ -843,7 +835,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                       }}
                     >
                       <Trash size={14} weight="bold" />
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               )

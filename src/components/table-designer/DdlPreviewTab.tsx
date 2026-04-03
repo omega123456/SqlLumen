@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useMemo } from 'react'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
+import { Button } from '../common/Button'
 import styles from './DdlPreviewTab.module.css'
 
 interface DdlPreviewTabProps {
@@ -166,9 +167,8 @@ export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
   return (
     <div className={styles.container} data-testid="table-designer-ddl-preview">
       <div className={styles.header}>
-        <button
-          type="button"
-          className={styles.copyButton}
+        <Button
+          variant="ghost"
           onClick={() => {
             void handleCopy()
           }}
@@ -177,7 +177,7 @@ export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
         >
           <Copy size={16} weight="bold" />
           <span>Copy to Clipboard</span>
-        </button>
+        </Button>
       </div>
 
       <div className={styles.body}>

@@ -50,36 +50,3 @@
   gap: 8px;
   margin-top: 24px;
 }
-
-.destructiveButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-xs);
-  padding: 10px 20px;
-  border: none;
-  border-radius: var(--ui-action-button-radius);
-  background: var(--error);
-  color: var(--on-error);
-  font-size: var(--type-body-emphasis);
-  font-family: var(--font-body);
-  font-weight: 700;
-  line-height: 1.2;
-  cursor: pointer;
-  transition:
-    filter 0.15s ease,
-    transform 0.1s ease;
-}
-
-.destructiveButton:hover:not(:disabled) {
-  filter: brightness(0.9);
-}
-
-.destructiveButton:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.destructiveButton:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}

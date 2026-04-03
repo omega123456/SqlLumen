@@ -1,3 +1,4 @@
+import { Button } from '../common/Button'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { WorkspaceTabs } from '../workspace/WorkspaceTabs'
@@ -38,9 +39,9 @@ export function WorkspaceArea() {
         <div className={styles.welcomeCard}>
           <h2 className={styles.welcomeTitle}>Welcome!</h2>
           <p className={styles.welcomeMessage}>Connect to a MySQL server to get started</p>
-          <button className="ui-button-primary" type="button" onClick={openDialog}>
+          <Button variant="primary" onClick={openDialog}>
             + New Connection
-          </button>
+          </Button>
         </div>
       </div>
     )

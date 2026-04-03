@@ -1,4 +1,5 @@
 import { Warning } from '@phosphor-icons/react'
+import { Button } from '../common/Button'
 import { DialogShell } from './DialogShell'
 import styles from './ConfirmDialog.module.css'
 
@@ -25,8 +26,6 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  const confirmButtonClass = isDestructive ? styles.destructiveButton : 'ui-button-primary'
-
   return (
     <DialogShell
       isOpen={isOpen}
@@ -49,23 +48,17 @@ export function ConfirmDialog({
         </div>
       )}
       <div className={styles.actions}>
-        <button
-          type="button"
-          className="ui-button-secondary"
-          onClick={onCancel}
-          data-testid="confirm-cancel-button"
-        >
+        <Button variant="secondary" onClick={onCancel} data-testid="confirm-cancel-button">
           Cancel
-        </button>
-        <button
-          type="button"
-          className={confirmButtonClass}
+        </Button>
+        <Button
+          variant={isDestructive ? 'danger' : 'primary'}
           onClick={onConfirm}
           disabled={isLoading}
           data-testid="confirm-confirm-button"
         >
           {isLoading ? 'Processing...' : confirmLabel}
-        </button>
+        </Button>
       </div>
     </DialogShell>
   )

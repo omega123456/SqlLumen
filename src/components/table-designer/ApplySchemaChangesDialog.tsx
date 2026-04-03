@@ -1,6 +1,7 @@
 import { WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { applyTableDdl } from '../../lib/table-designer-commands'
+import { Button } from '../common/Button'
 import { DialogShell } from '../dialogs/DialogShell'
 import styles from './ApplySchemaChangesDialog.module.css'
 
@@ -93,24 +94,24 @@ export function ApplySchemaChangesDialog({
         )}
 
         <div className={styles.actions}>
-          <button
-            type="button"
-            className={`ui-button-secondary ${styles.cancelButton}`}
+          <Button
+            variant="secondary"
+            className={styles.cancelButton}
             onClick={onCancel}
             disabled={isExecuting}
             data-testid="apply-schema-cancel"
           >
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="primary"
             className={styles.executeButton}
             onClick={handleExecute}
             disabled={isExecuting}
             data-testid="apply-schema-confirm"
           >
             {isExecuting ? 'Executing...' : 'Execute Changes'}
-          </button>
+          </Button>
         </div>
       </div>
     </DialogShell>
