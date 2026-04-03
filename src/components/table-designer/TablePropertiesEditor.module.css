@@ -3,9 +3,9 @@
   flex: 1;
   min-height: 0;
   padding: 24px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.18);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 
 .grid {
@@ -53,7 +53,7 @@
   padding: 10px 12px;
   border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface-container-low) 65%, transparent);
+  background: transparent;
   color: var(--on-surface);
   font-family: var(--font-body);
   font-size: var(--type-size-sm);

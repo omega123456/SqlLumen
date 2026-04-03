@@ -478,11 +478,17 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
   return (
     <div className={styles.container} data-testid="column-editor" ref={containerRef}>
       <div className={styles.toolbar}>
-        <Button variant="toolbar" onClick={handleAddColumn} data-testid="column-editor-add">
+        <Button
+          type="button"
+          variant="toolbar"
+          onClick={handleAddColumn}
+          data-testid="column-editor-add"
+        >
           <PlusCircle size={16} weight="bold" />
           <span>Add Column</span>
         </Button>
         <Button
+          type="button"
           variant="toolbar"
           onClick={() => handleMoveSelected(-1)}
           disabled={!canMoveUp}
@@ -492,6 +498,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
           <span>Move Up</span>
         </Button>
         <Button
+          type="button"
           variant="toolbar"
           onClick={() => handleMoveSelected(1)}
           disabled={!canMoveDown}
@@ -501,6 +508,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
           <span>Move Down</span>
         </Button>
         <Button
+          type="button"
           variant="toolbarDanger"
           onClick={() => {
             if (effectiveSelectedIndex !== null) {
@@ -825,8 +833,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                         ) : null}
 
                         {defaultValueButtonVisible ? (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
                             className={styles.defaultValueButton}
                             data-row-index={columnIndex}
                             data-cell-key="default"
@@ -845,13 +854,14 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                             }
                           >
                             {defaultLabel(column.defaultValue)}
-                          </button>
+                          </Button>
                         ) : null}
 
                         {column.defaultValue.tag === 'LITERAL' &&
                         canOpenDefaultPopover(column.defaultValue) ? (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
                             className={styles.defaultModeButton}
                             data-testid={`column-default-button-${columnIndex}`}
                             onClick={() =>
@@ -861,7 +871,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                             }
                           >
                             Default
-                          </button>
+                          </Button>
                         ) : null}
 
                         {effectiveDefaultPopoverIndex === columnIndex && (
@@ -869,26 +879,29 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                             className={styles.defaultPopover}
                             data-testid={`column-default-popover-${columnIndex}`}
                           >
-                            <button
+                            <Button
                               type="button"
+                              variant="ghost"
                               className={styles.defaultPopoverButton}
                               onClick={() =>
                                 handleDefaultChoice(columnIndex, { tag: 'NO_DEFAULT' })
                               }
                             >
                               No Default
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
+                              variant="ghost"
                               className={styles.defaultPopoverButton}
                               onClick={() =>
                                 handleDefaultChoice(columnIndex, { tag: 'NULL_DEFAULT' })
                               }
                             >
                               NULL
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
+                              variant="ghost"
                               className={styles.defaultPopoverButton}
                               onClick={() =>
                                 handleDefaultChoice(columnIndex, {
@@ -901,7 +914,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                               }
                             >
                               Literal
-                            </button>
+                            </Button>
                           </div>
                         )}
                       </div>

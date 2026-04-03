@@ -163,6 +163,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
     <div className={styles.container} data-testid="index-editor">
       <div className={styles.toolbar}>
         <Button
+          type="button"
           variant="toolbar"
           onClick={() => {
             addIndex(tabId)
@@ -175,6 +176,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
           <span>Add Index</span>
         </Button>
         <Button
+          type="button"
           variant="toolbarDanger"
           onClick={() => {
             if (typeof selectedRow === 'number') {
@@ -301,9 +303,12 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                         popoverRootsRef.current[storeIndex] = node
                       }}
                     >
-                      <button
+                      <Button
                         type="button"
-                        className={`${styles.columnButton} ${columnsError ? styles.inputError : ''}`}
+                        variant="ghost"
+                        className={`${styles.columnButton} ${
+                          isSelected ? styles.activeColumnButton : styles.inactiveColumnButton
+                        } ${columnsError ? styles.inputError : ''}`}
                         aria-invalid={columnsError ? 'true' : 'false'}
                         title={columnsError}
                         data-testid={`index-columns-button-${visibleIndex}`}
@@ -316,7 +321,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                         }}
                       >
                         {index.columns.join(', ') || 'Select columns'}
-                      </button>
+                      </Button>
 
                       {effectiveOpenColumnsStoreIndex === storeIndex && (
                         <div

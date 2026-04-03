@@ -7,6 +7,7 @@
  */
 
 import { useState, useCallback } from 'react'
+import { Button } from '../common/Button'
 import { DialogShell } from '../dialogs/DialogShell'
 import styles from './UnsavedChangesDialog.module.css'
 
@@ -81,31 +82,34 @@ export function UnsavedChangesDialog({
         </div>
 
         <div className={styles.actions}>
-          <button
+          <Button
             type="button"
+            variant="ghost"
             className={styles.cancelButton}
             onClick={onCancel}
             data-testid="btn-cancel-changes"
           >
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
             className={styles.discardButton}
             onClick={onDiscard}
             data-testid="btn-discard-changes"
           >
             {discardLabel}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="primary"
             className={styles.saveButton}
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             disabled={isSaving}
             data-testid="btn-save-changes"
           >
             {isSaving ? 'Saving...' : saveLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </DialogShell>

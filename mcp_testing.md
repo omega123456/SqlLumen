@@ -173,7 +173,16 @@ After **single-clicking the target cell** so `document.activeElement` is the cel
 
 Repeat per column (e.g. **name** → **key** → **controller** → **method**), then click **`btn-save`**.
 
-## 11. Tear down
+## 11. Table schema designer — MCP inspection
+
+1. Complete **§2** (`driver_session` **start**) with the Tauri app running (`pnpm tauri dev`).
+2. **Connect** (§3) and open a **table designer** tab (object browser → table → **Design Table**, or your usual workflow). Until this tab exists, a snapshot scoped to the designer will fail.
+3. Use **`webview_dom_snapshot`** with `type: "structure"`:
+   - **Whole designer:** `selector: "[data-testid=\"table-designer-tab\"]"`, `strategy: "css"`.
+   - **Columns grid only:** `selector: "[data-testid=\"column-editor\"]"`, `strategy: "css"`. The tree shows the editor `container`, `toolbar`, `tableHead` / `headerCell`, and body rows (`evenRow` / `oddRow`). Use this to confirm which layout nodes correspond to the grey header band, zebra rows, or outer border before changing CSS.
+4. On the **welcome** screen, `table-designer-tab` is absent — expect **“No elements found”** for that selector until you are connected and the tab is open.
+
+## 12. Tear down
 
 - **`driver_session`** with `action: "stop"` when finished (optionally with `appIdentifier` if multiple apps are attached).
 

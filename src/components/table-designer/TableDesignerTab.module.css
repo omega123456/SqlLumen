@@ -111,7 +111,47 @@
 }
 
 .subTabBar {
-  background: transparent;
+  background-color: transparent;
+}
+
+.designerSubTab:global(.ui-button-ghost) {
+  position: relative;
+  flex-shrink: 0;
+  padding: 12px 20px;
+  gap: 0;
+  border-radius: 0;
+  font-family: var(--font-body);
+  font-size: var(--type-nav-tab);
+  font-weight: var(--type-nav-weight);
+  color: var(--on-surface-variant);
+  background-color: transparent;
+}
+
+.designerSubTab:global(.ui-button-ghost):hover:not(:disabled) {
+  color: var(--on-surface);
+  background-color: rgba(var(--on-surface-rgb), 0.03);
+}
+
+.designerSubTabActive:global(.ui-button-ghost) {
+  color: var(--primary);
+  font-weight: var(--type-nav-weight-active);
+  background-color: var(--underline-tab-active-bg);
+}
+
+.designerSubTabActive:global(.ui-button-ghost):hover:not(:disabled) {
+  color: var(--primary);
+  background-color: var(--underline-tab-active-bg);
+}
+
+.designerSubTabActive:global(.ui-button-ghost)::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--underline-tab-indicator, var(--primary));
+  border-radius: 1px 1px 0 0;
 }
 
 .content {
@@ -132,7 +172,7 @@
   justify-content: center;
   border: 1px solid rgba(var(--outline-variant-rgb), 0.18);
   border-radius: var(--radius-md);
-  background: var(--surface-container);
+  background: transparent;
 }
 
 .loadingState {

@@ -3,9 +3,9 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.18);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+  border: none;
+  border-radius: 0;
+  background: transparent;
   overflow: hidden;
 }
 
@@ -28,7 +28,8 @@
   margin: 0;
   padding: 16px;
   border-radius: var(--radius-md);
-  background: var(--surface-container-low);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  background: transparent;
   color: var(--on-surface);
   font-family: var(--font-mono);
   font-size: 12px;

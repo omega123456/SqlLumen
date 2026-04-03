@@ -174,6 +174,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
     <div className={styles.container} data-testid="foreign-key-editor">
       <div className={styles.toolbar}>
         <Button
+          type="button"
           variant="toolbar"
           onClick={() => {
             addForeignKey(tabId)
@@ -185,6 +186,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
           <span>Add FK</span>
         </Button>
         <Button
+          type="button"
           variant="toolbarDanger"
           onClick={() => {
             if (effectiveSelectedRow !== null) {

@@ -3,9 +3,9 @@
   flex: 1;
   min-height: 0;
   flex-direction: column;
-  background: var(--surface-container);
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.18);
-  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  border-radius: 0;
   overflow: hidden;
 }
 
@@ -14,8 +14,8 @@
   flex-wrap: wrap;
   gap: var(--space-sm);
   padding: var(--space-md);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.16);
-  background: color-mix(in srgb, var(--surface-container-high) 72%, transparent);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.08);
+  background: transparent;
 }
 
 .tableScroller {
@@ -41,9 +41,9 @@
   position: sticky;
   top: 0;
   padding: 10px 12px;
-  background: var(--surface-container-high);
+  background: transparent;
   color: var(--on-surface-variant);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.18);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
@@ -74,7 +74,7 @@
 }
 
 .row:hover {
-  background: color-mix(in srgb, var(--surface-container-low) 70%, transparent);
+  background: rgba(var(--on-surface-rgb), 0.04);
 }
 
 .row:hover .dragHandle,
@@ -83,11 +83,11 @@
 }
 
 .evenRow {
-  background: var(--surface);
+  background: transparent;
 }
 
 .oddRow {
-  background: color-mix(in srgb, var(--surface-container-low) 40%, transparent);
+  background: transparent;
 }
 
 .selectedRow {
@@ -97,7 +97,7 @@
 .bodyCell {
   position: relative;
   padding: 8px 10px;
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.06);
   vertical-align: middle;
 }
 
@@ -210,34 +210,39 @@
   gap: 8px;
 }
 
-.defaultValueButton {
+.defaultValueButton:global(.ui-button-ghost) {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
   padding: 6px 10px;
+  gap: 0;
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
   color: var(--on-surface-variant);
   font: inherit;
+  font-weight: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.defaultValueButton:hover {
+.defaultValueButton:global(.ui-button-ghost):hover:not(:disabled) {
   color: var(--on-surface);
+  background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
 }
 
-.defaultModeButton {
+.defaultModeButton:global(.ui-button-ghost) {
   padding: 6px 10px;
+  gap: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--on-surface-variant);
   font: inherit;
+  font-weight: inherit;
   white-space: nowrap;
 }
 
-.defaultModeButton:hover {
+.defaultModeButton:global(.ui-button-ghost):hover:not(:disabled) {
   color: var(--on-surface);
   background: rgba(var(--primary-rgb), 0.08);
 }
@@ -258,16 +263,22 @@
   backdrop-filter: blur(10px);
 }
 
-.defaultPopoverButton {
+.defaultPopoverButton:global(.ui-button-ghost) {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
   padding: 8px 10px;
+  gap: 0;
   border-radius: var(--radius-sm);
   font: inherit;
+  font-weight: inherit;
   color: var(--on-surface);
   text-align: left;
 }
 
-.defaultPopoverButton:hover {
+.defaultPopoverButton:global(.ui-button-ghost):hover:not(:disabled) {
   background: rgba(var(--primary-rgb), 0.08);
+  color: var(--on-surface);
 }
 
 .deleteCell {
@@ -282,10 +293,6 @@
 
 .ghostRow:hover {
   background: rgba(var(--primary-rgb), 0.06);
-}
-
-[data-theme='light'] .container {
-  background: var(--surface-container-lowest);
 }
 
 [data-theme='light'] .selectedRow {

@@ -8,7 +8,7 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { DesignerSubTab, TableDesignerTab as TableDesignerTabType } from '../../types/schema'
 import { Button } from '../common/Button'
 import { ElevatedSurface } from '../common/ElevatedSurface'
-import { UnderlineTab, UnderlineTabBar } from '../common/UnderlineTabs'
+import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import { ApplySchemaChangesDialog } from './ApplySchemaChangesDialog'
 import { ColumnEditor } from './ColumnEditor'
@@ -269,13 +269,21 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
 
           <UnderlineTabBar className={styles.subTabBar} data-testid="table-designer-subtabs">
             {(Object.keys(SUB_TAB_LABELS) as DesignerSubTab[]).map((subTabKey) => (
-              <UnderlineTab
+              <Button
                 key={subTabKey}
-                active={selectedSubTab === subTabKey}
+                type="button"
+                variant="ghost"
+                data-active={selectedSubTab === subTabKey ? true : undefined}
+                data-testid={`table-designer-subtab-${subTabKey}`}
+                className={
+                  selectedSubTab === subTabKey
+                    ? `${styles.designerSubTab} ${styles.designerSubTabActive}`
+                    : styles.designerSubTab
+                }
                 onClick={() => setSelectedSubTab(tabId, subTabKey)}
               >
                 {SUB_TAB_LABELS[subTabKey]}
-              </UnderlineTab>
+              </Button>
             ))}
           </UnderlineTabBar>
         </div>

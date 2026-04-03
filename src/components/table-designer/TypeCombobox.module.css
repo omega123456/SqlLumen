@@ -9,7 +9,7 @@
   padding: 10px 42px 10px 14px;
   border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
   border-radius: var(--radius-lg);
-  background: var(--surface-container-highest);
+  background: transparent;
   color: var(--on-surface);
   font: inherit;
   transition:
@@ -64,6 +64,7 @@
   z-index: 1000;
   max-height: 280px;
   overflow-y: auto;
+  /* Opaque enough to read over the column grid; input above stays transparent */
   background: color-mix(in srgb, var(--surface-container) 84%, transparent);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(var(--primary-rgb), 0.3);
