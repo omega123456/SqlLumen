@@ -90,6 +90,7 @@ describe('playwrightIpcMockHandler', () => {
     expect(columns[0]).toMatchObject({
       name: 'id',
       type: 'BIGINT',
+      typeModifier: 'UNSIGNED',
       isPrimaryKey: true,
       isAutoIncrement: true,
     })

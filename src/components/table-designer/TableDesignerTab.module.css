@@ -2,8 +2,20 @@
   display: flex;
   flex: 1;
   min-height: 0;
+  width: 100%;
   flex-direction: column;
-  background: var(--surface);
+  gap: var(--space-lg);
+  padding: var(--space-lg) var(--space-xl) var(--space-xl);
+  box-sizing: border-box;
+}
+
+.headerCard,
+.contentCard {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
 .header {
@@ -11,7 +23,6 @@
   flex-direction: column;
   gap: var(--space-md);
   padding: var(--space-lg) var(--space-xl) 0;
-  background: var(--surface-container-low);
 }
 
 .headerMain {
@@ -106,7 +117,10 @@
 .content {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding: var(--space-lg) var(--space-xl) var(--space-xl);
+  box-sizing: border-box;
 }
 
 .loadingState,

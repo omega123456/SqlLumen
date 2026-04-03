@@ -13,7 +13,13 @@ import {
 } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
 import { TypeCombobox } from './TypeCombobox'
-import { NUMERIC_TYPES, TYPES_WITHOUT_LENGTH } from './table-designer-type-constants'
+import {
+  getSignednessValue,
+  normalizeTypeModifier,
+  NUMERIC_TYPES,
+  supportsSignedness,
+  TYPES_WITHOUT_LENGTH,
+} from './table-designer-type-constants'
 import styles from './ColumnEditor.module.css'
 
 interface ColumnEditorProps {
@@ -27,6 +33,7 @@ type ColumnFieldKey = keyof Pick<
   TableDesignerColumnDef,
   | 'name'
   | 'type'
+  | 'typeModifier'
   | 'length'
   | 'nullable'
   | 'isPrimaryKey'
@@ -35,14 +42,21 @@ type ColumnFieldKey = keyof Pick<
   | 'comment'
 >
 
-type EditableCellKey = 'name' | 'type' | 'length' | 'default' | 'comment'
+type EditableCellKey = 'name' | 'type' | 'length' | 'signedness' | 'default' | 'comment'
 
 interface ActiveCell {
   rowIndex: number
   cellKey: EditableCellKey
 }
 
-const EDITABLE_CELL_ORDER: EditableCellKey[] = ['name', 'type', 'length', 'default', 'comment']
+const EDITABLE_CELL_ORDER: EditableCellKey[] = [
+  'name',
+  'type',
+  'length',
+  'signedness',
+  'default',
+  'comment',
+]
 
 function isTypeWithoutLength(type: string): boolean {
   return TYPES_WITHOUT_LENGTH_SET.has(type.toUpperCase())
@@ -62,6 +76,28 @@ function defaultLabel(defaultValue: DefaultValueModel): string {
     default:
       return '—'
   }
+}
+
+function canOpenDefaultPopover(defaultValue: DefaultValueModel): boolean {
+  return defaultValue.tag !== 'EXPRESSION'
+}
+
+function stripSignedness(modifier: string | null | undefined): string {
+  return (modifier ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token !== '' && token.toUpperCase() !== 'UNSIGNED')
+    .join(' ')
+}
+
+function applySignedness(
+  modifier: string | null | undefined,
+  nextSignedness: 'SIGNED' | 'UNSIGNED'
+): string {
+  const preserved = stripSignedness(modifier)
+  return nextSignedness === 'UNSIGNED'
+    ? ['UNSIGNED', preserved].filter(Boolean).join(' ')
+    : preserved
 }
 
 function cloneComparable(value: unknown): string {
@@ -97,6 +133,13 @@ function isModifiedCell(
   const originalColumn = findOriginalColumn(tabState, column)
   if (!originalColumn) {
     return tabState.mode === 'alter'
+  }
+
+  if (field === 'typeModifier') {
+    return (
+      normalizeTypeModifier(column.type, column.typeModifier) !==
+      normalizeTypeModifier(originalColumn.type, originalColumn.typeModifier)
+    )
   }
 
   return cloneComparable(column[field]) !== cloneComparable(originalColumn[field])
@@ -188,7 +231,20 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
   const canDelete = effectiveSelectedIndex !== null && effectiveSelectedIndex < columns.length
 
   const headerCells = useMemo(
-    () => ['', '#', 'Name', 'Type', 'Length', 'Nullable', 'PK', 'AI', 'Default', 'Comment', ''],
+    () => [
+      '',
+      '#',
+      'Name',
+      'Type',
+      'Length',
+      'Signed',
+      'Nullable',
+      'PK',
+      'AI',
+      'Default',
+      'Comment',
+      '',
+    ],
     []
   )
 
@@ -294,6 +350,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
         break
       case 'length':
         updateColumn(tabId, rowIndex, 'length', originalValue)
+        break
+      case 'signedness':
+        updateColumn(tabId, rowIndex, 'typeModifier', originalValue)
         break
       case 'comment':
         updateColumn(tabId, rowIndex, 'comment', originalValue)
@@ -472,7 +531,10 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
               const nameError = validationErrors[`columns.${columnIndex}.name`]
               const isSelected = effectiveSelectedIndex === columnIndex
               const lengthDisabled = isTypeWithoutLength(column.type)
+              const signednessDisabled = !supportsSignedness(column.type)
               const autoIncrementEnabled = column.isPrimaryKey && isNumericType(column.type)
+              const defaultValueButtonVisible = column.defaultValue.tag !== 'LITERAL'
+              const signednessValue = getSignednessValue(column.type, column.typeModifier)
 
               return (
                 <tr
@@ -564,12 +626,6 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           value={column.type}
                           onChange={(nextType) => {
                             updateColumn(tabId, columnIndex, 'type', nextType)
-                            if (nextType !== column.type && (column.typeModifier ?? '') !== '') {
-                              updateColumn(tabId, columnIndex, 'typeModifier', '')
-                            }
-                            if (isTypeWithoutLength(nextType) && column.length !== '') {
-                              updateColumn(tabId, columnIndex, 'length', '')
-                            }
                             if (
                               column.isAutoIncrement &&
                               (!isNumericType(nextType) || !column.isPrimaryKey)
@@ -621,6 +677,46 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           updateColumn(tabId, columnIndex, 'length', event.target.value)
                         }
                       />
+                    </CellFrame>
+                  </td>
+                  <td className={styles.bodyCell}>
+                    <CellFrame
+                      modified={isModifiedCell(tabState, column, 'typeModifier')}
+                      testId={`cell-${columnIndex}-signedness`}
+                    >
+                      <select
+                        value={signednessValue}
+                        disabled={signednessDisabled}
+                        className={`${styles.cellInput} ${styles.selectInput} ${
+                          isSelected ? styles.activeInput : styles.inactiveInput
+                        }`}
+                        data-testid={`column-signedness-${columnIndex}`}
+                        data-row-index={columnIndex}
+                        data-cell-key="signedness"
+                        onFocus={() => {
+                          setSelectedIndex(columnIndex)
+                          setActiveCell({ rowIndex: columnIndex, cellKey: 'signedness' })
+                          setEditStartValue(columnIndex, 'signedness', column.typeModifier ?? '')
+                        }}
+                        onBlur={() => clearEditStartValue(columnIndex, 'signedness')}
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) =>
+                          handleEditableKeyDown(event, columnIndex, 'signedness')
+                        }
+                        onChange={(event) => {
+                          const nextSignedness =
+                            event.target.value === 'UNSIGNED' ? 'UNSIGNED' : 'SIGNED'
+                          updateColumn(
+                            tabId,
+                            columnIndex,
+                            'typeModifier',
+                            applySignedness(column.typeModifier, nextSignedness)
+                          )
+                        }}
+                      >
+                        <option value="SIGNED">Signed</option>
+                        <option value="UNSIGNED">Unsigned</option>
+                      </select>
                     </CellFrame>
                   </td>
                   <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>
@@ -726,7 +822,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                               })
                             }
                           />
-                        ) : (
+                        ) : null}
+
+                        {defaultValueButtonVisible ? (
                           <button
                             type="button"
                             className={styles.defaultValueButton}
@@ -748,7 +846,23 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                           >
                             {defaultLabel(column.defaultValue)}
                           </button>
-                        )}
+                        ) : null}
+
+                        {column.defaultValue.tag === 'LITERAL' &&
+                        canOpenDefaultPopover(column.defaultValue) ? (
+                          <button
+                            type="button"
+                            className={styles.defaultModeButton}
+                            data-testid={`column-default-button-${columnIndex}`}
+                            onClick={() =>
+                              setDefaultPopoverIndex((current) =>
+                                current === columnIndex ? null : columnIndex
+                              )
+                            }
+                          >
+                            Default
+                          </button>
+                        ) : null}
 
                         {effectiveDefaultPopoverIndex === columnIndex && (
                           <div
@@ -847,7 +961,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
               data-testid="column-editor-ghost-add"
             >
               <td className={styles.bodyCell}>+</td>
-              <td className={styles.bodyCell} colSpan={10}>
+              <td className={styles.bodyCell} colSpan={11}>
                 Click to add new column...
               </td>
             </tr>

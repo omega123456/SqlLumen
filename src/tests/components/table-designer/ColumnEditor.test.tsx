@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ColumnEditor } from '../../../components/table-designer/ColumnEditor'
@@ -178,8 +178,7 @@ describe('ColumnEditor', () => {
     seedStore()
     render(<ColumnEditor tabId="tab-1" />)
 
-    const comboboxes = screen.getAllByRole('combobox')
-    await user.click(comboboxes[1])
+    await user.click(screen.getByTestId('column-type-1'))
     await user.click(screen.getByRole('option', { name: 'TEXT' }))
 
     expect(useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[1]?.type).toBe(
@@ -204,8 +203,7 @@ describe('ColumnEditor', () => {
     })
     render(<ColumnEditor tabId="tab-1" />)
 
-    const comboboxes = screen.getAllByRole('combobox')
-    await user.click(comboboxes[1])
+    await user.click(screen.getByTestId('column-type-1'))
     await user.click(screen.getByRole('option', { name: 'VARCHAR' }))
 
     expect(useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[1]?.type).toBe(
@@ -213,6 +211,204 @@ describe('ColumnEditor', () => {
     )
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[1]?.typeModifier
+    ).toBe('')
+  })
+
+  it('changing a new column type to TINYINT resets length to the type default and enables signedness', async () => {
+    const user = userEvent.setup()
+    seedStore()
+    render(<ColumnEditor tabId="tab-1" />)
+
+    await user.click(screen.getByTestId('column-editor-add'))
+
+    await user.click(screen.getByTestId('column-type-2'))
+    await user.click(screen.getByRole('option', { name: 'TINYINT' }))
+
+    expect(screen.getByTestId('column-length-2')).toHaveValue('4')
+    expect(screen.getByTestId('column-signedness-2')).toBeEnabled()
+    expect(screen.getByTestId('column-signedness-2')).toHaveValue('SIGNED')
+  })
+
+  it('signedness toggles preserve non-signed modifiers like ZEROFILL', async () => {
+    const user = userEvent.setup()
+    seedStore({
+      currentSchema: {
+        ...makeTabState().currentSchema,
+        columns: [
+          {
+            ...makeTabState().currentSchema.columns[0],
+            type: 'INT',
+            typeModifier: 'UNSIGNED ZEROFILL',
+          },
+          makeTabState().currentSchema.columns[1],
+        ],
+      },
+      originalSchema: {
+        ...makeTabState().originalSchema!,
+        columns: [
+          {
+            ...makeTabState().originalSchema!.columns[0],
+            type: 'INT',
+            typeModifier: 'UNSIGNED ZEROFILL',
+          },
+          makeTabState().originalSchema!.columns[1],
+        ],
+      },
+    })
+    render(<ColumnEditor tabId="tab-1" />)
+
+    await user.selectOptions(screen.getByTestId('column-signedness-0'), 'SIGNED')
+    expect(
+      useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
+    ).toBe('ZEROFILL')
+
+    await user.selectOptions(screen.getByTestId('column-signedness-0'), 'UNSIGNED')
+    expect(
+      useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
+    ).toBe('UNSIGNED ZEROFILL')
+  })
+
+  it('signedness dropdown shows unsigned for composite modifiers and Escape restores the full modifier', async () => {
+    const user = userEvent.setup()
+    seedStore({
+      currentSchema: {
+        ...makeTabState().currentSchema,
+        columns: [
+          {
+            ...makeTabState().currentSchema.columns[0],
+            type: 'INT',
+            typeModifier: 'UNSIGNED ZEROFILL',
+          },
+          makeTabState().currentSchema.columns[1],
+        ],
+      },
+      originalSchema: {
+        ...makeTabState().originalSchema!,
+        columns: [
+          {
+            ...makeTabState().originalSchema!.columns[0],
+            type: 'INT',
+            typeModifier: 'UNSIGNED ZEROFILL',
+          },
+          makeTabState().originalSchema!.columns[1],
+        ],
+      },
+    })
+    render(<ColumnEditor tabId="tab-1" />)
+
+    const signedness = screen.getByTestId('column-signedness-0')
+    expect(signedness).toHaveValue('UNSIGNED')
+
+    await user.click(signedness)
+    await user.selectOptions(signedness, 'SIGNED')
+    expect(
+      useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
+    ).toBe('ZEROFILL')
+
+    await user.keyboard('{Escape}')
+    expect(
+      useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
+    ).toBe('UNSIGNED ZEROFILL')
+    expect(screen.getByTestId('column-signedness-0')).toHaveValue('UNSIGNED')
+  })
+
+  it('re-selecting the same type preserves non-signed modifiers like BINARY', async () => {
+    const user = userEvent.setup()
+    seedStore({
+      currentSchema: {
+        ...makeTabState().currentSchema,
+        columns: [
+          {
+            ...makeTabState().currentSchema.columns[0],
+            type: 'CHAR',
+            length: '36',
+            typeModifier: 'BINARY',
+          },
+          makeTabState().currentSchema.columns[1],
+        ],
+      },
+      originalSchema: {
+        ...makeTabState().originalSchema!,
+        columns: [
+          {
+            ...makeTabState().originalSchema!.columns[0],
+            type: 'CHAR',
+            length: '36',
+            typeModifier: 'BINARY',
+          },
+          makeTabState().originalSchema!.columns[1],
+        ],
+      },
+    })
+    render(<ColumnEditor tabId="tab-1" />)
+
+    await user.click(screen.getByTestId('column-type-0'))
+    await user.click(screen.getByRole('option', { name: 'CHAR' }))
+
+    expect(
+      useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
+    ).toBe('BINARY')
+  })
+
+  it('length input clamps values to the selected type maximum', async () => {
+    const user = userEvent.setup()
+    seedStore({
+      currentSchema: {
+        ...makeTabState().currentSchema,
+        columns: [
+          {
+            ...makeTabState().currentSchema.columns[0],
+            type: 'TINYINT',
+            length: '4',
+          },
+          makeTabState().currentSchema.columns[1],
+        ],
+      },
+    })
+    render(<ColumnEditor tabId="tab-1" />)
+
+    const lengthInput = screen.getByTestId('column-length-0')
+    await user.clear(lengthInput)
+    await user.type(lengthInput, '255')
+
+    expect(lengthInput).toHaveValue('4')
+    expect(useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.length).toBe(
+      '4'
+    )
+  })
+
+  it('signedness is type-aware, can be toggled for numeric types, and clears for non-numeric types', async () => {
+    const user = userEvent.setup()
+    seedStore({
+      currentSchema: {
+        ...makeTabState().currentSchema,
+        columns: [
+          {
+            ...makeTabState().currentSchema.columns[0],
+            type: 'INT',
+            typeModifier: '',
+          },
+          makeTabState().currentSchema.columns[1],
+        ],
+      },
+    })
+    render(<ColumnEditor tabId="tab-1" />)
+
+    const signednessSelect = screen.getByTestId('column-signedness-0')
+    expect(signednessSelect).toBeEnabled()
+
+    await user.selectOptions(signednessSelect, 'UNSIGNED')
+    expect(
+      useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
+    ).toBe('UNSIGNED')
+
+    await user.click(screen.getByTestId('column-type-0'))
+    await user.click(screen.getByRole('option', { name: 'VARCHAR' }))
+
+    expect(screen.getByTestId('column-signedness-0')).toBeDisabled()
+    expect(screen.getByTestId('column-signedness-0')).toHaveValue('SIGNED')
+    expect(
+      useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
     ).toBe('')
   })
 
@@ -233,8 +429,7 @@ describe('ColumnEditor', () => {
     })
     render(<ColumnEditor tabId="tab-1" />)
 
-    const comboboxes = screen.getAllByRole('combobox')
-    await user.click(comboboxes[1])
+    await user.click(screen.getByTestId('column-type-1'))
     await user.click(screen.getByRole('option', { name: 'INT' }))
 
     expect(useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[1]?.type).toBe(
@@ -365,9 +560,7 @@ describe('ColumnEditor', () => {
 
     await user.click(screen.getByTestId('column-default-button-0'))
     await user.click(
-      screen
-        .getByTestId('column-default-popover-0')
-        .querySelectorAll('button')[1] as HTMLButtonElement
+      within(screen.getByTestId('column-default-popover-0')).getByRole('button', { name: 'NULL' })
     )
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.defaultValue
@@ -377,9 +570,9 @@ describe('ColumnEditor', () => {
 
     await user.click(screen.getByTestId('column-default-button-0'))
     await user.click(
-      screen
-        .getByTestId('column-default-popover-0')
-        .querySelectorAll('button')[2] as HTMLButtonElement
+      within(screen.getByTestId('column-default-popover-0')).getByRole('button', {
+        name: 'Literal',
+      })
     )
     const literalInput = screen.getByTestId('column-default-literal-0')
     await user.type(literalInput, '42')
@@ -389,6 +582,33 @@ describe('ColumnEditor', () => {
       tag: 'LITERAL',
       value: '42',
     })
+  })
+
+  it('literal default mode still allows switching back to No Default', async () => {
+    const user = userEvent.setup()
+    seedStore()
+    render(<ColumnEditor tabId="tab-1" />)
+
+    await user.click(screen.getByTestId('column-default-button-0'))
+    await user.click(
+      within(screen.getByTestId('column-default-popover-0')).getByRole('button', {
+        name: 'Literal',
+      })
+    )
+
+    expect(screen.getByTestId('column-default-literal-0')).toBeInTheDocument()
+    await user.click(screen.getByTestId('column-default-button-0'))
+    await user.click(
+      within(screen.getByTestId('column-default-popover-0')).getByRole('button', {
+        name: 'No Default',
+      })
+    )
+
+    expect(
+      useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.defaultValue
+    ).toEqual({ tag: 'NO_DEFAULT' })
+    expect(screen.queryByTestId('column-default-literal-0')).not.toBeInTheDocument()
+    expect(screen.getByTestId('column-default-button-0')).toBeInTheDocument()
   })
 
   it('ghost add row appends a column', async () => {

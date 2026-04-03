@@ -269,6 +269,50 @@ describe('useTableDesignerStore — column operations', () => {
     })
   })
 
+  it('changing a column type applies the type-aware default length and clears unsupported modifiers', () => {
+    seedAlterTab()
+
+    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'typeModifier', 'UNSIGNED')
+    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'type', 'TINYINT')
+
+    const column = useTableDesignerStore.getState().tabs['tab-1'].currentSchema.columns[0]
+    expect(column?.length).toBe('4')
+    expect(column?.typeModifier).toBe('UNSIGNED')
+
+    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'type', 'VARCHAR')
+    const varcharColumn = useTableDesignerStore.getState().tabs['tab-1'].currentSchema.columns[0]
+    expect(varcharColumn?.length).toBe('255')
+    expect(varcharColumn?.typeModifier).toBe('')
+  })
+
+  it('type changes preserve compatible non-signed modifiers', () => {
+    seedAlterTab()
+
+    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'typeModifier', 'UNSIGNED ZEROFILL')
+    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'type', 'INT')
+    expect(
+      useTableDesignerStore.getState().tabs['tab-1'].currentSchema.columns[0]?.typeModifier
+    ).toBe('UNSIGNED ZEROFILL')
+
+    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'type', 'CHAR')
+    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'typeModifier', 'BINARY')
+    useTableDesignerStore.getState().updateColumn('tab-1', 1, 'type', 'CHAR')
+    expect(
+      useTableDesignerStore.getState().tabs['tab-1'].currentSchema.columns[1]?.typeModifier
+    ).toBe('BINARY')
+  })
+
+  it('length updates are clamped to the selected type maximum', () => {
+    seedAlterTab()
+
+    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'type', 'TINYINT')
+    useTableDesignerStore.getState().updateColumn('tab-1', 0, 'length', '255')
+
+    expect(useTableDesignerStore.getState().tabs['tab-1'].currentSchema.columns[0]?.length).toBe(
+      '4'
+    )
+  })
+
   it('deleteColumn removes the column at given index', () => {
     seedAlterTab()
     useTableDesignerStore.getState().deleteColumn('tab-1', 1)

@@ -323,6 +323,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           {
             name: 'id',
             type: 'BIGINT',
+            typeModifier: 'UNSIGNED',
             length: '20',
             nullable: false,
             isPrimaryKey: true,

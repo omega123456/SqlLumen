@@ -1,5 +1,10 @@
 import { create } from 'zustand'
 import { generateTableDdl, loadTableForDesigner } from '../lib/table-designer-commands'
+import {
+  clampLengthForType,
+  getDefaultLengthForType,
+  normalizeTypeModifier,
+} from '../components/table-designer/table-designer-type-constants'
 import type {
   DesignerSubTab,
   TableDesignerColumnDef,
@@ -124,6 +129,26 @@ function schemasEqual<T>(a: T, b: T): boolean {
   return JSON.stringify(normalizeForComparison(a)) === JSON.stringify(normalizeForComparison(b))
 }
 
+function canonicalizeColumn(column: TableDesignerColumnDef): TableDesignerColumnDef {
+  const normalizedModifier = normalizeTypeModifier(column.type, column.typeModifier)
+  if (normalizedModifier === '') {
+    const { typeModifier: _typeModifier, ...rest } = column
+    return rest
+  }
+
+  return {
+    ...column,
+    typeModifier: normalizedModifier,
+  }
+}
+
+function canonicalizeSchema(schema: TableDesignerSchema): TableDesignerSchema {
+  return {
+    ...schema,
+    columns: schema.columns.map(canonicalizeColumn),
+  }
+}
+
 function validateColumns(columns: TableDesignerColumnDef[]): Record<string, string> {
   const errors: Record<string, string> = {}
   const names = new Set<string>()
@@ -221,7 +246,10 @@ function mergeTableNameValidationError(
 function computeIsDirty(state: TableDesignerTabState): boolean {
   if (state.mode === 'alter') {
     if (!state.originalSchema) return false
-    return !schemasEqual(state.currentSchema, state.originalSchema)
+    return !schemasEqual(
+      canonicalizeSchema(state.currentSchema),
+      canonicalizeSchema(state.originalSchema)
+    )
   }
 
   const schema = state.currentSchema
@@ -437,9 +465,45 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
         const schema = cloneValue(tab.currentSchema)
         const column = schema.columns[colIndex]
+        const previousType = column.type
         const oldName = column.name
 
         ;(column[field] as unknown) = value
+
+        if (field === 'type') {
+          const nextType = typeof value === 'string' ? value : String(value ?? '')
+          column.type = nextType
+          column.length =
+            nextType === previousType
+              ? clampLengthForType(nextType, column.length)
+              : getDefaultLengthForType(nextType)
+          column.typeModifier = normalizeTypeModifier(nextType, column.typeModifier)
+          if (
+            column.isAutoIncrement &&
+            (!column.isPrimaryKey ||
+              !column.type
+                .trim()
+                .match(
+                  /^(INT|TINYINT|SMALLINT|MEDIUMINT|BIGINT|DECIMAL|FLOAT|DOUBLE|BIT|BOOLEAN)$/i
+                ))
+          ) {
+            column.isAutoIncrement = false
+          }
+        }
+
+        if (field === 'length') {
+          column.length = clampLengthForType(
+            column.type,
+            typeof value === 'string' ? value : String(value ?? '')
+          )
+        }
+
+        if (field === 'typeModifier') {
+          column.typeModifier = normalizeTypeModifier(
+            column.type,
+            typeof value === 'string' ? value : String(value ?? '')
+          )
+        }
 
         if (field === 'name') {
           const nextName = typeof value === 'string' ? value : String(value ?? '')
@@ -470,7 +534,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
         schema.columns.push({
           name: '',
           type: 'VARCHAR',
-          length: '255',
+          length: getDefaultLengthForType('VARCHAR'),
           nullable: true,
           isPrimaryKey: false,
           isAutoIncrement: false,

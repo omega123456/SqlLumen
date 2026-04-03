@@ -171,6 +171,14 @@ describe('TableDesignerTab', () => {
     expect(screen.getByTestId('table-designer-name-input')).toBeInTheDocument()
   })
 
+  it('renders header and content inside elevated card surfaces', () => {
+    useTableDesignerStore.getState().initTab('tab-1', 'alter', 'conn-1', 'app_db', 'users')
+    render(<TableDesignerTab tab={makeTab()} />)
+
+    expect(screen.getByTestId('table-designer-header-card')).toHaveClass('ui-elevated-surface')
+    expect(screen.getByTestId('table-designer-content-card')).toHaveClass('ui-elevated-surface')
+  })
+
   it('typing in create mode table name input calls store.updateTableName', async () => {
     const user = userEvent.setup()
     useTableDesignerStore.getState().initTab('tab-1', 'create', 'conn-1', 'app_db', '__new_table__')
