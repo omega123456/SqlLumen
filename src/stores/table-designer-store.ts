@@ -10,6 +10,7 @@ import type {
 } from '../types/schema'
 
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
+const ddlRequestVersions: Record<string, number> = {}
 
 export interface TableDesignerTabState {
   connectionId: string
@@ -266,6 +267,27 @@ function clearDebounceTimer(tabId: string): void {
   }
 }
 
+function clearDdlRequestVersion(tabId: string): void {
+  delete ddlRequestVersions[tabId]
+}
+
+function nextDdlRequestVersion(tabId: string): number {
+  const nextVersion = (ddlRequestVersions[tabId] ?? 0) + 1
+  ddlRequestVersions[tabId] = nextVersion
+  return nextVersion
+}
+
+function invalidateDdlRequests(tabId: string): void {
+  nextDdlRequestVersion(tabId)
+}
+
+function isCreateDraftReadyForDdl(tab: TableDesignerTabState): boolean {
+  return !(
+    tab.mode === 'create' &&
+    (tab.currentSchema.tableName.trim() === '' || Object.keys(tab.validationErrors).length > 0)
+  )
+}
+
 export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => {
   const patchTab = (tabId: string, partial: Partial<TableDesignerTabState>) => {
     set((state) => {
@@ -285,6 +307,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
   const scheduleRegenerate = (tabId: string) => {
     clearDebounceTimer(tabId)
+    invalidateDdlRequests(tabId)
     debounceTimers[tabId] = setTimeout(() => {
       delete debounceTimers[tabId]
       void get().regenerateDdl(tabId)
@@ -650,6 +673,18 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
         return
       }
 
+      const requestVersion = nextDdlRequestVersion(tabId)
+
+      if (!isCreateDraftReadyForDdl(tab)) {
+        patchTab(tabId, {
+          ddl: '',
+          ddlWarnings: [],
+          ddlError: null,
+          isDdlLoading: false,
+        })
+        return
+      }
+
       patchTab(tabId, {
         isDdlLoading: true,
       })
@@ -666,6 +701,10 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
           return
         }
 
+        if (ddlRequestVersions[tabId] !== requestVersion) {
+          return
+        }
+
         patchTab(tabId, {
           ddl: response.ddl,
           ddlWarnings: response.warnings,
@@ -679,7 +718,13 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
           return
         }
 
+        if (ddlRequestVersions[tabId] !== requestVersion) {
+          return
+        }
+
         patchTab(tabId, {
+          ddl: '',
+          ddlWarnings: [],
           ddlError: error instanceof Error ? error.message : String(error),
           isDdlLoading: false,
         })
@@ -737,6 +782,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
     cleanupTab: (tabId) => {
       clearDebounceTimer(tabId)
+      clearDdlRequestVersion(tabId)
 
       set((state) => {
         if (!state.tabs[tabId]) {

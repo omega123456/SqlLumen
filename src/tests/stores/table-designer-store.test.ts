@@ -85,6 +85,17 @@ function getGenerateDdlCalls() {
   return invokeMock.mock.calls.filter(([command]) => command === 'generate_table_ddl')
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+
+  return { promise, resolve, reject }
+}
+
 function initCreateTab(tabId = 'tab-1') {
   useTableDesignerStore.getState().initTab(tabId, 'create', 'conn-1', 'app_db', '__new_table__')
 }
@@ -580,13 +591,14 @@ describe('useTableDesignerStore — loadSchema', () => {
 describe('useTableDesignerStore — regenerateDdl', () => {
   it('regenerateDdl calls generateTableDdl IPC', async () => {
     initCreateTab()
+    useTableDesignerStore.getState().updateTableName('tab-1', 'users')
     await useTableDesignerStore.getState().regenerateDdl('tab-1')
 
     expect(invokeMock).toHaveBeenCalledWith('generate_table_ddl', {
       request: {
         originalSchema: null,
         currentSchema: {
-          tableName: '',
+          tableName: 'users',
           columns: [],
           indexes: [],
           foreignKeys: [],
@@ -600,16 +612,106 @@ describe('useTableDesignerStore — regenerateDdl', () => {
 
   it('regenerateDdl sets ddl on success', async () => {
     initCreateTab()
+    useTableDesignerStore.getState().updateTableName('tab-1', 'users')
     await useTableDesignerStore.getState().regenerateDdl('tab-1')
     expect(useTableDesignerStore.getState().tabs['tab-1'].ddl).toBe('CREATE TABLE users (...);')
   })
 
-  it('regenerateDdl sets ddlError on failure', async () => {
-    invokeMock.mockRejectedValueOnce(new Error('DDL failed'))
+  it('regenerateDdl skips IPC and clears preview for blank create drafts', async () => {
     initCreateTab()
+    useTableDesignerStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        'tab-1': {
+          ...state.tabs['tab-1'],
+          ddl: 'STALE SQL',
+          ddlWarnings: ['stale warning'],
+          ddlError: 'stale error',
+          validationErrors: { tableName: 'Table name is required' },
+        },
+      },
+    }))
+    invokeMock.mockClear()
 
     await useTableDesignerStore.getState().regenerateDdl('tab-1')
 
+    expect(getGenerateDdlCalls()).toHaveLength(0)
+    expect(useTableDesignerStore.getState().tabs['tab-1'].ddl).toBe('')
+    expect(useTableDesignerStore.getState().tabs['tab-1'].ddlWarnings).toEqual([])
+    expect(useTableDesignerStore.getState().tabs['tab-1'].ddlError).toBeNull()
+  })
+
+  it('regenerateDdl sets ddlError on failure', async () => {
+    initCreateTab()
+    useTableDesignerStore.getState().updateTableName('tab-1', 'users')
+    useTableDesignerStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        'tab-1': {
+          ...state.tabs['tab-1'],
+          ddl: 'STALE SQL',
+          ddlWarnings: ['stale warning'],
+        },
+      },
+    }))
+    invokeMock.mockRejectedValueOnce(new Error('DDL failed'))
+
+    await useTableDesignerStore.getState().regenerateDdl('tab-1')
+
+    expect(useTableDesignerStore.getState().tabs['tab-1'].ddl).toBe('')
+    expect(useTableDesignerStore.getState().tabs['tab-1'].ddlWarnings).toEqual([])
     expect(useTableDesignerStore.getState().tabs['tab-1'].ddlError).toBe('DDL failed')
+  })
+
+  it('regenerateDdl ignores stale async responses from older requests', async () => {
+    initCreateTab()
+    useTableDesignerStore.getState().updateTableName('tab-1', 'users')
+
+    const first = deferred<{ ddl: string; warnings: string[] }>()
+    const second = deferred<{ ddl: string; warnings: string[] }>()
+
+    invokeMock.mockReset()
+    invokeMock
+      .mockImplementationOnce(async (command) => {
+        expect(command).toBe('generate_table_ddl')
+        return first.promise
+      })
+      .mockImplementationOnce(async (command) => {
+        expect(command).toBe('generate_table_ddl')
+        return second.promise
+      })
+
+    const firstRun = useTableDesignerStore.getState().regenerateDdl('tab-1')
+    const secondRun = useTableDesignerStore.getState().regenerateDdl('tab-1')
+
+    second.resolve({ ddl: 'NEW SQL', warnings: ['new warning'] })
+    await secondRun
+
+    first.resolve({ ddl: 'OLD SQL', warnings: ['old warning'] })
+    await firstRun
+
+    expect(useTableDesignerStore.getState().tabs['tab-1'].ddl).toBe('NEW SQL')
+    expect(useTableDesignerStore.getState().tabs['tab-1'].ddlWarnings).toEqual(['new warning'])
+  })
+
+  it('schema edits invalidate older in-flight DDL responses before debounce completes', async () => {
+    initCreateTab()
+    useTableDesignerStore.getState().updateTableName('tab-1', 'users')
+
+    const first = deferred<{ ddl: string; warnings: string[] }>()
+    invokeMock.mockReset()
+    invokeMock.mockImplementationOnce(async (command) => {
+      expect(command).toBe('generate_table_ddl')
+      return first.promise
+    })
+
+    const firstRun = useTableDesignerStore.getState().regenerateDdl('tab-1')
+    useTableDesignerStore.getState().updateTableName('tab-1', 'users_v2')
+
+    first.resolve({ ddl: 'OLD SQL', warnings: ['old warning'] })
+    await firstRun
+
+    expect(useTableDesignerStore.getState().tabs['tab-1'].ddl).toBe('')
+    expect(useTableDesignerStore.getState().tabs['tab-1'].ddlWarnings).toEqual([])
   })
 })

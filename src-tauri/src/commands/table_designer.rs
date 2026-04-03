@@ -328,10 +328,13 @@ pub async fn load_table_for_designer_impl(
             table_designer::derive_charset_from_collation(&collation)
         },
         collation,
-        auto_increment: metadata_row
-            .try_get::<Option<i64>, _>("AUTO_INCREMENT")
-            .map_err(|e| e.to_string())?
-            .and_then(|value| u64::try_from(value).ok()),
+        auto_increment: match metadata_row.try_get::<Option<u64>, _>("AUTO_INCREMENT") {
+            Ok(value) => value,
+            Err(unsigned_error) => metadata_row
+                .try_get::<Option<i64>, _>("AUTO_INCREMENT")
+                .map_err(|_| unsigned_error.to_string())?
+                .and_then(|value| u64::try_from(value).ok()),
+        },
         row_format: decode_optional_text_cell_named(&metadata_row, "ROW_FORMAT")?.unwrap_or_default(),
         comment: decode_optional_text_cell_named(&metadata_row, "TABLE_COMMENT")?.unwrap_or_default(),
     };
@@ -376,12 +379,10 @@ pub async fn load_table_for_designer_impl(
 pub async fn generate_table_ddl_impl(
     request: GenerateDdlRequest,
 ) -> Result<GenerateDdlResponse, String> {
-    if table_designer::validate_schema(&request.current_schema).is_err() {
-        return Ok(GenerateDdlResponse {
-            ddl: String::new(),
-            warnings: vec![],
-        });
-    }
+    crate::mysql::schema_queries::safe_identifier(&request.database)
+        .map(|_| ())
+        .map_err(|error| format!("Database name: {error}"))?;
+    table_designer::validate_schema(&request.current_schema)?;
 
     match request.mode.as_str() {
         "create" => Ok(GenerateDdlResponse {
@@ -396,6 +397,7 @@ pub async fn generate_table_ddl_impl(
                 .original_schema
                 .as_ref()
                 .ok_or_else(|| "Original schema is required for alter mode".to_string())?;
+            table_designer::validate_schema(original_schema)?;
             let (ddl, warnings) = table_designer::generate_alter_table_ddl(
                 original_schema,
                 &request.current_schema,
@@ -415,12 +417,10 @@ pub async fn generate_table_ddl_impl(
 pub async fn generate_table_ddl_impl(
     request: GenerateDdlRequest,
 ) -> Result<GenerateDdlResponse, String> {
-    if table_designer::validate_schema(&request.current_schema).is_err() {
-        return Ok(GenerateDdlResponse {
-            ddl: String::new(),
-            warnings: vec![],
-        });
-    }
+    crate::mysql::schema_queries::safe_identifier(&request.database)
+        .map(|_| ())
+        .map_err(|error| format!("Database name: {error}"))?;
+    table_designer::validate_schema(&request.current_schema)?;
 
     match request.mode.as_str() {
         "create" => Ok(GenerateDdlResponse {
@@ -430,6 +430,10 @@ pub async fn generate_table_ddl_impl(
         "alter" => {
             if request.original_schema.is_none() {
                 return Err("Original schema is required for alter mode".to_string());
+            }
+
+            if let Some(original_schema) = request.original_schema.as_ref() {
+                table_designer::validate_schema(original_schema)?;
             }
 
             Ok(GenerateDdlResponse {

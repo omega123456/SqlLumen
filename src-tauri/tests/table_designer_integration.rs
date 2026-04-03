@@ -574,36 +574,73 @@ fn test_parse_column_type_splits_unsigned_without_length() {
 }
 
 #[tokio::test]
-async fn test_generate_table_ddl_impl_returns_empty_response_for_invalid_schema() {
-    let response = generate_table_ddl_impl(GenerateDdlRequest {
-        original_schema: None,
-        current_schema: schema(vec![column("")]),
-        database: "appdb".to_string(),
-        mode: "create".to_string(),
-    })
-    .await
-    .expect("invalid designer input should not surface an IPC error");
-
-    assert_eq!(response.ddl, "");
-    assert!(response.warnings.is_empty());
+async fn test_generate_table_ddl_impl_returns_validation_error_for_invalid_schema() {
+    assert_generate_table_ddl_validation_error(
+        GenerateDdlRequest {
+            original_schema: None,
+            current_schema: schema(vec![column("")]),
+            database: "appdb".to_string(),
+            mode: "create".to_string(),
+        },
+        "Column name:",
+    )
+    .await;
 }
 
 #[tokio::test]
-async fn test_generate_table_ddl_impl_returns_empty_response_for_invalid_table_name() {
+async fn test_generate_table_ddl_impl_returns_validation_error_for_invalid_table_name() {
     let mut invalid_schema = schema(vec![column("id")]);
     invalid_schema.table_name = "a".repeat(65);
 
-    let response = generate_table_ddl_impl(GenerateDdlRequest {
-        original_schema: None,
-        current_schema: invalid_schema,
-        database: "appdb".to_string(),
-        mode: "create".to_string(),
-    })
-    .await
-    .expect("invalid table name should not surface an IPC error");
+    assert_generate_table_ddl_validation_error(
+        GenerateDdlRequest {
+            original_schema: None,
+            current_schema: invalid_schema,
+            database: "appdb".to_string(),
+            mode: "create".to_string(),
+        },
+        "Table name:",
+    )
+    .await;
+}
 
-    assert_eq!(response.ddl, "");
-    assert!(response.warnings.is_empty());
+#[tokio::test]
+async fn test_generate_table_ddl_impl_returns_validation_error_for_invalid_original_schema() {
+    assert_generate_table_ddl_validation_error(
+        GenerateDdlRequest {
+            original_schema: Some(schema(vec![column("")])),
+            current_schema: schema(vec![column("id")]),
+            database: "appdb".to_string(),
+            mode: "alter".to_string(),
+        },
+        "Column name:",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn test_generate_table_ddl_impl_returns_validation_error_for_invalid_database_name() {
+    assert_generate_table_ddl_validation_error(
+        GenerateDdlRequest {
+            original_schema: None,
+            current_schema: schema(vec![column("id")]),
+            database: "a".repeat(65),
+            mode: "create".to_string(),
+        },
+        "Database name:",
+    )
+    .await;
+}
+
+async fn assert_generate_table_ddl_validation_error(
+    request: GenerateDdlRequest,
+    expected_fragment: &str,
+) {
+    let error = generate_table_ddl_impl(request)
+        .await
+        .expect_err("invalid designer input should surface a validation error");
+
+    assert!(error.contains(expected_fragment), "unexpected error: {error}");
 }
 
 #[cfg(not(coverage))]
@@ -756,7 +793,7 @@ mod command_wrapper_integration {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn load_table_for_designer_decodes_blob_column_type_via_ipc() {
+    async fn load_table_for_designer_decodes_unsigned_auto_increment_metadata_via_ipc() {
         let server = MockMySqlServer::start_script(vec![
             MockQueryStep {
                 query: "SELECT VERSION()",
@@ -850,7 +887,7 @@ mod command_wrapper_integration {
                     MockColumnDef {
                         name: "AUTO_INCREMENT",
                         coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                        colflags: ColumnFlags::empty(),
+                        colflags: ColumnFlags::UNSIGNED_FLAG,
                     },
                     MockColumnDef {
                         name: "ROW_FORMAT",
@@ -866,7 +903,7 @@ mod command_wrapper_integration {
                 rows: vec![vec![
                     MockCell::Bytes(b"InnoDB"),
                     MockCell::Bytes(b"utf8mb4_unicode_ci"),
-                    MockCell::I64(7),
+                    MockCell::U64(7),
                     MockCell::Bytes(b"Dynamic"),
                     MockCell::Bytes(b"users table"),
                 ]],
@@ -979,7 +1016,7 @@ mod command_wrapper_integration {
                 "tableName": "users",
             }),
         )
-        .expect("load_table_for_designer IPC should decode blob-backed information_schema text");
+        .expect("load_table_for_designer IPC should decode unsigned AUTO_INCREMENT metadata");
 
         assert_eq!(schema.table_name, "users");
         assert_eq!(schema.columns.len(), 3);
