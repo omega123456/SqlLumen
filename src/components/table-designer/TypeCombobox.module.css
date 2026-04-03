@@ -35,6 +35,12 @@
   box-shadow: 0 0 15px rgba(var(--primary-rgb), 0.1);
 }
 
+.inputOpenTop {
+  border-color: var(--primary);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: 0 0 15px rgba(var(--primary-rgb), 0.1);
+}
+
 .chevronButton {
   position: absolute;
   top: 50%;
@@ -62,7 +68,6 @@
   left: 0;
   right: 0;
   z-index: 1000;
-  max-height: 280px;
   overflow-y: auto;
   /* Opaque enough to read over the column grid; input above stays transparent */
   background: color-mix(in srgb, var(--surface-container) 84%, transparent);
@@ -72,6 +77,15 @@
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   padding: 6px 0;
+}
+
+.dropdownTop {
+  top: auto;
+  bottom: calc(100% - 1px);
+  border-top: 1px solid rgba(var(--primary-rgb), 0.3);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.3);
 }
 
 .group {

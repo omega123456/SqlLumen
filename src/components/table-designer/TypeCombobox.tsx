@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -27,14 +28,50 @@ interface TypeComboboxProps {
   }
 }
 
+type DropdownPlacement = 'top' | 'bottom'
+
+const MAX_DROPDOWN_HEIGHT = 280
+
+function isClippingAncestor(element: HTMLElement) {
+  const style = window.getComputedStyle(element)
+  const overflowY = style.overflowY || style.overflow
+  return /(auto|scroll|hidden|clip)/.test(overflowY)
+}
+
+function getClippingContext(element: HTMLElement) {
+  const ancestors: HTMLElement[] = []
+  let top = 0
+  let bottom = window.innerHeight
+  let current = element.parentElement
+
+  while (current) {
+    if (isClippingAncestor(current)) {
+      ancestors.push(current)
+      const rect = current.getBoundingClientRect()
+      top = Math.max(top, rect.top)
+      bottom = Math.min(bottom, rect.bottom)
+    }
+
+    current = current.parentElement
+  }
+
+  return {
+    ancestors,
+    bounds: { top, bottom },
+  }
+}
+
 export function TypeCombobox({ value, onChange, disabled = false, inputProps }: TypeComboboxProps) {
   const listboxId = useId()
   const wrapperRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
   const suppressNextFocusOpenRef = useRef(false)
   const [isOpen, setIsOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const [hoveredIndex, setHoveredIndex] = useState(-1)
+  const [placement, setPlacement] = useState<DropdownPlacement>('bottom')
+  const [dropdownMaxHeight, setDropdownMaxHeight] = useState(MAX_DROPDOWN_HEIGHT)
 
   const {
     inputTestId,
@@ -83,6 +120,8 @@ export function TypeCombobox({ value, onChange, disabled = false, inputProps }: 
     setIsOpen(false)
     setFilter('')
     setHoveredIndex(-1)
+    setPlacement('bottom')
+    setDropdownMaxHeight(MAX_DROPDOWN_HEIGHT)
   }, [])
 
   useDismissOnOutsideClick(wrapperRef, isOpen, closeDropdown, { closeOnEscape: false })
@@ -103,6 +142,54 @@ export function TypeCombobox({ value, onChange, disabled = false, inputProps }: 
       })
     }
   }, [hoveredIndex, isOpen, value, visibleTypes])
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    const wrapper = wrapperRef.current
+    const dropdown = dropdownRef.current
+    if (!wrapper || !dropdown) {
+      return
+    }
+
+    const updatePlacement = () => {
+      const wrapperRect = wrapper.getBoundingClientRect()
+      const clippingContext = getClippingContext(wrapper)
+      const desiredHeight = Math.min(
+        dropdown.scrollHeight || MAX_DROPDOWN_HEIGHT,
+        MAX_DROPDOWN_HEIGHT
+      )
+      const availableBelow = Math.max(0, clippingContext.bounds.bottom - wrapperRect.bottom)
+      const availableAbove = Math.max(0, wrapperRect.top - clippingContext.bounds.top)
+      const nextPlacement: DropdownPlacement =
+        availableBelow < desiredHeight && availableAbove > availableBelow ? 'top' : 'bottom'
+      const availableSpace = nextPlacement === 'top' ? availableAbove : availableBelow
+
+      setPlacement(nextPlacement)
+      setDropdownMaxHeight(Math.max(0, Math.min(MAX_DROPDOWN_HEIGHT, Math.floor(availableSpace))))
+    }
+
+    updatePlacement()
+
+    const scrollParents = new Set<EventTarget>([window])
+    getClippingContext(wrapper).ancestors.forEach((ancestor) => {
+      scrollParents.add(ancestor)
+    })
+
+    scrollParents.forEach((target) => {
+      target.addEventListener('scroll', updatePlacement, { passive: true })
+    })
+    window.addEventListener('resize', updatePlacement)
+
+    return () => {
+      scrollParents.forEach((target) => {
+        target.removeEventListener('scroll', updatePlacement)
+      })
+      window.removeEventListener('resize', updatePlacement)
+    }
+  }, [isOpen, visibleGroups])
 
   const selectType = useCallback(
     (nextType: string) => {
@@ -189,7 +276,7 @@ export function TypeCombobox({ value, onChange, disabled = false, inputProps }: 
         ref={inputRef}
         type="text"
         role="combobox"
-        className={`${styles.input} ${isOpen ? styles.inputOpen : ''}`.trim()}
+        className={`${styles.input} ${isOpen ? (placement === 'top' ? styles.inputOpenTop : styles.inputOpen) : ''}`.trim()}
         value={isOpen ? filter : value}
         disabled={disabled}
         aria-expanded={isOpen}
@@ -227,7 +314,14 @@ export function TypeCombobox({ value, onChange, disabled = false, inputProps }: 
       </button>
 
       {isOpen ? (
-        <div className={styles.dropdown} role="listbox" id={listboxId}>
+        <div
+          ref={dropdownRef}
+          className={`${styles.dropdown} ${placement === 'top' ? styles.dropdownTop : ''}`.trim()}
+          role="listbox"
+          id={listboxId}
+          data-placement={placement}
+          style={{ maxHeight: `${dropdownMaxHeight}px` }}
+        >
           {visibleGroups.map((group) => (
             <div className={styles.group} key={group.label}>
               <div className={styles.groupHeader}>{group.label}</div>

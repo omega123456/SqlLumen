@@ -523,7 +523,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
         </Button>
       </div>
 
-      <div className={styles.tableScroller}>
+      <div className={styles.tableScroller} data-testid="column-editor-scroller">
         <table className={styles.table}>
           <thead className={styles.tableHead}>
             <tr>

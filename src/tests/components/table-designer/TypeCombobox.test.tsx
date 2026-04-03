@@ -1,12 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TypeCombobox } from '../../../components/table-designer/TypeCombobox'
-import { TYPES_WITHOUT_LENGTH } from '../../../components/table-designer/table-designer-type-constants'
-
-void TYPES_WITHOUT_LENGTH
 
 describe('TypeCombobox', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('renders with initial value', () => {
     render(<TypeCombobox value="VARCHAR" onChange={vi.fn()} />)
     expect(screen.getByRole('combobox')).toHaveValue('VARCHAR')
@@ -151,5 +152,33 @@ describe('TypeCombobox', () => {
     fireEvent.mouseDown(screen.getByRole('button', { name: 'Outside' }))
 
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('opens upward when there is not enough room below the input', async () => {
+    const user = userEvent.setup()
+
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(720)
+
+    render(<TypeCombobox value="VARCHAR" onChange={vi.fn()} />)
+
+    const input = screen.getByRole('combobox')
+    const wrapper = input.parentElement
+    expect(wrapper).not.toBeNull()
+
+    vi.spyOn(wrapper as HTMLDivElement, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 660,
+      width: 240,
+      height: 40,
+      top: 660,
+      right: 240,
+      bottom: 700,
+      left: 0,
+      toJSON: () => ({}),
+    })
+
+    await user.click(input)
+
+    expect(screen.getByRole('listbox')).toHaveAttribute('data-placement', 'top')
   })
 })
