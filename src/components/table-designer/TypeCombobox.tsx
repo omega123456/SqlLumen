@@ -12,7 +12,7 @@ import {
   type InputHTMLAttributes,
   type KeyboardEvent,
 } from 'react'
-import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
+import { createPortal } from 'react-dom'
 import { MYSQL_TYPE_GROUPS } from './table-designer-type-constants'
 import styles from './TypeCombobox.module.css'
 
@@ -30,35 +30,32 @@ interface TypeComboboxProps {
 
 type DropdownPlacement = 'top' | 'bottom'
 
-const MAX_DROPDOWN_HEIGHT = 280
-
-function isClippingAncestor(element: HTMLElement) {
-  const style = window.getComputedStyle(element)
-  const overflowY = style.overflowY || style.overflow
-  return /(auto|scroll|hidden|clip)/.test(overflowY)
+type DropdownFixedLayout = {
+  left: number
+  width: number
+  top: number | null
+  bottom: number | null
 }
 
-function getClippingContext(element: HTMLElement) {
-  const ancestors: HTMLElement[] = []
-  let top = 0
-  let bottom = window.innerHeight
-  let current = element.parentElement
+const MAX_DROPDOWN_HEIGHT = 280
+
+/** Viewport margin so the dropdown does not touch window edges. */
+const VIEWPORT_MARGIN = 8
+
+function getScrollParents(node: HTMLElement | null): (HTMLElement | Window)[] {
+  const list: (HTMLElement | Window)[] = [window]
+  let current = node?.parentElement ?? null
 
   while (current) {
-    if (isClippingAncestor(current)) {
-      ancestors.push(current)
-      const rect = current.getBoundingClientRect()
-      top = Math.max(top, rect.top)
-      bottom = Math.min(bottom, rect.bottom)
+    const style = window.getComputedStyle(current)
+    const { overflow, overflowX, overflowY } = style
+    if (/(auto|scroll|overlay)/.test(overflow + overflowX + overflowY)) {
+      list.push(current)
     }
-
     current = current.parentElement
   }
 
-  return {
-    ancestors,
-    bounds: { top, bottom },
-  }
+  return list
 }
 
 export function TypeCombobox({ value, onChange, disabled = false, inputProps }: TypeComboboxProps) {
@@ -72,6 +69,12 @@ export function TypeCombobox({ value, onChange, disabled = false, inputProps }: 
   const [hoveredIndex, setHoveredIndex] = useState(-1)
   const [placement, setPlacement] = useState<DropdownPlacement>('bottom')
   const [dropdownMaxHeight, setDropdownMaxHeight] = useState(MAX_DROPDOWN_HEIGHT)
+  const [dropdownLayout, setDropdownLayout] = useState<DropdownFixedLayout>({
+    left: 0,
+    width: 0,
+    top: null,
+    bottom: null,
+  })
 
   const {
     inputTestId,
@@ -124,7 +127,27 @@ export function TypeCombobox({ value, onChange, disabled = false, inputProps }: 
     setDropdownMaxHeight(MAX_DROPDOWN_HEIGHT)
   }, [])
 
-  useDismissOnOutsideClick(wrapperRef, isOpen, closeDropdown, { closeOnEscape: false })
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (wrapperRef.current?.contains(target)) {
+        return
+      }
+      if (dropdownRef.current?.contains(target)) {
+        return
+      }
+      closeDropdown()
+    }
+
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+    }
+  }, [isOpen, closeDropdown])
 
   useEffect(() => {
     if (!isOpen) {
@@ -156,27 +179,53 @@ export function TypeCombobox({ value, onChange, disabled = false, inputProps }: 
 
     const updatePlacement = () => {
       const wrapperRect = wrapper.getBoundingClientRect()
-      const clippingContext = getClippingContext(wrapper)
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const m = VIEWPORT_MARGIN
+
+      let left = wrapperRect.left
+      let width = wrapperRect.width
+      if (left < m) {
+        width -= m - left
+        left = m
+      }
+      if (left + width > vw - m) {
+        width = Math.max(80, vw - m - left)
+      }
+
       const desiredHeight = Math.min(
         dropdown.scrollHeight || MAX_DROPDOWN_HEIGHT,
         MAX_DROPDOWN_HEIGHT
       )
-      const availableBelow = Math.max(0, clippingContext.bounds.bottom - wrapperRect.bottom)
-      const availableAbove = Math.max(0, wrapperRect.top - clippingContext.bounds.top)
+      const availableBelow = Math.max(0, vh - m - wrapperRect.bottom)
+      const availableAbove = Math.max(0, wrapperRect.top - m)
       const nextPlacement: DropdownPlacement =
         availableBelow < desiredHeight && availableAbove > availableBelow ? 'top' : 'bottom'
       const availableSpace = nextPlacement === 'top' ? availableAbove : availableBelow
 
       setPlacement(nextPlacement)
       setDropdownMaxHeight(Math.max(0, Math.min(MAX_DROPDOWN_HEIGHT, Math.floor(availableSpace))))
+
+      if (nextPlacement === 'bottom') {
+        setDropdownLayout({
+          left,
+          width,
+          top: wrapperRect.bottom - 1,
+          bottom: null,
+        })
+      } else {
+        setDropdownLayout({
+          left,
+          width,
+          top: null,
+          bottom: vh - wrapperRect.top + 1,
+        })
+      }
     }
 
     updatePlacement()
 
-    const scrollParents = new Set<EventTarget>([window])
-    getClippingContext(wrapper).ancestors.forEach((ancestor) => {
-      scrollParents.add(ancestor)
-    })
+    const scrollParents = new Set<EventTarget>(getScrollParents(wrapper))
 
     scrollParents.forEach((target) => {
       target.addEventListener('scroll', updatePlacement, { passive: true })
@@ -313,48 +362,58 @@ export function TypeCombobox({ value, onChange, disabled = false, inputProps }: 
         <CaretDown size={16} weight="bold" aria-hidden />
       </button>
 
-      {isOpen ? (
-        <div
-          ref={dropdownRef}
-          className={`${styles.dropdown} ${placement === 'top' ? styles.dropdownTop : ''}`.trim()}
-          role="listbox"
-          id={listboxId}
-          data-placement={placement}
-          style={{ maxHeight: `${dropdownMaxHeight}px` }}
-        >
-          {visibleGroups.map((group) => (
-            <div className={styles.group} key={group.label}>
-              <div className={styles.groupHeader}>{group.label}</div>
-              {group.types.map((type) => {
-                const flatIndex = visibleTypes.findIndex((entry) => entry.type === type)
-                const isSelected = value === type
-                const isHovered = hoveredIndex === flatIndex
+      {isOpen
+        ? createPortal(
+            <div
+              ref={dropdownRef}
+              className={`${styles.dropdown} ${placement === 'top' ? styles.dropdownTop : ''}`.trim()}
+              role="listbox"
+              id={listboxId}
+              data-placement={placement}
+              style={{
+                maxHeight: `${dropdownMaxHeight}px`,
+                left: `${dropdownLayout.left}px`,
+                width: `${dropdownLayout.width}px`,
+                ...(placement === 'bottom'
+                  ? { top: `${dropdownLayout.top}px`, bottom: 'auto' }
+                  : { bottom: `${dropdownLayout.bottom}px`, top: 'auto' }),
+              }}
+            >
+              {visibleGroups.map((group) => (
+                <div className={styles.group} key={group.label}>
+                  <div className={styles.groupHeader}>{group.label}</div>
+                  {group.types.map((type) => {
+                    const flatIndex = visibleTypes.findIndex((entry) => entry.type === type)
+                    const isSelected = value === type
+                    const isHovered = hoveredIndex === flatIndex
 
-                return (
-                  <button
-                    key={type}
-                    id={`${listboxId}-option-${flatIndex}`}
-                    type="button"
-                    role="option"
-                    aria-selected={isSelected}
-                    className={[
-                      styles.option,
-                      isSelected ? styles.optionSelected : '',
-                      isHovered ? styles.optionHovered : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    onMouseEnter={() => setHoveredIndex(flatIndex)}
-                    onClick={() => selectType(type)}
-                  >
-                    {type}
-                  </button>
-                )
-              })}
-            </div>
-          ))}
-        </div>
-      ) : null}
+                    return (
+                      <button
+                        key={type}
+                        id={`${listboxId}-option-${flatIndex}`}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        className={[
+                          styles.option,
+                          isSelected ? styles.optionSelected : '',
+                          isHovered ? styles.optionHovered : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        onMouseEnter={() => setHoveredIndex(flatIndex)}
+                        onClick={() => selectType(type)}
+                      >
+                        {type}
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   )
 }

@@ -96,8 +96,15 @@ test('table designer type dropdown opens upward when the bottom row lacks space 
 
   expect(spaceBelow).toBeLessThan(120)
   expect(dropdownBox!.y + dropdownBox!.height).toBeLessThanOrEqual(inputBox!.y + 2)
-  expect(dropdownBox!.y).toBeGreaterThanOrEqual(scrollerBox!.y - 1)
-  expect(dropdownBox!.y + dropdownBox!.height).toBeLessThanOrEqual(
-    scrollerBox!.y + scrollerBox!.height + 1
-  )
+
+  await expect(
+    dropdown.evaluate((el) => el.parentElement === document.body)
+  ).resolves.toBe(true)
+
+  const vp = page.viewportSize()
+  expect(vp).not.toBeNull()
+  expect(dropdownBox!.y).toBeGreaterThanOrEqual(-1)
+  expect(dropdownBox!.y + dropdownBox!.height).toBeLessThanOrEqual(vp!.height + 1)
+  expect(dropdownBox!.x).toBeGreaterThanOrEqual(-1)
+  expect(dropdownBox!.x + dropdownBox!.width).toBeLessThanOrEqual(vp!.width + 1)
 })

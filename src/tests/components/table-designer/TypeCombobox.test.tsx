@@ -181,4 +181,14 @@ describe('TypeCombobox', () => {
 
     expect(screen.getByRole('listbox')).toHaveAttribute('data-placement', 'top')
   })
+
+  it('renders the listbox in document.body so it is not clipped by overflow ancestors', async () => {
+    const user = userEvent.setup()
+    render(<TypeCombobox value="VARCHAR" onChange={vi.fn()} />)
+
+    await user.click(screen.getByRole('combobox'))
+
+    const listbox = screen.getByRole('listbox')
+    expect(listbox.parentElement).toBe(document.body)
+  })
 })

@@ -63,11 +63,9 @@
 }
 
 .dropdown {
-  position: absolute;
-  top: calc(100% - 1px);
-  left: 0;
-  right: 0;
-  z-index: 1000;
+  position: fixed;
+  z-index: 10040;
+  box-sizing: border-box;
   overflow-y: auto;
   /* Opaque enough to read over the column grid; input above stays transparent */
   background: color-mix(in srgb, var(--surface-container) 84%, transparent);
@@ -80,8 +78,6 @@
 }
 
 .dropdownTop {
-  top: auto;
-  bottom: calc(100% - 1px);
   border-top: 1px solid rgba(var(--primary-rgb), 0.3);
   border-bottom: none;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
