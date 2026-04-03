@@ -53,6 +53,7 @@ import { DISMISS_ALL_CONTEXT_MENUS, dispatchDismissAll } from '../../lib/context
 import type {
   BaseGridViewProps,
   CellClickGuardArgs,
+  CellClickGuardResult,
   CellClipboardEditArgs,
 } from '../../types/shared-data-view'
 import styles from './BaseGridView.module.css'
@@ -100,6 +101,10 @@ function isClipboardShortcut(
   return (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === key
 }
 
+function buildSelectedCellState(rowIdx: number, idx: number, editable: boolean): SelectedCellState {
+  return { rowIdx, idx, editable }
+}
+
 function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHandle>) {
   const {
     rows,
@@ -124,6 +129,8 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   const contextMenuRef = useRef<HTMLDivElement | null>(null)
   const pendingTabNavigationRef = useRef<{ rowIdx: number; idx: number } | null>(null)
   const selectedCellRef = useRef<SelectedCellState | null>(null)
+  const previousSelectedCellRef = useRef<SelectedCellState | null>(null)
+  const cellClickGuardRequestIdRef = useRef(0)
 
   useImperativeHandle(ref, () => gridRef.current as DataGridHandle, [])
 
@@ -136,6 +143,47 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   const [columnWidths, setColumnWidths] = useState<ColumnWidthsMap>(() => new Map())
   const [cellContextMenu, setCellContextMenu] = useState<CellContextMenuState | null>(null)
   const prevColumnKeysRef = useRef<string>(columnKeysFingerprint(columns))
+
+  const setTrackedSelectedCell = useCallback((next: SelectedCellState) => {
+    previousSelectedCellRef.current = selectedCellRef.current
+    selectedCellRef.current = next
+  }, [])
+
+  const getRestoreTarget = useCallback(
+    (
+      result: CellClickGuardResult,
+      clickArgs: { rowIdx: number; idx: number },
+      selectionAtGuardStart: SelectedCellState | null,
+      selectionBeforeGuardStart: SelectedCellState | null
+    ): SelectedCellState => {
+      const authoritativeTarget = buildSelectedCellState(
+        result.targetRowIdx,
+        result.targetColIdx,
+        result.enableEditor
+      )
+      const selectionAtGuardStartWasClickedCell =
+        selectionAtGuardStart?.rowIdx === clickArgs.rowIdx &&
+        selectionAtGuardStart?.idx === clickArgs.idx
+      const matchingPriorSelection = [
+        selectionAtGuardStartWasClickedCell ? null : selectionAtGuardStart,
+        selectionBeforeGuardStart,
+      ].find(
+        (selection): selection is SelectedCellState =>
+          selection != null && selection.rowIdx === result.targetRowIdx
+      )
+
+      if (matchingPriorSelection) {
+        return buildSelectedCellState(
+          result.targetRowIdx,
+          matchingPriorSelection.idx,
+          result.enableEditor
+        )
+      }
+
+      return authoritativeTarget
+    },
+    []
+  )
 
   useEffect(() => {
     const currentKeys = columnKeysFingerprint(columns)
@@ -303,6 +351,9 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
       if (!onCellClickGuard) return
 
       event.preventGridDefault()
+      const requestId = ++cellClickGuardRequestIdRef.current
+      const selectionAtGuardStart = selectedCellRef.current
+      const selectionBeforeGuardStart = previousSelectedCellRef.current
 
       const guardArgs: CellClickGuardArgs = {
         rowIdx: args.rowIdx,
@@ -311,31 +362,36 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
       }
 
       const result = await onCellClickGuard(guardArgs)
+      if (requestId !== cellClickGuardRequestIdRef.current) {
+        return
+      }
 
       if (result.proceed) {
-        selectedCellRef.current = {
-          rowIdx: result.targetRowIdx,
-          idx: result.targetColIdx,
-          editable: result.enableEditor,
-        }
+        const nextSelection = buildSelectedCellState(
+          result.targetRowIdx,
+          result.targetColIdx,
+          result.enableEditor
+        )
+        setTrackedSelectedCell(nextSelection)
         gridRef.current?.selectCell(
           { rowIdx: result.targetRowIdx, idx: result.targetColIdx },
           { enableEditor: result.enableEditor }
         )
       } else if (result.restoreFocus) {
-        const restoreTarget = selectedCellRef.current ?? {
-          rowIdx: result.targetRowIdx,
-          idx: result.targetColIdx,
-          editable: result.enableEditor,
-        }
-        selectedCellRef.current = restoreTarget
+        const restoreTarget = getRestoreTarget(
+          result,
+          { rowIdx: args.rowIdx, idx: args.column.idx },
+          selectionAtGuardStart,
+          selectionBeforeGuardStart
+        )
+        setTrackedSelectedCell(restoreTarget)
         gridRef.current?.selectCell(
           { rowIdx: restoreTarget.rowIdx, idx: restoreTarget.idx },
           { enableEditor: restoreTarget.editable, shouldFocusCell: true }
         )
       }
     },
-    [onCellClickGuard]
+    [getRestoreTarget, onCellClickGuard, setTrackedSelectedCell]
   )
 
   const handleRowsChange = useCallback(
@@ -345,31 +401,30 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     [onRowsChangeProp]
   )
 
-  const handleSelectedCellChange = useCallback((args: CellSelectArgs<GridRow>) => {
-    const editable =
-      typeof args.column.editable === 'boolean'
-        ? args.column.editable
-        : args.column.renderEditCell != null
+  const handleSelectedCellChange = useCallback(
+    (args: CellSelectArgs<GridRow>) => {
+      const editable =
+        typeof args.column.editable === 'boolean'
+          ? args.column.editable
+          : args.column.renderEditCell != null
 
-    selectedCellRef.current = {
-      rowIdx: args.rowIdx,
-      idx: args.column.idx,
-      editable,
-    }
+      setTrackedSelectedCell(buildSelectedCellState(args.rowIdx, args.column.idx, editable))
 
-    const target = pendingTabNavigationRef.current
-    if (!target) return
+      const target = pendingTabNavigationRef.current
+      if (!target) return
 
-    if (target.rowIdx === args.rowIdx && target.idx === args.column.idx && editable) {
-      selectedCellRef.current = { rowIdx: args.rowIdx, idx: args.column.idx, editable: true }
-      gridRef.current?.selectCell(
-        { rowIdx: args.rowIdx, idx: args.column.idx },
-        { enableEditor: true, shouldFocusCell: true }
-      )
-    }
+      if (target.rowIdx === args.rowIdx && target.idx === args.column.idx && editable) {
+        setTrackedSelectedCell(buildSelectedCellState(args.rowIdx, args.column.idx, true))
+        gridRef.current?.selectCell(
+          { rowIdx: args.rowIdx, idx: args.column.idx },
+          { enableEditor: true, shouldFocusCell: true }
+        )
+      }
 
-    pendingTabNavigationRef.current = null
-  }, [])
+      pendingTabNavigationRef.current = null
+    },
+    [setTrackedSelectedCell]
+  )
 
   const handleCellClipboardEdit = useCallback(
     async (args: CellClipboardEditArgs) => {
