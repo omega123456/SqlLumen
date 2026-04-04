@@ -499,10 +499,10 @@ for (const theme of themes) {
 
     test('Dropdown — group list open', async ({ page }) => {
       await openConnectionManager(page)
-      const dropdownRoot = page.getByTestId('connection-form-main').locator('.ui-dropdown')
-      await dropdownRoot.locator('#conn-group').click()
-      await expect(dropdownRoot.getByRole('listbox')).toBeVisible()
-      await expect(dropdownRoot).toHaveScreenshot(`group-dropdown-open-${theme}.png`)
+      const formMain = page.getByTestId('connection-form-main')
+      await formMain.locator('#conn-group').click()
+      await expect(page.getByRole('listbox', { name: 'Group' })).toBeVisible()
+      await expect(formMain).toHaveScreenshot(`group-dropdown-open-${theme}.png`)
     })
 
     test('GlobalContextMenu — on host field', async ({ page }) => {

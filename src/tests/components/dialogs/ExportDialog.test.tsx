@@ -31,6 +31,9 @@ async function pickExportFormat(
   formatKey: keyof typeof EXPORT_FORMAT_REGEX
 ) {
   await user.click(screen.getByTestId('export-format-select'))
+  await waitFor(() => {
+    expect(screen.getAllByRole('option')).toHaveLength(4)
+  })
   await user.click(screen.getByRole('option', { name: EXPORT_FORMAT_REGEX[formatKey] }))
 }
 
@@ -420,7 +423,9 @@ describe('ExportDialog', () => {
 
     const combo = screen.getByTestId('export-format-select')
     await user.click(combo)
-    expect(screen.getAllByRole('option')).toHaveLength(4)
+    await waitFor(() => {
+      expect(screen.getAllByRole('option')).toHaveLength(4)
+    })
     await user.keyboard('{Escape}')
 
     const labelSnippets: Record<string, string> = {

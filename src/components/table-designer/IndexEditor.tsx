@@ -1,5 +1,5 @@
 import { PlusCircle, Trash } from '@phosphor-icons/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   useTableDesignerStore,
   type TableDesignerTabState,
@@ -8,7 +8,6 @@ import type { TableDesignerIndexDef } from '../../types/schema'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
-import { Checkbox } from '../common/Checkbox'
 import styles from './IndexEditor.module.css'
 
 const INDEX_TYPE_DROPDOWN_OPTIONS: DropdownOption[] = [
@@ -67,9 +66,6 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
   const updateIndex = useTableDesignerStore((state) => state.updateIndex)
 
   const [selectedRow, setSelectedRow] = useState<SelectedRow>(null)
-  const [openColumnsStoreIndex, setOpenColumnsStoreIndex] = useState<number | null>(null)
-
-  const popoverRootsRef = useRef<Record<number, HTMLDivElement | null>>({})
 
   const columns = useMemo(
     () => tabState?.currentSchema.columns ?? [],
@@ -106,35 +102,6 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
     return visibleIndexes.some(({ storeIndex }) => storeIndex === selectedRow) ? selectedRow : null
   }, [selectedRow, visibleIndexes])
 
-  const effectiveOpenColumnsStoreIndex = useMemo(() => {
-    if (openColumnsStoreIndex === null) {
-      return null
-    }
-
-    return visibleIndexes.some(({ storeIndex }) => storeIndex === openColumnsStoreIndex)
-      ? openColumnsStoreIndex
-      : null
-  }, [openColumnsStoreIndex, visibleIndexes])
-
-  useEffect(() => {
-    if (effectiveOpenColumnsStoreIndex === null) {
-      return
-    }
-
-    const handlePointerDown = (event: MouseEvent) => {
-      const root = popoverRootsRef.current[effectiveOpenColumnsStoreIndex]
-      const target = event.target
-      if (root && target instanceof Node && !root.contains(target)) {
-        setOpenColumnsStoreIndex(null)
-      }
-    }
-
-    document.addEventListener('mousedown', handlePointerDown)
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown)
-    }
-  }, [effectiveOpenColumnsStoreIndex])
-
   if (!tabState || !primaryIndex) {
     return null
   }
@@ -146,26 +113,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
 
   const handleDelete = (storeIndex: number) => {
     deleteIndex(tabId, storeIndex)
-    setOpenColumnsStoreIndex((current) => (current === storeIndex ? null : current))
     setSelectedRow((current) => (current === storeIndex ? null : current))
-  }
-
-  const handleToggleColumn = (storeIndex: number, columnName: string) => {
-    const currentColumns = tabState.currentSchema.indexes[storeIndex]?.columns ?? []
-    const nextSelection = new Set(currentColumns)
-
-    if (nextSelection.has(columnName)) {
-      nextSelection.delete(columnName)
-    } else {
-      nextSelection.add(columnName)
-    }
-
-    updateIndex(
-      tabId,
-      storeIndex,
-      'columns',
-      columnNames.filter((name) => nextSelection.has(name))
-    )
   }
 
   return (
@@ -308,54 +256,65 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                   <td className={styles.bodyCell}>
                     <div
                       className={styles.columnSelector}
-                      ref={(node) => {
-                        popoverRootsRef.current[storeIndex] = node
-                      }}
+                      onClick={(event) => event.stopPropagation()}
                     >
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className={`${styles.columnButton} ${
-                          isSelected ? styles.activeColumnButton : styles.inactiveColumnButton
-                        } ${columnsError ? styles.inputError : ''}`}
-                        aria-invalid={columnsError ? 'true' : 'false'}
-                        title={columnsError}
-                        data-testid={`index-columns-button-${visibleIndex}`}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          setSelectedRow(storeIndex)
-                          setOpenColumnsStoreIndex((current) =>
-                            current === storeIndex ? null : storeIndex
-                          )
-                        }}
-                      >
-                        {index.columns.join(', ') || 'Select columns'}
-                      </Button>
-
-                      {effectiveOpenColumnsStoreIndex === storeIndex && (
-                        <div
-                          className={styles.columnsPopover}
-                          data-testid={`index-columns-popover-${visibleIndex}`}
-                          onClick={(event) => event.stopPropagation()}
+                      {columnNames.length > 0 ? (
+                        <Dropdown
+                          id={`index-columns-${tabId}-${visibleIndex}`}
+                          ariaLabel="Index columns"
+                          listAriaLabel="Index columns"
+                          options={columnNames.map((columnName) => ({
+                            value: columnName,
+                            label: columnName,
+                          }))}
+                          multiple
+                          value={index.columns}
+                          data-testid={`index-columns-button-${visibleIndex}`}
+                          closeOnSelect={false}
+                          focusListOnOpen={false}
+                          renderTriggerValue={(selectedOptions) =>
+                            selectedOptions.length > 0
+                              ? selectedOptions.map((option) => option.label).join(', ')
+                              : 'Select columns'
+                          }
+                          renderOptionLabel={(option) => <span>{option.label}</span>}
+                          triggerClassName={`${styles.columnButton} ${
+                            isSelected ? styles.activeColumnButton : styles.inactiveColumnButton
+                          } ${columnsError ? styles.inputError : ''}`}
+                          triggerProps={{
+                            'aria-invalid': columnsError ? 'true' : 'false',
+                            title: columnsError,
+                            onClick: (event) => {
+                              event.stopPropagation()
+                              setSelectedRow(storeIndex)
+                            },
+                          }}
+                          onChange={(nextColumns) => {
+                            updateIndex(
+                              tabId,
+                              storeIndex,
+                              'columns',
+                              columnNames.filter((name) => nextColumns.includes(name))
+                            )
+                          }}
+                        />
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className={`${styles.columnButton} ${
+                            isSelected ? styles.activeColumnButton : styles.inactiveColumnButton
+                          } ${columnsError ? styles.inputError : ''}`}
+                          aria-invalid={columnsError ? 'true' : 'false'}
+                          title={columnsError}
+                          data-testid={`index-columns-button-${visibleIndex}`}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setSelectedRow(storeIndex)
+                          }}
                         >
-                          {columnNames.length > 0 ? (
-                            columnNames.map((columnName) => {
-                              const checked = index.columns.includes(columnName)
-                              return (
-                                <label key={columnName} className={styles.checkboxOption}>
-                                  <Checkbox
-                                    checked={checked}
-                                    data-testid={`index-column-option-${visibleIndex}-${columnName}`}
-                                    onChange={() => handleToggleColumn(storeIndex, columnName)}
-                                  />
-                                  <span>{columnName}</span>
-                                </label>
-                              )
-                            })
-                          ) : (
-                            <div className={styles.emptyState}>Add columns first</div>
-                          )}
-                        </div>
+                          Add columns first
+                        </Button>
                       )}
                     </div>
                     {columnsError && (

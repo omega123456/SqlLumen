@@ -1,9 +1,13 @@
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Dropdown } from '../../../components/common/Dropdown'
 
 describe('Dropdown', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   const options = [
     { value: '', label: 'None' },
     { value: 'a', label: 'Alpha', description: '--flag=a' },
@@ -227,5 +231,82 @@ describe('Dropdown', () => {
     await user.click(screen.getByRole('combobox', { name: 'Size' }))
     await user.click(screen.getByRole('option', { name: 'Alpha' }))
     expect(onChange).toHaveBeenCalledWith('a')
+  })
+
+  it('renders the listbox in document.body so it is not clipped by overflow ancestors', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <div style={{ overflow: 'hidden' }}>
+        <span id="lb-portal">Pick</span>
+        <Dropdown
+          id="d-portal"
+          labelledBy="lb-portal"
+          options={options}
+          value=""
+          onChange={vi.fn()}
+        />
+      </div>
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Pick' }))
+
+    const listbox = screen.getByRole('listbox')
+    expect(listbox.parentElement).toBe(document.body)
+  })
+
+  it('opens upward when there is not enough room below the trigger', async () => {
+    const user = userEvent.setup()
+
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(720)
+
+    render(
+      <>
+        <span id="lb-top">Pick</span>
+        <Dropdown id="d-top" labelledBy="lb-top" options={options} value="" onChange={vi.fn()} />
+      </>
+    )
+
+    const trigger = screen.getByRole('combobox', { name: 'Pick' })
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 660,
+      width: 240,
+      height: 40,
+      top: 660,
+      right: 240,
+      bottom: 700,
+      left: 0,
+      toJSON: () => ({}),
+    })
+
+    await user.click(trigger)
+
+    expect(screen.getByRole('listbox')).toHaveAttribute('data-placement', 'top')
+  })
+
+  it('supports multi-select without closing the listbox after each toggle', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+
+    render(
+      <>
+        <span id="lb-multi">Pick</span>
+        <Dropdown
+          id="d-multi"
+          labelledBy="lb-multi"
+          options={options.slice(1)}
+          multiple
+          value={['a']}
+          onChange={onChange}
+        />
+      </>
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Pick' }))
+    await user.click(screen.getByRole('option', { name: 'Beta' }))
+
+    expect(onChange).toHaveBeenCalledWith(['a', 'b'])
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
   })
 })

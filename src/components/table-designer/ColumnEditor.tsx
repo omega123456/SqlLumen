@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ButtonHTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import type { DefaultValueModel, TableDesignerColumnDef } from '../../types/schema'
@@ -16,8 +15,8 @@ import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import { Checkbox } from '../common/Checkbox'
-import { TypeCombobox } from './TypeCombobox'
 import {
+  MYSQL_TYPES,
   getSignednessValue,
   normalizeTypeModifier,
   NUMERIC_TYPES,
@@ -37,6 +36,12 @@ const SIGNEDNESS_DROPDOWN_OPTIONS: DropdownOption[] = [
   { value: 'SIGNED', label: 'Signed' },
   { value: 'UNSIGNED', label: 'Unsigned' },
 ]
+
+const TYPE_DROPDOWN_OPTIONS: DropdownOption[] = MYSQL_TYPES.map((type) => ({
+  value: type.name,
+  label: type.name,
+  description: type.group,
+}))
 
 type ColumnFieldKey = keyof Pick<
   TableDesignerColumnDef,
@@ -641,8 +646,20 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                       testId={`cell-${columnIndex}-type`}
                     >
                       <div onClick={(event) => event.stopPropagation()}>
-                        <TypeCombobox
+                        <Dropdown
+                          id={`column-type-${tabId}-${columnIndex}`}
+                          ariaLabel="MySQL type"
+                          options={TYPE_DROPDOWN_OPTIONS}
                           value={column.type}
+                          data-testid={`column-type-${columnIndex}`}
+                          focusListOnOpen={false}
+                          triggerProps={{
+                            'data-row-index': columnIndex,
+                            'data-cell-key': 'type',
+                            onClick: (event) => {
+                              event.stopPropagation()
+                            },
+                          }}
                           onChange={(nextType) => {
                             updateColumn(tabId, columnIndex, 'type', nextType)
                             if (
@@ -652,16 +669,16 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                               updateColumn(tabId, columnIndex, 'isAutoIncrement', false)
                             }
                           }}
-                          inputProps={{
-                            rowIndex: columnIndex,
-                            cellKey: 'type',
-                            inputTestId: `column-type-${columnIndex}`,
-                            onInputFocus: () => {
-                              setSelectedIndex(columnIndex)
-                              setActiveCell({ rowIndex: columnIndex, cellKey: 'type' })
-                            },
-                            onKeyDown: (event) => handleEditableKeyDown(event, columnIndex, 'type'),
+                          onTriggerFocus={() => {
+                            setSelectedIndex(columnIndex)
+                            setActiveCell({ rowIndex: columnIndex, cellKey: 'type' })
                           }}
+                          onTriggerKeyDown={(event) =>
+                            handleEditableKeyDown(event, columnIndex, 'type')
+                          }
+                          triggerClassName={`${styles.cellInput} ${styles.selectInput} ${
+                            isSelected ? styles.activeInput : styles.inactiveInput
+                          } ${styles.typeSelectInput}`}
                         />
                       </div>
                     </CellFrame>
@@ -711,15 +728,13 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                         value={signednessValue}
                         disabled={signednessDisabled}
                         data-testid={`column-signedness-${columnIndex}`}
-                        triggerProps={
-                          {
-                            'data-row-index': columnIndex,
-                            'data-cell-key': 'signedness',
-                            onClick: (event) => {
-                              event.stopPropagation()
-                            },
-                          } as ButtonHTMLAttributes<HTMLButtonElement>
-                        }
+                        triggerProps={{
+                          'data-row-index': columnIndex,
+                          'data-cell-key': 'signedness',
+                          onClick: (event) => {
+                            event.stopPropagation()
+                          },
+                        }}
                         onChange={(v) => {
                           const nextSignedness = v === 'UNSIGNED' ? 'UNSIGNED' : 'SIGNED'
                           updateColumn(

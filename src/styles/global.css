@@ -463,11 +463,19 @@ button {
 
 .ui-dropdown__trigger[aria-expanded='true'] {
   border: var(--ui-dropdown-trigger-open-border);
-  border-bottom: none;
-  border-radius: var(--ui-dropdown-trigger-radius) var(--ui-dropdown-trigger-radius) 0 0;
   box-shadow: var(--ui-dropdown-trigger-open-shadow), var(--ui-input-focus-shadow);
   color: var(--primary);
   font-weight: 600;
+}
+
+.ui-dropdown__trigger[aria-expanded='true'][data-panel-placement='bottom'] {
+  border-bottom: none;
+  border-radius: var(--ui-dropdown-trigger-radius) var(--ui-dropdown-trigger-radius) 0 0;
+}
+
+.ui-dropdown__trigger[aria-expanded='true'][data-panel-placement='top'] {
+  border-top: none;
+  border-radius: 0 0 var(--ui-dropdown-trigger-radius) var(--ui-dropdown-trigger-radius);
 }
 
 .ui-dropdown__trigger:disabled {
@@ -497,11 +505,8 @@ button {
 }
 
 .ui-dropdown__panel {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  z-index: 50;
+  position: fixed;
+  z-index: 10040;
   margin: 0;
   padding: var(--ui-dropdown-listbox-padding);
   list-style: none;
@@ -523,6 +528,16 @@ button {
   max-height: min(320px, 55vh);
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+.ui-dropdown__panel--top {
+  border-top: var(--ui-dropdown-trigger-open-border);
+  border-bottom: none;
+  border-radius: var(--ui-dropdown-panel-radius) var(--ui-dropdown-panel-radius) 0 0;
+  box-shadow:
+    0 -8px 32px rgba(0, 0, 0, 0.3),
+    var(--ui-dropdown-trigger-open-shadow),
+    var(--ui-input-focus-shadow);
 }
 
 .ui-dropdown__panel::-webkit-scrollbar {
@@ -565,6 +580,35 @@ button {
   cursor: pointer;
   transition: background-color 0.12s ease;
   box-sizing: border-box;
+}
+
+.ui-dropdown__option--multi {
+  padding-right: 12px;
+}
+
+.ui-dropdown__option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.ui-dropdown__option-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ui-dropdown__check {
+  flex-shrink: 0;
+  opacity: 0;
+}
+
+.ui-dropdown__option--selected .ui-dropdown__check {
+  opacity: 1;
 }
 
 .ui-dropdown__option:hover:not(:disabled),

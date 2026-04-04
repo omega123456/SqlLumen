@@ -243,9 +243,22 @@ describe('IndexEditor', () => {
 
     await user.click(screen.getByTestId('index-columns-button-0'))
 
-    expect(screen.getByTestId('index-column-option-0-id')).toBeInTheDocument()
-    expect(screen.getByTestId('index-column-option-0-email')).toBeInTheDocument()
-    expect(screen.getByTestId('index-column-option-0-role_id')).toBeInTheDocument()
+    expect(screen.getByTestId('index-columns-button-0-option-id')).toBeInTheDocument()
+    expect(screen.getByTestId('index-columns-button-0-option-email')).toBeInTheDocument()
+    expect(screen.getByTestId('index-columns-button-0-option-role_id')).toBeInTheDocument()
+  })
+
+  it('Columns selector uses a multi-select listbox rendered in document.body', async () => {
+    const user = userEvent.setup()
+    seedStore()
+    render(<IndexEditor tabId="tab-1" />)
+
+    await user.click(screen.getByTestId('index-columns-button-0'))
+
+    const listbox = screen.getByRole('listbox', { name: 'Index columns' })
+    expect(listbox).toHaveAttribute('aria-multiselectable', 'true')
+    expect(listbox.parentElement).toBe(document.body)
+    expect(screen.getByRole('option', { name: 'id' })).toBeInTheDocument()
   })
 
   it('Columns popover multi-select updates index columns in store', async () => {
@@ -254,28 +267,27 @@ describe('IndexEditor', () => {
     render(<IndexEditor tabId="tab-1" />)
 
     await user.click(screen.getByTestId('index-columns-button-0'))
-    await user.click(screen.getByTestId('index-column-option-0-id'))
+    await user.click(screen.getByTestId('index-columns-button-0-option-id'))
 
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.indexes[1]?.columns
     ).toEqual(['id', 'email'])
   })
 
-  it('Columns popover closes on outside click', async () => {
+  it('Columns selector closes on outside click', async () => {
     const user = userEvent.setup()
     seedStore()
     render(<IndexEditor tabId="tab-1" />)
 
     await user.click(screen.getByTestId('index-columns-button-0'))
-    expect(screen.getByTestId('index-columns-popover-0')).toBeInTheDocument()
+    expect(screen.getByRole('listbox', { name: 'Index columns' })).toBeInTheDocument()
 
     await user.click(document.body)
 
-    expect(screen.queryByTestId('index-columns-popover-0')).not.toBeInTheDocument()
+    expect(screen.queryByRole('listbox', { name: 'Index columns' })).not.toBeInTheDocument()
   })
 
-  it('Columns popover shows empty state when there are no designer columns', async () => {
-    const user = userEvent.setup()
+  it('Columns selector shows empty state when there are no designer columns', () => {
     seedStore({
       currentSchema: {
         ...makeTabState().currentSchema,
@@ -284,9 +296,7 @@ describe('IndexEditor', () => {
     })
     render(<IndexEditor tabId="tab-1" />)
 
-    await user.click(screen.getByTestId('index-columns-button-0'))
-
-    expect(screen.getByText('Add columns first')).toBeInTheDocument()
+    expect(screen.getByTestId('index-columns-button-0')).toHaveTextContent('Add columns first')
   })
 
   it('Type dropdown update calls store.updateIndex', async () => {

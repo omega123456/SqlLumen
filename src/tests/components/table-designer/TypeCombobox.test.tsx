@@ -10,7 +10,7 @@ describe('TypeCombobox', () => {
 
   it('renders with initial value', () => {
     render(<TypeCombobox value="VARCHAR" onChange={vi.fn()} />)
-    expect(screen.getByRole('combobox')).toHaveValue('VARCHAR')
+    expect(screen.getByRole('combobox')).toHaveTextContent('VARCHAR')
   })
 
   it('opens dropdown on click', async () => {
@@ -22,17 +22,16 @@ describe('TypeCombobox', () => {
     expect(screen.getByRole('listbox')).toBeInTheDocument()
   })
 
-  it('renders all 5 category groups', async () => {
+  it('renders MySQL types with their groups', async () => {
     const user = userEvent.setup()
     render(<TypeCombobox value="VARCHAR" onChange={vi.fn()} />)
 
     await user.click(screen.getByRole('combobox'))
 
-    expect(screen.getByText('Numeric')).toBeInTheDocument()
-    expect(screen.getByText('String')).toBeInTheDocument()
-    expect(screen.getByText('Date & Time')).toBeInTheDocument()
-    expect(screen.getByText('Spatial')).toBeInTheDocument()
-    expect(screen.getByText('JSON', { selector: 'div' })).toBeInTheDocument()
+    const options = screen.getAllByRole('option')
+    expect(options[0]).toHaveTextContent('Numeric')
+    expect(screen.getByRole('option', { name: 'VARCHAR' })).toHaveTextContent('String')
+    expect(screen.getByRole('option', { name: 'DATE' })).toHaveTextContent('Date & Time')
   })
 
   it('renders types in Numeric group', async () => {
@@ -43,49 +42,6 @@ describe('TypeCombobox', () => {
 
     expect(screen.getByRole('option', { name: 'INT' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'BIGINT' })).toBeInTheDocument()
-  })
-
-  it('filter: typing "var" shows only VARCHAR and VARBINARY', async () => {
-    const user = userEvent.setup()
-    render(<TypeCombobox value="INT" onChange={vi.fn()} />)
-
-    const input = screen.getByRole('combobox')
-    await user.click(input)
-    await user.type(input, 'var')
-
-    expect(screen.getByRole('option', { name: 'VARCHAR' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'VARBINARY' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'INT' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'JSON' })).not.toBeInTheDocument()
-  })
-
-  it('filter: empty filter shows all groups', async () => {
-    const user = userEvent.setup()
-    render(<TypeCombobox value="INT" onChange={vi.fn()} />)
-
-    const input = screen.getByRole('combobox')
-    await user.click(input)
-    await user.type(input, 'var')
-    await user.clear(input)
-
-    expect(screen.getByText('Numeric')).toBeInTheDocument()
-    expect(screen.getByText('String')).toBeInTheDocument()
-    expect(screen.getByText('Date & Time')).toBeInTheDocument()
-    expect(screen.getByText('Spatial')).toBeInTheDocument()
-    expect(screen.getByText('JSON', { selector: 'div' })).toBeInTheDocument()
-  })
-
-  it('filter: hides group header when all group types filtered out', async () => {
-    const user = userEvent.setup()
-    render(<TypeCombobox value="INT" onChange={vi.fn()} />)
-
-    const input = screen.getByRole('combobox')
-    await user.click(input)
-    await user.type(input, 'json')
-
-    expect(screen.getByText('JSON', { selector: 'div' })).toBeInTheDocument()
-    expect(screen.queryByText('Numeric')).not.toBeInTheDocument()
-    expect(screen.queryByText('String')).not.toBeInTheDocument()
   })
 
   it('clicking an option calls onChange and closes dropdown', async () => {
@@ -104,8 +60,8 @@ describe('TypeCombobox', () => {
     const user = userEvent.setup()
     render(<TypeCombobox value="INT" onChange={vi.fn()} />)
 
-    const input = screen.getByRole('combobox')
-    await user.click(input)
+    const trigger = screen.getByRole('combobox')
+    await user.click(trigger)
     await user.keyboard('{Escape}')
 
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
@@ -119,12 +75,16 @@ describe('TypeCombobox', () => {
     await user.click(input)
     await user.keyboard('{ArrowDown}')
 
-    let activeOption = document.getElementById(input.getAttribute('aria-activedescendant') ?? '')
+    let activeOption = document.getElementById(
+      screen.getByRole('listbox').getAttribute('aria-activedescendant') ?? ''
+    )
     expect(activeOption).toHaveTextContent('TINYINT')
 
     await user.keyboard('{ArrowUp}')
 
-    activeOption = document.getElementById(input.getAttribute('aria-activedescendant') ?? '')
+    activeOption = document.getElementById(
+      screen.getByRole('listbox').getAttribute('aria-activedescendant') ?? ''
+    )
     expect(activeOption).toHaveTextContent('INT')
   })
 
@@ -162,10 +122,8 @@ describe('TypeCombobox', () => {
     render(<TypeCombobox value="VARCHAR" onChange={vi.fn()} />)
 
     const input = screen.getByRole('combobox')
-    const wrapper = input.parentElement
-    expect(wrapper).not.toBeNull()
 
-    vi.spyOn(wrapper as HTMLDivElement, 'getBoundingClientRect').mockReturnValue({
+    vi.spyOn(input, 'getBoundingClientRect').mockReturnValue({
       x: 0,
       y: 660,
       width: 240,
