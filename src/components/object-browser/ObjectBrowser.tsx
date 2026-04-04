@@ -5,6 +5,7 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { dispatchDismissAll } from '../../lib/context-menu-events'
 import { useObjectBrowserActions } from '../../hooks/useObjectBrowserActions'
+import { TextInput } from '../common/TextInput'
 import { ConnectionHeader } from './ConnectionHeader'
 import { TreeNode } from './TreeNode'
 import { ObjectBrowserContextMenu } from './ObjectBrowserContextMenu'
@@ -205,7 +206,8 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
         <span className={styles.searchIcon}>
           <MagnifyingGlass size={14} weight="regular" />
         </span>
-        <input
+        <TextInput
+          variant="bare"
           type="text"
           className={styles.searchInput}
           placeholder="Filter objects..."

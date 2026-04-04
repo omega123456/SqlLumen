@@ -2,6 +2,8 @@ import { SpinnerGap } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { listCharsets, listCollations } from '../../lib/schema-commands'
+import { TextInput } from '../common/TextInput'
+import { Textarea } from '../common/Textarea'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import type { CharsetInfo, CollationInfo, TableDesignerProperties } from '../../types/schema'
 import styles from './TablePropertiesEditor.module.css'
@@ -284,8 +286,9 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
             <label className={styles.label} htmlFor={`table-properties-auto-increment-${tabId}`}>
               Auto Increment
             </label>
-            <input
+            <TextInput
               id={`table-properties-auto-increment-${tabId}`}
+              variant="bare"
               type="number"
               min="1"
               className={styles.control}
@@ -319,8 +322,9 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
           <label className={styles.label} htmlFor={`table-properties-comment-${tabId}`}>
             Comment
           </label>
-          <textarea
+          <Textarea
             id={`table-properties-comment-${tabId}`}
+            variant="bare"
             className={`${styles.control} ${styles.textarea}`}
             value={properties.comment}
             data-testid="table-properties-comment"

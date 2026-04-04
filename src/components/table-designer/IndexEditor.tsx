@@ -7,6 +7,7 @@ import {
 import type { TableDesignerIndexDef } from '../../types/schema'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
+import { TextInput } from '../common/TextInput'
 import styles from './IndexEditor.module.css'
 
 const INDEX_TYPE_DROPDOWN_OPTIONS: DropdownOption[] = [
@@ -258,12 +259,12 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                   </td>
                   <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>{displayIndex}</td>
                   <td className={styles.bodyCell}>
-                    <input
+                    <TextInput
                       type="text"
+                      variant="tableCell"
                       value={index.name}
-                      className={`${styles.cellInput} ${
-                        isSelected ? styles.activeInput : styles.inactiveInput
-                      } ${nameError ? styles.inputError : ''}`}
+                      invalid={!!nameError}
+                      className={`${isSelected ? styles.activeInput : styles.inactiveInput}`}
                       aria-invalid={nameError ? 'true' : 'false'}
                       title={nameError}
                       data-testid={`index-name-${visibleIndex}`}

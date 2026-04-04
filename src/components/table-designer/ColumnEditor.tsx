@@ -14,6 +14,7 @@ import {
 } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
+import { TextInput } from '../common/TextInput'
 import { TypeCombobox } from './TypeCombobox'
 import {
   getSignednessValue,
@@ -603,15 +604,17 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                       modified={isModifiedCell(tabState, column, 'name')}
                       testId={`cell-${columnIndex}-name`}
                     >
-                      <input
+                      <TextInput
                         type="text"
+                        variant="tableCell"
                         value={column.name}
-                        className={`${styles.cellInput} ${
+                        invalid={!!nameError}
+                        className={`${
                           isSelected ||
                           (activeCell?.rowIndex === columnIndex && activeCell.cellKey === 'name')
                             ? styles.activeInput
                             : styles.inactiveInput
-                        } ${nameError ? styles.inputError : ''}`}
+                        }`}
                         aria-invalid={nameError ? 'true' : 'false'}
                         title={nameError}
                         data-row-index={columnIndex}
@@ -667,11 +670,12 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                       modified={isModifiedCell(tabState, column, 'length')}
                       testId={`cell-${columnIndex}-length`}
                     >
-                      <input
+                      <TextInput
                         type="text"
+                        variant="tableCell"
                         value={column.length}
                         disabled={lengthDisabled}
-                        className={`${styles.cellInput} ${
+                        className={`${
                           isSelected ||
                           (activeCell?.rowIndex === columnIndex && activeCell.cellKey === 'length')
                             ? styles.activeInput
@@ -807,10 +811,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                         onClick={(event) => event.stopPropagation()}
                       >
                         {column.defaultValue.tag === 'LITERAL' ? (
-                          <input
+                          <TextInput
                             type="text"
+                            variant="tableCell"
                             value={column.defaultValue.value}
-                            className={`${styles.cellInput} ${
+                            className={`${
                               isSelected ||
                               (activeCell?.rowIndex === columnIndex &&
                                 activeCell.cellKey === 'default')
@@ -937,10 +942,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                       modified={isModifiedCell(tabState, column, 'comment')}
                       testId={`cell-${columnIndex}-comment`}
                     >
-                      <input
+                      <TextInput
                         type="text"
+                        variant="tableCell"
                         value={column.comment}
-                        className={`${styles.cellInput} ${
+                        className={`${
                           isSelected ||
                           (activeCell?.rowIndex === columnIndex && activeCell.cellKey === 'comment')
                             ? styles.activeInput

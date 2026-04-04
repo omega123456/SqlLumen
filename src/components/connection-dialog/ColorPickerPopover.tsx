@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { HexColorPicker } from 'react-colorful'
+import { TextInput } from '../common/TextInput'
 import { useDismissOnOutsideClick } from './useDismissOnOutsideClick'
 import styles from './ColorPickerPopover.module.css'
 
@@ -50,7 +51,8 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
       {isOpen && (
         <div className={styles.popover} data-testid="color-picker-popover">
           <HexColorPicker color={color ?? '#3b82f6'} onChange={handlePickerColorChange} />
-          <input
+          <TextInput
+            variant="bare"
             type="text"
             className={styles.hexInput}
             value={hexInput}

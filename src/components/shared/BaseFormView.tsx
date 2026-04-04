@@ -26,6 +26,8 @@ import { writeClipboardText } from '../../lib/context-menu-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { DateTimePicker } from '../table-data/DateTimePicker'
+import { TextInput } from '../common/TextInput'
+import tiStyles from '../common/TextInput.module.css'
 import { ENUM_NULL_SENTINEL } from '../table-data/enum-field-utils'
 import type { BaseFormViewProps, GridColumnDescriptor } from '../../types/shared-data-view'
 import styles from './BaseFormView.module.css'
@@ -406,12 +408,12 @@ function FormField({
               .join(' ')}
           />
         ) : (
-          <input
+          <TextInput
             type="text"
+            variant="formField"
             className={[
-              styles.fieldInput,
-              isModified ? styles.fieldInputModified : '',
-              isNull ? styles.fieldInputNull : '',
+              isModified ? tiStyles.formFieldModified : '',
+              isNull ? tiStyles.formFieldNull : '',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -434,7 +436,9 @@ function FormField({
               isTemporalEditable
                 ? (e) => {
                     // Don't open picker when the field is NULL
-                    if (isNull) return
+                    if (isNull) {
+                      return
+                    }
                     // Open picker only on the click that first grants focus
                     if (!inputFocusedRef.current[col.key]) {
                       const anchorEl = (e.currentTarget.parentElement ??

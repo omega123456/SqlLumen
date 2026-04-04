@@ -19,6 +19,7 @@ import type { TableDataColumnMeta } from '../../types/schema'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { ENUM_NULL_SENTINEL, getEnumFallbackValue } from '../table-data/enum-field-utils'
 import { useEditorCallbacks } from './editor-callbacks-context'
+import { TextInput } from '../common/TextInput'
 import styles from './grid-cell-editors.module.css'
 
 // ---------------------------------------------------------------------------
@@ -140,9 +141,9 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
   return (
     <div ref={wrapperRef} className={styles.cellEditorWrapper}>
       <div className="td-cell-editor-shell">
-        <input
+        <TextInput
           ref={inputRef}
-          className="td-cell-editor-input"
+          variant="gridCell"
           value={displayValue}
           onChange={(e) => handleChange(e.target.value)}
           onBlur={(e) => handleBlur(e.relatedTarget)}

@@ -13,6 +13,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { TextInput } from '../common/TextInput'
 import { MYSQL_TYPE_GROUPS } from './table-designer-type-constants'
 import styles from './TypeCombobox.module.css'
 
@@ -321,8 +322,9 @@ export function TypeCombobox({ value, onChange, disabled = false, inputProps }: 
 
   return (
     <div className={styles.comboboxWrapper} ref={wrapperRef}>
-      <input
+      <TextInput
         ref={inputRef}
+        variant="bare"
         type="text"
         role="combobox"
         className={`${styles.input} ${isOpen ? (placement === 'top' ? styles.inputOpenTop : styles.inputOpen) : ''}`.trim()}

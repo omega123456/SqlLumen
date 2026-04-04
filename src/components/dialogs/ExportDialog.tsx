@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
+import { TextInput } from '../common/TextInput'
 import { DialogShell } from './DialogShell'
 import { exportResults } from '../../lib/export-commands'
 import type { ExportFormat } from '../../types/schema'
@@ -193,8 +194,9 @@ export default function ExportDialog({
               <span className={styles.destinationPrefix}>
                 .{EXPORT_FORMAT_CONFIG[format].extension}
               </span>
-              <input
+              <TextInput
                 id="export-file-path"
+                variant="bare"
                 type="text"
                 className={styles.destinationInput}
                 value={filePath}
@@ -222,8 +224,9 @@ export default function ExportDialog({
               <label className={styles.label} htmlFor="export-table-name">
                 Table Name
               </label>
-              <input
+              <TextInput
                 id="export-table-name"
+                variant="bare"
                 type="text"
                 className={styles.tableNameInput}
                 value={tableName}

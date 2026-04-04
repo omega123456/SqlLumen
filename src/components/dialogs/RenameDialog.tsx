@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Button } from '../common/Button'
+import { TextInput } from '../common/TextInput'
 import { DialogShell } from './DialogShell'
 import styles from './RenameDialog.module.css'
 
@@ -70,10 +71,9 @@ export function RenameDialog({
         <label className={styles.label} htmlFor="rename-new-name">
           New Name
         </label>
-        <input
+        <TextInput
           id="rename-new-name"
           type="text"
-          className="ui-input"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={handleInputKeyDown}

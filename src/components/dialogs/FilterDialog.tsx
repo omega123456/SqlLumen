@@ -13,6 +13,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { Funnel, Plus, X } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
+import { TextInput } from '../common/TextInput'
 import { DialogShell } from './DialogShell'
 import type { FilterCondition, FilterOperator } from '../../types/schema'
 import styles from './FilterDialog.module.css'
@@ -177,7 +178,8 @@ export function FilterDialog({
                       />
 
                       {/* Value */}
-                      <input
+                      <TextInput
+                        variant="bare"
                         type="text"
                         className={`${styles.valueInput} ${isNullary ? styles.valueInputDisabled : ''}`}
                         value={cond.value}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
+import { TextInput } from '../common/TextInput'
 import { createDatabase } from '../../lib/schema-commands'
 import { useDatabaseEncoding } from '../../hooks/useDatabaseEncoding'
 import { DialogShell } from './DialogShell'
@@ -111,10 +112,10 @@ export function CreateDatabaseDialog({
           <label className={styles.label} htmlFor="create-db-name">
             Database Name
           </label>
-          <input
+          <TextInput
             id="create-db-name"
             type="text"
-            className="ui-input"
+            invalid={!!nameError}
             value={name}
             onChange={handleNameChange}
             placeholder="my_new_database"

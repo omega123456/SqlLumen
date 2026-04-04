@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } fr
 import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { Plus, FolderPlus, ShieldCheck, PencilSimple, Trash } from '@phosphor-icons/react'
+import { TextInput } from '../common/TextInput'
 import { useConnectionStore } from '../../stores/connection-store'
 import {
   deleteConnection,
@@ -106,8 +107,9 @@ function GroupInlineInput({
   }, [])
 
   return (
-    <input
+    <TextInput
       ref={inputRef}
+      variant="bare"
       type="text"
       className={styles.renameInput}
       value={value}

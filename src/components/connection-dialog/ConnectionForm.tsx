@@ -9,6 +9,7 @@ import {
   updateConnection,
 } from '../../lib/connection-commands'
 import { Button } from '../common/Button'
+import { TextInput } from '../common/TextInput'
 import { Dropdown } from '../common/Dropdown'
 import { CollapsibleSection } from './CollapsibleSection'
 import { ColorPickerPopover } from './ColorPickerPopover'
@@ -108,10 +109,11 @@ function SslFileField({
         {label}
       </label>
       <div className={styles.fileInputRow}>
-        <input
+        <TextInput
           type="text"
           id={id}
-          className={styles.input}
+          variant="mono"
+          className={styles.fileInputRowField}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
@@ -330,10 +332,11 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
               <label htmlFor="conn-name" className={styles.labelCaps}>
                 Connection name
               </label>
-              <input
+              <TextInput
                 id="conn-name"
                 type="text"
-                className={`${styles.input} ${errors.name ? styles.inputError : ''}`}
+                variant="mono"
+                invalid={!!errors.name}
                 value={formData.name}
                 onChange={(e) => updateField('name', e.target.value)}
                 placeholder="My production server"
@@ -347,10 +350,11 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                 <label htmlFor="conn-host" className={styles.labelCaps}>
                   Host address
                 </label>
-                <input
+                <TextInput
                   id="conn-host"
                   type="text"
-                  className={`${styles.input} ${errors.host ? styles.inputError : ''}`}
+                  variant="mono"
+                  invalid={!!errors.host}
                   value={formData.host}
                   onChange={(e) => updateField('host', e.target.value)}
                   placeholder="localhost"
@@ -361,10 +365,11 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                 <label htmlFor="conn-port" className={styles.labelCaps}>
                   Port
                 </label>
-                <input
+                <TextInput
                   id="conn-port"
                   type="number"
-                  className={`${styles.input} ${errors.port ? styles.inputError : ''}`}
+                  variant="mono"
+                  invalid={!!errors.port}
                   value={formData.port}
                   onChange={(e) => updateField('port', parseInt(e.target.value, 10) || 0)}
                   min={1}
@@ -380,10 +385,11 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                 <label htmlFor="conn-username" className={styles.labelCaps}>
                   Username
                 </label>
-                <input
+                <TextInput
                   id="conn-username"
                   type="text"
-                  className={`${styles.input} ${errors.username ? styles.inputError : ''}`}
+                  variant="mono"
+                  invalid={!!errors.username}
                   value={formData.username}
                   onChange={(e) => updateField('username', e.target.value)}
                   placeholder="root"
@@ -395,10 +401,11 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                   Password
                 </label>
                 <div className={styles.passwordWrapper}>
-                  <input
+                  <TextInput
                     id="conn-password"
                     type={showPassword ? 'text' : 'password'}
-                    className={styles.passwordInput}
+                    variant="mono"
+                    passwordToggleGutter
                     value={formData.password}
                     onChange={(e) => {
                       updateField('password', e.target.value)
@@ -443,10 +450,10 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                   <label htmlFor="conn-database" className={styles.label}>
                     Default Database
                   </label>
-                  <input
+                  <TextInput
                     id="conn-database"
                     type="text"
-                    className={styles.input}
+                    variant="mono"
                     value={formData.defaultDatabase ?? ''}
                     onChange={(e) => updateField('defaultDatabase', e.target.value || null)}
                     placeholder="mydb"
@@ -484,10 +491,12 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                     Connect Timeout
                   </label>
                   <div className={styles.numberInputRow}>
-                    <input
+                    <TextInput
                       id="connect-timeout"
                       type="number"
-                      className={`${styles.input} ${errors.connectTimeoutSecs ? styles.inputError : ''}`}
+                      variant="mono"
+                      className={styles.numberField}
+                      invalid={!!errors.connectTimeoutSecs}
                       value={formData.connectTimeoutSecs}
                       onChange={(e) =>
                         updateField('connectTimeoutSecs', parseInt(e.target.value, 10) || 10)
@@ -506,10 +515,12 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                     Keepalive Interval
                   </label>
                   <div className={styles.numberInputRow}>
-                    <input
+                    <TextInput
                       id="keepalive"
                       type="number"
-                      className={`${styles.input} ${errors.keepaliveIntervalSecs ? styles.inputError : ''}`}
+                      variant="mono"
+                      className={styles.numberField}
+                      invalid={!!errors.keepaliveIntervalSecs}
                       value={formData.keepaliveIntervalSecs}
                       onChange={(e) =>
                         updateField('keepaliveIntervalSecs', parseInt(e.target.value, 10) || 60)

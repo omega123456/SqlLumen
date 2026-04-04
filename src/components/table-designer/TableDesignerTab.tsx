@@ -7,6 +7,7 @@ import { useThemeStore } from '../../stores/theme-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { DesignerSubTab, TableDesignerTab as TableDesignerTabType } from '../../types/schema'
 import { Button } from '../common/Button'
+import { TextInput } from '../common/TextInput'
 import { ElevatedSurface } from '../common/ElevatedSurface'
 import { UnderlineTabBar } from '../common/UnderlineTabs'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
@@ -221,7 +222,8 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
               {isCreateMode ? (
                 <div className={styles.headingStack}>
                   <h1 className={styles.heading}>Create Table</h1>
-                  <input
+                  <TextInput
+                    variant="bare"
                     type="text"
                     value={tableName}
                     placeholder="table_name"

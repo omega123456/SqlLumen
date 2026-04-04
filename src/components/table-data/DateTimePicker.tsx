@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom'
 import DatePicker from 'react-datepicker'
 import { CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { parseMysqlDate, formatMysqlDate, type TemporalColumnType } from '../../lib/date-utils'
+import { TextInput } from '../common/TextInput'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import styles from './DateTimePicker.module.css'
 
@@ -335,7 +336,8 @@ export function DateTimePicker({
         {showTime && (
           <div className={styles.timeSection} data-testid="time-section">
             <label className={styles.timeLabel}>TIME</label>
-            <input
+            <TextInput
+              variant="bare"
               type="text"
               className={styles.timeInput}
               value={timeInput}

@@ -4,6 +4,7 @@ import { listColumns, listSchemaObjects } from '../../lib/schema-commands'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
+import { TextInput } from '../common/TextInput'
 import styles from './ForeignKeyEditor.module.css'
 
 interface ForeignKeyEditorProps {
@@ -310,12 +311,11 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                   </td>
                   <td className={`${styles.bodyCell} ${styles.rowNumberCell}`}>{fkIndex + 1}</td>
                   <td className={styles.bodyCell}>
-                    <input
+                    <TextInput
                       type="text"
+                      variant="tableCell"
                       value={foreignKey.name}
-                      className={`${styles.cellInput} ${
-                        isSelected ? styles.activeInput : styles.inactiveInput
-                      }`}
+                      className={`${isSelected ? styles.activeInput : styles.inactiveInput}`}
                       data-testid={`fk-name-${fkIndex}`}
                       onClick={(event) => event.stopPropagation()}
                       onChange={(event) =>
@@ -385,13 +385,12 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                         />
                       </div>
                     ) : (
-                      <input
+                      <TextInput
                         type="text"
+                        variant="tableCell"
                         value={foreignKey.referencedColumn}
                         placeholder="column name"
-                        className={`${styles.cellInput} ${
-                          isSelected ? styles.activeInput : styles.inactiveInput
-                        }`}
+                        className={`${isSelected ? styles.activeInput : styles.inactiveInput}`}
                         data-testid={`fk-referenced-column-${fkIndex}`}
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) =>

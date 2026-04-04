@@ -119,48 +119,18 @@
   font-family: var(--font-body);
 }
 
-.input,
-.passwordInput {
-  padding: var(--ui-input-padding-y) var(--ui-input-padding-x);
-  border: var(--control-border);
-  border-radius: var(--ui-input-radius);
-  background: var(--ui-input-bg);
-  color: var(--ui-input-fg);
-  font-size: var(--ui-input-font-size);
-  line-height: var(--ui-input-line-height);
-  font-family: var(--font-body);
-  outline: none;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+.fileInputRowField {
+  flex: 1;
+  min-width: 0;
+}
+
+.numberField {
+  width: 100px;
+}
+
+.rowTimeouts .numberField {
   width: 100%;
-  box-sizing: border-box;
-}
-
-.input::placeholder,
-.passwordInput::placeholder {
-  color: rgba(var(--on-surface-rgb), 0.35);
-}
-
-.passwordInput {
-  padding-right: 40px;
-}
-
-.input:focus,
-.passwordInput:focus {
-  border: var(--control-border-focus);
-  box-shadow: var(--ui-input-focus-shadow);
-}
-
-.input:disabled,
-.passwordInput:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.input.inputError,
-.passwordInput.inputError {
-  border-color: var(--error);
+  max-width: 120px;
 }
 
 .errorText {
@@ -293,9 +263,6 @@
   gap: var(--space-xs);
 }
 
-.fileInputRow .input {
-  flex: 1;
-}
 
 .browseButton {
   display: flex;
@@ -327,15 +294,6 @@
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-}
-
-.numberInputRow .input {
-  width: 100px;
-}
-
-.rowTimeouts .numberInputRow .input {
-  width: 100%;
-  max-width: 120px;
 }
 
 .unitLabel {

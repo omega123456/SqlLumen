@@ -116,7 +116,6 @@
   color: var(--on-surface-variant);
 }
 
-.cellInput,
 .cellSelect {
   width: 100%;
   padding: 7px 8px;
@@ -143,7 +142,6 @@
   background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
 }
 
-.cellInput:focus,
 .cellSelect:focus {
   box-shadow: var(--control-focus-ring-tight);
   background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);

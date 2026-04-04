@@ -26,6 +26,7 @@
  * (provided via closures in column definitions).
  */
 
+import { TextInput } from '../common/TextInput'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CalendarBlank, Clock } from '@phosphor-icons/react'
 import { getTemporalColumnType } from '../../lib/date-utils'
@@ -227,9 +228,9 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
       data-testid="datetime-cell-editor"
     >
       <div className="td-cell-editor-shell">
-        <input
+        <TextInput
           ref={inputRef}
-          className="td-cell-editor-input"
+          variant="gridCell"
           value={displayValue}
           onChange={(e) => handleChange(e.target.value)}
           onBlur={(e) => handleInputBlur(e.relatedTarget)}
