@@ -1,0 +1,81 @@
+/* Variants and modifiers for TextInput — global .ui-input / .td-cell-editor-input live in global.css */
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* Form view fields (BaseFormView text branch + select uses .formField + .fieldSelect) */
+.formField {
+  flex: 1;
+  background: var(--background);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.3);
+  color: var(--on-surface);
+  font-size: var(--type-size-md);
+  font-family: var(--font-mono);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.formField:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.formFieldModified {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.25);
+}
+
+.formFieldNull {
+  font-style: italic;
+  color: var(--td-null-text-color);
+}
+
+[data-theme='light'] .formField {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+[data-theme='light'] .formField:focus {
+  border-color: var(--primary);
+}
+
+/* Table designer column row cells */
+.tableCell {
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--on-surface);
+  font: inherit;
+  outline: none;
+  box-sizing: border-box;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
+}
+
+.tableCell:focus {
+  box-shadow: var(--control-focus-ring-tight);
+  background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);
+}
+
+.invalid {
+  border-color: var(--error);
+}
+
+/* Table cell variant uses border: none; reinforce error affordance */
+.tableCell.invalid {
+  box-shadow: inset 0 0 0 1px var(--error);
+}
+
+.passwordToggleGutter {
+  padding-right: 40px;
+}
