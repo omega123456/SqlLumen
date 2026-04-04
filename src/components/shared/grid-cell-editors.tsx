@@ -201,6 +201,14 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
   const triggerRef = useRef<HTMLButtonElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
+  const isDropdownPortalTarget = useCallback((node: Node | null) => {
+    if (!(node instanceof HTMLElement)) {
+      return false
+    }
+
+    return node.getAttribute('role') === 'listbox' || node.closest('[role="listbox"]') !== null
+  }, [])
+
   // Resolve callbacks: prefer props when tabId is set, fallback to context
   const contextCallbacks = useEditorCallbacks()
   const tabId = props.tabId || contextCallbacks?.tabId || ''
@@ -291,23 +299,8 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
     ]
   )
 
-  const handleContainerBlur = useCallback(
-    (e: React.FocusEvent<HTMLDivElement>) => {
-      const related = e.relatedTarget
-      if (related instanceof Node && wrapperRef.current?.contains(related)) {
-        return
-      }
-      onClose(true, false)
-    },
-    [onClose]
-  )
-
   return (
-    <div
-      ref={wrapperRef}
-      className={styles.cellEditorWrapper}
-      onBlur={handleContainerBlur}
-    >
+    <div ref={wrapperRef} className={styles.cellEditorWrapper}>
       <div className="td-cell-editor-shell">
         <Dropdown
           ref={triggerRef}
@@ -320,12 +313,36 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
               setIsNull(true)
               onRowChange({ ...row, [fieldName]: null })
               syncToStore(null)
+              onClose(true, true)
               return
             }
             handleChange(nextValue)
+            onClose(true, true)
           }}
           onTriggerKeyDown={handleCommitKeys}
           onListKeyDown={handleCommitKeys}
+          focusListOnOpen={false}
+          onTriggerBlur={(event) => {
+            const nextFocused = event.relatedTarget
+            if (
+              nextFocused instanceof Node &&
+              (wrapperRef.current?.contains(nextFocused) || isDropdownPortalTarget(nextFocused))
+            ) {
+              return
+            }
+
+            queueMicrotask(() => {
+              const activeElement = document.activeElement
+              if (
+                activeElement instanceof Node &&
+                (wrapperRef.current?.contains(activeElement) ||
+                  isDropdownPortalTarget(activeElement))
+              ) {
+                return
+              }
+              onClose(true, false)
+            })
+          }}
           triggerClassName="td-cell-editor-select"
         />
         {isNullable && (

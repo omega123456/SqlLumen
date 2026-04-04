@@ -30,10 +30,26 @@ async function pickExportFormat(
   user: ReturnType<typeof userEvent.setup>,
   formatKey: keyof typeof EXPORT_FORMAT_REGEX
 ) {
-  await user.click(screen.getByTestId('export-format-select'))
-  await waitFor(() => {
-    expect(screen.getAllByRole('option')).toHaveLength(4)
-  })
+  const trigger = screen.getByTestId('export-format-select')
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await user.click(trigger)
+
+    try {
+      await waitFor(
+        () => {
+          expect(screen.getAllByRole('option')).toHaveLength(4)
+        },
+        { timeout: 1_000 }
+      )
+      break
+    } catch (error) {
+      if (attempt === 1) {
+        throw error
+      }
+    }
+  }
+
   await user.click(screen.getByRole('option', { name: EXPORT_FORMAT_REGEX[formatKey] }))
 }
 

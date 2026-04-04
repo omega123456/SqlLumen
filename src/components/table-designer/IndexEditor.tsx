@@ -27,6 +27,17 @@ interface VisibleIndexRow {
   storeIndex: number
 }
 
+function formatSelectedColumnsSummary(selectedOptions: DropdownOption[]): string {
+  const count = selectedOptions.length
+  if (count <= 0) {
+    return 'Select columns'
+  }
+  if (count <= 2) {
+    return selectedOptions.map((option) => option.label).join(', ')
+  }
+  return `${count} selected`
+}
+
 function derivePrimaryIndex(tabState: TableDesignerTabState): TableDesignerIndexDef {
   const primaryColumns = tabState.currentSchema.columns
     .filter((column) => column.isPrimaryKey)
@@ -272,14 +283,12 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                           data-testid={`index-columns-button-${visibleIndex}`}
                           closeOnSelect={false}
                           focusListOnOpen={false}
-                          renderTriggerValue={(selectedOptions) =>
-                            selectedOptions.length > 0
-                              ? selectedOptions.map((option) => option.label).join(', ')
-                              : 'Select columns'
-                          }
+                          renderTriggerValue={formatSelectedColumnsSummary}
                           renderOptionLabel={(option) => <span>{option.label}</span>}
                           triggerClassName={`${styles.columnButton} ${
                             isSelected ? styles.activeColumnButton : styles.inactiveColumnButton
+                          } ${styles.columnButtonFixed} ${
+                            index.columns.length > 2 ? styles.columnButtonSummary : ''
                           } ${columnsError ? styles.inputError : ''}`}
                           triggerProps={{
                             'aria-invalid': columnsError ? 'true' : 'false',

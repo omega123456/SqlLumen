@@ -565,17 +565,19 @@ button {
   align-items: stretch;
   gap: 2px;
   width: 100%;
+  min-height: var(--ui-dropdown-instance-option-min-height, auto);
   margin: 0;
-  padding: var(--ui-dropdown-option-padding-y) var(--ui-dropdown-option-padding-x);
+  padding: var(--ui-dropdown-instance-option-padding-block, var(--ui-dropdown-option-padding-y))
+    var(--ui-dropdown-instance-option-padding-inline, var(--ui-dropdown-option-padding-x));
   border: none;
   border-left: var(--ui-dropdown-option-accent-width) solid transparent;
   border-radius: 0;
   background: transparent;
   color: var(--on-surface);
   font-family: var(--font-body);
-  font-size: var(--ui-dropdown-option-font-size);
+  font-size: var(--ui-dropdown-instance-option-font-size, var(--ui-dropdown-option-font-size));
   font-weight: var(--ui-dropdown-option-font-weight);
-  line-height: var(--ui-input-line-height);
+  line-height: var(--ui-dropdown-instance-option-line-height, var(--ui-input-line-height));
   text-align: left;
   cursor: pointer;
   transition: background-color 0.12s ease;

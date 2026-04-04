@@ -303,6 +303,103 @@ describe('EnumCellEditor — store syncing', () => {
 
     expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_2: 'active' }, true)
   })
+
+  it('keeps the enum dropdown open without closing the editor on trigger click', async () => {
+    const user = userEvent.setup()
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
+
+    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    await user.click(combo)
+
+    expect(screen.getByRole('listbox', { name: 'col_2' })).toBeInTheDocument()
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('commits and closes after choosing an enum option with the keyboard', async () => {
+    const user = userEvent.setup()
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
+
+    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    await user.click(combo)
+    await user.keyboard('i')
+    await user.keyboard('{Enter}')
+
+    expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_2: 'inactive' })
+    expect(props.onClose).toHaveBeenCalledWith(true, true)
+  })
+
+  it('commits and closes after clicking an enum option', async () => {
+    const user = userEvent.setup()
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
+
+    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    await user.click(combo)
+    await user.click(screen.getByRole('option', { name: 'inactive' }))
+
+    expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_2: 'inactive' })
+    expect(props.onClose).toHaveBeenCalledWith(true, true)
+  })
+
+  it('does not close on trigger blur while focus moves into the portaled listbox', async () => {
+    const user = userEvent.setup()
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
+
+    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    await user.click(combo)
+
+    const listbox = screen.getByRole('listbox', { name: 'col_2' })
+    fireEvent.blur(combo, { relatedTarget: listbox })
+
+    await Promise.resolve()
+
+    expect(props.onClose).not.toHaveBeenCalledWith(true, false)
+  })
+
+  it('does not close on trigger blur while focus moves into a portaled option', async () => {
+    const user = userEvent.setup()
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
+
+    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    await user.click(combo)
+
+    const option = screen.getByRole('option', { name: 'inactive' })
+    fireEvent.blur(combo, { relatedTarget: option })
+
+    await Promise.resolve()
+
+    expect(props.onClose).not.toHaveBeenCalledWith(true, false)
+  })
+
+  it('Escape cancels the enum edit even when the dropdown is open', async () => {
+    const user = userEvent.setup()
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
+
+    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    await user.click(combo)
+    await user.keyboard('{Escape}')
+
+    expect(props.onClose).toHaveBeenCalledWith(false, false)
+  })
+
+  it('typeahead works with uppercase letters', async () => {
+    const user = userEvent.setup()
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} />)
+
+    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    await user.click(combo)
+    await user.keyboard('I')
+    await user.keyboard('{Enter}')
+
+    expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_2: 'inactive' })
+    expect(props.onClose).toHaveBeenCalledWith(true, true)
+  })
 })
 
 describe('getCellEditorForColumn', () => {

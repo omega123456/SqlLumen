@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   forwardRef,
   useCallback,
   useEffect,
@@ -29,6 +30,14 @@ type DropdownFixedLayout = {
   width: number
   top: number | null
   bottom: number | null
+}
+
+type DropdownInstanceStyle = CSSProperties & {
+  '--ui-dropdown-instance-option-font-size'?: string
+  '--ui-dropdown-instance-option-line-height'?: string
+  '--ui-dropdown-instance-option-padding-block'?: string
+  '--ui-dropdown-instance-option-padding-inline'?: string
+  '--ui-dropdown-instance-option-min-height'?: string
 }
 
 type DropdownRenderContext = {
@@ -99,6 +108,16 @@ function indexOfValue(options: DropdownOption[], value: string): number {
   return options.findIndex((o) => o.value === value)
 }
 
+function normalizeTypeaheadLabel(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+function isTypeaheadKey(event: ReactKeyboardEvent<HTMLElement>): boolean {
+  return (
+    event.key.length === 1 && event.key !== ' ' && !event.altKey && !event.ctrlKey && !event.metaKey
+  )
+}
+
 function getScrollParents(node: HTMLElement | null): (HTMLElement | Window)[] {
   const list: (HTMLElement | Window)[] = [window]
   let current = node?.parentElement ?? null
@@ -167,6 +186,9 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       top: null,
       bottom: null,
     })
+    const [dropdownInstanceStyle, setDropdownInstanceStyle] = useState<DropdownInstanceStyle>({})
+    const typeaheadRef = useRef('')
+    const typeaheadResetTimeoutRef = useRef<number | null>(null)
 
     const setTriggerRef = useCallback(
       (node: HTMLButtonElement | null) => {
@@ -221,11 +243,21 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       return selectedOptions[0]?.label ?? placeholder ?? options[0]?.label ?? ''
     }, [options, placeholder, props, renderTriggerValue, selectedOptions])
 
-    const close = useCallback(() => {
-      setOpen(false)
+    const resetTypeahead = useCallback(() => {
+      typeaheadRef.current = ''
+      if (typeaheadResetTimeoutRef.current !== null) {
+        window.clearTimeout(typeaheadResetTimeoutRef.current)
+        typeaheadResetTimeoutRef.current = null
+      }
     }, [])
 
+    const close = useCallback(() => {
+      resetTypeahead()
+      setOpen(false)
+    }, [resetTypeahead])
+
     const openWithHighlight = useCallback(() => {
+      resetTypeahead()
       const enabled = enabledIndices(options)
       const selectedIndex = selectedIndices.find((idx) => enabled.includes(idx)) ?? -1
       const preferred = selectedIndex >= 0 ? selectedIndex : (enabled[0] ?? 0)
@@ -236,7 +268,13 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
           panelRef.current?.focus()
         })
       }
-    }, [focusListOnOpen, options, selectedIndices])
+    }, [focusListOnOpen, options, resetTypeahead, selectedIndices])
+
+    useEffect(() => {
+      return () => {
+        resetTypeahead()
+      }
+    }, [resetTypeahead])
 
     useEffect(() => {
       onOpenChange?.(open)
@@ -290,6 +328,13 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
         const vw = window.innerWidth
         const vh = window.innerHeight
         const m = VIEWPORT_MARGIN
+        const triggerStyles = window.getComputedStyle(trigger)
+        const measuredTriggerHeight =
+          triggerRect.height ||
+          Number.parseFloat(triggerStyles.height) ||
+          trigger.offsetHeight ||
+          trigger.clientHeight ||
+          0
 
         let left = triggerRect.left
         let width = triggerRect.width
@@ -313,6 +358,13 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
 
         setPlacement(nextPlacement)
         setDropdownMaxHeight(Math.max(0, Math.min(MAX_DROPDOWN_HEIGHT, Math.floor(availableSpace))))
+        setDropdownInstanceStyle({
+          '--ui-dropdown-instance-option-font-size': triggerStyles.fontSize,
+          '--ui-dropdown-instance-option-line-height': triggerStyles.lineHeight,
+          '--ui-dropdown-instance-option-padding-block': triggerStyles.paddingTop,
+          '--ui-dropdown-instance-option-padding-inline': triggerStyles.paddingLeft,
+          '--ui-dropdown-instance-option-min-height': `${Math.round(measuredTriggerHeight)}px`,
+        })
 
         if (nextPlacement === 'bottom') {
           setDropdownLayout({
@@ -359,6 +411,50 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
         setHighlightedIndex(enabled[nextPos]!)
       },
       [highlightedIndex, options]
+    )
+
+    const handleTypeahead = useCallback(
+      (character: string) => {
+        const enabled = enabledIndices(options)
+        if (enabled.length === 0) {
+          return false
+        }
+
+        const nextCharacter = character.toLowerCase()
+        const nextSearch = `${typeaheadRef.current}${nextCharacter}`
+        const currentPosition = enabled.indexOf(highlightedIndex)
+        const orderedIndices =
+          currentPosition === -1
+            ? enabled
+            : [...enabled.slice(currentPosition + 1), ...enabled.slice(0, currentPosition + 1)]
+
+        const findMatch = (search: string) =>
+          orderedIndices.find((optionIndex) =>
+            normalizeTypeaheadLabel(options[optionIndex]?.label ?? '').startsWith(search)
+          )
+
+        const nextSearchMatch = findMatch(nextSearch)
+        const nextCharacterMatch = findMatch(nextCharacter)
+        const matchedIndex = nextSearchMatch ?? nextCharacterMatch
+        if (matchedIndex === undefined) {
+          resetTypeahead()
+          return false
+        }
+
+        typeaheadRef.current = nextSearchMatch !== undefined ? nextSearch : nextCharacter
+
+        if (typeaheadResetTimeoutRef.current !== null) {
+          window.clearTimeout(typeaheadResetTimeoutRef.current)
+        }
+        typeaheadResetTimeoutRef.current = window.setTimeout(() => {
+          typeaheadRef.current = ''
+          typeaheadResetTimeoutRef.current = null
+        }, 700)
+
+        setHighlightedIndex(matchedIndex)
+        return true
+      },
+      [highlightedIndex, options, resetTypeahead]
     )
 
     const selectIndex = useCallback(
@@ -408,6 +504,24 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
           return
         }
 
+        if (e.key === 'Escape') {
+          onTriggerKeyDown?.(e)
+          if (e.defaultPrevented) {
+            return
+          }
+          e.preventDefault()
+          close()
+          return
+        }
+
+        if (isTypeaheadKey(e)) {
+          const handled = handleTypeahead(e.key)
+          if (handled) {
+            e.preventDefault()
+            return
+          }
+        }
+
         if (e.key === 'ArrowDown') {
           e.preventDefault()
           moveHighlight(1)
@@ -423,12 +537,6 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           selectIndex(highlightedIndex)
-          return
-        }
-
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          close()
           return
         }
 
@@ -472,6 +580,13 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       onListKeyDown?.(e)
       if (e.defaultPrevented) {
         return
+      }
+      if (isTypeaheadKey(e)) {
+        const handled = handleTypeahead(e.key)
+        if (handled) {
+          e.preventDefault()
+          return
+        }
       }
       if (e.key === 'Tab') {
         close()
@@ -605,6 +720,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                   maxHeight: `${dropdownMaxHeight}px`,
                   left: `${dropdownLayout.left}px`,
                   width: `${dropdownLayout.width}px`,
+                  ...dropdownInstanceStyle,
                   ...(placement === 'bottom'
                     ? { top: `${dropdownLayout.top}px`, bottom: 'auto' }
                     : { bottom: `${dropdownLayout.bottom}px`, top: 'auto' }),
@@ -633,6 +749,10 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                         className={optionClass}
                         disabled={opt.disabled}
                         data-testid={dataTestId ? `${dataTestId}-option-${opt.value}` : undefined}
+                        onMouseDown={(event) => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                        }}
                         onMouseEnter={() => {
                           setHighlightedIndex(idx)
                         }}

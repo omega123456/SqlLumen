@@ -27,8 +27,34 @@
 .table {
   width: 100%;
   min-width: 760px;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
+}
+
+.table th:nth-child(1),
+.table td:nth-child(1) {
+  width: 16px;
+}
+
+.table th:nth-child(2),
+.table td:nth-child(2) {
+  width: 40px;
+}
+
+.table th:nth-child(4),
+.table td:nth-child(4) {
+  width: 140px;
+}
+
+.table th:nth-child(5),
+.table td:nth-child(5) {
+  width: 260px;
+}
+
+.table th:nth-child(6),
+.table td:nth-child(6) {
+  width: 42px;
 }
 
 .tableHead {
@@ -170,6 +196,37 @@
   position: relative;
 }
 
+.columnButton {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface);
+  font: inherit;
+  font-weight: inherit;
+  outline: none;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
+}
+
+.columnButton:focus-visible {
+  box-shadow: var(--control-focus-ring-tight);
+  background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);
+}
+
+.columnButtonFixed {
+  min-width: 0;
+  width: 100%;
+}
+
+.columnButtonSummary {
+  justify-content: space-between;
+}
+
 .columnButton:global(.ui-button-ghost) {
   width: 100%;
   justify-content: flex-start;
@@ -197,11 +254,23 @@
   background: transparent;
 }
 
+.inactiveColumnButton {
+  background: transparent;
+}
+
 .activeColumnButton:global(.ui-button-ghost) {
   background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
 }
 
+.activeColumnButton {
+  background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
+}
+
 .activeColumnButton:global(.ui-button-ghost):focus-visible {
+  background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);
+}
+
+.activeColumnButton:focus-visible {
   background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);
 }
 

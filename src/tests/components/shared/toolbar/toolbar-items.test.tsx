@@ -4,13 +4,14 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ViewModeGroup } from '../../../../components/shared/toolbar/ViewModeGroup'
 import { PaginationGroup } from '../../../../components/shared/toolbar/PaginationGroup'
 import { ExportButton } from '../../../../components/shared/toolbar/ExportButton'
 import { StatusArea } from '../../../../components/shared/toolbar/StatusArea'
 import type { ViewMode } from '../../../../types/shared-data-view'
+import styles from '../../../../components/shared/toolbar/toolbar-items.module.css'
 
 // ---------------------------------------------------------------------------
 // ViewModeGroup
@@ -259,6 +260,28 @@ describe('PaginationGroup', () => {
     await user.click(screen.getByTestId('page-size-select'))
     await user.click(screen.getByRole('option', { name: '500' }))
     expect(onPageSizeChange).toHaveBeenCalledWith(500)
+  })
+
+  it('uses compact trigger styling for the page size dropdown', async () => {
+    const user = userEvent.setup()
+    render(
+      <PaginationGroup
+        currentPage={1}
+        totalPages={5}
+        pageSize={1000}
+        onPageSizeChange={() => {}}
+        onPrevPage={() => {}}
+        onNextPage={() => {}}
+      />
+    )
+
+    const trigger = screen.getByTestId('page-size-select')
+    expect(trigger.className).toContain(styles.pageSizeSelect)
+
+    await user.click(trigger)
+
+    const listbox = screen.getByRole('listbox', { name: 'Page size' })
+    await waitFor(() => expect(listbox).toBeInTheDocument())
   })
 
   it('has correct aria-labels', () => {

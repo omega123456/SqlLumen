@@ -256,6 +256,73 @@ test('table data datetime editor gives the input enough width for the full field
   expect(inputBox!.width / cellBox!.width).toBeGreaterThan(0.55)
 })
 
+test('table data enum editor opens its dropdown and supports typeahead selection', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  await clickCellByColumnName(grid, 0, 'status')
+
+  const enumEditor = page.locator('.td-cell-editor-select').first()
+  await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
+  await enumEditor.click()
+
+  const listbox = page.getByRole('listbox', { name: 'status' })
+  await expect(listbox).toBeVisible({ timeout: APP_READY_MS })
+
+  await page.keyboard.type('i')
+  await page.keyboard.press('Enter')
+
+  const statusCell = await getCellByColumnName(grid, 0, 'status')
+  await expect(statusCell).toContainText('inactive', { timeout: APP_READY_MS })
+})
+
+test('table data enum editor applies the clicked dropdown option', async ({ page }) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  await clickCellByColumnName(grid, 0, 'status')
+
+  const enumEditor = page.locator('.td-cell-editor-select').first()
+  await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
+  await enumEditor.click()
+
+  await page.getByRole('option', { name: 'inactive' }).click()
+
+  const statusCell = await getCellByColumnName(grid, 0, 'status')
+  await expect(statusCell).toContainText('inactive', { timeout: APP_READY_MS })
+})
+
+test('table data enum editor supports uppercase letter typeahead selection', async ({ page }) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  await clickCellByColumnName(grid, 0, 'status')
+
+  const enumEditor = page.locator('.td-cell-editor-select').first()
+  await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
+  await enumEditor.click()
+
+  await page.keyboard.type('I')
+  await page.keyboard.press('Enter')
+
+  const statusCell = await getCellByColumnName(grid, 0, 'status')
+  await expect(statusCell).toContainText('inactive', { timeout: APP_READY_MS })
+})
+
 test('query result grid editor keeps focus across multiple keypresses', async ({ page }) => {
   await waitForApp(page)
   await openQueryEditorWithResults(page)

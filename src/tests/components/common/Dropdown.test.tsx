@@ -309,4 +309,96 @@ describe('Dropdown', () => {
     expect(onChange).toHaveBeenCalledWith(['a', 'b'])
     expect(screen.getByRole('listbox')).toBeInTheDocument()
   })
+
+  it('matches option sizing to the trigger element metrics', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <>
+        <span id="lb-size">Pick</span>
+        <Dropdown
+          id="d-size"
+          labelledBy="lb-size"
+          options={options}
+          value=""
+          onChange={vi.fn()}
+          triggerProps={{
+            style: {
+              fontSize: '11px',
+              lineHeight: '16px',
+              padding: '2px 4px',
+              height: '24px',
+            },
+          }}
+        />
+      </>
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Pick' }))
+
+    const listbox = screen.getByRole('listbox')
+    await waitFor(() => {
+      expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-font-size')).toBe('11px')
+    })
+    expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-font-size')).toBe('11px')
+    expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-line-height')).toBe('16px')
+    expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-padding-block')).toBe(
+      '2px'
+    )
+    expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-padding-inline')).toBe(
+      '4px'
+    )
+    expect(listbox.style.getPropertyValue('--ui-dropdown-instance-option-min-height')).toBe('24px')
+  })
+
+  it('supports typeahead letter navigation while the listbox is open', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+
+    render(
+      <>
+        <span id="lb-typeahead">Pick</span>
+        <Dropdown
+          id="d-typeahead"
+          labelledBy="lb-typeahead"
+          options={options}
+          value=""
+          onChange={onChange}
+        />
+      </>
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Pick' }))
+    await waitFor(() => {
+      expect(screen.getByRole('listbox')).toHaveFocus()
+    })
+
+    await user.keyboard('b')
+    await user.keyboard('{Enter}')
+
+    expect(onChange).toHaveBeenCalledWith('b')
+  })
+
+  it('selects an option on click even when mousedown is prevented', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+
+    render(
+      <>
+        <span id="lb-click">Pick</span>
+        <Dropdown
+          id="d-click"
+          labelledBy="lb-click"
+          options={options}
+          value=""
+          onChange={onChange}
+        />
+      </>
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Pick' }))
+    await user.click(screen.getByRole('option', { name: 'Beta' }))
+
+    expect(onChange).toHaveBeenCalledWith('b')
+  })
 })

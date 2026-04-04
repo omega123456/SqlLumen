@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 
 const themes = ['light', 'dark'] as const
 
@@ -66,6 +66,39 @@ async function dismissAllToasts(page: Page) {
       break
     }
     await btn.click()
+  }
+}
+
+async function getUnionClip(page: Page, locators: Locator[], padding = 8) {
+  const boxes = (await Promise.all(locators.map((locator) => locator.boundingBox()))).filter(
+    (box): box is NonNullable<Awaited<ReturnType<Locator['boundingBox']>>> => box !== null
+  )
+
+  if (boxes.length === 0) {
+    throw new Error('Could not compute screenshot clip: no visible bounding boxes found')
+  }
+
+  const viewport = page.viewportSize()
+  if (!viewport) {
+    throw new Error('Could not compute screenshot clip: missing viewport size')
+  }
+
+  const x = Math.max(0, Math.min(...boxes.map((box) => box.x)) - padding)
+  const y = Math.max(0, Math.min(...boxes.map((box) => box.y)) - padding)
+  const right = Math.min(
+    viewport.width,
+    Math.max(...boxes.map((box) => box.x + box.width)) + padding
+  )
+  const bottom = Math.min(
+    viewport.height,
+    Math.max(...boxes.map((box) => box.y + box.height)) + padding
+  )
+
+  return {
+    x,
+    y,
+    width: right - x,
+    height: bottom - y,
   }
 }
 
@@ -1018,6 +1051,19 @@ for (const theme of themes) {
       )
     })
 
+    test('TableDataToolbar — page size dropdown open', async ({ page }) => {
+      await openTableDataTab(page)
+      await page.getByTestId('page-size-select').click()
+      const listbox = page.getByRole('listbox', { name: 'Page size' })
+      await expect(listbox).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      const clip = await getUnionClip(page, [page.getByTestId('table-data-toolbar'), listbox])
+      await expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
+        `table-data-toolbar-page-size-open-${theme}.png`
+      )
+    })
+
     test('TableDesignerTab — columns view', async ({ page }) => {
       await openTableDesignerTab(page)
       await resetChromeScrollPositions(page)
@@ -1047,6 +1093,28 @@ for (const theme of themes) {
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('table-designer-tab')).toHaveScreenshot(
         `table-designer-indexes-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('table-designer-indexes — columns selector summary', async ({ page }) => {
+      await openTableDesignerTab(page)
+      await page.getByRole('button', { name: 'Indexes' }).click()
+      await expect(page.getByTestId('index-editor')).toBeVisible({ timeout: APP_READY_MS })
+
+      await page.getByTestId('index-editor-add').click()
+      await page.getByTestId('index-columns-button-1').click()
+      await page.getByRole('option', { name: 'id' }).click()
+      await page.getByRole('option', { name: 'username' }).click()
+      await page.getByRole('option', { name: 'email' }).click()
+      await page.getByTestId('index-row-1').click()
+
+      await expect(page.getByTestId('index-columns-button-1')).toContainText('3 selected', {
+        timeout: APP_READY_MS,
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-designer-tab')).toHaveScreenshot(
+        `table-designer-indexes-summary-${theme}.png`,
         { animations: 'disabled' }
       )
     })
