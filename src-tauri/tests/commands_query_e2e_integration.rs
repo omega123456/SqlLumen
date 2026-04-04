@@ -6,6 +6,7 @@
 mod common;
 
 use chrono::NaiveDate;
+use common::log_capture::LogCaptureGuard;
 use common::mock_mysql_server::{
     MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse, MockTimeValue,
 };
@@ -13,29 +14,13 @@ use opensrv_mysql::{ColumnFlags, ColumnType};
 use mysql_client_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
 use mysql_client_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
 use mysql_client_lib::mysql::query_executor::{execute_query_impl, ExecuteQueryResult};
-use mysql_client_lib::mysql::registry::ConnectionRegistry;
 use mysql_client_lib::state::AppState;
-use rusqlite::Connection;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::json;
-use std::sync::Mutex;
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
-
-fn test_state() -> AppState {
-    common::ensure_fake_backend_once();
-    let conn = Connection::open_in_memory().expect("should open in-memory db");
-    mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
-    AppState {
-        db: Mutex::new(conn),
-        registry: ConnectionRegistry::new(),
-        app_handle: None,
-        results: std::sync::RwLock::new(std::collections::HashMap::new()),
-        log_filter_reload: Mutex::new(None),
-    }
-}
 
 fn build_query_commands_app(
 ) -> (
@@ -43,7 +28,7 @@ fn build_query_commands_app(
     tauri::WebviewWindow<tauri::test::MockRuntime>,
 ) {
     let app = mock_builder()
-        .manage(test_state())
+        .manage(common::test_app_state())
         .invoke_handler(tauri::generate_handler![save_connection, open_connection, execute_query])
         .build(mock_context(noop_assets()))
         .expect("should build test app");
@@ -270,6 +255,61 @@ async fn execute_query_ipc_serializes_mysql_result_values_instead_of_nulls() {
             serde_json::json!("2023-10-01 00:00:00"),
         ]
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn execute_query_ipc_logs_decimal_columns_without_decode_errors() {
+    let capture = LogCaptureGuard::start();
+
+    let _result = execute_query_via_mock(MockQueryResponse {
+        query: "SELECT id, type, consumption, cost, created_at FROM meter_readings_hourly LIMIT 1",
+        columns: vec![
+            MockColumnDef {
+                name: "id",
+                coltype: ColumnType::MYSQL_TYPE_LONG,
+                colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG,
+            },
+            MockColumnDef {
+                name: "type",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "consumption",
+                coltype: ColumnType::MYSQL_TYPE_NEWDECIMAL,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "cost",
+                coltype: ColumnType::MYSQL_TYPE_NEWDECIMAL,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "created_at",
+                coltype: ColumnType::MYSQL_TYPE_TIMESTAMP,
+                colflags: ColumnFlags::empty(),
+            },
+        ],
+        row: vec![
+            MockCell::U32(128),
+            MockCell::Bytes(b"gas"),
+            MockCell::Bytes(b"123.45"),
+            MockCell::Bytes(b"67.89"),
+            MockCell::DateTime(
+                NaiveDate::from_ymd_opt(2023, 12, 3)
+                    .expect("date should be valid")
+                    .and_hms_opt(0, 0, 0)
+                    .expect("time should be valid"),
+            ),
+        ],
+    })
+    .await;
+
+    let logs = capture.contents();
+    assert!(logs.contains("consumption=Some(\"123.45\")"));
+    assert!(logs.contains("cost=Some(\"67.89\")"));
+    assert!(!logs.contains("consumption=<decode_error"));
+    assert!(!logs.contains("cost=<decode_error"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

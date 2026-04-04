@@ -450,9 +450,7 @@ describe('ExportDialog', () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
-    await user.click(screen.getByTestId('export-format-select'))
-
-    const listbox = await screen.findByRole('listbox')
+    const listbox = await openExportFormatListbox(user)
     expect(listbox).toHaveTextContent('Comma Separated Values')
     expect(listbox).toHaveTextContent('JSON Array of Objects')
     expect(listbox).toHaveTextContent('Excel Spreadsheet (.xlsx)')

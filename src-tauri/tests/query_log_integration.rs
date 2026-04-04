@@ -3,57 +3,15 @@
 mod common;
 
 use chrono::NaiveDate;
+use common::log_capture::LogCaptureGuard;
 use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse};
 use mysql_client_lib::mysql::query_log;
 use opensrv_mysql::{ColumnFlags, ColumnType};
 use sqlx::mysql::MySqlPoolOptions;
-use std::sync::Mutex;
-use std::sync::Once;
-
-static TRACING: Once = Once::new();
-static LOG_LINES: Mutex<Vec<String>> = Mutex::new(Vec::new());
-
-#[derive(Clone, Default)]
-struct CapturedWriter;
-
-impl std::io::Write for CapturedWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let text = String::from_utf8_lossy(buf).into_owned();
-        let mut lines = LOG_LINES.lock().expect("log capture mutex poisoned");
-        lines.push(text);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-fn ensure_tracing() {
-    TRACING.call_once(|| {
-        let _ = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::DEBUG)
-            .with_writer(CapturedWriter::default)
-            .try_init();
-    });
-}
-
-fn reset_captured_logs() {
-    let mut lines = LOG_LINES.lock().expect("log capture mutex poisoned");
-    lines.clear();
-}
-
-fn captured_logs() -> String {
-    LOG_LINES
-        .lock()
-        .expect("log capture mutex poisoned")
-        .join("")
-}
 
 #[tokio::test]
 async fn query_log_simple_emitters_run() {
-    ensure_tracing();
-    reset_captured_logs();
+    let _capture = LogCaptureGuard::start();
     query_log::log_outgoing_sql("SELECT 1");
     query_log::log_outgoing_sql_bound("SELECT ?", &["x".to_string()]);
     query_log::log_sqlx_describe("DESCRIBE t");
@@ -61,8 +19,7 @@ async fn query_log_simple_emitters_run() {
 
 #[tokio::test]
 async fn query_log_rows_and_execute_hit_formatting_paths() {
-    ensure_tracing();
-    reset_captured_logs();
+    let _capture = LogCaptureGuard::start();
     let response = MockQueryResponse {
         query: "SELECT qlog_probe",
         columns: vec![
@@ -137,8 +94,7 @@ async fn query_log_rows_and_execute_hit_formatting_paths() {
 
 #[tokio::test]
 async fn query_log_formats_timestamp_columns_without_decode_errors() {
-    ensure_tracing();
-    reset_captured_logs();
+    let capture = LogCaptureGuard::start();
     let response = MockQueryResponse {
         query: "SELECT temporal_probe",
         columns: vec![
@@ -193,11 +149,84 @@ async fn query_log_formats_timestamp_columns_without_decode_errors() {
 
     query_log::log_mysql_row(&row);
 
-    let logs = captured_logs();
+    let logs = capture.contents();
     assert!(logs.contains("created_at=Some(\"2024-01-01 00:00:00\")"));
     assert!(logs.contains("updated_at=Some(\"2024-01-02 03:04:05\")"));
     assert!(!logs.contains("created_at=<decode_error"));
     assert!(!logs.contains("updated_at=<decode_error"));
+
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn query_log_formats_decimal_columns_without_decode_errors() {
+    let capture = LogCaptureGuard::start();
+    let response = MockQueryResponse {
+        query: "SELECT decimal_probe",
+        columns: vec![
+            MockColumnDef {
+                name: "id",
+                coltype: ColumnType::MYSQL_TYPE_LONG,
+                colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG,
+            },
+            MockColumnDef {
+                name: "type",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::NOT_NULL_FLAG,
+            },
+            MockColumnDef {
+                name: "consumption",
+                coltype: ColumnType::MYSQL_TYPE_NEWDECIMAL,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "cost",
+                coltype: ColumnType::MYSQL_TYPE_NEWDECIMAL,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "created_at",
+                coltype: ColumnType::MYSQL_TYPE_TIMESTAMP,
+                colflags: ColumnFlags::empty(),
+            },
+        ],
+        row: vec![
+            MockCell::U32(128),
+            MockCell::Bytes(b"gas"),
+            MockCell::Bytes(b"123.45"),
+            MockCell::Bytes(b"67.89"),
+            MockCell::DateTime(
+                NaiveDate::from_ymd_opt(2023, 12, 3)
+                    .expect("date should be valid")
+                    .and_hms_opt(0, 0, 0)
+                    .expect("time should be valid"),
+            ),
+        ],
+    };
+
+    let server = MockMySqlServer::start(response).await;
+    let url = format!(
+        "mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED",
+        server.port
+    );
+    let pool = MySqlPoolOptions::new()
+        .max_connections(1)
+        .connect(&url)
+        .await
+        .expect("connect mock mysql");
+
+    let row = sqlx::query("SELECT decimal_probe")
+        .fetch_one(&pool)
+        .await
+        .expect("fetch probe row");
+
+    query_log::log_mysql_row(&row);
+
+    let logs = capture.contents();
+    assert!(logs.contains("consumption=Some(\"123.45\")"));
+    assert!(logs.contains("cost=Some(\"67.89\")"));
+    assert!(!logs.contains("consumption=<decode_error"));
+    assert!(!logs.contains("cost=<decode_error"));
 
     pool.close().await;
 }

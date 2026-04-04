@@ -3,6 +3,7 @@
 // Each integration test binary only uses a subset of helpers; unused items are expected.
 
 pub mod fake_credentials;
+pub mod log_capture;
 pub mod mock_mysql_server;
 
 use mysql_client_lib::commands::connections::SaveConnectionInput;

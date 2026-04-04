@@ -52,6 +52,11 @@ fn format_cell(row: &MySqlRow, i: usize) -> String {
         if let Ok(v) = row.try_get::<Option<String>, _>(i) {
             return format!("{v:?}");
         }
+        if let Some(v) =
+            decode_unchecked_string(row, i).or_else(|| decode_raw_string(raw_value.clone()))
+        {
+            return format!("Some({v:?})");
+        }
     }
 
     if type_name == "BOOL" || type_name == "BOOLEAN" {
@@ -79,6 +84,29 @@ fn format_cell(row: &MySqlRow, i: usize) -> String {
         Ok(v) => format!("{v:?}"),
         Err(e) => format!("<decode_error: {e}>"),
     }
+}
+
+fn decode_unchecked_string(row: &MySqlRow, i: usize) -> Option<String> {
+    if let Ok(value) = row.try_get_unchecked::<Option<String>, _>(i) {
+        return value;
+    }
+
+    row.try_get_unchecked::<Option<Vec<u8>>, _>(i)
+        .ok()
+        .flatten()
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn decode_raw_string(value: sqlx::mysql::MySqlValueRef<'_>) -> Option<String> {
+    let owned = sqlx::ValueRef::to_owned(&value);
+    if let Ok(text) = owned.try_decode::<String>() {
+        return Some(text);
+    }
+
+    sqlx::ValueRef::to_owned(&value)
+        .try_decode::<Vec<u8>>()
+        .ok()
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn decode_temporal_debug_value(value: sqlx::mysql::MySqlValueRef<'_>) -> Option<String> {
