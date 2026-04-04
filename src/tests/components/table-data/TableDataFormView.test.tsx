@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
@@ -282,11 +283,12 @@ beforeEach(() => {
   mockIPC(() => null)
   vi.clearAllMocks()
 
-  // Mock navigator.clipboard for copy tests (BaseFormView uses navigator.clipboard.writeText)
-  Object.assign(navigator, {
-    clipboard: {
+  Object.defineProperty(navigator, 'clipboard', {
+    value: {
       writeText: vi.fn().mockResolvedValue(undefined),
     },
+    writable: true,
+    configurable: true,
   })
 })
 
@@ -571,7 +573,8 @@ describe('TableDataFormView', () => {
     expect(state?.editState?.currentValues.name).toBe('NewName')
   })
 
-  it('enum fields render as dropdowns and update through selection', () => {
+  it('enum fields render as dropdowns and update through selection', async () => {
+    const user = userEvent.setup()
     const enumColumns: TableDataColumnMeta[] = [
       mockColumns[0],
       {
@@ -596,17 +599,18 @@ describe('TableDataFormView', () => {
     renderFormView()
 
     const statusField = screen.getByTestId('form-input-status')
-    expect(statusField.tagName).toBe('SELECT')
+    expect(statusField).toHaveAttribute('role', 'combobox')
 
-    fireEvent.focus(statusField)
-    fireEvent.change(statusField, { target: { value: 'disabled' } })
+    await user.click(statusField)
+    await user.click(screen.getByRole('option', { name: 'disabled' }))
 
     const state = useTableDataStore.getState().tabs['tab-1']
     expect(state?.editState).not.toBeNull()
     expect(state?.editState?.currentValues.status).toBe('disabled')
   })
 
-  it('nullable enum select writes null when NULL option is selected', () => {
+  it('nullable enum select writes null when NULL option is selected', async () => {
+    const user = userEvent.setup()
     const enumColumns: TableDataColumnMeta[] = [
       mockColumns[0],
       {
@@ -630,9 +634,9 @@ describe('TableDataFormView', () => {
     })
     renderFormView()
 
-    const statusField = screen.getByTestId('form-input-status') as HTMLSelectElement
-    fireEvent.focus(statusField)
-    fireEvent.change(statusField, { target: { value: '__MYSQL_CLIENT_ENUM_NULL__' } })
+    const statusField = screen.getByTestId('form-input-status')
+    await user.click(statusField)
+    await user.click(screen.getByRole('option', { name: 'NULL' }))
 
     const state = useTableDataStore.getState().tabs['tab-1']
     expect(state?.editState?.currentValues.status).toBeNull()

@@ -9,9 +9,10 @@
  * the store's `applyFilters` action.
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { Funnel, Plus, X } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
+import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { DialogShell } from './DialogShell'
 import type { FilterCondition, FilterOperator } from '../../types/schema'
 import styles from './FilterDialog.module.css'
@@ -35,6 +36,11 @@ const OPERATORS: readonly FilterOperator[] = [
 const NULLARY_OPERATORS = new Set<string>(['IS NULL', 'IS NOT NULL'])
 
 const DEFAULT_OPERATOR: FilterOperator = '=='
+
+const OPERATOR_DROPDOWN_OPTIONS: DropdownOption[] = OPERATORS.map((op) => ({
+  value: op,
+  label: op,
+}))
 
 // ---------------------------------------------------------------------------
 // Props
@@ -106,6 +112,11 @@ export function FilterDialog({
     onApply(conditions)
   }, [onApply, conditions])
 
+  const columnDropdownOptions: DropdownOption[] = useMemo(
+    () => columns.map((col) => ({ value: col, label: col })),
+    [columns]
+  )
+
   // --- Render ---
 
   const hasConditions = conditions.length > 0
@@ -144,34 +155,26 @@ export function FilterDialog({
                   return (
                     <div className={styles.row} key={idx} data-testid="filter-row">
                       {/* Column */}
-                      <select
-                        className={styles.columnSelect}
+                      <Dropdown
+                        id={`filter-column-${idx}`}
+                        ariaLabel={`Column for condition ${idx + 1}`}
+                        options={columnDropdownOptions}
                         value={cond.column}
-                        onChange={(e) => handleChange(idx, 'column', e.target.value)}
-                        aria-label={`Column for condition ${idx + 1}`}
-                        data-testid="filter-column-select"
-                      >
-                        {columns.map((col) => (
-                          <option key={col} value={col}>
-                            {col}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(v) => handleChange(idx, 'column', v)}
+                        data-testid={`filter-column-select-${idx}`}
+                        triggerClassName={styles.columnSelect}
+                      />
 
                       {/* Operator */}
-                      <select
-                        className={styles.operatorSelect}
+                      <Dropdown
+                        id={`filter-operator-${idx}`}
+                        ariaLabel={`Operator for condition ${idx + 1}`}
+                        options={OPERATOR_DROPDOWN_OPTIONS}
                         value={cond.operator}
-                        onChange={(e) => handleChange(idx, 'operator', e.target.value)}
-                        aria-label={`Operator for condition ${idx + 1}`}
-                        data-testid="filter-operator-select"
-                      >
-                        {OPERATORS.map((op) => (
-                          <option key={op} value={op}>
-                            {op}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(v) => handleChange(idx, 'operator', v)}
+                        data-testid={`filter-operator-select-${idx}`}
+                        triggerClassName={styles.operatorSelect}
+                      />
 
                       {/* Value */}
                       <input

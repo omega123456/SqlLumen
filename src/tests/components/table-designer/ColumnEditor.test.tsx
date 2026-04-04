@@ -226,7 +226,7 @@ describe('ColumnEditor', () => {
 
     expect(screen.getByTestId('column-length-2')).toHaveValue('4')
     expect(screen.getByTestId('column-signedness-2')).toBeEnabled()
-    expect(screen.getByTestId('column-signedness-2')).toHaveValue('SIGNED')
+    expect(screen.getByTestId('column-signedness-2')).toHaveTextContent('Signed')
   })
 
   it('signedness toggles preserve non-signed modifiers like ZEROFILL', async () => {
@@ -257,12 +257,14 @@ describe('ColumnEditor', () => {
     })
     render(<ColumnEditor tabId="tab-1" />)
 
-    await user.selectOptions(screen.getByTestId('column-signedness-0'), 'SIGNED')
+    await user.click(screen.getByTestId('column-signedness-0'))
+    await user.click(screen.getByRole('option', { name: 'Signed' }))
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
     ).toBe('ZEROFILL')
 
-    await user.selectOptions(screen.getByTestId('column-signedness-0'), 'UNSIGNED')
+    await user.click(screen.getByTestId('column-signedness-0'))
+    await user.click(screen.getByRole('option', { name: 'Unsigned' }))
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
     ).toBe('UNSIGNED ZEROFILL')
@@ -297,10 +299,10 @@ describe('ColumnEditor', () => {
     render(<ColumnEditor tabId="tab-1" />)
 
     const signedness = screen.getByTestId('column-signedness-0')
-    expect(signedness).toHaveValue('UNSIGNED')
+    expect(signedness).toHaveTextContent('Unsigned')
 
     await user.click(signedness)
-    await user.selectOptions(signedness, 'SIGNED')
+    await user.click(screen.getByRole('option', { name: 'Signed' }))
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
     ).toBe('ZEROFILL')
@@ -309,7 +311,7 @@ describe('ColumnEditor', () => {
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
     ).toBe('UNSIGNED ZEROFILL')
-    expect(screen.getByTestId('column-signedness-0')).toHaveValue('UNSIGNED')
+    expect(screen.getByTestId('column-signedness-0')).toHaveTextContent('Unsigned')
   })
 
   it('re-selecting the same type preserves non-signed modifiers like BINARY', async () => {
@@ -397,7 +399,8 @@ describe('ColumnEditor', () => {
     const signednessSelect = screen.getByTestId('column-signedness-0')
     expect(signednessSelect).toBeEnabled()
 
-    await user.selectOptions(signednessSelect, 'UNSIGNED')
+    await user.click(signednessSelect)
+    await user.click(screen.getByRole('option', { name: 'Unsigned' }))
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
     ).toBe('UNSIGNED')
@@ -406,7 +409,7 @@ describe('ColumnEditor', () => {
     await user.click(screen.getByRole('option', { name: 'VARCHAR' }))
 
     expect(screen.getByTestId('column-signedness-0')).toBeDisabled()
-    expect(screen.getByTestId('column-signedness-0')).toHaveValue('SIGNED')
+    expect(screen.getByTestId('column-signedness-0')).toHaveTextContent('Signed')
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.columns[0]?.typeModifier
     ).toBe('')

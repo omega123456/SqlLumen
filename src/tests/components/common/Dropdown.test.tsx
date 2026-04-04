@@ -217,4 +217,15 @@ describe('Dropdown', () => {
     await user.keyboard('{Enter}')
     expect(onChange).toHaveBeenCalledWith('b')
   })
+
+  it('works with aria-label instead of labelledBy', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <Dropdown id="aria-only" ariaLabel="Size" options={options} value="" onChange={onChange} />
+    )
+    await user.click(screen.getByRole('combobox', { name: 'Size' }))
+    await user.click(screen.getByRole('option', { name: 'Alpha' }))
+    expect(onChange).toHaveBeenCalledWith('a')
+  })
 })

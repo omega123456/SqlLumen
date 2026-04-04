@@ -88,6 +88,7 @@ vi.mock('../../../stores/toast-store', () => ({
 }))
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import type { Mock } from 'vitest'
 import { useTableDataStore } from '../../../stores/table-data-store'
@@ -670,7 +671,8 @@ describe('TableDataGrid', () => {
     expect(state?.editState?.currentValues.name).toBe('Modified')
   })
 
-  it('enumCellEditor writes null when NULL option is selected', () => {
+  it('enumCellEditor writes null when NULL option is selected', async () => {
+    const user = userEvent.setup()
     setupConnection()
     setupTabState({
       columns: [
@@ -725,9 +727,8 @@ describe('TableDataGrid', () => {
       />
     )
 
-    fireEvent.change(editor.getByRole('combobox'), {
-      target: { value: '__MYSQL_CLIENT_ENUM_NULL__' },
-    })
+    await user.click(editor.getByRole('combobox'))
+    await user.click(editor.getByRole('option', { name: 'NULL' }))
 
     expect(useTableDataStore.getState().tabs['tab-1']?.editState?.currentValues.status).toBeNull()
   })

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { EditModeDropdown } from '../../../components/query-editor/EditModeDropdown'
 import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
@@ -275,12 +276,11 @@ describe('EditModeDropdown', () => {
       })
       setupConnectionStore(connectionId)
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
-      const select = screen.getByTestId('edit-mode-dropdown') as HTMLSelectElement
-      expect(select.value).toBe('')
-      expect(select.options[0].text).toBe('Read Only')
+      expect(screen.getByTestId('edit-mode-dropdown')).toHaveTextContent('Read Only')
     })
 
-    it('shows detected table names as options', () => {
+    it('shows detected table names as options', async () => {
+      const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
         columns: [{ name: 'id', dataType: 'INT' }],
@@ -289,12 +289,14 @@ describe('EditModeDropdown', () => {
       })
       setupConnectionStore(connectionId)
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
-      const select = screen.getByTestId('edit-mode-dropdown') as HTMLSelectElement
-      expect(select.options).toHaveLength(2) // Read Only + users
-      expect(select.options[1].text).toBe('users')
+      await user.click(screen.getByTestId('edit-mode-dropdown'))
+      const opts = screen.getAllByRole('option')
+      expect(opts).toHaveLength(2)
+      expect(opts[1]).toHaveAccessibleName('users')
     })
 
-    it('shows database prefix when tables come from multiple databases', () => {
+    it('shows database prefix when tables come from multiple databases', async () => {
+      const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
         columns: [{ name: 'id', dataType: 'INT' }],
@@ -306,13 +308,15 @@ describe('EditModeDropdown', () => {
       })
       setupConnectionStore(connectionId)
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
-      const select = screen.getByTestId('edit-mode-dropdown') as HTMLSelectElement
-      expect(select.options).toHaveLength(3) // Read Only + 2 tables
-      expect(select.options[1].text).toBe('test_db.users')
-      expect(select.options[2].text).toBe('other_db.orders')
+      await user.click(screen.getByTestId('edit-mode-dropdown'))
+      const opts = screen.getAllByRole('option')
+      expect(opts).toHaveLength(3)
+      expect(opts[1]).toHaveAccessibleName('test_db.users')
+      expect(opts[2]).toHaveAccessibleName('other_db.orders')
     })
 
-    it('does not show database prefix when all tables from same database', () => {
+    it('does not show database prefix when all tables from same database', async () => {
+      const user = userEvent.setup()
       const sameDbTable: QueryTableEditInfo = { ...MOCK_TABLE_INFO_2, database: 'test_db' }
       setupTabState(tabId, {
         status: 'success',
@@ -325,9 +329,10 @@ describe('EditModeDropdown', () => {
       })
       setupConnectionStore(connectionId)
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
-      const select = screen.getByTestId('edit-mode-dropdown') as HTMLSelectElement
-      expect(select.options[1].text).toBe('users')
-      expect(select.options[2].text).toBe('orders')
+      await user.click(screen.getByTestId('edit-mode-dropdown'))
+      const opts = screen.getAllByRole('option')
+      expect(opts[1]).toHaveAccessibleName('users')
+      expect(opts[2]).toHaveAccessibleName('orders')
     })
 
     it('is disabled when isAnalyzingQuery is true', () => {
@@ -352,13 +357,13 @@ describe('EditModeDropdown', () => {
       })
       setupConnectionStore(connectionId)
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
-      const select = screen.getByTestId('edit-mode-dropdown') as HTMLSelectElement
-      expect(select.value).toBe('test_db.users')
+      expect(screen.getByTestId('edit-mode-dropdown')).toHaveTextContent('users')
     })
   })
 
   describe('interactions', () => {
-    it('calls setEditMode when table is selected', () => {
+    it('calls setEditMode when table is selected', async () => {
+      const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
         columns: [{ name: 'id', dataType: 'INT' }],
@@ -367,19 +372,18 @@ describe('EditModeDropdown', () => {
       })
       setupConnectionStore(connectionId)
 
-      // Spy on setEditMode
       const setEditModeSpy = vi.fn()
       useQueryStore.setState({ setEditMode: setEditModeSpy })
 
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
-      fireEvent.change(screen.getByTestId('edit-mode-dropdown'), {
-        target: { value: 'test_db.users' },
-      })
+      await user.click(screen.getByTestId('edit-mode-dropdown'))
+      await user.click(screen.getByRole('option', { name: 'users' }))
 
       expect(setEditModeSpy).toHaveBeenCalledWith(connectionId, tabId, 'test_db.users')
     })
 
-    it('calls setEditMode with null when "Read Only" is selected', () => {
+    it('calls setEditMode with null when "Read Only" is selected', async () => {
+      const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
         columns: [{ name: 'id', dataType: 'INT' }],
@@ -393,14 +397,14 @@ describe('EditModeDropdown', () => {
       useQueryStore.setState({ setEditMode: setEditModeSpy })
 
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
-      fireEvent.change(screen.getByTestId('edit-mode-dropdown'), {
-        target: { value: '' },
-      })
+      await user.click(screen.getByTestId('edit-mode-dropdown'))
+      await user.click(screen.getByRole('option', { name: 'Read Only' }))
 
       expect(setEditModeSpy).toHaveBeenCalledWith(connectionId, tabId, null)
     })
 
-    it('triggers requestNavigationAction when edits are pending', () => {
+    it('triggers requestNavigationAction when edits are pending', async () => {
+      const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
         columns: [{ name: 'id', dataType: 'INT' }],
@@ -421,14 +425,14 @@ describe('EditModeDropdown', () => {
       useQueryStore.setState({ requestNavigationAction: requestNavSpy })
 
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
-      fireEvent.change(screen.getByTestId('edit-mode-dropdown'), {
-        target: { value: '' },
-      })
+      await user.click(screen.getByTestId('edit-mode-dropdown'))
+      await user.click(screen.getByRole('option', { name: 'Read Only' }))
 
       expect(requestNavSpy).toHaveBeenCalledWith(tabId, expect.any(Function))
     })
 
-    it('does not trigger requestNavigationAction when no modifications exist', () => {
+    it('does not trigger requestNavigationAction when no modifications exist', async () => {
+      const user = userEvent.setup()
       setupTabState(tabId, {
         status: 'success',
         columns: [{ name: 'id', dataType: 'INT' }],
@@ -453,11 +457,9 @@ describe('EditModeDropdown', () => {
       })
 
       render(<EditModeDropdown tabId={tabId} connectionId={connectionId} />)
-      fireEvent.change(screen.getByTestId('edit-mode-dropdown'), {
-        target: { value: '' },
-      })
+      await user.click(screen.getByTestId('edit-mode-dropdown'))
+      await user.click(screen.getByRole('option', { name: 'Read Only' }))
 
-      // Should go directly to setEditMode, no navigation request
       expect(requestNavSpy).not.toHaveBeenCalled()
       expect(setEditModeSpy).toHaveBeenCalledWith(connectionId, tabId, null)
     })

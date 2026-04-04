@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultFormView } from '../../../components/query-editor/ResultFormView'
 import { useQueryStore } from '../../../stores/query-store'
@@ -80,8 +81,12 @@ function buildTabState(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks()
   mockIPC(() => null)
-  // Re-assign clipboard mock after clearAllMocks
   mockClipboardWriteText.mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', {
+    value: { writeText: mockClipboardWriteText },
+    writable: true,
+    configurable: true,
+  })
   // Set up query store with tab state (so pageSize is accessible)
   useQueryStore.setState({
     tabs: {
@@ -621,7 +626,7 @@ describe('ResultFormView — Edit Mode', () => {
     expect(screen.queryByTestId('btn-form-discard')).not.toBeInTheDocument()
   })
 
-  it('renders enum column as select dropdown', () => {
+  it('renders enum column as combobox dropdown', () => {
     const enumTableColumns: TableDataColumnMeta[] = [
       ...editTableColumns.slice(0, 2),
       {
@@ -644,8 +649,8 @@ describe('ResultFormView — Edit Mode', () => {
         {...buildEditProps({ editTableColumns: enumTableColumns })}
       />
     )
-    const selectEl = screen.getByTestId('form-input-email') as HTMLSelectElement
-    expect(selectEl.tagName).toBe('SELECT')
+    const combo = screen.getByTestId('form-input-email')
+    expect(combo).toHaveAttribute('role', 'combobox')
   })
 
   it('uses edit state values when actively editing the current row', () => {
@@ -667,7 +672,8 @@ describe('ResultFormView — Edit Mode', () => {
     expect(screen.queryByTestId('btn-form-discard')).not.toBeInTheDocument()
   })
 
-  it('enum select onChange fires onUpdateCell with selected value', () => {
+  it('enum select onChange fires onUpdateCell with selected value', async () => {
+    const user = userEvent.setup()
     const onUpdateCell = vi.fn()
     const enumTableColumns: TableDataColumnMeta[] = [
       ...editTableColumns.slice(0, 2),
@@ -691,13 +697,13 @@ describe('ResultFormView — Edit Mode', () => {
         {...buildEditProps({ editTableColumns: enumTableColumns, onUpdateCell })}
       />
     )
-    fireEvent.change(screen.getByTestId('form-input-email'), {
-      target: { value: 'bob@example.com' },
-    })
+    await user.click(screen.getByTestId('form-input-email'))
+    await user.click(screen.getByRole('option', { name: 'bob@example.com' }))
     expect(onUpdateCell).toHaveBeenCalledWith(2, 'bob@example.com')
   })
 
-  it('enum select onChange sends null when NULL sentinel is selected', () => {
+  it('enum select onChange sends null when NULL sentinel is selected', async () => {
+    const user = userEvent.setup()
     const onUpdateCell = vi.fn()
     const enumTableColumns: TableDataColumnMeta[] = [
       ...editTableColumns.slice(0, 2),
@@ -721,10 +727,8 @@ describe('ResultFormView — Edit Mode', () => {
         {...buildEditProps({ editTableColumns: enumTableColumns, onUpdateCell })}
       />
     )
-    // Simulate selecting the NULL sentinel
-    fireEvent.change(screen.getByTestId('form-input-email'), {
-      target: { value: '__MYSQL_CLIENT_ENUM_NULL__' },
-    })
+    await user.click(screen.getByTestId('form-input-email'))
+    await user.click(screen.getByRole('option', { name: 'NULL' }))
     expect(onUpdateCell).toHaveBeenCalledWith(2, null)
   })
 

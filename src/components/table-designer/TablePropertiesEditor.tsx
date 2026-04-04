@@ -1,5 +1,6 @@
 import { SpinnerGap } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
+import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { listCharsets, listCollations } from '../../lib/schema-commands'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import type { CharsetInfo, CollationInfo, TableDesignerProperties } from '../../types/schema'
@@ -171,6 +172,48 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
     [collations]
   )
 
+  const engineDropdownOptions: DropdownOption[] = useMemo(
+    () => ENGINE_OPTIONS.map((engine) => ({ value: engine, label: engine })),
+    []
+  )
+
+  const rowFormatDropdownOptions: DropdownOption[] = useMemo(
+    () => ROW_FORMAT_OPTIONS.map((rowFormat) => ({ value: rowFormat, label: rowFormat })),
+    []
+  )
+
+  const charsetDropdownOptions: DropdownOption[] = useMemo(() => {
+    if (isCharsetsLoading && charsets.length === 0) {
+      return [
+        {
+          value: selectedCharset || '',
+          label: 'Loading charsets...',
+          disabled: true,
+        },
+      ]
+    }
+    if (!isCharsetsLoading && charsetOptions.length === 0) {
+      return [{ value: '', label: 'No charsets available', disabled: true }]
+    }
+    return charsetOptions
+  }, [charsetOptions, charsets.length, isCharsetsLoading, selectedCharset])
+
+  const collationDropdownOptions: DropdownOption[] = useMemo(() => {
+    if (isCollationsLoading) {
+      return [
+        {
+          value: properties?.collation ?? '',
+          label: 'Loading collations...',
+          disabled: true,
+        },
+      ]
+    }
+    if (collationOptions.length === 0) {
+      return [{ value: '', label: 'No collations available', disabled: true }]
+    }
+    return collationOptions
+  }, [collationOptions, isCollationsLoading, properties?.collation])
+
   if (!properties) {
     return null
   }
@@ -187,80 +230,54 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
       <div className={styles.grid}>
         <div className={styles.column}>
           <div className={styles.fieldGroup}>
-            <label className={styles.label} htmlFor={`table-properties-engine-${tabId}`}>
+            <label className={styles.label} id={`table-properties-engine-label-${tabId}`}>
               Engine
             </label>
-            <select
+            <Dropdown
               id={`table-properties-engine-${tabId}`}
-              className={styles.control}
+              labelledBy={`table-properties-engine-label-${tabId}`}
+              options={engineDropdownOptions}
               value={properties.engine}
               data-testid="table-properties-engine"
-              onChange={(event) => handlePropertyChange('engine', event.target.value)}
-            >
-              {ENGINE_OPTIONS.map((engine) => (
-                <option key={engine} value={engine}>
-                  {engine}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => handlePropertyChange('engine', v)}
+              triggerClassName={styles.control}
+            />
           </div>
 
           <div className={styles.fieldGroup}>
-            <label className={styles.label} htmlFor={`table-properties-charset-${tabId}`}>
+            <label className={styles.label} id={`table-properties-charset-label-${tabId}`}>
               <span>Character Set</span>
               {isCharsetsLoading && <SpinnerGap size={12} className={styles.spinner} aria-hidden />}
             </label>
-            <select
+            <Dropdown
               id={`table-properties-charset-${tabId}`}
-              className={styles.control}
+              labelledBy={`table-properties-charset-label-${tabId}`}
+              options={charsetDropdownOptions}
               value={selectedCharset}
               disabled={isCharsetsLoading}
-              aria-busy={isCharsetsLoading}
               data-testid="table-properties-charset"
-              onChange={(event) => handlePropertyChange('charset', event.target.value)}
-            >
-              {isCharsetsLoading ? (
-                <option value="">Loading charsets...</option>
-              ) : charsetOptions.length > 0 ? (
-                charsetOptions.map((charset) => (
-                  <option key={charset.value} value={charset.value}>
-                    {charset.label}
-                  </option>
-                ))
-              ) : (
-                <option value="">No charsets available</option>
-              )}
-            </select>
+              onChange={(v) => handlePropertyChange('charset', v)}
+              triggerClassName={styles.control}
+            />
           </div>
 
           <div className={styles.fieldGroup}>
-            <label className={styles.label} htmlFor={`table-properties-collation-${tabId}`}>
+            <label className={styles.label} id={`table-properties-collation-label-${tabId}`}>
               <span>Collation</span>
               {isCollationsLoading && (
                 <SpinnerGap size={12} className={styles.spinner} aria-hidden />
               )}
             </label>
-            <select
+            <Dropdown
               id={`table-properties-collation-${tabId}`}
-              className={styles.control}
+              labelledBy={`table-properties-collation-label-${tabId}`}
+              options={collationDropdownOptions}
               value={properties.collation}
               disabled={isCollationsLoading || !selectedCharset}
-              aria-busy={isCollationsLoading}
               data-testid="table-properties-collation"
-              onChange={(event) => handlePropertyChange('collation', event.target.value)}
-            >
-              {isCollationsLoading ? (
-                <option value="">Loading collations...</option>
-              ) : collationOptions.length > 0 ? (
-                collationOptions.map((collation) => (
-                  <option key={collation.value} value={collation.value}>
-                    {collation.label}
-                  </option>
-                ))
-              ) : (
-                <option value="">No collations available</option>
-              )}
-            </select>
+              onChange={(v) => handlePropertyChange('collation', v)}
+              triggerClassName={styles.control}
+            />
           </div>
 
           <div className={styles.fieldGroup}>
@@ -283,22 +300,18 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
 
         <div className={styles.column}>
           <div className={styles.fieldGroup}>
-            <label className={styles.label} htmlFor={`table-properties-row-format-${tabId}`}>
+            <label className={styles.label} id={`table-properties-row-format-label-${tabId}`}>
               Row Format
             </label>
-            <select
+            <Dropdown
               id={`table-properties-row-format-${tabId}`}
-              className={styles.control}
+              labelledBy={`table-properties-row-format-label-${tabId}`}
+              options={rowFormatDropdownOptions}
               value={properties.rowFormat}
               data-testid="table-properties-row-format"
-              onChange={(event) => handlePropertyChange('rowFormat', event.target.value)}
-            >
-              {ROW_FORMAT_OPTIONS.map((rowFormat) => (
-                <option key={rowFormat} value={rowFormat}>
-                  {rowFormat}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => handlePropertyChange('rowFormat', v)}
+              triggerClassName={styles.control}
+            />
           </div>
         </div>
 

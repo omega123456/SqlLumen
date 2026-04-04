@@ -19,6 +19,21 @@ beforeEach(() => {
   mockExportResults.mockResolvedValue({ bytesWritten: 1024, rowsExported: 5 })
 })
 
+const EXPORT_FORMAT_REGEX: Record<'csv' | 'json' | 'xlsx' | 'sql-insert', RegExp> = {
+  csv: /CSV \(Comma Separated Values\)/,
+  json: /JSON \(JavaScript Object Notation\)/,
+  xlsx: /Excel \(\.xlsx\)/,
+  'sql-insert': /SQL INSERT Statements/,
+}
+
+async function pickExportFormat(
+  user: ReturnType<typeof userEvent.setup>,
+  formatKey: keyof typeof EXPORT_FORMAT_REGEX
+) {
+  await user.click(screen.getByTestId('export-format-select'))
+  await user.click(screen.getByRole('option', { name: EXPORT_FORMAT_REGEX[formatKey] }))
+}
+
 /** jsdom + focus trap: keyboard typing into the destination field is unreliable; drive controlled input directly. */
 function setExportDestinationPath(path: string) {
   const input = screen.getByTestId('export-file-path-input')
@@ -54,15 +69,15 @@ describe('ExportDialog', () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
-    const select = screen.getByTestId('export-format-select')
-    await user.selectOptions(select, 'json')
-    expect(select).toHaveValue('json')
+    const combo = screen.getByTestId('export-format-select')
+    await pickExportFormat(user, 'json')
+    expect(combo).toHaveTextContent('JSON')
 
-    await user.selectOptions(select, 'xlsx')
-    expect(select).toHaveValue('xlsx')
+    await pickExportFormat(user, 'xlsx')
+    expect(combo).toHaveTextContent('Excel')
 
-    await user.selectOptions(select, 'sql-insert')
-    expect(select).toHaveValue('sql-insert')
+    await pickExportFormat(user, 'sql-insert')
+    expect(combo).toHaveTextContent('SQL INSERT')
   })
 
   it('export button is disabled when no file path', () => {
@@ -117,7 +132,7 @@ describe('ExportDialog', () => {
     render(<ExportDialog {...defaultProps} />)
 
     // Change format to SQL INSERT
-    await user.selectOptions(screen.getByTestId('export-format-select'), 'sql-insert')
+    await pickExportFormat(user, 'sql-insert')
 
     setExportDestinationPath('/tmp/export.sql')
 
@@ -215,7 +230,7 @@ describe('ExportDialog', () => {
     expect(screen.queryByTestId('export-table-name-input')).not.toBeInTheDocument()
 
     // Change to SQL INSERT
-    await user.selectOptions(screen.getByTestId('export-format-select'), 'sql-insert')
+    await pickExportFormat(user, 'sql-insert')
 
     // Table name input should appear
     expect(screen.getByTestId('export-table-name-input')).toBeInTheDocument()
@@ -305,7 +320,7 @@ describe('ExportDialog', () => {
     render(<ExportDialog {...defaultProps} defaultTableName="users" />)
 
     // Switch to SQL INSERT to see the table name input
-    await user.selectOptions(screen.getByTestId('export-format-select'), 'sql-insert')
+    await pickExportFormat(user, 'sql-insert')
 
     const tableNameInput = screen.getByTestId('export-table-name-input') as HTMLInputElement
     expect(tableNameInput.value).toBe('users')
@@ -376,7 +391,7 @@ describe('ExportDialog', () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
-    await user.selectOptions(screen.getByTestId('export-format-select'), 'sql-insert')
+    await pickExportFormat(user, 'sql-insert')
     const tableNameInput = screen.getByTestId('export-table-name-input')
     await user.clear(tableNameInput)
     await user.type(tableNameInput, 'my_table')
@@ -403,13 +418,20 @@ describe('ExportDialog', () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
-    const select = screen.getByTestId('export-format-select') as HTMLSelectElement
-    expect(select.options.length).toBe(4) // csv, json, xlsx, sql-insert
+    const combo = screen.getByTestId('export-format-select')
+    await user.click(combo)
+    expect(screen.getAllByRole('option')).toHaveLength(4)
+    await user.keyboard('{Escape}')
 
-    // Verify we can select each format
-    for (const fmt of ['csv', 'json', 'xlsx', 'sql-insert']) {
-      await user.selectOptions(select, fmt)
-      expect(select.value).toBe(fmt)
+    const labelSnippets: Record<string, string> = {
+      csv: 'CSV',
+      json: 'JSON',
+      xlsx: 'Excel',
+      'sql-insert': 'SQL INSERT',
+    }
+    for (const fmt of ['csv', 'json', 'xlsx', 'sql-insert'] as const) {
+      await pickExportFormat(user, fmt)
+      expect(combo).toHaveTextContent(labelSnippets[fmt])
     }
   })
 
@@ -422,7 +444,7 @@ describe('ExportDialog', () => {
     expect(dialog.textContent).toContain('.csv')
 
     // Switch to JSON
-    await user.selectOptions(screen.getByTestId('export-format-select'), 'json')
+    await pickExportFormat(user, 'json')
     expect(dialog.textContent).toContain('.json')
   })
 })

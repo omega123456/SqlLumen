@@ -39,12 +39,12 @@ describe('FilterDialog', () => {
     expect(rows).toHaveLength(1)
 
     const row = rows[0]
-    const colSelect = within(row).getByTestId('filter-column-select') as HTMLSelectElement
-    const opSelect = within(row).getByTestId('filter-operator-select') as HTMLSelectElement
+    const colCombo = within(row).getByTestId('filter-column-select-0')
+    const opCombo = within(row).getByTestId('filter-operator-select-0')
     const valueInput = within(row).getByTestId('filter-value-input') as HTMLInputElement
 
-    expect(colSelect.value).toBe('id')
-    expect(opSelect.value).toBe('==')
+    expect(colCombo).toHaveTextContent('id')
+    expect(opCombo).toHaveTextContent('==')
     expect(valueInput.value).toBe('')
   })
 
@@ -68,8 +68,8 @@ describe('FilterDialog', () => {
     const rows = screen.getAllByTestId('filter-row')
     expect(rows).toHaveLength(1)
     // The remaining row should be the second one
-    const colSelect = within(rows[0]).getByTestId('filter-column-select') as HTMLSelectElement
-    expect(colSelect.value).toBe('name')
+    const colCombo = within(rows[0]).getByTestId('filter-column-select-0')
+    expect(colCombo).toHaveTextContent('name')
   })
 
   it('Clear All button clears all rows', async () => {
@@ -102,8 +102,9 @@ describe('FilterDialog', () => {
       />
     )
 
-    const opSelect = screen.getByTestId('filter-operator-select') as HTMLSelectElement
-    await user.selectOptions(opSelect, 'IS NULL')
+    const opCombo = screen.getByTestId('filter-operator-select-0')
+    await user.click(opCombo)
+    await user.click(screen.getByRole('option', { name: 'IS NULL' }))
 
     const valueInput = screen.getByTestId('filter-value-input') as HTMLInputElement
     expect(valueInput).toBeDisabled()
@@ -120,8 +121,9 @@ describe('FilterDialog', () => {
       />
     )
 
-    const opSelect = screen.getByTestId('filter-operator-select') as HTMLSelectElement
-    await user.selectOptions(opSelect, 'IS NOT NULL')
+    const opCombo = screen.getByTestId('filter-operator-select-0')
+    await user.click(opCombo)
+    await user.click(screen.getByRole('option', { name: 'IS NOT NULL' }))
 
     const valueInput = screen.getByTestId('filter-value-input') as HTMLInputElement
     expect(valueInput).toBeDisabled()
@@ -170,11 +172,11 @@ describe('FilterDialog', () => {
     expect(screen.getByTestId('filter-dialog')).toBeInTheDocument()
     const rows = screen.getAllByTestId('filter-row')
     expect(rows).toHaveLength(1)
-    const colSelect = within(rows[0]).getByTestId('filter-column-select') as HTMLSelectElement
-    const opSelect = within(rows[0]).getByTestId('filter-operator-select') as HTMLSelectElement
+    const colCombo = within(rows[0]).getByTestId('filter-column-select-0')
+    const opCombo = within(rows[0]).getByTestId('filter-operator-select-0')
     const valueInput = within(rows[0]).getByTestId('filter-value-input') as HTMLInputElement
-    expect(colSelect.value).toBe('name')
-    expect(opSelect.value).toBe('LIKE')
+    expect(colCombo).toHaveTextContent('name')
+    expect(opCombo).toHaveTextContent('LIKE')
     expect(valueInput.value).toBe('%test%')
   })
 
@@ -185,8 +187,8 @@ describe('FilterDialog', () => {
     // Add a condition to get a row
     await user.click(screen.getByTestId('filter-add-button'))
 
-    const colSelect = screen.getByTestId('filter-column-select') as HTMLSelectElement
-    const options = Array.from(colSelect.options).map((o) => o.value)
+    await user.click(screen.getByTestId('filter-column-select-0'))
+    const options = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label') ?? o.textContent ?? '')
     expect(options).toEqual(['id', 'name', 'email'])
   })
 

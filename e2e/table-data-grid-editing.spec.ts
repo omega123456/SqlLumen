@@ -92,9 +92,10 @@ async function openQueryEditorWithResults(page: Page) {
   await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
   const editModeDropdown = page.getByTestId('edit-mode-dropdown')
   await expect(editModeDropdown).toBeVisible({ timeout: APP_READY_MS })
-  await expect(editModeDropdown.locator('option')).toHaveCount(2, { timeout: APP_READY_MS })
-  await editModeDropdown.selectOption({ index: 1 })
-  await expect(editModeDropdown).not.toHaveValue('', { timeout: APP_READY_MS })
+  await editModeDropdown.click()
+  await expect(page.getByRole('option')).toHaveCount(2, { timeout: APP_READY_MS })
+  await page.getByRole('option').nth(1).click()
+  await expect(editModeDropdown).not.toHaveText('Read Only', { timeout: APP_READY_MS })
   await expect(
     page.getByTestId('result-grid-view').locator('.rdg-editable-cell').first()
   ).toBeVisible({
@@ -290,15 +291,17 @@ test('filter dialog — open, add conditions, apply, verify badge, and clear', a
   await expect(page.getByTestId('filter-row')).toBeVisible({ timeout: APP_READY_MS })
 
   // Verify the condition row has column select, operator select, value input
-  await expect(page.getByTestId('filter-column-select')).toBeVisible()
-  await expect(page.getByTestId('filter-operator-select')).toBeVisible()
+  await expect(page.getByTestId('filter-column-select-0')).toBeVisible()
+  await expect(page.getByTestId('filter-operator-select-0')).toBeVisible()
   await expect(page.getByTestId('filter-value-input')).toBeVisible()
 
   // Set column to "name"
-  await page.getByTestId('filter-column-select').selectOption('name')
+  await page.getByTestId('filter-column-select-0').click()
+  await page.getByRole('option', { name: 'name', exact: true }).click()
 
   // Set operator to "LIKE"
-  await page.getByTestId('filter-operator-select').selectOption('LIKE')
+  await page.getByTestId('filter-operator-select-0').click()
+  await page.getByRole('option', { name: 'LIKE', exact: true }).click()
 
   // Set value
   await page.getByTestId('filter-value-input').fill('%Julian%')

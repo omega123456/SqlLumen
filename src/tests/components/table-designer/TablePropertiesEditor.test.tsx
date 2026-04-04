@@ -96,7 +96,7 @@ describe('TablePropertiesEditor', () => {
     seedStore()
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
-    expect(screen.getByTestId('table-properties-engine')).toHaveValue('InnoDB')
+    expect(screen.getByTestId('table-properties-engine')).toHaveTextContent('InnoDB')
   })
 
   it('engine dropdown change calls store.updateProperties', async () => {
@@ -106,7 +106,8 @@ describe('TablePropertiesEditor', () => {
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
-    await user.selectOptions(screen.getByTestId('table-properties-engine'), 'MyISAM')
+    await user.click(screen.getByTestId('table-properties-engine'))
+    await user.click(screen.getByRole('option', { name: 'MyISAM' }))
 
     expect(updatePropertiesSpy).toHaveBeenCalledWith('tab-1', 'engine', 'MyISAM')
   })
@@ -124,6 +125,7 @@ describe('TablePropertiesEditor', () => {
   })
 
   it('charset dropdown loads from mocked listCharsets', async () => {
+    const user = userEvent.setup()
     seedStore()
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
@@ -132,24 +134,29 @@ describe('TablePropertiesEditor', () => {
       expect(mockListCharsets).toHaveBeenCalledWith('conn-1')
     })
 
-    expect(await screen.findByRole('option', { name: 'utf8mb4' })).toBeInTheDocument()
+    await user.click(screen.getByTestId('table-properties-charset'))
+    expect(screen.getByRole('option', { name: 'utf8mb4' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'latin1' })).toBeInTheDocument()
   })
 
   it('collation dropdown loads from mocked listCollations filtered by charset', async () => {
+    const user = userEvent.setup()
     seedStore()
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
-    const collationSelect = await screen.findByTestId('table-properties-collation')
+    const collationTrigger = await screen.findByTestId('table-properties-collation')
 
     await waitFor(() => {
       expect(mockListCollations).toHaveBeenCalledWith('conn-1')
     })
 
-    expect(collationSelect).toHaveTextContent('utf8mb4_unicode_ci')
-    expect(collationSelect).toHaveTextContent('utf8mb4_general_ci')
-    expect(collationSelect).not.toHaveTextContent('latin1_swedish_ci')
+    expect(collationTrigger).toHaveTextContent('utf8mb4_unicode_ci')
+
+    await user.click(collationTrigger)
+    expect(screen.getByRole('option', { name: 'utf8mb4_unicode_ci' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'utf8mb4_general_ci' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'latin1_swedish_ci' })).not.toBeInTheDocument()
   })
 
   it('collation dropdown reloads when charset changes', async () => {
@@ -158,8 +165,11 @@ describe('TablePropertiesEditor', () => {
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
-    await screen.findByRole('option', { name: 'utf8mb4' })
-    await user.selectOptions(screen.getByTestId('table-properties-charset'), 'latin1')
+    await waitFor(() => {
+      expect(mockListCharsets).toHaveBeenCalled()
+    })
+    await user.click(screen.getByTestId('table-properties-charset'))
+    await user.click(screen.getByRole('option', { name: 'latin1' }))
 
     await waitFor(() => {
       expect(mockListCollations).toHaveBeenCalled()
@@ -167,7 +177,7 @@ describe('TablePropertiesEditor', () => {
 
     const collationSelect = screen.getByTestId('table-properties-collation')
     await waitFor(() => {
-      expect(collationSelect).toHaveValue('latin1_swedish_ci')
+      expect(collationSelect).toHaveTextContent('latin1_swedish_ci')
     })
     expect(collationSelect).toHaveTextContent('latin1_swedish_ci')
     expect(collationSelect).not.toHaveTextContent('utf8mb4_general_ci')
@@ -192,7 +202,8 @@ describe('TablePropertiesEditor', () => {
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
-    await user.selectOptions(screen.getByTestId('table-properties-row-format'), 'COMPACT')
+    await user.click(screen.getByTestId('table-properties-row-format'))
+    await user.click(screen.getByRole('option', { name: 'COMPACT' }))
 
     expect(updatePropertiesSpy).toHaveBeenCalledWith('tab-1', 'rowFormat', 'COMPACT')
   })

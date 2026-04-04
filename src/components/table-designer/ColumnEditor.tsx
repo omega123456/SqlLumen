@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ButtonHTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import type { DefaultValueModel, TableDesignerColumnDef } from '../../types/schema'
@@ -12,6 +13,7 @@ import {
   type TableDesignerTabState,
 } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
+import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TypeCombobox } from './TypeCombobox'
 import {
   getSignednessValue,
@@ -28,6 +30,11 @@ interface ColumnEditorProps {
 
 const TYPES_WITHOUT_LENGTH_SET = new Set(TYPES_WITHOUT_LENGTH)
 const NUMERIC_TYPE_SET = new Set(NUMERIC_TYPES)
+
+const SIGNEDNESS_DROPDOWN_OPTIONS: DropdownOption[] = [
+  { value: 'SIGNED', label: 'Signed' },
+  { value: 'UNSIGNED', label: 'Unsigned' },
+]
 
 type ColumnFieldKey = keyof Pick<
   TableDesignerColumnDef,
@@ -692,28 +699,24 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                       modified={isModifiedCell(tabState, column, 'typeModifier')}
                       testId={`cell-${columnIndex}-signedness`}
                     >
-                      <select
+                      <Dropdown
+                        id={`column-signedness-${tabId}-${columnIndex}`}
+                        ariaLabel="Signedness"
+                        options={SIGNEDNESS_DROPDOWN_OPTIONS}
                         value={signednessValue}
                         disabled={signednessDisabled}
-                        className={`${styles.cellInput} ${styles.selectInput} ${
-                          isSelected ? styles.activeInput : styles.inactiveInput
-                        }`}
                         data-testid={`column-signedness-${columnIndex}`}
-                        data-row-index={columnIndex}
-                        data-cell-key="signedness"
-                        onFocus={() => {
-                          setSelectedIndex(columnIndex)
-                          setActiveCell({ rowIndex: columnIndex, cellKey: 'signedness' })
-                          setEditStartValue(columnIndex, 'signedness', column.typeModifier ?? '')
-                        }}
-                        onBlur={() => clearEditStartValue(columnIndex, 'signedness')}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) =>
-                          handleEditableKeyDown(event, columnIndex, 'signedness')
+                        triggerProps={
+                          {
+                            'data-row-index': columnIndex,
+                            'data-cell-key': 'signedness',
+                            onClick: (event) => {
+                              event.stopPropagation()
+                            },
+                          } as ButtonHTMLAttributes<HTMLButtonElement>
                         }
-                        onChange={(event) => {
-                          const nextSignedness =
-                            event.target.value === 'UNSIGNED' ? 'UNSIGNED' : 'SIGNED'
+                        onChange={(v) => {
+                          const nextSignedness = v === 'UNSIGNED' ? 'UNSIGNED' : 'SIGNED'
                           updateColumn(
                             tabId,
                             columnIndex,
@@ -721,10 +724,19 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                             applySignedness(column.typeModifier, nextSignedness)
                           )
                         }}
-                      >
-                        <option value="SIGNED">Signed</option>
-                        <option value="UNSIGNED">Unsigned</option>
-                      </select>
+                        onTriggerFocus={() => {
+                          setSelectedIndex(columnIndex)
+                          setActiveCell({ rowIndex: columnIndex, cellKey: 'signedness' })
+                          setEditStartValue(columnIndex, 'signedness', column.typeModifier ?? '')
+                        }}
+                        onTriggerBlur={() => clearEditStartValue(columnIndex, 'signedness')}
+                        onTriggerKeyDown={(event) =>
+                          handleEditableKeyDown(event, columnIndex, 'signedness')
+                        }
+                        triggerClassName={`${styles.cellInput} ${styles.selectInput} ${
+                          isSelected ? styles.activeInput : styles.inactiveInput
+                        }`}
+                      />
                     </CellFrame>
                   </td>
                   <td className={`${styles.bodyCell} ${styles.checkboxCell}`}>

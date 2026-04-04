@@ -6,7 +6,14 @@ import {
 } from '../../stores/table-designer-store'
 import type { TableDesignerIndexDef } from '../../types/schema'
 import { Button } from '../common/Button'
+import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import styles from './IndexEditor.module.css'
+
+const INDEX_TYPE_DROPDOWN_OPTIONS: DropdownOption[] = [
+  { value: 'UNIQUE', label: 'UNIQUE' },
+  { value: 'INDEX', label: 'INDEX' },
+  { value: 'FULLTEXT', label: 'FULLTEXT' },
+]
 
 interface IndexEditorProps {
   tabId: string
@@ -275,26 +282,26 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                     )}
                   </td>
                   <td className={styles.bodyCell}>
-                    <select
-                      value={index.indexType}
-                      className={`${styles.cellSelect} ${
-                        isSelected ? styles.activeInput : styles.inactiveInput
-                      }`}
-                      data-testid={`index-type-${visibleIndex}`}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={(event) =>
-                        updateIndex(
-                          tabId,
-                          storeIndex,
-                          'indexType',
-                          event.target.value as TableDesignerIndexDef['indexType']
-                        )
-                      }
-                    >
-                      <option value="UNIQUE">UNIQUE</option>
-                      <option value="INDEX">INDEX</option>
-                      <option value="FULLTEXT">FULLTEXT</option>
-                    </select>
+                    <div onClick={(event) => event.stopPropagation()}>
+                      <Dropdown
+                        id={`index-type-${tabId}-${visibleIndex}`}
+                        ariaLabel="Index type"
+                        options={INDEX_TYPE_DROPDOWN_OPTIONS}
+                        value={index.indexType}
+                        data-testid={`index-type-${visibleIndex}`}
+                        onChange={(v) =>
+                          updateIndex(
+                            tabId,
+                            storeIndex,
+                            'indexType',
+                            v as TableDesignerIndexDef['indexType']
+                          )
+                        }
+                        triggerClassName={`${styles.cellSelect} ${
+                          isSelected ? styles.activeInput : styles.inactiveInput
+                        }`}
+                      />
+                    </div>
                   </td>
                   <td className={styles.bodyCell}>
                     <div

@@ -1,4 +1,15 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type FocusEvent as ReactFocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react'
 import { CaretDown } from '@phosphor-icons/react'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 
@@ -23,22 +34,67 @@ function indexOfValue(options: DropdownOption[], value: string): number {
   return options.findIndex((o) => o.value === value)
 }
 
-export interface DropdownProps {
+type DropdownLabelProps =
+  | { labelledBy: string; ariaLabel?: undefined }
+  | { ariaLabel: string; labelledBy?: undefined }
+
+export type DropdownProps = DropdownLabelProps & {
   id: string
-  labelledBy: string
   options: DropdownOption[]
   value: string
   onChange: (value: string) => void
   disabled?: boolean
+  'data-testid'?: string
+  className?: string
+  triggerClassName?: string
+  onTriggerKeyDown?: (e: ReactKeyboardEvent<HTMLButtonElement>) => void
+  onListKeyDown?: (e: ReactKeyboardEvent<HTMLUListElement>) => void
+  onOpenChange?: (open: boolean) => void
+  onTriggerFocus?: (e: ReactFocusEvent<HTMLButtonElement>) => void
+  onTriggerBlur?: (e: ReactFocusEvent<HTMLButtonElement>) => void
+  triggerProps?: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'role' | 'id'>
 }
 
-export function Dropdown({ id, labelledBy, options, value, onChange, disabled }: DropdownProps) {
+export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(function Dropdown(
+  {
+    id,
+    labelledBy,
+    ariaLabel,
+    options,
+    value,
+    onChange,
+    disabled,
+    'data-testid': dataTestId,
+    className,
+    triggerClassName,
+    onTriggerKeyDown,
+    onListKeyDown,
+    onOpenChange,
+    onTriggerFocus,
+    onTriggerBlur,
+    triggerProps,
+  },
+  forwardedRef
+) {
+  const { onClick: triggerOnClick, ...triggerRest } = triggerProps ?? {}
   const listboxId = useId()
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const [open, setOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(0)
+
+  const setTriggerRef = useCallback(
+    (node: HTMLButtonElement | null) => {
+      triggerRef.current = node
+      if (typeof forwardedRef === 'function') {
+        forwardedRef(node)
+      } else if (forwardedRef) {
+        forwardedRef.current = node
+      }
+    },
+    [forwardedRef]
+  )
 
   const selectedIndex = useMemo(() => indexOfValue(options, value), [options, value])
   const selectedLabel = options[selectedIndex]?.label ?? options[0]?.label ?? ''
@@ -57,14 +113,18 @@ export function Dropdown({ id, labelledBy, options, value, onChange, disabled }:
   useDismissOnOutsideClick(rootRef, open, close, { closeOnEscape: true })
 
   useEffect(() => {
+    onOpenChange?.(open)
+  }, [open, onOpenChange])
+
+  useEffect(() => {
     if (!open) {
       return
     }
-    const id = window.requestAnimationFrame(() => {
+    const raf = window.requestAnimationFrame(() => {
       listRef.current?.focus()
     })
     return () => {
-      window.cancelAnimationFrame(id)
+      window.cancelAnimationFrame(raf)
     }
   }, [open])
 
@@ -95,7 +155,11 @@ export function Dropdown({ id, labelledBy, options, value, onChange, disabled }:
     [close, onChange, options]
   )
 
-  const handleTriggerKeyDown = (e: React.KeyboardEvent) => {
+  const handleTriggerKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    onTriggerKeyDown?.(e)
+    if (e.defaultPrevented) {
+      return
+    }
     if (disabled) {
       return
     }
@@ -144,7 +208,11 @@ export function Dropdown({ id, labelledBy, options, value, onChange, disabled }:
     }
   }
 
-  const handleListKeyDown = (e: React.KeyboardEvent) => {
+  const handleListKeyDown = (e: ReactKeyboardEvent<HTMLUListElement>) => {
+    onListKeyDown?.(e)
+    if (e.defaultPrevented) {
+      return
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       moveHighlight(1)
@@ -173,20 +241,30 @@ export function Dropdown({ id, labelledBy, options, value, onChange, disabled }:
     }
   }
 
+  const rootClassName = ['ui-dropdown', className].filter(Boolean).join(' ')
+  const triggerClass = ['ui-dropdown__trigger', triggerClassName].filter(Boolean).join(' ')
+
+  const listboxLabelledBy = labelledBy ?? undefined
+  const listboxAriaLabel = ariaLabel && !labelledBy ? ariaLabel : undefined
+
   return (
-    <div className="ui-dropdown" ref={rootRef}>
+    <div className={rootClassName} ref={rootRef}>
       <button
-        ref={triggerRef}
+        ref={setTriggerRef}
         id={id}
         type="button"
         role="combobox"
-        className="ui-dropdown__trigger"
+        className={triggerClass}
         aria-labelledby={labelledBy}
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxId}
         disabled={disabled}
-        onClick={() => {
+        data-testid={dataTestId}
+        {...triggerRest}
+        onClick={(e) => {
+          triggerOnClick?.(e)
           if (disabled) {
             return
           }
@@ -196,6 +274,8 @@ export function Dropdown({ id, labelledBy, options, value, onChange, disabled }:
             openWithHighlight()
           }
         }}
+        onFocus={onTriggerFocus}
+        onBlur={onTriggerBlur}
         onKeyDown={handleTriggerKeyDown}
       >
         <span className="ui-dropdown__value">{selectedLabel}</span>
@@ -208,7 +288,8 @@ export function Dropdown({ id, labelledBy, options, value, onChange, disabled }:
           className="ui-dropdown__panel"
           role="listbox"
           tabIndex={0}
-          aria-labelledby={labelledBy}
+          aria-labelledby={listboxLabelledBy}
+          aria-label={listboxAriaLabel}
           onKeyDown={handleListKeyDown}
         >
           {options.map((opt, idx) => {
@@ -223,7 +304,7 @@ export function Dropdown({ id, labelledBy, options, value, onChange, disabled }:
               .join(' ')
 
             return (
-              <li key={opt.value || `idx-${idx}`} role="presentation">
+              <li key={`${opt.value}-${idx}`} role="presentation">
                 <button
                   type="button"
                   role="option"
@@ -250,4 +331,4 @@ export function Dropdown({ id, labelledBy, options, value, onChange, disabled }:
       )}
     </div>
   )
-}
+})

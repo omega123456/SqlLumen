@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useMemo } from 'react'
+import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { useQueryStore, isEditableSelectSql } from '../../stores/query-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import styles from './EditModeDropdown.module.css'
@@ -55,47 +56,47 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
   }, [detectedTables])
 
   const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const value = e.target.value
+    (value: string) => {
       const newTableName = value === '' ? null : value
 
-      // If edits are pending (including unmodified active edit state), defer the change
       if (editState) {
         if (editState.modifiedColumns.size > 0) {
           requestNavigationAction(tabId, () => {
             setEditMode(connectionId, tabId, newTableName)
           })
-          // Reset select to current value since the action is deferred
-          e.target.value = editMode ?? ''
           return
         }
-        // Unmodified edit state — just proceed (setEditMode will clean up)
       }
 
       setEditMode(connectionId, tabId, newTableName)
     },
-    [editState, editMode, requestNavigationAction, setEditMode, connectionId, tabId]
+    [editState, requestNavigationAction, setEditMode, connectionId, tabId]
   )
 
-  if (!isVisible) return null
+  const editModeOptions: DropdownOption[] = useMemo(
+    () => [
+      { value: '', label: 'Read Only' },
+      ...tableOptions.map((opt) => ({ value: opt.value, label: opt.label })),
+    ],
+    [tableOptions]
+  )
+
+  if (!isVisible) {
+    return null
+  }
 
   return (
     <div className={styles.editModeGroup} data-testid="edit-mode-group">
-      <select
-        className={`${styles.editModeSelect} ${isAnalyzingQuery ? styles.editModeLoading : ''}`}
+      <Dropdown
+        id={`edit-mode-dropdown-${tabId}`}
+        ariaLabel="Edit mode"
+        options={editModeOptions}
         value={editMode ?? ''}
         onChange={handleChange}
         disabled={isAnalyzingQuery}
         data-testid="edit-mode-dropdown"
-        aria-label="Edit mode"
-      >
-        <option value="">Read Only</option>
-        {tableOptions.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+        triggerClassName={`${styles.editModeSelect} ${isAnalyzingQuery ? styles.editModeLoading : ''}`}
+      />
     </div>
   )
 }

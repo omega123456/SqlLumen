@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { listColumns, listSchemaObjects } from '../../lib/schema-commands'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
+import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import styles from './ForeignKeyEditor.module.css'
 
 interface ForeignKeyEditorProps {
@@ -10,6 +11,11 @@ interface ForeignKeyEditorProps {
 }
 
 const ACTION_OPTIONS = ['NO ACTION', 'CASCADE', 'SET NULL', 'RESTRICT']
+
+const ACTION_DROPDOWN_OPTIONS: DropdownOption[] = ACTION_OPTIONS.map((action) => ({
+  value: action,
+  label: action,
+}))
 
 export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
   const tabState = useTableDesignerStore((state) => state.tabs[tabId])
@@ -42,6 +48,22 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
     () => columns.map((column) => column.name).filter((name) => name.trim() !== ''),
     [columns]
   )
+
+  const sourceColumnOptions: DropdownOption[] = useMemo(
+    () => [
+      { value: '', label: 'Select column' },
+      ...columnNames.map((name) => ({ value: name, label: name })),
+    ],
+    [columnNames]
+  )
+
+  const referencedTableOptions: DropdownOption[] = useMemo(() => {
+    const placeholder: DropdownOption = {
+      value: '',
+      label: isTablesLoading ? 'Loading tables...' : 'Select table',
+    }
+    return [placeholder, ...referencedTables.map((t) => ({ value: t, label: t }))]
+  }, [isTablesLoading, referencedTables])
 
   useEffect(() => {
     if (!connectionId || !databaseName) {
@@ -302,70 +324,66 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                     />
                   </td>
                   <td className={styles.bodyCell}>
-                    <select
-                      value={foreignKey.sourceColumn}
-                      className={`${styles.cellSelect} ${
-                        isSelected ? styles.activeInput : styles.inactiveInput
-                      }`}
-                      data-testid={`fk-source-column-${fkIndex}`}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={(event) =>
-                        updateForeignKey(tabId, fkIndex, 'sourceColumn', event.target.value)
-                      }
-                    >
-                      <option value="">Select column</option>
-                      {columnNames.map((columnName) => (
-                        <option key={columnName} value={columnName}>
-                          {columnName}
-                        </option>
-                      ))}
-                    </select>
+                    <div onClick={(event) => event.stopPropagation()}>
+                      <Dropdown
+                        id={`fk-source-column-${tabId}-${fkIndex}`}
+                        ariaLabel="Source column"
+                        options={sourceColumnOptions}
+                        value={foreignKey.sourceColumn}
+                        data-testid={`fk-source-column-${fkIndex}`}
+                        onChange={(v) => updateForeignKey(tabId, fkIndex, 'sourceColumn', v)}
+                        triggerClassName={`${styles.cellSelect} ${
+                          isSelected ? styles.activeInput : styles.inactiveInput
+                        }`}
+                      />
+                    </div>
                   </td>
                   <td className={styles.bodyCell}>
-                    <select
-                      value={foreignKey.referencedTable}
-                      className={`${styles.cellSelect} ${
-                        isSelected ? styles.activeInput : styles.inactiveInput
-                      }`}
-                      data-testid={`fk-referenced-table-${fkIndex}`}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={(event) => {
-                        updateForeignKey(tabId, fkIndex, 'referencedTable', event.target.value)
-                        updateForeignKey(tabId, fkIndex, 'referencedColumn', '')
-                      }}
-                    >
-                      <option value="">
-                        {isTablesLoading ? 'Loading tables...' : 'Select table'}
-                      </option>
-                      {referencedTables.map((tableName) => (
-                        <option key={tableName} value={tableName}>
-                          {tableName}
-                        </option>
-                      ))}
-                    </select>
+                    <div onClick={(event) => event.stopPropagation()}>
+                      <Dropdown
+                        id={`fk-referenced-table-${tabId}-${fkIndex}`}
+                        ariaLabel="Referenced table"
+                        options={referencedTableOptions}
+                        value={foreignKey.referencedTable}
+                        data-testid={`fk-referenced-table-${fkIndex}`}
+                        onChange={(v) => {
+                          updateForeignKey(tabId, fkIndex, 'referencedTable', v)
+                          updateForeignKey(tabId, fkIndex, 'referencedColumn', '')
+                        }}
+                        triggerClassName={`${styles.cellSelect} ${
+                          isSelected ? styles.activeInput : styles.inactiveInput
+                        }`}
+                      />
+                    </div>
                   </td>
                   <td className={styles.bodyCell}>
                     {foreignKey.referencedTable !== '' && referencedColumnOptions.length > 0 ? (
-                      <select
-                        value={foreignKey.referencedColumn}
-                        className={`${styles.cellSelect} ${
-                          isSelected ? styles.activeInput : styles.inactiveInput
-                        }`}
-                        data-testid={`fk-referenced-column-${fkIndex}`}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) =>
-                          updateForeignKey(tabId, fkIndex, 'referencedColumn', event.target.value)
-                        }
-                      >
-                        <option value="">
-                          {isReferencedColumnLoading ? 'Loading columns...' : 'Select column'}
-                        </option>
-                        {referencedColumnOptions.map((columnName) => (
-                          <option key={columnName} value={columnName}>
-                            {columnName}
-                          </option>
-                        ))}
-                      </select>
+                      <div onClick={(event) => event.stopPropagation()}>
+                        <Dropdown
+                          id={`fk-referenced-column-${tabId}-${fkIndex}`}
+                          ariaLabel="Referenced column"
+                          options={[
+                            {
+                              value: '',
+                              label: isReferencedColumnLoading
+                                ? 'Loading columns...'
+                                : 'Select column',
+                            },
+                            ...referencedColumnOptions.map((columnName) => ({
+                              value: columnName,
+                              label: columnName,
+                            })),
+                          ]}
+                          value={foreignKey.referencedColumn}
+                          data-testid={`fk-referenced-column-${fkIndex}`}
+                          onChange={(v) =>
+                            updateForeignKey(tabId, fkIndex, 'referencedColumn', v)
+                          }
+                          triggerClassName={`${styles.cellSelect} ${
+                            isSelected ? styles.activeInput : styles.inactiveInput
+                          }`}
+                        />
+                      </div>
                     ) : (
                       <input
                         type="text"
@@ -383,42 +401,34 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                     )}
                   </td>
                   <td className={styles.bodyCell}>
-                    <select
-                      value={foreignKey.onDelete}
-                      className={`${styles.cellSelect} ${
-                        isSelected ? styles.activeInput : styles.inactiveInput
-                      }`}
-                      data-testid={`fk-on-delete-${fkIndex}`}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={(event) =>
-                        updateForeignKey(tabId, fkIndex, 'onDelete', event.target.value)
-                      }
-                    >
-                      {ACTION_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
+                    <div onClick={(event) => event.stopPropagation()}>
+                      <Dropdown
+                        id={`fk-on-delete-${tabId}-${fkIndex}`}
+                        ariaLabel="On delete"
+                        options={ACTION_DROPDOWN_OPTIONS}
+                        value={foreignKey.onDelete}
+                        data-testid={`fk-on-delete-${fkIndex}`}
+                        onChange={(v) => updateForeignKey(tabId, fkIndex, 'onDelete', v)}
+                        triggerClassName={`${styles.cellSelect} ${
+                          isSelected ? styles.activeInput : styles.inactiveInput
+                        }`}
+                      />
+                    </div>
                   </td>
                   <td className={styles.bodyCell}>
-                    <select
-                      value={foreignKey.onUpdate}
-                      className={`${styles.cellSelect} ${
-                        isSelected ? styles.activeInput : styles.inactiveInput
-                      }`}
-                      data-testid={`fk-on-update-${fkIndex}`}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={(event) =>
-                        updateForeignKey(tabId, fkIndex, 'onUpdate', event.target.value)
-                      }
-                    >
-                      {ACTION_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
+                    <div onClick={(event) => event.stopPropagation()}>
+                      <Dropdown
+                        id={`fk-on-update-${tabId}-${fkIndex}`}
+                        ariaLabel="On update"
+                        options={ACTION_DROPDOWN_OPTIONS}
+                        value={foreignKey.onUpdate}
+                        data-testid={`fk-on-update-${fkIndex}`}
+                        onChange={(v) => updateForeignKey(tabId, fkIndex, 'onUpdate', v)}
+                        triggerClassName={`${styles.cellSelect} ${
+                          isSelected ? styles.activeInput : styles.inactiveInput
+                        }`}
+                      />
+                    </div>
                   </td>
                   <td className={`${styles.bodyCell} ${styles.deleteCell}`}>
                     <Button

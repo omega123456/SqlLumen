@@ -815,7 +815,8 @@ for (const theme of themes) {
       await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
 
       // Select the detected table for editing
-      await page.getByTestId('edit-mode-dropdown').selectOption({ index: 1 })
+      await page.getByTestId('edit-mode-dropdown').click()
+      await page.getByRole('option').nth(1).click()
 
       // Wait for edit mode to apply — look for read-only column header lock icons
       await expect(
@@ -912,7 +913,8 @@ for (const theme of themes) {
       await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
 
       // Select the detected table for editing
-      await page.getByTestId('edit-mode-dropdown').selectOption({ index: 1 })
+      await page.getByTestId('edit-mode-dropdown').click()
+      await page.getByRole('option').nth(1).click()
 
       // Wait for edit mode to apply
       await expect(
@@ -1114,8 +1116,10 @@ for (const theme of themes) {
       await expect(page.getByTestId('filter-row')).toBeVisible({ timeout: APP_READY_MS })
 
       // Set values for the condition
-      await page.getByTestId('filter-column-select').selectOption('name')
-      await page.getByTestId('filter-operator-select').selectOption('LIKE')
+      await page.getByTestId('filter-column-select-0').click()
+      await page.getByRole('option', { name: 'name', exact: true }).click()
+      await page.getByTestId('filter-operator-select-0').click()
+      await page.getByRole('option', { name: 'LIKE', exact: true }).click()
       await page.getByTestId('filter-value-input').fill('%test%')
 
       // Blur any focused input for stable screenshot

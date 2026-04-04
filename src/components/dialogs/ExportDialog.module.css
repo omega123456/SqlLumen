@@ -87,7 +87,33 @@
   color: var(--on-surface);
 }
 
-/* Format selector */
+/* Format selector (Dropdown trigger — pairs with global .ui-dropdown) */
+.formatDropdownRoot {
+  width: 100%;
+}
+
+.formatDropdownTrigger {
+  width: 100%;
+  box-sizing: border-box;
+  border: none !important;
+  border-radius: 8px;
+  background: var(--surface-container-high) !important;
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  padding: 12px 12px 12px 16px !important;
+}
+
+.formatDropdownTrigger:hover:not(:disabled):not([aria-expanded='true']) {
+  border-color: transparent !important;
+}
+
+[data-theme='light'] .formatDropdownTrigger {
+  background: #f2f4f6 !important;
+  border-radius: 12px;
+  padding: 14px 12px 14px 16px !important;
+}
+
 .selectWrapper {
   position: relative;
 }

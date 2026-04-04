@@ -294,7 +294,8 @@ describe('IndexEditor', () => {
     seedStore()
     render(<IndexEditor tabId="tab-1" />)
 
-    await user.selectOptions(screen.getByTestId('index-type-1'), 'FULLTEXT')
+    await user.click(screen.getByTestId('index-type-1'))
+    await user.click(screen.getByRole('option', { name: 'FULLTEXT' }))
 
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.indexes[2]?.indexType

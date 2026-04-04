@@ -8,7 +8,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, fireEvent } from '@testing-library/react'
+import { render, fireEvent, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { NullableCellEditor, EnumCellEditor } from '../../../components/shared/grid-cell-editors'
 import type { CellEditorBaseProps } from '../../../components/shared/grid-cell-editors'
 import { getCellEditorForColumn } from '../../../components/shared/grid-column-editor-utils'
@@ -232,14 +233,16 @@ describe('EnumCellEditor — store syncing', () => {
     }
   }
 
-  it('calls syncCellValue when selecting a new enum value', () => {
+  it('calls syncCellValue when selecting a new enum value', async () => {
+    const user = userEvent.setup()
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const select = document.querySelector('.td-cell-editor-select') as HTMLSelectElement
-    expect(select).toBeTruthy()
+    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    expect(combo).toBeTruthy()
 
-    fireEvent.change(select, { target: { value: 'inactive' } })
+    await user.click(combo)
+    await user.click(screen.getByRole('option', { name: 'inactive' }))
 
     expect(props.syncCellValue).toHaveBeenCalledWith(
       'tab-1',
@@ -249,12 +252,14 @@ describe('EnumCellEditor — store syncing', () => {
     )
   })
 
-  it('calls onRowChange when selecting a new enum value', () => {
+  it('calls onRowChange when selecting a new enum value', async () => {
+    const user = userEvent.setup()
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const select = document.querySelector('.td-cell-editor-select') as HTMLSelectElement
-    fireEvent.change(select, { target: { value: 'inactive' } })
+    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    await user.click(combo)
+    await user.click(screen.getByRole('option', { name: 'inactive' }))
 
     expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_2: 'inactive' })
   })
@@ -283,8 +288,8 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const select = document.querySelector('.td-cell-editor-select') as HTMLSelectElement
-    fireEvent.keyDown(select, { key: 'Escape' })
+    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    fireEvent.keyDown(combo, { key: 'Escape' })
 
     expect(props.onClose).toHaveBeenCalledWith(false, false)
   })
@@ -293,8 +298,8 @@ describe('EnumCellEditor — store syncing', () => {
     const props = makeEnumProps()
     render(<EnumCellEditor {...props} />)
 
-    const select = document.querySelector('.td-cell-editor-select') as HTMLSelectElement
-    fireEvent.keyDown(select, { key: 'Tab' })
+    const combo = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    fireEvent.keyDown(combo, { key: 'Tab' })
 
     expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_2: 'active' }, true)
   })

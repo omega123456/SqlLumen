@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { GridColumnDescriptor, RowEditState } from '../../../types/shared-data-view'
 
 // Mock DateTimePicker — avoids portal + react-datepicker complexity in unit tests
@@ -154,11 +155,12 @@ const enumColumns: GridColumnDescriptor[] = [
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // Set up clipboard mock
-  Object.assign(navigator, {
-    clipboard: {
+  Object.defineProperty(navigator, 'clipboard', {
+    value: {
       writeText: vi.fn().mockResolvedValue(undefined),
     },
+    writable: true,
+    configurable: true,
   })
 })
 
@@ -634,10 +636,12 @@ describe('BaseFormView — copy button', () => {
 
   it('copy button logs error on clipboard failure', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    Object.assign(navigator, {
-      clipboard: {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
         writeText: vi.fn().mockRejectedValue(new Error('Clipboard denied')),
       },
+      writable: true,
+      configurable: true,
     })
     renderForm()
     fireEvent.click(screen.getByTestId('btn-copy-name'))
@@ -661,42 +665,43 @@ describe('BaseFormView — copy button', () => {
 })
 
 describe('BaseFormView — enum fields', () => {
-  it('enum field renders as SELECT element', () => {
+  it('enum field renders as combobox', () => {
     renderForm({
       columns: enumColumns,
       currentRow: [1, 'active'],
       onSave: vi.fn(),
     })
     const statusInput = screen.getByTestId('form-input-status')
-    expect(statusInput.tagName).toBe('SELECT')
+    expect(statusInput).toHaveAttribute('role', 'combobox')
   })
 
-  it('enum select includes all enum values as options', () => {
+  it('enum select includes all enum values as options', async () => {
+    const user = userEvent.setup()
     renderForm({
       columns: enumColumns,
       currentRow: [1, 'active'],
       onSave: vi.fn(),
     })
-    const statusInput = screen.getByTestId('form-input-status') as HTMLSelectElement
-    const options = Array.from(statusInput.querySelectorAll('option'))
-    const values = options.map((o) => o.value)
-    expect(values).toContain('active')
-    expect(values).toContain('disabled')
+    await user.click(screen.getByTestId('form-input-status'))
+    const names = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))
+    expect(names).toContain('active')
+    expect(names).toContain('disabled')
   })
 
-  it('nullable enum includes NULL sentinel option', () => {
+  it('nullable enum includes NULL sentinel option', async () => {
+    const user = userEvent.setup()
     renderForm({
       columns: enumColumns,
       currentRow: [1, 'active'],
       onSave: vi.fn(),
     })
-    const statusInput = screen.getByTestId('form-input-status') as HTMLSelectElement
-    const options = Array.from(statusInput.querySelectorAll('option'))
-    const values = options.map((o) => o.value)
-    expect(values).toContain('__MYSQL_CLIENT_ENUM_NULL__')
+    await user.click(screen.getByTestId('form-input-status'))
+    const names = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))
+    expect(names).toContain('NULL')
   })
 
-  it('selecting NULL sentinel in enum calls onUpdateCell with null', () => {
+  it('selecting NULL sentinel in enum calls onUpdateCell with null', async () => {
+    const user = userEvent.setup()
     const onUpdateCell = vi.fn()
     renderForm({
       columns: enumColumns,
@@ -704,13 +709,13 @@ describe('BaseFormView — enum fields', () => {
       onSave: vi.fn(),
       onUpdateCell,
     })
-    const statusInput = screen.getByTestId('form-input-status')
-    fireEvent.focus(statusInput)
-    fireEvent.change(statusInput, { target: { value: '__MYSQL_CLIENT_ENUM_NULL__' } })
+    await user.click(screen.getByTestId('form-input-status'))
+    await user.click(screen.getByRole('option', { name: 'NULL' }))
     expect(onUpdateCell).toHaveBeenCalledWith('status', null)
   })
 
-  it('selecting a regular enum value calls onUpdateCell', () => {
+  it('selecting a regular enum value calls onUpdateCell', async () => {
+    const user = userEvent.setup()
     const onUpdateCell = vi.fn()
     renderForm({
       columns: enumColumns,
@@ -718,9 +723,8 @@ describe('BaseFormView — enum fields', () => {
       onSave: vi.fn(),
       onUpdateCell,
     })
-    const statusInput = screen.getByTestId('form-input-status')
-    fireEvent.focus(statusInput)
-    fireEvent.change(statusInput, { target: { value: 'disabled' } })
+    await user.click(screen.getByTestId('form-input-status'))
+    await user.click(screen.getByRole('option', { name: 'disabled' }))
     expect(onUpdateCell).toHaveBeenCalledWith('status', 'disabled')
   })
 })

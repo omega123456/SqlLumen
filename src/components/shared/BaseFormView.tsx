@@ -24,6 +24,7 @@ import {
 import { formatCellValue } from '../../lib/result-cell-utils'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
+import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { DateTimePicker } from '../table-data/DateTimePicker'
 import { ENUM_NULL_SENTINEL } from '../table-data/enum-field-utils'
 import type { BaseFormViewProps, GridColumnDescriptor } from '../../types/shared-data-view'
@@ -39,7 +40,7 @@ import styles from './BaseFormView.module.css'
  * Unlike `formatCellValue()` from result-cell-utils (which returns the string
  * "NULL" for null values, appropriate for read-only display), this helper
  * returns an empty string for null/undefined so that `<input value={…}>` and
- * `<select value={…}>` receive a valid controlled-component value.
+ * enum `<Dropdown value={…}>` receive a valid controlled-component value.
  */
 function displayValue(value: unknown): string {
   if (value === null || value === undefined) return ''
@@ -317,6 +318,17 @@ function FormField({
   const isEditable = col.editable && hasEditCapability && !isBlobField
   const isTemporalEditable = temporalType !== null && isEditable
   const isEnumEditable = !!(col.enumValues && col.enumValues.length > 0) && isEditable
+
+  const enumDropdownOptions: DropdownOption[] = useMemo(() => {
+    const out: DropdownOption[] = []
+    if (col.isNullable) {
+      out.push({ value: ENUM_NULL_SENTINEL, label: 'NULL' })
+    }
+    for (const ev of col.enumValues ?? []) {
+      out.push({ value: ev, label: ev })
+    }
+    return out
+  }, [col.enumValues, col.isNullable])
   const isFieldReadonly = !isEditable
 
   // Label suffix — PK takes priority over UK
@@ -369,19 +381,12 @@ function FormField({
             {formatCellValue(rawValue).displayValue}
           </div>
         ) : isEnumEditable ? (
-          <select
-            className={[
-              styles.fieldInput,
-              styles.fieldSelect,
-              isModified ? styles.fieldInputModified : '',
-              isNull ? styles.fieldInputNull : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
+          <Dropdown
+            id={`form-enum-${col.key}`}
+            ariaLabel={col.displayName}
+            options={enumDropdownOptions}
             value={isNull ? ENUM_NULL_SENTINEL : displayValue(rawValue)}
-            onFocus={onInputFocus}
-            onChange={(e) => {
-              const nextValue = e.target.value
+            onChange={(nextValue) => {
               if (nextValue === ENUM_NULL_SENTINEL) {
                 onEnsureEditing()
                 onInputChange(col.key, null)
@@ -389,15 +394,17 @@ function FormField({
               }
               onInputChange(col.key, nextValue)
             }}
+            onTriggerFocus={onInputFocus}
             data-testid={`form-input-${col.displayName}`}
-          >
-            {col.isNullable && <option value={ENUM_NULL_SENTINEL}>NULL</option>}
-            {(col.enumValues ?? []).map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            triggerClassName={[
+              styles.fieldInput,
+              styles.fieldSelect,
+              isModified ? styles.fieldInputModified : '',
+              isNull ? styles.fieldInputNull : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          />
         ) : (
           <input
             type="text"

@@ -5,8 +5,9 @@
  * Purely presentational — no store imports.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { CaretLeft, CaretRight } from '@phosphor-icons/react'
+import { Dropdown, type DropdownOption } from '../../common/Dropdown'
 import type { PaginationGroupProps } from '../../../types/shared-data-view'
 import styles from './toolbar-items.module.css'
 
@@ -21,9 +22,14 @@ export function PaginationGroup({
   onPrevPage,
   onNextPage,
 }: PaginationGroupProps) {
+  const pageSizeOptions: DropdownOption[] = useMemo(
+    () => PAGE_SIZE_OPTIONS.map((size) => ({ value: String(size), label: String(size) })),
+    []
+  )
+
   const handlePageSizeChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      onPageSizeChange(parseInt(e.target.value, 10))
+    (value: string) => {
+      onPageSizeChange(parseInt(value, 10))
     },
     [onPageSizeChange]
   )
@@ -33,20 +39,16 @@ export function PaginationGroup({
 
   return (
     <div className={styles.paginationGroup} data-testid="pagination-group">
-      <select
-        className={styles.pageSizeSelect}
-        value={pageSize}
+      <Dropdown
+        id="page-size-dropdown"
+        ariaLabel="Page size"
+        options={pageSizeOptions}
+        value={String(pageSize)}
         onChange={handlePageSizeChange}
         disabled={disabled}
         data-testid="page-size-select"
-        aria-label="Page size"
-      >
-        {PAGE_SIZE_OPTIONS.map((size) => (
-          <option key={size} value={size}>
-            {size}
-          </option>
-        ))}
-      </select>
+        triggerClassName={styles.pageSizeSelect}
+      />
 
       <div className={styles.pagination}>
         <button

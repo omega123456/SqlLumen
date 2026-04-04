@@ -211,11 +211,13 @@ describe('ForeignKeyEditor', () => {
   })
 
   it('source column dropdown lists current designer columns', async () => {
+    const user = userEvent.setup()
     seedStore()
     render(<ForeignKeyEditor tabId="tab-1" />)
 
-    const select = (await screen.findByTestId('fk-source-column-0')) as HTMLSelectElement
-    expect(Array.from(select.options).map((option) => option.value)).toEqual(['', 'id', 'role_id'])
+    await user.click(await screen.findByTestId('fk-source-column-0'))
+    const labels = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))
+    expect(labels).toEqual(['Select column', 'id', 'role_id'])
   })
 
   it('composite FK row is shown as read-only', async () => {
@@ -277,8 +279,9 @@ describe('ForeignKeyEditor', () => {
     seedStore()
     render(<ForeignKeyEditor tabId="tab-1" />)
 
-    const tableSelect = (await screen.findByTestId('fk-referenced-table-0')) as HTMLSelectElement
-    await user.selectOptions(tableSelect, 'teams')
+    const tableSelect = await screen.findByTestId('fk-referenced-table-0')
+    await user.click(tableSelect)
+    await user.click(screen.getByRole('option', { name: 'teams' }))
 
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.foreignKeys[0]
@@ -293,8 +296,10 @@ describe('ForeignKeyEditor', () => {
     seedStore()
     render(<ForeignKeyEditor tabId="tab-1" />)
 
-    await user.selectOptions(await screen.findByTestId('fk-on-delete-0'), 'SET NULL')
-    await user.selectOptions(screen.getByTestId('fk-on-update-0'), 'CASCADE')
+    await user.click(await screen.findByTestId('fk-on-delete-0'))
+    await user.click(screen.getByRole('option', { name: 'SET NULL' }))
+    await user.click(screen.getByTestId('fk-on-update-0'))
+    await user.click(screen.getByRole('option', { name: 'CASCADE' }))
 
     expect(
       useTableDesignerStore.getState().tabs['tab-1']?.currentSchema.foreignKeys[0]
@@ -312,10 +317,10 @@ describe('ForeignKeyEditor', () => {
       expect(mockListColumns).toHaveBeenCalledWith('conn-1', 'app_db', 'roles')
     })
 
-    const referencedColumn = (await screen.findByTestId(
-      'fk-referenced-column-0'
-    )) as HTMLSelectElement
-    expect(Array.from(referencedColumn.options).map((option) => option.value)).toEqual(['', 'id'])
+    const user = userEvent.setup()
+    await user.click(await screen.findByTestId('fk-referenced-column-0'))
+    const labels = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))
+    expect(labels).toEqual(['Select column', 'id'])
   })
 
   it('falls back to text input when referenced table columns are unavailable', async () => {
@@ -338,12 +343,11 @@ describe('ForeignKeyEditor', () => {
   })
 
   it('logs and recovers when referenced tables fail to load', async () => {
+    const user = userEvent.setup()
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockListSchemaObjects.mockRejectedValue(new Error('tables failed'))
     seedStore()
     render(<ForeignKeyEditor tabId="tab-1" />)
-
-    const tableSelect = (await screen.findByTestId('fk-referenced-table-0')) as HTMLSelectElement
 
     await waitFor(() => {
       expect(errorSpy).toHaveBeenCalledWith(
@@ -352,7 +356,9 @@ describe('ForeignKeyEditor', () => {
       )
     })
 
-    expect(Array.from(tableSelect.options).map((option) => option.value)).toEqual([''])
+    await user.click(await screen.findByTestId('fk-referenced-table-0'))
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    expect(screen.getByRole('option')).toHaveAccessibleName('Select table')
   })
 
   it('logs and falls back when referenced columns fail to load', async () => {

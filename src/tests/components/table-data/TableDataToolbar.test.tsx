@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
@@ -263,22 +264,24 @@ describe('TableDataToolbar', () => {
     expect(screen.queryByTestId('readonly-badge')).not.toBeInTheDocument()
   })
 
-  it('page size selector has correct options', () => {
+  it('page size selector has correct options', async () => {
+    const user = userEvent.setup()
     setupConnection()
     setupTabState()
     render(<TableDataToolbar tabId="tab-1" />)
-    const select = screen.getByTestId('page-size-select') as HTMLSelectElement
-    const options = Array.from(select.options).map((o) => o.value)
-    expect(options).toEqual(['100', '500', '1000', '5000'])
+    await user.click(screen.getByTestId('page-size-select'))
+    const labels = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))
+    expect(labels).toEqual(['100', '500', '1000', '5000'])
   })
 
   it('page size change updates store', async () => {
+    const user = userEvent.setup()
     setupConnection()
     setupTabState({ pageSize: 1000 })
     render(<TableDataToolbar tabId="tab-1" />)
     const callsBefore = vi.mocked(fetchTableData).mock.calls.length
-    const select = screen.getByTestId('page-size-select') as HTMLSelectElement
-    fireEvent.change(select, { target: { value: '500' } })
+    await user.click(screen.getByTestId('page-size-select'))
+    await user.click(screen.getByRole('option', { name: '500' }))
     await waitFor(() => {
       expect(vi.mocked(fetchTableData).mock.calls.length).toBeGreaterThan(callsBefore)
     })

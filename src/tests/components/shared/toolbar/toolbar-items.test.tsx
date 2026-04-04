@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ViewModeGroup } from '../../../../components/shared/toolbar/ViewModeGroup'
 import { PaginationGroup } from '../../../../components/shared/toolbar/PaginationGroup'
 import { ExportButton } from '../../../../components/shared/toolbar/ExportButton'
@@ -105,7 +106,8 @@ describe('ViewModeGroup', () => {
 // ---------------------------------------------------------------------------
 
 describe('PaginationGroup', () => {
-  it('renders page size select with all options', () => {
+  it('renders page size select with all options', async () => {
+    const user = userEvent.setup()
     render(
       <PaginationGroup
         currentPage={1}
@@ -117,16 +119,13 @@ describe('PaginationGroup', () => {
       />
     )
 
-    const select = screen.getByTestId('page-size-select') as HTMLSelectElement
-    expect(select).toBeInTheDocument()
-    expect(select.value).toBe('1000')
+    const combo = screen.getByTestId('page-size-select')
+    expect(combo).toBeInTheDocument()
+    expect(combo).toHaveTextContent('1000')
 
-    const options = select.querySelectorAll('option')
-    expect(options).toHaveLength(4)
-    expect(options[0].value).toBe('100')
-    expect(options[1].value).toBe('500')
-    expect(options[2].value).toBe('1000')
-    expect(options[3].value).toBe('5000')
+    await user.click(combo)
+    const labels = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))
+    expect(labels).toEqual(['100', '500', '1000', '5000'])
   })
 
   it('renders page indicator text', () => {
@@ -243,7 +242,8 @@ describe('PaginationGroup', () => {
     expect(onNextPage).toHaveBeenCalledOnce()
   })
 
-  it('calls onPageSizeChange with parsed number', () => {
+  it('calls onPageSizeChange with parsed number', async () => {
+    const user = userEvent.setup()
     const onPageSizeChange = vi.fn()
     render(
       <PaginationGroup
@@ -256,7 +256,8 @@ describe('PaginationGroup', () => {
       />
     )
 
-    fireEvent.change(screen.getByTestId('page-size-select'), { target: { value: '500' } })
+    await user.click(screen.getByTestId('page-size-select'))
+    await user.click(screen.getByRole('option', { name: '500' }))
     expect(onPageSizeChange).toHaveBeenCalledWith(500)
   })
 

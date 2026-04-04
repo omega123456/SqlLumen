@@ -6,15 +6,17 @@
  * - Plus explicit callback props for store updates
  *
  * - NullableCellEditor: text input with optional NULL toggle
- * - EnumCellEditor: select dropdown with optional NULL toggle
+ * - EnumCellEditor: Dropdown with optional NULL toggle
  *
  * Also exports getCellEditorForColumn — a factory that selects the correct
  * editor (DateTimeCellEditor / EnumCellEditor / NullableCellEditor) based on
  * column metadata, used by both TableDataGrid and ResultGridView.
  */
 
-import { useCallback, useState, useRef, useEffect } from 'react'
+import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { TableDataColumnMeta } from '../../types/schema'
+import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { ENUM_NULL_SENTINEL, getEnumFallbackValue } from '../table-data/enum-field-utils'
 import { useEditorCallbacks } from './editor-callbacks-context'
 import styles from './grid-cell-editors.module.css'
@@ -195,7 +197,7 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
 
   const [isNull, setIsNull] = useState(initialNull)
   const [value, setValue] = useState(initialValue ?? getEnumFallbackValue(props.columnMeta))
-  const selectRef = useRef<HTMLSelectElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
   // Resolve callbacks: prefer props when tabId is set, fallback to context
@@ -209,7 +211,7 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
     : (contextCallbacks?.syncCellValue ?? props.syncCellValue)
 
   useEffect(() => {
-    selectRef.current?.focus()
+    triggerRef.current?.focus()
   }, [])
 
   const syncToStore = useCallback(
@@ -239,7 +241,7 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
       setValue(fallbackValue)
       onRowChange({ ...row, [fieldName]: fallbackValue })
       syncToStore(fallbackValue)
-      setTimeout(() => selectRef.current?.focus(), 0)
+      setTimeout(() => triggerRef.current?.focus(), 0)
     } else {
       setIsNull(true)
       onRowChange({ ...row, [fieldName]: null })
@@ -247,59 +249,84 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
     }
   }, [props.columnMeta, initialValue, isNull, onRowChange, row, fieldName, syncToStore])
 
-  const handleBlur = useCallback(
-    (relatedTarget: EventTarget | null) => {
-      if (relatedTarget instanceof Node && wrapperRef.current?.contains(relatedTarget)) {
+  const enumOptions: DropdownOption[] = useMemo(() => {
+    const out: DropdownOption[] = []
+    if (isNullable) {
+      out.push({ value: ENUM_NULL_SENTINEL, label: 'NULL' })
+    }
+    for (const ev of enumValues) {
+      out.push({ value: ev, label: ev })
+    }
+    return out
+  }, [enumValues, isNullable])
+
+  const handleCommitKeys = useCallback(
+    (e: ReactKeyboardEvent) => {
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
+        onClose(true, true)
+        e.preventDefault()
         return
       }
-      // Commit without refocusing the grid
+      if (e.key === 'Escape') {
+        setIsNull(initialNull)
+        setValue(initialValue ?? getEnumFallbackValue(props.columnMeta))
+        syncToStore(initialValue)
+        onClose(false, false)
+        e.preventDefault()
+      }
+    },
+    [
+      fieldName,
+      initialNull,
+      initialValue,
+      isNull,
+      onClose,
+      onRowChange,
+      props.columnMeta,
+      row,
+      syncToStore,
+      value,
+    ]
+  )
+
+  const handleContainerBlur = useCallback(
+    (e: React.FocusEvent<HTMLDivElement>) => {
+      const related = e.relatedTarget
+      if (related instanceof Node && wrapperRef.current?.contains(related)) {
+        return
+      }
       onClose(true, false)
     },
     [onClose]
   )
 
   return (
-    <div ref={wrapperRef} className={styles.cellEditorWrapper}>
+    <div
+      ref={wrapperRef}
+      className={styles.cellEditorWrapper}
+      onBlur={handleContainerBlur}
+    >
       <div className="td-cell-editor-shell">
-        <select
-          ref={selectRef}
-          className="td-cell-editor-select"
+        <Dropdown
+          ref={triggerRef}
+          id={`enum-cell-${fieldName}`}
+          ariaLabel={fieldName}
+          options={enumOptions}
           value={isNull ? ENUM_NULL_SENTINEL : value}
-          onBlur={(e) => handleBlur(e.relatedTarget)}
-          onChange={(e) => {
-            if (e.target.value === ENUM_NULL_SENTINEL) {
+          onChange={(nextValue) => {
+            if (nextValue === ENUM_NULL_SENTINEL) {
               setIsNull(true)
               onRowChange({ ...row, [fieldName]: null })
               syncToStore(null)
               return
             }
-            handleChange(e.target.value)
+            handleChange(nextValue)
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Tab' || e.key === 'Enter') {
-              // Commit and focus grid for navigation
-              onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
-              onClose(true, true)
-              e.preventDefault()
-              return
-            }
-            if (e.key === 'Escape') {
-              // Restore original value and sync to store
-              setIsNull(initialNull)
-              setValue(initialValue ?? getEnumFallbackValue(props.columnMeta))
-              syncToStore(initialValue)
-              // Discard edit, don't refocus grid
-              onClose(false, false)
-            }
-          }}
-        >
-          {isNullable && <option value={ENUM_NULL_SENTINEL}>NULL</option>}
-          {enumValues.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+          onTriggerKeyDown={handleCommitKeys}
+          onListKeyDown={handleCommitKeys}
+          triggerClassName="td-cell-editor-select"
+        />
         {isNullable && (
           <button
             type="button"

@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
+import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { DialogShell } from './DialogShell'
 import { exportResults } from '../../lib/export-commands'
 import type { ExportFormat } from '../../types/schema'
@@ -84,6 +85,16 @@ export default function ExportDialog({
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const formatDropdownOptions: DropdownOption[] = useMemo(
+    () =>
+      FORMAT_KEYS.map((key) => ({
+        value: key,
+        label: EXPORT_FORMAT_CONFIG[key].label,
+        description: EXPORT_FORMAT_CONFIG[key].description,
+      })),
+    []
+  )
+
   const estimatedSizeText = useMemo(() => {
     const estimatedBytes = totalRows * columnCount * 20
     if (estimatedBytes > 1_000_000) {
@@ -158,36 +169,19 @@ export default function ExportDialog({
         <div className={styles.body}>
           {/* Format */}
           <div className={styles.fieldGroup}>
-            <label className={styles.label} htmlFor="export-format">
+            <label className={styles.label} id="export-format-label">
               Format
             </label>
-            <div className={styles.selectWrapper}>
-              <select
-                id="export-format"
-                className={styles.select}
-                value={format}
-                onChange={(e) => setFormat(e.target.value as ExportFormat)}
-                data-testid="export-format-select"
-              >
-                {FORMAT_KEYS.map((key) => (
-                  <option key={key} value={key}>
-                    {EXPORT_FORMAT_CONFIG[key].label}
-                  </option>
-                ))}
-              </select>
-              <span className={styles.selectChevron} aria-hidden="true">
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </span>
-            </div>
+            <Dropdown
+              id="export-format"
+              labelledBy="export-format-label"
+              options={formatDropdownOptions}
+              value={format}
+              onChange={(v) => setFormat(v as ExportFormat)}
+              data-testid="export-format-select"
+              className={styles.formatDropdownRoot}
+              triggerClassName={styles.formatDropdownTrigger}
+            />
           </div>
 
           {/* Destination */}

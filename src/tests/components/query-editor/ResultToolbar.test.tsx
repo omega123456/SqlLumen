@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
 import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
@@ -347,15 +348,16 @@ describe('ResultToolbar', () => {
     expect(screen.getByTestId('page-size-select')).toBeInTheDocument()
   })
 
-  it('page size selector has correct options', () => {
+  it('page size selector has correct options', async () => {
+    const user = userEvent.setup()
     setupTabState(tabId, {
       status: 'success',
       columns: [{ name: 'id', dataType: 'INT' }],
     })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
-    const select = screen.getByTestId('page-size-select') as HTMLSelectElement
-    const options = Array.from(select.options).map((o) => o.value)
-    expect(options).toEqual(['100', '500', '1000', '5000'])
+    await user.click(screen.getByTestId('page-size-select'))
+    const labels = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label'))
+    expect(labels).toEqual(['100', '500', '1000', '5000'])
   })
 
   it('does not show page size selector for DML results', () => {
@@ -437,7 +439,8 @@ describe('ResultToolbar', () => {
       expect(requestNavSpy).toHaveBeenCalledWith(tabId, expect.any(Function))
     })
 
-    it('defers page size change via requestNavigationAction when edits are pending', () => {
+    it('defers page size change via requestNavigationAction when edits are pending', async () => {
+      const user = userEvent.setup()
       const requestNavSpy = vi.fn()
       setupTabState(tabId, {
         status: 'success',
@@ -457,9 +460,8 @@ describe('ResultToolbar', () => {
       useQueryStore.setState({ requestNavigationAction: requestNavSpy })
 
       render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
-      fireEvent.change(screen.getByTestId('page-size-select'), {
-        target: { value: '500' },
-      })
+      await user.click(screen.getByTestId('page-size-select'))
+      await user.click(screen.getByRole('option', { name: '500' }))
 
       expect(requestNavSpy).toHaveBeenCalledWith(tabId, expect.any(Function))
     })
