@@ -1,4 +1,11 @@
-import { ArrowDown, ArrowUp, DotsSixVertical, PlusCircle, Trash } from '@phosphor-icons/react'
+import {
+  ArrowDown,
+  ArrowUp,
+  CaretDown,
+  DotsSixVertical,
+  PlusCircle,
+  Trash,
+} from '@phosphor-icons/react'
 import {
   useEffect,
   useMemo,
@@ -43,6 +50,13 @@ const TYPE_DROPDOWN_OPTIONS: DropdownOption[] = MYSQL_TYPES.map((type) => ({
   description: type.group,
 }))
 
+const DEFAULT_MODE_OPTIONS: DropdownOption[] = [
+  { value: 'NO_DEFAULT', label: 'No default' },
+  { value: 'NULL_DEFAULT', label: 'NULL' },
+  { value: 'LITERAL', label: 'Custom' },
+  { value: 'EXPRESSION', label: 'Expression' },
+]
+
 type ColumnFieldKey = keyof Pick<
   TableDesignerColumnDef,
   | 'name'
@@ -78,22 +92,6 @@ function isTypeWithoutLength(type: string): boolean {
 
 function isNumericType(type: string): boolean {
   return NUMERIC_TYPE_SET.has(type.trim().toUpperCase())
-}
-
-function defaultLabel(defaultValue: DefaultValueModel): string {
-  switch (defaultValue.tag) {
-    case 'NULL_DEFAULT':
-      return 'NULL'
-    case 'LITERAL':
-    case 'EXPRESSION':
-      return defaultValue.value || '(literal)'
-    default:
-      return '—'
-  }
-}
-
-function canOpenDefaultPopover(defaultValue: DefaultValueModel): boolean {
-  return defaultValue.tag !== 'EXPRESSION'
 }
 
 function stripSignedness(modifier: string | null | undefined): string {
@@ -193,10 +191,7 @@ function CellFrame({
   children: React.ReactNode
 }) {
   return (
-    <div
-      className={`${styles.cellFrame} ${modified ? styles.modifiedCell : ''}`}
-      data-testid={testId}
-    >
+    <div className={styles.cellFrame} data-testid={testId}>
       {modified && (
         <span className={styles.modifiedTriangle} aria-hidden data-testid={`${testId}-modified`} />
       )}
@@ -214,12 +209,15 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
-  const [defaultPopoverIndex, setDefaultPopoverIndex] = useState<number | null>(null)
+  const [defaultModeOverrideIndex, setDefaultModeOverrideIndex] = useState<number | null>(null)
   const [activeCell, setActiveCell] = useState<ActiveCell | null>(null)
   const [pendingFocusCell, setPendingFocusCell] = useState<ActiveCell | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const editStartValuesRef = useRef<Record<string, string>>({})
+  const defaultOverrideTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const defaultCellBlurTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
+  const defaultOverrideOpenedRef = useRef(false)
 
   const columns = tabState?.currentSchema.columns ?? []
   const validationErrors = tabState?.validationErrors ?? {}
@@ -231,14 +229,6 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
 
     return Math.min(selectedIndex, columns.length - 1)
   }, [columns.length, selectedIndex])
-
-  const effectiveDefaultPopoverIndex = useMemo(() => {
-    if (defaultPopoverIndex === null) {
-      return null
-    }
-
-    return defaultPopoverIndex < columns.length ? defaultPopoverIndex : null
-  }, [columns.length, defaultPopoverIndex])
 
   const canMoveUp = effectiveSelectedIndex !== null && effectiveSelectedIndex > 0
   const canMoveDown = effectiveSelectedIndex !== null && effectiveSelectedIndex < columns.length - 1
@@ -352,6 +342,22 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     delete editStartValuesRef.current[`${rowIndex}:${cellKey}`]
   }
 
+  const scheduleDefaultCellBlur = (columnIndex: number) => {
+    const timer = setTimeout(() => {
+      clearEditStartValue(columnIndex, 'default')
+      defaultCellBlurTimersRef.current.delete(columnIndex)
+    }, 0)
+    defaultCellBlurTimersRef.current.set(columnIndex, timer)
+  }
+
+  const cancelDefaultCellBlur = (columnIndex: number) => {
+    const timer = defaultCellBlurTimersRef.current.get(columnIndex)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      defaultCellBlurTimersRef.current.delete(columnIndex)
+    }
+  }
+
   const revertEditableField = (rowIndex: number, cellKey: EditableCellKey) => {
     const originalValue = editStartValuesRef.current[`${rowIndex}:${cellKey}`]
     if (originalValue === undefined) {
@@ -371,12 +377,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
       case 'comment':
         updateColumn(tabId, rowIndex, 'comment', originalValue)
         break
-      case 'default':
-        updateColumn(tabId, rowIndex, 'defaultValue', {
-          tag: 'LITERAL',
-          value: originalValue,
-        })
+      case 'default': {
+        const baseline = JSON.parse(originalValue) as DefaultValueModel
+        updateColumn(tabId, rowIndex, 'defaultValue', baseline)
         break
+      }
       default:
         break
     }
@@ -444,9 +449,39 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     }
   }, [columns.length, pendingFocusCell])
 
+  useEffect(() => {
+    if (defaultModeOverrideIndex !== null) {
+      defaultOverrideOpenedRef.current = false
+      const raf = requestAnimationFrame(() => {
+        const trigger = defaultOverrideTriggerRef.current
+        if (trigger) {
+          trigger.focus()
+          trigger.click()
+        }
+      })
+      return () => cancelAnimationFrame(raf)
+    }
+  }, [defaultModeOverrideIndex])
+
+  useEffect(() => {
+    const timers = defaultCellBlurTimersRef.current
+    return () => {
+      timers.forEach(clearTimeout)
+      timers.clear()
+    }
+  }, [])
+
   if (!tabState) {
     return null
   }
+
+  // Returns true if this cell is currently in active edit mode
+  const isActiveCellFn = (rowIndex: number, cellKey: string) =>
+    activeCell?.rowIndex === rowIndex && activeCell?.cellKey === cellKey
+
+  // Returns the CSS class (active or inactive) for a cell input
+  const getCellInputClass = (rowIndex: number, cellKey: string) =>
+    isActiveCellFn(rowIndex, cellKey) ? styles.activeInput : styles.inactiveInput
 
   const handleAddColumn = () => {
     addColumn(tabId)
@@ -454,8 +489,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
   }
 
   const handleDeleteAtIndex = (columnIndex: number) => {
+    cancelDefaultCellBlur(columnIndex)
+    defaultCellBlurTimersRef.current.forEach(clearTimeout)
+    defaultCellBlurTimersRef.current.clear()
     deleteColumn(tabId, columnIndex)
-    setDefaultPopoverIndex((current) => (current === columnIndex ? null : current))
+    setDefaultModeOverrideIndex((current) => (current === columnIndex ? null : current))
 
     setSelectedIndex((current) => {
       if (current === null) {
@@ -482,11 +520,6 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     const nextIndex = effectiveSelectedIndex + direction
     reorderColumn(tabId, effectiveSelectedIndex, nextIndex)
     setSelectedIndex(nextIndex)
-  }
-
-  const handleDefaultChoice = (columnIndex: number, nextValue: DefaultValueModel) => {
-    updateColumn(tabId, columnIndex, 'defaultValue', nextValue)
-    setDefaultPopoverIndex(null)
   }
 
   return (
@@ -555,19 +588,39 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
               const lengthDisabled = isTypeWithoutLength(column.type)
               const signednessDisabled = !supportsSignedness(column.type)
               const autoIncrementEnabled = column.isPrimaryKey && isNumericType(column.type)
-              const defaultValueButtonVisible = column.defaultValue.tag !== 'LITERAL'
               const signednessValue = getSignednessValue(column.type, column.typeModifier)
+
+              const isDefaultOverride = defaultModeOverrideIndex === columnIndex
+              const defaultMode = column.defaultValue.tag
+              const defaultText = 'value' in column.defaultValue ? column.defaultValue.value : ''
+              const showDefaultDropdown =
+                isDefaultOverride || defaultMode === 'NO_DEFAULT' || defaultMode === 'NULL_DEFAULT'
+
+              const captureDefaultBaseline = () => {
+                cancelDefaultCellBlur(columnIndex)
+                const key = `${columnIndex}:default`
+                if (editStartValuesRef.current[key] === undefined) {
+                  setEditStartValue(columnIndex, 'default', JSON.stringify(column.defaultValue))
+                }
+              }
+
+              const applyDefaultModeChange = (nextMode: string) => {
+                let newDefault: DefaultValueModel
+                if (nextMode === 'NO_DEFAULT') newDefault = { tag: 'NO_DEFAULT' }
+                else if (nextMode === 'NULL_DEFAULT') newDefault = { tag: 'NULL_DEFAULT' }
+                else if (nextMode === 'LITERAL') newDefault = { tag: 'LITERAL', value: defaultText }
+                else newDefault = { tag: 'EXPRESSION', value: defaultText }
+                setDefaultModeOverrideIndex(null)
+                updateColumn(tabId, columnIndex, 'defaultValue', newDefault)
+                if (nextMode === 'LITERAL' || nextMode === 'EXPRESSION') {
+                  setPendingFocusCell({ rowIndex: columnIndex, cellKey: 'default' })
+                }
+              }
 
               return (
                 <tr
                   key={`${column.originalName || 'new'}-${columnIndex}`}
-                  className={`${styles.row} ${
-                    isSelected
-                      ? styles.selectedRow
-                      : columnIndex % 2 === 0
-                        ? styles.evenRow
-                        : styles.oddRow
-                  }`}
+                  className={`${styles.row} ${isSelected ? styles.selectedRow : ''}`}
                   data-testid={`column-row-${columnIndex}`}
                   draggable={true}
                   onClick={() => setSelectedIndex(columnIndex)}
@@ -615,12 +668,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                         variant="tableCell"
                         value={column.name}
                         invalid={!!nameError}
-                        className={`${
-                          isSelected ||
-                          (activeCell?.rowIndex === columnIndex && activeCell.cellKey === 'name')
-                            ? styles.activeInput
-                            : styles.inactiveInput
-                        }`}
+                        className={
+                          isSelected ? styles.activeInput : getCellInputClass(columnIndex, 'name')
+                        }
                         aria-invalid={nameError ? 'true' : 'false'}
                         title={nameError}
                         data-row-index={columnIndex}
@@ -694,10 +744,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                         value={column.length}
                         disabled={lengthDisabled}
                         className={`${
-                          isSelected ||
-                          (activeCell?.rowIndex === columnIndex && activeCell.cellKey === 'length')
-                            ? styles.activeInput
-                            : styles.inactiveInput
+                          isSelected ? styles.activeInput : getCellInputClass(columnIndex, 'length')
                         } ${styles.lengthInput}`}
                         data-row-index={columnIndex}
                         data-cell-key="length"
@@ -820,127 +867,104 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                         className={styles.defaultValueCell}
                         onClick={(event) => event.stopPropagation()}
                       >
-                        {column.defaultValue.tag === 'LITERAL' ? (
-                          <TextInput
-                            type="text"
-                            variant="tableCell"
-                            value={column.defaultValue.value}
-                            className={`${
-                              isSelected ||
-                              (activeCell?.rowIndex === columnIndex &&
-                                activeCell.cellKey === 'default')
-                                ? styles.activeInput
-                                : styles.inactiveInput
+                        {showDefaultDropdown ? (
+                          <Dropdown
+                            id={`column-default-${tabId}-${columnIndex}`}
+                            ariaLabel="Default value"
+                            options={DEFAULT_MODE_OPTIONS}
+                            value={defaultMode}
+                            focusListOnOpen={false}
+                            data-testid={`column-default-${columnIndex}`}
+                            triggerProps={{
+                              'data-row-index': columnIndex,
+                              'data-cell-key': 'default',
+                              onClick: (event) => {
+                                event.stopPropagation()
+                              },
+                            }}
+                            triggerClassName={`${styles.cellInput} ${styles.selectInput} ${
+                              isSelected ? styles.activeInput : styles.inactiveInput
                             }`}
-                            data-row-index={columnIndex}
-                            data-cell-key="default"
-                            data-testid={`column-default-literal-${columnIndex}`}
-                            onFocus={() => {
+                            onTriggerFocus={() => {
+                              captureDefaultBaseline()
                               setSelectedIndex(columnIndex)
                               setActiveCell({ rowIndex: columnIndex, cellKey: 'default' })
-                              setEditStartValue(
-                                columnIndex,
-                                'default',
-                                column.defaultValue.tag === 'LITERAL'
-                                  ? column.defaultValue.value
-                                  : ''
-                              )
                             }}
-                            onBlur={() => clearEditStartValue(columnIndex, 'default')}
-                            onKeyDown={(event) =>
+                            onTriggerBlur={() => scheduleDefaultCellBlur(columnIndex)}
+                            onTriggerKeyDown={(event) => {
+                              if (isDefaultOverride) {
+                                if (event.key === 'Tab' || event.key === 'Escape') {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  setDefaultModeOverrideIndex(null)
+                                  setPendingFocusCell({
+                                    rowIndex: columnIndex,
+                                    cellKey: 'default',
+                                  })
+                                  return
+                                }
+                              }
                               handleEditableKeyDown(event, columnIndex, 'default')
+                            }}
+                            onChange={applyDefaultModeChange}
+                            onOpenChange={
+                              isDefaultOverride
+                                ? (open: boolean) => {
+                                    if (open) {
+                                      defaultOverrideOpenedRef.current = true
+                                    } else if (defaultOverrideOpenedRef.current) {
+                                      setDefaultModeOverrideIndex(null)
+                                    }
+                                  }
+                                : undefined
                             }
-                            onChange={(event) =>
-                              updateColumn(tabId, columnIndex, 'defaultValue', {
-                                tag: 'LITERAL',
-                                value: event.target.value,
-                              })
-                            }
+                            ref={isDefaultOverride ? defaultOverrideTriggerRef : undefined}
                           />
-                        ) : null}
-
-                        {defaultValueButtonVisible ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            className={styles.defaultValueButton}
-                            data-row-index={columnIndex}
-                            data-cell-key="default"
-                            data-testid={`column-default-button-${columnIndex}`}
-                            onFocus={() => {
-                              setSelectedIndex(columnIndex)
-                              setActiveCell({ rowIndex: columnIndex, cellKey: 'default' })
-                            }}
-                            onKeyDown={(event) =>
-                              handleEditableKeyDown(event, columnIndex, 'default')
-                            }
-                            onClick={() =>
-                              setDefaultPopoverIndex((current) =>
-                                current === columnIndex ? null : columnIndex
-                              )
-                            }
-                          >
-                            {defaultLabel(column.defaultValue)}
-                          </Button>
-                        ) : null}
-
-                        {column.defaultValue.tag === 'LITERAL' &&
-                        canOpenDefaultPopover(column.defaultValue) ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            className={styles.defaultModeButton}
-                            data-testid={`column-default-button-${columnIndex}`}
-                            onClick={() =>
-                              setDefaultPopoverIndex((current) =>
-                                current === columnIndex ? null : columnIndex
-                              )
-                            }
-                          >
-                            Default
-                          </Button>
-                        ) : null}
-
-                        {effectiveDefaultPopoverIndex === columnIndex && (
-                          <div
-                            className={styles.defaultPopover}
-                            data-testid={`column-default-popover-${columnIndex}`}
-                          >
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className={styles.defaultPopoverButton}
-                              onClick={() =>
-                                handleDefaultChoice(columnIndex, { tag: 'NO_DEFAULT' })
+                        ) : (
+                          <div className={styles.defaultValueInputContainer}>
+                            <TextInput
+                              type="text"
+                              variant="tableCell"
+                              value={defaultText}
+                              data-testid={`column-default-input-${columnIndex}`}
+                              data-row-index={columnIndex}
+                              data-cell-key="default"
+                              className={
+                                isSelected
+                                  ? styles.activeInput
+                                  : getCellInputClass(columnIndex, 'default')
                               }
-                            >
-                              No Default
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className={styles.defaultPopoverButton}
-                              onClick={() =>
-                                handleDefaultChoice(columnIndex, { tag: 'NULL_DEFAULT' })
-                              }
-                            >
-                              NULL
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className={styles.defaultPopoverButton}
-                              onClick={() =>
-                                handleDefaultChoice(columnIndex, {
-                                  tag: 'LITERAL',
-                                  value:
-                                    column.defaultValue.tag === 'LITERAL'
-                                      ? column.defaultValue.value
-                                      : '',
+                              onFocus={() => {
+                                captureDefaultBaseline()
+                                setSelectedIndex(columnIndex)
+                                setActiveCell({ rowIndex: columnIndex, cellKey: 'default' })
+                              }}
+                              onBlur={() => scheduleDefaultCellBlur(columnIndex)}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => {
+                                updateColumn(tabId, columnIndex, 'defaultValue', {
+                                  tag: defaultMode as 'LITERAL' | 'EXPRESSION',
+                                  value: event.target.value,
                                 })
-                              }
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.altKey && event.key === 'ArrowDown') {
+                                  event.preventDefault()
+                                  setDefaultModeOverrideIndex(columnIndex)
+                                  return
+                                }
+                                handleEditableKeyDown(event, columnIndex, 'default')
+                              }}
+                            />
+                            <Button
+                              variant="ghost"
+                              tabIndex={-1}
+                              aria-label="Change default mode"
+                              data-testid={`column-default-mode-${columnIndex}`}
+                              className={styles.defaultModeIconButton}
+                              onClick={() => setDefaultModeOverrideIndex(columnIndex)}
                             >
-                              Literal
+                              <CaretDown size={16} weight="bold" />
                             </Button>
                           </div>
                         )}
@@ -956,12 +980,11 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                         type="text"
                         variant="tableCell"
                         value={column.comment}
-                        className={`${
-                          isSelected ||
-                          (activeCell?.rowIndex === columnIndex && activeCell.cellKey === 'comment')
+                        className={
+                          isSelected
                             ? styles.activeInput
-                            : styles.inactiveInput
-                        }`}
+                            : getCellInputClass(columnIndex, 'comment')
+                        }
                         data-row-index={columnIndex}
                         data-cell-key="comment"
                         data-testid={`column-comment-${columnIndex}`}

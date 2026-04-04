@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "node scripts/tauri-cli.mjs",
     "test": "pnpm exec vitest run --reporter=default",
+    "clean:rust-target": "cargo clean --manifest-path src-tauri/Cargo.toml",
     "test:watch": "vitest",
     "test:coverage": "pnpm exec vitest run --coverage --reporter=default",
     "test:rust": "cargo mysql-client-test-integration",

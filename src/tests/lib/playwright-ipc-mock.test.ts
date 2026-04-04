@@ -86,13 +86,23 @@ describe('playwrightIpcMockHandler', () => {
     })
 
     const columns = result.columns as Array<Record<string, unknown>>
-    expect(columns).toHaveLength(3)
+    expect(columns).toHaveLength(5)
     expect(columns[0]).toMatchObject({
       name: 'id',
       type: 'BIGINT',
       typeModifier: 'UNSIGNED',
       isPrimaryKey: true,
       isAutoIncrement: true,
+    })
+    expect(columns[3]).toMatchObject({
+      name: 'status',
+      type: 'VARCHAR',
+      defaultValue: { tag: 'LITERAL', value: 'active' },
+    })
+    expect(columns[4]).toMatchObject({
+      name: 'created_at',
+      type: 'DATETIME',
+      defaultValue: { tag: 'EXPRESSION', value: 'CURRENT_TIMESTAMP' },
     })
 
     const foreignKeys = result.foreignKeys as Array<Record<string, unknown>>

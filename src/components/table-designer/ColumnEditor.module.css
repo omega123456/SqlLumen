@@ -82,14 +82,6 @@
   opacity: 0.9;
 }
 
-.evenRow {
-  background: transparent;
-}
-
-.oddRow {
-  background: transparent;
-}
-
 .selectedRow {
   background: color-mix(in srgb, var(--secondary-container) 30%, transparent);
 }
@@ -139,10 +131,6 @@
   position: relative;
 }
 
-.modifiedCell {
-  position: relative;
-}
-
 .modifiedTriangle {
   position: absolute;
   top: 0;
@@ -180,10 +168,6 @@
   background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);
 }
 
-.inputError {
-  box-shadow: inset 0 0 0 1px var(--error);
-}
-
 .lengthInput {
   text-align: center;
 }
@@ -209,77 +193,34 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 180px;
 }
 
-.defaultValueButton:global(.ui-button-ghost) {
-  display: inline-flex;
+.defaultValueInputContainer {
+  display: flex;
   align-items: center;
-  max-width: 100%;
-  padding: 6px 10px;
-  gap: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
-  color: var(--on-surface-variant);
-  font: inherit;
-  font-weight: inherit;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.defaultValueButton:global(.ui-button-ghost):hover:not(:disabled) {
-  color: var(--on-surface);
-  background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
-}
-
-.defaultModeButton:global(.ui-button-ghost) {
-  padding: 6px 10px;
-  gap: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--on-surface-variant);
-  font: inherit;
-  font-weight: inherit;
-  white-space: nowrap;
-}
-
-.defaultModeButton:global(.ui-button-ghost):hover:not(:disabled) {
-  color: var(--on-surface);
-  background: rgba(var(--primary-rgb), 0.08);
-}
-
-.defaultPopover {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  min-width: 128px;
-  padding: 6px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.22);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-container-high) 92%, transparent);
-  box-shadow: 0 12px 24px rgba(var(--on-surface-rgb), 0.12);
-  backdrop-filter: blur(10px);
-}
-
-.defaultPopoverButton:global(.ui-button-ghost) {
-  display: flex;
+  gap: 4px;
   width: 100%;
-  justify-content: flex-start;
-  padding: 8px 10px;
-  gap: 0;
-  border-radius: var(--radius-sm);
-  font: inherit;
-  font-weight: inherit;
-  color: var(--on-surface);
-  text-align: left;
+  min-width: 0;
 }
 
-.defaultPopoverButton:global(.ui-button-ghost):hover:not(:disabled) {
-  background: rgba(var(--primary-rgb), 0.08);
-  color: var(--on-surface);
+.defaultValueInputContainer > input {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+}
+
+.defaultModeIconButton {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  color: var(--on-surface-variant);
+  background: transparent;
+}
+
+.defaultModeIconButton:hover {
+  background: var(--surface-container-highest);
 }
 
 .deleteCell {
@@ -294,8 +235,4 @@
 
 .ghostRow:hover {
   background: rgba(var(--primary-rgb), 0.06);
-}
-
-[data-theme='light'] .selectedRow {
-  background: color-mix(in srgb, var(--secondary-container) 30%, transparent);
 }

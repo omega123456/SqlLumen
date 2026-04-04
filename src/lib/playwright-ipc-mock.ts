@@ -354,6 +354,28 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             comment: '',
             originalName: 'email',
           },
+          {
+            name: 'status',
+            type: 'VARCHAR',
+            length: '50',
+            nullable: false,
+            isPrimaryKey: false,
+            isAutoIncrement: false,
+            defaultValue: { tag: 'LITERAL', value: 'active' },
+            comment: 'Account status',
+            originalName: 'status',
+          },
+          {
+            name: 'created_at',
+            type: 'DATETIME',
+            length: '',
+            nullable: true,
+            isPrimaryKey: false,
+            isAutoIncrement: false,
+            defaultValue: { tag: 'EXPRESSION', value: 'CURRENT_TIMESTAMP' },
+            comment: 'Row creation timestamp',
+            originalName: 'created_at',
+          },
         ],
         indexes: [
           {

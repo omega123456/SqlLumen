@@ -64,7 +64,7 @@ async function openTableDesignerTab(page: Page) {
 
   await expect(page.getByTestId('table-designer-tab')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('column-editor')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('column-type-2')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('column-type-4')).toBeVisible({ timeout: APP_READY_MS })
 }
 
 test('table designer type dropdown opens upward when the bottom row lacks space below', async ({
@@ -80,7 +80,7 @@ test('table designer type dropdown opens upward when the bottom row lacks space 
     element.scrollTop = element.scrollHeight
   })
 
-  const input = page.getByTestId('column-type-2')
+  const input = page.getByTestId('column-type-4')
   const inputBox = await input.boundingBox()
   expect(inputBox).not.toBeNull()
 
@@ -100,9 +100,7 @@ test('table designer type dropdown opens upward when the bottom row lacks space 
   expect(spaceBelow).toBeLessThan(120)
   expect(dropdownBox!.y + dropdownBox!.height).toBeLessThanOrEqual(inputBox!.y + 2)
 
-  await expect(
-    dropdown.evaluate((el) => el.parentElement === document.body)
-  ).resolves.toBe(true)
+  await expect(dropdown.evaluate((el) => el.parentElement === document.body)).resolves.toBe(true)
 
   const vp = page.viewportSize()
   expect(vp).not.toBeNull()

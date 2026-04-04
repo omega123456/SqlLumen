@@ -342,8 +342,16 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       }
     }, [resetTypeahead])
 
+    const isWithinDropdownTarget = (target: EventTarget | null): boolean =>
+      target instanceof Node &&
+      (rootRef.current?.contains(target) === true || panelRef.current?.contains(target) === true)
+
+    const prevOpenRef = useRef(open)
     useEffect(() => {
-      onOpenChange?.(open)
+      if (prevOpenRef.current !== open) {
+        prevOpenRef.current = open
+        onOpenChange?.(open)
+      }
     }, [open, onOpenChange])
 
     useEffect(() => {
@@ -352,11 +360,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       }
 
       const handleMouseDown = (event: MouseEvent) => {
-        const target = event.target as Node
-        if (rootRef.current?.contains(target)) {
-          return
-        }
-        if (panelRef.current?.contains(target)) {
+        if (isWithinDropdownTarget(event.target)) {
           return
         }
         close()
@@ -725,11 +729,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
               return
             }
 
-            const nextFocused = e.relatedTarget
-            if (
-              nextFocused instanceof Node &&
-              (rootRef.current?.contains(nextFocused) || panelRef.current?.contains(nextFocused))
-            ) {
+            if (isWithinDropdownTarget(e.relatedTarget)) {
               return
             }
 
@@ -765,12 +765,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                     return
                   }
 
-                  const nextFocused = e.relatedTarget
-                  if (
-                    nextFocused instanceof Node &&
-                    (rootRef.current?.contains(nextFocused) ||
-                      panelRef.current?.contains(nextFocused))
-                  ) {
+                  if (isWithinDropdownTarget(e.relatedTarget)) {
                     return
                   }
 
