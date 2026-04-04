@@ -1,52 +1,10 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { APP_READY_MS, getColumnIndexByName, waitForApp } from './helpers'
 
 const themes = ['light', 'dark'] as const
-
-/** Dev server + async `main.tsx` (dynamic imports, IPC mock, theme) under many parallel workers can exceed the default 5s expect timeout. */
-const APP_READY_MS = 5_000
 const AUTOCOMPLETE_OPEN_RETRIES = 4
 const AUTOCOMPLETE_OPEN_TIMEOUT_MS = 1_500
 const AUTOCOMPLETE_RETRY_DELAY_MS = 300
-const APP_READY_RETRY_ATTEMPTS = 3
-
-/** Many parallel workers can briefly see net::ERR_CONNECTION_FAILED if the first goto races the Vite server. */
-const GOTO_RETRY_ATTEMPTS = 2
-const GOTO_RETRY_DELAY_MS = 500
-
-async function waitForApp(page: Page) {
-  let lastError: unknown
-
-  for (let readyAttempt = 0; readyAttempt < APP_READY_RETRY_ATTEMPTS; readyAttempt++) {
-    try {
-      for (let gotoAttempt = 0; gotoAttempt < GOTO_RETRY_ATTEMPTS; gotoAttempt++) {
-        try {
-          await page.goto('/', { waitUntil: 'load', timeout: APP_READY_MS })
-          break
-        } catch (err) {
-          if (gotoAttempt === GOTO_RETRY_ATTEMPTS - 1) {
-            throw err
-          }
-          await page.waitForTimeout(GOTO_RETRY_DELAY_MS)
-        }
-      }
-
-      await expect(page.getByTestId('app-layout')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('status-bar')).toContainText('Ready', { timeout: APP_READY_MS })
-      await page.evaluate(() => document.fonts.ready)
-      return
-    } catch (err) {
-      lastError = err
-
-      if (readyAttempt === APP_READY_RETRY_ATTEMPTS - 1) {
-        throw err
-      }
-
-      await page.waitForTimeout(GOTO_RETRY_DELAY_MS)
-    }
-  }
-
-  throw lastError
-}
 
 async function ensureTheme(page: Page, theme: 'light' | 'dark') {
   for (let i = 0; i < 6; i++) {
@@ -1048,6 +1006,33 @@ for (const theme of themes) {
       await expect(page.getByTestId('table-data-toolbar')).toHaveScreenshot(
         `table-data-toolbar-${theme}.png`,
         { animations: 'disabled' }
+      )
+    })
+
+    test('TableDataGrid — enum dropdown open', async ({ page }) => {
+      await openTableDataTab(page)
+
+      const grid = page.getByTestId('table-data-grid')
+      await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+      const statusColIdx = await getColumnIndexByName(grid, 'status')
+      expect(statusColIdx).toBeGreaterThanOrEqual(0)
+
+      const statusCell = grid.locator('.rdg-row').first().locator('.rdg-cell').nth(statusColIdx)
+      await expect(statusCell).toBeVisible({ timeout: APP_READY_MS })
+      await statusCell.click()
+
+      const enumEditor = page.locator('.td-cell-editor-select').first()
+      await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
+      await enumEditor.click()
+
+      const listbox = page.getByRole('listbox', { name: 'status' })
+      await expect(listbox).toBeVisible({ timeout: APP_READY_MS })
+
+      const clip = await getUnionClip(page, [statusCell, listbox])
+      await expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
+        `table-data-grid-enum-dropdown-open-${theme}.png`
       )
     })
 

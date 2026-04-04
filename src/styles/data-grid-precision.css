@@ -173,20 +173,28 @@
 /* Cell editor shell */
 .rdg-precision .td-cell-editor-shell {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   flex: 1;
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  height: 100%;
   gap: 4px;
+  box-sizing: border-box;
+  padding: 1px 6px;
+  border: 1px solid rgba(var(--primary-rgb), 0.5);
+  border-radius: var(--radius-sm);
+}
+
+.rdg-precision .td-cell-editor-shell > .ui-dropdown {
+  flex: 1 1 auto;
+  min-width: 0;
+  align-self: stretch;
 }
 
 /* Cell editor shell — light */
 [data-theme='light'] .rdg-precision .td-cell-editor-shell {
-  padding: 4px 8px;
   background: var(--surface-container-lowest);
-  border: 1px solid rgba(var(--primary-rgb), 0.5);
-  border-radius: var(--radius-sm);
   box-shadow:
     0 1px 2px rgba(var(--on-surface-rgb), 0.06),
     0 0 0 1px rgba(var(--primary-rgb), 0.2);
@@ -194,10 +202,7 @@
 
 /* Cell editor shell — dark */
 [data-theme='dark'] .rdg-precision .td-cell-editor-shell {
-  padding: 2px 8px;
   background: var(--surface-container-highest);
-  border: 1px solid rgba(var(--primary-rgb), 0.5);
-  border-radius: var(--radius-sm);
 }
 
 /* Cell editor input/select */
@@ -207,24 +212,16 @@
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  height: auto;
+  height: 100%;
+  min-height: 22px;
   border: none;
   background: transparent;
   color: var(--on-surface);
   font-family: var(--font-mono);
   font-size: var(--type-size-md);
   outline: none;
-  padding: 0;
+  padding: 2px 4px;
   line-height: 1.25;
-}
-
-[data-theme='light'] .rdg-precision .td-cell-editor-shell .td-cell-editor-input,
-[data-theme='light'] .rdg-precision .td-cell-editor-shell .td-cell-editor-select {
-  color: var(--primary);
-}
-
-[data-theme='dark'] .rdg-precision .td-cell-editor-shell .td-cell-editor-input,
-[data-theme='dark'] .rdg-precision .td-cell-editor-shell .td-cell-editor-select {
   color: var(--primary);
 }
 
@@ -241,6 +238,7 @@
 /* NULL toggle button */
 .rdg-precision .td-null-toggle {
   display: flex;
+  align-self: center;
   align-items: center;
   justify-content: center;
   padding: 0 6px;

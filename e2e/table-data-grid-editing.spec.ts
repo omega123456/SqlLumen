@@ -1,12 +1,10 @@
 import { test, expect, type Page } from '@playwright/test'
-
-const APP_READY_MS = 5_000
-
-async function waitForApp(page: Page) {
-  await page.goto('/', { waitUntil: 'load', timeout: APP_READY_MS })
-  await expect(page.getByTestId('app-layout')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('status-bar')).toContainText('Ready', { timeout: APP_READY_MS })
-}
+import {
+  APP_READY_MS,
+  getGridCellByColumnName,
+  getGridHeaderCellByColumnName,
+  waitForApp,
+} from './helpers'
 
 async function openConnectionManager(page: Page) {
   const btn = page.getByRole('button', { name: 'New Connection' }).first()
@@ -103,38 +101,16 @@ async function openQueryEditorWithResults(page: Page) {
   })
 }
 
-async function getColumnIndexByName(grid: ReturnType<Page['locator']>, columnName: string) {
-  const headerCells = grid.locator('.rdg-header-row .rdg-cell')
-  const headerCount = await headerCells.count()
-
-  for (let i = 0; i < headerCount; i++) {
-    const text = await headerCells.nth(i).textContent()
-    if (text?.trim() === columnName) {
-      return i
-    }
-  }
-
-  throw new Error(`Column "${columnName}" not found in header`)
-}
-
 async function getCellByColumnName(
   grid: ReturnType<Page['locator']>,
   rowIndex: number,
   columnName: string
 ) {
-  const targetColIdx = await getColumnIndexByName(grid, columnName)
-
-  const row = grid.locator('.rdg-row').nth(rowIndex)
-  const cell = row.locator('.rdg-cell').nth(targetColIdx)
-  await expect(cell).toBeVisible({ timeout: APP_READY_MS })
-  return cell
+  return getGridCellByColumnName(grid, rowIndex, columnName)
 }
 
 async function getHeaderCellByColumnName(grid: ReturnType<Page['locator']>, columnName: string) {
-  const targetColIdx = await getColumnIndexByName(grid, columnName)
-  const cell = grid.locator('.rdg-header-row .rdg-cell').nth(targetColIdx)
-  await expect(cell).toBeVisible({ timeout: APP_READY_MS })
-  return cell
+  return getGridHeaderCellByColumnName(grid, columnName)
 }
 
 /**
@@ -254,6 +230,43 @@ test('table data datetime editor gives the input enough width for the full field
   expect(inputBox).not.toBeNull()
   expect(inputBox!.width).toBeGreaterThan(120)
   expect(inputBox!.width / cellBox!.width).toBeGreaterThan(0.55)
+})
+
+test('table data enum editor fills the cell height and gives options comfortable sizing', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  const statusCell = await getCellByColumnName(grid, 0, 'status')
+  await statusCell.click()
+
+  const enumEditor = page.locator('.td-cell-editor-select').first()
+  await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
+
+  const cellBox = await statusCell.boundingBox()
+  const editorBox = await enumEditor.boundingBox()
+
+  expect(cellBox).not.toBeNull()
+  expect(editorBox).not.toBeNull()
+  expect(editorBox!.height).toBeGreaterThan(21)
+  expect(editorBox!.height / cellBox!.height).toBeGreaterThan(0.7)
+
+  await enumEditor.click()
+
+  const listbox = page.getByRole('listbox', { name: 'status' })
+  await expect(listbox).toBeVisible({ timeout: APP_READY_MS })
+
+  const activeOption = page.getByRole('option', { name: 'active', exact: true })
+  await expect(activeOption).toBeVisible({ timeout: APP_READY_MS })
+
+  const optionBox = await activeOption.boundingBox()
+  expect(optionBox).not.toBeNull()
+  expect(optionBox!.height).toBeGreaterThan(21)
 })
 
 test('table data enum editor opens its dropdown and supports typeahead selection', async ({

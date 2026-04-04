@@ -1,6 +1,6 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { APP_READY_MS, waitForApp } from './helpers'
 
-const APP_READY_MS = 5_000
 const SUGGESTION_SETTLE_MS = 500
 const AUTOCOMPLETE_OPEN_RETRIES = 3
 const AUTOCOMPLETE_OPEN_TIMEOUT_MS = 1_500
@@ -73,12 +73,6 @@ const MALFORMED_SCHEMA_METADATA = {
     '': [{ name: '', routineType: 'FUNCTION' }],
     broken_container: null,
   },
-}
-
-async function waitForApp(page: Page) {
-  await page.goto('/', { waitUntil: 'load', timeout: APP_READY_MS })
-  await expect(page.getByTestId('app-layout')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('status-bar')).toContainText('Ready', { timeout: APP_READY_MS })
 }
 
 async function openConnectionManager(page: Page) {

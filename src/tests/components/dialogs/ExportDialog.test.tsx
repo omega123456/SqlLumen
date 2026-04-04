@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ExportDialog from '../../../components/dialogs/ExportDialog'
 
@@ -26,23 +26,36 @@ const EXPORT_FORMAT_REGEX: Record<'csv' | 'json' | 'xlsx' | 'sql-insert', RegExp
   'sql-insert': /SQL INSERT Statements/,
 }
 
+const EXPORT_FORMAT_LABELS = {
+  csv: 'CSV (Comma Separated Values)',
+  json: 'JSON (JavaScript Object Notation)',
+  xlsx: 'Excel (.xlsx)',
+  'sql-insert': 'SQL INSERT Statements',
+} as const
+
+const EXPORT_FORMAT_DESCRIPTIONS = [
+  'Comma Separated Values',
+  'JSON Array of Objects',
+  'Excel Spreadsheet (.xlsx)',
+  'SQL INSERT Statements',
+] as const
+
 async function pickExportFormat(
   user: ReturnType<typeof userEvent.setup>,
   formatKey: keyof typeof EXPORT_FORMAT_REGEX
 ) {
+  const listbox = await openExportFormatListbox(user)
+  await user.click(within(listbox).getByRole('option', { name: EXPORT_FORMAT_REGEX[formatKey] }))
+}
+
+async function openExportFormatListbox(user: ReturnType<typeof userEvent.setup>) {
   const trigger = screen.getByTestId('export-format-select')
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await user.click(trigger)
 
     try {
-      await waitFor(
-        () => {
-          expect(screen.getAllByRole('option')).toHaveLength(4)
-        },
-        { timeout: 1_000 }
-      )
-      break
+      return await screen.findByRole('listbox', undefined, { timeout: 1_000 })
     } catch (error) {
       if (attempt === 1) {
         throw error
@@ -50,7 +63,7 @@ async function pickExportFormat(
     }
   }
 
-  await user.click(screen.getByRole('option', { name: EXPORT_FORMAT_REGEX[formatKey] }))
+  throw new Error('Export format listbox did not open')
 }
 
 /** jsdom + focus trap: keyboard typing into the destination field is unreliable; drive controlled input directly. */
@@ -437,22 +450,20 @@ describe('ExportDialog', () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
-    const combo = screen.getByTestId('export-format-select')
-    await user.click(combo)
-    await waitFor(() => {
-      expect(screen.getAllByRole('option')).toHaveLength(4)
-    })
-    await user.keyboard('{Escape}')
+    await user.click(screen.getByTestId('export-format-select'))
 
-    const labelSnippets: Record<string, string> = {
-      csv: 'CSV',
-      json: 'JSON',
-      xlsx: 'Excel',
-      'sql-insert': 'SQL INSERT',
+    const listbox = await screen.findByRole('listbox')
+    expect(listbox).toHaveTextContent('Comma Separated Values')
+    expect(listbox).toHaveTextContent('JSON Array of Objects')
+    expect(listbox).toHaveTextContent('Excel Spreadsheet (.xlsx)')
+    expect(listbox).toHaveTextContent('SQL INSERT Statements')
+
+    for (const description of EXPORT_FORMAT_DESCRIPTIONS) {
+      expect(listbox).toHaveTextContent(description)
     }
-    for (const fmt of ['csv', 'json', 'xlsx', 'sql-insert'] as const) {
-      await pickExportFormat(user, fmt)
-      expect(combo).toHaveTextContent(labelSnippets[fmt])
+
+    for (const label of Object.values(EXPORT_FORMAT_LABELS)) {
+      expect(screen.getByRole('option', { name: label })).toBeVisible()
     }
   })
 
