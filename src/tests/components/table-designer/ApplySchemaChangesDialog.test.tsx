@@ -7,7 +7,13 @@ vi.mock('../../../lib/table-designer-commands', () => ({
   applyTableDdl: vi.fn(),
 }))
 
+vi.mock('../../../stores/toast-store', () => ({
+  showSuccessToast: vi.fn(),
+  showErrorToast: vi.fn(),
+}))
+
 import { applyTableDdl } from '../../../lib/table-designer-commands'
+import { showErrorToast, showSuccessToast } from '../../../stores/toast-store'
 
 describe('ApplySchemaChangesDialog', () => {
   const defaultProps = {
@@ -16,6 +22,8 @@ describe('ApplySchemaChangesDialog', () => {
     warnings: [] as string[],
     connectionId: 'conn-1',
     database: 'app_db',
+    schemaMode: 'alter' as const,
+    tableLabel: 'app_db.users',
     onSuccess: vi.fn(),
     onCancel: vi.fn(),
   }
@@ -65,19 +73,47 @@ describe('ApplySchemaChangesDialog', () => {
         'ALTER TABLE `users` ADD COLUMN `nickname` VARCHAR(64);'
       )
     })
+    expect(showSuccessToast).toHaveBeenCalledWith('Table updated', 'app_db.users')
     expect(onSuccess).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows Table created success toast when schemaMode is create', async () => {
+    const user = userEvent.setup()
+    render(
+      <ApplySchemaChangesDialog
+        {...defaultProps}
+        schemaMode="create"
+        tableLabel="app_db.audit_log"
+        ddl="CREATE TABLE `audit_log` (`id` INT);"
+      />
+    )
+
+    await user.click(screen.getByTestId('apply-schema-confirm'))
+
+    await waitFor(() => {
+      expect(showSuccessToast).toHaveBeenCalledWith('Table created', 'app_db.audit_log')
+    })
   })
 
   it('shows error message below code block on IPC failure', async () => {
     const user = userEvent.setup()
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(applyTableDdl).mockRejectedValueOnce(new Error('DDL apply failed'))
 
-    render(<ApplySchemaChangesDialog {...defaultProps} />)
-    await user.click(screen.getByTestId('apply-schema-confirm'))
+    try {
+      render(<ApplySchemaChangesDialog {...defaultProps} />)
+      await user.click(screen.getByTestId('apply-schema-confirm'))
 
-    await waitFor(() => {
-      expect(screen.getByTestId('apply-schema-error')).toHaveTextContent('DDL apply failed')
-    })
+      await waitFor(() => {
+        expect(screen.getByTestId('apply-schema-error')).toHaveTextContent('DDL apply failed')
+      })
+      expect(showErrorToast).toHaveBeenCalledWith(
+        'Failed to apply schema changes',
+        'DDL apply failed'
+      )
+    } finally {
+      consoleErrorSpy.mockRestore()
+    }
   })
 
   it('Execute Changes button disabled while in-flight', async () => {

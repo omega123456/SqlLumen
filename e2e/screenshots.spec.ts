@@ -99,7 +99,10 @@ async function showDesignReferenceToasts(page: Page) {
 
 async function connectToSample(page: Page) {
   await openConnectionManager(page)
-  await page.getByText('Sample MySQL').click()
+  await page
+    .getByTestId('connection-dialog')
+    .getByRole('button', { name: /Sample MySQL/ })
+    .click()
   await page
     .getByTestId('connection-dialog')
     .getByRole('button', { name: 'Connect', exact: true })
@@ -468,7 +471,10 @@ for (const theme of themes) {
 
     test('TestConnectionResult — after successful test', async ({ page }) => {
       await openConnectionManager(page)
-      await page.getByText('Sample MySQL').click()
+      await page
+        .getByTestId('connection-dialog')
+        .getByRole('button', { name: /Sample MySQL/ })
+        .click()
       await page
         .getByTestId('connection-dialog')
         .getByRole('button', { name: 'Test Connection' })

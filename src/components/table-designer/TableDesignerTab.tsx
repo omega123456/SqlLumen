@@ -92,7 +92,9 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
   const ddlWarnings = tabState?.ddlWarnings ?? []
   const tableName = currentSchema?.tableName ?? ''
   const hasValidationErrors = Object.keys(validationErrors).length > 0
-  const isCreateMode = (tabState?.mode ?? mode) === 'create'
+  const resolvedMode = tabState?.mode ?? mode
+  const isCreateMode = resolvedMode === 'create'
+  const applyTableLabel = `${databaseName}.${tableName.trim() || objectName}`
 
   const isApplyDisabled =
     !isDirty || hasValidationErrors || isDdlLoading || (isCreateMode && tableName.trim() === '')
@@ -316,6 +318,8 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
         warnings={ddlWarnings}
         connectionId={connectionId}
         database={databaseName}
+        schemaMode={isCreateMode ? 'create' : 'alter'}
+        tableLabel={applyTableLabel}
         onSuccess={() => {
           void handleApplySuccess()
         }}

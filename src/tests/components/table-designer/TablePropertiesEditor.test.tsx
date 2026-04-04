@@ -21,6 +21,19 @@ import { listCharsets, listCollations } from '../../../lib/schema-commands'
 const mockListCharsets = vi.mocked(listCharsets)
 const mockListCollations = vi.mocked(listCollations)
 
+/** Charset/collation effects resolve after mount; wait so React state updates stay inside `waitFor`/`act`. */
+async function waitForTablePropertiesEditorEffects() {
+  await waitFor(() => {
+    expect(mockListCharsets).toHaveBeenCalledWith('conn-1')
+  })
+  await waitFor(() => {
+    expect(mockListCollations).toHaveBeenCalledWith('conn-1')
+  })
+  await waitFor(() => {
+    expect(screen.getByTestId('table-properties-collation')).toHaveTextContent('utf8mb4_unicode_ci')
+  })
+}
+
 function makeTabState(overrides: Partial<TableDesignerTabState> = {}): TableDesignerTabState {
   return {
     connectionId: 'conn-1',
@@ -92,10 +105,11 @@ describe('TablePropertiesEditor', () => {
     ])
   })
 
-  it('renders engine dropdown with InnoDB selected by default', () => {
+  it('renders engine dropdown with InnoDB selected by default', async () => {
     seedStore()
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
+    await waitForTablePropertiesEditorEffects()
     expect(screen.getByTestId('table-properties-engine')).toHaveTextContent('InnoDB')
   })
 
@@ -106,6 +120,7 @@ describe('TablePropertiesEditor', () => {
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
+    await waitForTablePropertiesEditorEffects()
     await user.click(screen.getByTestId('table-properties-engine'))
     await user.click(screen.getByRole('option', { name: 'MyISAM' }))
 
@@ -119,6 +134,7 @@ describe('TablePropertiesEditor', () => {
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
+    await waitForTablePropertiesEditorEffects()
     await user.type(screen.getByTestId('table-properties-comment'), 'User accounts table')
 
     expect(updatePropertiesSpy).toHaveBeenLastCalledWith('tab-1', 'comment', 'User accounts table')
@@ -130,9 +146,7 @@ describe('TablePropertiesEditor', () => {
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
-    await waitFor(() => {
-      expect(mockListCharsets).toHaveBeenCalledWith('conn-1')
-    })
+    await waitForTablePropertiesEditorEffects()
 
     await user.click(screen.getByTestId('table-properties-charset'))
     expect(screen.getByRole('option', { name: 'utf8mb4' })).toBeInTheDocument()
@@ -145,11 +159,8 @@ describe('TablePropertiesEditor', () => {
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
-    const collationTrigger = await screen.findByTestId('table-properties-collation')
-
-    await waitFor(() => {
-      expect(mockListCollations).toHaveBeenCalledWith('conn-1')
-    })
+    await waitForTablePropertiesEditorEffects()
+    const collationTrigger = screen.getByTestId('table-properties-collation')
 
     expect(collationTrigger).toHaveTextContent('utf8mb4_unicode_ci')
 
@@ -165,9 +176,7 @@ describe('TablePropertiesEditor', () => {
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
-    await waitFor(() => {
-      expect(mockListCharsets).toHaveBeenCalled()
-    })
+    await waitForTablePropertiesEditorEffects()
     await user.click(screen.getByTestId('table-properties-charset'))
     await user.click(screen.getByRole('option', { name: 'latin1' }))
 
@@ -189,6 +198,7 @@ describe('TablePropertiesEditor', () => {
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
+    await waitForTablePropertiesEditorEffects()
     const input = screen.getByTestId('table-properties-auto-increment')
     fireEvent.change(input, { target: { value: '42' } })
 
@@ -202,6 +212,7 @@ describe('TablePropertiesEditor', () => {
 
     render(<TablePropertiesEditor tabId="tab-1" connectionId="conn-1" databaseName="app_db" />)
 
+    await waitForTablePropertiesEditorEffects()
     await user.click(screen.getByTestId('table-properties-row-format'))
     await user.click(screen.getByRole('option', { name: 'COMPACT' }))
 

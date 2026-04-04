@@ -10,7 +10,10 @@ async function waitForApp(page: Page) {
 async function connectToSample(page: Page) {
   await page.getByRole('button', { name: 'New Connection' }).first().click()
   await expect(page.getByTestId('connection-dialog')).toBeVisible()
-  await page.getByText('Sample MySQL').click()
+  await page
+    .getByTestId('connection-dialog')
+    .getByRole('button', { name: /Sample MySQL/ })
+    .click()
   await page
     .getByTestId('connection-dialog')
     .getByRole('button', { name: 'Connect', exact: true })

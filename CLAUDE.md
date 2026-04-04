@@ -204,6 +204,11 @@ Invoke failures from `logFrontend` are logged with the stable prefix **`[app-log
 
 Treat tests as part of the feature, not a follow-up task. **Any new or materially changed behavior must ship with tests in the same change set** so `pnpm test:all` stays green and coverage thresholds hold.
 
+### Vitest / React Testing Library: `act` and clean output
+
+- **“Not wrapped in act(...)”:** If a component applies state updates after mount (`useEffect`, promise callbacks, `queueMicrotask`, etc.), React may warn when the test asserts or ends before those updates flush. After `render`, use **`waitFor`** or **`findBy*`** so work runs inside Testing Library’s `act` boundaries—wait for a **stable** UI signal (or a resolved mock) that proves effects finished—instead of asserting synchronously right after `render`.
+- **Expected `console.error` / `console.warn`:** When a test deliberately drives an error path that logs to the console, use **`vi.spyOn(console, 'error').mockImplementation(() => {})`** (or `warn`) and **`mockRestore()`** in `finally` / `afterEach` so Vitest output stays readable. Still assert on visible UI, toasts, or other observable behavior.
+
 ### Rust tests: separate files only
 
 **Do not** embed tests in production Rust sources. Files under `src-tauri/src/` must not contain `#[cfg(test)]` modules, `#[test]` functions, or other test-only code. **Always** add or extend tests in dedicated files under `src-tauri/tests/` (new `*.rs` suites, helpers under `src-tauri/tests/common/`, etc.) and exercise the crate’s public API or `*_impl` entry points from there.

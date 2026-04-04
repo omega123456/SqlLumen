@@ -1,6 +1,7 @@
 import { WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { applyTableDdl } from '../../lib/table-designer-commands'
+import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { Button } from '../common/Button'
 import { DialogShell } from '../dialogs/DialogShell'
 import styles from './ApplySchemaChangesDialog.module.css'
@@ -13,6 +14,10 @@ export interface ApplySchemaChangesDialogProps {
   warnings: string[]
   connectionId: string
   database: string
+  /** Whether this apply creates a new table or alters an existing one (toast copy). */
+  schemaMode: 'create' | 'alter'
+  /** Qualified label for toasts, e.g. `db.table`. */
+  tableLabel: string
   onSuccess: () => void
   onCancel: () => void
 }
@@ -23,6 +28,8 @@ export function ApplySchemaChangesDialog({
   warnings,
   connectionId,
   database,
+  schemaMode,
+  tableLabel,
   onSuccess,
   onCancel,
 }: ApplySchemaChangesDialogProps) {
@@ -44,10 +51,14 @@ export function ApplySchemaChangesDialog({
 
     try {
       await applyTableDdl(connectionId, database, ddl)
+      const successTitle = schemaMode === 'create' ? 'Table created' : 'Table updated'
+      showSuccessToast(successTitle, tableLabel)
       onSuccess()
     } catch (applyError) {
       console.error('[apply-schema-dialog] Failed to apply schema changes', applyError)
-      setError(applyError instanceof Error ? applyError.message : String(applyError))
+      const msg = applyError instanceof Error ? applyError.message : String(applyError)
+      setError(msg)
+      showErrorToast('Failed to apply schema changes', msg)
     } finally {
       setIsExecuting(false)
     }
