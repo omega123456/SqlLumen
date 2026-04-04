@@ -724,6 +724,56 @@ for (const theme of themes) {
       )
     })
 
+    test('QueryEditorTab — running state toolbar', async ({ page }) => {
+      await openQueryEditorTab(page)
+
+      // Set SQL content
+      await page.evaluate(() => {
+        const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            tabsByConnection: Record<string, { id: string; type: string }[]>
+          }
+        }
+        const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+        const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+        if (queryTab) {
+          const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+            getState: () => { setContent: (id: string, c: string) => void }
+          }
+          qStore.getState().setContent(queryTab.id, 'SELECT * FROM users;')
+        }
+      })
+      await page.waitForTimeout(300)
+
+      // Set a very long delay so query stays running for the screenshot
+      await page.evaluate(() => {
+        ;(window as unknown as Record<string, unknown>).__mockQueryDelay__ = 60000
+      })
+
+      // Execute the query
+      await page.getByTestId('toolbar-execute').click()
+
+      // Wait for running indicator to be visible
+      await expect(page.getByTestId('running-indicator')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Screenshot the toolbar in running state
+      await expect(page.getByTestId('editor-toolbar')).toHaveScreenshot(
+        `query-editor-toolbar-running-${theme}.png`,
+        { animations: 'disabled' }
+      )
+
+      // Clean up: cancel the pending query by clearing the delay and rejecting
+      await page.evaluate(() => {
+        const pendingReject = (window as unknown as Record<string, unknown>)
+          .__pendingQueryReject__ as ((reason: Error) => void) | null
+        if (pendingReject) {
+          pendingReject(new Error('Screenshot cleanup'))
+          ;(window as unknown as Record<string, unknown>).__pendingQueryReject__ = null
+        }
+        delete (window as unknown as Record<string, unknown>).__mockQueryDelay__
+      })
+    })
+
     test('QueryEditorTab — SQL autocomplete suggest widget', async ({ page }) => {
       await openQueryEditorTab(page)
       const surface = page.getByTestId('monaco-editor-wrapper').locator('.monaco-editor').first()

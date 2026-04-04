@@ -349,6 +349,11 @@ pub async fn open_connection_impl(
 #[cfg(coverage)]
 pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
     if state.registry.contains(connection_id) {
+        // Clean up any running_queries entries for this connection
+        {
+            let mut rq = state.running_queries.write().await;
+            rq.retain(|(conn_id, _), _| conn_id != connection_id);
+        }
         Ok(())
     } else {
         Err(format!("Connection '{connection_id}' is not open"))
@@ -363,6 +368,12 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
         .registry
         .remove(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' is not open"))?;
+
+    // Clean up any running_queries entries for this connection
+    {
+        let mut rq = state.running_queries.write().await;
+        rq.retain(|(conn_id, _), _| conn_id != connection_id);
+    }
 
     // Explicitly close the pool before dropping
     close_pool(entry.pool).await;

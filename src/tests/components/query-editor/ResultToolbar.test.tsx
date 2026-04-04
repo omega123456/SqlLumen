@@ -38,6 +38,9 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   saveError: null,
   editConnectionId: null,
   editingRowIndex: null,
+  executionStartedAt: null,
+  isCancelling: false,
+  wasCancelled: false,
 }
 
 /** Helper to set up store state for a tab. */

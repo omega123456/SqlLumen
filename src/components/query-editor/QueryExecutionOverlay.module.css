@@ -1,0 +1,22 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: all;
+  opacity: 0;
+  animation: fadeInOverlay 300ms ease 300ms forwards;
+  background: rgba(var(--scrim-rgb), 0.35);
+  z-index: 10;
+}
+
+[data-theme='light'] .overlay {
+  background: rgba(var(--on-surface-rgb), 0.25);
+}
+
+@keyframes fadeInOverlay {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

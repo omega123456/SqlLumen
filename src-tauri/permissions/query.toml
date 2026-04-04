@@ -51,3 +51,9 @@ identifier = "allow-update-result-cell"
 description = "Enables the update_result_cell command without any pre-configured scope."
 commands.allow = ["update_result_cell"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-cancel-query"
+description = "Enables the cancel_query command without any pre-configured scope."
+commands.allow = ["cancel_query"]
+commands.deny = []

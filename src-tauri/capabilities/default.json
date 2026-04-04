@@ -49,6 +49,7 @@
     "allow-sort-results",
     "allow-analyze-query-for-edit",
     "allow-update-result-cell",
+    "allow-cancel-query",
     "allow-select-database",
     "allow-export-results",
     "allow-fetch-table-data",

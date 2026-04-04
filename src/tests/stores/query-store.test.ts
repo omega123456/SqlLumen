@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useQueryStore } from '../../stores/query-store'
+import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
@@ -198,6 +199,47 @@ describe('useQueryStore — executeQuery', () => {
     )
     expect(analyzeErrors).toHaveLength(0)
     errSpy.mockRestore()
+  })
+
+  it('returns early without executing when tab is already running', async () => {
+    let executeCallCount = 0
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        executeCallCount++
+        return {
+          queryId: 'q-mock',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[1]],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    // Set up a tab already in running state
+    useQueryStore.getState().setContent('tab-guard', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-guard': {
+          ...prev.tabs['tab-guard']!,
+          status: 'running' as const,
+          executionStartedAt: Date.now(),
+        },
+      },
+    }))
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-guard', 'SELECT 1')
+
+    // Should not have called the IPC
+    expect(executeCallCount).toBe(0)
+    // Status should still be running
+    expect(useQueryStore.getState().getTabState('tab-guard').status).toBe('running')
   })
 })
 
@@ -895,5 +937,382 @@ describe('useQueryStore — changePageSize', () => {
 
     // Tab should remain undefined (error handler guard prevents write-back)
     expect(useQueryStore.getState().tabs['tab-stale-ps2']).toBeUndefined()
+  })
+})
+
+describe('useQueryStore — executeQuery execution timing', () => {
+  it('sets executionStartedAt when entering running state', async () => {
+    let resolveQuery: ((value: unknown) => void) | null = null
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return new Promise((resolve) => {
+          resolveQuery = resolve
+        })
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    const beforeMs = Date.now()
+    useQueryStore.getState().setContent('tab-timing', 'SELECT 1')
+    const promise = useQueryStore.getState().executeQuery('conn-1', 'tab-timing', 'SELECT 1')
+
+    // While running, executionStartedAt should be set
+    const runningState = useQueryStore.getState().getTabState('tab-timing')
+    expect(runningState.status).toBe('running')
+    expect(runningState.executionStartedAt).not.toBeNull()
+    expect(runningState.executionStartedAt!).toBeGreaterThanOrEqual(beforeMs)
+    expect(runningState.executionStartedAt!).toBeLessThanOrEqual(Date.now())
+
+    // Resolve the query
+    resolveQuery!({
+      queryId: 'q-mock',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      totalRows: 1,
+      executionTimeMs: 10,
+      affectedRows: 0,
+      firstPage: [[1]],
+      totalPages: 1,
+      autoLimitApplied: false,
+    })
+    await promise
+
+    // After success, executionStartedAt should be cleared
+    const successState = useQueryStore.getState().getTabState('tab-timing')
+    expect(successState.status).toBe('success')
+    expect(successState.executionStartedAt).toBeNull()
+  })
+
+  it('clears executionStartedAt on error', async () => {
+    mockIPC(() => {
+      throw new Error('Query failed')
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-err-timing', 'SELECT bad')
+    const state = useQueryStore.getState().getTabState('tab-err-timing')
+    expect(state.status).toBe('error')
+    expect(state.executionStartedAt).toBeNull()
+  })
+
+  it('resets cancel flags at start of executeQuery', async () => {
+    // Pre-set cancel flags
+    useQueryStore.getState().setContent('tab-cancel-reset', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-cancel-reset': {
+          ...prev.tabs['tab-cancel-reset']!,
+          isCancelling: true,
+          wasCancelled: true,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-cancel-reset', 'SELECT 1')
+    const state = useQueryStore.getState().getTabState('tab-cancel-reset')
+    expect(state.isCancelling).toBe(false)
+    expect(state.wasCancelled).toBe(false)
+  })
+
+  it('shows friendly message when query was cancelled', async () => {
+    let rejectQuery: ((reason: unknown) => void) | null = null
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return new Promise((_resolve, reject) => {
+          rejectQuery = reject
+        })
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-cancelled', 'SELECT 1')
+    const promise = useQueryStore
+      .getState()
+      .executeQuery('conn-1', 'tab-cancelled', 'SELECT SLEEP(100)')
+
+    // Simulate setting wasCancelled while query is running
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-cancelled': {
+          ...prev.tabs['tab-cancelled']!,
+          wasCancelled: true,
+        },
+      },
+    }))
+
+    // Reject with a MySQL error
+    rejectQuery!(new Error('Query execution was interrupted'))
+    await promise
+
+    const state = useQueryStore.getState().getTabState('tab-cancelled')
+    expect(state.status).toBe('error')
+    expect(state.errorMessage).toBe('Query cancelled by user')
+    // isCancelling and wasCancelled should be cleared after completion
+    expect(state.isCancelling).toBe(false)
+    expect(state.wasCancelled).toBe(false)
+  })
+})
+
+describe('useQueryStore — changePageSize execution timing', () => {
+  it('sets executionStartedAt when entering running state', async () => {
+    let resolveQuery: ((value: unknown) => void) | null = null
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return new Promise((resolve) => {
+          resolveQuery = resolve
+        })
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-ps-timing', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-ps-timing': {
+          ...prev.tabs['tab-ps-timing']!,
+          lastExecutedSql: 'SELECT 1',
+          status: 'success' as const,
+        },
+      },
+    }))
+
+    const beforeMs = Date.now()
+    const promise = useQueryStore.getState().changePageSize('conn-1', 'tab-ps-timing', 500)
+
+    // While running, executionStartedAt should be set
+    const runningState = useQueryStore.getState().getTabState('tab-ps-timing')
+    expect(runningState.status).toBe('running')
+    expect(runningState.executionStartedAt).not.toBeNull()
+    expect(runningState.executionStartedAt!).toBeGreaterThanOrEqual(beforeMs)
+
+    // Resolve
+    resolveQuery!({
+      queryId: 'q-new',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      totalRows: 10,
+      executionTimeMs: 5,
+      affectedRows: 0,
+      firstPage: [[1]],
+      totalPages: 1,
+      autoLimitApplied: false,
+    })
+    await promise
+
+    // After success, executionStartedAt should be cleared
+    const successState = useQueryStore.getState().getTabState('tab-ps-timing')
+    expect(successState.status).toBe('success')
+    expect(successState.executionStartedAt).toBeNull()
+  })
+
+  it('clears executionStartedAt on error', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') throw new Error('Query failed')
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-ps-err-timing', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-ps-err-timing': {
+          ...prev.tabs['tab-ps-err-timing']!,
+          lastExecutedSql: 'SELECT 1',
+          status: 'success' as const,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().changePageSize('conn-1', 'tab-ps-err-timing', 500)
+
+    const state = useQueryStore.getState().getTabState('tab-ps-err-timing')
+    expect(state.status).toBe('error')
+    expect(state.executionStartedAt).toBeNull()
+  })
+})
+
+describe('useQueryStore — cancelQuery', () => {
+  beforeEach(() => {
+    useToastStore.setState({ toasts: [] })
+    _resetToastTimeoutsForTests()
+  })
+
+  it('sets flags correctly and shows success toast when kill was issued', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'cancel_query') return true
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-mock',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[1]],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    // Set up a tab in running state
+    useQueryStore.getState().setContent('tab-cancel', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-cancel': {
+          ...prev.tabs['tab-cancel']!,
+          status: 'running' as const,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().cancelQuery('conn-1', 'tab-cancel')
+
+    const state = useQueryStore.getState().getTabState('tab-cancel')
+    // isCancelling stays true after successful kill — button stays disabled
+    // until executeQuery completes and clears it
+    expect(state.isCancelling).toBe(true)
+    expect(state.wasCancelled).toBe(true) // stays true for error handler
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts.some((t) => t.variant === 'success' && t.title === 'Query cancelled')).toBe(true)
+  })
+
+  it('resets flags on no-op (query already finished) with no toast', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'cancel_query') return false
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-noop', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-noop': {
+          ...prev.tabs['tab-noop']!,
+          status: 'running' as const,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().cancelQuery('conn-1', 'tab-noop')
+
+    const state = useQueryStore.getState().getTabState('tab-noop')
+    expect(state.isCancelling).toBe(false)
+    expect(state.wasCancelled).toBe(false) // reset on no-op
+
+    // No toast should be shown
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(0)
+  })
+
+  it('resets flags and shows error toast on IPC error', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'cancel_query') throw new Error('Connection lost')
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-cancel-err', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-cancel-err': {
+          ...prev.tabs['tab-cancel-err']!,
+          status: 'running' as const,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().cancelQuery('conn-1', 'tab-cancel-err')
+
+    const state = useQueryStore.getState().getTabState('tab-cancel-err')
+    expect(state.isCancelling).toBe(false)
+    expect(state.wasCancelled).toBe(false) // reset on error
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts.some((t) => t.variant === 'error' && t.title === 'Cancel failed')).toBe(true)
+  })
+
+  it('prevents double-cancel when isCancelling is already true', async () => {
+    let cancelCallCount = 0
+    mockIPC((cmd) => {
+      if (cmd === 'cancel_query') {
+        cancelCallCount++
+        return true
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-dbl', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-dbl': {
+          ...prev.tabs['tab-dbl']!,
+          status: 'running' as const,
+          isCancelling: true,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().cancelQuery('conn-1', 'tab-dbl')
+
+    // Should not have called the IPC
+    expect(cancelCallCount).toBe(0)
+  })
+
+  it('does not create ghost tab state if tab was closed during cancel IPC', async () => {
+    let resolveCancelPromise: ((value: unknown) => void) | null = null
+    mockIPC((cmd) => {
+      if (cmd === 'cancel_query') {
+        return new Promise((resolve) => {
+          resolveCancelPromise = resolve
+        })
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-ghost', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-ghost': {
+          ...prev.tabs['tab-ghost']!,
+          status: 'running' as const,
+        },
+      },
+    }))
+
+    const promise = useQueryStore.getState().cancelQuery('conn-1', 'tab-ghost')
+
+    // Simulate tab close while cancel IPC is in flight
+    useQueryStore.getState().cleanupTab('conn-1', 'tab-ghost')
+    expect(useQueryStore.getState().tabs['tab-ghost']).toBeUndefined()
+
+    // Resolve the cancel IPC
+    resolveCancelPromise!(true)
+    await promise
+
+    // Tab should remain undefined — no ghost entry created
+    expect(useQueryStore.getState().tabs['tab-ghost']).toBeUndefined()
+  })
+})
+
+describe('useQueryStore — default tab state new fields', () => {
+  it('returns default new fields for unknown tab', () => {
+    const state = useQueryStore.getState().getTabState('unknown')
+    expect(state.executionStartedAt).toBeNull()
+    expect(state.isCancelling).toBe(false)
+    expect(state.wasCancelled).toBe(false)
   })
 })

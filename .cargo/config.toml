@@ -137,6 +137,8 @@ mysql-client-llvm-cov = [
   "sql_table_parser_integration",
   "--test",
   "query_edit_integration",
+  "--test",
+  "cancel_query_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",

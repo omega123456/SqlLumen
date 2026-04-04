@@ -170,6 +170,9 @@ describe('StatusBar', () => {
       saveError: null,
       editConnectionId: null,
       editingRowIndex: null,
+      executionStartedAt: null,
+      isCancelling: false,
+      wasCancelled: false,
     }
 
     function setupQueryEditorTab() {
@@ -262,6 +265,70 @@ describe('StatusBar', () => {
 
       render(<StatusBar />)
       expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
+    })
+
+    it('shows running indicator when query status is running', () => {
+      setupQueryEditorTab()
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            ...successQueryState,
+            status: 'running',
+            executionStartedAt: Date.now(),
+          },
+        },
+      })
+
+      render(<StatusBar />)
+      expect(screen.getByTestId('query-running-info')).toBeInTheDocument()
+      expect(screen.getByText('Running...')).toBeInTheDocument()
+      // Ensure query info is NOT shown simultaneously
+      expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
+    })
+
+    it('does not show running indicator when query status is success', () => {
+      setupQueryEditorTab()
+      useQueryStore.setState({ tabs: { 'tab-1': successQueryState } })
+
+      render(<StatusBar />)
+      expect(screen.queryByTestId('query-running-info')).not.toBeInTheDocument()
+      expect(screen.getByTestId('query-info')).toBeInTheDocument()
+    })
+
+    it('does not show running indicator when active tab is not query-editor', () => {
+      const conn = makeActiveConnection()
+      useConnectionStore.setState({
+        activeConnections: { 'conn-1': conn },
+        activeTabId: 'conn-1',
+      })
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          'conn-1': [
+            {
+              id: 'tab-1',
+              type: 'schema-info',
+              label: 'mydb.users',
+              connectionId: 'conn-1',
+              databaseName: 'mydb',
+              objectName: 'users',
+              objectType: 'table',
+            } as WorkspaceTab,
+          ],
+        },
+        activeTabByConnection: { 'conn-1': 'tab-1' },
+      })
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            ...successQueryState,
+            status: 'running',
+            executionStartedAt: Date.now(),
+          },
+        },
+      })
+
+      render(<StatusBar />)
+      expect(screen.queryByTestId('query-running-info')).not.toBeInTheDocument()
     })
 
     it('does not show query info when query status is error', () => {

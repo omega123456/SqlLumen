@@ -35,9 +35,13 @@ export function StatusBar() {
 
   const activeConnection = connectionTabId ? activeConnections[connectionTabId] : null
 
+  const isQueryEditorTab = activeWorkspaceTabType === 'query-editor'
+
   // Show query info only for query-editor tabs with a successful execution
-  const showQueryInfo =
-    activeWorkspaceTabType === 'query-editor' && queryState?.status === 'success'
+  const showQueryInfo = isQueryEditorTab && queryState?.status === 'success'
+
+  // Show running indicator for query-editor tabs with status === 'running'
+  const showRunningInfo = isQueryEditorTab && queryState?.status === 'running'
 
   if (!activeConnection) {
     return (
@@ -53,6 +57,12 @@ export function StatusBar() {
         <ConnectionStatusIndicator status={activeConnection.status} size={10} />
         <span className={styles.statusText}>{statusLabel[activeConnection.status]}</span>
       </div>
+      {showRunningInfo && (
+        <div className={styles.queryRunningInfo} data-testid="query-running-info">
+          <span className={styles.queryRunningSpinner} />
+          <span className={styles.queryRunningText}>Running...</span>
+        </div>
+      )}
       {showQueryInfo && (
         <div className={styles.queryInfo} data-testid="query-info">
           {resolvedTheme === 'dark' ? (

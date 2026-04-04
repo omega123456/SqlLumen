@@ -1,0 +1,78 @@
+.container {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* CSS border-spinner — same size and animation as EditorToolbar .spinner.
+   Uses --primary colors since it's on the toolbar background (not inside a primary button). */
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(var(--primary-rgb), 0.3);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.label {
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: var(--type-size-xs);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.timer {
+  color: var(--on-surface-variant);
+  font-family: var(--font-mono);
+  font-size: var(--type-size-xs);
+  min-width: 9ch;
+}
+
+/* Cancel button — matches .executeAll pattern from EditorToolbar */
+.cancelButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 6px 14px;
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: var(--type-size-xs);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  white-space: nowrap;
+  background-color: var(--surface-container-highest);
+  color: var(--on-surface-variant);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.cancelButton:hover:not(:disabled) {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.cancelButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cancelling {
+  opacity: 0.6;
+}

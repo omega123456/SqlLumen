@@ -21,6 +21,7 @@ import { useQueryStore } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { readFile, writeFile } from '../../lib/query-commands'
 import { splitStatements, findStatementAtCursor, cursorToOffset } from './sql-parser-utils'
+import { RunningIndicator } from './RunningIndicator'
 import styles from './EditorToolbar.module.css'
 
 interface EditorToolbarProps {
@@ -148,7 +149,7 @@ export function EditorToolbar({
           className={styles.iconButton}
           title="Save (Ctrl+S)"
           onClick={handleSave}
-          disabled={isSaving}
+          disabled={isSaving || isRunning}
           data-testid="toolbar-save"
         >
           <FloppyDisk size={16} weight="regular" />
@@ -158,7 +159,7 @@ export function EditorToolbar({
           className={styles.iconButton}
           title="Open SQL file"
           onClick={handleOpen}
-          disabled={isOpening}
+          disabled={isOpening || isRunning}
           data-testid="toolbar-open"
         >
           <FolderOpen size={16} weight="regular" />
@@ -178,38 +179,41 @@ export function EditorToolbar({
           className={styles.iconButton}
           title="Format SQL"
           onClick={handleFormat}
+          disabled={isRunning}
           data-testid="toolbar-format"
         >
           <MagicWand size={16} weight="regular" />
         </button>
       </div>
 
-      {/* Right: execute buttons */}
+      {/* Right: execute buttons or running indicator */}
       <div className={styles.rightActions}>
-        <button
-          type="button"
-          className={`${styles.executeButton} ${styles.executeAll}`}
-          onClick={handleExecuteAll}
-          disabled={isRunning || !content.trim()}
-          data-testid="toolbar-execute-all"
-        >
-          <FastForward size={14} weight="fill" />
-          <span>Execute All</span>
-        </button>
-        <button
-          type="button"
-          className={`${styles.executeButton} ${styles.executePrimary}`}
-          onClick={handleExecute}
-          disabled={isRunning || !content.trim()}
-          data-testid="toolbar-execute"
-        >
-          {isRunning ? (
-            <span className={styles.spinner} aria-label="Running..." />
-          ) : (
-            <Play size={14} weight="fill" />
-          )}
-          <span>Execute Query</span>
-        </button>
+        {isRunning ? (
+          <RunningIndicator connectionId={connectionId} tabId={tabId} />
+        ) : (
+          <>
+            <button
+              type="button"
+              className={`${styles.executeButton} ${styles.executeAll}`}
+              onClick={handleExecuteAll}
+              disabled={!content.trim()}
+              data-testid="toolbar-execute-all"
+            >
+              <FastForward size={14} weight="fill" />
+              <span>Execute All</span>
+            </button>
+            <button
+              type="button"
+              className={`${styles.executeButton} ${styles.executePrimary}`}
+              onClick={handleExecute}
+              disabled={!content.trim()}
+              data-testid="toolbar-execute"
+            >
+              <Play size={14} weight="fill" />
+              <span>Execute Query</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

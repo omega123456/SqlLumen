@@ -7,6 +7,7 @@ import {
   sortResults as sortResultsCmd,
   analyzeQueryForEdit as analyzeQueryForEditCmd,
   updateResultCell as updateResultCellCmd,
+  cancelQuery as cancelQueryCmd,
 } from '../lib/query-commands'
 import { updateTableRow as updateTableRowCmd } from '../lib/table-data-commands'
 import { showErrorToast, showSuccessToast, showWarningToast } from './toast-store'
@@ -163,6 +164,12 @@ export interface TabQueryState {
   editConnectionId: string | null
   /** Index of the row being edited in the current page's rows array. */
   editingRowIndex: number | null
+  /** Date.now() when the query started executing, null when idle. */
+  executionStartedAt: number | null
+  /** True while cancel IPC is in flight. */
+  isCancelling: boolean
+  /** True if the current error was caused by user cancellation. */
+  wasCancelled: boolean
 }
 
 const DEFAULT_TAB_STATE: TabQueryState = {
@@ -200,6 +207,9 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   saveError: null,
   editConnectionId: null,
   editingRowIndex: null,
+  executionStartedAt: null,
+  isCancelling: false,
+  wasCancelled: false,
 }
 
 /** Default values for all edit-related fields (used by clearEditState). */
@@ -332,6 +342,9 @@ interface QueryState {
   /** Change page size and re-execute the query with new pagination. */
   changePageSize: (connectionId: string, tabId: string, size: number) => Promise<void>
 
+  /** Cancel a running query for a tab. */
+  cancelQuery: (connectionId: string, tabId: string) => Promise<void>
+
   // --- Edit mode actions ---
 
   /** Enable or disable edit mode for a table. connectionId needed for IPC. */
@@ -374,6 +387,26 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         [tabId]: { ...(state.tabs[tabId] ?? DEFAULT_TAB_STATE), ...partial },
       },
     }))
+  }
+
+  /** Mark a tab as executing: set running status, record start time, clear stale flags. */
+  const beginExecution = (tabId: string) => {
+    patchTab(tabId, {
+      status: 'running',
+      executionStartedAt: Date.now(),
+      isCancelling: false,
+      wasCancelled: false,
+      errorMessage: null,
+    })
+  }
+
+  /** Clear execution-time tracking fields after a query completes (success or error). */
+  const finalizeExecution = (tabId: string) => {
+    patchTab(tabId, {
+      executionStartedAt: null,
+      isCancelling: false,
+      wasCancelled: false,
+    })
   }
 
   /**
@@ -457,21 +490,31 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     },
 
     executeQuery: async (connectionId: string, tabId: string, sql: string) => {
+      // Fix 1: Guard against double execution for the same tab
+      const currentState = get().tabs[tabId]
+      if (currentState?.status === 'running') {
+        return // already running, ignore
+      }
+
       // Grab the current page size before setting running status
       const currentPageSize = get().tabs[tabId]?.pageSize ?? DEFAULT_TAB_STATE.pageSize
 
       // Clear edit state before the new query
       get().clearEditState(tabId)
 
+      // Reset cancel flags at start (wasCancelled separate from beginExecution)
+      patchTab(tabId, { wasCancelled: false })
+
       // Set running status
-      patchTab(tabId, { status: 'running', errorMessage: null })
+      beginExecution(tabId)
 
       try {
         const result = await executeQueryCmd(connectionId, tabId, sql, currentPageSize)
-        const normalizedRows = normalizeQueryRows(result.columns, result.firstPage)
 
         // Guard: if the tab was closed while query was running, skip the update
         if (!get().tabs[tabId]) return
+
+        const normalizedRows = normalizeQueryRows(result.columns, result.firstPage)
 
         patchTab(tabId, {
           status: 'success',
@@ -486,11 +529,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           autoLimitApplied: result.autoLimitApplied,
           errorMessage: null,
           lastExecutedSql: sql,
+          // Clear cancel flags on completion
+          wasCancelled: false,
           // Reset stale sort/selection state on new query
           sortColumn: null,
           sortDirection: null,
           selectedRowIndex: null,
         })
+        finalizeExecution(tabId)
 
         // Fire-and-forget background query analysis
         // Only for SELECT/WITH queries with columns (skip SHOW, DESCRIBE, EXPLAIN, DML, DDL)
@@ -508,13 +554,23 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         // Guard: if the tab was closed while query was running, skip the update
         if (!get().tabs[tabId]) return
 
+        const wasCancelled = get().tabs[tabId]?.wasCancelled ?? false
+        const errorMessage = wasCancelled
+          ? 'Query cancelled by user'
+          : err instanceof Error
+            ? err.message
+            : String(err)
+
         patchTab(tabId, {
           status: 'error',
           columns: [],
           rows: [],
           totalRows: 0,
-          errorMessage: err instanceof Error ? err.message : String(err),
+          errorMessage,
+          // Clear cancel flags on completion
+          wasCancelled: false,
         })
+        finalizeExecution(tabId)
       }
     },
 
@@ -731,7 +787,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       })
 
       // Set running status and update pageSize
-      patchTab(tabId, { pageSize: size, status: 'running', errorMessage: null })
+      patchTab(tabId, { pageSize: size })
+      beginExecution(tabId)
 
       try {
         const result = await executeQueryCmd(connectionId, tabId, tabState.lastExecutedSql, size)
@@ -753,11 +810,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           affectedRows: result.affectedRows,
           autoLimitApplied: result.autoLimitApplied,
           errorMessage: null,
+          // Clear cancel flags on completion
+          wasCancelled: false,
           // Reset sort and selection since data was re-fetched from MySQL
           sortColumn: null,
           sortDirection: null,
           selectedRowIndex: null,
         })
+        finalizeExecution(tabId)
 
         // Re-trigger analysis for the new queryId (fire-and-forget)
         if (result.columns.length > 0 && isEditableSelectSql(tabState.lastExecutedSql)) {
@@ -771,10 +831,56 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         // Guard: if the tab was closed while re-executing, skip the update
         if (!get().tabs[tabId]) return
 
+        const wasCancelled = get().tabs[tabId]?.wasCancelled ?? false
+        const errorMessage = wasCancelled
+          ? 'Query cancelled by user'
+          : error instanceof Error
+            ? error.message
+            : String(error)
+
         patchTab(tabId, {
           status: 'error',
-          errorMessage: error instanceof Error ? error.message : String(error),
+          errorMessage,
+          // Clear cancel flags on completion
+          wasCancelled: false,
         })
+        finalizeExecution(tabId)
+      }
+    },
+
+    cancelQuery: async (connectionId: string, tabId: string) => {
+      // Guard: tab doesn't exist, bail
+      if (!get().tabs[tabId]) return
+
+      const state = get()
+      // Guard: prevent double-cancel
+      if (state.tabs[tabId]?.isCancelling) return
+
+      // Set cancel flags
+      patchTab(tabId, { isCancelling: true, wasCancelled: true })
+
+      try {
+        const result = await cancelQueryCmd(connectionId, tabId)
+
+        // Fix 3: Check if the tab still exists after IPC resolves
+        if (!get().tabs[tabId]) return
+
+        if (result) {
+          // Kill was actually issued — keep isCancelling: true so button stays
+          // disabled until the query exits running state (executeQuery clears it)
+          showSuccessToast('Query cancelled')
+        } else {
+          // No-op — query already finished
+          patchTab(tabId, { isCancelling: false, wasCancelled: false })
+        }
+      } catch (err) {
+        // Fix 3: Check if the tab still exists after IPC resolves
+        if (!get().tabs[tabId]) return
+
+        // IPC error
+        patchTab(tabId, { isCancelling: false, wasCancelled: false })
+        const errorMsg = err instanceof Error ? err.message : String(err)
+        showErrorToast('Cancel failed', errorMsg)
       }
     },
 

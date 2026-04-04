@@ -36,6 +36,7 @@ pub fn test_app_state() -> AppState {
         app_handle: None,
         results: std::sync::RwLock::new(std::collections::HashMap::new()),
         log_filter_reload: Mutex::new(None),
+        running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
     }
 }
 

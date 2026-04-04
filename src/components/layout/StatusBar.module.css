@@ -68,3 +68,48 @@
 .queryInfoRows {
   color: var(--on-surface-variant);
 }
+
+/* ---------- Query Running Indicator ---------- */
+
+.queryRunningInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+  margin-left: var(--space-md);
+}
+
+[data-theme='dark'] .queryRunningInfo {
+  order: 1;
+  margin-left: var(--space-sm);
+}
+
+.queryRunningSpinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(var(--primary-rgb), 0.3);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: statusBarSpin 0.7s linear infinite;
+}
+
+@keyframes statusBarSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.queryRunningText {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-xs);
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+[data-theme='light'] .queryRunningText {
+  letter-spacing: 0.05em;
+  opacity: 1;
+  color: var(--primary);
+}

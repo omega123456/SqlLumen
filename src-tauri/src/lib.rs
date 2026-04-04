@@ -114,6 +114,7 @@ pub fn run() {
                 app_handle: Some(app.handle().clone()),
                 results: std::sync::RwLock::new(std::collections::HashMap::new()),
                 log_filter_reload: Mutex::new(Some(logging_init.filter_reload)),
+                running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
             };
             app.manage(state);
             Ok(())
@@ -162,6 +163,7 @@ pub fn run() {
             commands::query::sort_results,
             commands::query::analyze_query_for_edit,
             commands::query::update_result_cell,
+            commands::query::cancel_query,
             commands::export::export_results,
             commands::table_data::fetch_table_data,
             commands::table_data::update_table_row,

@@ -447,7 +447,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return null
 
     // --- Query execution ---
-    case 'execute_query':
+    case 'execute_query': {
       // Support error simulation for Playwright tests
       if (
         typeof window !== 'undefined' &&
@@ -456,8 +456,11 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         throw new Error("Table 'app_db.nonexistent' doesn't exist")
       }
 
+      // Build the result for this request (used for both immediate and delayed paths)
+      let result: unknown
+
       if (/^\s*SELECT\s+DATABASE\s*\(\s*\)\s*;?\s*$/i.test(String(args?.sql ?? ''))) {
-        return {
+        result = {
           queryId: 'mock-query-current-db',
           columns: [{ name: 'DATABASE()', dataType: 'VARCHAR' }],
           totalRows: 1,
@@ -467,30 +470,47 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           totalPages: 1,
           autoLimitApplied: false,
         }
+      } else {
+        result = {
+          queryId: 'mock-query-id-1',
+          columns: [
+            { name: 'id', dataType: 'BIGINT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+            { name: 'status', dataType: 'VARCHAR' },
+            { name: 'created_at', dataType: 'DATETIME' },
+          ],
+          totalRows: 5,
+          executionTimeMs: 42,
+          affectedRows: 0,
+          firstPage: [
+            [1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00'],
+            [1002, 'Elena Vance', 'vance.e@techcorp.com', 'active', '2024-02-20T14:22:00'],
+            [1003, 'Marcus Reed', null, 'inactive', '2024-03-05T09:15:00'],
+            [1004, 'Sarah Kim', 's.kim@devtools.co', null, '2024-04-12T16:45:00'],
+            [1005, 'Alex Chen', 'alex.c@datacraft.net', 'active', null],
+          ],
+          totalPages: 1,
+          autoLimitApplied: true,
+        }
       }
 
-      return {
-        queryId: 'mock-query-id-1',
-        columns: [
-          { name: 'id', dataType: 'BIGINT' },
-          { name: 'name', dataType: 'VARCHAR' },
-          { name: 'email', dataType: 'VARCHAR' },
-          { name: 'status', dataType: 'VARCHAR' },
-          { name: 'created_at', dataType: 'DATETIME' },
-        ],
-        totalRows: 5,
-        executionTimeMs: 42,
-        affectedRows: 0,
-        firstPage: [
-          [1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00'],
-          [1002, 'Elena Vance', 'vance.e@techcorp.com', 'active', '2024-02-20T14:22:00'],
-          [1003, 'Marcus Reed', null, 'inactive', '2024-03-05T09:15:00'],
-          [1004, 'Sarah Kim', 's.kim@devtools.co', null, '2024-04-12T16:45:00'],
-          [1005, 'Alex Chen', 'alex.c@datacraft.net', 'active', null],
-        ],
-        totalPages: 1,
-        autoLimitApplied: true,
+      // Support configurable delay for Playwright E2E tests (running indicator + cancel flow)
+      if (typeof window !== 'undefined') {
+        const delay = (window as unknown as Record<string, unknown>).__mockQueryDelay__
+        if (delay && typeof delay === 'number' && delay > 0) {
+          return new Promise((resolve, reject) => {
+            ;(window as unknown as Record<string, unknown>).__pendingQueryReject__ = reject
+            setTimeout(() => {
+              ;(window as unknown as Record<string, unknown>).__pendingQueryReject__ = null
+              resolve(result)
+            }, delay)
+          })
+        }
       }
+
+      return result
+    }
 
     case 'fetch_result_page':
       return {
@@ -501,6 +521,19 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     case 'evict_results':
       return null
+
+    case 'cancel_query': {
+      if (typeof window !== 'undefined') {
+        const pendingReject = (window as unknown as Record<string, unknown>)
+          .__pendingQueryReject__ as ((reason: Error) => void) | null
+        if (pendingReject) {
+          // Clear the reference BEFORE calling reject to prevent recursive issues
+          ;(window as unknown as Record<string, unknown>).__pendingQueryReject__ = null
+          pendingReject(new Error('Query execution was interrupted (cancelled by mock)'))
+        }
+      }
+      return true
+    }
 
     case 'sort_results':
       // Returns FetchPageResult shape (same as fetch_result_page)

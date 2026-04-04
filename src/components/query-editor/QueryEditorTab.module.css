@@ -6,6 +6,14 @@
   overflow: hidden;
 }
 
+.contentArea {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .panelGroup {
   flex: 1;
   min-height: 0;

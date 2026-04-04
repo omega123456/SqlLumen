@@ -2,6 +2,7 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Mutex, RwLock};
 use tauri::AppHandle;
+use tokio::sync::RwLock as TokioRwLock;
 
 use crate::logging::LogFilterReloadHandle;
 use crate::mysql::query_executor::StoredResult;
@@ -19,4 +20,7 @@ pub struct AppState {
     pub results: RwLock<HashMap<(String, String), StoredResult>>,
     /// Reload handle for `EnvFilter` when `log.level` changes (None in tests).
     pub log_filter_reload: Mutex<Option<LogFilterReloadHandle>>,
+    /// MySQL thread IDs for currently running queries, keyed by (connection_id, tab_id).
+    /// Used to issue `KILL QUERY` for cancellation.
+    pub running_queries: TokioRwLock<HashMap<(String, String), u64>>,
 }

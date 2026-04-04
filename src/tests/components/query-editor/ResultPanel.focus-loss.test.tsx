@@ -115,6 +115,9 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   saveError: null,
   editConnectionId: null,
   editingRowIndex: null,
+  executionStartedAt: null,
+  isCancelling: false,
+  wasCancelled: false,
 }
 
 beforeEach(() => {

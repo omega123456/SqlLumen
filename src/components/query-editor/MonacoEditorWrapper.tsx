@@ -37,8 +37,11 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
 
   const content = useQueryStore((state) => state.tabs[tabId]?.content ?? '')
+  const status = useQueryStore((state) => state.tabs[tabId]?.status ?? 'idle')
   const setContent = useQueryStore((state) => state.setContent)
   const setCursorPosition = useQueryStore((state) => state.setCursorPosition)
+
+  const isReadOnly = status === 'running'
 
   // Register themes once Monaco is loaded
   useEffect(() => {
@@ -139,6 +142,7 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
         onChange={handleChange}
         onMount={handleEditorMount}
         options={{
+          readOnly: isReadOnly,
           fontSize: 14,
           lineHeight: 22.4, // 14 * 1.6
           suggestFontSize: 14,

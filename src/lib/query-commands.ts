@@ -72,3 +72,7 @@ export async function updateResultCell(
 ): Promise<void> {
   return invoke<void>('update_result_cell', { connectionId, tabId, rowIndex, updates })
 }
+
+export async function cancelQuery(connectionId: string, tabId: string): Promise<boolean> {
+  return invoke<boolean>('cancel_query', { connectionId, tabId })
+}
