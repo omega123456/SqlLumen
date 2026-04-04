@@ -15,6 +15,7 @@ import {
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
+import { Checkbox } from '../common/Checkbox'
 import { TypeCombobox } from './TypeCombobox'
 import {
   getSignednessValue,
@@ -748,10 +749,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                       modified={isModifiedCell(tabState, column, 'nullable')}
                       testId={`cell-${columnIndex}-nullable`}
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={column.nullable}
-                        className={styles.checkbox}
                         data-testid={`column-nullable-${columnIndex}`}
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => {
@@ -765,10 +764,8 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                       modified={isModifiedCell(tabState, column, 'isPrimaryKey')}
                       testId={`cell-${columnIndex}-pk`}
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={column.isPrimaryKey}
-                        className={styles.checkbox}
                         data-testid={`column-pk-${columnIndex}`}
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => {
@@ -788,11 +785,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                       modified={isModifiedCell(tabState, column, 'isAutoIncrement')}
                       testId={`cell-${columnIndex}-ai`}
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={column.isAutoIncrement}
                         disabled={!autoIncrementEnabled}
-                        className={styles.checkbox}
                         data-testid={`column-ai-${columnIndex}`}
                         onClick={(event) => event.stopPropagation()}
                         onChange={(event) => {

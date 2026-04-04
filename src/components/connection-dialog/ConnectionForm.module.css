@@ -213,13 +213,6 @@
   letter-spacing: 0.06em;
 }
 
-.sslCheckbox {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--primary);
-  cursor: pointer;
-}
-
 .tabColorBlock {
   display: flex;
   flex-direction: column;

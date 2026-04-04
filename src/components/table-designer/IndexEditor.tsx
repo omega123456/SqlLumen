@@ -8,6 +8,7 @@ import type { TableDesignerIndexDef } from '../../types/schema'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
+import { Checkbox } from '../common/Checkbox'
 import styles from './IndexEditor.module.css'
 
 const INDEX_TYPE_DROPDOWN_OPTIONS: DropdownOption[] = [
@@ -342,8 +343,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                               const checked = index.columns.includes(columnName)
                               return (
                                 <label key={columnName} className={styles.checkboxOption}>
-                                  <input
-                                    type="checkbox"
+                                  <Checkbox
                                     checked={checked}
                                     data-testid={`index-column-option-${visibleIndex}-${columnName}`}
                                     onChange={() => handleToggleColumn(storeIndex, columnName)}

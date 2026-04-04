@@ -1,0 +1,35 @@
+/* Shared checkbox — matches export dialog / design tokens (surface-container-highest, outline-variant, primary accent). */
+
+.input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-radius: 3px;
+  border: 1.5px solid var(--outline-variant);
+  background: var(--surface-container-highest);
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  outline: none;
+  transition: box-shadow 0.15s ease;
+}
+
+.input:focus-visible {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+.input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+[data-theme='light'] .input {
+  width: 20px;
+  height: 20px;
+  border-color: #c1c6d5;
+  accent-color: #0066cc;
+}
+
+[data-theme='light'] .input:focus-visible {
+  box-shadow: 0 0 0 2px var(--primary);
+}

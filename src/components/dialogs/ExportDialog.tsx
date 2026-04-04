@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
+import { Checkbox } from '../common/Checkbox'
 import { DialogShell } from './DialogShell'
 import { exportResults } from '../../lib/export-commands'
 import type { ExportFormat } from '../../types/schema'
@@ -239,10 +240,8 @@ export default function ExportDialog({
 
           {/* Include headers checkbox */}
           <div className={styles.checkboxRow}>
-            <input
-              type="checkbox"
+            <Checkbox
               id="export-include-headers"
-              className={styles.checkbox}
               checked={includeHeaders}
               onChange={(e) => setIncludeHeaders(e.target.checked)}
               data-testid="export-include-headers-checkbox"

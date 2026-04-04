@@ -230,12 +230,6 @@
   color: var(--on-surface);
 }
 
-.checkboxOption input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--primary);
-}
-
 .emptyState {
   color: var(--on-surface-variant);
 }

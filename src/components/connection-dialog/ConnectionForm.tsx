@@ -10,6 +10,7 @@ import {
 } from '../../lib/connection-commands'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
+import { Checkbox } from '../common/Checkbox'
 import { Dropdown } from '../common/Dropdown'
 import { CollapsibleSection } from './CollapsibleSection'
 import { ColorPickerPopover } from './ColorPickerPopover'
@@ -427,8 +428,7 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                 </div>
                 {hasSavedPassword && (
                   <label className={styles.label}>
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={clearSavedPassword}
                       onChange={(e) => {
                         const checked = e.target.checked
@@ -477,9 +477,8 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                 <label htmlFor="read-only" className={styles.label}>
                   Read Only
                 </label>
-                <input
+                <Checkbox
                   id="read-only"
-                  type="checkbox"
                   checked={formData.readOnly}
                   onChange={(e) => updateField('readOnly', e.target.checked)}
                 />
@@ -540,10 +539,8 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
             <div className={styles.sslTabRow}>
               <div className={styles.sslBlock}>
                 <div className={styles.sslCheckboxWrap}>
-                  <input
+                  <Checkbox
                     id="ssl-enabled"
-                    type="checkbox"
-                    className={styles.sslCheckbox}
                     checked={formData.sslEnabled}
                     onChange={(e) => updateField('sslEnabled', e.target.checked)}
                     aria-label="Use SSL / TLS"

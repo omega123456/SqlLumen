@@ -197,12 +197,6 @@
   width: 76px;
 }
 
-.checkbox {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--primary);
-}
-
 .defaultValueCell {
   position: relative;
   display: flex;
