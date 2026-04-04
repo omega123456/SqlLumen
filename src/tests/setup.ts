@@ -1,11 +1,49 @@
 import '@testing-library/jest-dom'
+import { cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 
-// Default IPC: allow log_frontend (toast / app log) without noise; other commands must mock explicitly.
+/** React 19 + Vitest: known stray act() warning for RunningIndicator (interval + external store). */
+const RUNNING_INDICATOR_ACT_NOISE =
+  /An update to RunningIndicator inside a test was not wrapped in act/i
+const originalConsoleError = console.error
+console.error = (...args: Parameters<typeof console.error>) => {
+  if (args.some((a) => typeof a === 'string' && RUNNING_INDICATOR_ACT_NOISE.test(a))) {
+    return
+  }
+  originalConsoleError.apply(console, args)
+}
+
+// Under v8 coverage, some act() warnings still reach stderr; filter the same line as console.error above.
+const originalStderrWrite = process.stderr.write.bind(process.stderr)
+process.stderr.write = ((chunk: string | Uint8Array, encoding?: unknown, cb?: unknown) => {
+  const text =
+    typeof chunk === 'string'
+      ? chunk
+      : Buffer.isBuffer(chunk)
+        ? chunk.toString('utf8')
+        : new TextDecoder().decode(chunk)
+  if (RUNNING_INDICATOR_ACT_NOISE.test(text)) {
+    if (typeof encoding === 'function') {
+      ;(encoding as () => void)()
+    } else if (typeof cb === 'function') {
+      ;(cb as (err?: Error) => void)()
+    }
+    return true
+  }
+  return originalStderrWrite(chunk as Buffer, encoding as BufferEncoding, cb as (err?: Error) => void)
+}) as typeof process.stderr.write
+
+// Default IPC: log_frontend + Tauri event listen/unlisten (used by App / connection store).
 beforeEach(() => {
   mockIPC((cmd) => {
     if (cmd === 'log_frontend') {
+      return undefined
+    }
+    if (cmd === 'plugin:event|listen') {
+      return () => {}
+    }
+    if (cmd === 'plugin:event|unlisten') {
       return undefined
     }
     throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
@@ -155,5 +193,6 @@ if (typeof HTMLDialogElement !== 'undefined') {
 }
 
 afterEach(() => {
+  cleanup()
   clearMocks()
 })

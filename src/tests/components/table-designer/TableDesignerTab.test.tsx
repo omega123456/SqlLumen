@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TableDesignerTab } from '../../../components/table-designer/TableDesignerTab'
@@ -469,17 +469,19 @@ describe('TableDesignerTab', () => {
       expect(useTableDesignerStore.getState().tabs['tab-1']?.pendingNavigationAction).toBeNull()
     })
 
-    useTableDesignerStore.setState((state) => ({
-      tabs: {
-        ...state.tabs,
-        'tab-1': {
-          ...state.tabs['tab-1'],
-          isDirty: true,
-          pendingNavigationAction: action,
+    await act(async () => {
+      useTableDesignerStore.setState((state) => ({
+        tabs: {
+          ...state.tabs,
+          'tab-1': {
+            ...state.tabs['tab-1'],
+            isDirty: true,
+            pendingNavigationAction: action,
+          },
         },
-      },
-    }))
-    rerender(<TableDesignerTab tab={makeTab()} />)
+      }))
+      rerender(<TableDesignerTab tab={makeTab()} />)
+    })
 
     await user.click(screen.getByTestId('btn-discard-changes'))
     expect(action).toHaveBeenCalledTimes(1)

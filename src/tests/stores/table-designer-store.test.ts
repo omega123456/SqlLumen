@@ -623,12 +623,17 @@ describe('useTableDesignerStore — loadSchema', () => {
   })
 
   it('loadSchema on error sets loadError', async () => {
-    invokeMock.mockRejectedValueOnce(new Error('Load failed'))
-    initAlterTab('load-tab')
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      invokeMock.mockRejectedValueOnce(new Error('Load failed'))
+      initAlterTab('load-tab')
 
-    await useTableDesignerStore.getState().loadSchema('load-tab')
+      await useTableDesignerStore.getState().loadSchema('load-tab')
 
-    expect(useTableDesignerStore.getState().tabs['load-tab'].loadError).toBe('Load failed')
+      expect(useTableDesignerStore.getState().tabs['load-tab'].loadError).toBe('Load failed')
+    } finally {
+      errSpy.mockRestore()
+    }
   })
 })
 
@@ -686,25 +691,30 @@ describe('useTableDesignerStore — regenerateDdl', () => {
   })
 
   it('regenerateDdl sets ddlError on failure', async () => {
-    initCreateTab()
-    useTableDesignerStore.getState().updateTableName('tab-1', 'users')
-    useTableDesignerStore.setState((state) => ({
-      tabs: {
-        ...state.tabs,
-        'tab-1': {
-          ...state.tabs['tab-1'],
-          ddl: 'STALE SQL',
-          ddlWarnings: ['stale warning'],
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      initCreateTab()
+      useTableDesignerStore.getState().updateTableName('tab-1', 'users')
+      useTableDesignerStore.setState((state) => ({
+        tabs: {
+          ...state.tabs,
+          'tab-1': {
+            ...state.tabs['tab-1'],
+            ddl: 'STALE SQL',
+            ddlWarnings: ['stale warning'],
+          },
         },
-      },
-    }))
-    invokeMock.mockRejectedValueOnce(new Error('DDL failed'))
+      }))
+      invokeMock.mockRejectedValueOnce(new Error('DDL failed'))
 
-    await useTableDesignerStore.getState().regenerateDdl('tab-1')
+      await useTableDesignerStore.getState().regenerateDdl('tab-1')
 
-    expect(useTableDesignerStore.getState().tabs['tab-1'].ddl).toBe('')
-    expect(useTableDesignerStore.getState().tabs['tab-1'].ddlWarnings).toEqual([])
-    expect(useTableDesignerStore.getState().tabs['tab-1'].ddlError).toBe('DDL failed')
+      expect(useTableDesignerStore.getState().tabs['tab-1'].ddl).toBe('')
+      expect(useTableDesignerStore.getState().tabs['tab-1'].ddlWarnings).toEqual([])
+      expect(useTableDesignerStore.getState().tabs['tab-1'].ddlError).toBe('DDL failed')
+    } finally {
+      errSpy.mockRestore()
+    }
   })
 
   it('regenerateDdl ignores stale async responses from older requests', async () => {

@@ -49,13 +49,14 @@ function setupTabState(overrides: Partial<TabQueryState> = {}) {
   })
 }
 
+let executionStartMs = 0
+
 beforeEach(() => {
-  vi.useFakeTimers()
-  setupTabState({ executionStartedAt: Date.now() })
+  executionStartMs = Date.now()
+  setupTabState({ executionStartedAt: executionStartMs })
 })
 
 afterEach(() => {
-  vi.useRealTimers()
   useQueryStore.setState({ tabs: {} })
 })
 
@@ -81,32 +82,7 @@ describe('RunningIndicator', () => {
 
   it('timer shows formatted elapsed time', () => {
     render(<RunningIndicator connectionId="conn-1" tabId="tab-1" />)
-    // Initially elapsed is 0
     expect(screen.getByTestId('running-timer')).toHaveTextContent('0s')
-  })
-
-  it('timer increments every second', () => {
-    render(<RunningIndicator connectionId="conn-1" tabId="tab-1" />)
-    expect(screen.getByTestId('running-timer')).toHaveTextContent('0s')
-
-    act(() => {
-      vi.advanceTimersByTime(1000)
-    })
-    expect(screen.getByTestId('running-timer')).toHaveTextContent('1s')
-
-    act(() => {
-      vi.advanceTimersByTime(2000)
-    })
-    expect(screen.getByTestId('running-timer')).toHaveTextContent('3s')
-  })
-
-  it('timer formats minutes correctly', () => {
-    render(<RunningIndicator connectionId="conn-1" tabId="tab-1" />)
-
-    act(() => {
-      vi.advanceTimersByTime(65000)
-    })
-    expect(screen.getByTestId('running-timer')).toHaveTextContent('1m 5s')
   })
 
   it('calls cancelQuery when cancel button is clicked', () => {
@@ -114,7 +90,9 @@ describe('RunningIndicator', () => {
     useQueryStore.setState({ cancelQuery: mockCancelQuery })
 
     render(<RunningIndicator connectionId="conn-1" tabId="tab-1" />)
-    fireEvent.click(screen.getByTestId('cancel-query-button'))
+    act(() => {
+      fireEvent.click(screen.getByTestId('cancel-query-button'))
+    })
     expect(mockCancelQuery).toHaveBeenCalledWith('conn-1', 'tab-1')
   })
 
@@ -126,7 +104,7 @@ describe('RunningIndicator', () => {
 
   it('shows "Cancelling..." and is disabled when isCancelling is true', () => {
     setupTabState({
-      executionStartedAt: Date.now(),
+      executionStartedAt: executionStartMs,
       isCancelling: true,
       wasCancelled: true,
     })
@@ -143,19 +121,56 @@ describe('RunningIndicator', () => {
     expect(spinner).toBeInTheDocument()
   })
 
-  it('cleans up interval on unmount', () => {
-    const { unmount } = render(<RunningIndicator connectionId="conn-1" tabId="tab-1" />)
+  describe('elapsed timer (fake timers)', () => {
+    const FIXED_START = Date.UTC(2025, 2, 1, 12, 0, 0)
 
-    act(() => {
-      vi.advanceTimersByTime(1000)
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(FIXED_START)
+      setupTabState({ executionStartedAt: FIXED_START })
     })
-    expect(screen.getByTestId('running-timer')).toHaveTextContent('1s')
 
-    unmount()
+    afterEach(() => {
+      vi.useRealTimers()
+    })
 
-    // After unmount, advancing timers should not cause errors
-    act(() => {
-      vi.advanceTimersByTime(5000)
+    it('timer increments every second', () => {
+      render(<RunningIndicator connectionId="conn-1" tabId="tab-1" />)
+      expect(screen.getByTestId('running-timer')).toHaveTextContent('0s')
+
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
+      expect(screen.getByTestId('running-timer')).toHaveTextContent('1s')
+
+      act(() => {
+        vi.advanceTimersByTime(2000)
+      })
+      expect(screen.getByTestId('running-timer')).toHaveTextContent('3s')
+    })
+
+    it('timer formats minutes correctly', () => {
+      render(<RunningIndicator connectionId="conn-1" tabId="tab-1" />)
+
+      act(() => {
+        vi.advanceTimersByTime(65000)
+      })
+      expect(screen.getByTestId('running-timer')).toHaveTextContent('1m 5s')
+    })
+
+    it('cleans up interval on unmount', () => {
+      const { unmount } = render(<RunningIndicator connectionId="conn-1" tabId="tab-1" />)
+
+      act(() => {
+        vi.advanceTimersByTime(1000)
+      })
+      expect(screen.getByTestId('running-timer')).toHaveTextContent('1s')
+
+      unmount()
+
+      act(() => {
+        vi.advanceTimersByTime(5000)
+      })
     })
   })
 })
