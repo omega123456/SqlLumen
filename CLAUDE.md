@@ -151,7 +151,8 @@ src/
     table-data/       # TableDataTab, TableDataGrid, TableDataFormView, TableDataToolbar, UnsavedChangesDialog
     schema-info/
     dialogs/          # ExportDialog, ConfirmDialog, create/alter DB, …
-    common/
+    common/           # Shared primitives (buttons, inputs, menus, etc.)
+    shared/           # Cross-feature building blocks (e.g. DataGrid, grid editors)
   styles/
     tokens.css
     global.css
@@ -161,6 +162,11 @@ src/
   types/
   tests/              # Mirrors src/; setup in tests/setup.ts
 ```
+
+### Shared UI components
+
+- **Reuse before reinventing** — Before adding buttons, checkboxes, text fields, dropdowns, dialogs, or other standard controls, search `src/components/common/` and `src/components/shared/` (and nearby feature code) for an existing component that fits. Prefer importing and composing those primitives over new one-off markup or raw HTML elements, so theming, spacing, and behavior stay consistent across the app.
+- **New shared pieces** — Introduce a new shared component only when nothing in `common` / `shared` (or an established pattern in the same feature area) covers the need, or when the user explicitly asks for a new abstraction.
 
 ### Theming
 

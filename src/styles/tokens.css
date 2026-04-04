@@ -402,10 +402,10 @@
   --surface-dim: #e6e8ea;
   --surface-bright: #ffffff;
   --surface-container-lowest: #ffffff;
-  --surface-container-low: #ffffff;
-    --surface-container: #ffffff;
-    --surface-container-high: #ffffff;
-    --surface-container-highest: #ffffff;
+  --surface-container-low: #f2f4f6;
+    --surface-container: #f2f4f6;
+    --surface-container-high: #e6e8ea;
+    --surface-container-highest: #dee1e5;
   --surface-variant: #e6e8ea;
   --surface-tint: #0066cc;
   --surface-tint-rgb: 0, 102, 204;

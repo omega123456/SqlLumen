@@ -379,6 +379,120 @@ describe('Dropdown', () => {
     expect(onChange).toHaveBeenCalledWith('b')
   })
 
+  it('opens and highlights a matching option when typing on the closed trigger', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+
+    render(
+      <>
+        <span id="lb-closed-typeahead">Pick</span>
+        <Dropdown
+          id="d-closed-typeahead"
+          labelledBy="lb-closed-typeahead"
+          options={options}
+          value=""
+          onChange={onChange}
+        />
+      </>
+    )
+
+    const combobox = screen.getByRole('combobox', { name: 'Pick' })
+    combobox.focus()
+
+    await user.keyboard('b')
+
+    const listbox = await screen.findByRole('listbox')
+    await waitFor(() => {
+      expect(listbox).toHaveFocus()
+    })
+
+    const betaOption = screen.getByRole('option', { name: 'Beta' })
+    expect(listbox).toHaveAttribute('aria-activedescendant', betaOption.id)
+
+    await user.keyboard('{Enter}')
+
+    expect(onChange).toHaveBeenCalledWith('b')
+  })
+
+  it('starts closed-trigger typeahead from the top when nothing is selected', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const repeatedPrefixOptions = [
+      { value: 'apple', label: 'Apple' },
+      { value: 'alpha', label: 'Alpha' },
+      { value: 'beta', label: 'Beta' },
+    ]
+
+    render(
+      <>
+        <span id="lb-closed-typeahead-top">Pick</span>
+        <Dropdown
+          id="d-closed-typeahead-top"
+          labelledBy="lb-closed-typeahead-top"
+          options={repeatedPrefixOptions}
+          value=""
+          onChange={onChange}
+        />
+      </>
+    )
+
+    const combobox = screen.getByRole('combobox', { name: 'Pick' })
+    combobox.focus()
+
+    await user.keyboard('a')
+
+    const listbox = await screen.findByRole('listbox')
+    const appleOption = screen.getByRole('option', { name: 'Apple' })
+    expect(listbox).toHaveAttribute('aria-activedescendant', appleOption.id)
+
+    await user.keyboard('{Enter}')
+
+    expect(onChange).toHaveBeenCalledWith('apple')
+  })
+
+  it('scrolls the highlighted option into view when closed-trigger typeahead opens the list', async () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      writable: true,
+      value: scrollIntoView,
+    })
+
+    try {
+      const user = userEvent.setup()
+      render(
+        <>
+          <span id="lb-closed-typeahead-scroll">Pick</span>
+          <Dropdown
+            id="d-closed-typeahead-scroll"
+            labelledBy="lb-closed-typeahead-scroll"
+            options={[
+              { value: 'apple', label: 'Apple' },
+              { value: 'beta', label: 'Beta' },
+              { value: 'carrot', label: 'Carrot' },
+            ]}
+            value=""
+            onChange={vi.fn()}
+          />
+        </>
+      )
+
+      screen.getByRole('combobox', { name: 'Pick' }).focus()
+
+      await user.keyboard('b')
+
+      await screen.findByRole('listbox')
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+        configurable: true,
+        writable: true,
+        value: originalScrollIntoView,
+      })
+    }
+  })
+
   it('selects an option on click even when mousedown is prevented', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()

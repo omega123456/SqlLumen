@@ -118,6 +118,43 @@ function isTypeaheadKey(event: ReactKeyboardEvent<HTMLElement>): boolean {
   )
 }
 
+function getTypeaheadMatch(
+  options: DropdownOption[],
+  highlightedIndex: number,
+  currentSearch: string,
+  character: string
+): { matchedIndex: number; search: string } | null {
+  const enabled = enabledIndices(options)
+  if (enabled.length === 0) {
+    return null
+  }
+
+  const nextCharacter = character.toLowerCase()
+  const nextSearch = `${currentSearch}${nextCharacter}`
+  const currentPosition = enabled.indexOf(highlightedIndex)
+  const orderedIndices =
+    currentPosition === -1
+      ? enabled
+      : [...enabled.slice(currentPosition + 1), ...enabled.slice(0, currentPosition + 1)]
+
+  const findMatch = (search: string) =>
+    orderedIndices.find((optionIndex) =>
+      normalizeTypeaheadLabel(options[optionIndex]?.label ?? '').startsWith(search)
+    )
+
+  const nextSearchMatch = findMatch(nextSearch)
+  const nextCharacterMatch = findMatch(nextCharacter)
+  const matchedIndex = nextSearchMatch ?? nextCharacterMatch
+  if (matchedIndex === undefined) {
+    return null
+  }
+
+  return {
+    matchedIndex,
+    search: nextSearchMatch !== undefined ? nextSearch : nextCharacter,
+  }
+}
+
 function getScrollParents(node: HTMLElement | null): (HTMLElement | Window)[] {
   const list: (HTMLElement | Window)[] = [window]
   let current = node?.parentElement ?? null
@@ -251,24 +288,53 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       }
     }, [])
 
+    const scheduleTypeaheadReset = useCallback(() => {
+      if (typeaheadResetTimeoutRef.current !== null) {
+        window.clearTimeout(typeaheadResetTimeoutRef.current)
+      }
+      typeaheadResetTimeoutRef.current = window.setTimeout(() => {
+        typeaheadRef.current = ''
+        typeaheadResetTimeoutRef.current = null
+      }, 700)
+    }, [])
+
     const close = useCallback(() => {
       resetTypeahead()
       setOpen(false)
     }, [resetTypeahead])
 
-    const openWithHighlight = useCallback(() => {
-      resetTypeahead()
-      const enabled = enabledIndices(options)
-      const selectedIndex = selectedIndices.find((idx) => enabled.includes(idx)) ?? -1
-      const preferred = selectedIndex >= 0 ? selectedIndex : (enabled[0] ?? 0)
-      setHighlightedIndex(preferred)
-      setOpen(true)
+    const focusListIfNeeded = useCallback(() => {
       if (focusListOnOpen) {
         queueMicrotask(() => {
           panelRef.current?.focus()
         })
       }
-    }, [focusListOnOpen, options, resetTypeahead, selectedIndices])
+    }, [focusListOnOpen])
+
+    const getPreferredHighlightedIndex = useCallback(() => {
+      const enabled = enabledIndices(options)
+      const selectedIndex = selectedIndices.find((idx) => enabled.includes(idx)) ?? -1
+      return selectedIndex >= 0 ? selectedIndex : (enabled[0] ?? 0)
+    }, [options, selectedIndices])
+
+    const getClosedTypeaheadStartIndex = useCallback(() => {
+      const enabled = enabledIndices(options)
+      return selectedIndices.find((idx) => enabled.includes(idx)) ?? -1
+    }, [options, selectedIndices])
+
+    const openAtHighlight = useCallback(
+      (index: number) => {
+        setHighlightedIndex(index)
+        setOpen(true)
+        focusListIfNeeded()
+      },
+      [focusListIfNeeded]
+    )
+
+    const openWithHighlight = useCallback(() => {
+      resetTypeahead()
+      openAtHighlight(getPreferredHighlightedIndex())
+    }, [getPreferredHighlightedIndex, openAtHighlight, resetTypeahead])
 
     useEffect(() => {
       return () => {
@@ -399,6 +465,18 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       }
     }, [open, options.length])
 
+    useLayoutEffect(() => {
+      if (!open) {
+        return
+      }
+
+      const activeOptionId = `${listboxId}-option-${highlightedIndex}`
+      const activeOption = document.getElementById(activeOptionId)
+      if (activeOption && panelRef.current?.contains(activeOption)) {
+        activeOption.scrollIntoView?.({ block: 'nearest' })
+      }
+    }, [highlightedIndex, listboxId, open])
+
     const moveHighlight = useCallback(
       (delta: number) => {
         const enabled = enabledIndices(options)
@@ -415,46 +493,19 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
 
     const handleTypeahead = useCallback(
       (character: string) => {
-        const enabled = enabledIndices(options)
-        if (enabled.length === 0) {
-          return false
-        }
-
-        const nextCharacter = character.toLowerCase()
-        const nextSearch = `${typeaheadRef.current}${nextCharacter}`
-        const currentPosition = enabled.indexOf(highlightedIndex)
-        const orderedIndices =
-          currentPosition === -1
-            ? enabled
-            : [...enabled.slice(currentPosition + 1), ...enabled.slice(0, currentPosition + 1)]
-
-        const findMatch = (search: string) =>
-          orderedIndices.find((optionIndex) =>
-            normalizeTypeaheadLabel(options[optionIndex]?.label ?? '').startsWith(search)
-          )
-
-        const nextSearchMatch = findMatch(nextSearch)
-        const nextCharacterMatch = findMatch(nextCharacter)
-        const matchedIndex = nextSearchMatch ?? nextCharacterMatch
-        if (matchedIndex === undefined) {
+        const match = getTypeaheadMatch(options, highlightedIndex, typeaheadRef.current, character)
+        if (!match) {
           resetTypeahead()
           return false
         }
 
-        typeaheadRef.current = nextSearchMatch !== undefined ? nextSearch : nextCharacter
+        typeaheadRef.current = match.search
+        scheduleTypeaheadReset()
 
-        if (typeaheadResetTimeoutRef.current !== null) {
-          window.clearTimeout(typeaheadResetTimeoutRef.current)
-        }
-        typeaheadResetTimeoutRef.current = window.setTimeout(() => {
-          typeaheadRef.current = ''
-          typeaheadResetTimeoutRef.current = null
-        }, 700)
-
-        setHighlightedIndex(matchedIndex)
+        setHighlightedIndex(match.matchedIndex)
         return true
       },
-      [highlightedIndex, options, resetTypeahead]
+      [highlightedIndex, options, resetTypeahead, scheduleTypeaheadReset]
     )
 
     const selectIndex = useCallback(
@@ -573,6 +624,16 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault()
         openWithHighlight()
+      } else if (isTypeaheadKey(e)) {
+        const match = getTypeaheadMatch(options, getClosedTypeaheadStartIndex(), '', e.key)
+        if (!match) {
+          return
+        }
+
+        e.preventDefault()
+        typeaheadRef.current = match.search
+        scheduleTypeaheadReset()
+        openAtHighlight(match.matchedIndex)
       }
     }
 
