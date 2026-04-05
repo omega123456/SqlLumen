@@ -47,6 +47,7 @@ pnpm typecheck          # tsc --noEmit
 
 ## Critical Rules for Agents
 
+- **Tests live only in separate test files.** Never bundle tests with production code: no `*.test.ts` / `*.spec.ts` next to sources under `src/`, no `describe`/`it` blocks inside application modules, and (Rust) no `#[cfg(test)]` or `#[test]` in `src-tauri/src/` — use `src/tests/` (mirroring `src/`), `src-tauri/tests/`, and `e2e/` only.
 - **`pnpm test:all` must be fully green before you are done.** Fix every failure regardless of whether you think your diff caused it — including pre-existing failures, unrelated suites, and screenshot baselines.
 - **Never lower coverage thresholds.** 90% lines/functions/statements for both TypeScript (Vitest v8) and Rust (llvm-cov `--fail-under-*`). Improve tests instead.
 - **No fixed delays > 5 s** in any test. Use condition-based waiting (Playwright auto-wait, `waitFor`, `findBy*`, polling).
@@ -142,6 +143,8 @@ Silent error swallowing is **forbidden** without a log line:
 ---
 
 ## Testing Conventions
+
+Keep every test in a dedicated file under the appropriate test root (`src/tests/`, `src-tauri/tests/`, `e2e/`). Production files must contain only shipping code.
 
 ### Vitest (TypeScript)
 
