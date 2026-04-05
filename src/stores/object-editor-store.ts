@@ -9,6 +9,8 @@ import { getObjectBody, saveObject } from '../lib/object-editor-commands'
 import { getObjectTemplate } from '../components/object-editor/object-editor-templates'
 import { showSuccessToast, showErrorToast } from './toast-store'
 import { useSchemaStore } from './schema-store'
+import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
+import { invalidateCache as invalidateSchemaMetadataCache } from '../components/query-editor/schema-metadata-cache'
 
 // ---------------------------------------------------------------------------
 // Per-tab state
@@ -199,6 +201,13 @@ export const useObjectEditorStore = create<ObjectEditorStore>()((set, get) => {
         }
 
         patchTab(tabId, updates)
+
+        // Invalidate routine parameter cache and schema metadata cache after saving
+        // a procedure or function so signature help picks up new/changed routines.
+        if (tab.objectType === 'procedure' || tab.objectType === 'function') {
+          invalidateRoutineCache(tab.connectionId)
+          invalidateSchemaMetadataCache(tab.connectionId)
+        }
 
         // Refresh schema tree — call both refreshCategory and refreshDatabase
         // refreshCategory may silently no-op if the category node hasn't been expanded,

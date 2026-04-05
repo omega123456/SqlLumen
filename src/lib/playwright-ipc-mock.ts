@@ -1200,6 +1200,27 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         { name: 'p_result', dataType: 'varchar(255)', mode: 'OUT', ordinalPosition: 2 },
       ]
 
+    case 'get_routine_parameters_with_return_type': {
+      const rtType = (args as Record<string, unknown>)?.routineType
+      if (rtType === 'function') {
+        return {
+          parameters: [
+            { name: '', dataType: 'int', mode: '', ordinalPosition: 0 },
+            { name: 'p_id', dataType: 'int', mode: 'IN', ordinalPosition: 1 },
+            { name: 'p_result', dataType: 'varchar(255)', mode: 'OUT', ordinalPosition: 2 },
+          ],
+          found: true,
+        }
+      }
+      return {
+        parameters: [
+          { name: 'p_id', dataType: 'int', mode: 'IN', ordinalPosition: 1 },
+          { name: 'p_result', dataType: 'varchar(255)', mode: 'OUT', ordinalPosition: 2 },
+        ],
+        found: true,
+      }
+    }
+
     case 'read_file':
       return "SELECT * FROM users\nWHERE status = 'active'\nLIMIT 100;"
 

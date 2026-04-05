@@ -86,6 +86,7 @@ vi.mock('monaco-editor', () => ({
     register: vi.fn(),
     setMonarchTokensProvider: vi.fn(),
     registerCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })),
+    registerSignatureHelpProvider: vi.fn(() => ({ dispose: vi.fn() })),
     CompletionItemKind: {
       Keyword: 14,
       Class: 5,

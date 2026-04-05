@@ -60,6 +60,10 @@ export function unregisterModelConnection(uri: string): void {
   modelConnections.delete(uri)
 }
 
+export function getModelConnectionId(uri: string): string | undefined {
+  return modelConnections.get(uri)
+}
+
 /** Reset all model-connection mappings. For test cleanup only. */
 export function resetModelConnections(): void {
   modelConnections.clear()
@@ -159,7 +163,7 @@ function isStoredProgramBodyContext(statementPrefix: string): boolean {
   )
 }
 
-function getSelectedDatabase(connectionId: string | undefined): string | null {
+export function getSelectedDatabase(connectionId: string | undefined): string | null {
   if (!connectionId) return null
 
   const selectedNodeId = useSchemaStore.getState().connectionStates[connectionId]?.selectedNodeId

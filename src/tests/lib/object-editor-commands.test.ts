@@ -10,6 +10,7 @@ import {
   saveObject,
   dropObject,
   getRoutineParameters,
+  getRoutineParametersWithReturnType,
 } from '../../lib/object-editor-commands'
 
 const mockInvoke = vi.mocked(invoke)
@@ -139,5 +140,37 @@ describe('getRoutineParameters', () => {
     await expect(getRoutineParameters('conn-1', 'db', 'x', 'procedure')).rejects.toThrow(
       'Not found'
     )
+  })
+})
+
+describe('getRoutineParametersWithReturnType', () => {
+  it('calls invoke with the correct command and args', async () => {
+    const params = [
+      { name: '', dataType: 'int', mode: '', ordinalPosition: 0 },
+      { name: 'p1', dataType: 'INT', mode: 'IN', ordinalPosition: 1 },
+    ]
+    mockInvoke.mockResolvedValue(params)
+
+    const result = await getRoutineParametersWithReturnType(
+      'conn-1',
+      'app_db',
+      'my_func',
+      'FUNCTION'
+    )
+
+    expect(mockInvoke).toHaveBeenCalledWith('get_routine_parameters_with_return_type', {
+      connectionId: 'conn-1',
+      database: 'app_db',
+      routineName: 'my_func',
+      routineType: 'FUNCTION',
+    })
+    expect(result).toEqual(params)
+  })
+
+  it('propagates invoke errors', async () => {
+    mockInvoke.mockRejectedValue(new Error('Connection lost'))
+    await expect(
+      getRoutineParametersWithReturnType('conn-1', 'db', 'x', 'FUNCTION')
+    ).rejects.toThrow('Connection lost')
   })
 })

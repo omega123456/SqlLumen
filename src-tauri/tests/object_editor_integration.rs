@@ -7,7 +7,8 @@
 mod common;
 
 use mysql_client_lib::commands::object_editor::{
-    drop_object_impl, get_object_body_impl, get_routine_parameters_impl, parse_ddl_name,
+    drop_object_impl, get_object_body_impl, get_routine_parameters_impl,
+    get_routine_parameters_with_return_type_impl, parse_ddl_name,
     save_object_impl, validate_view_ddl_prefix, SaveObjectRequest,
 };
 use mysql_client_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
@@ -648,6 +649,21 @@ async fn test_get_routine_parameters_errors_when_connection_not_open() {
     let err = result.unwrap_err();
     assert!(
         err.contains("not open") || err.is_empty(), // coverage stub returns Ok(vec![])
+        "expected connection error, got: {err}"
+    );
+}
+
+#[cfg(not(coverage))]
+#[tokio::test]
+async fn test_get_routine_parameters_with_return_type_errors_when_connection_not_open() {
+    let state = common::test_app_state();
+    let result =
+        get_routine_parameters_with_return_type_impl(&state, "missing", "db", "func", "FUNCTION")
+            .await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("not open") || err.is_empty(),
         "expected connection error, got: {err}"
     );
 }
@@ -1298,5 +1314,34 @@ mod coverage_stubs {
                 .await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_routine_parameters_with_return_type_coverage() {
+        let state = common::test_app_state();
+        let result =
+            get_routine_parameters_with_return_type_impl(&state, "c1", "mydb", "func", "FUNCTION")
+                .await;
+        assert!(result.is_ok());
+        let resp = result.unwrap();
+        assert!(resp.parameters.is_empty());
+        assert!(resp.found);
+    }
+
+    #[tokio::test]
+    async fn test_get_routine_parameters_with_return_type_missing_routine_coverage() {
+        let state = common::test_app_state();
+        let result = get_routine_parameters_with_return_type_impl(
+            &state,
+            "c1",
+            "mydb",
+            "missing_proc",
+            "PROCEDURE",
+        )
+        .await;
+        assert!(result.is_ok());
+        let resp = result.unwrap();
+        assert!(resp.parameters.is_empty());
+        assert!(!resp.found, "routine starting with 'missing' should have found=false");
     }
 }

@@ -36,12 +36,16 @@ vi.mock('monaco-sql-languages', () => ({
 // Mock the mysql-language-setup side-effect import (no-op in tests)
 vi.mock('../../../components/query-editor/mysql-language-setup', () => ({}))
 
+// Mock the signature-help-provider side-effect import (no-op in tests)
+vi.mock('../../../components/query-editor/signature-help-provider', () => ({}))
+
 // Mock the completion-service model registry
 const mockRegisterModelConnection = vi.fn()
 const mockUnregisterModelConnection = vi.fn()
 vi.mock('../../../components/query-editor/completion-service', () => ({
   registerModelConnection: (...args: unknown[]) => mockRegisterModelConnection(...args),
   unregisterModelConnection: (...args: unknown[]) => mockUnregisterModelConnection(...args),
+  getModelConnectionId: vi.fn(),
   resetModelConnections: vi.fn(),
   completionService: vi.fn(async () => []),
 }))

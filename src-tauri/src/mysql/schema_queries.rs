@@ -791,8 +791,7 @@ pub async fn query_table_names(pool: &MySqlPool, database: &str) -> Result<Vec<S
 // ---------------------------------------------------------------------------
 
 /// Row returned by `query_routine_parameters`.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug)]
 pub struct RoutineParameterRow {
     pub name: String,
     pub data_type: String,
@@ -800,33 +799,41 @@ pub struct RoutineParameterRow {
     pub ordinal_position: i32,
 }
 
-/// Query INFORMATION_SCHEMA.PARAMETERS for a stored procedure or function.
+/// Internal helper that queries INFORMATION_SCHEMA.PARAMETERS.
 ///
-/// Excludes `ORDINAL_POSITION = 0` rows (function return type).
-/// `routine_type` must be `"PROCEDURE"` or `"FUNCTION"`.
+/// When `include_return_type` is `true`, includes the `ORDINAL_POSITION = 0` row
+/// (function return type). When `false`, excludes it.
 #[cfg(not(coverage))]
-pub async fn query_routine_parameters(
+async fn query_routine_parameters_inner(
     pool: &MySqlPool,
     database: &str,
     routine_name: &str,
     routine_type: &str,
+    include_return_type: bool,
 ) -> Result<Vec<RoutineParameterRow>, String> {
-    let sql = "SELECT \
+    let ordinal_filter = if include_return_type {
+        "ORDINAL_POSITION >= 0"
+    } else {
+        "ORDINAL_POSITION > 0"
+    };
+    let sql = format!(
+        "SELECT \
         PARAMETER_NAME, DTD_IDENTIFIER, PARAMETER_MODE, \
         CAST(ORDINAL_POSITION AS SIGNED) \
         FROM INFORMATION_SCHEMA.PARAMETERS \
         WHERE SPECIFIC_SCHEMA = ? AND SPECIFIC_NAME = ? \
-        AND ROUTINE_TYPE = ? AND ORDINAL_POSITION > 0 \
-        ORDER BY ORDINAL_POSITION";
+        AND ROUTINE_TYPE = ? AND {ordinal_filter} \
+        ORDER BY ORDINAL_POSITION"
+    );
     query_log::log_outgoing_sql_bound(
-        sql,
+        &sql,
         &[
             database.to_string(),
             routine_name.to_string(),
             routine_type.to_string(),
         ],
     );
-    let rows = sqlx::query(sql)
+    let rows = sqlx::query(&sql)
         .bind(database)
         .bind(routine_name)
         .bind(routine_type)
@@ -848,3 +855,63 @@ pub async fn query_routine_parameters(
     }
     Ok(params)
 }
+
+/// Query INFORMATION_SCHEMA.PARAMETERS for a stored procedure or function.
+///
+/// Excludes `ORDINAL_POSITION = 0` rows (function return type).
+/// `routine_type` must be `"PROCEDURE"` or `"FUNCTION"`.
+#[cfg(not(coverage))]
+pub async fn query_routine_parameters(
+    pool: &MySqlPool,
+    database: &str,
+    routine_name: &str,
+    routine_type: &str,
+) -> Result<Vec<RoutineParameterRow>, String> {
+    query_routine_parameters_inner(pool, database, routine_name, routine_type, false).await
+}
+
+/// Fetches routine parameters including the return type row (ORDINAL_POSITION = 0) for stored functions.
+#[cfg(not(coverage))]
+pub async fn query_routine_parameters_with_return_type(
+    pool: &MySqlPool,
+    database: &str,
+    routine_name: &str,
+    routine_type: &str,
+) -> Result<Vec<RoutineParameterRow>, String> {
+    query_routine_parameters_inner(pool, database, routine_name, routine_type, true).await
+}
+
+/// Check whether a routine exists in INFORMATION_SCHEMA.ROUTINES.
+///
+/// Used to distinguish "zero-parameter routine" from "routine does not exist"
+/// when the PARAMETERS query returns zero rows.
+#[cfg(not(coverage))]
+pub async fn query_routine_exists(
+    pool: &MySqlPool,
+    database: &str,
+    routine_name: &str,
+    routine_type: &str,
+) -> Result<bool, String> {
+    let sql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.ROUTINES \
+               WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ? AND ROUTINE_TYPE = ?";
+    query_log::log_outgoing_sql_bound(
+        sql,
+        &[
+            database.to_string(),
+            routine_name.to_string(),
+            routine_type.to_string(),
+        ],
+    );
+    let row = sqlx::query(sql)
+        .bind(database)
+        .bind(routine_name)
+        .bind(routine_type)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to check routine existence: {e}"))?;
+    query_log::log_mysql_rows(std::slice::from_ref(&row));
+    let count: i64 = row.try_get(0).unwrap_or(0);
+    Ok(count > 0)
+}
+
+

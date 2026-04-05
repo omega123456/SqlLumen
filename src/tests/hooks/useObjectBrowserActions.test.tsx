@@ -31,9 +31,20 @@ vi.mock('../../stores/toast-store', () => ({
   showWarningToast: vi.fn(),
 }))
 
+vi.mock('../../components/query-editor/routine-parameter-cache', () => ({
+  invalidateRoutineCache: vi.fn(),
+}))
+
+vi.mock('../../components/query-editor/schema-metadata-cache', () => ({
+  invalidateCache: vi.fn(),
+}))
+
 import { dropObject, getRoutineParameters } from '../../lib/object-editor-commands'
 import { showSuccessToast, showErrorToast, showWarningToast } from '../../stores/toast-store'
 import { useQueryStore } from '../../stores/query-store'
+import { invalidateRoutineCache } from '../../components/query-editor/routine-parameter-cache'
+import { invalidateCache as invalidateSchemaMetadataCache } from '../../components/query-editor/schema-metadata-cache'
+import { dropDatabase, renameDatabase } from '../../lib/schema-commands'
 
 const CONN_ID = 'conn-test'
 
@@ -440,6 +451,101 @@ describe('useObjectBrowserActions — object editor actions', () => {
       const tabId = tabs[0].id
       const queryState = useQueryStore.getState().tabs[tabId]
       expect(queryState.content).toBe('CALL `testdb`.`simple_proc`();')
+    })
+  })
+
+  describe('handleDropDatabase — cache invalidation', () => {
+    it('invalidates routine and schema metadata caches after successful DB drop', async () => {
+      const user = userEvent.setup()
+      const { result } = renderActions()
+
+      act(() => {
+        result.onDropDatabase('old_db')
+      })
+
+      const confirmButton = screen.getByRole('button', { name: /Drop Database/i })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(dropDatabase).toHaveBeenCalledWith(CONN_ID, 'old_db')
+      })
+
+      expect(invalidateRoutineCache).toHaveBeenCalledWith(CONN_ID)
+      expect(invalidateSchemaMetadataCache).toHaveBeenCalledWith(CONN_ID)
+      expect(showSuccessToast).toHaveBeenCalledWith('Database dropped', 'old_db')
+    })
+
+    it('does NOT invalidate caches when DB drop fails', async () => {
+      const user = userEvent.setup()
+      vi.mocked(dropDatabase).mockRejectedValueOnce(new Error('Permission denied'))
+
+      const { result } = renderActions()
+
+      act(() => {
+        result.onDropDatabase('old_db')
+      })
+
+      const confirmButton = screen.getByRole('button', { name: /Drop Database/i })
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(showErrorToast).toHaveBeenCalled()
+      })
+
+      expect(invalidateRoutineCache).not.toHaveBeenCalled()
+      expect(invalidateSchemaMetadataCache).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('handleRenameDatabase — cache invalidation', () => {
+    it('invalidates routine and schema metadata caches after successful DB rename', async () => {
+      const user = userEvent.setup()
+      const { result } = renderActions()
+
+      act(() => {
+        result.onRenameDatabase('old_db')
+      })
+
+      // Type a new name in the rename input
+      const input = screen.getByTestId('rename-name-input')
+      await user.clear(input)
+      await user.type(input, 'new_db')
+
+      const confirmButton = screen.getByTestId('rename-confirm-button')
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(renameDatabase).toHaveBeenCalledWith(CONN_ID, 'old_db', 'new_db')
+      })
+
+      expect(invalidateRoutineCache).toHaveBeenCalledWith(CONN_ID)
+      expect(invalidateSchemaMetadataCache).toHaveBeenCalledWith(CONN_ID)
+      expect(showSuccessToast).toHaveBeenCalledWith('Database renamed', 'old_db → new_db')
+    })
+
+    it('does NOT invalidate caches when DB rename fails', async () => {
+      const user = userEvent.setup()
+      vi.mocked(renameDatabase).mockRejectedValueOnce(new Error('Access denied'))
+
+      const { result } = renderActions()
+
+      act(() => {
+        result.onRenameDatabase('old_db')
+      })
+
+      const input = screen.getByTestId('rename-name-input')
+      await user.clear(input)
+      await user.type(input, 'new_db')
+
+      const confirmButton = screen.getByTestId('rename-confirm-button')
+      await user.click(confirmButton)
+
+      await waitFor(() => {
+        expect(showErrorToast).toHaveBeenCalled()
+      })
+
+      expect(invalidateRoutineCache).not.toHaveBeenCalled()
+      expect(invalidateSchemaMetadataCache).not.toHaveBeenCalled()
     })
   })
 })

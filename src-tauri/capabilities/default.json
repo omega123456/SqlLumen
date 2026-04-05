@@ -66,6 +66,7 @@
     "allow-save-object",
     "allow-drop-object",
     "allow-get-routine-parameters",
+    "allow-get-routine-parameters-with-return-type",
     "dialog:allow-save",
     "dialog:allow-open"
   ]

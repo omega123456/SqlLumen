@@ -1,14 +1,39 @@
-/* Monaco SQL suggest widget — aligned with .agent/design/sql_autocomplete_* */
+/* Monaco SQL suggest widget + parameter hints widget — shared chrome */
+
+/* ---------------------------------------------------------------------------
+   Shared chrome — light theme
+   --------------------------------------------------------------------------- */
+
+[data-theme='light'] .monaco-editor .suggest-widget,
+[data-theme='light'] .monaco-editor .parameter-hints-widget {
+  border-radius: 12px !important;
+  box-shadow: 0 25px 50px -12px rgba(25, 28, 31, 0.18) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(193, 198, 213, 0.2) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Shared chrome — dark theme
+   --------------------------------------------------------------------------- */
+
+[data-theme='dark'] .monaco-editor .suggest-widget,
+[data-theme='dark'] .monaco-editor .parameter-hints-widget {
+  border-radius: 8px !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(64, 71, 81, 0.35) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Suggest widget — light theme (widget-specific rules)
+   --------------------------------------------------------------------------- */
 
 [data-theme='light'] .monaco-editor .suggest-widget {
   width: 256px !important;
   min-width: 256px !important;
   max-width: 256px !important;
-  border-radius: 12px;
-  box-shadow: 0 25px 50px -12px rgba(25, 28, 31, 0.18);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(193, 198, 213, 0.2);
   box-sizing: border-box;
 }
 
@@ -63,15 +88,14 @@
   font-weight: 700;
 }
 
+/* ---------------------------------------------------------------------------
+   Suggest widget — dark theme (widget-specific rules)
+   --------------------------------------------------------------------------- */
+
 [data-theme='dark'] .monaco-editor .suggest-widget {
   width: 256px !important;
   min-width: 256px !important;
   max-width: 256px !important;
-  border-radius: 8px;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(64, 71, 81, 0.35);
   box-sizing: border-box;
 }
 

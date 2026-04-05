@@ -28,6 +28,15 @@ pub struct RoutineParameter {
     pub ordinal_position: i32,
 }
 
+/// Response for `get_routine_parameters_with_return_type` — includes a `found` flag
+/// so the frontend can distinguish "zero-parameter routine" from "routine not found".
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutineParametersWithFoundResponse {
+    pub parameters: Vec<RoutineParameter>,
+    pub found: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveObjectRequest {
@@ -524,21 +533,31 @@ pub async fn drop_object_impl(
 }
 
 // ---------------------------------------------------------------------------
-// get_routine_parameters — _impl + wrapper
+// get_routine_parameters / get_routine_parameters_with_return_type — shared _impl
 // ---------------------------------------------------------------------------
 
 #[cfg(not(coverage))]
-pub async fn get_routine_parameters_impl(
+async fn get_routine_parameters_inner(
     state: &AppState,
     connection_id: &str,
     database: &str,
     routine_name: &str,
     routine_type: &str,
+    include_return_type: bool,
 ) -> Result<Vec<RoutineParameter>, String> {
     let pool = get_pool(state, connection_id)?;
-    let rows =
+    let rows = if include_return_type {
+        schema_queries::query_routine_parameters_with_return_type(
+            &pool,
+            database,
+            routine_name,
+            routine_type,
+        )
+        .await?
+    } else {
         schema_queries::query_routine_parameters(&pool, database, routine_name, routine_type)
-            .await?;
+            .await?
+    };
     Ok(rows
         .into_iter()
         .map(|r| RoutineParameter {
@@ -550,6 +569,18 @@ pub async fn get_routine_parameters_impl(
         .collect())
 }
 
+#[cfg(not(coverage))]
+pub async fn get_routine_parameters_impl(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    routine_name: &str,
+    routine_type: &str,
+) -> Result<Vec<RoutineParameter>, String> {
+    get_routine_parameters_inner(state, connection_id, database, routine_name, routine_type, false)
+        .await
+}
+
 #[cfg(coverage)]
 pub async fn get_routine_parameters_impl(
     _state: &AppState,
@@ -559,6 +590,56 @@ pub async fn get_routine_parameters_impl(
     _routine_type: &str,
 ) -> Result<Vec<RoutineParameter>, String> {
     Ok(vec![])
+}
+
+#[cfg(not(coverage))]
+pub async fn get_routine_parameters_with_return_type_impl(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    routine_name: &str,
+    routine_type: &str,
+) -> Result<RoutineParametersWithFoundResponse, String> {
+    let params = get_routine_parameters_inner(
+        state,
+        connection_id,
+        database,
+        routine_name,
+        routine_type,
+        true,
+    )
+    .await?;
+
+    // When the parameters query returns zero rows, we cannot distinguish between
+    // "routine exists but has no parameters" and "routine does not exist" using
+    // INFORMATION_SCHEMA.PARAMETERS alone. Check INFORMATION_SCHEMA.ROUTINES.
+    let found = if params.is_empty() {
+        let pool = get_pool(state, connection_id)?;
+        schema_queries::query_routine_exists(&pool, database, routine_name, routine_type).await?
+    } else {
+        true
+    };
+
+    Ok(RoutineParametersWithFoundResponse {
+        parameters: params,
+        found,
+    })
+}
+
+#[cfg(coverage)]
+pub async fn get_routine_parameters_with_return_type_impl(
+    _state: &AppState,
+    _connection_id: &str,
+    _database: &str,
+    routine_name: &str,
+    _routine_type: &str,
+) -> Result<RoutineParametersWithFoundResponse, String> {
+    // In coverage mode, treat routines with names starting with "missing" as not found
+    let found = !routine_name.to_lowercase().starts_with("missing");
+    Ok(RoutineParametersWithFoundResponse {
+        parameters: vec![],
+        found,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -608,6 +689,25 @@ pub async fn get_routine_parameters(
     state: State<'_, AppState>,
 ) -> Result<Vec<RoutineParameter>, String> {
     get_routine_parameters_impl(
+        &state,
+        &connection_id,
+        &database,
+        &routine_name,
+        &routine_type,
+    )
+    .await
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn get_routine_parameters_with_return_type(
+    connection_id: String,
+    database: String,
+    routine_name: String,
+    routine_type: String,
+    state: State<'_, AppState>,
+) -> Result<RoutineParametersWithFoundResponse, String> {
+    get_routine_parameters_with_return_type_impl(
         &state,
         &connection_id,
         &database,

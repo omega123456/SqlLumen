@@ -66,3 +66,23 @@ export async function getRoutineParameters(
     routineType,
   })
 }
+
+/** Response from get_routine_parameters_with_return_type — includes `found` flag. */
+export interface RoutineParametersWithFoundResponse {
+  parameters: RoutineParameter[]
+  found: boolean
+}
+
+export async function getRoutineParametersWithReturnType(
+  connectionId: string,
+  database: string,
+  routineName: string,
+  routineType: 'FUNCTION' | 'PROCEDURE'
+): Promise<RoutineParametersWithFoundResponse> {
+  return invoke<RoutineParametersWithFoundResponse>('get_routine_parameters_with_return_type', {
+    connectionId,
+    database,
+    routineName,
+    routineType,
+  })
+}

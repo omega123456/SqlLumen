@@ -21,3 +21,9 @@ identifier = "allow-get-routine-parameters"
 description = "Enables the get_routine_parameters command without any pre-configured scope."
 commands.allow = ["get_routine_parameters"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-get-routine-parameters-with-return-type"
+description = "Allows fetching routine parameters including return type row."
+[permission.commands]
+allow = ["get_routine_parameters_with_return_type"]

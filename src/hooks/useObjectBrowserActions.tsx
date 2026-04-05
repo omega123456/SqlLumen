@@ -17,6 +17,8 @@ import { AlterDatabaseDialog } from '../components/dialogs/AlterDatabaseDialog'
 import { RenameDialog } from '../components/dialogs/RenameDialog'
 import { showErrorToast, showSuccessToast, showWarningToast } from '../stores/toast-store'
 import { useQueryStore } from '../stores/query-store'
+import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
+import { invalidateCache as invalidateSchemaMetadataCache } from '../components/query-editor/schema-metadata-cache'
 import type { EditableObjectType } from '../types/schema'
 
 const RENAME_DB_WARNING =
@@ -283,6 +285,8 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         }
         setRenameDbOpen(false)
         setRenameDbTarget(null)
+        invalidateRoutineCache(connectionId)
+        invalidateSchemaMetadataCache(connectionId)
         void refreshAll(connectionId)
         showSuccessToast('Database renamed', `${renameDbTarget} → ${newName}`)
       } catch (err) {
@@ -311,6 +315,8 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         void useConnectionStore.getState().updateDefaultDatabase(connectionId, null)
       }
       setDropDbConfirm(null)
+      invalidateRoutineCache(connectionId)
+      invalidateSchemaMetadataCache(connectionId)
       void refreshAll(connectionId)
       showSuccessToast('Database dropped', droppedName)
     } catch (err) {
@@ -395,6 +401,12 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       await dropObject(connectionId, databaseName, objectName, objectType)
       closeTabsByObject(connectionId, databaseName, objectName, objectType)
       setDropObjectConfirm(null)
+      // Invalidate routine parameter cache and schema metadata cache after dropping
+      // a procedure or function so signature help picks up the removal.
+      if (objectType === 'procedure' || objectType === 'function') {
+        invalidateRoutineCache(connectionId)
+        invalidateSchemaMetadataCache(connectionId)
+      }
       // Refresh schema tree — call both refreshCategory and refreshDatabase.
       // refreshCategory may silently no-op if the category node hasn't been expanded,
       // so always also call refreshDatabase to ensure tree awareness.

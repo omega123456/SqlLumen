@@ -179,6 +179,7 @@ pub fn run() {
             commands::object_editor::save_object,
             commands::object_editor::drop_object,
             commands::object_editor::get_routine_parameters,
+            commands::object_editor::get_routine_parameters_with_return_type,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

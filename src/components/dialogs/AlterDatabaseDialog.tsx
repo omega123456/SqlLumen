@@ -36,6 +36,7 @@ export function AlterDatabaseDialog({
   useEffect(() => {
     if (isOpen) return
     setDetailsLoading(true)
+    setInitialEncoding({})
     setIsSubmitting(false)
     setDetailsError(null)
     setSubmitError(null)

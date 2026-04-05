@@ -10,6 +10,18 @@ vi.mock('../../lib/app-log-commands', () => ({
   logFrontend: vi.fn(),
 }))
 
+// Mock the routine-parameter-cache (used for cache invalidation after save)
+const mockInvalidateRoutineCache = vi.fn()
+vi.mock('../../components/query-editor/routine-parameter-cache', () => ({
+  invalidateRoutineCache: (...args: unknown[]) => mockInvalidateRoutineCache(...args),
+}))
+
+// Mock the schema-metadata-cache (used for cache invalidation after save)
+const mockInvalidateSchemaMetadataCache = vi.fn()
+vi.mock('../../components/query-editor/schema-metadata-cache', () => ({
+  invalidateCache: (...args: unknown[]) => mockInvalidateSchemaMetadataCache(...args),
+}))
+
 import { invoke } from '@tauri-apps/api/core'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useSchemaStore } from '../../stores/schema-store'
@@ -25,6 +37,8 @@ function resetStores() {
 
 beforeEach(() => {
   mockInvoke.mockReset()
+  mockInvalidateRoutineCache.mockReset()
+  mockInvalidateSchemaMetadataCache.mockReset()
   resetStores()
 })
 
@@ -339,6 +353,78 @@ describe('ObjectEditorStore', () => {
     it('does nothing for non-existent tab', async () => {
       await useObjectEditorStore.getState().saveBody('nonexistent')
       // No error thrown
+    })
+
+    it('invalidates routine cache after saving a procedure', async () => {
+      mockInvoke.mockResolvedValue({
+        success: true,
+        errorMessage: null,
+        dropSucceeded: false,
+        savedObjectName: null,
+      })
+
+      const store = useObjectEditorStore.getState()
+      store.initTab('tab-1', { ...defaultMeta, objectType: 'procedure' })
+      store.setContent('tab-1', 'CREATE PROCEDURE...')
+
+      await useObjectEditorStore.getState().saveBody('tab-1')
+
+      expect(mockInvalidateRoutineCache).toHaveBeenCalledWith('conn-1')
+      expect(mockInvalidateSchemaMetadataCache).toHaveBeenCalledWith('conn-1')
+    })
+
+    it('invalidates routine cache after saving a function', async () => {
+      mockInvoke.mockResolvedValue({
+        success: true,
+        errorMessage: null,
+        dropSucceeded: false,
+        savedObjectName: null,
+      })
+
+      const store = useObjectEditorStore.getState()
+      store.initTab('tab-1', { ...defaultMeta, objectType: 'function' })
+      store.setContent('tab-1', 'CREATE FUNCTION...')
+
+      await useObjectEditorStore.getState().saveBody('tab-1')
+
+      expect(mockInvalidateRoutineCache).toHaveBeenCalledWith('conn-1')
+      expect(mockInvalidateSchemaMetadataCache).toHaveBeenCalledWith('conn-1')
+    })
+
+    it('does not invalidate routine cache after saving a view', async () => {
+      mockInvoke.mockResolvedValue({
+        success: true,
+        errorMessage: null,
+        dropSucceeded: false,
+        savedObjectName: null,
+      })
+
+      const store = useObjectEditorStore.getState()
+      store.initTab('tab-1', { ...defaultMeta, objectType: 'view' })
+      store.setContent('tab-1', 'CREATE VIEW...')
+
+      await useObjectEditorStore.getState().saveBody('tab-1')
+
+      expect(mockInvalidateRoutineCache).not.toHaveBeenCalled()
+      expect(mockInvalidateSchemaMetadataCache).not.toHaveBeenCalled()
+    })
+
+    it('does not invalidate routine cache on save failure', async () => {
+      mockInvoke.mockResolvedValue({
+        success: false,
+        errorMessage: 'Syntax error',
+        dropSucceeded: false,
+        savedObjectName: null,
+      })
+
+      const store = useObjectEditorStore.getState()
+      store.initTab('tab-1', { ...defaultMeta, objectType: 'procedure' })
+      store.setContent('tab-1', 'bad content')
+
+      await useObjectEditorStore.getState().saveBody('tab-1')
+
+      expect(mockInvalidateRoutineCache).not.toHaveBeenCalled()
+      expect(mockInvalidateSchemaMetadataCache).not.toHaveBeenCalled()
     })
   })
 

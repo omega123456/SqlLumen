@@ -1,0 +1,33 @@
+/* Monaco parameter hints widget — styled to match suggest-widget chrome */
+/* Shared chrome rules are in monaco-suggest-widget.css (combined selectors) */
+
+/* ---------------------------------------------------------------------------
+   Signature line
+   --------------------------------------------------------------------------- */
+
+.monaco-editor .parameter-hints-widget .signature {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-sm);
+  font-weight: 500;
+  color: var(--on-surface);
+  padding: var(--space-xs) var(--space-sm);
+  line-height: 1.6;
+}
+
+/* Active parameter highlight */
+.monaco-editor .parameter-hints-widget .signature .parameter.active {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Documentation area
+   --------------------------------------------------------------------------- */
+
+.monaco-editor .parameter-hints-widget .docs {
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-size-xs);
+  padding: var(--space-xs) var(--space-sm);
+  line-height: 1.4;
+}

@@ -21,6 +21,7 @@ import { useTableDataStore } from './table-data-store'
 import { useObjectEditorStore } from './object-editor-store'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { invalidateCache } from '../components/query-editor/schema-metadata-cache'
+import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
 
 let listenersSetup = false
 
@@ -200,6 +201,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       useSchemaStore.getState().clearConnectionState(id)
       useWorkspaceStore.getState().clearConnectionTabs(id)
       invalidateCache(id)
+      invalidateRoutineCache(id)
 
       set((state) => {
         const remaining = { ...state.activeConnections }

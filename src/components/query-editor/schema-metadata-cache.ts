@@ -25,6 +25,17 @@ const cacheMap = new Map<string, SchemaCache>()
 /** In-flight load promises — prevents concurrent callers from racing. */
 const _pendingLoads = new Map<string, Promise<void>>()
 
+/** Per-connection generation counter — prevents stale fetches from repopulating after invalidation. */
+const _generationMap = new Map<string, number>()
+
+function getGeneration(connectionId: string): number {
+  return _generationMap.get(connectionId) ?? 0
+}
+
+function incrementGeneration(connectionId: string): void {
+  _generationMap.set(connectionId, getGeneration(connectionId) + 1)
+}
+
 function emptyCache(): SchemaCache {
   return {
     status: 'empty',
@@ -149,9 +160,17 @@ export async function loadCache(connectionId: string): Promise<void> {
   }
   cacheMap.set(connectionId, loadingCache)
 
+  const capturedGeneration = getGeneration(connectionId)
+
   const loadPromise = (async () => {
     try {
       const data = sanitizeSchemaMetadata(await fetchSchemaMetadata(connectionId))
+
+      // Check if cache was invalidated during the fetch (per-connection generation)
+      if (getGeneration(connectionId) !== capturedGeneration) {
+        return
+      }
+
       const readyCache: SchemaCache = {
         status: 'ready',
         databases: data.databases,
@@ -162,6 +181,11 @@ export async function loadCache(connectionId: string): Promise<void> {
       }
       cacheMap.set(connectionId, readyCache)
     } catch (err) {
+      // Check if cache was invalidated during the fetch (per-connection generation)
+      if (getGeneration(connectionId) !== capturedGeneration) {
+        return
+      }
+
       const errorCache: SchemaCache = {
         ...emptyCache(),
         status: 'error',
@@ -175,15 +199,20 @@ export async function loadCache(connectionId: string): Promise<void> {
   try {
     await loadPromise
   } finally {
-    _pendingLoads.delete(connectionId)
+    if (_pendingLoads.get(connectionId) === loadPromise) {
+      _pendingLoads.delete(connectionId)
+    }
   }
 }
 
 /**
  * Remove cache entry for a connection (forces re-fetch on next loadCache call).
+ * Also clears pending loads and increments generation to prevent stale repopulation.
  */
 export function invalidateCache(connectionId: string): void {
   cacheMap.delete(connectionId)
+  _pendingLoads.delete(connectionId)
+  incrementGeneration(connectionId)
 }
 
 /**
@@ -254,4 +283,5 @@ export function getPendingLoad(connectionId: string): Promise<void> | null {
 export function _clearAllCaches(): void {
   cacheMap.clear()
   _pendingLoads.clear()
+  _generationMap.clear()
 }

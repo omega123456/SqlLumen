@@ -19,6 +19,9 @@ import 'monaco-sql-languages/esm/languages/mysql/mysql.contribution'
 // Setup language features with our custom completionService (side-effect import)
 import './mysql-language-setup'
 
+// Register signature help provider for function parameter hints (side-effect import)
+import './signature-help-provider'
+
 interface MonacoEditorWrapperProps {
   tabId: string
   /** Connection ID for schema-aware autocomplete */
@@ -194,6 +197,8 @@ export function MonacoEditorWrapper({
             showIcons: true,
             showWords: false,
           },
+          fixedOverflowWidgets: true,
+          parameterHints: { enabled: true },
           quickSuggestions: {
             other: true,
             comments: false,

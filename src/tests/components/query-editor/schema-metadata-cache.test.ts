@@ -264,6 +264,98 @@ describe('schema-metadata-cache', () => {
     expect(getCache('conn-1').status).toBe('empty')
   })
 
+  it('invalidateCache during in-flight load discards stale data', async () => {
+    let resolveStale: (() => void) | null = null
+    mockFetchSchema.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveStale = () =>
+          resolve({
+            databases: ['stale_db'],
+            tables: {},
+            columns: {},
+            routines: { stale_db: [{ name: 'old_routine', routineType: 'FUNCTION' }] },
+          })
+      })
+    )
+
+    // Start loading — fetch is now in-flight
+    const stalePromise = loadCache('conn-race')
+    expect(getCache('conn-race').status).toBe('loading')
+
+    // Invalidate while the fetch is still pending
+    invalidateCache('conn-race')
+    expect(getCache('conn-race').status).toBe('empty')
+
+    // Now the stale fetch resolves — it must NOT repopulate the cache
+    resolveStale!()
+    await stalePromise
+
+    // Cache should still be empty (stale data discarded)
+    expect(getCache('conn-race').status).toBe('empty')
+    expect(getCache('conn-race').routines).toEqual({})
+  })
+
+  it('invalidateCache during in-flight load discards stale error', async () => {
+    let rejectStale: ((err: Error) => void) | null = null
+    mockFetchSchema.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectStale = reject
+      })
+    )
+
+    // Start loading — fetch is now in-flight
+    const stalePromise = loadCache('conn-err-race')
+    expect(getCache('conn-err-race').status).toBe('loading')
+
+    // Invalidate while the fetch is still pending
+    invalidateCache('conn-err-race')
+    expect(getCache('conn-err-race').status).toBe('empty')
+
+    // Now the stale fetch rejects — it must NOT set error status in the cache
+    rejectStale!(new Error('Stale error'))
+    await stalePromise
+
+    // Cache should still be empty (stale error discarded)
+    expect(getCache('conn-err-race').status).toBe('empty')
+  })
+
+  it('fresh load succeeds after invalidation discards stale in-flight', async () => {
+    let resolveStale: (() => void) | null = null
+    mockFetchSchema.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveStale = () =>
+          resolve({ databases: ['stale_db'], tables: {}, columns: {}, routines: {} })
+      })
+    )
+
+    // Start first load
+    const stalePromise = loadCache('conn-fresh')
+    expect(getCache('conn-fresh').status).toBe('loading')
+
+    // Invalidate
+    invalidateCache('conn-fresh')
+
+    // Resolve the stale load
+    resolveStale!()
+    await stalePromise
+    expect(getCache('conn-fresh').status).toBe('empty')
+
+    // Now a fresh load should work normally
+    mockFetchSchema.mockResolvedValueOnce({
+      databases: ['fresh_db'],
+      tables: {},
+      columns: {},
+      routines: { fresh_db: [{ name: 'new_routine', routineType: 'PROCEDURE' }] },
+    })
+
+    await loadCache('conn-fresh')
+    expect(getCache('conn-fresh').status).toBe('ready')
+    expect(getCache('conn-fresh').databases).toEqual(['fresh_db'])
+    expect(getCache('conn-fresh').routines).toEqual({
+      fresh_db: [{ name: 'new_routine', routineType: 'PROCEDURE' }],
+    })
+  })
+
   it('maintains separate caches per connection', async () => {
     mockFetchSchema
       .mockResolvedValueOnce({ databases: ['db_a'], tables: {}, columns: {}, routines: {} })
