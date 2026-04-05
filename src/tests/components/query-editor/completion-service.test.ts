@@ -815,6 +815,51 @@ describe('completionService — function suggestions', () => {
     // PROCEDURE should NOT be included in FUNCTION context
     expect(fnItems.map(getLabel)).not.toContain('sp_cleanup')
   })
+
+  it('includes built-in functions alongside stored functions in FUNCTION context', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'SELECT ',
+      pos(1, 8),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.FUNCTION, wordRanges: [] }],
+        keywords: [],
+      })
+    )
+
+    const fnLabels = items
+      .filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Function)
+      .map(getLabel)
+
+    expect(fnLabels).toContain('get_user_count')
+    expect(fnLabels).toContain('SLEEP')
+    expect(fnLabels).toContain('NOW')
+    expect(fnLabels).not.toContain('sp_cleanup')
+  })
+
+  it('does not surface operator keywords as function completions in FUNCTION context', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'SELECT ',
+      pos(1, 8),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.FUNCTION, wordRanges: [] }],
+        keywords: [],
+      })
+    )
+
+    const fnLabels = items
+      .filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Function)
+      .map(getLabel)
+
+    expect(fnLabels).not.toContain('BETWEEN')
+    expect(fnLabels).not.toContain('LIKE')
+    expect(fnLabels).not.toContain('CASE')
+  })
 })
 
 describe('completionService — procedure suggestions', () => {
@@ -1461,7 +1506,7 @@ describe('completionService — parse-failure fallback awaits cache', () => {
 // ---------------------------------------------------------------------------
 
 describe('completionService — empty keywords fallback', () => {
-  it('falls back to SQL_KEYWORDS when suggestions.keywords is empty and no connectionId', async () => {
+  it('falls back to SQL_KEYWORDS + SQL_BUILTIN_FUNCTIONS when suggestions.keywords is empty and no connectionId', async () => {
     const items = await callService(
       'SE',
       pos(1, 3),
@@ -1476,8 +1521,21 @@ describe('completionService — empty keywords fallback', () => {
     expect(labels).toContain('INSERT')
     expect(labels.length).toBeGreaterThan(0)
 
-    // All should be keyword items
-    expect(items.every((i: AnyItem) => i.kind === languages.CompletionItemKind.Keyword)).toBe(true)
+    // Should also contain built-in functions
+    expect(labels).toContain('CONCAT')
+    expect(labels).toContain('NOW')
+    expect(labels).toContain('JSON_EXTRACT')
+    expect(labels).toContain('BIN_TO_UUID')
+    expect(labels).toContain('REGEXP_LIKE')
+
+    // All should be keyword or function items
+    expect(
+      items.every(
+        (i: AnyItem) =>
+          i.kind === languages.CompletionItemKind.Keyword ||
+          i.kind === languages.CompletionItemKind.Function
+      )
+    ).toBe(true)
   })
 
   it('uses parser-provided keywords when they are non-empty', async () => {

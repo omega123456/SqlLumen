@@ -529,6 +529,17 @@ test.describe('Monaco SQL autocomplete', () => {
     await expect(suggestWidget).not.toContainText('create-table-as-select')
   })
 
+  test('autocomplete suggests built-in SQL functions in expression context', async ({ page }) => {
+    await waitForApp(page)
+    await openQueryEditorTab(page)
+
+    await typeQuery(page, 'SELECT SL')
+
+    const suggestWidget = await openAutocomplete(page, 'SLEEP')
+    expectAutocomplete(suggestWidget)
+    await expect(suggestWidget).toContainText('SLEEP')
+  })
+
   // This test runs last: it injects malformed metadata + attaches a console listener,
   // making it the most expensive autocomplete test.  Running it after the simpler tests
   // ensures Vite and Chromium are warm, so the 25s project timeout is not eaten by cold-start.

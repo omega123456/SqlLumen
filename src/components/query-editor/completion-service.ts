@@ -26,7 +26,7 @@ import { buildAliasMap, buildAliasMapFromText, stripQuotes } from './alias-resol
 import type { AliasMap } from './alias-resolver'
 import { useConnectionStore } from '../../stores/connection-store'
 import { parseNodeId, useSchemaStore } from '../../stores/schema-store'
-import { SQL_KEYWORDS } from './sql-keywords'
+import { SQL_KEYWORDS, SQL_BUILTIN_FUNCTIONS } from './sql-keywords'
 import { findStatementAtCursor, splitStatements } from './sql-parser-utils'
 
 // ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ export function resetModelConnections(): void {
   modelConnections.clear()
 }
 
-// Basic SQL keywords imported from ./sql-keywords (SQL_KEYWORDS)
+// Basic SQL keywords + built-in functions imported from ./sql-keywords
 
 // ---------------------------------------------------------------------------
 // Context-aware sort prefixes
@@ -88,6 +88,10 @@ function hasColumnContext(suggestions: Suggestions): boolean {
 
 function hasTableContext(suggestions: Suggestions): boolean {
   return suggestions.syntax.some((s) => s.syntaxContextType === EntityContextType.TABLE)
+}
+
+function hasFunctionContext(suggestions: Suggestions): boolean {
+  return suggestions.syntax.some((s) => s.syntaxContextType === EntityContextType.FUNCTION)
 }
 
 function getSelectedDatabase(connectionId: string | undefined): string | null {
@@ -173,6 +177,30 @@ function keywordItem(kw: string, sortPrefix = SORT_PREFIX_NEUTRAL): ICompletionI
     kind: languages.CompletionItemKind.Keyword,
     insertText: kw,
     sortText: `${sortPrefix}${kw}`,
+  }
+}
+
+function builtinFunctionItem(fn: string, sortPrefix = SORT_PREFIX_NEUTRAL): ICompletionItem {
+  return {
+    label: fn,
+    kind: languages.CompletionItemKind.Function,
+    insertText: fn,
+    sortText: `${sortPrefix}${fn}`,
+  }
+}
+
+function pushBuiltinFunctions(
+  items: ICompletionItem[],
+  seenLabels: Set<string> | null,
+  sortPrefix = SORT_PREFIX_NEUTRAL
+): void {
+  for (const fn of SQL_BUILTIN_FUNCTIONS) {
+    if (seenLabels && seenLabels.has(`fn:${fn}`)) {
+      continue
+    }
+
+    seenLabels?.add(`fn:${fn}`)
+    items.push(builtinFunctionItem(fn, sortPrefix))
   }
 }
 
@@ -313,12 +341,16 @@ export const completionService: CompletionService = async (
 
   // -------------------------------------------------------------------
   // -------------------------------------------------------------------
-  // No connectionId → keywords only (neutral ranking).
+  // No connectionId → keywords + built-in functions (neutral ranking).
   // Fall back to SQL_KEYWORDS when parser provides empty keywords list.
   // -------------------------------------------------------------------
   if (!connectionId) {
     const kwList = suggestions?.keywords.length ? suggestions.keywords : SQL_KEYWORDS
     const items: ICompletionItem[] = kwList.map((kw) => keywordItem(kw))
+    // Include built-in functions during keyword fallback and explicit function context.
+    if (!suggestions?.keywords.length || (suggestions && hasFunctionContext(suggestions))) {
+      pushBuiltinFunctions(items, null)
+    }
     items.push(...mapSnippetsToItems(snippets))
     return items
   }
@@ -479,6 +511,8 @@ export const completionService: CompletionService = async (
         }
       }
     } else if (ctxType === EntityContextType.FUNCTION) {
+      pushBuiltinFunctions(items, seenLabels, schemaSortPrefix)
+
       for (const db of cache.databases) {
         const routines = cache.routines[db] ?? []
         for (const routine of routines) {
@@ -746,10 +780,11 @@ function buildParseFallback(
           ? SORT_PREFIX_LOW
           : SORT_PREFIX_NEUTRAL
 
-      // Basic keywords (neutral ranking in fallback — no context available)
+      // Basic keywords and built-in functions (ranked lower when database/table context detected)
       for (const kw of SQL_KEYWORDS) {
         items.push(keywordItem(kw, keywordSortPrefix))
       }
+      pushBuiltinFunctions(items, null, keywordSortPrefix)
 
       if (mode.type === 'databases') {
         for (const db of cache.databases) {
@@ -804,10 +839,11 @@ function buildParseFallback(
       }
     }
   } else {
-    // Basic keywords (neutral ranking in fallback — no context available)
+    // Basic keywords and built-in functions (neutral ranking in fallback — no context available)
     for (const kw of SQL_KEYWORDS) {
       items.push(keywordItem(kw))
     }
+    pushBuiltinFunctions(items, null)
   }
 
   // Snippets
