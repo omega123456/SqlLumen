@@ -74,6 +74,14 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
   const [renameLoading, setRenameLoading] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
 
+  const isCreateDbOpen = createDbOpen
+  const isAlterDbOpen = alterDbOpen && alterDbTarget !== null
+  const isRenameDbOpen = renameDbOpen && renameDbTarget !== null
+  const isDropDbOpen = dropDbConfirm !== null
+  const isDropTableOpen = dropTableConfirm !== null
+  const isTruncateTableOpen = truncateTableConfirm !== null
+  const isRenameTableOpen = renameTableOpen !== null
+
   // ---------------------------------------------------------------------------
   // Context menu action callbacks
   // ---------------------------------------------------------------------------
@@ -269,118 +277,104 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
   const dialogs = (
     <>
       {/* Database dialogs */}
-      {createDbOpen && (
-        <CreateDatabaseDialog
-          isOpen
-          connectionId={connectionId}
-          onSuccess={handleCreateDbSuccess}
-          onCancel={() => setCreateDbOpen(false)}
-        />
-      )}
+      <CreateDatabaseDialog
+        isOpen={isCreateDbOpen}
+        connectionId={connectionId}
+        onSuccess={handleCreateDbSuccess}
+        onCancel={() => setCreateDbOpen(false)}
+      />
 
-      {alterDbOpen && alterDbTarget && (
-        <AlterDatabaseDialog
-          isOpen
-          connectionId={connectionId}
-          databaseName={alterDbTarget}
-          onSuccess={handleAlterDbSuccess}
-          onCancel={() => {
-            setAlterDbOpen(false)
-            setAlterDbTarget(null)
-          }}
-        />
-      )}
+      <AlterDatabaseDialog
+        isOpen={isAlterDbOpen}
+        connectionId={connectionId}
+        databaseName={alterDbTarget ?? ''}
+        onSuccess={handleAlterDbSuccess}
+        onCancel={() => {
+          setAlterDbOpen(false)
+          setAlterDbTarget(null)
+        }}
+      />
 
-      {renameDbOpen && renameDbTarget && (
-        <RenameDialog
-          isOpen
-          title="Rename Database"
-          currentName={renameDbTarget}
-          warning={RENAME_DB_WARNING}
-          isLoading={renameLoading}
-          error={renameError}
-          onConfirm={handleRenameDb}
-          onCancel={() => {
-            setRenameDbOpen(false)
-            setRenameDbTarget(null)
-          }}
-        />
-      )}
+      <RenameDialog
+        isOpen={isRenameDbOpen}
+        title="Rename Database"
+        currentName={renameDbTarget ?? ''}
+        warning={RENAME_DB_WARNING}
+        isLoading={renameLoading}
+        error={renameError}
+        onConfirm={handleRenameDb}
+        onCancel={() => {
+          setRenameDbOpen(false)
+          setRenameDbTarget(null)
+        }}
+      />
 
-      {dropDbConfirm && (
-        <ConfirmDialog
-          isOpen
-          title="Drop Database"
-          message={
-            <>
-              Are you sure you want to drop database <strong>{dropDbConfirm.name}</strong>?
-            </>
-          }
-          confirmLabel="Drop Database"
-          isDestructive
-          isLoading={confirmLoading}
-          error={confirmError}
-          onConfirm={handleDropDb}
-          onCancel={() => setDropDbConfirm(null)}
-        />
-      )}
+      <ConfirmDialog
+        isOpen={isDropDbOpen}
+        title="Drop Database"
+        message={
+          <>
+            Are you sure you want to drop database <strong>{dropDbConfirm?.name ?? ''}</strong>?
+          </>
+        }
+        confirmLabel="Drop Database"
+        isDestructive
+        isLoading={confirmLoading}
+        error={confirmError}
+        onConfirm={handleDropDb}
+        onCancel={() => setDropDbConfirm(null)}
+      />
 
       {/* Table dialogs */}
-      {dropTableConfirm && (
-        <ConfirmDialog
-          isOpen
-          title="Drop Table"
-          message={
-            <>
-              Are you sure you want to drop table{' '}
-              <strong>
-                {dropTableConfirm.db}.{dropTableConfirm.table}
-              </strong>
-              ?
-            </>
-          }
-          confirmLabel="Drop Table"
-          isDestructive
-          isLoading={confirmLoading}
-          error={confirmError}
-          onConfirm={handleDropTable}
-          onCancel={() => setDropTableConfirm(null)}
-        />
-      )}
+      <ConfirmDialog
+        isOpen={isDropTableOpen}
+        title="Drop Table"
+        message={
+          <>
+            Are you sure you want to drop table{' '}
+            <strong>
+              {dropTableConfirm?.db ?? ''}.{dropTableConfirm?.table ?? ''}
+            </strong>
+            ?
+          </>
+        }
+        confirmLabel="Drop Table"
+        isDestructive
+        isLoading={confirmLoading}
+        error={confirmError}
+        onConfirm={handleDropTable}
+        onCancel={() => setDropTableConfirm(null)}
+      />
 
-      {truncateTableConfirm && (
-        <ConfirmDialog
-          isOpen
-          title="Truncate Table"
-          message={
-            <>
-              Are you sure you want to truncate table{' '}
-              <strong>
-                {truncateTableConfirm.db}.{truncateTableConfirm.table}
-              </strong>
-              ? All data will be deleted.
-            </>
-          }
-          confirmLabel="Truncate Table"
-          isDestructive
-          isLoading={confirmLoading}
-          error={confirmError}
-          onConfirm={handleTruncateTable}
-          onCancel={() => setTruncateTableConfirm(null)}
-        />
-      )}
+      <ConfirmDialog
+        isOpen={isTruncateTableOpen}
+        title="Truncate Table"
+        message={
+          <>
+            Are you sure you want to truncate table{' '}
+            <strong>
+              {truncateTableConfirm?.db ?? ''}.{truncateTableConfirm?.table ?? ''}
+            </strong>
+            ? All data will be deleted.
+          </>
+        }
+        confirmLabel="Truncate Table"
+        isDestructive
+        isLoading={confirmLoading}
+        error={confirmError}
+        onConfirm={handleTruncateTable}
+        onCancel={() => setTruncateTableConfirm(null)}
+      />
 
-      {renameTableOpen && (
-        <RenameDialog
-          isOpen
-          title="Rename Table"
-          currentName={renameTableOpen.table}
-          isLoading={renameLoading}
-          error={renameError}
-          onConfirm={handleRenameTable}
-          onCancel={() => setRenameTableOpen(null)}
-        />
-      )}
+      <RenameDialog
+        isOpen={isRenameTableOpen}
+        title="Rename Table"
+        currentName={renameTableOpen?.table ?? ''}
+        isLoading={renameLoading}
+        error={renameError}
+        onConfirm={handleRenameTable}
+        onCancel={() => setRenameTableOpen(null)}
+      />
     </>
   )
 

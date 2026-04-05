@@ -28,6 +28,15 @@ export function AlterDatabaseDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (isOpen) return
+    setDetailsLoading(true)
+    setInitialCharset(undefined)
+    setInitialCollation(undefined)
+    setIsSubmitting(false)
+    setError(null)
+  }, [isOpen])
+
   // Load current database details on open
   useEffect(() => {
     if (!isOpen) return
@@ -116,6 +125,7 @@ export function AlterDatabaseDialog({
       maxWidth={480}
       testId="alter-database-dialog"
       ariaLabel="Alter Database"
+      nonDismissible={isSubmitting}
     >
       <h2 className={styles.title}>Alter Database</h2>
       <p className={styles.subtitle}>{databaseName}</p>
@@ -159,7 +169,12 @@ export function AlterDatabaseDialog({
       )}
 
       <div className={styles.actions}>
-        <Button variant="secondary" onClick={onCancel} data-testid="alter-db-cancel-button">
+        <Button
+          variant="secondary"
+          onClick={onCancel}
+          disabled={isSubmitting}
+          data-testid="alter-db-cancel-button"
+        >
           Cancel
         </Button>
         <Button

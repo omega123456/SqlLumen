@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '../common/Button'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
@@ -29,6 +29,14 @@ export function CreateDatabaseDialog({
   const [nameError, setNameError] = useState<string | null>(null)
 
   const encoding = useDatabaseEncoding(connectionId, isOpen)
+
+  useEffect(() => {
+    if (!isOpen) return
+    setName('')
+    setIsSubmitting(false)
+    setError(null)
+    setNameError(null)
+  }, [isOpen])
 
   const validateName = (value: string): string | null => {
     if (!value.trim()) return 'Database name is required'
@@ -100,6 +108,7 @@ export function CreateDatabaseDialog({
       testId="create-database-dialog"
       ariaLabel="Create Database"
       disableFocusManagement={isPlaywright}
+      nonDismissible={isSubmitting}
     >
       <div
         className={styles.encodingRoot}
@@ -163,7 +172,12 @@ export function CreateDatabaseDialog({
         )}
 
         <div className={styles.actions}>
-          <Button variant="secondary" onClick={onCancel} data-testid="create-db-cancel-button">
+          <Button
+            variant="secondary"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            data-testid="create-db-cancel-button"
+          >
             Cancel
           </Button>
           <Button

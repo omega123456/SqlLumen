@@ -207,6 +207,69 @@ test('table data grid auto-sizes columns from visible data by default', async ({
   expect(emailBox!.width).toBeGreaterThan(nameBox!.width)
 })
 
+test('table data FK header width survives form-to-grid switching without runtime errors', async ({
+  page,
+}) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => {
+    pageErrors.push(error.message)
+  })
+
+  await waitForApp(page)
+  await openConnectionManager(page)
+  await page
+    .getByTestId('connection-dialog')
+    .getByRole('button', { name: /Sample MySQL/ })
+    .click()
+  await page
+    .getByTestId('connection-dialog')
+    .getByRole('button', { name: 'Connect', exact: true })
+    .click()
+  await expect(page.getByTestId('connection-dialog')).toBeHidden()
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-data',
+      label: 'orders',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+  })
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await page.waitForTimeout(500)
+
+  const beforeHeader = await getHeaderCellByColumnName(grid, 'user_id')
+  const beforeBox = await beforeHeader.boundingBox()
+
+  expect(beforeBox).not.toBeNull()
+  expect(beforeBox!.width).toBeGreaterThan(120)
+
+  await page.getByTestId('view-mode-form').click()
+  await expect(page.getByTestId('table-data-form-view')).toBeVisible({ timeout: APP_READY_MS })
+
+  await page.getByTestId('form-input-user_id').click()
+  await page.getByTestId('form-input-status').click()
+
+  await page.getByTestId('view-mode-grid').click()
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  const afterHeader = await getHeaderCellByColumnName(grid, 'user_id')
+  const afterBox = await afterHeader.boundingBox()
+
+  expect(afterBox).not.toBeNull()
+  expect(Math.round(afterBox!.width)).toBe(Math.round(beforeBox!.width))
+  expect(pageErrors).toEqual([])
+})
+
 test('table data datetime editor gives the input enough width for the full field value', async ({
   page,
 }) => {
@@ -349,6 +412,61 @@ test('query result grid editor keeps focus across multiple keypresses', async ({
 
   await clickCellByColumnName(grid, 0, 'name')
   await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
+})
+
+test('query result grid keeps read-only header icon width when edit mode turns on', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await openQueryEditorWithResults(page)
+
+  const grid = page.getByTestId('result-grid-view')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  const statusHeader = await getHeaderCellByColumnName(grid, 'status')
+  const statusBox = await statusHeader.boundingBox()
+
+  expect(statusBox).not.toBeNull()
+  expect(statusBox!.width).toBeGreaterThan(120)
+})
+
+test('query result form-to-grid switch keeps header widths and avoids runtime errors', async ({
+  page,
+}) => {
+  const pageErrors: string[] = []
+  page.on('pageerror', (error) => {
+    pageErrors.push(error.message)
+  })
+
+  await waitForApp(page)
+  await openQueryEditorWithResults(page)
+
+  const grid = page.getByTestId('result-grid-view')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  const beforeHeader = await getHeaderCellByColumnName(grid, 'status')
+  const beforeBox = await beforeHeader.boundingBox()
+
+  expect(beforeBox).not.toBeNull()
+
+  await page.getByTestId('view-mode-form').click()
+  await expect(page.getByTestId('result-form-view')).toBeVisible({ timeout: APP_READY_MS })
+
+  await page.getByTestId('form-input-id').click()
+  await page.getByTestId('form-input-name').click()
+
+  await page.getByTestId('view-mode-grid').click()
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  const afterHeader = await getHeaderCellByColumnName(grid, 'status')
+  const afterBox = await afterHeader.boundingBox()
+
+  expect(afterBox).not.toBeNull()
+  expect(Math.round(afterBox!.width)).toBe(Math.round(beforeBox!.width))
+  expect(pageErrors).toEqual([])
 })
 
 test('filter dialog — open, add conditions, apply, verify badge, and clear', async ({ page }) => {

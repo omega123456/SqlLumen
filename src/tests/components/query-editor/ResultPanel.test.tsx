@@ -5,14 +5,17 @@ import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
 import { fetchResultPage } from '../../../lib/query-commands'
 
+let lastReactDataGridProps: Record<string, unknown> = {}
+
 // Mock react-data-grid (used by the shared DataGrid wrapper via ResultGridView)
 vi.mock('react-data-grid', async () => {
   const React = await import('react')
   return {
     DataGrid: React.forwardRef(
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      (props: Record<string, unknown>, _ref: unknown) =>
-        React.createElement(
+      (props: Record<string, unknown>, _ref: unknown) => {
+        lastReactDataGridProps = props
+        return React.createElement(
           'div',
           {
             'data-testid': (props['data-testid'] as string) ?? 'rdg-inner',
@@ -37,6 +40,7 @@ vi.mock('react-data-grid', async () => {
           },
           'Grid Mock'
         )
+      }
     ),
   }
 })
@@ -109,6 +113,7 @@ const DEFAULT_TAB_STATE: TabQueryState = {
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   mockIPC(() => null)
+  lastReactDataGridProps = {}
 })
 
 describe('ResultPanel', () => {
@@ -756,5 +761,124 @@ describe('ResultPanel', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
     // Grid should render in edit mode
     expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
+  })
+
+  it('keeps read-only header icon width in query grid auto-sizing with an active edit row', () => {
+    act(() => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            ...DEFAULT_TAB_STATE,
+            status: 'success',
+            viewMode: 'grid',
+            columns: [{ name: 'user_id', dataType: 'BIGINT' }],
+            rows: [[42]],
+            totalRows: 1,
+            queryId: 'q1',
+            editMode: 'users',
+            editableColumnMap: new Map([[0, true]]),
+            editColumnBindings: new Map([[0, 'user_id']]),
+            editTableMetadata: {
+              users: {
+                database: 'ecommerce_db',
+                table: 'users',
+                columns: [
+                  {
+                    name: 'user_id',
+                    dataType: 'BIGINT',
+                    isNullable: false,
+                    isPrimaryKey: true,
+                    isUniqueKey: false,
+                    hasDefault: false,
+                    columnDefault: null,
+                    isBinary: false,
+                    isBooleanAlias: false,
+                    isAutoIncrement: true,
+                  },
+                ],
+                primaryKey: {
+                  keyColumns: ['user_id'],
+                  hasAutoIncrement: true,
+                  isUniqueKeyFallback: false,
+                },
+              },
+            },
+            editState: {
+              rowKey: { user_id: 42 },
+              originalValues: { user_id: 42 },
+              currentValues: { user_id: 42 },
+              modifiedColumns: new Set<string>(),
+              isNewRow: false,
+            },
+            editingRowIndex: 0,
+          },
+        },
+      })
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+
+    const editableColDefs = lastReactDataGridProps.columns as Array<{ key: string; width: number }>
+    const editableWidth = editableColDefs[0].width
+
+    act(() => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            ...DEFAULT_TAB_STATE,
+            status: 'success',
+            viewMode: 'grid',
+            columns: [{ name: 'user_id', dataType: 'BIGINT' }],
+            rows: [[42]],
+            totalRows: 1,
+            queryId: 'q1',
+            editMode: 'users',
+            editableColumnMap: new Map([[0, false]]),
+            editColumnBindings: new Map([[0, 'user_id']]),
+            editTableMetadata: {
+              users: {
+                database: 'ecommerce_db',
+                table: 'users',
+                columns: [
+                  {
+                    name: 'user_id',
+                    dataType: 'BIGINT',
+                    isNullable: false,
+                    isPrimaryKey: true,
+                    isUniqueKey: false,
+                    hasDefault: false,
+                    columnDefault: null,
+                    isBinary: false,
+                    isBooleanAlias: false,
+                    isAutoIncrement: true,
+                  },
+                ],
+                primaryKey: {
+                  keyColumns: ['user_id'],
+                  hasAutoIncrement: true,
+                  isUniqueKeyFallback: false,
+                },
+              },
+            },
+            editState: {
+              rowKey: { user_id: 42 },
+              originalValues: { user_id: 42 },
+              currentValues: { user_id: 42 },
+              modifiedColumns: new Set<string>(),
+              isNewRow: false,
+            },
+            editingRowIndex: 0,
+          },
+        },
+      })
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+
+    const colDefs = lastReactDataGridProps.columns as Array<{ key: string; width: number }>
+    expect(colDefs[0].key).toBe('col_0')
+    expect(editableWidth).toBeDefined()
+    expect(colDefs[0].width).toBeGreaterThan(editableWidth)
+    expect(colDefs[0].width - editableWidth).toBe(14)
   })
 })

@@ -91,6 +91,28 @@ function columnKeysFingerprint(columns: { key: string }[]): string {
   return columns.map((c) => c.key).join('\x00')
 }
 
+function autoWidthColumnsFingerprint(
+  columns: Array<{
+    key: string
+    displayName: string
+    dataType: string
+    editable: boolean
+    foreignKey?: unknown
+  }>
+): string {
+  return columns
+    .map((column) =>
+      [
+        column.key,
+        column.displayName,
+        column.dataType,
+        column.editable ? '1' : '0',
+        column.foreignKey ? '1' : '0',
+      ].join('\x00')
+    )
+    .join('\x01')
+}
+
 function getClipboardText(value: unknown): string {
   return value == null ? 'NULL' : String(value)
 }
@@ -245,16 +267,22 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   }, [cellContextMenu])
 
   const autoColumnWidthsRef = useRef<Record<string, number>>({})
+  const autoColumnWidthsSourceRef = useRef<string>('')
 
   const autoColumnWidths = useMemo(() => {
     if (!autoSizeConfig?.enabled) return autoColumnWidthsRef.current
-    if (editState != null) return autoColumnWidthsRef.current
+
+    const nextSourceFingerprint = autoWidthColumnsFingerprint(columns)
+    if (editState != null && autoColumnWidthsSourceRef.current === nextSourceFingerprint) {
+      return autoColumnWidthsRef.current
+    }
 
     const widths: Record<string, number> = {}
     for (const col of columns) {
       widths[col.key] = autoSizeConfig.computeWidth(col, rows)
     }
     autoColumnWidthsRef.current = widths
+    autoColumnWidthsSourceRef.current = nextSourceFingerprint
     return widths
   }, [autoSizeConfig, columns, rows, editState])
 

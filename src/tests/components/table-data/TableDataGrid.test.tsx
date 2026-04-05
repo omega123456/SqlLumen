@@ -378,6 +378,62 @@ describe('TableDataGrid', () => {
     expect(emailCol!.width).toBeGreaterThan(nameCol!.width)
   })
 
+  it('keeps FK icon width in auto-sizing when the grid mounts with an active edit state', () => {
+    setupConnection()
+    setupTabState({
+      columns: [testColumns[0], makeColumnMeta('user_id', 'BIGINT')],
+      rows: [[1, 42]],
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, user_id: 42 },
+        currentValues: { id: 1, user_id: 42 },
+        modifiedColumns: new Set<string>(),
+        isNewRow: false,
+      },
+      foreignKeys: [],
+    })
+
+    const { unmount } = render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const withoutFkProps = getLatestGridProps()
+    const withoutFkCols = withoutFkProps.columns as Array<{ key: string; width: number }>
+    const withoutFkWidth = withoutFkCols.find((d) => d.key === 'user_id')?.width
+
+    unmount()
+
+    setupConnection()
+    setupTabState({
+      columns: [testColumns[0], makeColumnMeta('user_id', 'BIGINT')],
+      rows: [[1, 42]],
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, user_id: 42 },
+        currentValues: { id: 1, user_id: 42 },
+        modifiedColumns: new Set<string>(),
+        isNewRow: false,
+      },
+      foreignKeys: [
+        {
+          columnName: 'user_id',
+          referencedTable: 'users',
+          referencedColumn: 'id',
+          constraintName: 'fk_user',
+        },
+      ],
+    })
+
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{ key: string; width: number }>
+    const fkCol = colDefs.find((d) => d.key === 'user_id')
+
+    expect(withoutFkWidth).toBeDefined()
+    expect(fkCol).toBeDefined()
+    expect(fkCol!.width).toBeGreaterThan(withoutFkWidth!)
+    expect(fkCol!.width - withoutFkWidth!).toBe(14)
+  })
+
   it('gives temporal columns a wider default width for inline editing controls', () => {
     setupConnection()
     setupTabState({

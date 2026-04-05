@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { listCharsets, listCollations } from '../lib/schema-commands'
 import type { CharsetInfo, CollationInfo } from '../types/schema'
 
@@ -33,6 +33,7 @@ export function useDatabaseEncoding(
   const [collation, setCollation] = useState(initialCollation ?? '')
   const [isLoading, setIsLoading] = useState(() => isOpen)
   const [error, setError] = useState<string | null>(null)
+  const wasOpenRef = useRef(isOpen)
 
   // Fetch charsets and collations when dialog opens
   useEffect(() => {
@@ -68,7 +69,19 @@ export function useDatabaseEncoding(
     }
   }, [isOpen, connectionId])
 
-  // Apply initial values when they change (e.g. AlterDatabaseDialog sets them after fetching details)
+  // For create flows (no initial values), reopen should reset to empty defaults.
+  useEffect(() => {
+    const wasOpen = wasOpenRef.current
+    wasOpenRef.current = isOpen
+
+    if (!isOpen || wasOpen || initialCharset !== undefined || initialCollation !== undefined) {
+      return
+    }
+
+    setCharsetState('')
+    setCollation('')
+  }, [initialCharset, initialCollation, isOpen])
+
   useEffect(() => {
     if (initialCharset !== undefined) {
       setCharsetState(initialCharset)

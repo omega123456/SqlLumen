@@ -154,6 +154,23 @@ describe('AlterDatabaseDialog', () => {
     })
   })
 
+  it('cannot be dismissed while submission is in progress', async () => {
+    mockAlterDatabase.mockReturnValue(new Promise(() => {}))
+    const user = userEvent.setup()
+    const onCancel = vi.fn()
+    render(<AlterDatabaseDialog {...defaultProps} onCancel={onCancel} />)
+
+    await waitForAlterDatabaseDialogIdle()
+    await user.click(screen.getByTestId('alter-db-submit-button'))
+
+    expect(screen.getByTestId('alter-db-cancel-button')).toBeDisabled()
+
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByTestId('alter-database-dialog'))
+
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
   it('has data-testid="alter-database-dialog"', async () => {
     render(<AlterDatabaseDialog {...defaultProps} />)
     expect(screen.getByTestId('alter-database-dialog')).toBeInTheDocument()
@@ -201,5 +218,34 @@ describe('AlterDatabaseDialog', () => {
       expect(screen.getByTestId('alter-db-error')).toHaveTextContent('Connection lost')
     })
     await waitForAlterDatabaseDialogIdle()
+  })
+
+  it('supports toggling from closed to open on the same mounted instance', async () => {
+    const { rerender } = render(<AlterDatabaseDialog {...defaultProps} isOpen={false} />)
+
+    rerender(<AlterDatabaseDialog {...defaultProps} isOpen={true} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('alter-database-dialog')).toBeInTheDocument()
+    })
+    await waitForAlterDatabaseDialogIdle()
+  })
+
+  it('restores fetched database values when reopened after closing with unsaved changes', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<AlterDatabaseDialog {...defaultProps} isOpen={true} />)
+
+    await waitForAlterDatabaseDialogIdle()
+    await user.click(screen.getByRole('combobox', { name: 'Character Set' }))
+    await user.click(screen.getByRole('option', { name: /^latin1$/ }))
+
+    expect(screen.getByText('latin1')).toBeInTheDocument()
+
+    rerender(<AlterDatabaseDialog {...defaultProps} isOpen={false} />)
+    rerender(<AlterDatabaseDialog {...defaultProps} isOpen={true} />)
+
+    await waitForAlterDatabaseDialogIdle()
+    expect(screen.getByText('utf8mb4')).toBeInTheDocument()
+    expect(screen.getByText('utf8mb4_general_ci')).toBeInTheDocument()
   })
 })

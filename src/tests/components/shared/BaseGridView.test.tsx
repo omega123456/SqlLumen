@@ -412,7 +412,7 @@ describe('BaseGridView', () => {
     })
   })
 
-  it('recomputes auto widths when editState goes from active to null', () => {
+  it('computes initial auto widths on mount with active editState, then recomputes when editState clears', () => {
     const computeWidth = vi.fn().mockReturnValue(200)
 
     const editState: RowEditState = {
@@ -421,8 +421,8 @@ describe('BaseGridView', () => {
       originalValues: { id: 1, name: 'Alice' },
     }
 
-    // Start with editState active — auto widths won't be computed initially
-    // (no prior cached values, so ref is {})
+    // Start with editState active on first mount. The grid should still compute
+    // initial widths so remounts back into grid mode keep icon-aware sizing.
     const { rerender } = render(
       <BaseGridView
         columns={testColumns}
@@ -432,10 +432,9 @@ describe('BaseGridView', () => {
       />
     )
 
-    // editState is active on first render, so computeWidth is NOT called
-    expect(computeWidth).not.toHaveBeenCalled()
+    expect(computeWidth).toHaveBeenCalledTimes(testColumns.length)
 
-    // Now clear editState → should recompute
+    // Now clear editState → should recompute with the new return value
     computeWidth.mockReturnValue(350)
     rerender(
       <BaseGridView
@@ -446,7 +445,7 @@ describe('BaseGridView', () => {
       />
     )
 
-    expect(computeWidth).toHaveBeenCalledTimes(testColumns.length)
+    expect(computeWidth).toHaveBeenCalledTimes(testColumns.length * 2)
 
     const props = getLatestGridProps()
     const colDefs = props.columns as Array<{ key: string; width: number }>

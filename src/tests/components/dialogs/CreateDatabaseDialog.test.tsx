@@ -153,6 +153,25 @@ describe('CreateDatabaseDialog', () => {
     expect(screen.getByTestId('create-db-submit-button')).toBeDisabled()
   })
 
+  it('cannot be dismissed while submission is in progress', async () => {
+    mockCreateDatabase.mockReturnValue(new Promise(() => {}))
+    const user = userEvent.setup()
+    const onCancel = vi.fn()
+    render(<CreateDatabaseDialog {...defaultProps} onCancel={onCancel} />)
+
+    await waitForCreateDatabaseEncodingIdle()
+
+    await user.type(screen.getByTestId('create-db-name-input'), 'new_database')
+    await user.click(screen.getByTestId('create-db-submit-button'))
+
+    expect(screen.getByTestId('create-db-cancel-button')).toBeDisabled()
+
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByTestId('create-database-dialog'))
+
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
   it('shows error if backend fails', async () => {
     mockCreateDatabase.mockRejectedValue(new Error('Database already exists'))
     const user = userEvent.setup()
@@ -228,5 +247,57 @@ describe('CreateDatabaseDialog', () => {
     await user.keyboard('{Escape}')
     expect(onCancel).toHaveBeenCalledTimes(1)
     rerender(<CreateDatabaseDialog {...defaultProps} onCancel={onCancel} isOpen={false} />)
+  })
+
+  it('supports toggling from closed to open on the same mounted instance', async () => {
+    const { rerender } = render(<CreateDatabaseDialog {...defaultProps} isOpen={false} />)
+
+    rerender(<CreateDatabaseDialog {...defaultProps} isOpen={true} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('create-database-dialog')).toBeInTheDocument()
+    })
+    await waitForCreateDatabaseEncodingIdle()
+  })
+
+  it('resets typed values when reopened after cancel', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<CreateDatabaseDialog {...defaultProps} isOpen={true} />)
+
+    await waitForCreateDatabaseEncodingIdle()
+    const input = screen.getByTestId('create-db-name-input') as HTMLInputElement
+    await user.type(input, 'stale_name')
+
+    rerender(<CreateDatabaseDialog {...defaultProps} isOpen={false} />)
+    rerender(<CreateDatabaseDialog {...defaultProps} isOpen={true} />)
+
+    await waitForCreateDatabaseEncodingIdle()
+    expect((screen.getByTestId('create-db-name-input') as HTMLInputElement).value).toBe('')
+    expect(screen.getByTestId('create-db-submit-button')).toBeDisabled()
+  })
+
+  it('resets charset and collation selections when reopened after cancel', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<CreateDatabaseDialog {...defaultProps} isOpen={true} />)
+
+    await waitForCreateDatabaseEncodingIdle()
+
+    await user.click(screen.getByRole('combobox', { name: 'Character Set' }))
+    await user.click(screen.getByRole('option', { name: 'latin1' }))
+
+    expect(screen.getByRole('combobox', { name: 'Character Set' })).toHaveTextContent('latin1')
+    expect(screen.getByRole('combobox', { name: 'Collation' })).toHaveTextContent(
+      'latin1_swedish_ci'
+    )
+
+    rerender(<CreateDatabaseDialog {...defaultProps} isOpen={false} />)
+    rerender(<CreateDatabaseDialog {...defaultProps} isOpen={true} />)
+
+    await waitForCreateDatabaseEncodingIdle()
+
+    expect(screen.getByRole('combobox', { name: 'Character Set' })).toHaveTextContent(
+      'Server Default'
+    )
+    expect(screen.getByRole('combobox', { name: 'Collation' })).toHaveTextContent('Default')
   })
 })

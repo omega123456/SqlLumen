@@ -843,6 +843,35 @@ describe('ObjectBrowser', () => {
 
       expect(screen.getByTestId('create-database-dialog')).toBeInTheDocument()
     })
+
+    it('opening and closing create database dialog does not trigger a hook-order crash', async () => {
+      const user = userEvent.setup()
+      setupConnectedState()
+      setupDatabaseNodes()
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      try {
+        render(<ObjectBrowser connectionId={CONN_ID} />)
+        await openContextMenu(user, 'ecommerce_db')
+        await user.click(screen.getByText('Create Database...'))
+
+        await waitFor(() => {
+          expect(screen.getByTestId('create-database-dialog')).toBeInTheDocument()
+        })
+
+        await user.click(screen.getByTestId('create-db-cancel-button'))
+
+        await waitFor(() => {
+          expect(screen.queryByTestId('create-database-dialog')).not.toBeInTheDocument()
+        })
+
+        expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+          expect.stringContaining('React has detected a change in the order of Hooks called')
+        )
+      } finally {
+        consoleErrorSpy.mockRestore()
+      }
+    })
   })
 
   describe('dialog: Alter Database', () => {

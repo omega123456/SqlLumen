@@ -145,4 +145,13 @@ describe('RenameDialog', () => {
 
     expect(onConfirm).not.toHaveBeenCalled()
   })
+
+  it('supports toggling from closed to open on the same mounted instance', () => {
+    const { rerender } = render(<RenameDialog {...defaultProps} isOpen={false} />)
+
+    rerender(<RenameDialog {...defaultProps} isOpen={true} />)
+
+    expect(screen.getByTestId('rename-dialog')).toBeInTheDocument()
+    expect(screen.getByTestId('rename-name-input')).toBeInTheDocument()
+  })
 })
