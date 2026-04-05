@@ -3,48 +3,10 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { EditModeDropdown } from '../../../components/query-editor/EditModeDropdown'
-import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
+import { useQueryStore } from '../../../stores/query-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { QueryTableEditInfo } from '../../../types/schema'
-
-const DEFAULT_TAB_STATE: TabQueryState = {
-  content: '',
-  filePath: null,
-  status: 'idle',
-  columns: [],
-  rows: [],
-  totalRows: 0,
-  executionTimeMs: 0,
-  affectedRows: 0,
-  queryId: null,
-  currentPage: 1,
-  totalPages: 1,
-  pageSize: 1000,
-  autoLimitApplied: false,
-  errorMessage: null,
-  cursorPosition: null,
-  viewMode: 'grid',
-  sortColumn: null,
-  sortDirection: null,
-  selectedRowIndex: null,
-  exportDialogOpen: false,
-  lastExecutedSql: null,
-  editMode: null,
-  editTableMetadata: {},
-  editForeignKeys: [],
-  editState: null,
-  isAnalyzingQuery: false,
-  editableColumnMap: new Map(),
-  editColumnBindings: new Map(),
-  editBoundColumnIndexMap: new Map(),
-  pendingNavigationAction: null,
-  saveError: null,
-  editConnectionId: null,
-  editingRowIndex: null,
-  executionStartedAt: null,
-  isCancelling: false,
-  wasCancelled: false,
-}
+import { makeTabState } from '../../helpers/query-test-utils'
 
 const MOCK_TABLE_INFO: QueryTableEditInfo = {
   database: 'test_db',
@@ -108,10 +70,10 @@ const MOCK_TABLE_INFO_2: QueryTableEditInfo = {
   foreignKeys: [],
 }
 
-function setupTabState(tabId: string, overrides: Partial<TabQueryState> = {}) {
+function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
   useQueryStore.setState({
     tabs: {
-      [tabId]: { ...DEFAULT_TAB_STATE, ...overrides },
+      [tabId]: makeTabState(overrides),
     },
   })
 }

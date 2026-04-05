@@ -8,7 +8,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import React from 'react'
-import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
+import { useQueryStore } from '../../../stores/query-store'
+import { makeTabState } from '../../helpers/query-test-utils'
 
 // Store captured ResultGridView props for test assertions
 let capturedGridProps: Record<string, unknown> = {}
@@ -50,45 +51,6 @@ vi.mock('../../../lib/query-commands', () => ({
 
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 
-const DEFAULT_TAB_STATE: TabQueryState = {
-  content: '',
-  filePath: null,
-  status: 'idle',
-  columns: [],
-  rows: [],
-  totalRows: 0,
-  executionTimeMs: 0,
-  affectedRows: 0,
-  queryId: null,
-  currentPage: 1,
-  totalPages: 1,
-  pageSize: 1000,
-  autoLimitApplied: false,
-  errorMessage: null,
-  cursorPosition: null,
-  viewMode: 'grid',
-  sortColumn: null,
-  sortDirection: null,
-  selectedRowIndex: null,
-  exportDialogOpen: false,
-  lastExecutedSql: null,
-  editMode: null,
-  editTableMetadata: {},
-  editForeignKeys: [],
-  editState: null,
-  isAnalyzingQuery: false,
-  editableColumnMap: new Map(),
-  editColumnBindings: new Map(),
-  editBoundColumnIndexMap: new Map(),
-  pendingNavigationAction: null,
-  saveError: null,
-  editConnectionId: null,
-  editingRowIndex: null,
-  executionStartedAt: null,
-  isCancelling: false,
-  wasCancelled: false,
-}
-
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   capturedGridProps = {}
@@ -99,8 +61,7 @@ describe('ResultPanel edit mode callbacks', () => {
   function renderWithEditState() {
     useQueryStore.setState({
       tabs: {
-        'tab-1': {
-          ...DEFAULT_TAB_STATE,
+        'tab-1': makeTabState({
           status: 'success',
           viewMode: 'grid',
           columns: [
@@ -115,7 +76,7 @@ describe('ResultPanel edit mode callbacks', () => {
             [0, false],
             [1, true],
           ]),
-        },
+        }),
       },
     })
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
@@ -220,8 +181,7 @@ describe('ResultPanel edit mode callbacks', () => {
     }
     useQueryStore.setState({
       tabs: {
-        'tab-1': {
-          ...DEFAULT_TAB_STATE,
+        'tab-1': makeTabState({
           status: 'success',
           viewMode: 'grid',
           columns: [
@@ -238,7 +198,7 @@ describe('ResultPanel edit mode callbacks', () => {
           ]),
           editState,
           editingRowIndex: 0,
-        },
+        }),
       },
     })
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
@@ -250,8 +210,7 @@ describe('ResultPanel edit mode callbacks', () => {
   it('passes editForeignKeys from store to ResultGridView', () => {
     useQueryStore.setState({
       tabs: {
-        'tab-1': {
-          ...DEFAULT_TAB_STATE,
+        'tab-1': makeTabState({
           status: 'success',
           viewMode: 'grid',
           columns: [
@@ -271,7 +230,7 @@ describe('ResultPanel edit mode callbacks', () => {
               constraintName: 'fk_users_email',
             },
           ],
-        },
+        }),
       },
     })
 

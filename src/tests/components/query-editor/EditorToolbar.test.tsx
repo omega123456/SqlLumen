@@ -34,6 +34,37 @@ beforeEach(() => {
           totalPages: 1,
           autoLimitApplied: false,
         }
+      case 'execute_multi_query':
+        return {
+          results: [
+            {
+              queryId: 'q1',
+              sourceSql: 'SELECT 1',
+              columns: [{ name: 'id', dataType: 'INT' }],
+              totalRows: 1,
+              executionTimeMs: 5,
+              affectedRows: 0,
+              firstPage: [[1]],
+              totalPages: 1,
+              autoLimitApplied: false,
+              error: null,
+              reExecutable: true,
+            },
+            {
+              queryId: 'q2',
+              sourceSql: 'SELECT 2',
+              columns: [{ name: 'id', dataType: 'INT' }],
+              totalRows: 1,
+              executionTimeMs: 5,
+              affectedRows: 0,
+              firstPage: [[2]],
+              totalPages: 1,
+              autoLimitApplied: false,
+              error: null,
+              reExecutable: true,
+            },
+          ],
+        }
       case 'write_file':
         return null
       case 'read_file':

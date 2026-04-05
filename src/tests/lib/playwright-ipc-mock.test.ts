@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { playwrightIpcMockHandler } from '../../lib/playwright-ipc-mock'
-import type { SchemaMetadataResponse } from '../../types/schema'
+import type {
+  MultiQueryResult,
+  MultiQueryResultItem,
+  SchemaMetadataResponse,
+} from '../../types/schema'
 
 type PlaywrightWindow = typeof globalThis & {
   __PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__?: SchemaMetadataResponse
@@ -136,5 +140,124 @@ describe('playwrightIpcMockHandler', () => {
     })
 
     expect(result).toBeUndefined()
+  })
+
+  // --- Multi-query / CALL / re-execute mock handler tests ---
+
+  it('returns a MultiQueryResult with 3 results for execute_multi_query', () => {
+    const result = playwrightIpcMockHandler('execute_multi_query', {
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      statements: [
+        'SELECT id, name FROM users',
+        'SELECT product_id, price FROM products',
+        "UPDATE users SET status = 'active' WHERE id = 1",
+      ],
+      pageSize: 1000,
+    }) as MultiQueryResult
+
+    expect(result.results).toHaveLength(3)
+
+    // Result 1: SELECT-like
+    const r1 = result.results[0]
+    expect(r1.queryId).toBe('mock-multi-q1')
+    expect(r1.sourceSql).toBe('SELECT id, name FROM users')
+    expect(r1.columns).toHaveLength(2)
+    expect(r1.columns[0]).toEqual({ name: 'id', dataType: 'BIGINT' })
+    expect(r1.columns[1]).toEqual({ name: 'name', dataType: 'VARCHAR' })
+    expect(r1.totalRows).toBe(2)
+    expect(r1.firstPage).toEqual([
+      [1, 'Alice'],
+      [2, 'Bob'],
+    ])
+    expect(r1.error).toBeNull()
+    expect(r1.reExecutable).toBe(true)
+    expect(r1.affectedRows).toBe(0)
+
+    // Result 2: SELECT-like with different data
+    const r2 = result.results[1]
+    expect(r2.queryId).toBe('mock-multi-q2')
+    expect(r2.sourceSql).toBe('SELECT product_id, price FROM products')
+    expect(r2.columns).toHaveLength(2)
+    expect(r2.totalRows).toBe(2)
+    expect(r2.firstPage).toEqual([
+      [101, '29.99'],
+      [102, '49.99'],
+    ])
+    expect(r2.reExecutable).toBe(true)
+
+    // Result 3: DML
+    const r3 = result.results[2]
+    expect(r3.queryId).toBe('mock-multi-q3')
+    expect(r3.columns).toHaveLength(0)
+    expect(r3.totalRows).toBe(0)
+    expect(r3.affectedRows).toBe(1)
+    expect(r3.firstPage).toEqual([])
+    expect(r3.reExecutable).toBe(true)
+  })
+
+  it('returns a MultiQueryResult with 2 results for execute_call_query', () => {
+    const result = playwrightIpcMockHandler('execute_call_query', {
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      sql: 'CALL sp_get_orders()',
+      pageSize: 1000,
+    }) as MultiQueryResult
+
+    expect(result.results).toHaveLength(2)
+
+    // Result 1: SELECT-like, not re-executable
+    const r1 = result.results[0]
+    expect(r1.queryId).toBe('mock-call-q1')
+    expect(r1.sourceSql).toBe('CALL sp_get_orders()')
+    expect(r1.columns).toHaveLength(2)
+    expect(r1.totalRows).toBe(2)
+    expect(r1.firstPage).toEqual([
+      [1, '150.00'],
+      [2, '230.50'],
+    ])
+    expect(r1.reExecutable).toBe(false)
+
+    // Result 2: SELECT-like with 1 row, not re-executable
+    const r2 = result.results[1]
+    expect(r2.queryId).toBe('mock-call-q2')
+    expect(r2.sourceSql).toBe('CALL sp_get_orders()')
+    expect(r2.columns).toHaveLength(2)
+    expect(r2.totalRows).toBe(1)
+    expect(r2.firstPage).toEqual([['total_orders', 42]])
+    expect(r2.reExecutable).toBe(false)
+  })
+
+  it('returns a single MultiQueryResultItem for reexecute_single_result', () => {
+    const result = playwrightIpcMockHandler('reexecute_single_result', {
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      resultIndex: 0,
+      sql: 'SELECT id, name FROM users',
+      pageSize: 1000,
+    }) as MultiQueryResultItem
+
+    expect(result.queryId).toBe('mock-reexec-q1')
+    expect(result.sourceSql).toBe('SELECT id, name FROM users')
+    expect(result.columns).toHaveLength(2)
+    expect(result.totalRows).toBe(2)
+    expect(result.firstPage).toEqual([
+      [1, 'Alice'],
+      [2, 'Bob'],
+    ])
+    expect(result.reExecutable).toBe(true)
+    expect(result.error).toBeNull()
+  })
+
+  it('reexecute_single_result uses the provided sql in sourceSql', () => {
+    const result = playwrightIpcMockHandler('reexecute_single_result', {
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      resultIndex: 1,
+      sql: 'SELECT product_id FROM products',
+      pageSize: 500,
+    }) as MultiQueryResultItem
+
+    expect(result.sourceSql).toBe('SELECT product_id FROM products')
   })
 })

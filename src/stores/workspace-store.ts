@@ -306,7 +306,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
     if (closingTab.type === 'query-editor') {
       const queryTabState = useQueryStore.getState().tabs[tabId]
-      if (queryTabState?.editState && queryTabState.editState.modifiedColumns.size > 0) {
+      const hasUnsavedEdits =
+        queryTabState?.results?.some((r) => r.editState && r.editState.modifiedColumns.size > 0) ??
+        false
+      if (hasUnsavedEdits) {
         set((s) => ({
           tabsByConnection: {
             ...s.tabsByConnection,
@@ -315,9 +318,60 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
             ),
           },
         }))
-        useQueryStore.getState().requestNavigationAction(tabId, () => {
-          get().forceCloseTab(connectionId, tabId)
-        })
+
+        // Looping close helper: finds the next dirty result, switches to it,
+        // and defers close. When no dirty results remain, force-closes the tab.
+        const checkAndCloseOrDefer = () => {
+          const currentQueryTab = useQueryStore.getState().tabs[tabId]
+          if (!currentQueryTab) {
+            // Tab state already cleaned up
+            get().forceCloseTab(connectionId, tabId)
+            return
+          }
+          const nextDirtyIndex =
+            currentQueryTab.results?.findIndex(
+              (r) => r.editState && r.editState.modifiedColumns.size > 0
+            ) ?? -1
+
+          if (nextDirtyIndex < 0) {
+            // No more dirty results — safe to close
+            get().forceCloseTab(connectionId, tabId)
+            return
+          }
+
+          const currentActiveIdx = currentQueryTab.activeResultIndex ?? 0
+          if (nextDirtyIndex !== currentActiveIdx) {
+            // Switch to the dirty result and set pendingNavigationAction
+            useQueryStore.setState((prev) => ({
+              tabs: {
+                ...prev.tabs,
+                [tabId]: {
+                  ...(prev.tabs[tabId] ?? {
+                    content: '',
+                    filePath: null,
+                    status: 'idle' as const,
+                    cursorPosition: null,
+                    connectionId: '',
+                    results: [],
+                    activeResultIndex: 0,
+                    pendingNavigationAction: null,
+                    executionStartedAt: null,
+                    isCancelling: false,
+                    wasCancelled: false,
+                  }),
+                  activeResultIndex: nextDirtyIndex,
+                  pendingNavigationAction: checkAndCloseOrDefer,
+                },
+              },
+            }))
+          } else {
+            // Dirty result IS the active result — use requestNavigationAction
+            useQueryStore.getState().requestNavigationAction(tabId, checkAndCloseOrDefer)
+          }
+        }
+
+        // Kick off the first iteration
+        checkAndCloseOrDefer()
         return
       }
     }

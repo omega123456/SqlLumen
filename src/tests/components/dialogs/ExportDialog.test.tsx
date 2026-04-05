@@ -140,12 +140,17 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        expect(mockExportResults).toHaveBeenCalledWith('conn-1', 'tab-1', {
-          format: 'csv',
-          filePath: '/tmp/export.csv',
-          includeHeaders: true,
-          tableName: undefined,
-        })
+        expect(mockExportResults).toHaveBeenCalledWith(
+          'conn-1',
+          'tab-1',
+          {
+            format: 'csv',
+            filePath: '/tmp/export.csv',
+            includeHeaders: true,
+            tableName: undefined,
+          },
+          undefined
+        )
       },
       { timeout: 5000 }
     )
@@ -179,7 +184,8 @@ describe('ExportDialog', () => {
           expect.objectContaining({
             format: 'sql-insert',
             tableName: 'exported_results',
-          })
+          }),
+          undefined
         )
       },
       { timeout: 5000 }
@@ -296,7 +302,8 @@ describe('ExportDialog', () => {
           'tab-1',
           expect.objectContaining({
             includeHeaders: false,
-          })
+          }),
+          undefined
         )
       },
       { timeout: 5000 }
@@ -439,7 +446,8 @@ describe('ExportDialog', () => {
           expect.objectContaining({
             format: 'sql-insert',
             tableName: 'my_table',
-          })
+          }),
+          undefined
         )
       },
       { timeout: 5000 }

@@ -6,9 +6,11 @@
 
 #[cfg(not(coverage))]
 use crate::mysql::query_executor::{
-    analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl, execute_query_impl,
-    fetch_result_page_impl, fetch_schema_metadata_impl, read_file_impl, sort_results_impl,
-    update_result_cell_impl, write_file_impl, ExecuteQueryResult, FetchPageResult,
+    analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl,
+    execute_call_query_impl, execute_multi_query_impl, execute_query_impl,
+    fetch_result_page_impl, fetch_schema_metadata_impl, read_file_impl,
+    reexecute_single_result_impl, sort_results_impl, update_result_cell_impl, write_file_impl,
+    ExecuteQueryResult, FetchPageResult, MultiQueryResult, MultiQueryResultItem,
     QueryTableEditInfo, SchemaMetadata,
 };
 #[cfg(not(coverage))]
@@ -39,9 +41,10 @@ pub fn fetch_result_page(
     tab_id: String,
     query_id: String,
     page: usize,
+    result_index: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<FetchPageResult, String> {
-    fetch_result_page_impl(&state, &connection_id, &tab_id, &query_id, page)
+    fetch_result_page_impl(&state, &connection_id, &tab_id, &query_id, page, result_index)
 }
 
 // ── evict_results ─────────────────────────────────────────────────────────────
@@ -98,9 +101,10 @@ pub fn sort_results(
     tab_id: String,
     column_name: String,
     direction: String,
+    result_index: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<FetchPageResult, String> {
-    sort_results_impl(&state, &connection_id, &tab_id, &column_name, &direction)
+    sort_results_impl(&state, &connection_id, &tab_id, &column_name, &direction, result_index)
 }
 
 // ── analyze_query_for_edit ────────────────────────────────────────────────────
@@ -124,9 +128,10 @@ pub fn update_result_cell(
     tab_id: String,
     row_index: usize,
     updates: HashMap<usize, serde_json::Value>,
+    result_index: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    update_result_cell_impl(&state, &connection_id, &tab_id, row_index, updates)
+    update_result_cell_impl(&state, &connection_id, &tab_id, row_index, updates, result_index)
 }
 
 // ── cancel_query ──────────────────────────────────────────────────────────────
@@ -139,4 +144,69 @@ pub async fn cancel_query(
     state: tauri::State<'_, AppState>,
 ) -> Result<bool, String> {
     cancel_query_impl(&state, &connection_id, &tab_id).await
+}
+
+// ── reexecute_single_result ──────────────────────────────────────────────────
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn reexecute_single_result(
+    connection_id: String,
+    tab_id: String,
+    result_index: usize,
+    sql: String,
+    page_size: Option<usize>,
+    state: tauri::State<'_, AppState>,
+) -> Result<MultiQueryResultItem, String> {
+    reexecute_single_result_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        result_index,
+        &sql,
+        page_size.unwrap_or(1000),
+    )
+    .await
+}
+
+// ── execute_multi_query ──────────────────────────────────────────────────────
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn execute_multi_query(
+    connection_id: String,
+    tab_id: String,
+    statements: Vec<String>,
+    page_size: Option<usize>,
+    state: tauri::State<'_, AppState>,
+) -> Result<MultiQueryResult, String> {
+    execute_multi_query_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        statements,
+        page_size.unwrap_or(1000),
+    )
+    .await
+}
+
+// ── execute_call_query ───────────────────────────────────────────────────────
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn execute_call_query(
+    connection_id: String,
+    tab_id: String,
+    sql: String,
+    page_size: Option<usize>,
+    state: tauri::State<'_, AppState>,
+) -> Result<MultiQueryResult, String> {
+    execute_call_query_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        &sql,
+        page_size.unwrap_or(1000),
+    )
+    .await
 }

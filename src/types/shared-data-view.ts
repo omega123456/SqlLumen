@@ -197,6 +197,8 @@ export interface PaginationGroupProps {
   totalPages: number
   pageSize: number
   disabled?: boolean
+  /** When true, the page-size dropdown is disabled (e.g. cache-only results). */
+  pageSizeDisabled?: boolean
   onPageSizeChange: (size: number) => void
   onPrevPage: () => void
   onNextPage: () => void

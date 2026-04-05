@@ -1,4 +1,5 @@
 pub mod health;
+pub mod multi_result;
 pub mod pool;
 pub mod query_executor;
 pub mod query_log;

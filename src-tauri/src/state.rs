@@ -17,7 +17,8 @@ pub struct AppState {
     /// Tauri app handle (None only in unit tests where AppHandle is unavailable).
     pub app_handle: Option<AppHandle>,
     /// In-memory query results keyed by (connection_id, tab_id).
-    pub results: RwLock<HashMap<(String, String), StoredResult>>,
+    /// Each entry is a vector of results to support multi-query execution.
+    pub results: RwLock<HashMap<(String, String), Vec<StoredResult>>>,
     /// Reload handle for `EnvFilter` when `log.level` changes (None in tests).
     pub log_filter_reload: Mutex<Option<LogFilterReloadHandle>>,
     /// MySQL thread IDs for currently running queries, keyed by (connection_id, tab_id).

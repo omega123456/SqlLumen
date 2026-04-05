@@ -461,7 +461,11 @@ async fn execute_query_ipc_serializes_timestamp_and_negative_mysql_time_strings(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn execute_query_ipc_returns_stored_procedure_result_sets() {
+async fn execute_query_ipc_treats_call_as_dml_after_call_removal_from_select_like() {
+    // After removing CALL from is_select_like, CALL statements that leak to
+    // the execute_query path are treated as DML (execute, not fetch_all).
+    // This test verifies that behavior — CALL should now be routed to
+    // execute_call_query instead of execute_query.
     let result = execute_query_via_mock(MockQueryResponse {
         query: "CALL sp_list_users()",
         columns: vec![
@@ -480,11 +484,8 @@ async fn execute_query_ipc_returns_stored_procedure_result_sets() {
     })
     .await;
 
-    assert_eq!(
-        result.columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
-        vec!["id", "name"]
-    );
-    assert_eq!(result.affected_rows, 0);
-    assert_eq!(result.total_rows, 1);
-    assert_eq!(result.first_page, vec![vec![serde_json::json!(1), serde_json::json!("Alice")]]);
+    // CALL treated as DML: no columns, no rows, affected_rows from execute()
+    assert!(result.columns.is_empty(), "CALL should be treated as DML — no columns");
+    assert_eq!(result.total_rows, 0);
+    assert!(result.first_page.is_empty());
 }

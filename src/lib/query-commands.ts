@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
+  MultiQueryResult,
+  MultiQueryResultItem,
   QueryResultMeta,
   QueryTableEditInfo,
   ResultPage,
@@ -19,13 +21,64 @@ export async function executeQuery(
   return invoke<ExecuteQueryResult>('execute_query', { connectionId, tabId, sql, pageSize })
 }
 
+export async function executeMultiQuery(
+  connectionId: string,
+  tabId: string,
+  statements: string[],
+  pageSize: number
+): Promise<MultiQueryResult> {
+  return invoke<MultiQueryResult>('execute_multi_query', {
+    connectionId,
+    tabId,
+    statements,
+    pageSize,
+  })
+}
+
+export async function executeCallQuery(
+  connectionId: string,
+  tabId: string,
+  sql: string,
+  pageSize: number
+): Promise<MultiQueryResult> {
+  return invoke<MultiQueryResult>('execute_call_query', {
+    connectionId,
+    tabId,
+    sql,
+    pageSize,
+  })
+}
+
+export async function reexecuteSingleResult(
+  connectionId: string,
+  tabId: string,
+  resultIndex: number,
+  sql: string,
+  pageSize: number
+): Promise<MultiQueryResultItem> {
+  return invoke<MultiQueryResultItem>('reexecute_single_result', {
+    connectionId,
+    tabId,
+    resultIndex,
+    sql,
+    pageSize,
+  })
+}
+
 export async function fetchResultPage(
   connectionId: string,
   tabId: string,
   queryId: string,
-  page: number
+  page: number,
+  resultIndex?: number
 ): Promise<ResultPage> {
-  return invoke<ResultPage>('fetch_result_page', { connectionId, tabId, queryId, page })
+  return invoke<ResultPage>('fetch_result_page', {
+    connectionId,
+    tabId,
+    queryId,
+    page,
+    ...(resultIndex !== undefined ? { resultIndex } : {}),
+  })
 }
 
 export async function evictResults(connectionId: string, tabId: string): Promise<void> {
@@ -36,9 +89,16 @@ export async function sortResults(
   connectionId: string,
   tabId: string,
   columnName: string,
-  direction: string
+  direction: string,
+  resultIndex?: number
 ): Promise<ResultPage> {
-  return invoke<ResultPage>('sort_results', { connectionId, tabId, columnName, direction })
+  return invoke<ResultPage>('sort_results', {
+    connectionId,
+    tabId,
+    columnName,
+    direction,
+    ...(resultIndex !== undefined ? { resultIndex } : {}),
+  })
 }
 
 export async function selectDatabase(connectionId: string, databaseName: string): Promise<void> {
@@ -68,9 +128,16 @@ export async function updateResultCell(
   connectionId: string,
   tabId: string,
   rowIndex: number,
-  updates: Record<number, unknown>
+  updates: Record<number, unknown>,
+  resultIndex?: number
 ): Promise<void> {
-  return invoke<void>('update_result_cell', { connectionId, tabId, rowIndex, updates })
+  return invoke<void>('update_result_cell', {
+    connectionId,
+    tabId,
+    rowIndex,
+    updates,
+    ...(resultIndex !== undefined ? { resultIndex } : {}),
+  })
 }
 
 export async function cancelQuery(connectionId: string, tabId: string): Promise<boolean> {

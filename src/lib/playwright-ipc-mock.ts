@@ -512,6 +512,125 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return result
     }
 
+    case 'execute_multi_query':
+      return {
+        results: [
+          {
+            queryId: 'mock-multi-q1',
+            sourceSql: 'SELECT id, name FROM users',
+            columns: [
+              { name: 'id', dataType: 'BIGINT' },
+              { name: 'name', dataType: 'VARCHAR' },
+            ],
+            totalRows: 2,
+            executionTimeMs: 15,
+            affectedRows: 0,
+            firstPage: [
+              [1, 'Alice'],
+              [2, 'Bob'],
+            ],
+            totalPages: 1,
+            autoLimitApplied: false,
+            error: null,
+            reExecutable: true,
+          },
+          {
+            queryId: 'mock-multi-q2',
+            sourceSql: 'SELECT product_id, price FROM products',
+            columns: [
+              { name: 'product_id', dataType: 'INT' },
+              { name: 'price', dataType: 'DECIMAL' },
+            ],
+            totalRows: 2,
+            executionTimeMs: 8,
+            affectedRows: 0,
+            firstPage: [
+              [101, '29.99'],
+              [102, '49.99'],
+            ],
+            totalPages: 1,
+            autoLimitApplied: false,
+            error: null,
+            reExecutable: true,
+          },
+          {
+            queryId: 'mock-multi-q3',
+            sourceSql: "UPDATE users SET status = 'active' WHERE id = 1",
+            columns: [],
+            totalRows: 0,
+            executionTimeMs: 3,
+            affectedRows: 1,
+            firstPage: [],
+            totalPages: 0,
+            autoLimitApplied: false,
+            error: null,
+            reExecutable: true,
+          },
+        ],
+      }
+
+    case 'execute_call_query':
+      return {
+        results: [
+          {
+            queryId: 'mock-call-q1',
+            sourceSql: 'CALL sp_get_orders()',
+            columns: [
+              { name: 'order_id', dataType: 'INT' },
+              { name: 'total', dataType: 'DECIMAL' },
+            ],
+            totalRows: 2,
+            executionTimeMs: 20,
+            affectedRows: 0,
+            firstPage: [
+              [1, '150.00'],
+              [2, '230.50'],
+            ],
+            totalPages: 1,
+            autoLimitApplied: false,
+            error: null,
+            reExecutable: false,
+          },
+          {
+            queryId: 'mock-call-q2',
+            sourceSql: 'CALL sp_get_orders()',
+            columns: [
+              { name: 'summary_key', dataType: 'VARCHAR' },
+              { name: 'summary_value', dataType: 'INT' },
+            ],
+            totalRows: 1,
+            executionTimeMs: 5,
+            affectedRows: 0,
+            firstPage: [['total_orders', 42]],
+            totalPages: 1,
+            autoLimitApplied: false,
+            error: null,
+            reExecutable: false,
+          },
+        ],
+      }
+
+    case 'reexecute_single_result':
+      return {
+        queryId: 'mock-reexec-q1',
+        sourceSql: String(args?.sql ?? 'SELECT 1'),
+        columns: [
+          { name: 'id', dataType: 'BIGINT' },
+          { name: 'name', dataType: 'VARCHAR' },
+        ],
+        totalRows: 2,
+        executionTimeMs: 10,
+        affectedRows: 0,
+        firstPage: [
+          [1, 'Alice'],
+          [2, 'Bob'],
+        ],
+        totalPages: 1,
+        autoLimitApplied: false,
+        error: null,
+        reExecutable: true,
+      }
+
     case 'fetch_result_page':
       return {
         rows: [[1001, 'Julian Thorne', 'j.thorne@example.com', 'active', '2024-01-15T10:30:00']],

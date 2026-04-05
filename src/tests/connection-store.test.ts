@@ -12,6 +12,7 @@ import { useQueryStore } from '../stores/query-store'
 import { useTableDataStore } from '../stores/table-data-store'
 import { showErrorToast } from '../stores/toast-store'
 import type { SavedConnection, ConnectionGroup } from '../types/connection'
+import { makeTabState } from './helpers/query-test-utils'
 
 // Mock the Tauri event system
 vi.mock('@tauri-apps/api/event', () => ({
@@ -664,8 +665,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
     // Set up query store with pending edits that will fail to save
     useQueryStore.setState({
       tabs: {
-        'qt-1': {
-          ...useQueryStore.getState().getTabState('qt-1'),
+        'qt-1': makeTabState({
           editMode: 'testdb.users',
           editConnectionId: 'sess-1',
           editingRowIndex: 0,
@@ -685,7 +685,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
               foreignKeys: [],
             },
           },
-        },
+        }),
       },
     })
 
@@ -818,8 +818,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
     // Set up query store with pending edits that will succeed
     useQueryStore.setState({
       tabs: {
-        'qt-1': {
-          ...useQueryStore.getState().getTabState('qt-1'),
+        'qt-1': makeTabState({
           editMode: 'testdb.users',
           editConnectionId: 'sess-1',
           editingRowIndex: 0,
@@ -850,7 +849,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
               foreignKeys: [],
             },
           },
-        },
+        }),
       },
     })
 

@@ -7,7 +7,7 @@ import { useQueryStore } from '../../stores/query-store'
 import { useThemeStore } from '../../stores/theme-store'
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
 import type { WorkspaceTab } from '../../types/schema'
-import type { TabQueryState } from '../../stores/query-store'
+import { makeTabState } from '../helpers/query-test-utils'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -137,44 +137,13 @@ describe('StatusBar', () => {
   })
 
   describe('query info', () => {
-    const successQueryState: TabQueryState = {
+    const successQueryState = makeTabState({
       content: 'SELECT * FROM users',
-      filePath: null,
       status: 'success',
-      columns: [],
-      rows: [],
       totalRows: 42,
       executionTimeMs: 150,
-      affectedRows: 0,
       queryId: 'q1',
-      currentPage: 1,
-      totalPages: 1,
-      pageSize: 1000,
-      autoLimitApplied: false,
-      errorMessage: null,
-      cursorPosition: null,
-      viewMode: 'grid',
-      sortColumn: null,
-      sortDirection: null,
-      selectedRowIndex: null,
-      exportDialogOpen: false,
-      lastExecutedSql: null,
-      editMode: null,
-      editTableMetadata: {},
-      editForeignKeys: [],
-      editState: null,
-      isAnalyzingQuery: false,
-      editableColumnMap: new Map(),
-      editColumnBindings: new Map(),
-      editBoundColumnIndexMap: new Map(),
-      pendingNavigationAction: null,
-      saveError: null,
-      editConnectionId: null,
-      editingRowIndex: null,
-      executionStartedAt: null,
-      isCancelling: false,
-      wasCancelled: false,
-    }
+    })
 
     function setupQueryEditorTab() {
       const conn = makeActiveConnection()
@@ -251,7 +220,12 @@ describe('StatusBar', () => {
     it('does not show query info when query status is idle', () => {
       setupQueryEditorTab()
       useQueryStore.setState({
-        tabs: { 'tab-1': { ...successQueryState, status: 'idle' } },
+        tabs: {
+          'tab-1': makeTabState({
+            content: 'SELECT * FROM users',
+            status: 'idle',
+          }),
+        },
       })
 
       render(<StatusBar />)
@@ -261,7 +235,12 @@ describe('StatusBar', () => {
     it('does not show query info when query status is running', () => {
       setupQueryEditorTab()
       useQueryStore.setState({
-        tabs: { 'tab-1': { ...successQueryState, status: 'running' } },
+        tabs: {
+          'tab-1': makeTabState({
+            content: 'SELECT * FROM users',
+            status: 'running',
+          }),
+        },
       })
 
       render(<StatusBar />)
@@ -272,11 +251,11 @@ describe('StatusBar', () => {
       setupQueryEditorTab()
       useQueryStore.setState({
         tabs: {
-          'tab-1': {
-            ...successQueryState,
+          'tab-1': makeTabState({
+            content: 'SELECT * FROM users',
             status: 'running',
             executionStartedAt: Date.now(),
-          },
+          }),
         },
       })
 
@@ -320,11 +299,11 @@ describe('StatusBar', () => {
       })
       useQueryStore.setState({
         tabs: {
-          'tab-1': {
-            ...successQueryState,
+          'tab-1': makeTabState({
+            content: 'SELECT * FROM users',
             status: 'running',
             executionStartedAt: Date.now(),
-          },
+          }),
         },
       })
 
@@ -336,11 +315,11 @@ describe('StatusBar', () => {
       setupQueryEditorTab()
       useQueryStore.setState({
         tabs: {
-          'tab-1': {
-            ...successQueryState,
+          'tab-1': makeTabState({
+            content: 'SELECT * FROM users',
             status: 'error',
             errorMessage: 'Syntax error near...',
-          },
+          }),
         },
       })
 

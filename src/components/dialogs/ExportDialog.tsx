@@ -17,6 +17,8 @@ interface ExportDialogProps {
   /** Total row count in the result set. */
   totalRows: number
   onClose: () => void
+  /** Optional result index for multi-result tabs. */
+  resultIndex?: number
   /** When provided, called instead of the built-in exportResults() for custom export logic. */
   onExport?: (options: {
     format: string
@@ -79,6 +81,7 @@ export default function ExportDialog({
   columnCount,
   totalRows,
   onClose,
+  resultIndex,
   onExport,
   defaultTableName,
   isView,
@@ -142,12 +145,17 @@ export default function ExportDialog({
           tableName,
         })
       } else {
-        await exportResults(connectionId, tabId, {
-          format,
-          filePath,
-          includeHeaders,
-          tableName: format === 'sql-insert' ? tableName : undefined,
-        })
+        await exportResults(
+          connectionId,
+          tabId,
+          {
+            format,
+            filePath,
+            includeHeaders,
+            tableName: format === 'sql-insert' ? tableName : undefined,
+          },
+          resultIndex
+        )
       }
       onClose()
     } catch (err) {

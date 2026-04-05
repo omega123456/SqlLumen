@@ -1,7 +1,33 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
-import { useQueryStore } from '../../stores/query-store'
+import { useQueryStore, getFlatTabState, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
+
+/** Shorthand: get a flat (tab + active result) view for assertions. */
+function flat(tabId: string) {
+  return getFlatTabState(useQueryStore.getState().getTabState(tabId))
+}
+
+/**
+ * Set result-level fields on an existing tab created by setContent().
+ * Since setContent creates a tab with empty results[], we inject results[0].
+ */
+function patchResult(tabId: string, resultOverrides: Record<string, unknown>) {
+  useQueryStore.setState((prev) => {
+    const tab = prev.tabs[tabId]!
+    const existingResult = tab.results[0] ?? { ...DEFAULT_RESULT_STATE }
+    return {
+      tabs: {
+        ...prev.tabs,
+        [tabId]: {
+          ...tab,
+          results: [{ ...existingResult, ...resultOverrides }],
+          activeResultIndex: 0,
+        },
+      },
+    }
+  })
+}
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
@@ -40,17 +66,17 @@ describe('useQueryStore — getTabState', () => {
     const state = useQueryStore.getState().getTabState('unknown')
     expect(state.status).toBe('idle')
     expect(state.content).toBe('')
-    expect(state.columns).toHaveLength(0)
+    expect(flat('unknown').columns).toHaveLength(0)
   })
 
   it('returns default new fields for unknown tab', () => {
-    const state = useQueryStore.getState().getTabState('unknown')
-    expect(state.viewMode).toBe('grid')
-    expect(state.sortColumn).toBeNull()
-    expect(state.sortDirection).toBeNull()
-    expect(state.selectedRowIndex).toBeNull()
-    expect(state.exportDialogOpen).toBe(false)
-    expect(state.lastExecutedSql).toBeNull()
+    const f = flat('unknown')
+    expect(f.viewMode).toBe('grid')
+    expect(f.sortColumn).toBeNull()
+    expect(f.sortDirection).toBeNull()
+    expect(f.selectedRowIndex).toBeNull()
+    expect(f.exportDialogOpen).toBe(false)
+    expect(f.lastExecutedSql).toBeNull()
   })
 })
 
@@ -75,10 +101,11 @@ describe('useQueryStore — executeQuery', () => {
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT 1')
     const state = useQueryStore.getState().getTabState('tab-1')
     expect(state.status).toBe('success')
-    expect(state.queryId).toBe('q-mock')
-    expect(state.totalRows).toBe(3)
-    expect(state.columns).toHaveLength(1)
-    expect(state.rows).toEqual([[1], [2], [3]])
+    const f = flat('tab-1')
+    expect(f.queryId).toBe('q-mock')
+    expect(f.totalRows).toBe(3)
+    expect(f.columns).toHaveLength(1)
+    expect(f.rows).toEqual([[1], [2], [3]])
   })
 
   it('sets error status on failure', async () => {
@@ -88,56 +115,41 @@ describe('useQueryStore — executeQuery', () => {
     await useQueryStore.getState().executeQuery('conn-1', 'tab-error', 'SELECT * FROM bad_table')
     const state = useQueryStore.getState().getTabState('tab-error')
     expect(state.status).toBe('error')
-    expect(state.errorMessage).toContain('table not found')
+    expect(flat('tab-error').errorMessage).toContain('table not found')
   })
 
   it('saves lastExecutedSql on success', async () => {
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users')
-    const state = useQueryStore.getState().getTabState('tab-1')
-    expect(state.lastExecutedSql).toBe('SELECT * FROM users')
+    expect(flat('tab-1').lastExecutedSql).toBe('SELECT * FROM users')
   })
 
   it('uses stored pageSize for the IPC call', async () => {
     // Set a custom page size before executing
     useQueryStore.getState().setContent('tab-ps', 'SELECT 1')
-    useQueryStore.setState((prev) => ({
-      tabs: {
-        ...prev.tabs,
-        'tab-ps': {
-          ...prev.tabs['tab-ps']!,
-          pageSize: 500,
-        },
-      },
-    }))
+    patchResult('tab-ps', { pageSize: 500 })
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-ps', 'SELECT 1')
     const state = useQueryStore.getState().getTabState('tab-ps')
     expect(state.status).toBe('success')
     // The query still succeeds (the mock doesn't validate pageSize,
     // but the code path passes it)
-    expect(state.rows).toEqual([[1], [2], [3]])
+    expect(flat('tab-ps').rows).toEqual([[1], [2], [3]])
   })
 
   it('resets sortColumn, sortDirection, and selectedRowIndex on new query', async () => {
     // Set up tab with existing sort/selection state
     useQueryStore.getState().setContent('tab-reset', 'SELECT 1')
-    useQueryStore.setState((prev) => ({
-      tabs: {
-        ...prev.tabs,
-        'tab-reset': {
-          ...prev.tabs['tab-reset']!,
-          sortColumn: 'id',
-          sortDirection: 'asc' as const,
-          selectedRowIndex: 5,
-        },
-      },
-    }))
+    patchResult('tab-reset', {
+      sortColumn: 'id',
+      sortDirection: 'asc' as const,
+      selectedRowIndex: 5,
+    })
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-reset', 'SELECT 1')
-    const state = useQueryStore.getState().getTabState('tab-reset')
-    expect(state.sortColumn).toBeNull()
-    expect(state.sortDirection).toBeNull()
-    expect(state.selectedRowIndex).toBeNull()
+    const f = flat('tab-reset')
+    expect(f.sortColumn).toBeNull()
+    expect(f.sortDirection).toBeNull()
+    expect(f.selectedRowIndex).toBeNull()
   })
 
   it('normalizes tinyint boolean aliases to integer rows on executeQuery', async () => {
@@ -160,7 +172,7 @@ describe('useQueryStore — executeQuery', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-bool', 'SELECT is_active FROM flags')
 
-    expect(useQueryStore.getState().getTabState('tab-bool').rows).toEqual([[1, 0, 'flagged']])
+    expect(flat('tab-bool').rows).toEqual([[1, 0, 'flagged']])
   })
 
   it('treats missing or non-array analyze_query_for_edit result as no edit tables', async () => {
@@ -190,10 +202,10 @@ describe('useQueryStore — executeQuery', () => {
     await useQueryStore.getState().executeQuery('conn-1', 'tab-null-analyze', 'SELECT id FROM t')
 
     await vi.waitFor(() => {
-      expect(useQueryStore.getState().getTabState('tab-null-analyze').isAnalyzingQuery).toBe(false)
+      expect(flat('tab-null-analyze').isAnalyzingQuery).toBe(false)
     })
 
-    expect(useQueryStore.getState().getTabState('tab-null-analyze').editTableMetadata).toEqual({})
+    expect(flat('tab-null-analyze').editTableMetadata).toEqual({})
     const analyzeErrors = errSpy.mock.calls.filter(
       (c) => typeof c[0] === 'string' && c[0].includes('analyze_query_for_edit')
     )
@@ -249,9 +261,9 @@ describe('useQueryStore — fetchPage', () => {
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT 1')
 
     await useQueryStore.getState().fetchPage('conn-1', 'tab-1', 2)
-    const state = useQueryStore.getState().getTabState('tab-1')
-    expect(state.rows).toEqual([[4], [5]])
-    expect(state.currentPage).toBe(2)
+    const f = flat('tab-1')
+    expect(f.rows).toEqual([[4], [5]])
+    expect(f.currentPage).toBe(2)
   })
 
   it('does nothing when no queryId', async () => {
@@ -286,7 +298,7 @@ describe('useQueryStore — fetchPage', () => {
     await useQueryStore.getState().executeQuery('conn-1', 'tab-null-fetch', 'SELECT 1')
     await useQueryStore.getState().fetchPage('conn-1', 'tab-null-fetch', 2)
 
-    expect(useQueryStore.getState().getTabState('tab-null-fetch').currentPage).toBe(1)
+    expect(flat('tab-null-fetch').currentPage).toBe(1)
     expect(consoleSpy).toHaveBeenCalledWith(
       '[query-store] fetchPage failed: invalid fetch_result_page payload (expected rows, page, totalPages)'
     )
@@ -303,22 +315,16 @@ describe('useQueryStore — fetchPage', () => {
     })
 
     useQueryStore.getState().setContent('tab-bool-page', 'SELECT 1')
-    useQueryStore.setState((prev) => ({
-      tabs: {
-        ...prev.tabs,
-        'tab-bool-page': {
-          ...prev.tabs['tab-bool-page']!,
-          queryId: 'q-bool-page',
-          columns: BOOLEAN_ALIAS_COLUMNS,
-        },
-      },
-    }))
+    patchResult('tab-bool-page', {
+      queryId: 'q-bool-page',
+      columns: BOOLEAN_ALIAS_COLUMNS,
+    })
 
     await useQueryStore.getState().fetchPage('conn-1', 'tab-bool-page', 2)
 
-    const state = useQueryStore.getState().getTabState('tab-bool-page')
-    expect(state.rows).toEqual([[0, 1, 'page-2']])
-    expect(state.currentPage).toBe(2)
+    const f = flat('tab-bool-page')
+    expect(f.rows).toEqual([[0, 1, 'page-2']])
+    expect(f.currentPage).toBe(2)
   })
 })
 
@@ -437,50 +443,54 @@ describe('useQueryStore — setViewMode', () => {
   it('sets view mode for a tab', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     useQueryStore.getState().setViewMode('tab-1', 'form')
-    expect(useQueryStore.getState().tabs['tab-1']?.viewMode).toBe('form')
+    expect(flat('tab-1').viewMode).toBe('form')
   })
 
   it('sets view mode to text', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     useQueryStore.getState().setViewMode('tab-1', 'text')
-    expect(useQueryStore.getState().tabs['tab-1']?.viewMode).toBe('text')
+    expect(flat('tab-1').viewMode).toBe('text')
   })
 
   it('sets view mode back to grid', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     useQueryStore.getState().setViewMode('tab-1', 'form')
     useQueryStore.getState().setViewMode('tab-1', 'grid')
-    expect(useQueryStore.getState().tabs['tab-1']?.viewMode).toBe('grid')
+    expect(flat('tab-1').viewMode).toBe('grid')
   })
 })
 
 describe('useQueryStore — setSelectedRow', () => {
   it('sets selected row index', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    patchResult('tab-1', {})
     useQueryStore.getState().setSelectedRow('tab-1', 5)
-    expect(useQueryStore.getState().tabs['tab-1']?.selectedRowIndex).toBe(5)
+    expect(flat('tab-1').selectedRowIndex).toBe(5)
   })
 
   it('clears selected row with null', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    patchResult('tab-1', {})
     useQueryStore.getState().setSelectedRow('tab-1', 3)
     useQueryStore.getState().setSelectedRow('tab-1', null)
-    expect(useQueryStore.getState().tabs['tab-1']?.selectedRowIndex).toBeNull()
+    expect(flat('tab-1').selectedRowIndex).toBeNull()
   })
 })
 
 describe('useQueryStore — export dialog', () => {
   it('opens export dialog', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    patchResult('tab-1', {})
     useQueryStore.getState().openExportDialog('tab-1')
-    expect(useQueryStore.getState().tabs['tab-1']?.exportDialogOpen).toBe(true)
+    expect(flat('tab-1').exportDialogOpen).toBe(true)
   })
 
   it('closes export dialog', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    patchResult('tab-1', {})
     useQueryStore.getState().openExportDialog('tab-1')
     useQueryStore.getState().closeExportDialog('tab-1')
-    expect(useQueryStore.getState().tabs['tab-1']?.exportDialogOpen).toBe(false)
+    expect(flat('tab-1').exportDialogOpen).toBe(false)
   })
 })
 
@@ -514,11 +524,11 @@ describe('useQueryStore — sortResults', () => {
 
     // Sort ascending
     await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
-    const state = useQueryStore.getState().getTabState('tab-1')
-    expect(state.sortColumn).toBe('id')
-    expect(state.sortDirection).toBe('asc')
-    expect(state.rows).toEqual([[1], [2], [3]])
-    expect(state.currentPage).toBe(1)
+    const f = flat('tab-1')
+    expect(f.sortColumn).toBe('id')
+    expect(f.sortDirection).toBe('asc')
+    expect(f.rows).toEqual([[1], [2], [3]])
+    expect(f.currentPage).toBe(1)
   })
 
   it('clears sort state when direction is null and re-executes query', async () => {
@@ -545,27 +555,30 @@ describe('useQueryStore — sortResults', () => {
 
     // Set up tab with sort state and lastExecutedSql
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    patchResult('tab-1', {
+      sortColumn: 'id',
+      sortDirection: 'asc' as const,
+      lastExecutedSql: 'SELECT id FROM t',
+      queryId: 'q-old',
+      status: 'success' as const,
+    })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-1': {
           ...prev.tabs['tab-1']!,
-          sortColumn: 'id',
-          sortDirection: 'asc' as const,
-          lastExecutedSql: 'SELECT id FROM t',
-          queryId: 'q-old',
           status: 'success' as const,
         },
       },
     }))
 
     await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', null)
-    const state = useQueryStore.getState().getTabState('tab-1')
-    expect(state.sortColumn).toBeNull()
-    expect(state.sortDirection).toBeNull()
+    const f = flat('tab-1')
+    expect(f.sortColumn).toBeNull()
+    expect(f.sortDirection).toBeNull()
     // Should have re-executed and gotten fresh data
-    expect(state.queryId).toBe('q-reexec')
-    expect(state.rows).toEqual([[3], [1], [2]])
+    expect(f.queryId).toBe('q-reexec')
+    expect(f.rows).toEqual([[3], [1], [2]])
   })
 
   it('normalizes tinyint boolean aliases when clearing sort re-executes the query', async () => {
@@ -590,15 +603,18 @@ describe('useQueryStore — sortResults', () => {
     })
 
     useQueryStore.getState().setContent('tab-bool-reexec', 'SELECT 1')
+    patchResult('tab-bool-reexec', {
+      sortColumn: 'is_active',
+      sortDirection: 'asc' as const,
+      lastExecutedSql: 'SELECT is_active FROM t',
+      queryId: 'q-old',
+      status: 'success' as const,
+    })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-bool-reexec': {
           ...prev.tabs['tab-bool-reexec']!,
-          sortColumn: 'is_active',
-          sortDirection: 'asc' as const,
-          lastExecutedSql: 'SELECT is_active FROM t',
-          queryId: 'q-old',
           status: 'success' as const,
         },
       },
@@ -606,31 +622,25 @@ describe('useQueryStore — sortResults', () => {
 
     await useQueryStore.getState().sortResults('conn-1', 'tab-bool-reexec', 'is_active', null)
 
-    const state = useQueryStore.getState().getTabState('tab-bool-reexec')
-    expect(state.sortColumn).toBeNull()
-    expect(state.sortDirection).toBeNull()
-    expect(state.rows).toEqual([[1, 0, 'reexec']])
+    const f = flat('tab-bool-reexec')
+    expect(f.sortColumn).toBeNull()
+    expect(f.sortDirection).toBeNull()
+    expect(f.rows).toEqual([[1, 0, 'reexec']])
   })
 
   it('clears sort state visually when no lastExecutedSql', async () => {
     // Set up tab with sort state but NO lastExecutedSql
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
-    useQueryStore.setState((prev) => ({
-      tabs: {
-        ...prev.tabs,
-        'tab-1': {
-          ...prev.tabs['tab-1']!,
-          sortColumn: 'id',
-          sortDirection: 'asc' as const,
-          lastExecutedSql: null,
-        },
-      },
-    }))
+    patchResult('tab-1', {
+      sortColumn: 'id',
+      sortDirection: 'asc' as const,
+      lastExecutedSql: null,
+    })
 
     await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', null)
-    const state = useQueryStore.getState().getTabState('tab-1')
-    expect(state.sortColumn).toBeNull()
-    expect(state.sortDirection).toBeNull()
+    const f = flat('tab-1')
+    expect(f.sortColumn).toBeNull()
+    expect(f.sortDirection).toBeNull()
   })
 
   it('logs error on IPC failure', async () => {
@@ -673,9 +683,9 @@ describe('useQueryStore — sortResults', () => {
     await useQueryStore.getState().executeQuery('conn-1', 'tab-sort-null', 'SELECT id FROM t')
     await useQueryStore.getState().sortResults('conn-1', 'tab-sort-null', 'id', 'asc')
 
-    const state = useQueryStore.getState().getTabState('tab-sort-null')
-    expect(state.sortColumn).toBeNull()
-    expect(state.rows).toEqual([[2], [1]])
+    const f = flat('tab-sort-null')
+    expect(f.sortColumn).toBeNull()
+    expect(f.rows).toEqual([[2], [1]])
     expect(consoleSpy).toHaveBeenCalledWith(
       '[query-store] sortResults failed: invalid sort_results payload (expected rows, page, totalPages)'
     )
@@ -719,22 +729,16 @@ describe('useQueryStore — sortResults', () => {
     })
 
     useQueryStore.getState().setContent('tab-bool-sort', 'SELECT 1')
-    useQueryStore.setState((prev) => ({
-      tabs: {
-        ...prev.tabs,
-        'tab-bool-sort': {
-          ...prev.tabs['tab-bool-sort']!,
-          columns: BOOLEAN_ALIAS_COLUMNS,
-        },
-      },
-    }))
+    patchResult('tab-bool-sort', {
+      columns: BOOLEAN_ALIAS_COLUMNS,
+    })
 
     await useQueryStore.getState().sortResults('conn-1', 'tab-bool-sort', 'is_active', 'asc')
 
-    const state = useQueryStore.getState().getTabState('tab-bool-sort')
-    expect(state.rows).toEqual([[0, 1, 'sorted']])
-    expect(state.sortColumn).toBe('is_active')
-    expect(state.sortDirection).toBe('asc')
+    const f = flat('tab-bool-sort')
+    expect(f.rows).toEqual([[0, 1, 'sorted']])
+    expect(f.sortColumn).toBe('is_active')
+    expect(f.sortDirection).toBe('asc')
   })
 })
 
@@ -759,30 +763,33 @@ describe('useQueryStore — changePageSize', () => {
 
     // Set up tab with lastExecutedSql
     useQueryStore.getState().setContent('tab-1', 'SELECT id FROM t')
+    patchResult('tab-1', {
+      lastExecutedSql: 'SELECT id FROM t',
+      status: 'success' as const,
+      queryId: 'q-old',
+      selectedRowIndex: 3,
+    })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-1': {
           ...prev.tabs['tab-1']!,
-          lastExecutedSql: 'SELECT id FROM t',
           status: 'success' as const,
-          queryId: 'q-old',
-          selectedRowIndex: 3,
         },
       },
     }))
 
     await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
-    const state = useQueryStore.getState().getTabState('tab-1')
-    expect(state.status).toBe('success')
-    expect(state.pageSize).toBe(500)
-    expect(state.queryId).toBe('q-new')
-    expect(state.totalRows).toBe(100)
-    expect(state.rows).toEqual([[1], [2]])
-    expect(state.currentPage).toBe(1)
-    expect(state.sortColumn).toBeNull()
-    expect(state.sortDirection).toBeNull()
-    expect(state.selectedRowIndex).toBeNull()
+    const f = flat('tab-1')
+    expect(f.status).toBe('success')
+    expect(f.pageSize).toBe(500)
+    expect(f.queryId).toBe('q-new')
+    expect(f.totalRows).toBe(100)
+    expect(f.rows).toEqual([[1], [2]])
+    expect(f.currentPage).toBe(1)
+    expect(f.sortColumn).toBeNull()
+    expect(f.sortDirection).toBeNull()
+    expect(f.selectedRowIndex).toBeNull()
   })
 
   it('normalizes tinyint boolean aliases when changePageSize re-executes the query', async () => {
@@ -804,23 +811,26 @@ describe('useQueryStore — changePageSize', () => {
     })
 
     useQueryStore.getState().setContent('tab-bool-size', 'SELECT is_active FROM t')
+    patchResult('tab-bool-size', {
+      lastExecutedSql: 'SELECT is_active FROM t',
+      status: 'success' as const,
+      queryId: 'q-old',
+    })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-bool-size': {
           ...prev.tabs['tab-bool-size']!,
-          lastExecutedSql: 'SELECT is_active FROM t',
           status: 'success' as const,
-          queryId: 'q-old',
         },
       },
     }))
 
     await useQueryStore.getState().changePageSize('conn-1', 'tab-bool-size', 250)
 
-    const state = useQueryStore.getState().getTabState('tab-bool-size')
-    expect(state.rows).toEqual([[0, 1, 'resized']])
-    expect(state.pageSize).toBe(250)
+    const f = flat('tab-bool-size')
+    expect(f.rows).toEqual([[0, 1, 'resized']])
+    expect(f.pageSize).toBe(250)
   })
 
   it('does nothing when no lastExecutedSql', async () => {
@@ -838,21 +848,24 @@ describe('useQueryStore — changePageSize', () => {
     })
 
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    patchResult('tab-1', {
+      lastExecutedSql: 'SELECT 1',
+      status: 'success' as const,
+    })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-1': {
           ...prev.tabs['tab-1']!,
-          lastExecutedSql: 'SELECT 1',
           status: 'success' as const,
         },
       },
     }))
 
     await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
-    const state = useQueryStore.getState().getTabState('tab-1')
-    expect(state.status).toBe('error')
-    expect(state.errorMessage).toContain('Query failed')
+    const f = flat('tab-1')
+    expect(f.status).toBe('error')
+    expect(f.errorMessage).toContain('Query failed')
   })
 
   it('skips state update if tab was cleaned up during changePageSize', async () => {
@@ -868,12 +881,15 @@ describe('useQueryStore — changePageSize', () => {
     })
 
     useQueryStore.getState().setContent('tab-stale-ps', 'SELECT id FROM t')
+    patchResult('tab-stale-ps', {
+      lastExecutedSql: 'SELECT id FROM t',
+      status: 'success' as const,
+    })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-stale-ps': {
           ...prev.tabs['tab-stale-ps']!,
-          lastExecutedSql: 'SELECT id FROM t',
           status: 'success' as const,
         },
       },
@@ -915,12 +931,15 @@ describe('useQueryStore — changePageSize', () => {
     })
 
     useQueryStore.getState().setContent('tab-stale-ps2', 'SELECT 1')
+    patchResult('tab-stale-ps2', {
+      lastExecutedSql: 'SELECT 1',
+      status: 'success' as const,
+    })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-stale-ps2': {
           ...prev.tabs['tab-stale-ps2']!,
-          lastExecutedSql: 'SELECT 1',
           status: 'success' as const,
         },
       },
@@ -1048,7 +1067,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
 
     const state = useQueryStore.getState().getTabState('tab-cancelled')
     expect(state.status).toBe('error')
-    expect(state.errorMessage).toBe('Query cancelled by user')
+    expect(flat('tab-cancelled').errorMessage).toBe('Query cancelled by user')
     // isCancelling and wasCancelled should be cleared after completion
     expect(state.isCancelling).toBe(false)
     expect(state.wasCancelled).toBe(false)
@@ -1069,12 +1088,15 @@ describe('useQueryStore — changePageSize execution timing', () => {
     })
 
     useQueryStore.getState().setContent('tab-ps-timing', 'SELECT 1')
+    patchResult('tab-ps-timing', {
+      lastExecutedSql: 'SELECT 1',
+      status: 'success' as const,
+    })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-ps-timing': {
           ...prev.tabs['tab-ps-timing']!,
-          lastExecutedSql: 'SELECT 1',
           status: 'success' as const,
         },
       },
@@ -1116,12 +1138,15 @@ describe('useQueryStore — changePageSize execution timing', () => {
     })
 
     useQueryStore.getState().setContent('tab-ps-err-timing', 'SELECT 1')
+    patchResult('tab-ps-err-timing', {
+      lastExecutedSql: 'SELECT 1',
+      status: 'success' as const,
+    })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-ps-err-timing': {
           ...prev.tabs['tab-ps-err-timing']!,
-          lastExecutedSql: 'SELECT 1',
           status: 'success' as const,
         },
       },

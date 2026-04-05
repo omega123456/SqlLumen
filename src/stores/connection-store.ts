@@ -124,12 +124,37 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
 
   closeConnection: async (id: string) => {
     try {
-      // Auto-save any pending edits in query-editor tabs before closing
+      // Auto-save any pending edits in query-editor tabs before closing.
+      // For each query tab, check if any results have unsaved edits and
+      // try to save them. Non-active dirty results cannot be saved by
+      // saveCurrentRow, so we prompt the user rather than silently losing them.
       const workspaceTabs = useWorkspaceStore.getState().tabsByConnection[id] ?? []
       for (const tab of workspaceTabs) {
         if (tab.type === 'query-editor') {
           const queryTabState = useQueryStore.getState().tabs[tab.id]
-          if (queryTabState?.editState && queryTabState.editState.modifiedColumns.size > 0) {
+          if (!queryTabState?.results) continue
+
+          const activeIdx = queryTabState.activeResultIndex ?? 0
+
+          // Check for dirty non-active results — these cannot be saved
+          // by saveCurrentRow, so we need to prompt the user.
+          const hasNonActiveDirty = queryTabState.results.some(
+            (r, i) => i !== activeIdx && r.editState && r.editState.modifiedColumns.size > 0
+          )
+          if (hasNonActiveDirty) {
+            const confirmed = globalThis.confirm(
+              'You have unsaved changes in non-active query results. Close connection anyway? Unsaved changes will be lost.'
+            )
+            if (!confirmed) return
+            // User confirmed losing non-active dirty results, but still
+            // try to save the active result if it's dirty (fall through).
+          }
+
+          // Check the active result for dirty edits — try to save it
+          const activeResult = queryTabState.results[activeIdx]
+          const activeIsDirty =
+            activeResult?.editState && activeResult.editState.modifiedColumns.size > 0
+          if (activeIsDirty) {
             const saved = await useQueryStore.getState().saveCurrentRow(tab.id)
             if (!saved) {
               showErrorToast(

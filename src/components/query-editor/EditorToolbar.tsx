@@ -4,6 +4,9 @@
  *
  * Execute actions are guarded by the query store's requestNavigationAction
  * so pending row edits trigger the unsaved changes dialog before executing.
+ *
+ * Execute All uses executeMultiQuery for batch execution.
+ * Execute Query detects CALL statements and routes to executeCallQuery.
  */
 
 import { useState } from 'react'
@@ -17,7 +20,7 @@ import {
 } from '@phosphor-icons/react'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { format as formatSQL } from 'sql-formatter'
-import { useQueryStore } from '../../stores/query-store'
+import { useQueryStore, isCallSql } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { readFile, writeFile } from '../../lib/query-commands'
 import { splitStatements, findStatementAtCursor, cursorToOffset } from './sql-parser-utils'
@@ -46,6 +49,8 @@ export function EditorToolbar({
   const setContent = useQueryStore((state) => state.setContent)
   const setFilePath = useQueryStore((state) => state.setFilePath)
   const executeQuery = useQueryStore((state) => state.executeQuery)
+  const executeMultiQuery = useQueryStore((state) => state.executeMultiQuery)
+  const executeCallQuery = useQueryStore((state) => state.executeCallQuery)
   const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
 
@@ -60,26 +65,29 @@ export function EditorToolbar({
     const sql = stmt?.sql ?? content.trim()
     if (sql) {
       requestNavigationAction(tabId, () => {
-        executeQuery(connectionId, tabId, sql)
+        // Detect CALL statements and route to executeCallQuery
+        if (isCallSql(sql)) {
+          executeCallQuery(connectionId, tabId, sql)
+        } else {
+          executeQuery(connectionId, tabId, sql)
+        }
       })
     }
   }
 
-  // Execute all statements in the editor sequentially
+  // Execute all statements in the editor via batch execution
   async function handleExecuteAll() {
     if (isRunning || !content.trim()) return
-    requestNavigationAction(tabId, async () => {
+    requestNavigationAction(tabId, () => {
       const statements = splitStatements(content)
-      for (const stmt of statements) {
-        if (!stmt.sql.trim()) continue
-        // Skip DELIMITER directives themselves
-        if (/^DELIMITER\s/i.test(stmt.sql.trim())) continue
-        await executeQuery(connectionId, tabId, stmt.sql)
-        // Check if tab was closed mid-execution or last execution errored
-        const tabState = useQueryStore.getState().tabs[tabId]
-        if (!tabState) break // Tab was closed
-        if (tabState.status === 'error') break
-      }
+      const filteredStatements = statements
+        .map((stmt) => stmt.sql.trim())
+        .filter((sql) => sql.length > 0)
+        .filter((sql) => !/^DELIMITER\s/i.test(sql))
+
+      if (filteredStatements.length === 0) return
+
+      executeMultiQuery(connectionId, tabId, filteredStatements)
     })
   }
 

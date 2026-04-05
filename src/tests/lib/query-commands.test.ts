@@ -11,6 +11,9 @@ import {
   selectDatabase,
   analyzeQueryForEdit,
   updateResultCell,
+  executeMultiQuery,
+  executeCallQuery,
+  reexecuteSingleResult,
 } from '../../lib/query-commands'
 
 const mockExecuteQueryFn = vi.fn(() => ({
@@ -61,6 +64,56 @@ const mockAnalyzeQueryForEditFn = vi.fn(() => [
   },
 ])
 const mockUpdateResultCellFn = vi.fn(() => null)
+const mockExecuteMultiQueryFn = vi.fn(() => ({
+  results: [
+    {
+      queryId: 'mq1',
+      sourceSql: 'SELECT 1',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      totalRows: 1,
+      executionTimeMs: 5,
+      affectedRows: 0,
+      firstPage: [[1]],
+      totalPages: 1,
+      autoLimitApplied: false,
+      error: null,
+      reExecutable: true,
+    },
+  ],
+}))
+const mockExecuteCallQueryFn = vi.fn(() => ({
+  results: [
+    {
+      queryId: 'cq1',
+      sourceSql: 'CALL sp_test()',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      totalRows: 1,
+      executionTimeMs: 10,
+      affectedRows: 0,
+      firstPage: [[1]],
+      totalPages: 1,
+      autoLimitApplied: false,
+      error: null,
+      reExecutable: false,
+    },
+  ],
+}))
+const mockReexecuteSingleResultFn = vi.fn(() => ({
+  queryId: 'rq1',
+  sourceSql: 'SELECT 1',
+  columns: [{ name: 'id', dataType: 'INT' }],
+  totalRows: 1,
+  executionTimeMs: 3,
+  affectedRows: 0,
+  firstPage: [[1]],
+  totalPages: 1,
+  autoLimitApplied: false,
+  error: null,
+  reExecutable: true,
+}))
+
+/** Captures the args passed to a mock IPC handler. */
+let lastIpcArgs: Record<string, unknown> | undefined
 
 beforeEach(() => {
   mockExecuteQueryFn.mockClear()
@@ -73,8 +126,13 @@ beforeEach(() => {
   mockSelectDatabaseFn.mockClear()
   mockAnalyzeQueryForEditFn.mockClear()
   mockUpdateResultCellFn.mockClear()
+  mockExecuteMultiQueryFn.mockClear()
+  mockExecuteCallQueryFn.mockClear()
+  mockReexecuteSingleResultFn.mockClear()
+  lastIpcArgs = undefined
 
-  mockIPC((cmd) => {
+  mockIPC((cmd, args) => {
+    lastIpcArgs = args as Record<string, unknown>
     switch (cmd) {
       case 'execute_query':
         return mockExecuteQueryFn()
@@ -96,6 +154,12 @@ beforeEach(() => {
         return mockAnalyzeQueryForEditFn()
       case 'update_result_cell':
         return mockUpdateResultCellFn()
+      case 'execute_multi_query':
+        return mockExecuteMultiQueryFn()
+      case 'execute_call_query':
+        return mockExecuteCallQueryFn()
+      case 'reexecute_single_result':
+        return mockReexecuteSingleResultFn()
       default:
         return null
     }
@@ -162,5 +226,71 @@ describe('query-commands', () => {
   it('updateResultCell invokes update_result_cell command', async () => {
     await updateResultCell('conn-1', 'tab-1', 0, { 1: 'updated value' })
     expect(mockUpdateResultCellFn).toHaveBeenCalled()
+  })
+
+  // --- New multi-query wrappers ---
+
+  it('executeMultiQuery invokes execute_multi_query command', async () => {
+    const result = await executeMultiQuery('conn-1', 'tab-1', ['SELECT 1', 'SELECT 2'], 1000)
+    expect(result.results).toHaveLength(1)
+    expect(result.results[0].queryId).toBe('mq1')
+    expect(result.results[0].sourceSql).toBe('SELECT 1')
+    expect(result.results[0].reExecutable).toBe(true)
+    expect(mockExecuteMultiQueryFn).toHaveBeenCalled()
+  })
+
+  it('executeCallQuery invokes execute_call_query command', async () => {
+    const result = await executeCallQuery('conn-1', 'tab-1', 'CALL sp_test()', 1000)
+    expect(result.results).toHaveLength(1)
+    expect(result.results[0].queryId).toBe('cq1')
+    expect(result.results[0].sourceSql).toBe('CALL sp_test()')
+    expect(result.results[0].reExecutable).toBe(false)
+    expect(mockExecuteCallQueryFn).toHaveBeenCalled()
+  })
+
+  it('reexecuteSingleResult invokes reexecute_single_result command', async () => {
+    const result = await reexecuteSingleResult('conn-1', 'tab-1', 0, 'SELECT 1', 1000)
+    expect(result.queryId).toBe('rq1')
+    expect(result.sourceSql).toBe('SELECT 1')
+    expect(result.reExecutable).toBe(true)
+    expect(mockReexecuteSingleResultFn).toHaveBeenCalled()
+  })
+
+  // --- resultIndex optional parameter tests ---
+
+  it('fetchResultPage does not include resultIndex when omitted', async () => {
+    await fetchResultPage('conn-1', 'tab-1', 'q1', 1)
+    expect(lastIpcArgs).toBeDefined()
+    expect('resultIndex' in lastIpcArgs!).toBe(false)
+  })
+
+  it('fetchResultPage includes resultIndex when provided', async () => {
+    await fetchResultPage('conn-1', 'tab-1', 'q1', 1, 2)
+    expect(lastIpcArgs).toBeDefined()
+    expect(lastIpcArgs!.resultIndex).toBe(2)
+  })
+
+  it('sortResults does not include resultIndex when omitted', async () => {
+    await sortResults('conn-1', 'tab-1', 'id', 'asc')
+    expect(lastIpcArgs).toBeDefined()
+    expect('resultIndex' in lastIpcArgs!).toBe(false)
+  })
+
+  it('sortResults includes resultIndex when provided', async () => {
+    await sortResults('conn-1', 'tab-1', 'id', 'asc', 1)
+    expect(lastIpcArgs).toBeDefined()
+    expect(lastIpcArgs!.resultIndex).toBe(1)
+  })
+
+  it('updateResultCell does not include resultIndex when omitted', async () => {
+    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'val' })
+    expect(lastIpcArgs).toBeDefined()
+    expect('resultIndex' in lastIpcArgs!).toBe(false)
+  })
+
+  it('updateResultCell includes resultIndex when provided', async () => {
+    await updateResultCell('conn-1', 'tab-1', 0, { 1: 'val' }, 3)
+    expect(lastIpcArgs).toBeDefined()
+    expect(lastIpcArgs!.resultIndex).toBe(3)
   })
 })

@@ -472,6 +472,30 @@ export interface TableDataTabState {
 }
 
 // ---------------------------------------------------------------------------
+// Multi-query result types (batch execution / stored procedures)
+// ---------------------------------------------------------------------------
+
+/** A single result item from a multi-query or CALL execution. */
+export interface MultiQueryResultItem {
+  queryId: string
+  sourceSql: string
+  columns: ColumnMeta[]
+  totalRows: number
+  executionTimeMs: number
+  affectedRows: number
+  firstPage: unknown[][]
+  totalPages: number
+  autoLimitApplied: boolean
+  error: string | null
+  reExecutable: boolean
+}
+
+/** Wrapper for multiple result items returned from batch execution. */
+export interface MultiQueryResult {
+  results: MultiQueryResultItem[]
+}
+
+// ---------------------------------------------------------------------------
 // Query Result Editing types
 // ---------------------------------------------------------------------------
 

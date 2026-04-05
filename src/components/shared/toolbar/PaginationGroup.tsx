@@ -18,6 +18,7 @@ export function PaginationGroup({
   totalPages,
   pageSize,
   disabled,
+  pageSizeDisabled,
   onPageSizeChange,
   onPrevPage,
   onNextPage,
@@ -45,7 +46,7 @@ export function PaginationGroup({
         options={pageSizeOptions}
         value={String(pageSize)}
         onChange={handlePageSizeChange}
-        disabled={disabled}
+        disabled={disabled || pageSizeDisabled}
         data-testid="page-size-select"
         triggerClassName={styles.pageSizeSelect}
       />

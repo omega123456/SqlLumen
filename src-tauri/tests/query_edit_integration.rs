@@ -19,7 +19,7 @@ fn update_result_cell_successful() {
         let mut results = state.results.write().unwrap();
         results.insert(
             ("conn-1".to_string(), "tab-1".to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: "q1".to_string(),
                 columns: vec![
                     ColumnMeta {
@@ -51,7 +51,7 @@ fn update_result_cell_successful() {
                 affected_rows: 0,
                 auto_limit_applied: false,
                 page_size: 1000,
-            },
+            }],
         );
     }
 
@@ -59,14 +59,15 @@ fn update_result_cell_successful() {
     let mut updates = HashMap::new();
     updates.insert(1, serde_json::json!("Alice Updated"));
 
-    let result = update_result_cell_impl(&state, "conn-1", "tab-1", 0, updates);
+    let result = update_result_cell_impl(&state, "conn-1", "tab-1", 0, updates, None);
     assert!(result.is_ok());
 
     // Verify the update
     let results = state.results.read().unwrap();
-    let stored = results
+    let result_vec = results
         .get(&("conn-1".to_string(), "tab-1".to_string()))
         .unwrap();
+    let stored = &result_vec[0];
     assert_eq!(stored.rows[0][1], serde_json::json!("Alice Updated"));
     // Other cells should be unchanged
     assert_eq!(stored.rows[0][0], serde_json::json!(1));
@@ -80,7 +81,7 @@ fn update_result_cell_result_not_found() {
     let state = test_app_state();
 
     let updates = HashMap::new();
-    let result = update_result_cell_impl(&state, "conn-1", "nonexistent-tab", 0, updates);
+    let result = update_result_cell_impl(&state, "conn-1", "nonexistent-tab", 0, updates, None);
     assert!(result.is_err());
     assert!(result
         .unwrap_err()
@@ -96,7 +97,7 @@ fn update_result_cell_row_index_out_of_bounds() {
         let mut results = state.results.write().unwrap();
         results.insert(
             ("conn-1".to_string(), "tab-1".to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: "q1".to_string(),
                 columns: vec![ColumnMeta {
                     name: "id".to_string(),
@@ -107,12 +108,12 @@ fn update_result_cell_row_index_out_of_bounds() {
                 affected_rows: 0,
                 auto_limit_applied: false,
                 page_size: 1000,
-            },
+            }],
         );
     }
 
     let updates = HashMap::new();
-    let result = update_result_cell_impl(&state, "conn-1", "tab-1", 5, updates);
+    let result = update_result_cell_impl(&state, "conn-1", "tab-1", 5, updates, None);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Row index 5 out of bounds"));
 }
@@ -126,7 +127,7 @@ fn update_result_cell_multiple_columns() {
         let mut results = state.results.write().unwrap();
         results.insert(
             ("conn-1".to_string(), "tab-1".to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: "q1".to_string(),
                 columns: vec![
                     ColumnMeta {
@@ -151,7 +152,7 @@ fn update_result_cell_multiple_columns() {
                 affected_rows: 0,
                 auto_limit_applied: false,
                 page_size: 1000,
-            },
+            }],
         );
     }
 
@@ -160,14 +161,15 @@ fn update_result_cell_multiple_columns() {
     updates.insert(1, serde_json::json!("Alice New"));
     updates.insert(2, serde_json::json!("alice.new@example.com"));
 
-    let result = update_result_cell_impl(&state, "conn-1", "tab-1", 0, updates);
+    let result = update_result_cell_impl(&state, "conn-1", "tab-1", 0, updates, None);
     assert!(result.is_ok());
 
     // Verify both updates
     let results = state.results.read().unwrap();
-    let stored = results
+    let result_vec = results
         .get(&("conn-1".to_string(), "tab-1".to_string()))
         .unwrap();
+    let stored = &result_vec[0];
     assert_eq!(stored.rows[0][0], serde_json::json!(1)); // id unchanged
     assert_eq!(stored.rows[0][1], serde_json::json!("Alice New"));
     assert_eq!(stored.rows[0][2], serde_json::json!("alice.new@example.com"));

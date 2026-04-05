@@ -397,10 +397,12 @@ fn find_trailing_lock_clause(sql: &str) -> Option<usize> {
 }
 
 /// Returns true if the statement is SELECT-like (returns rows).
+/// Note: CALL is intentionally excluded — it is handled via a dedicated
+/// `execute_call_query` path that supports multiple result sets.
 pub fn is_select_like(keyword: &str) -> bool {
     matches!(
         keyword,
-        "SELECT" | "SHOW" | "DESCRIBE" | "DESC" | "EXPLAIN" | "CALL"
+        "SELECT" | "SHOW" | "DESCRIBE" | "DESC" | "EXPLAIN"
     )
 }
 
@@ -748,6 +750,183 @@ pub fn get_page_rows<'a>(
 
 // ── Core impl functions ────────────────────────────────────────────────────────
 
+/// Inner helper: execute a single SQL statement on an already-acquired connection.
+///
+/// Handles: auto-limit detection/injection, query vs DML execution, column extraction,
+/// row serialization, pagination, and StoredResult + MultiQueryResultItem construction.
+///
+/// Callers are responsible for: pool retrieval, read-only enforcement, connection
+/// acquisition, thread-ID tracking, and storing the result in `state.results`.
+#[cfg(not(coverage))]
+async fn execute_single_statement_inner(
+    conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
+    pool: &sqlx::MySqlPool,
+    sql: &str,
+    page_size: usize,
+) -> Result<(StoredResult, MultiQueryResultItem), String> {
+    // Determine effective SQL (with auto-LIMIT if needed)
+    let auto_limit_applied = needs_auto_limit(sql);
+    let sql_to_execute = if auto_limit_applied {
+        inject_limit_into_select(sql, 1000)
+    } else {
+        sql.to_string()
+    };
+
+    // Determine if this is a SELECT-like query
+    let stripped = strip_non_executable_comments(sql);
+    let keyword = get_first_keyword(&stripped);
+    let is_result_set = if keyword == "WITH" {
+        let main_kw = find_with_main_keyword(&stripped);
+        is_select_like(&main_kw) || main_kw.is_empty()
+    } else {
+        is_select_like(&keyword)
+    };
+
+    let start = std::time::Instant::now();
+
+    let (columns, all_rows, affected_rows) = if is_result_set {
+        crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
+        match sqlx::query(&sql_to_execute)
+            .fetch_all(&mut **conn)
+            .await
+        {
+            Ok(rows) => {
+                crate::mysql::query_log::log_mysql_rows(&rows);
+
+                let columns: Vec<ColumnMeta> = if let Some(first_row) = rows.first() {
+                    first_row
+                        .columns()
+                        .iter()
+                        .map(|c| ColumnMeta {
+                            name: c.name().to_string(),
+                            data_type: c.type_info().name().to_string(),
+                        })
+                        .collect()
+                } else {
+                    // Empty result set — try to get column metadata via PREPARE/describe
+                    crate::mysql::query_log::log_sqlx_describe(sql_to_execute.as_str());
+                    match pool.describe(sql_to_execute.as_str()).await {
+                        Ok(desc) => desc
+                            .columns
+                            .iter()
+                            .map(|c| ColumnMeta {
+                                name: c.name().to_string(),
+                                data_type: c.type_info().name().to_string(),
+                            })
+                            .collect(),
+                        Err(_) => vec![],
+                    }
+                };
+
+                let serialized_rows: Vec<Vec<serde_json::Value>> =
+                    rows.iter().map(serialize_row).collect();
+
+                Ok((columns, serialized_rows, 0u64))
+            }
+            Err(e) => Err(format!("Query failed: {e}")),
+        }
+    } else {
+        crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
+        match sqlx::query(&sql_to_execute)
+            .execute(&mut **conn)
+            .await
+        {
+            Ok(result) => {
+                crate::mysql::query_log::log_execute_result(&result);
+                Ok((vec![], vec![], result.rows_affected()))
+            }
+            Err(e) => Err(format!("Query failed: {e}")),
+        }
+    }?;
+
+    let execution_time_ms = start.elapsed().as_millis() as u64;
+    let total_rows = all_rows.len();
+    let page_size_used = if page_size == 0 { 1000 } else { page_size };
+    let total_pages = calculate_total_pages(total_rows, page_size_used);
+    let first_page: Vec<Vec<serde_json::Value>> =
+        get_page_rows(&all_rows, 1, page_size_used).to_vec();
+
+    let query_id = Uuid::new_v4().to_string();
+
+    let stored = StoredResult {
+        query_id: query_id.clone(),
+        columns: columns.clone(),
+        rows: all_rows,
+        execution_time_ms,
+        affected_rows,
+        auto_limit_applied,
+        page_size: page_size_used,
+    };
+
+    let item = MultiQueryResultItem {
+        query_id,
+        source_sql: sql.to_string(),
+        columns,
+        total_rows: total_rows as i64,
+        execution_time_ms: execution_time_ms as i64,
+        affected_rows,
+        first_page,
+        total_pages: total_pages as i64,
+        auto_limit_applied,
+        error: None,
+        re_executable: true,
+    };
+
+    Ok((stored, item))
+}
+
+/// Coverage stub for `execute_single_statement_inner`: exercises pure-function
+/// paths (auto-limit, keyword classification) without a live MySQL pool.
+#[cfg(coverage)]
+#[allow(dead_code)]
+async fn execute_single_statement_inner(
+    _conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
+    _pool: &sqlx::MySqlPool,
+    sql: &str,
+    page_size: usize,
+) -> Result<(StoredResult, MultiQueryResultItem), String> {
+    let auto_limit_applied = needs_auto_limit(sql);
+    let stripped = strip_non_executable_comments(sql);
+    let keyword = get_first_keyword(&stripped);
+    let _is_result = if keyword == "WITH" {
+        let main_kw = find_with_main_keyword(&stripped);
+        is_select_like(&main_kw) || main_kw.is_empty()
+    } else {
+        is_select_like(&keyword)
+    };
+    if auto_limit_applied {
+        let _sql_to_execute = inject_limit_into_select(sql, 1000);
+    }
+
+    let query_id = Uuid::new_v4().to_string();
+    let page_size_used = if page_size == 0 { 1000 } else { page_size };
+
+    Ok((
+        StoredResult {
+            query_id: query_id.clone(),
+            columns: vec![],
+            rows: vec![],
+            execution_time_ms: 0,
+            affected_rows: 0,
+            auto_limit_applied,
+            page_size: page_size_used,
+        },
+        MultiQueryResultItem {
+            query_id,
+            source_sql: sql.to_string(),
+            columns: vec![],
+            total_rows: 0,
+            execution_time_ms: 0,
+            affected_rows: 0,
+            first_page: vec![],
+            total_pages: 1,
+            auto_limit_applied,
+            error: None,
+            re_executable: true,
+        },
+    ))
+}
+
 #[cfg(not(coverage))]
 pub async fn execute_query_impl(
     state: &AppState,
@@ -765,25 +944,6 @@ pub async fn execute_query_impl(
     if state.registry.is_read_only(connection_id) && !is_read_only_allowed(sql) {
         return Err("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string());
     }
-
-    // Determine effective SQL (with auto-LIMIT if needed)
-    let auto_limit_applied = needs_auto_limit(sql);
-    let sql_to_execute = if auto_limit_applied {
-        inject_limit_into_select(sql, 1000)
-    } else {
-        // Remove trailing semicolons for non-SELECT, but keep for SELECT
-        sql.to_string()
-    };
-
-    // Determine if this is a SELECT-like query
-    let stripped = strip_non_executable_comments(sql);
-    let keyword = get_first_keyword(&stripped);
-    let is_result_set = if keyword == "WITH" {
-        let main_kw = find_with_main_keyword(&stripped);
-        is_select_like(&main_kw) || main_kw.is_empty()
-    } else {
-        is_select_like(&keyword)
-    };
 
     // Acquire a dedicated connection and capture its MySQL thread ID
     let mut conn = pool
@@ -803,105 +963,31 @@ pub async fn execute_query_impl(
         .await
         .insert(key.clone(), thread_id);
 
-    let start = std::time::Instant::now();
-
-    let query_result: Result<(Vec<ColumnMeta>, Vec<Vec<serde_json::Value>>, u64), String> =
-        if is_result_set {
-            crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
-            match sqlx::query(&sql_to_execute)
-                .fetch_all(&mut *conn)
-                .await
-            {
-                Ok(rows) => {
-                    crate::mysql::query_log::log_mysql_rows(&rows);
-
-                    let columns: Vec<ColumnMeta> = if let Some(first_row) = rows.first() {
-                        first_row
-                            .columns()
-                            .iter()
-                            .map(|c| ColumnMeta {
-                                name: c.name().to_string(),
-                                data_type: c.type_info().name().to_string(),
-                            })
-                            .collect()
-                    } else {
-                        // Empty result set — try to get column metadata via PREPARE/describe
-                        crate::mysql::query_log::log_sqlx_describe(sql_to_execute.as_str());
-                        match (&pool).describe(sql_to_execute.as_str()).await {
-                            Ok(desc) => desc
-                                .columns
-                                .iter()
-                                .map(|c| ColumnMeta {
-                                    name: c.name().to_string(),
-                                    data_type: c.type_info().name().to_string(),
-                                })
-                                .collect(),
-                            Err(_) => vec![],
-                        }
-                    };
-
-                    let serialized_rows: Vec<Vec<serde_json::Value>> =
-                        rows.iter().map(serialize_row).collect();
-
-                    Ok((columns, serialized_rows, 0u64))
-                }
-                Err(e) => Err(format!("Query failed: {e}")),
-            }
-        } else {
-            crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
-            match sqlx::query(&sql_to_execute)
-                .execute(&mut *conn)
-                .await
-            {
-                Ok(result) => {
-                    crate::mysql::query_log::log_execute_result(&result);
-                    Ok((vec![], vec![], result.rows_affected()))
-                }
-                Err(e) => Err(format!("Query failed: {e}")),
-            }
-        };
+    let result = execute_single_statement_inner(&mut conn, &pool, sql, page_size).await;
 
     // Remove thread ID from running_queries (cleanup on both success and error)
     state.running_queries.write().await.remove(&key);
 
-    let (columns, all_rows, affected_rows) = query_result?;
+    let (stored, item) = result?;
 
-    let execution_time_ms = start.elapsed().as_millis() as u64;
-    let total_rows = all_rows.len();
-    let page_size_used = if page_size == 0 { 1000 } else { page_size };
-    let total_pages = calculate_total_pages(total_rows, page_size_used);
-
-    let first_page: Vec<Vec<serde_json::Value>> =
-        get_page_rows(&all_rows, 1, page_size_used).to_vec();
-
-    let query_id = Uuid::new_v4().to_string();
-
-    // Store result set in state
+    // Store result set in state — execute_query replaces the WHOLE tab result vector
     {
         let mut results = state.results.write().expect("results lock poisoned");
         results.insert(
             (connection_id.to_string(), tab_id.to_string()),
-            StoredResult {
-                query_id: query_id.clone(),
-                columns: columns.clone(),
-                rows: all_rows,
-                execution_time_ms,
-                affected_rows,
-                auto_limit_applied,
-                page_size: page_size_used,
-            },
+            vec![stored],
         );
     }
 
     Ok(ExecuteQueryResult {
-        query_id,
-        columns,
-        total_rows,
-        execution_time_ms,
-        affected_rows,
-        first_page,
-        total_pages,
-        auto_limit_applied,
+        query_id: item.query_id,
+        columns: item.columns,
+        total_rows: item.total_rows as usize,
+        execution_time_ms: item.execution_time_ms as u64,
+        affected_rows: item.affected_rows,
+        first_page: item.first_page,
+        total_pages: item.total_pages as usize,
+        auto_limit_applied: item.auto_limit_applied,
     })
 }
 
@@ -957,7 +1043,7 @@ pub async fn execute_query_impl(
         let mut results = state.results.write().expect("results lock poisoned");
         results.insert(
             (connection_id.to_string(), tab_id.to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: query_id.clone(),
                 columns: vec![],
                 rows: vec![],
@@ -965,7 +1051,7 @@ pub async fn execute_query_impl(
                 affected_rows: 0,
                 auto_limit_applied,
                 page_size: page_size_used,
-            },
+            }],
         );
     }
 
@@ -990,11 +1076,17 @@ pub fn fetch_result_page_impl(
     tab_id: &str,
     query_id: &str,
     page: usize,
+    result_index: Option<usize>,
 ) -> Result<FetchPageResult, String> {
     let results = state.results.read().expect("results lock poisoned");
-    let stored = results
+    let result_vec = results
         .get(&(connection_id.to_string(), tab_id.to_string()))
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+
+    let idx = result_index.unwrap_or(0);
+    let stored = result_vec
+        .get(idx)
+        .ok_or_else(|| format!("Result index {idx} out of range (total: {})", result_vec.len()))?;
 
     if stored.query_id != query_id {
         return Err(
@@ -1371,11 +1463,18 @@ pub fn sort_results_impl(
     tab_id: &str,
     column_name: &str,
     direction: &str, // "asc" or "desc"
+    result_index: Option<usize>,
 ) -> Result<FetchPageResult, String> {
     let mut results = state.results.write().expect("results lock poisoned");
-    let stored = results
+    let result_vec = results
         .get_mut(&(connection_id.to_string(), tab_id.to_string()))
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+
+    let idx = result_index.unwrap_or(0);
+    if idx >= result_vec.len() {
+        return Err(format!("Result index {idx} out of range (total: {})", result_vec.len()));
+    }
+    let stored = &mut result_vec[idx];
 
     // Find column index
     let col_idx = stored
@@ -1590,11 +1689,18 @@ pub fn update_result_cell_impl(
     tab_id: &str,
     row_index: usize,
     updates: HashMap<usize, serde_json::Value>,
+    result_index: Option<usize>,
 ) -> Result<(), String> {
     let mut results = state.results.write().expect("results lock poisoned");
-    let stored = results
+    let result_vec = results
         .get_mut(&(connection_id.to_string(), tab_id.to_string()))
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+
+    let idx = result_index.unwrap_or(0);
+    if idx >= result_vec.len() {
+        return Err(format!("Result index {idx} out of range (total: {})", result_vec.len()));
+    }
+    let stored = &mut result_vec[idx];
 
     if row_index >= stored.rows.len() {
         return Err(format!(
@@ -1610,6 +1716,546 @@ pub fn update_result_cell_impl(
     }
 
     Ok(())
+}
+
+// ── Multi-query result types ───────────────────────────────────────────────────
+
+/// A single result item from a multi-query or CALL execution.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MultiQueryResultItem {
+    pub query_id: String,
+    pub source_sql: String,
+    pub columns: Vec<ColumnMeta>,
+    pub total_rows: i64,
+    pub execution_time_ms: i64,
+    pub affected_rows: u64,
+    pub first_page: Vec<Vec<serde_json::Value>>,
+    pub total_pages: i64,
+    pub auto_limit_applied: bool,
+    pub error: Option<String>,
+    pub re_executable: bool,
+}
+
+/// Wrapper for multiple result items returned from batch execution.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MultiQueryResult {
+    pub results: Vec<MultiQueryResultItem>,
+}
+
+// ── Re-execute single result ───────────────────────────────────────────────────
+
+/// Re-execute a single SQL statement and replace only the targeted entry in the
+/// `Vec<StoredResult>` for a given tab. Uses the existing sqlx pool.
+/// Returns a `MultiQueryResultItem` with the fresh result data.
+#[cfg(not(coverage))]
+pub async fn reexecute_single_result_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    result_index: usize,
+    sql: &str,
+    page_size: usize,
+) -> Result<MultiQueryResultItem, String> {
+    let pool = state
+        .registry
+        .get_pool(connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+
+    // Read-only enforcement
+    if state.registry.is_read_only(connection_id) && !is_read_only_allowed(sql) {
+        return Err("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string());
+    }
+
+    // Verify the result index exists and capture the current query_id for
+    // post-await staleness detection.
+    let expected_query_id: Option<String>;
+    {
+        let results = state.results.read().expect("results lock poisoned");
+        let result_vec = results
+            .get(&(connection_id.to_string(), tab_id.to_string()))
+            .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+        if result_index >= result_vec.len() {
+            return Err(format!(
+                "Result index {result_index} out of range (total: {})",
+                result_vec.len()
+            ));
+        }
+        expected_query_id = Some(result_vec[result_index].query_id.clone());
+    }
+
+    // Acquire a dedicated connection and capture its MySQL thread ID
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| format!("Failed to acquire connection: {e}"))?;
+    let thread_id: u64 = sqlx::query_scalar("SELECT CONNECTION_ID()")
+        .fetch_one(&mut *conn)
+        .await
+        .map_err(|e| format!("Failed to get connection ID: {e}"))?;
+
+    // Track the running query for cancellation
+    let key = (connection_id.to_string(), tab_id.to_string());
+    state
+        .running_queries
+        .write()
+        .await
+        .insert(key.clone(), thread_id);
+
+    let result = execute_single_statement_inner(&mut conn, &pool, sql, page_size).await;
+
+    // Remove thread ID from running_queries
+    state.running_queries.write().await.remove(&key);
+
+    let (stored, item) = result?;
+
+    // Replace only the targeted result entry — re-validate after the await to
+    // prevent out-of-bounds panics or stale overwrites if the tab's results
+    // were replaced by a newer query while this re-execution was in flight.
+    {
+        let mut results = state.results.write().expect("results lock poisoned");
+        let result_vec = match results
+            .get_mut(&(connection_id.to_string(), tab_id.to_string()))
+        {
+            Some(v) => v,
+            None => {
+                tracing::warn!(
+                    tab_id,
+                    result_index,
+                    "reexecute_single_result: tab results disappeared after await — discarding stale result"
+                );
+                return Err("Tab results no longer exist — a newer query may have replaced them".to_string());
+            }
+        };
+        if result_index >= result_vec.len() {
+            tracing::warn!(
+                tab_id,
+                result_index,
+                result_vec_len = result_vec.len(),
+                "reexecute_single_result: result_index out of range after await — discarding stale result"
+            );
+            return Err(format!(
+                "Result index {result_index} out of range after re-execution (total: {}) — a newer query may have replaced the results",
+                result_vec.len()
+            ));
+        }
+        // Check that the entry at result_index still has the same query_id
+        // that was captured before the await — prevents overwriting results
+        // from a newer query execution.
+        if let Some(ref expected_qid) = expected_query_id {
+            if result_vec[result_index].query_id != *expected_qid {
+                tracing::warn!(
+                    tab_id,
+                    result_index,
+                    expected_query_id = %expected_qid,
+                    actual_query_id = %result_vec[result_index].query_id,
+                    "reexecute_single_result: query_id mismatch after await — discarding stale result"
+                );
+                return Err("Result was replaced by a newer query during re-execution".to_string());
+            }
+        }
+        result_vec[result_index] = stored;
+    }
+
+    Ok(item)
+}
+
+/// Coverage stub for `reexecute_single_result_impl`: exercises connection validation,
+/// read-only enforcement, result index validation, and result replacement without
+/// requiring a live MySQL pool.
+#[cfg(coverage)]
+pub async fn reexecute_single_result_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    result_index: usize,
+    sql: &str,
+    page_size: usize,
+) -> Result<MultiQueryResultItem, String> {
+    // Validate connection exists
+    state
+        .registry
+        .get_pool(connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+
+    // Read-only enforcement
+    if state.registry.is_read_only(connection_id) && !is_read_only_allowed(sql) {
+        return Err("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string());
+    }
+
+    // Exercise pure-function paths
+    let auto_limit_applied = needs_auto_limit(sql);
+    let stripped = strip_non_executable_comments(sql);
+    let keyword = get_first_keyword(&stripped);
+    let _is_result = if keyword == "WITH" {
+        let main_kw = find_with_main_keyword(&stripped);
+        is_select_like(&main_kw) || main_kw.is_empty()
+    } else {
+        is_select_like(&keyword)
+    };
+    if auto_limit_applied {
+        let _sql_to_execute = inject_limit_into_select(sql, 1000);
+    }
+
+    let query_id = Uuid::new_v4().to_string();
+    let page_size_used = if page_size == 0 { 1000 } else { page_size };
+
+    // Verify result index exists and capture expected_query_id for staleness detection
+    let expected_query_id: Option<String>;
+    {
+        let results = state.results.read().expect("results lock poisoned");
+        let result_vec = results
+            .get(&(connection_id.to_string(), tab_id.to_string()))
+            .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+        if result_index >= result_vec.len() {
+            return Err(format!(
+                "Result index {result_index} out of range (total: {})",
+                result_vec.len()
+            ));
+        }
+        expected_query_id = Some(result_vec[result_index].query_id.clone());
+    }
+
+    // Re-validate after (simulated) await — check tab still exists, index in range,
+    // and query_id hasn't changed (prevents overwriting newer results).
+    {
+        let mut results = state.results.write().expect("results lock poisoned");
+        let result_vec = match results
+            .get_mut(&(connection_id.to_string(), tab_id.to_string()))
+        {
+            Some(v) => v,
+            None => {
+                return Err("Tab results no longer exist — a newer query may have replaced them".to_string());
+            }
+        };
+        if result_index >= result_vec.len() {
+            return Err(format!(
+                "Result index {result_index} out of range after re-execution (total: {}) — a newer query may have replaced the results",
+                result_vec.len()
+            ));
+        }
+        if let Some(ref expected_qid) = expected_query_id {
+            if result_vec[result_index].query_id != *expected_qid {
+                return Err("Result was replaced by a newer query during re-execution".to_string());
+            }
+        }
+        result_vec[result_index] = StoredResult {
+            query_id: query_id.clone(),
+            columns: vec![],
+            rows: vec![],
+            execution_time_ms: 0,
+            affected_rows: 0,
+            auto_limit_applied,
+            page_size: page_size_used,
+        };
+    }
+
+    Ok(MultiQueryResultItem {
+        query_id,
+        source_sql: sql.to_string(),
+        columns: vec![],
+        total_rows: 0,
+        execution_time_ms: 0,
+        affected_rows: 0,
+        first_page: vec![],
+        total_pages: 1,
+        auto_limit_applied,
+        error: None,
+        re_executable: true,
+    })
+}
+
+// ── Multi-query execution ──────────────────────────────────────────────────────
+
+/// Execute multiple SQL statements sequentially on a single `mysql_async` connection.
+///
+/// Stores all results in `state.results` under `(connection_id, tab_id)` and
+/// returns a `MultiQueryResult` with one entry per statement (plus extra entries
+/// for CALL statements that return multiple result sets).
+#[cfg(not(coverage))]
+pub async fn execute_multi_query_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    statements: Vec<String>,
+    page_size: usize,
+) -> Result<MultiQueryResult, String> {
+    // Validate connection exists
+    state
+        .registry
+        .get_pool(connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+
+    let is_read_only = state.registry.is_read_only(connection_id);
+
+    let (stored_results, result_items) = crate::mysql::multi_result::execute_multi_query_internal(
+        state,
+        connection_id,
+        tab_id,
+        &statements,
+        page_size,
+        is_read_only,
+    )
+    .await?;
+
+    // Store all results in state
+    {
+        let mut results = state.results.write().expect("results lock poisoned");
+        results.insert(
+            (connection_id.to_string(), tab_id.to_string()),
+            stored_results,
+        );
+    }
+
+    Ok(MultiQueryResult {
+        results: result_items,
+    })
+}
+
+/// Coverage stub for `execute_multi_query_impl`: exercises connection validation,
+/// read-only enforcement, statement classification, and result storage without
+/// requiring a live MySQL connection.
+#[cfg(coverage)]
+pub async fn execute_multi_query_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    statements: Vec<String>,
+    page_size: usize,
+) -> Result<MultiQueryResult, String> {
+    // Validate connection exists
+    state
+        .registry
+        .get_pool(connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+
+    let is_read_only = state.registry.is_read_only(connection_id);
+    let page_size_used = if page_size == 0 { 1000 } else { page_size };
+
+    let mut stored_results: Vec<StoredResult> = Vec::new();
+    let mut result_items: Vec<MultiQueryResultItem> = Vec::new();
+
+    // Exercise pure-function paths for each statement
+    for sql in &statements {
+        let sql = sql.trim();
+        if sql.is_empty() {
+            continue;
+        }
+
+        // Exercise read-only enforcement
+        if is_read_only && !is_read_only_allowed(sql) {
+            let query_id = uuid::Uuid::new_v4().to_string();
+            stored_results.push(StoredResult {
+                query_id: query_id.clone(),
+                columns: vec![],
+                rows: vec![],
+                execution_time_ms: 0,
+                affected_rows: 0,
+                auto_limit_applied: false,
+                page_size: page_size_used,
+            });
+            result_items.push(MultiQueryResultItem {
+                query_id,
+                source_sql: sql.to_string(),
+                columns: vec![],
+                total_rows: 0,
+                execution_time_ms: 0,
+                affected_rows: 0,
+                first_page: vec![],
+                total_pages: 1,
+                auto_limit_applied: false,
+                error: Some("This connection is read-only. Only SELECT, SHOW, DESCRIBE, EXPLAIN, WITH, USE, and SET (non-GLOBAL) statements are allowed.".to_string()),
+                re_executable: false,
+            });
+            break;
+        }
+
+        // Exercise statement classification
+        let is_call = crate::mysql::multi_result::is_call_statement(sql);
+        let stripped = strip_non_executable_comments(sql);
+        let keyword = get_first_keyword(&stripped);
+        let _is_result_set = if keyword == "WITH" {
+            let main_kw = find_with_main_keyword(&stripped);
+            is_select_like(&main_kw) || main_kw.is_empty()
+        } else {
+            is_select_like(&keyword)
+        };
+        let auto_limit_applied = needs_auto_limit(sql);
+        if auto_limit_applied {
+            let _sql_to_execute = inject_limit_into_select(sql, 1000);
+        }
+
+        let query_id = uuid::Uuid::new_v4().to_string();
+        stored_results.push(StoredResult {
+            query_id: query_id.clone(),
+            columns: vec![],
+            rows: vec![],
+            execution_time_ms: 0,
+            affected_rows: 0,
+            auto_limit_applied,
+            page_size: page_size_used,
+        });
+        result_items.push(MultiQueryResultItem {
+            query_id,
+            source_sql: sql.to_string(),
+            columns: vec![],
+            total_rows: 0,
+            execution_time_ms: 0,
+            affected_rows: 0,
+            first_page: vec![],
+            total_pages: 1,
+            auto_limit_applied,
+            error: None,
+            re_executable: !is_call,
+        });
+    }
+
+    // Track a dummy thread ID to exercise the running_queries path
+    let key = (connection_id.to_string(), tab_id.to_string());
+    state
+        .running_queries
+        .write()
+        .await
+        .insert(key.clone(), 42u64);
+    state.running_queries.write().await.remove(&key);
+
+    // Store results in state
+    {
+        let mut results = state.results.write().expect("results lock poisoned");
+        results.insert(
+            (connection_id.to_string(), tab_id.to_string()),
+            stored_results,
+        );
+    }
+
+    Ok(MultiQueryResult {
+        results: result_items,
+    })
+}
+
+/// Execute a single CALL statement and return all result sets.
+///
+/// Delegates to `execute_multi_query_internal` with a single-element slice.
+/// Stores all results in `state.results` under `(connection_id, tab_id)`.
+#[cfg(not(coverage))]
+pub async fn execute_call_query_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    sql: &str,
+    page_size: usize,
+) -> Result<MultiQueryResult, String> {
+    // Validate connection exists
+    state
+        .registry
+        .get_pool(connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+
+    let is_read_only = state.registry.is_read_only(connection_id);
+
+    // CALL is blocked on read-only connections
+    if is_read_only {
+        return Err("This connection is read-only. CALL statements are not allowed on read-only connections.".to_string());
+    }
+
+    let statements = vec![sql.to_string()];
+    let (stored_results, result_items) = crate::mysql::multi_result::execute_multi_query_internal(
+        state,
+        connection_id,
+        tab_id,
+        &statements,
+        page_size,
+        is_read_only,
+    )
+    .await?;
+
+    // Store all results in state
+    {
+        let mut results = state.results.write().expect("results lock poisoned");
+        results.insert(
+            (connection_id.to_string(), tab_id.to_string()),
+            stored_results,
+        );
+    }
+
+    Ok(MultiQueryResult {
+        results: result_items,
+    })
+}
+
+/// Coverage stub for `execute_call_query_impl`: exercises connection validation,
+/// read-only enforcement, and CALL detection without requiring a live MySQL connection.
+#[cfg(coverage)]
+pub async fn execute_call_query_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    sql: &str,
+    page_size: usize,
+) -> Result<MultiQueryResult, String> {
+    // Validate connection exists
+    state
+        .registry
+        .get_pool(connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+
+    let is_read_only = state.registry.is_read_only(connection_id);
+
+    // CALL is blocked on read-only connections
+    if is_read_only {
+        return Err("This connection is read-only. CALL statements are not allowed on read-only connections.".to_string());
+    }
+
+    // Exercise CALL detection
+    let _is_call = crate::mysql::multi_result::is_call_statement(sql);
+
+    let page_size_used = if page_size == 0 { 1000 } else { page_size };
+    let query_id = uuid::Uuid::new_v4().to_string();
+
+    // Track a dummy thread ID to exercise the running_queries path
+    let key = (connection_id.to_string(), tab_id.to_string());
+    state
+        .running_queries
+        .write()
+        .await
+        .insert(key.clone(), 42u64);
+    state.running_queries.write().await.remove(&key);
+
+    let stored = StoredResult {
+        query_id: query_id.clone(),
+        columns: vec![],
+        rows: vec![],
+        execution_time_ms: 0,
+        affected_rows: 0,
+        auto_limit_applied: false,
+        page_size: page_size_used,
+    };
+
+    // Store result in state
+    {
+        let mut results = state.results.write().expect("results lock poisoned");
+        results.insert(
+            (connection_id.to_string(), tab_id.to_string()),
+            vec![stored],
+        );
+    }
+
+    Ok(MultiQueryResult {
+        results: vec![MultiQueryResultItem {
+            query_id,
+            source_sql: sql.to_string(),
+            columns: vec![],
+            total_rows: 0,
+            execution_time_ms: 0,
+            affected_rows: 0,
+            first_page: vec![],
+            total_pages: 1,
+            auto_limit_applied: false,
+            error: None,
+            re_executable: false,
+        }],
+    })
 }
 
 // ── Unit tests ─────────────────────────────────────────────────────────────────

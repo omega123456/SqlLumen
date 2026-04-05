@@ -1,51 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { RunningIndicator } from '../../../components/query-editor/RunningIndicator'
-import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
+import { useQueryStore } from '../../../stores/query-store'
+import { makeTabState } from '../../helpers/query-test-utils'
 
-const DEFAULT_TAB_STATE: TabQueryState = {
-  content: '',
-  filePath: null,
-  status: 'running',
-  columns: [],
-  rows: [],
-  totalRows: 0,
-  executionTimeMs: 0,
-  affectedRows: 0,
-  queryId: null,
-  currentPage: 1,
-  totalPages: 1,
-  pageSize: 1000,
-  autoLimitApplied: false,
-  errorMessage: null,
-  cursorPosition: null,
-  viewMode: 'grid',
-  sortColumn: null,
-  sortDirection: null,
-  selectedRowIndex: null,
-  exportDialogOpen: false,
-  lastExecutedSql: null,
-  editMode: null,
-  editTableMetadata: {},
-  editForeignKeys: [],
-  editState: null,
-  isAnalyzingQuery: false,
-  editableColumnMap: new Map(),
-  editColumnBindings: new Map(),
-  editBoundColumnIndexMap: new Map(),
-  pendingNavigationAction: null,
-  saveError: null,
-  editConnectionId: null,
-  editingRowIndex: null,
-  executionStartedAt: null,
-  isCancelling: false,
-  wasCancelled: false,
-}
-
-function setupTabState(overrides: Partial<TabQueryState> = {}) {
+function setupTabState(overrides: Record<string, unknown> = {}) {
   useQueryStore.setState({
     tabs: {
-      'tab-1': { ...DEFAULT_TAB_STATE, ...overrides },
+      'tab-1': makeTabState({ status: 'running' as const, ...overrides }),
     },
   })
 }

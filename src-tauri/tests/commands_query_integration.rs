@@ -102,6 +102,8 @@ fn is_select_like_returns_true_for_select_variants() {
     assert!(is_select_like("DESCRIBE"));
     assert!(is_select_like("DESC"));
     assert!(is_select_like("EXPLAIN"));
+    // CALL is no longer in is_select_like — handled via dedicated execute_call_query path
+    assert!(!is_select_like("CALL"));
     // WITH is no longer in is_select_like — handled via find_with_main_keyword
     assert!(!is_select_like("WITH"));
 }
@@ -467,7 +469,7 @@ fn evict_results_removes_stored_result() {
         let mut results = state.results.write().expect("lock ok");
         results.insert(
             ("conn-1".to_string(), "tab-1".to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: "qid-1".to_string(),
                 columns: vec![ColumnMeta {
                     name: "id".to_string(),
@@ -478,7 +480,7 @@ fn evict_results_removes_stored_result() {
                 affected_rows: 0,
                 auto_limit_applied: false,
                 page_size: 1000,
-            },
+            }],
         );
     }
 
@@ -518,7 +520,7 @@ fn fetch_result_page_returns_correct_slice() {
         let mut results = state.results.write().expect("lock ok");
         results.insert(
             ("c1".to_string(), "t1".to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: "q1".to_string(),
                 columns: vec![ColumnMeta {
                     name: "n".to_string(),
@@ -529,16 +531,16 @@ fn fetch_result_page_returns_correct_slice() {
                 affected_rows: 0,
                 auto_limit_applied: false,
                 page_size: 10,
-            },
+            }],
         );
     }
 
-    let page1 = fetch_result_page_impl(&state, "c1", "t1", "q1", 1).expect("page 1 ok");
+    let page1 = fetch_result_page_impl(&state, "c1", "t1", "q1", 1, None).expect("page 1 ok");
     assert_eq!(page1.rows.len(), 10);
     assert_eq!(page1.page, 1);
     assert_eq!(page1.total_pages, 3);
 
-    let page3 = fetch_result_page_impl(&state, "c1", "t1", "q1", 3).expect("page 3 ok");
+    let page3 = fetch_result_page_impl(&state, "c1", "t1", "q1", 3, None).expect("page 3 ok");
     assert_eq!(page3.rows.len(), 5); // 25 - 20 = 5 remaining
 }
 
@@ -550,7 +552,7 @@ fn fetch_result_page_errors_on_wrong_query_id() {
         let mut results = state.results.write().expect("lock ok");
         results.insert(
             ("c1".to_string(), "t1".to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: "q1".to_string(),
                 columns: vec![],
                 rows: vec![],
@@ -558,11 +560,11 @@ fn fetch_result_page_errors_on_wrong_query_id() {
                 affected_rows: 0,
                 auto_limit_applied: false,
                 page_size: 1000,
-            },
+            }],
         );
     }
 
-    let err = fetch_result_page_impl(&state, "c1", "t1", "wrong-id", 1)
+    let err = fetch_result_page_impl(&state, "c1", "t1", "wrong-id", 1, None)
         .expect_err("wrong query_id should error");
     assert!(err.contains("Query ID mismatch") || err.contains("mismatch"));
 }
@@ -570,7 +572,7 @@ fn fetch_result_page_errors_on_wrong_query_id() {
 #[test]
 fn fetch_result_page_errors_when_not_found() {
     let state = test_state();
-    let err = fetch_result_page_impl(&state, "conn-missing", "tab-missing", "q1", 1)
+    let err = fetch_result_page_impl(&state, "conn-missing", "tab-missing", "q1", 1, None)
         .expect_err("missing result should error");
     assert!(err.contains("No results found") || err.contains("not found"));
 }
@@ -583,7 +585,7 @@ fn fetch_result_page_errors_on_page_zero() {
         let mut results = state.results.write().expect("lock ok");
         results.insert(
             ("c1".to_string(), "t1".to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: "q1".to_string(),
                 columns: vec![],
                 rows: vec![vec![serde_json::json!(1)]],
@@ -591,11 +593,11 @@ fn fetch_result_page_errors_on_page_zero() {
                 affected_rows: 0,
                 auto_limit_applied: false,
                 page_size: 1000,
-            },
+            }],
         );
     }
 
-    let err = fetch_result_page_impl(&state, "c1", "t1", "q1", 0)
+    let err = fetch_result_page_impl(&state, "c1", "t1", "q1", 0, None)
         .expect_err("page 0 should error");
     assert!(err.contains("out of range"));
 }
@@ -608,7 +610,7 @@ fn fetch_result_page_errors_on_page_beyond_total() {
         let mut results = state.results.write().expect("lock ok");
         results.insert(
             ("c1".to_string(), "t1".to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: "q1".to_string(),
                 columns: vec![],
                 rows: vec![vec![serde_json::json!(1)]],
@@ -616,11 +618,11 @@ fn fetch_result_page_errors_on_page_beyond_total() {
                 affected_rows: 0,
                 auto_limit_applied: false,
                 page_size: 1000,
-            },
+            }],
         );
     }
 
-    let err = fetch_result_page_impl(&state, "c1", "t1", "q1", 2)
+    let err = fetch_result_page_impl(&state, "c1", "t1", "q1", 2, None)
         .expect_err("page beyond total should error");
     assert!(err.contains("out of range"));
 }
@@ -633,7 +635,7 @@ fn fetch_result_page_empty_result_set() {
         let mut results = state.results.write().expect("lock ok");
         results.insert(
             ("c1".to_string(), "t1".to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: "q1".to_string(),
                 columns: vec![ColumnMeta {
                     name: "id".to_string(),
@@ -644,12 +646,12 @@ fn fetch_result_page_empty_result_set() {
                 affected_rows: 0,
                 auto_limit_applied: false,
                 page_size: 1000,
-            },
+            }],
         );
     }
 
     // Empty result sets have 1 total page; page 1 returns 0 rows
-    let page1 = fetch_result_page_impl(&state, "c1", "t1", "q1", 1).expect("page 1 ok");
+    let page1 = fetch_result_page_impl(&state, "c1", "t1", "q1", 1, None).expect("page 1 ok");
     assert_eq!(page1.rows.len(), 0);
     assert_eq!(page1.total_pages, 1);
 }
@@ -917,7 +919,7 @@ mod coverage_stubs {
                 .expect("stub should succeed");
 
         // Verify result is stored and can be fetched
-        let page = fetch_result_page_impl(&state, "conn-cov", "tab-1", &result.query_id, 1)
+        let page = fetch_result_page_impl(&state, "conn-cov", "tab-1", &result.query_id, 1, None)
             .expect("page fetch should succeed");
         assert_eq!(page.total_pages, 1);
     }

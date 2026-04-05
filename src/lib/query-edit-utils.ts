@@ -4,6 +4,7 @@ import type {
   TableDataColumnMeta,
   RowEditState,
 } from '../types/schema'
+import { stripLeadingSqlComments } from './sql-utils'
 
 export type QueryEditColumnBindings = Map<number, string>
 
@@ -50,37 +51,6 @@ function splitQualifiedIdentifier(identifier: string): string[] {
   }
 
   return parts
-}
-
-function stripLeadingSqlComments(sql: string): string {
-  let pos = 0
-
-  while (pos < sql.length) {
-    while (pos < sql.length && /\s/.test(sql[pos])) pos++
-
-    if (sql.startsWith('/*', pos)) {
-      const end = sql.indexOf('*/', pos + 2)
-      if (end === -1) return ''
-      pos = end + 2
-      continue
-    }
-
-    if (sql.startsWith('--', pos)) {
-      const end = sql.indexOf('\n', pos + 2)
-      pos = end === -1 ? sql.length : end + 1
-      continue
-    }
-
-    if (sql[pos] === '#') {
-      const end = sql.indexOf('\n', pos + 1)
-      pos = end === -1 ? sql.length : end + 1
-      continue
-    }
-
-    break
-  }
-
-  return sql.slice(pos)
 }
 
 function extractTopLevelSelectList(sql: string): string | null {

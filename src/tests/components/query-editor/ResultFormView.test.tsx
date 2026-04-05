@@ -5,6 +5,7 @@ import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultFormView } from '../../../components/query-editor/ResultFormView'
 import { useQueryStore } from '../../../stores/query-store'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../../types/schema'
+import { makeTabState } from '../../helpers/query-test-utils'
 
 // Mock navigator.clipboard for BaseFormView's copy handler
 const mockClipboardWriteText = vi.fn().mockResolvedValue(undefined)
@@ -35,15 +36,14 @@ const defaultProps = {
   totalRows: 5,
   currentPage: 1,
   totalPages: 1,
+  pageSize: 1000,
   onNavigate: vi.fn(),
   tabId: 'tab-1',
 }
 
 /** Helper to build a complete tab state for the query store. */
 function buildTabState(overrides: Record<string, unknown> = {}) {
-  return {
-    content: '',
-    filePath: null,
+  return makeTabState({
     status: 'success' as const,
     columns,
     rows,
@@ -54,32 +54,10 @@ function buildTabState(overrides: Record<string, unknown> = {}) {
     currentPage: 1,
     totalPages: 1,
     pageSize: 1000,
-    autoLimitApplied: false,
-    errorMessage: null,
-    cursorPosition: null,
     viewMode: 'form' as const,
-    sortColumn: null,
-    sortDirection: null,
     selectedRowIndex: 0,
-    exportDialogOpen: false,
-    lastExecutedSql: null,
-    editMode: null,
-    editTableMetadata: {},
-    editForeignKeys: [],
-    editState: null,
-    isAnalyzingQuery: false,
-    editableColumnMap: new Map<number, boolean>(),
-    editColumnBindings: new Map<number, string>(),
-    editBoundColumnIndexMap: new Map<string, number>(),
-    pendingNavigationAction: null,
-    saveError: null,
-    editConnectionId: null,
-    editingRowIndex: null,
-    executionStartedAt: null,
-    isCancelling: false,
-    wasCancelled: false,
     ...overrides,
-  }
+  })
 }
 
 beforeEach(() => {
@@ -946,6 +924,7 @@ const temporalDefaultProps = {
   totalRows: 1,
   currentPage: 1,
   totalPages: 1,
+  pageSize: 1000,
   onNavigate: vi.fn(),
   tabId: 'tab-1',
 }

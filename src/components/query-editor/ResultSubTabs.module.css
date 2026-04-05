@@ -1,0 +1,66 @@
+/* ResultSubTabs — 28px compact tab strip for multi-result display */
+
+.strip {
+  display: flex;
+  align-items: stretch;
+  height: 28px;
+  min-height: 28px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--outline-variant);
+  background: var(--surface-container);
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.tab:hover {
+  color: var(--on-surface);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.tabActive {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.tabLabel {
+  line-height: 26px;
+}
+
+.selectIcon {
+  color: inherit;
+}
+
+.dmlIcon {
+  color: inherit;
+}
+
+.errorIcon {
+  color: var(--error);
+}

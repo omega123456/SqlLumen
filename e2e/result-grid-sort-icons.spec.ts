@@ -60,16 +60,24 @@ test('result grid renders Phosphor sort arrow icons when column is sorted', asyn
       throw new Error('No active query tab found for sort icon test')
     }
 
-    queryStore.setState((state) => ({
-      tabs: {
-        ...state.tabs,
-        [activeTabId]: {
-          ...state.tabs[activeTabId],
-          sortColumn: 'name',
-          sortDirection: 'asc',
+    queryStore.setState((state) => {
+      const tab = state.tabs[activeTabId] as {
+        results: Array<Record<string, unknown>>
+        [key: string]: unknown
+      }
+      const updatedResults = tab.results.map((r, i) =>
+        i === 0 ? { ...r, sortColumn: 'name', sortDirection: 'asc' } : r
+      )
+      return {
+        tabs: {
+          ...state.tabs,
+          [activeTabId]: {
+            ...tab,
+            results: updatedResults,
+          },
         },
-      },
-    }))
+      }
+    })
   })
 
   // react-data-grid uses a custom SortStatusRenderer that renders a Phosphor ArrowUp SVG

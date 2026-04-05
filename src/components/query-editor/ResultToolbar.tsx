@@ -3,14 +3,12 @@
  * Save/Discard buttons, query status, export action, page size selector,
  * and pagination controls.
  *
- * Composes shared toolbar item components (ViewModeGroup, PaginationGroup,
- * ExportButton, StatusArea) for view mode, pagination, export, and status
- * display while keeping query-specific controls inline.
+ * Reads per-result state from the active result via getActiveResult.
  */
 
 import { useCallback } from 'react'
 import { FloppyDisk } from '@phosphor-icons/react'
-import { useQueryStore } from '../../stores/query-store'
+import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { EditModeDropdown } from './EditModeDropdown'
 import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
 import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
@@ -25,7 +23,7 @@ interface ResultToolbarProps {
 }
 
 export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
-  const tabState = useQueryStore((state) => state.tabs[tabId])
+  const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
   const setViewMode = useQueryStore((state) => state.setViewMode)
   const openExportDialog = useQueryStore((state) => state.openExportDialog)
   const changePageSize = useQueryStore((state) => state.changePageSize)
@@ -34,21 +32,22 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
   const discardCurrentRow = useQueryStore((state) => state.discardCurrentRow)
   const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
 
-  const status = tabState?.status ?? 'idle'
-  const totalRows = tabState?.totalRows ?? 0
-  const affectedRows = tabState?.affectedRows ?? 0
-  const columnsCount = (tabState?.columns ?? []).length
-  const executionTimeMs = tabState?.executionTimeMs ?? null
-  const errorMessage = tabState?.errorMessage ?? null
-  const autoLimitApplied = tabState?.autoLimitApplied ?? false
-  const currentPage = tabState?.currentPage ?? 1
-  const totalPages = tabState?.totalPages ?? 1
-  const pageSize = tabState?.pageSize ?? 1000
-  const viewMode = tabState?.viewMode ?? 'grid'
-  const queryId = tabState?.queryId ?? null
+  const status = activeResult.status
+  const totalRows = activeResult.totalRows
+  const affectedRows = activeResult.affectedRows
+  const columnsCount = activeResult.columns.length
+  const executionTimeMs = activeResult.executionTimeMs
+  const errorMessage = activeResult.errorMessage
+  const autoLimitApplied = activeResult.autoLimitApplied
+  const currentPage = activeResult.currentPage
+  const totalPages = activeResult.totalPages
+  const pageSize = activeResult.pageSize
+  const viewMode = activeResult.viewMode
+  const queryId = activeResult.queryId
+  const reExecutable = activeResult.reExecutable
 
   // Edit state for Save/Discard buttons
-  const editState = tabState?.editState ?? null
+  const editState = activeResult.editState
   const hasModifications = editState !== null && editState.modifiedColumns.size > 0
 
   const truncatedError =
@@ -70,7 +69,6 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
     } else if (affectedRows > 0) {
       statusTotalRows = affectedRows
     }
-    // DDL (no columns, no affected rows) → undefined → shows "Success"
   }
 
   // Auto-limit custom content
@@ -184,6 +182,7 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
           currentPage={currentPage}
           totalPages={totalPages}
           pageSize={pageSize}
+          pageSizeDisabled={!reExecutable}
           onPageSizeChange={handlePageSizeChange}
           onPrevPage={handlePrevPage}
           onNextPage={handleNextPage}

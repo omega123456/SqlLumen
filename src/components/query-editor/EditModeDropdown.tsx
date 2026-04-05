@@ -3,13 +3,15 @@
  * in query result inline editing.
  *
  * Shows "Read Only" as default, plus one option per detected table.
- * Hidden when: no result columns, query status is not success, or connection is read-only.
+ * Hidden when: no result columns, query status is not success, connection is read-only,
+ * or result is not re-executable (stored procedure results).
  */
 
 import { useCallback, useMemo } from 'react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
-import { useQueryStore, isEditableSelectSql } from '../../stores/query-store'
+import { useQueryStore, getActiveResult, isEditableSelectSql } from '../../stores/query-store'
 import { useConnectionStore } from '../../stores/connection-store'
+import type { QueryTableEditInfo } from '../../types/schema'
 import styles from './EditModeDropdown.module.css'
 
 interface EditModeDropdownProps {
@@ -18,28 +20,30 @@ interface EditModeDropdownProps {
 }
 
 export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps) {
-  const tabState = useQueryStore((state) => state.tabs[tabId])
+  const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
   const setEditMode = useQueryStore((state) => state.setEditMode)
   const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
 
   const activeConnection = useConnectionStore((state) => state.activeConnections[connectionId])
   const isConnectionReadOnly = activeConnection?.profile?.readOnly ?? false
 
-  const status = tabState?.status ?? 'idle'
-  const columnsCount = (tabState?.columns ?? []).length
-  const editTableMetadata = tabState?.editTableMetadata ?? {}
-  const detectedTables = Object.values(editTableMetadata)
-  const isAnalyzingQuery = tabState?.isAnalyzingQuery ?? false
-  const editMode = tabState?.editMode ?? null
-  const editState = tabState?.editState ?? null
-  const lastExecutedSql = tabState?.lastExecutedSql ?? null
+  const status = activeResult.status
+  const columnsCount = activeResult.columns.length
+  const editTableMetadata = activeResult.editTableMetadata ?? {}
+  const detectedTables = Object.values(editTableMetadata) as QueryTableEditInfo[]
+  const isAnalyzingQuery = activeResult.isAnalyzingQuery
+  const editMode = activeResult.editMode
+  const editState = activeResult.editState
+  const lastExecutedSql = activeResult.lastExecutedSql
+  const reExecutable = activeResult.reExecutable
 
   // Determine visibility: hidden when no columns, not success, read-only,
-  // or not a SELECT/WITH query (hide for SHOW, DESCRIBE, EXPLAIN, DML, DDL)
+  // not a SELECT/WITH query, or not re-executable
   const isVisible =
     status === 'success' &&
     columnsCount > 0 &&
     !isConnectionReadOnly &&
+    reExecutable &&
     isEditableSelectSql(lastExecutedSql)
 
   // Determine if table names need database prefix (when tables from multiple databases)

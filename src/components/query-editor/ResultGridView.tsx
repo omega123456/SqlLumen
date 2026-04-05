@@ -52,6 +52,8 @@ interface ResultGridViewProps {
   pageSize: number
   /** Tab identifier — passed through to cell editor context for store syncing. */
   tabId: string
+  /** Whether the result can be re-executed (false for stored procedure cache-only results). */
+  reExecutable?: boolean
   /** Active edit table name, or null for read-only mode. */
   editMode: string | null
   /** Column index → editable boolean for the selected edit table. */
@@ -92,6 +94,7 @@ export function ResultGridView({
   currentPage,
   pageSize,
   tabId: _tabId,
+  reExecutable: _reExecutable = true,
   editMode = null,
   editableColumnMap = EMPTY_EDITABLE_MAP,
   editState = null,
@@ -106,6 +109,7 @@ export function ResultGridView({
 }: ResultGridViewProps) {
   void _tabId
   void _onUpdateCellValue
+  void _reExecutable
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -207,7 +211,9 @@ export function ResultGridView({
   const handleSortChange = useCallback(
     (colKey_: string | null, direction: 'ASC' | 'DESC' | null) => {
       if (!colKey_) {
-        // Sort was cleared — pass the previously sorted column with null direction
+        // Sort was cleared — pass the previously sorted column with null direction.
+        // The store's sortResults action handles the cache-only guard and shows
+        // a warning toast when the result is not re-executable.
         if (sortColumn) {
           onSortChanged(sortColumn, null)
         }

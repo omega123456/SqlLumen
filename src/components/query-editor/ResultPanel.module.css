@@ -58,3 +58,13 @@
   opacity: 0.4;
   color: var(--result-status-success-fg);
 }
+
+/* tabpanel wrapper — must fill remaining space and contain overflow
+   so the grid/form view height chain is preserved */
+.tabPanel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}

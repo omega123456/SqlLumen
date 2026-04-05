@@ -23,7 +23,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import React from 'react'
-import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
+import { useQueryStore } from '../../../stores/query-store'
+import { makeTabState } from '../../helpers/query-test-utils'
 
 // Track callback references across renders
 const capturedCallbacksByRender: Array<{
@@ -82,45 +83,6 @@ vi.mock('../../../lib/table-data-commands', () => ({
 
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 
-const DEFAULT_TAB_STATE: TabQueryState = {
-  content: '',
-  filePath: null,
-  status: 'idle',
-  columns: [],
-  rows: [],
-  totalRows: 0,
-  executionTimeMs: 0,
-  affectedRows: 0,
-  queryId: null,
-  currentPage: 1,
-  totalPages: 1,
-  pageSize: 1000,
-  autoLimitApplied: false,
-  errorMessage: null,
-  cursorPosition: null,
-  viewMode: 'grid',
-  sortColumn: null,
-  sortDirection: null,
-  selectedRowIndex: null,
-  exportDialogOpen: false,
-  lastExecutedSql: null,
-  editMode: null,
-  editTableMetadata: {},
-  editForeignKeys: [],
-  editState: null,
-  isAnalyzingQuery: false,
-  editableColumnMap: new Map(),
-  editColumnBindings: new Map(),
-  editBoundColumnIndexMap: new Map(),
-  pendingNavigationAction: null,
-  saveError: null,
-  editConnectionId: null,
-  editingRowIndex: null,
-  executionStartedAt: null,
-  isCancelling: false,
-  wasCancelled: false,
-}
-
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   capturedCallbacksByRender.length = 0
@@ -135,8 +97,7 @@ describe('ResultPanel edit-mode callback stability (focus-loss regression)', () 
   function renderWithActiveEditing() {
     useQueryStore.setState({
       tabs: {
-        'tab-1': {
-          ...DEFAULT_TAB_STATE,
+        'tab-1': makeTabState({
           status: 'success',
           viewMode: 'grid',
           columns: [
@@ -210,7 +171,7 @@ describe('ResultPanel edit-mode callback stability (focus-loss regression)', () 
             isNewRow: false,
           },
           editingRowIndex: 0,
-        },
+        }),
       },
     })
     return render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)

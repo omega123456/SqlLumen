@@ -3,54 +3,22 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
-import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
-
-const DEFAULT_TAB_STATE: TabQueryState = {
-  content: '',
-  filePath: null,
-  status: 'idle',
-  columns: [],
-  rows: [],
-  totalRows: 0,
-  executionTimeMs: 0,
-  affectedRows: 0,
-  queryId: null,
-  currentPage: 1,
-  totalPages: 1,
-  pageSize: 1000,
-  autoLimitApplied: false,
-  errorMessage: null,
-  cursorPosition: null,
-  viewMode: 'grid',
-  sortColumn: null,
-  sortDirection: null,
-  selectedRowIndex: null,
-  exportDialogOpen: false,
-  lastExecutedSql: null,
-  editMode: null,
-  editTableMetadata: {},
-  editForeignKeys: [],
-  editState: null,
-  isAnalyzingQuery: false,
-  editableColumnMap: new Map(),
-  editColumnBindings: new Map(),
-  editBoundColumnIndexMap: new Map(),
-  pendingNavigationAction: null,
-  saveError: null,
-  editConnectionId: null,
-  editingRowIndex: null,
-  executionStartedAt: null,
-  isCancelling: false,
-  wasCancelled: false,
-}
+import { useQueryStore } from '../../../stores/query-store'
+import { getFlatTabState } from '../../../stores/query-store'
+import { makeTabState } from '../../helpers/query-test-utils'
 
 /** Helper to set up store state for a tab. */
-function setupTabState(tabId: string, overrides: Partial<TabQueryState> = {}) {
+function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
   useQueryStore.setState({
     tabs: {
-      [tabId]: { ...DEFAULT_TAB_STATE, ...overrides },
+      [tabId]: makeTabState(overrides),
     },
   })
+}
+
+/** Shorthand: get flat view for assertions. */
+function flat(tabId: string) {
+  return getFlatTabState(useQueryStore.getState().getTabState(tabId))
 }
 
 beforeEach(() => {
@@ -178,9 +146,9 @@ describe('ResultToolbar', () => {
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     fireEvent.click(screen.getByLabelText('Previous page'))
     await waitFor(() => {
-      const tab = useQueryStore.getState().getTabState(tabId)
-      expect(tab.currentPage).toBe(1)
-      expect(tab.rows).toEqual([[1]])
+      const f = flat(tabId)
+      expect(f.currentPage).toBe(1)
+      expect(f.rows).toEqual([[1]])
     })
   })
 
@@ -201,9 +169,9 @@ describe('ResultToolbar', () => {
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     fireEvent.click(screen.getByLabelText('Next page'))
     await waitFor(() => {
-      const tab = useQueryStore.getState().getTabState(tabId)
-      expect(tab.currentPage).toBe(2)
-      expect(tab.rows).toEqual([[2]])
+      const f = flat(tabId)
+      expect(f.currentPage).toBe(2)
+      expect(f.rows).toEqual([[2]])
     })
   })
 
@@ -299,16 +267,14 @@ describe('ResultToolbar', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     fireEvent.click(screen.getByTestId('view-mode-form'))
-    const state = useQueryStore.getState().tabs[tabId]
-    expect(state?.viewMode).toBe('form')
+    expect(flat(tabId).viewMode).toBe('form')
   })
 
   it('sets view mode to text when text button clicked', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     fireEvent.click(screen.getByTestId('view-mode-text'))
-    const state = useQueryStore.getState().tabs[tabId]
-    expect(state?.viewMode).toBe('text')
+    expect(flat(tabId).viewMode).toBe('text')
   })
 
   // --- Export button tests ---
@@ -336,8 +302,7 @@ describe('ResultToolbar', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
     render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
     fireEvent.click(screen.getByTestId('export-button'))
-    const state = useQueryStore.getState().tabs[tabId]
-    expect(state?.exportDialogOpen).toBe(true)
+    expect(flat(tabId).exportDialogOpen).toBe(true)
   })
 
   // --- Page size selector tests ---

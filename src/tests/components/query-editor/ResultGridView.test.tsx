@@ -215,6 +215,30 @@ describe('ResultGridView', () => {
     expect(onSortChanged).toHaveBeenCalledWith('name', null)
   })
 
+  it('sort-clear on cache-only result calls onSortChanged so the store can show a toast', () => {
+    const onSortChanged = vi.fn()
+    render(
+      <ResultGridView
+        {...defaultProps}
+        onSortChanged={onSortChanged}
+        sortColumn="name"
+        sortDirection="asc"
+        reExecutable={false}
+      />
+    )
+    const props = getLatestBaseGridProps()
+    const onSortChange = props.onSortChange as (
+      colKey: string | null,
+      direction: 'ASC' | 'DESC' | null
+    ) => void
+
+    // Clear sort on a non-reExecutable result
+    onSortChange(null, null)
+
+    // Should still call onSortChanged — the store's sortResults handles the warning toast
+    expect(onSortChanged).toHaveBeenCalledWith('name', null)
+  })
+
   it('onSortChange does nothing when sort cleared and no previous sortColumn', () => {
     const onSortChanged = vi.fn()
     render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} sortColumn={null} />)

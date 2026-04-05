@@ -663,7 +663,7 @@ fn test_export_results_impl_success() {
         let mut results = state.results.write().expect("lock ok");
         results.insert(
             ("conn-1".to_string(), "tab-1".to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: "qid-1".to_string(),
                 columns: vec![
                     ColumnMeta { name: "id".to_string(), data_type: "INT".to_string() },
@@ -677,7 +677,7 @@ fn test_export_results_impl_success() {
                 affected_rows: 0,
                 auto_limit_applied: false,
                 page_size: 1000,
-            },
+            }],
         );
     }
 
@@ -688,7 +688,7 @@ fn test_export_results_impl_success() {
         table_name: None,
     };
 
-    let result = export_results_impl(&state, "conn-1", "tab-1", options)
+    let result = export_results_impl(&state, "conn-1", "tab-1", options, None)
         .expect("export should succeed");
     assert_eq!(result.rows_exported, 2);
     assert!(result.bytes_written > 0);
@@ -711,7 +711,7 @@ fn test_export_results_impl_no_results() {
         table_name: None,
     };
 
-    let err = export_results_impl(&state, "conn-missing", "tab-missing", options)
+    let err = export_results_impl(&state, "conn-missing", "tab-missing", options, None)
         .expect_err("should fail when no results");
     assert!(err.contains("No results found"));
 }
@@ -727,7 +727,7 @@ fn test_export_sql_default_table_name_via_impl() {
         let mut results = state.results.write().expect("lock ok");
         results.insert(
             ("c1".to_string(), "t1".to_string()),
-            StoredResult {
+            vec![StoredResult {
                 query_id: "q1".to_string(),
                 columns: vec![ColumnMeta { name: "id".to_string(), data_type: "INT".to_string() }],
                 rows: vec![vec![serde_json::json!(42)]],
@@ -735,7 +735,7 @@ fn test_export_sql_default_table_name_via_impl() {
                 affected_rows: 0,
                 auto_limit_applied: false,
                 page_size: 1000,
-            },
+            }],
         );
     }
 
@@ -746,7 +746,7 @@ fn test_export_sql_default_table_name_via_impl() {
         table_name: None, // should default to "exported_results"
     };
 
-    let result = export_results_impl(&state, "c1", "t1", options).expect("export should succeed");
+    let result = export_results_impl(&state, "c1", "t1", options, None).expect("export should succeed");
     assert_eq!(result.rows_exported, 1);
 
     let content = std::fs::read_to_string(&path).expect("read file");

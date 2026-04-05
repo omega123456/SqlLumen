@@ -57,3 +57,21 @@ identifier = "allow-cancel-query"
 description = "Enables the cancel_query command without any pre-configured scope."
 commands.allow = ["cancel_query"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-reexecute-single-result"
+description = "Enables the reexecute_single_result command without any pre-configured scope."
+commands.allow = ["reexecute_single_result"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-execute-multi-query"
+description = "Enables the execute_multi_query command without any pre-configured scope."
+commands.allow = ["execute_multi_query"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-execute-call-query"
+description = "Enables the execute_call_query command without any pre-configured scope."
+commands.allow = ["execute_call_query"]
+commands.deny = []

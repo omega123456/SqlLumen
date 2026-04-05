@@ -39,7 +39,7 @@ fn insert_result(
     let mut results = state.results.write().expect("lock ok");
     results.insert(
         (conn_id.to_string(), tab_id.to_string()),
-        StoredResult {
+        vec![StoredResult {
             query_id: "q-sort-test".to_string(),
             columns,
             rows,
@@ -47,7 +47,7 @@ fn insert_result(
             affected_rows: 0,
             auto_limit_applied: false,
             page_size,
-        },
+        }],
     );
 }
 
@@ -184,7 +184,7 @@ fn sort_string_column_asc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "name", "asc").expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "name", "asc", None).expect("sort ok");
     assert_eq!(result.rows[0][0], serde_json::json!("Alice"));
     assert_eq!(result.rows[1][0], serde_json::json!("Bob"));
     assert_eq!(result.rows[2][0], serde_json::json!("Charlie"));
@@ -207,7 +207,7 @@ fn sort_string_column_desc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "name", "desc").expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "name", "desc", None).expect("sort ok");
     assert_eq!(result.rows[0][0], serde_json::json!("Charlie"));
     assert_eq!(result.rows[1][0], serde_json::json!("Bob"));
     assert_eq!(result.rows[2][0], serde_json::json!("Alice"));
@@ -229,7 +229,7 @@ fn sort_numeric_column_asc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "id", "asc").expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "id", "asc", None).expect("sort ok");
     assert_eq!(result.rows[0][0], serde_json::json!(10));
     assert_eq!(result.rows[1][0], serde_json::json!(20));
     assert_eq!(result.rows[2][0], serde_json::json!(30));
@@ -251,7 +251,7 @@ fn sort_numeric_column_desc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "id", "desc").expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "id", "desc", None).expect("sort ok");
     assert_eq!(result.rows[0][0], serde_json::json!(30));
     assert_eq!(result.rows[1][0], serde_json::json!(20));
     assert_eq!(result.rows[2][0], serde_json::json!(10));
@@ -274,7 +274,7 @@ fn sort_nulls_last_asc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "name", "asc").expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "name", "asc", None).expect("sort ok");
     // Non-nulls first, then nulls
     assert_eq!(result.rows[0][0], serde_json::json!("Alice"));
     assert_eq!(result.rows[1][0], serde_json::json!("Bob"));
@@ -299,7 +299,7 @@ fn sort_nulls_first_desc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "name", "desc").expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "name", "desc", None).expect("sort ok");
     // NULLs first in DESC
     assert_eq!(result.rows[0][0], serde_json::Value::Null);
     assert_eq!(result.rows[1][0], serde_json::Value::Null);
@@ -329,7 +329,7 @@ fn sort_mixed_types() {
     );
 
     // Should not panic — mixed types compare gracefully as strings
-    let result = sort_results_impl(&state, "c1", "t1", "val", "asc").expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "val", "asc", None).expect("sort ok");
     assert_eq!(result.rows.len(), 4);
 }
 
@@ -345,7 +345,7 @@ fn sort_nonexistent_column_returns_error() {
         1000,
     );
 
-    let err = sort_results_impl(&state, "c1", "t1", "nonexistent", "asc")
+    let err = sort_results_impl(&state, "c1", "t1", "nonexistent", "asc", None)
         .expect_err("should error for missing column");
     assert!(err.contains("not found"), "error was: {err}");
 }
@@ -354,7 +354,7 @@ fn sort_nonexistent_column_returns_error() {
 fn sort_missing_result_returns_error() {
     let state = test_state();
 
-    let err = sort_results_impl(&state, "c-missing", "t-missing", "id", "asc")
+    let err = sort_results_impl(&state, "c-missing", "t-missing", "id", "asc", None)
         .expect_err("should error for missing result");
     assert!(
         err.contains("No results found"),
@@ -373,7 +373,7 @@ fn sort_returns_first_page_with_correct_pagination() {
 
     insert_result(&state, "c1", "t1", id_col(), rows, 10);
 
-    let result = sort_results_impl(&state, "c1", "t1", "id", "desc").expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "id", "desc", None).expect("sort ok");
 
     // First page should have 10 rows
     assert_eq!(result.rows.len(), 10);
@@ -404,7 +404,7 @@ fn sort_with_multiple_columns_sorts_by_specified() {
     );
 
     // Sort by name column
-    let result = sort_results_impl(&state, "c1", "t1", "name", "asc").expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "name", "asc", None).expect("sort ok");
     assert_eq!(result.rows[0][1], serde_json::json!("Alice"));
     assert_eq!(result.rows[1][1], serde_json::json!("Bob"));
     assert_eq!(result.rows[2][1], serde_json::json!("Charlie"));
@@ -420,7 +420,7 @@ fn sort_empty_result_set() {
     let state = test_state();
     insert_result(&state, "c1", "t1", id_col(), vec![], 1000);
 
-    let result = sort_results_impl(&state, "c1", "t1", "id", "asc").expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "id", "asc", None).expect("sort ok");
     assert_eq!(result.rows.len(), 0);
     assert_eq!(result.total_pages, 1);
     assert_eq!(result.page, 1);
@@ -444,7 +444,7 @@ fn sort_numeric_not_lexicographic() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "id", "asc").expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "id", "asc", None).expect("sort ok");
     assert_eq!(result.rows[0][0], serde_json::json!(2));
     assert_eq!(result.rows[1][0], serde_json::json!(9));
     assert_eq!(result.rows[2][0], serde_json::json!(10));

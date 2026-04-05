@@ -1,6 +1,6 @@
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { useQueryStore } from '../../stores/query-store'
+import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { useThemeStore } from '../../stores/theme-store'
 import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
 import styles from './StatusBar.module.css'
@@ -28,17 +28,21 @@ export function StatusBar() {
     return tabs?.find((t) => t.id === activeWorkspaceTabId)?.type ?? null
   })
 
-  // Get query state for the active workspace tab
+  // Get query state for the active workspace tab — read from active result
   const queryState = useQueryStore((s) =>
     activeWorkspaceTabId ? (s.tabs[activeWorkspaceTabId] ?? null) : null
+  )
+  const activeResultState = useQueryStore((s) =>
+    activeWorkspaceTabId ? getActiveResult(s.tabs[activeWorkspaceTabId]) : null
   )
 
   const activeConnection = connectionTabId ? activeConnections[connectionTabId] : null
 
   const isQueryEditorTab = activeWorkspaceTabType === 'query-editor'
 
-  // Show query info only for query-editor tabs with a successful execution
-  const showQueryInfo = isQueryEditorTab && queryState?.status === 'success'
+  // Show query info only for query-editor tabs when the active result is successful
+  // (not the tab-level status, which may be 'success' even for partial-error multi-results)
+  const showQueryInfo = isQueryEditorTab && activeResultState?.status === 'success'
 
   // Show running indicator for query-editor tabs with status === 'running'
   const showRunningInfo = isQueryEditorTab && queryState?.status === 'running'
@@ -63,15 +67,15 @@ export function StatusBar() {
           <span className={styles.queryRunningText}>Running...</span>
         </div>
       )}
-      {showQueryInfo && (
+      {showQueryInfo && activeResultState && (
         <div className={styles.queryInfo} data-testid="query-info">
           {resolvedTheme === 'dark' ? (
             <>
               <span className={styles.queryInfoItem} data-testid="query-rows">
-                Rows: {queryState.totalRows}
+                Rows: {activeResultState.totalRows}
               </span>
               <span className={styles.queryInfoItem} data-testid="query-time">
-                {queryState.executionTimeMs}ms
+                {activeResultState.executionTimeMs}ms
               </span>
             </>
           ) : (
@@ -80,13 +84,13 @@ export function StatusBar() {
                 className={`${styles.queryInfoItem} ${styles.queryInfoTime}`}
                 data-testid="query-time"
               >
-                QUERY: {queryState.executionTimeMs}ms
+                QUERY: {activeResultState.executionTimeMs}ms
               </span>
               <span
                 className={`${styles.queryInfoItem} ${styles.queryInfoRows}`}
                 data-testid="query-rows"
               >
-                ROWS: {queryState.totalRows}
+                ROWS: {activeResultState.totalRows}
               </span>
             </>
           )}

@@ -10,7 +10,6 @@
  */
 
 import { useCallback, useMemo } from 'react'
-import { useQueryStore } from '../../stores/query-store'
 import { BaseFormView } from '../shared/BaseFormView'
 import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
 import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
@@ -38,6 +37,8 @@ export interface ResultFormViewProps {
   totalRows: number
   currentPage: number
   totalPages: number
+  /** Page size for computing local row offset. */
+  pageSize: number
   /** Called with 'prev' or 'next' — parent handles page fetching + setSelectedRow. */
   onNavigate: (direction: 'prev' | 'next') => void
   tabId: string
@@ -84,6 +85,7 @@ export function ResultFormView({
   totalRows,
   currentPage,
   totalPages: _totalPages,
+  pageSize,
   onNavigate,
   tabId,
   editMode = null,
@@ -98,9 +100,6 @@ export function ResultFormView({
   onSaveRow,
   onDiscardRow,
 }: ResultFormViewProps) {
-  // Read pageSize from the store to compute page-local row offset
-  const pageSize = useQueryStore((state) => state.tabs[tabId]?.pageSize ?? 1000)
-
   const absoluteIndex = selectedRowIndex ?? 0
 
   // Map absolute index → page-local index
@@ -132,6 +131,7 @@ export function ResultFormView({
   const isEditingCurrentRow = editState !== null && editingRowIndex === clampedLocal
 
   void _totalPages
+  void tabId
 
   const resolvedColumns = useMemo(
     () =>

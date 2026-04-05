@@ -9,13 +9,16 @@
  *
  * When switching to text view while edits are pending, auto-saves the
  * current row before completing the view mode switch.
+ *
+ * Supports multi-result tabs — renders ResultSubTabs when results.length > 1.
  */
 
 import { useCallback, useMemo, useState } from 'react'
 import { Play, CheckCircle } from '@phosphor-icons/react'
-import { useQueryStore } from '../../stores/query-store'
+import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
 import { FkLookupDialog } from '../table-data/FkLookupDialog'
+import { ResultSubTabs } from './ResultSubTabs'
 import { ResultToolbar } from './ResultToolbar'
 import { ResultGridView } from './ResultGridView'
 import { ResultFormView } from './ResultFormView'
@@ -37,10 +40,9 @@ const EMPTY_FOREIGN_KEYS: ForeignKeyColumnInfo[] = []
 
 export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const tabState = useQueryStore((state) => state.tabs[tabId])
+  const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
 
-  // Individual action selectors — stable references that never change,
-  // unlike `useQueryStore()` which subscribes to all state and causes
-  // every useCallback to get a new identity on each store update.
+  // Individual action selectors — stable references that never change
   const requestNavigationAction = useQueryStore((s) => s.requestNavigationAction)
   const sortResults = useQueryStore((s) => s.sortResults)
   const setSelectedRow = useQueryStore((s) => s.setSelectedRow)
@@ -54,33 +56,41 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const discardCurrentRow = useQueryStore((s) => s.discardCurrentRow)
   const closeExportDialog = useQueryStore((s) => s.closeExportDialog)
 
-  const status = tabState?.status ?? 'idle'
-  const columns = (tabState?.columns ?? []) as ColumnMeta[]
-  const rows = (tabState?.rows ?? []) as unknown[][]
-  const affectedRows = tabState?.affectedRows ?? 0
-  const viewMode = tabState?.viewMode ?? 'grid'
-  const sortColumn = tabState?.sortColumn ?? null
-  const sortDirection = tabState?.sortDirection ?? null
-  const selectedRowIndex = tabState?.selectedRowIndex ?? null
-  const exportDialogOpen = tabState?.exportDialogOpen ?? false
-  const totalRows = tabState?.totalRows ?? 0
-  const currentPage = tabState?.currentPage ?? 1
-  const totalPages = tabState?.totalPages ?? 1
-  const pageSize = tabState?.pageSize ?? 1000
+  const tabStatus = tabState?.status ?? 'idle'
+  const results = tabState?.results ?? []
+  const activeResultIndex = tabState?.activeResultIndex ?? 0
 
-  // Edit mode state
-  const editMode = tabState?.editMode ?? null
-  const editableColumnMap = tabState?.editableColumnMap ?? new Map<number, boolean>()
-  const editColumnBindings = tabState?.editColumnBindings ?? new Map<number, string>()
-  const editState = tabState?.editState ?? null
-  const editingRowIndex = tabState?.editingRowIndex ?? null
-  const editForeignKeys = tabState?.editForeignKeys ?? EMPTY_FOREIGN_KEYS
-  const pendingNavigationAction = tabState?.pendingNavigationAction ?? null
-  const saveError = tabState?.saveError ?? null
+  // Read from active result
+  const resultStatus = activeResult.status
+  const columns = (activeResult.columns ?? []) as ColumnMeta[]
+  const rows = (activeResult.rows ?? []) as unknown[][]
+  const affectedRows = activeResult.affectedRows ?? 0
+  const viewMode = activeResult.viewMode ?? 'grid'
+  const sortColumn = activeResult.sortColumn ?? null
+  const sortDirection = activeResult.sortDirection ?? null
+  const selectedRowIndex = activeResult.selectedRowIndex ?? null
+  const exportDialogOpen = activeResult.exportDialogOpen ?? false
+  const totalRows = activeResult.totalRows ?? 0
+  const currentPage = activeResult.currentPage ?? 1
+  const totalPages = activeResult.totalPages ?? 1
+  const pageSize = activeResult.pageSize ?? 1000
+  const reExecutable = activeResult.reExecutable ?? true
+
+  // Edit mode state from active result
+  const editMode = activeResult.editMode ?? null
+  const editableColumnMap = activeResult.editableColumnMap ?? new Map<number, boolean>()
+  const editColumnBindings = activeResult.editColumnBindings ?? new Map<number, string>()
+  const editState = activeResult.editState ?? null
+  const editingRowIndex = activeResult.editingRowIndex ?? null
+  const editForeignKeys = activeResult.editForeignKeys ?? EMPTY_FOREIGN_KEYS
+  const saveError = activeResult.saveError ?? null
   const editTableColumns =
-    editMode && tabState?.editTableMetadata?.[editMode]?.columns
-      ? tabState.editTableMetadata[editMode].columns
+    editMode && activeResult.editTableMetadata?.[editMode]?.columns
+      ? activeResult.editTableMetadata[editMode].columns
       : EMPTY_TABLE_COLUMNS
+
+  // Tab-level pending navigation
+  const pendingNavigationAction = tabState?.pendingNavigationAction ?? null
 
   // Wrap sort handler with navigation action guard (handles pending edits)
   const handleSortChanged = useCallback(
@@ -103,9 +113,6 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
 
   /**
    * Handle form-view record navigation (Previous / Next).
-   *
-   * Calculates the new absolute index, checks if a page change is needed,
-   * fetches the new page if so, and always updates the selected row index.
    */
   const handleFormNavigate = useCallback(
     (direction: 'prev' | 'next') => {
@@ -163,10 +170,6 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
     [syncCellValue, tabId]
   )
 
-  /**
-   * Auto-save the current editing row. Returns true if save succeeded
-   * (or nothing to save), false if save failed.
-   */
   const handleAutoSave = useCallback(async (): Promise<boolean> => {
     return await saveCurrentRow(tabId)
   }, [saveCurrentRow, tabId])
@@ -185,13 +188,11 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
     cancelNavigation(tabId)
   }, [cancelNavigation, tabId])
 
-  /**
-   * Save the current editing row (form view). Returns true on success.
-   */
   const handleFormSave = useCallback(async (): Promise<boolean> => {
     await saveCurrentRow(tabId)
     const tab = useQueryStore.getState().tabs[tabId]
-    return !tab?.saveError
+    const result = getActiveResult(tab)
+    return !result.saveError
   }, [saveCurrentRow, tabId])
 
   const handleFormDiscard = useCallback(() => {
@@ -235,8 +236,10 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
       const rowIndexRaw = args.rowData.__rowIdx
       const rowIndex = typeof rowIndexRaw === 'number' ? rowIndexRaw : 0
 
-      const currentEditingRow = useQueryStore.getState().tabs[tabId]?.editingRowIndex ?? null
-      const currentEditState = useQueryStore.getState().tabs[tabId]?.editState ?? null
+      const currentTab = useQueryStore.getState().tabs[tabId]
+      const currentActiveResult = getActiveResult(currentTab)
+      const currentEditingRow = currentActiveResult.editingRowIndex ?? null
+      const currentEditState = currentActiveResult.editState ?? null
 
       if (currentEditingRow !== null && currentEditingRow !== rowIndex) {
         if (currentEditState && currentEditState.modifiedColumns.size > 0) {
@@ -285,7 +288,9 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
         return
       }
 
-      const currentEdit = useQueryStore.getState().tabs[tabId]?.editState
+      const currentTab = useQueryStore.getState().tabs[tabId]
+      const currentActiveResult = getActiveResult(currentTab)
+      const currentEdit = currentActiveResult.editState
       const sameRow = currentEdit && editingRowIndex === rowIndex
 
       if (
@@ -308,95 +313,122 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
     [fkLookupContext, tabId, editingRowIndex, handleRowSelected, startEditingRow, syncCellValue]
   )
 
+  // Determine which status to show for the result area
+  // Tab-level 'running' takes precedence; otherwise use active result's status
+  const displayStatus =
+    tabStatus === 'running' ? 'running' : tabStatus === 'idle' ? 'idle' : resultStatus
+
   return (
     <div className={styles.container} data-testid="result-panel">
-      {status === 'idle' && (
+      {displayStatus === 'idle' && (
         <div className={styles.emptyState}>
           <Play size={32} weight="duotone" className={styles.emptyIcon} />
           <span>Run a query to see results</span>
         </div>
       )}
 
-      {status === 'running' && (
+      {displayStatus === 'running' && (
         <div className={styles.emptyState}>
           <div className={styles.spinner} />
           <span>Executing query...</span>
         </div>
       )}
 
-      {status === 'success' && (
+      {displayStatus === 'success' && (
         <>
-          <ResultToolbar tabId={tabId} connectionId={connectionId} />
-          {columns.length > 0 ? (
-            <FkLookupProvider onFkLookup={handleFkLookup}>
-              {viewMode === 'grid' && (
-                <ResultGridView
-                  columns={columns}
-                  rows={rows}
-                  sortColumn={sortColumn}
-                  sortDirection={sortDirection}
-                  onSortChanged={handleSortChanged}
-                  onRowSelected={handleRowSelected}
-                  selectedRowIndex={selectedRowIndex}
-                  currentPage={currentPage}
-                  pageSize={pageSize}
-                  tabId={tabId}
-                  editMode={editMode}
-                  editableColumnMap={editableColumnMap}
-                  editColumnBindings={editColumnBindings}
-                  editState={editState}
-                  editingRowIndex={editingRowIndex}
-                  editTableColumns={editTableColumns}
-                  editForeignKeys={editForeignKeys}
-                  onStartEditing={handleStartEditing}
-                  onUpdateCellValue={handleUpdateCellValue}
-                  onSyncCellValue={handleSyncCellValue}
-                  onAutoSave={handleAutoSave}
-                />
-              )}
-              {viewMode === 'form' && (
-                <ResultFormView
-                  columns={columns}
-                  rows={rows}
-                  selectedRowIndex={selectedRowIndex}
-                  totalRows={totalRows}
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onNavigate={handleFormNavigate}
-                  tabId={tabId}
-                  editMode={editMode}
-                  editableColumnMap={editableColumnMap}
-                  editColumnBindings={editColumnBindings}
-                  editState={editState}
-                  editingRowIndex={editingRowIndex}
-                  editTableColumns={editTableColumns}
-                  editForeignKeys={editForeignKeys}
-                  onStartEdit={handleStartEditing}
-                  onUpdateCell={handleUpdateCellValue}
-                  onSaveRow={handleFormSave}
-                  onDiscardRow={handleFormDiscard}
-                />
-              )}
-              {viewMode === 'text' && <ResultTextView columns={columns} rows={rows} />}
-            </FkLookupProvider>
-          ) : (
-            <div className={styles.emptyState} data-testid="dml-success">
-              <CheckCircle size={32} weight="duotone" className={styles.successIcon} />
-              <span>
-                {affectedRows > 0
-                  ? `Query executed: ${affectedRows} rows affected`
-                  : 'Query executed successfully'}
-              </span>
-            </div>
-          )}
+          {results.length > 1 && <ResultSubTabs tabId={tabId} />}
+          <div
+            role="tabpanel"
+            id={`result-tabpanel-${tabId}-${activeResultIndex}`}
+            aria-labelledby={
+              results.length > 1 ? `result-tab-${tabId}-${activeResultIndex}` : undefined
+            }
+            className={styles.tabPanel}
+          >
+            <ResultToolbar tabId={tabId} connectionId={connectionId} />
+            {columns.length > 0 ? (
+              <FkLookupProvider onFkLookup={handleFkLookup}>
+                {viewMode === 'grid' && (
+                  <ResultGridView
+                    columns={columns}
+                    rows={rows}
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSortChanged={handleSortChanged}
+                    onRowSelected={handleRowSelected}
+                    selectedRowIndex={selectedRowIndex}
+                    currentPage={currentPage}
+                    pageSize={pageSize}
+                    tabId={tabId}
+                    reExecutable={reExecutable}
+                    editMode={editMode}
+                    editableColumnMap={editableColumnMap}
+                    editColumnBindings={editColumnBindings}
+                    editState={editState}
+                    editingRowIndex={editingRowIndex}
+                    editTableColumns={editTableColumns}
+                    editForeignKeys={editForeignKeys}
+                    onStartEditing={handleStartEditing}
+                    onUpdateCellValue={handleUpdateCellValue}
+                    onSyncCellValue={handleSyncCellValue}
+                    onAutoSave={handleAutoSave}
+                  />
+                )}
+                {viewMode === 'form' && (
+                  <ResultFormView
+                    columns={columns}
+                    rows={rows}
+                    selectedRowIndex={selectedRowIndex}
+                    totalRows={totalRows}
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    pageSize={pageSize}
+                    onNavigate={handleFormNavigate}
+                    tabId={tabId}
+                    editMode={editMode}
+                    editableColumnMap={editableColumnMap}
+                    editColumnBindings={editColumnBindings}
+                    editState={editState}
+                    editingRowIndex={editingRowIndex}
+                    editTableColumns={editTableColumns}
+                    editForeignKeys={editForeignKeys}
+                    onStartEdit={handleStartEditing}
+                    onUpdateCell={handleUpdateCellValue}
+                    onSaveRow={handleFormSave}
+                    onDiscardRow={handleFormDiscard}
+                  />
+                )}
+                {viewMode === 'text' && <ResultTextView columns={columns} rows={rows} />}
+              </FkLookupProvider>
+            ) : (
+              <div className={styles.emptyState} data-testid="dml-success">
+                <CheckCircle size={32} weight="duotone" className={styles.successIcon} />
+                <span>
+                  {affectedRows > 0
+                    ? `Query executed: ${affectedRows} rows affected`
+                    : 'Query executed successfully'}
+                </span>
+              </div>
+            )}
+          </div>
         </>
       )}
 
-      {status === 'error' && (
+      {displayStatus === 'error' && (
         <>
-          <ResultToolbar tabId={tabId} connectionId={connectionId} />
-          <div className={styles.errorBody}>
-            <span className={styles.errorMessage}>{tabState?.errorMessage}</span>
+          {results.length > 1 && <ResultSubTabs tabId={tabId} />}
+          <div
+            role="tabpanel"
+            id={`result-tabpanel-${tabId}-${activeResultIndex}`}
+            aria-labelledby={
+              results.length > 1 ? `result-tab-${tabId}-${activeResultIndex}` : undefined
+            }
+            className={styles.tabPanel}
+          >
+            <ResultToolbar tabId={tabId} connectionId={connectionId} />
+            <div className={styles.errorBody}>
+              <span className={styles.errorMessage}>{activeResult.errorMessage}</span>
+            </div>
           </div>
         </>
       )}
@@ -407,6 +439,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
           tabId={tabId}
           columnCount={columns.length}
           totalRows={totalRows}
+          resultIndex={activeResultIndex}
           onClose={() => closeExportDialog(tabId)}
         />
       )}
@@ -429,10 +462,10 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
           connectionId={connectionId}
           database={
             fkLookupContext.foreignKey.referencedDatabase ||
-            tabState?.editTableMetadata?.[editMode]?.database ||
+            activeResult.editTableMetadata?.[editMode]?.database ||
             ''
           }
-          sourceTable={tabState?.editTableMetadata?.[editMode]?.table ?? editMode}
+          sourceTable={activeResult.editTableMetadata?.[editMode]?.table ?? editMode}
           sourceColumn={fkLookupContext.sourceColumn}
           currentValue={fkLookupContext.currentValue}
           referencedTable={fkLookupContext.foreignKey.referencedTable}

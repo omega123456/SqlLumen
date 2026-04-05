@@ -12,12 +12,17 @@ pub fn export_results_impl(
     connection_id: &str,
     tab_id: &str,
     options: ExportOptions,
+    result_index: Option<usize>,
 ) -> Result<ExportResult, String> {
     let (columns, rows) = {
         let results = state.results.read().map_err(|e| e.to_string())?;
-        let stored = results
+        let result_vec = results
             .get(&(connection_id.to_string(), tab_id.to_string()))
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+        let idx = result_index.unwrap_or(0);
+        let stored = result_vec
+            .get(idx)
+            .ok_or_else(|| format!("Result index {idx} out of range (total: {})", result_vec.len()))?;
         let cols: Vec<String> = stored.columns.iter().map(|c| c.name.clone()).collect();
         let rows = stored.rows.clone();
         (cols, rows)
@@ -32,13 +37,18 @@ pub async fn export_results(
     connection_id: String,
     tab_id: String,
     options: ExportOptions,
+    result_index: Option<usize>,
 ) -> Result<ExportResult, String> {
     // Clone data under brief lock, then release the lock before writing
     let (columns, rows) = {
         let results = state.results.read().map_err(|e| e.to_string())?;
-        let stored = results
+        let result_vec = results
             .get(&(connection_id.clone(), tab_id.clone()))
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+        let idx = result_index.unwrap_or(0);
+        let stored = result_vec
+            .get(idx)
+            .ok_or_else(|| format!("Result index {idx} out of range (total: {})", result_vec.len()))?;
         let cols: Vec<String> = stored.columns.iter().map(|c| c.name.clone()).collect();
         let rows = stored.rows.clone();
         (cols, rows)

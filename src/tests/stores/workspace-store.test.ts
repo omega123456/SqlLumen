@@ -7,6 +7,8 @@ import {
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
+import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
+import { mockIPC } from '@tauri-apps/api/mocks'
 import type {
   TableDataTab,
   SchemaInfoTab,
@@ -603,5 +605,262 @@ describe('useWorkspaceStore — clearConnectionTabs', () => {
 
     expect(cleanupSpy).toHaveBeenCalledWith(tabId)
     expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Close-tab guard: query-editor with dirty non-active results
+// ---------------------------------------------------------------------------
+
+describe('useWorkspaceStore — closeTab query-editor with dirty non-active result', () => {
+  beforeEach(() => {
+    mockIPC((cmd) => {
+      if (cmd === 'evict_results') return null
+      return null
+    })
+  })
+
+  it('switches to dirty result and sets pendingNavigationAction when dirty result is non-active', () => {
+    // Open a query-editor tab
+    const tabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    // Set up query store with a dirty non-active result (index 1 is dirty, active is 0)
+    useQueryStore.setState({
+      tabs: {
+        [tabId]: {
+          content: 'SELECT 1; SELECT 2',
+          filePath: null,
+          status: 'success',
+          cursorPosition: null,
+          connectionId: 'conn-1',
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              status: 'success',
+              queryId: 'q1',
+            },
+            {
+              ...DEFAULT_RESULT_STATE,
+              status: 'success',
+              queryId: 'q2',
+              editState: {
+                rowKey: { id: 1 },
+                originalValues: { name: 'Alice' },
+                currentValues: { name: 'Bob' },
+                modifiedColumns: new Set(['name']),
+                isNewRow: false,
+              },
+              editingRowIndex: 0,
+            },
+          ],
+          activeResultIndex: 0,
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+        },
+      },
+    })
+
+    // Try to close the tab
+    useWorkspaceStore.getState().closeTab('conn-1', tabId)
+
+    // Tab should NOT have been closed — it should still exist with pendingClose
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0].id).toBe(tabId)
+
+    // The query store should have switched activeResultIndex to the dirty result
+    const queryTab = useQueryStore.getState().tabs[tabId]
+    expect(queryTab?.activeResultIndex).toBe(1)
+
+    // The query store should have a pendingNavigationAction set
+    expect(queryTab?.pendingNavigationAction).not.toBeNull()
+  })
+
+  it('uses requestNavigationAction when dirty result IS the active result', () => {
+    // Open a query-editor tab
+    const tabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    // Set up query store with a dirty ACTIVE result (index 0 is dirty and active)
+    useQueryStore.setState({
+      tabs: {
+        [tabId]: {
+          content: 'SELECT 1; SELECT 2',
+          filePath: null,
+          status: 'success',
+          cursorPosition: null,
+          connectionId: 'conn-1',
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              status: 'success',
+              queryId: 'q1',
+              editState: {
+                rowKey: { id: 1 },
+                originalValues: { name: 'Alice' },
+                currentValues: { name: 'Bob' },
+                modifiedColumns: new Set(['name']),
+                isNewRow: false,
+              },
+              editingRowIndex: 0,
+            },
+            {
+              ...DEFAULT_RESULT_STATE,
+              status: 'success',
+              queryId: 'q2',
+            },
+          ],
+          activeResultIndex: 0,
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+        },
+      },
+    })
+
+    // Try to close the tab
+    useWorkspaceStore.getState().closeTab('conn-1', tabId)
+
+    // Tab should NOT have been closed
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    expect(tabs).toHaveLength(1)
+
+    // requestNavigationAction should have set the pending action
+    const queryTab = useQueryStore.getState().tabs[tabId]
+    expect(queryTab?.pendingNavigationAction).not.toBeNull()
+  })
+
+  it('loops through multiple dirty results before closing (resolve first → check next)', () => {
+    const tabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    // Two dirty results: index 0 and index 2
+    useQueryStore.setState({
+      tabs: {
+        [tabId]: {
+          content: 'SELECT 1; SELECT 2; SELECT 3',
+          filePath: null,
+          status: 'success',
+          cursorPosition: null,
+          connectionId: 'conn-1',
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              status: 'success',
+              queryId: 'q1',
+              editState: {
+                rowKey: { id: 1 },
+                originalValues: { name: 'Alice' },
+                currentValues: { name: 'Modified1' },
+                modifiedColumns: new Set(['name']),
+                isNewRow: false,
+              },
+              editingRowIndex: 0,
+            },
+            {
+              ...DEFAULT_RESULT_STATE,
+              status: 'success',
+              queryId: 'q2',
+            },
+            {
+              ...DEFAULT_RESULT_STATE,
+              status: 'success',
+              queryId: 'q3',
+              editState: {
+                rowKey: { id: 2 },
+                originalValues: { email: 'a@b.com' },
+                currentValues: { email: 'x@y.com' },
+                modifiedColumns: new Set(['email']),
+                isNewRow: false,
+              },
+              editingRowIndex: 0,
+            },
+          ],
+          activeResultIndex: 1, // active is the clean one
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+        },
+      },
+    })
+
+    // Trigger close
+    useWorkspaceStore.getState().closeTab('conn-1', tabId)
+
+    // Tab should still be open
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(1)
+
+    // Should have switched to first dirty result (index 0) and set pendingNavigationAction
+    let queryTab = useQueryStore.getState().tabs[tabId]
+    expect(queryTab?.activeResultIndex).toBe(0)
+    expect(queryTab?.pendingNavigationAction).not.toBeNull()
+
+    // Simulate user discarding result 0 (clears its editState and calls pendingNavigationAction)
+    useQueryStore.getState().discardCurrentRow(tabId)
+    // Fire the pending action (simulates what confirmNavigation does)
+    const firstAction = useQueryStore.getState().tabs[tabId]?.pendingNavigationAction
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        [tabId]: { ...prev.tabs[tabId], pendingNavigationAction: null },
+      },
+    }))
+    firstAction?.()
+
+    // Now the loop should have found result 2 as the next dirty result
+    queryTab = useQueryStore.getState().tabs[tabId]
+    // Tab should STILL be open (result 2 is still dirty)
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(1)
+    expect(queryTab?.activeResultIndex).toBe(2)
+    expect(queryTab?.pendingNavigationAction).not.toBeNull()
+
+    // Simulate user discarding result 2
+    useQueryStore.getState().discardCurrentRow(tabId)
+    const secondAction = useQueryStore.getState().tabs[tabId]?.pendingNavigationAction
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        [tabId]: { ...prev.tabs[tabId], pendingNavigationAction: null },
+      },
+    }))
+    secondAction?.()
+
+    // Now all results are clean — tab should be closed
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1'] ?? []
+    expect(tabs).toHaveLength(0)
+  })
+
+  it('closes query-editor tab normally when no results are dirty', () => {
+    const tabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    // Set up query store with clean results
+    useQueryStore.setState({
+      tabs: {
+        [tabId]: {
+          content: 'SELECT 1; SELECT 2',
+          filePath: null,
+          status: 'success',
+          cursorPosition: null,
+          connectionId: 'conn-1',
+          results: [
+            { ...DEFAULT_RESULT_STATE, status: 'success', queryId: 'q1' },
+            { ...DEFAULT_RESULT_STATE, status: 'success', queryId: 'q2' },
+          ],
+          activeResultIndex: 0,
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+        },
+      },
+    })
+
+    useWorkspaceStore.getState().closeTab('conn-1', tabId)
+
+    // Tab should have been closed
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1'] ?? []
+    expect(tabs).toHaveLength(0)
   })
 })

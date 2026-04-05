@@ -241,6 +241,75 @@ async function waitForAutocomplete(page: Page, expectedText?: string) {
   return suggestWidget
 }
 
+/** Open a query editor tab, set multi-statement SQL, execute all, and wait for multi-result tabs. */
+async function openQueryEditorWithMultiResults(page: Page) {
+  await openQueryEditorTab(page)
+
+  // Set content with 3 SQL statements (will produce 2 SELECT + 1 DML via the mock)
+  await page.evaluate(() => {
+    const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => {
+        tabsByConnection: Record<string, { id: string; type: string }[]>
+      }
+    }
+    const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+    const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+    if (queryTab) {
+      const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+        getState: () => { setContent: (id: string, c: string) => void }
+      }
+      qStore
+        .getState()
+        .setContent(
+          queryTab.id,
+          "SELECT id, name FROM users;\nSELECT product_id, price FROM products;\nUPDATE users SET status = 'active' WHERE id = 1;"
+        )
+    }
+  })
+
+  await page.waitForTimeout(300)
+
+  // Click the Execute All button
+  await page.getByTestId('toolbar-execute-all').click()
+
+  // Wait for multi-result tab strip to appear (3 results → tabs visible)
+  await expect(page.getByTestId('result-sub-tabs')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('result-tab-0')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('result-tab-2')).toBeVisible({ timeout: APP_READY_MS })
+}
+
+/** Open a query editor tab, set a CALL statement, execute, and wait for stored proc results. */
+async function openQueryEditorWithCallResults(page: Page) {
+  await openQueryEditorTab(page)
+
+  // Set content with a CALL statement
+  await page.evaluate(() => {
+    const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => {
+        tabsByConnection: Record<string, { id: string; type: string }[]>
+      }
+    }
+    const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+    const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+    if (queryTab) {
+      const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+        getState: () => { setContent: (id: string, c: string) => void }
+      }
+      qStore.getState().setContent(queryTab.id, 'CALL sp_get_orders();')
+    }
+  })
+
+  await page.waitForTimeout(300)
+
+  // Click the Execute Query button (not Execute All — CALL is detected and routed)
+  await page.getByTestId('toolbar-execute').click()
+
+  // Wait for multi-result tab strip to appear (2 results → tabs visible)
+  await expect(page.getByTestId('result-sub-tabs')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('result-tab-0')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('result-tab-1')).toBeVisible({ timeout: APP_READY_MS })
+}
+
 /** Open a query editor tab, set SQL content, execute, and wait for results. */
 async function openQueryEditorWithResults(page: Page) {
   await openQueryEditorTab(page)
@@ -877,16 +946,24 @@ for (const theme of themes) {
           throw new Error('No active query tab found for sorted screenshot')
         }
 
-        queryStore.setState((state) => ({
-          tabs: {
-            ...state.tabs,
-            [activeTabId]: {
-              ...state.tabs[activeTabId],
-              sortColumn: 'name',
-              sortDirection: 'asc',
+        queryStore.setState((state) => {
+          const tab = state.tabs[activeTabId] as {
+            results: Array<Record<string, unknown>>
+            [key: string]: unknown
+          }
+          const updatedResults = tab.results.map((r, i) =>
+            i === 0 ? { ...r, sortColumn: 'name', sortDirection: 'asc' } : r
+          )
+          return {
+            tabs: {
+              ...state.tabs,
+              [activeTabId]: {
+                ...tab,
+                results: updatedResults,
+              },
             },
-          },
-        }))
+          }
+        })
       })
 
       // react-data-grid renders Phosphor ArrowUp SVG for ASC sort via SortStatusRenderer
@@ -1508,6 +1585,169 @@ for (const theme of themes) {
 
       await expect(page.getByTestId('object-browser-context-menu')).toHaveScreenshot(
         `context-menu-view-${theme}.png`
+      )
+    })
+
+    // --- Multi-result tab screenshots ---
+
+    test('Multi-result tabs — 3 result tabs (2 SELECT + 1 DML)', async ({ page }) => {
+      await openQueryEditorWithMultiResults(page)
+      // Active tab should be Result 1 (index 0)
+      await expect(page.getByTestId('result-tab-0')).toHaveAttribute('aria-selected', 'true')
+      // Screenshot the result panel showing the tab strip with grid view
+      await expect(page.getByTestId('result-panel')).toHaveScreenshot(
+        `multi-result-tabs-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('Multi-result tabs — DML tab active (affected rows message)', async ({ page }) => {
+      await openQueryEditorWithMultiResults(page)
+      // Click the DML result tab (Result 3, index 2)
+      await page.getByTestId('result-tab-2').click()
+      await expect(page.getByTestId('result-tab-2')).toHaveAttribute('aria-selected', 'true')
+      // Wait for the DML success message to appear
+      await expect(page.getByTestId('dml-success')).toBeVisible({ timeout: APP_READY_MS })
+      // Screenshot the result panel showing the DML tab
+      await expect(page.getByTestId('result-panel')).toHaveScreenshot(
+        `multi-result-dml-tab-active-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('Multi-result tabs — error result tab', async ({ page }) => {
+      await openQueryEditorTab(page)
+      // Inject a multi-result state with an error result via the store
+      await page.evaluate(() => {
+        const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            tabsByConnection: Record<string, { id: string; type: string }[]>
+          }
+        }
+        const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+        const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+        if (!queryTab) throw new Error('No query tab found')
+
+        const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+          setState: (
+            updater: (state: { tabs: Record<string, Record<string, unknown>> }) => {
+              tabs: Record<string, Record<string, unknown>>
+            }
+          ) => void
+        }
+
+        queryStore.setState((state) => ({
+          tabs: {
+            ...state.tabs,
+            [queryTab.id]: {
+              ...state.tabs[queryTab.id],
+              status: 'success',
+              connectionId: 'session-playwright-1',
+              activeResultIndex: 1,
+              results: [
+                {
+                  status: 'success',
+                  columns: [
+                    { name: 'id', dataType: 'BIGINT' },
+                    { name: 'name', dataType: 'VARCHAR' },
+                  ],
+                  rows: [
+                    [1, 'Alice'],
+                    [2, 'Bob'],
+                  ],
+                  totalRows: 2,
+                  executionTimeMs: 15,
+                  affectedRows: 0,
+                  queryId: 'mock-err-q1',
+                  currentPage: 1,
+                  totalPages: 1,
+                  pageSize: 1000,
+                  autoLimitApplied: false,
+                  errorMessage: null,
+                  viewMode: 'grid',
+                  sortColumn: null,
+                  sortDirection: null,
+                  selectedRowIndex: null,
+                  exportDialogOpen: false,
+                  lastExecutedSql: 'SELECT id, name FROM users',
+                  reExecutable: true,
+                  isAnalyzed: false,
+                  editMode: null,
+                  editTableMetadata: {},
+                  editForeignKeys: [],
+                  editState: null,
+                  isAnalyzingQuery: false,
+                  editableColumnMap: new Map(),
+                  editColumnBindings: new Map(),
+                  editBoundColumnIndexMap: new Map(),
+                  saveError: null,
+                  editConnectionId: null,
+                  editingRowIndex: null,
+                },
+                {
+                  status: 'error',
+                  columns: [],
+                  rows: [],
+                  totalRows: 0,
+                  executionTimeMs: 0,
+                  affectedRows: 0,
+                  queryId: null,
+                  currentPage: 1,
+                  totalPages: 1,
+                  pageSize: 1000,
+                  autoLimitApplied: false,
+                  errorMessage:
+                    "You have an error in your SQL syntax; check the manual near 'SELEC * FROM orders' at line 1",
+                  viewMode: 'grid',
+                  sortColumn: null,
+                  sortDirection: null,
+                  selectedRowIndex: null,
+                  exportDialogOpen: false,
+                  lastExecutedSql: 'SELEC * FROM orders',
+                  reExecutable: true,
+                  isAnalyzed: false,
+                  editMode: null,
+                  editTableMetadata: {},
+                  editForeignKeys: [],
+                  editState: null,
+                  isAnalyzingQuery: false,
+                  editableColumnMap: new Map(),
+                  editColumnBindings: new Map(),
+                  editBoundColumnIndexMap: new Map(),
+                  saveError: null,
+                  editConnectionId: null,
+                  editingRowIndex: null,
+                },
+              ],
+            },
+          },
+        }))
+      })
+
+      // Wait for the error tab to render
+      await expect(page.getByTestId('result-sub-tabs')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('result-tab-1')).toHaveAttribute('aria-selected', 'true')
+      await expect(page.getByTestId('result-panel')).toContainText('error in your SQL syntax', {
+        timeout: APP_READY_MS,
+      })
+
+      // Screenshot the result panel showing the error tab
+      await expect(page.getByTestId('result-panel')).toHaveScreenshot(
+        `multi-result-error-tab-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('Multi-result tabs — stored procedure read-only state', async ({ page }) => {
+      await openQueryEditorWithCallResults(page)
+      // Verify no edit mode dropdown is visible (reExecutable: false hides it)
+      await expect(page.getByTestId('edit-mode-dropdown')).toBeHidden()
+      // Verify page-size selector is disabled
+      await expect(page.getByTestId('page-size-select')).toBeDisabled()
+      // Screenshot the result panel showing stored procedure read-only state
+      await expect(page.getByTestId('result-panel')).toHaveScreenshot(
+        `multi-result-stored-proc-readonly-${theme}.png`,
+        { animations: 'disabled' }
       )
     })
   })
