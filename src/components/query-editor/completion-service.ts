@@ -204,6 +204,31 @@ function pushBuiltinFunctions(
   }
 }
 
+function pushFallbackKeywordsAndFunctions(
+  items: ICompletionItem[],
+  sortPrefix = SORT_PREFIX_NEUTRAL
+): void {
+  const seenLabels = new Set<string>()
+
+  for (const kw of SQL_KEYWORDS) {
+    if (seenLabels.has(kw)) {
+      continue
+    }
+
+    seenLabels.add(kw)
+    items.push(keywordItem(kw, sortPrefix))
+  }
+
+  for (const fn of SQL_BUILTIN_FUNCTIONS) {
+    if (seenLabels.has(fn)) {
+      continue
+    }
+
+    seenLabels.add(fn)
+    items.push(builtinFunctionItem(fn, sortPrefix))
+  }
+}
+
 function dbItem(db: string, sortPrefix = SORT_PREFIX_NEUTRAL): ICompletionItem {
   return {
     label: db,
@@ -345,12 +370,19 @@ export const completionService: CompletionService = async (
   // Fall back to SQL_KEYWORDS when parser provides empty keywords list.
   // -------------------------------------------------------------------
   if (!connectionId) {
-    const kwList = suggestions?.keywords.length ? suggestions.keywords : SQL_KEYWORDS
-    const items: ICompletionItem[] = kwList.map((kw) => keywordItem(kw))
+    const items: ICompletionItem[] = []
+
+    if (suggestions?.keywords.length) {
+      items.push(...suggestions.keywords.map((kw) => keywordItem(kw)))
+    } else {
+      pushFallbackKeywordsAndFunctions(items)
+    }
+
     // Include built-in functions during keyword fallback and explicit function context.
-    if (!suggestions?.keywords.length || (suggestions && hasFunctionContext(suggestions))) {
+    if (suggestions?.keywords.length && suggestions && hasFunctionContext(suggestions)) {
       pushBuiltinFunctions(items, null)
     }
+
     items.push(...mapSnippetsToItems(snippets))
     return items
   }
@@ -781,10 +813,7 @@ function buildParseFallback(
           : SORT_PREFIX_NEUTRAL
 
       // Basic keywords and built-in functions (ranked lower when database/table context detected)
-      for (const kw of SQL_KEYWORDS) {
-        items.push(keywordItem(kw, keywordSortPrefix))
-      }
-      pushBuiltinFunctions(items, null, keywordSortPrefix)
+      pushFallbackKeywordsAndFunctions(items, keywordSortPrefix)
 
       if (mode.type === 'databases') {
         for (const db of cache.databases) {
@@ -840,10 +869,7 @@ function buildParseFallback(
     }
   } else {
     // Basic keywords and built-in functions (neutral ranking in fallback — no context available)
-    for (const kw of SQL_KEYWORDS) {
-      items.push(keywordItem(kw))
-    }
-    pushBuiltinFunctions(items, null)
+    pushFallbackKeywordsAndFunctions(items)
   }
 
   // Snippets

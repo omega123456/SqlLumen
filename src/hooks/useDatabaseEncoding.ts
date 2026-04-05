@@ -83,16 +83,16 @@ export function useDatabaseEncoding(
   }, [initialCharset, initialCollation, isOpen])
 
   useEffect(() => {
-    if (initialCharset !== undefined) {
+    if (isOpen && initialCharset !== undefined) {
       setCharsetState(initialCharset)
     }
-  }, [initialCharset])
+  }, [initialCharset, isOpen])
 
   useEffect(() => {
-    if (initialCollation !== undefined) {
+    if (isOpen && initialCollation !== undefined) {
       setCollation(initialCollation)
     }
-  }, [initialCollation])
+  }, [initialCollation, isOpen])
 
   // Filter collations by selected charset
   const filteredCollations = charset ? collations.filter((c) => c.charset === charset) : collations

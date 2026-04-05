@@ -184,9 +184,13 @@ export function buildAliasMapFromText(
     const tablePart = match[1]
     const aliasPart = match[2]
 
+    const isQuotedAlias =
+      aliasPart.length >= 2 &&
+      ((aliasPart.startsWith('`') && aliasPart.endsWith('`')) ||
+        (aliasPart.startsWith('"') && aliasPart.endsWith('"')))
     const aliasText = stripQuotes(aliasPart).toLowerCase()
     if (!aliasText) continue
-    if (SQL_RESERVED_WORDS_SET.has(aliasText)) continue
+    if (!isQuotedAlias && SQL_RESERVED_WORDS_SET.has(aliasText)) continue
 
     const resolved = parseTableRef(tablePart, activeDatabase)
     if (!resolved) continue

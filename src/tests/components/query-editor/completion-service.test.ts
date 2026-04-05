@@ -1514,19 +1514,41 @@ describe('completionService — empty keywords fallback', () => {
     )
     const labels = items.map(getLabel)
 
-    // Should contain SQL_KEYWORDS (the fallback list)
-    expect(labels).toContain('SELECT')
-    expect(labels).toContain('FROM')
-    expect(labels).toContain('WHERE')
-    expect(labels).toContain('INSERT')
-    expect(labels.length).toBeGreaterThan(0)
+    const expectedCoreKeywords = ['SELECT', 'FROM', 'WHERE', 'INSERT']
+    const expectedProceduralKeywords = [
+      'DECLARE',
+      'CALL',
+      'CURSOR',
+      'ELSEIF',
+      'ITERATE',
+      'LEAVE',
+      'LOOP',
+      'RETURN',
+      'SIGNAL',
+      'RESIGNAL',
+      'WHILE',
+    ]
+    const expectedModernKeywords = [
+      'LATERAL',
+      'RECURSIVE',
+      'INTERSECT',
+      'EXCEPT',
+      'QUALIFY',
+      'TABLESAMPLE',
+      'PARALLEL',
+    ]
+    const expectedBuiltinFunctions = ['CONCAT', 'NOW', 'JSON_EXTRACT', 'BIN_TO_UUID', 'REGEXP_LIKE']
 
-    // Should also contain built-in functions
-    expect(labels).toContain('CONCAT')
-    expect(labels).toContain('NOW')
-    expect(labels).toContain('JSON_EXTRACT')
-    expect(labels).toContain('BIN_TO_UUID')
-    expect(labels).toContain('REGEXP_LIKE')
+    for (const expectedLabel of [
+      ...expectedCoreKeywords,
+      ...expectedProceduralKeywords,
+      ...expectedModernKeywords,
+      ...expectedBuiltinFunctions,
+    ]) {
+      expect(labels).toContain(expectedLabel)
+    }
+
+    expect(new Set(labels).size).toBe(labels.length)
 
     // All should be keyword or function items
     expect(
