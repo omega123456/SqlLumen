@@ -26,7 +26,7 @@ import { buildAliasMap, buildAliasMapFromText, stripQuotes } from './alias-resol
 import type { AliasMap } from './alias-resolver'
 import { useConnectionStore } from '../../stores/connection-store'
 import { parseNodeId, useSchemaStore } from '../../stores/schema-store'
-import { SQL_KEYWORDS, SQL_BUILTIN_FUNCTIONS } from './sql-keywords'
+import { SQL_KEYWORDS, SQL_BUILTIN_FUNCTIONS, STORED_PROGRAM_BODY_KEYWORDS } from './sql-keywords'
 import { findStatementAtCursor, splitStatements } from './sql-parser-utils'
 
 // ---------------------------------------------------------------------------
@@ -94,6 +94,71 @@ function hasFunctionContext(suggestions: Suggestions): boolean {
   return suggestions.syntax.some((s) => s.syntaxContextType === EntityContextType.FUNCTION)
 }
 
+function getCurrentWordPrefix(model: editor.IReadOnlyModel, position: Position): string {
+  return model.getWordUntilPosition(position).word.toUpperCase()
+}
+
+function canSupplementStoredProgramBodyKeywords(
+  suggestions: Suggestions,
+  currentWordPrefix: string
+): boolean {
+  if (suggestions.syntax.length === 0) {
+    return true
+  }
+
+  return currentWordPrefix.length > 0 && 'DECLARE'.startsWith(currentWordPrefix)
+}
+
+function hasUnclosedStoredProgramBegin(statementPrefix: string): boolean {
+  const tokens =
+    statementPrefix.match(/\bBEGIN\b|\bEND\s+(?:IF|CASE|LOOP|WHILE|REPEAT)\b|\bEND\b/gi) ?? []
+  let depth = 0
+
+  for (const token of tokens) {
+    const upperToken = token.toUpperCase()
+
+    if (upperToken === 'BEGIN') {
+      depth += 1
+    } else if (upperToken === 'END' && depth > 0) {
+      depth -= 1
+    }
+  }
+
+  return depth > 0
+}
+
+function isStoredProgramBodyContext(statementPrefix: string): boolean {
+  const routineDeclarationPrefixMatch = statementPrefix.match(
+    /CREATE\b[\s\S]*\b(?:PROCEDURE|FUNCTION|TRIGGER|EVENT)\b/i
+  )
+
+  if (!routineDeclarationPrefixMatch || routineDeclarationPrefixMatch.index === undefined) {
+    return false
+  }
+
+  const routinePrefix = statementPrefix.slice(routineDeclarationPrefixMatch.index)
+  const sanitizedPrefix = statementPrefix
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/#[^\n]*/g, ' ')
+    .replace(/'[^'\\]*(?:\\.[^'\\]*)*'/g, ' ')
+    .replace(/"[^"\\]*(?:\\.[^"\\]*)*"/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+
+  const sanitizedRoutinePrefix = routinePrefix
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/#[^\n]*/g, ' ')
+    .replace(/'[^'\\]*(?:\\.[^'\\]*)*'/g, ' ')
+    .replace(/"[^"\\]*(?:\\.[^"\\]*)*"/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+
+  return (
+    /CREATE\b[\s\S]*\b(?:PROCEDURE|FUNCTION|TRIGGER|EVENT)\b/i.test(sanitizedPrefix) &&
+    hasUnclosedStoredProgramBegin(sanitizedRoutinePrefix)
+  )
+}
+
 function getSelectedDatabase(connectionId: string | undefined): string | null {
   if (!connectionId) return null
 
@@ -125,6 +190,13 @@ function getCurrentStatementText(model: editor.IReadOnlyModel, position: Positio
   const statement = findStatementAtCursor(statements, caretOffset)
 
   return statement?.sql ?? sql
+}
+
+function getCursorPrefix(model: editor.IReadOnlyModel, position: Position): string {
+  const sql = model.getValue()
+  const caretOffset = model.getOffsetAt(position)
+
+  return sql.slice(0, caretOffset)
 }
 
 function isInTableReferenceClause(statementPrefix: string): boolean {
@@ -226,6 +298,33 @@ function pushFallbackKeywordsAndFunctions(
 
     seenLabels.add(fn)
     items.push(builtinFunctionItem(fn, sortPrefix))
+  }
+}
+
+function pushStoredProgramBodyKeywords(
+  items: ICompletionItem[],
+  statementPrefix: string,
+  suggestions: Suggestions,
+  currentWordPrefix: string,
+  existingKeywords: readonly string[],
+  sortPrefix = SORT_PREFIX_NEUTRAL
+): void {
+  if (
+    !isStoredProgramBodyContext(statementPrefix) ||
+    !canSupplementStoredProgramBodyKeywords(suggestions, currentWordPrefix)
+  ) {
+    return
+  }
+
+  const seenKeywords = new Set(existingKeywords.map((kw) => kw.toUpperCase()))
+
+  for (const kw of STORED_PROGRAM_BODY_KEYWORDS) {
+    if (seenKeywords.has(kw)) {
+      continue
+    }
+
+    seenKeywords.add(kw)
+    items.push(keywordItem(kw, sortPrefix))
   }
 }
 
@@ -341,6 +440,8 @@ export const completionService: CompletionService = async (
   const scopedResolutionDatabase = activeDatabase ?? selectedDatabase
   const currentStatementPrefix = getCurrentStatementPrefix(model, position)
   const currentStatementText = getCurrentStatementText(model, position)
+  const cursorPrefix = getCursorPrefix(model, position)
+  const currentWordPrefix = getCurrentWordPrefix(model, position)
 
   // Build alias map from entities (pure function — no side effects)
   const aliasMap = buildAliasMap(entities, scopedResolutionDatabase)
@@ -374,6 +475,13 @@ export const completionService: CompletionService = async (
 
     if (suggestions?.keywords.length) {
       items.push(...suggestions.keywords.map((kw) => keywordItem(kw)))
+      pushStoredProgramBodyKeywords(
+        items,
+        cursorPrefix,
+        suggestions,
+        currentWordPrefix,
+        suggestions.keywords
+      )
     } else {
       pushFallbackKeywordsAndFunctions(items)
     }
@@ -571,6 +679,15 @@ export const completionService: CompletionService = async (
   for (const kw of suggestions.keywords) {
     items.push(keywordItem(kw, kwSortPrefix))
   }
+
+  pushStoredProgramBodyKeywords(
+    items,
+    cursorPrefix,
+    suggestions,
+    currentWordPrefix,
+    suggestions.keywords,
+    kwSortPrefix
+  )
 
   // Snippets (ranked same as keywords)
   items.push(...mapSnippetsToItems(snippets, snippetSortPrefix))

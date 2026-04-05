@@ -887,6 +887,207 @@ describe('completionService — procedure suggestions', () => {
     )
     expect(fnItems).toHaveLength(0)
   })
+
+  it('supplements stored routine body keywords that the parser omits inside BEGIN END blocks', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'CREATE PROCEDURE test()\nBEGIN\n  DECL\nEND',
+      pos(3, 7),
+      buildSuggestions({
+        keywords: ['SELECT', 'SET'],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    const expectedRoutineKeywords = [
+      'CONDITION',
+      'CONTINUE',
+      'DECLARE',
+      'ELSEIF',
+      'EXIT',
+      'ITERATE',
+      'LEAVE',
+      'LOOP',
+      'RESIGNAL',
+      'SIGNAL',
+      'WHILE',
+    ]
+    const expectedParserKeywords = ['SELECT', 'SET']
+
+    expect(labels).toEqual(expect.arrayContaining(expectedRoutineKeywords))
+    expect(labels).toEqual(expect.arrayContaining(expectedParserKeywords))
+  })
+
+  it('does not treat BEGIN inside routine comments as routine-body context', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'CREATE PROCEDURE test()\n-- BEGIN later\nSELECT ',
+      pos(3, 8),
+      buildSuggestions({
+        keywords: ['SELECT', 'SET'],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).not.toContain('DECLARE')
+    expect(labels).not.toContain('LOOP')
+    expect(labels).toEqual(expect.arrayContaining(['SELECT', 'SET']))
+  })
+
+  it('does not inject routine-body keywords inside nested SQL clause contexts', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'CREATE PROCEDURE test()\nBEGIN\n  SELECT * FROM users WHERE \nEND',
+      pos(3, 29),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: ['WHERE'],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).not.toContain('DECLARE')
+    expect(labels).not.toContain('LOOP')
+    expect(labels).toContain('WHERE')
+  })
+
+  it('still detects routine-body context when a comment contains quotes before BEGIN', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      "CREATE PROCEDURE test()\n-- comment with ' quote\nBEGIN\n  SET @value = 'x'\n  DECL\nEND",
+      pos(5, 7),
+      buildSuggestions({
+        keywords: ['SELECT', 'SET'],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('DECLARE')
+    expect(labels).toContain('LOOP')
+  })
+
+  it('does not inject routine-body keywords after END closes the routine body', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'CREATE PROCEDURE test()\nBEGIN\n  SELECT 1;\nEND\nSEL',
+      pos(5, 4),
+      buildSuggestions({
+        keywords: ['SELECT', 'SET'],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).not.toContain('DECLARE')
+    expect(labels).not.toContain('LOOP')
+    expect(labels).toEqual(expect.arrayContaining(['SELECT', 'SET']))
+  })
+
+  it('still supplements DECLARE in procedure bodies after prior semicolon statements', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'CREATE PROCEDURE test()\nBEGIN\n  SET @value = 1;\n  DECL\nEND',
+      pos(4, 7),
+      buildSuggestions({
+        keywords: ['SELECT', 'SET'],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('DECLARE')
+    expect(labels).toContain('LOOP')
+    expect(labels).toEqual(expect.arrayContaining(['SELECT', 'SET']))
+  })
+
+  it('keeps supplementing DECLARE after END IF inside a procedure body', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      [
+        'CREATE PROCEDURE test()',
+        'BEGIN',
+        '  IF 1 = 1 THEN',
+        '    SET @value = 1;',
+        '  END IF;',
+        '  DECL',
+        'END',
+      ].join('\n'),
+      pos(6, 7),
+      buildSuggestions({
+        keywords: ['SELECT', 'SET'],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('DECLARE')
+    expect(labels).toContain('LOOP')
+  })
+
+  it('supplements DECLARE when DELIMITER and USE appear before CREATE PROCEDURE', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      [
+        'USE app_db;',
+        'DELIMITER $$',
+        'CREATE PROCEDURE test()',
+        'BEGIN',
+        '  SET @value = 1;',
+        '  DECL',
+        'END$$',
+        'DELIMITER ;',
+      ].join('\n'),
+      pos(6, 7),
+      buildSuggestions({
+        keywords: ['SELECT', 'SET'],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('DECLARE')
+    expect(labels).toContain('LOOP')
+  })
+
+  it('supplements DECLARE in routine body even when parser syntax contexts are non-empty', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'CREATE PROCEDURE test()\nBEGIN\n  DECL\nEND',
+      pos(3, 7),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: ['SELECT', 'SET'],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('DECLARE')
+    expect(labels).toContain('SELECT')
+    expect(labels).toContain('SET')
+  })
 })
 
 describe('completionService — dot notation (db.)', () => {

@@ -152,6 +152,8 @@ describe('AlterDatabaseDialog', () => {
     await waitFor(() => {
       expect(screen.getByTestId('alter-db-error')).toHaveTextContent('Permission denied')
     })
+
+    expect(screen.getByTestId('alter-db-submit-button')).toBeEnabled()
   })
 
   it('cannot be dismissed while submission is in progress', async () => {
@@ -247,5 +249,38 @@ describe('AlterDatabaseDialog', () => {
     await waitForAlterDatabaseDialogIdle()
     expect(screen.getByText('utf8mb4')).toBeInTheDocument()
     expect(screen.getByText('utf8mb4_general_ci')).toBeInTheDocument()
+  })
+
+  it('clears stale submit errors when switching databases while open', async () => {
+    const user = userEvent.setup()
+    mockAlterDatabase.mockRejectedValueOnce(new Error('Permission denied'))
+    mockGetDatabaseDetails
+      .mockResolvedValueOnce({
+        name: 'test_db',
+        defaultCharacterSet: 'utf8mb4',
+        defaultCollation: 'utf8mb4_general_ci',
+      })
+      .mockResolvedValueOnce({
+        name: 'other_db',
+        defaultCharacterSet: 'latin1',
+        defaultCollation: 'latin1_swedish_ci',
+      })
+
+    const { rerender } = render(<AlterDatabaseDialog {...defaultProps} isOpen={true} />)
+
+    await waitForAlterDatabaseDialogIdle()
+    await user.click(screen.getByTestId('alter-db-submit-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('alter-db-error')).toHaveTextContent('Permission denied')
+    })
+
+    rerender(<AlterDatabaseDialog {...defaultProps} databaseName="other_db" isOpen={true} />)
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('alter-db-error')).not.toBeInTheDocument()
+      expect(screen.getByText('latin1')).toBeInTheDocument()
+      expect(screen.getByText('latin1_swedish_ci')).toBeInTheDocument()
+    })
   })
 })

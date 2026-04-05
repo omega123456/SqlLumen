@@ -753,6 +753,34 @@ export const SQL_KEYWORDS: readonly string[] = [
   'ZONE',
 ] as const
 
+export const STORED_PROGRAM_BODY_KEYWORDS: readonly string[] = [
+  'CALL',
+  'CASE',
+  'CLOSE',
+  'CONDITION',
+  'CONTINUE',
+  'CURSOR',
+  'DECLARE',
+  'ELSE',
+  'ELSEIF',
+  'EXIT',
+  'FETCH',
+  'HANDLER',
+  'IF',
+  'ITERATE',
+  'LEAVE',
+  'LOOP',
+  'OPEN',
+  'REPEAT',
+  'RESIGNAL',
+  'RETURN',
+  'SIGNAL',
+  'THEN',
+  'UNTIL',
+  'WHEN',
+  'WHILE',
+]
+
 // ---------------------------------------------------------------------------
 // MySQL/MariaDB built-in functions (uppercase — used for completion items)
 //

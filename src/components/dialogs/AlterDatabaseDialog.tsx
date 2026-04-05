@@ -7,6 +7,11 @@ import { DialogShell } from './DialogShell'
 import { showErrorToast } from '../../stores/toast-store'
 import styles from './AlterDatabaseDialog.module.css'
 
+interface InitialEncodingState {
+  charset?: string
+  collation?: string
+}
+
 export interface AlterDatabaseDialogProps {
   isOpen: boolean
   connectionId: string
@@ -23,18 +28,17 @@ export function AlterDatabaseDialog({
   onCancel,
 }: AlterDatabaseDialogProps) {
   const [detailsLoading, setDetailsLoading] = useState(true)
-  const [initialCharset, setInitialCharset] = useState<string | undefined>(undefined)
-  const [initialCollation, setInitialCollation] = useState<string | undefined>(undefined)
+  const [initialEncoding, setInitialEncoding] = useState<InitialEncodingState>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [detailsError, setDetailsError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen) return
     setDetailsLoading(true)
-    setInitialCharset(undefined)
-    setInitialCollation(undefined)
     setIsSubmitting(false)
-    setError(null)
+    setDetailsError(null)
+    setSubmitError(null)
   }, [isOpen])
 
   // Load current database details on open
@@ -44,17 +48,20 @@ export function AlterDatabaseDialog({
 
     async function load() {
       setDetailsLoading(true)
-      setError(null)
+      setDetailsError(null)
+      setSubmitError(null)
       try {
         const details = await getDatabaseDetails(connectionId, databaseName)
         if (!cancelled) {
-          setInitialCharset(details.defaultCharacterSet)
-          setInitialCollation(details.defaultCollation)
+          setInitialEncoding({
+            charset: details.defaultCharacterSet,
+            collation: details.defaultCollation,
+          })
         }
       } catch (err) {
         if (!cancelled) {
           const msg = err instanceof Error ? err.message : String(err)
-          setError(msg)
+          setDetailsError(msg)
           showErrorToast('Failed to load database', msg)
         }
       } finally {
@@ -70,17 +77,23 @@ export function AlterDatabaseDialog({
     }
   }, [isOpen, connectionId, databaseName])
 
-  const encoding = useDatabaseEncoding(connectionId, isOpen, initialCharset, initialCollation)
+  const encoding = useDatabaseEncoding(
+    connectionId,
+    isOpen,
+    initialEncoding.charset,
+    initialEncoding.collation
+  )
 
   // Combine loading states
   const isLoading = detailsLoading || encoding.isLoading
 
   // Combine errors
-  const displayError = error || encoding.error
+  const displayError = submitError || detailsError || encoding.error
+  const hasBlockingLoadError = detailsError !== null || encoding.error !== null
 
   const handleSubmit = async () => {
     setIsSubmitting(true)
-    setError(null)
+    setSubmitError(null)
 
     try {
       await alterDatabase(
@@ -92,7 +105,7 @@ export function AlterDatabaseDialog({
       onSuccess()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      setError(msg)
+      setSubmitError(msg)
       showErrorToast('Failed to alter database', msg)
     } finally {
       setIsSubmitting(false)
@@ -132,7 +145,7 @@ export function AlterDatabaseDialog({
 
       {isLoading ? (
         <div className={styles.loading}>Loading database details...</div>
-      ) : (
+      ) : hasBlockingLoadError ? null : (
         <>
           <div className={styles.formGroup}>
             <label className={styles.label} id="alter-db-charset-label">
@@ -180,7 +193,7 @@ export function AlterDatabaseDialog({
         <Button
           variant="primary"
           onClick={handleSubmit}
-          disabled={isLoading || isSubmitting}
+          disabled={detailsLoading || encoding.isLoading || hasBlockingLoadError || isSubmitting}
           data-testid="alter-db-submit-button"
         >
           {isSubmitting ? 'Saving...' : 'Alter Database'}
