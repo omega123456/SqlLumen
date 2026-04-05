@@ -316,6 +316,34 @@ async function openTableDataTab(page: Page) {
   })
 }
 
+/** Open a table data tab for a view and wait for data to load. */
+async function openViewDataTab(page: Page) {
+  await connectToSample(page)
+
+  // Programmatically open a table-data tab for a view via the workspace store
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-data',
+      label: 'user_stats_view',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'user_stats_view',
+      objectType: 'view',
+    })
+  })
+
+  // Wait for the table data tab to mount and data to load
+  await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+  // Wait for loading to finish — the toolbar shows row count when done
+  await expect(page.getByTestId('table-data-toolbar')).toContainText('Rows', {
+    timeout: APP_READY_MS,
+  })
+}
+
 /** Open a table data tab for the `orders` table and wait for data to load. */
 async function openOrdersTableDataTab(page: Page) {
   await connectToSample(page)
@@ -1180,6 +1208,20 @@ for (const theme of themes) {
       await openTableDataTab(page)
       await expect(page.getByTestId('table-data-toolbar')).toHaveScreenshot(
         `table-data-toolbar-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('view data tab — VIEW badge and no mutation buttons', async ({ page }) => {
+      await openViewDataTab(page)
+      await expect(page.getByTestId('view-badge')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
+        `view-data-tab-${theme}.png`,
         { animations: 'disabled' }
       )
     })

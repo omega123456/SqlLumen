@@ -35,6 +35,25 @@
 }
 
 /* Badges */
+.viewBadge {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  background-color: var(--color-accent-muted, rgba(var(--primary-rgb), 0.15));
+  color: var(--color-accent, var(--primary));
+  border: 1px solid var(--color-accent-border, rgba(var(--primary-rgb), 0.3));
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
+}
+
 .readonlyBadge {
   display: flex;
   align-items: center;

@@ -39,6 +39,8 @@ export function TableDataTab({ tab }: TableDataTabProps) {
   // Look up the active connection to get the profile for readOnly info
   const activeConnection = useConnectionStore((state) => state.activeConnections[connectionId])
   const isReadOnly = activeConnection?.profile?.readOnly ?? false
+  const isViewObject = tdTab.objectType === 'view'
+  const effectiveReadOnly = isReadOnly || isViewObject
 
   useEffect(() => {
     // Only init + load if we don't already have state for this tab
@@ -105,12 +107,13 @@ export function TableDataTab({ tab }: TableDataTabProps) {
   const saveError = tabState?.saveError ?? null
   const columns = tabState?.columns ?? []
 
-  // Show no-PK warning when data has loaded, no error, and no PK was found
-  const showNoPkWarning = primaryKey === null && !isLoading && !error && columns.length > 0
+  // Show no-PK warning only for actual tables, not views (views never have PKs)
+  const showNoPkWarning =
+    !isViewObject && primaryKey === null && !isLoading && !error && columns.length > 0
 
   return (
     <div className={styles.container} data-testid="table-data-tab">
-      <TableDataToolbar tabId={tabId} />
+      <TableDataToolbar tabId={tabId} isView={isViewObject} />
 
       {/* No-PK Warning Banner */}
       {showNoPkWarning && (
@@ -152,9 +155,9 @@ export function TableDataTab({ tab }: TableDataTabProps) {
       {!error && columns.length > 0 && (
         <div className={styles.content}>
           {viewMode === 'grid' && (
-            <TableDataGrid tabId={tabId} isReadOnly={isReadOnly || !primaryKey} />
+            <TableDataGrid tabId={tabId} isReadOnly={effectiveReadOnly || !primaryKey} />
           )}
-          {viewMode === 'form' && <TableDataFormView tabId={tabId} />}
+          {viewMode === 'form' && <TableDataFormView tabId={tabId} isView={isViewObject} />}
         </div>
       )}
 
@@ -168,6 +171,7 @@ export function TableDataTab({ tab }: TableDataTabProps) {
           onClose={() => closeExportDialog(tabId)}
           onExport={handleExport}
           defaultTableName={table}
+          isView={isViewObject}
         />
       )}
 

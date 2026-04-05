@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import { Checkbox } from '../common/Checkbox'
@@ -26,6 +26,8 @@ interface ExportDialogProps {
   }) => Promise<void>
   /** When provided, used as the initial table name instead of 'exported_results'. */
   defaultTableName?: string
+  /** When true, hides the SQL INSERT format option (views cannot be inserted into). */
+  isView?: boolean
 }
 
 const EXPORT_FORMAT_CONFIG: Record<
@@ -79,6 +81,7 @@ export default function ExportDialog({
   onClose,
   onExport,
   defaultTableName,
+  isView,
 }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>('csv')
   const [filePath, setFilePath] = useState('')
@@ -87,14 +90,21 @@ export default function ExportDialog({
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Guard: reset format to 'csv' if the current format is not available for views
+  useEffect(() => {
+    if (isView && format === 'sql-insert') {
+      setFormat('csv')
+    }
+  }, [isView, format])
+
   const formatDropdownOptions: DropdownOption[] = useMemo(
     () =>
-      FORMAT_KEYS.map((key) => ({
+      FORMAT_KEYS.filter((key) => !(isView && key === 'sql-insert')).map((key) => ({
         value: key,
         label: EXPORT_FORMAT_CONFIG[key].label,
         description: EXPORT_FORMAT_CONFIG[key].description,
       })),
-    []
+    [isView]
   )
 
   const estimatedSizeText = useMemo(() => {

@@ -1139,6 +1139,62 @@ describe('ObjectBrowserContextMenu', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // Phase 3 — View Data context menu item
+  // ---------------------------------------------------------------------------
+
+  it('view context menu has "View Data" option', () => {
+    const { nodes, viewId } = makeNodes()
+    setNodes(nodes)
+
+    render(
+      <ObjectBrowserContextMenu
+        visible
+        x={100}
+        y={100}
+        nodeId={viewId}
+        connectionId={CONN_ID}
+        isReadOnly={false}
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(screen.getByTestId('ctx-view-data')).toBeInTheDocument()
+  })
+
+  it('clicking "View Data" opens table-data tab with objectType view', async () => {
+    const user = userEvent.setup()
+    const { nodes, viewId } = makeNodes()
+    setNodes(nodes)
+    const onClose = vi.fn()
+
+    render(
+      <ObjectBrowserContextMenu
+        visible
+        x={100}
+        y={100}
+        nodeId={viewId}
+        connectionId={CONN_ID}
+        isReadOnly={false}
+        onClose={onClose}
+      />
+    )
+
+    await user.click(screen.getByTestId('ctx-view-data'))
+
+    const state = useWorkspaceStore.getState()
+    const tabs = state.tabsByConnection[CONN_ID]
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0]).toMatchObject({
+      type: 'table-data',
+      label: 'user_stats',
+      connectionId: CONN_ID,
+      databaseName: 'testdb',
+      objectName: 'user_stats',
+      objectType: 'view',
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // Phase 8.5 — Execute routine
   // ---------------------------------------------------------------------------
 

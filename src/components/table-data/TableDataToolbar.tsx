@@ -27,9 +27,10 @@ import styles from './TableDataToolbar.module.css'
 
 interface TableDataToolbarProps {
   tabId: string
+  isView?: boolean
 }
 
-export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
+export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProps) {
   const tabState = useTableDataStore((state) => state.tabs[tabId])
 
   const requestNavigationAction = useTableDataStore((state) => state.requestNavigationAction)
@@ -217,6 +218,13 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
           executionTimeMs={executionTimeMs > 0 ? executionTimeMs : undefined}
         />
 
+        {/* View badge — for SQL view objects */}
+        {isView && (
+          <span className={styles.viewBadge} data-testid="view-badge">
+            VIEW
+          </span>
+        )}
+
         {/* Read-only badge */}
         {isConnectionReadOnly && (
           <span className={styles.readonlyBadge} data-testid="readonly-badge">
@@ -224,8 +232,8 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
           </span>
         )}
 
-        {/* No-PK badge */}
-        {!hasPk && !isLoading && tabState?.columns?.length > 0 && (
+        {/* No-PK badge — only for tables without a primary key */}
+        {!isView && !hasPk && !isLoading && tabState?.columns?.length > 0 && (
           <span className={styles.nopkBadge} data-testid="nopk-badge">
             NO KEY
           </span>
@@ -234,53 +242,57 @@ export function TableDataToolbar({ tabId }: TableDataToolbarProps) {
         {/* Divider */}
         <div className={styles.divider} />
 
-        {/* Action buttons */}
-        <button
-          type="button"
-          className={styles.toolbarButton}
-          disabled={isMutationDisabled || isEditingNewRow || isLoading}
-          onClick={handleAddRow}
-          title="Add row"
-          data-testid="btn-add-row"
-        >
-          <Plus size={14} weight="bold" />
-          <span>Add</span>
-        </button>
+        {/* Action buttons — hidden for views (read-only) */}
+        {!isView && (
+          <>
+            <button
+              type="button"
+              className={styles.toolbarButton}
+              disabled={isMutationDisabled || isEditingNewRow || isLoading}
+              onClick={handleAddRow}
+              title="Add row"
+              data-testid="btn-add-row"
+            >
+              <Plus size={14} weight="bold" />
+              <span>Add</span>
+            </button>
 
-        <button
-          type="button"
-          className={styles.toolbarButton}
-          disabled={!canDelete || isLoading}
-          onClick={handleDeleteRow}
-          title="Delete row"
-          data-testid="btn-delete-row"
-        >
-          <Trash size={14} weight="regular" />
-          <span>Delete</span>
-        </button>
+            <button
+              type="button"
+              className={styles.toolbarButton}
+              disabled={!canDelete || isLoading}
+              onClick={handleDeleteRow}
+              title="Delete row"
+              data-testid="btn-delete-row"
+            >
+              <Trash size={14} weight="regular" />
+              <span>Delete</span>
+            </button>
 
-        <button
-          type="button"
-          className={styles.toolbarButton}
-          disabled={!hasModifications || isLoading}
-          onClick={handleSave}
-          title="Save changes"
-          data-testid="btn-save"
-        >
-          <FloppyDisk size={14} weight="regular" />
-          <span>Save</span>
-        </button>
+            <button
+              type="button"
+              className={styles.toolbarButton}
+              disabled={!hasModifications || isLoading}
+              onClick={handleSave}
+              title="Save changes"
+              data-testid="btn-save"
+            >
+              <FloppyDisk size={14} weight="regular" />
+              <span>Save</span>
+            </button>
 
-        <button
-          type="button"
-          className={styles.toolbarButton}
-          disabled={editState === null || isLoading}
-          onClick={handleDiscard}
-          title="Discard changes"
-          data-testid="btn-discard"
-        >
-          <span>Discard</span>
-        </button>
+            <button
+              type="button"
+              className={styles.toolbarButton}
+              disabled={editState === null || isLoading}
+              onClick={handleDiscard}
+              title="Discard changes"
+              data-testid="btn-discard"
+            >
+              <span>Discard</span>
+            </button>
+          </>
+        )}
 
         <button
           type="button"

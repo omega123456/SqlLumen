@@ -34,6 +34,32 @@ export function useDatabaseEncoding(
   const [isLoading, setIsLoading] = useState(() => isOpen)
   const [error, setError] = useState<string | null>(null)
   const wasOpenRef = useRef(isOpen)
+  // Track the last initialCharset/initialCollation values that were applied so
+  // we can synchronously apply updates within the same render cycle.
+  const prevInitialCharsetRef = useRef(initialCharset)
+  const prevInitialCollationRef = useRef(initialCollation)
+
+  // Synchronously apply initialCharset/initialCollation changes during render.
+  // Using refs + mid-render state updates (React-recommended getDerivedStateFromProps
+  // equivalent) ensures the new value is visible in the same render that delivers
+  // the updated prop, avoiding the one-render lag that useEffect-based syncing
+  // causes (which made `waitForAlterDatabaseDialogIdle` resolve before the charset
+  // state was updated on reopen).
+  if (isOpen && initialCharset !== undefined && initialCharset !== prevInitialCharsetRef.current) {
+    prevInitialCharsetRef.current = initialCharset
+    // Calling setState during render is the React-approved pattern for
+    // getDerivedStateFromProps; React will immediately re-render with the new value.
+    setCharsetState(initialCharset)
+  }
+
+  if (
+    isOpen &&
+    initialCollation !== undefined &&
+    initialCollation !== prevInitialCollationRef.current
+  ) {
+    prevInitialCollationRef.current = initialCollation
+    setCollation(initialCollation)
+  }
 
   // Fetch charsets and collations when dialog opens
   useEffect(() => {
@@ -78,26 +104,27 @@ export function useDatabaseEncoding(
       return
     }
 
+    prevInitialCharsetRef.current = undefined
+    prevInitialCollationRef.current = undefined
     setCharsetState('')
     setCollation('')
   }, [initialCharset, initialCollation, isOpen])
 
+  // Keep prev refs in sync when dialog closes so the next open cycle correctly
+  // detects a change if initialCharset/initialCollation are set again.
   useEffect(() => {
-    if (isOpen && initialCharset !== undefined) {
-      setCharsetState(initialCharset)
+    if (!isOpen) {
+      prevInitialCharsetRef.current = initialCharset
+      prevInitialCollationRef.current = initialCollation
     }
-  }, [initialCharset, isOpen])
-
-  useEffect(() => {
-    if (isOpen && initialCollation !== undefined) {
-      setCollation(initialCollation)
-    }
-  }, [initialCollation, isOpen])
+  }, [isOpen, initialCharset, initialCollation])
 
   // Filter collations by selected charset
   const filteredCollations = charset ? collations.filter((c) => c.charset === charset) : collations
 
-  // When charset changes (user action), reset collation to charset's default
+  // When charset changes (user action), reset collation to the charset's default.
+  // Uses CharsetInfo.defaultCollation directly (already provided by the backend)
+  // rather than scanning the full collations list for the isDefault entry.
   const setCharset = useCallback(
     (newCharset: string) => {
       setCharsetState(newCharset)
@@ -105,10 +132,10 @@ export function useDatabaseEncoding(
         setCollation('')
         return
       }
-      const defaultCollation = collations.find((c) => c.charset === newCharset && c.isDefault)
-      setCollation(defaultCollation?.name ?? '')
+      const charsetInfo = charsets.find((cs) => cs.charset === newCharset)
+      setCollation(charsetInfo?.defaultCollation ?? '')
     },
-    [collations]
+    [charsets]
   )
 
   return {

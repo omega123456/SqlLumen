@@ -808,6 +808,48 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         }
       }
 
+      if (table === 'user_stats_view') {
+        return {
+          columns: [
+            {
+              name: 'user_id',
+              dataType: 'INT',
+              isBooleanAlias: false,
+              isNullable: false,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+            {
+              name: 'total_orders',
+              dataType: 'INT',
+              isBooleanAlias: false,
+              isNullable: true,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+          ],
+          rows: [
+            [1, 5],
+            [2, 12],
+            [3, 3],
+          ],
+          totalRows: 3,
+          currentPage: 1,
+          totalPages: 1,
+          pageSize: 100,
+          primaryKey: null,
+          executionTimeMs: 6,
+        }
+      }
+
       // Default response (original)
       return {
         columns: [

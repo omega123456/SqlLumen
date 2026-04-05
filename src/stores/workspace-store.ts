@@ -446,6 +446,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     // When objectType IS provided it is always a non-table type (procedure,
     // function, view, trigger, event) so table-data / table-designer tabs
     // must be left alone — they belong to a table with the same name.
+    // EXCEPTION: views open as table-data tabs with objectType 'view', so
+    // those must be closed when dropping a view.
     if (!objectType) {
       tabs
         .filter(
@@ -464,6 +466,17 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
             t.objectName === objectName
         )
         .forEach((t) => useTableDesignerStore.getState().cleanupTab(t.id))
+    } else if (objectType === 'view') {
+      // Views open as table-data tabs with objectType 'view' — clean those up
+      tabs
+        .filter(
+          (t) =>
+            t.type === 'table-data' &&
+            t.databaseName === databaseName &&
+            t.objectName === objectName &&
+            t.objectType === 'view'
+        )
+        .forEach((t) => useTableDataStore.getState().cleanupTab(t.id))
     }
 
     // Cleanup object-editor tabs (filtered by objectType if provided)
@@ -483,8 +496,14 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
           if (t.databaseName !== databaseName || t.objectName !== objectName) return true
           // When objectType is provided, preserve table-data and table-designer
           // tabs — they always belong to tables, not to the non-table object
-          // being dropped.
-          if (objectType && (t.type === 'table-data' || t.type === 'table-designer')) return true
+          // being dropped. EXCEPTION: views open as table-data tabs with
+          // objectType 'view', so those must be removed when dropping a view.
+          if (objectType && (t.type === 'table-data' || t.type === 'table-designer')) {
+            if (objectType === 'view' && t.type === 'table-data' && t.objectType === 'view') {
+              return false // remove this view's table-data tab
+            }
+            return true
+          }
           // For object-editor, if objectType filter is provided, only remove matching
           if (objectType && t.type === 'object-editor' && t.objectType !== objectType) return true
           // For schema-info, if objectType filter is provided, only remove matching

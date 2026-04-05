@@ -84,9 +84,10 @@ function toGridColumns(columns: TableDataColumnMeta[]): GridColumnDescriptor[] {
 
 export interface TableDataFormViewProps {
   tabId: string
+  isView?: boolean
 }
 
-export function TableDataFormView({ tabId }: TableDataFormViewProps) {
+export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
   const tabState = useTableDataStore((state) => state.tabs[tabId])
   const startEditing = useTableDataStore((state) => state.startEditing)
   const updateCellValue = useTableDataStore((state) => state.updateCellValue)
@@ -123,7 +124,7 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
   } | null>(null)
 
   const hasPk = primaryKey !== null
-  const isEditable = !isConnectionReadOnly && hasPk
+  const isEditable = !isConnectionReadOnly && hasPk && !isView
   const pkColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
 
   // When a temp/new row exists, totalRows from the server doesn't include it.

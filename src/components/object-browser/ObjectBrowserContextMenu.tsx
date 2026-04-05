@@ -12,6 +12,7 @@ import {
   Table,
   Trash,
   Eraser,
+  Rows,
   Wrench,
 } from '@phosphor-icons/react'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
@@ -183,6 +184,18 @@ export function ObjectBrowserContextMenu({
     closeMenu()
   }
 
+  const openViewDataTab = () => {
+    openTab({
+      type: 'table-data',
+      label: nodeLabel,
+      connectionId,
+      databaseName,
+      objectName: nodeLabel,
+      objectType: 'view' as ObjectType,
+    })
+    closeMenu()
+  }
+
   const copyName = () => {
     void writeClipboardText(nodeLabel).catch(() => {
       // Clipboard write failed — non-critical
@@ -220,6 +233,7 @@ export function ObjectBrowserContextMenu({
     categoryType,
     isReadOnly,
     openSchemaInfoTab,
+    openViewDataTab,
     copyName,
     refreshNode,
     onCreateDatabase,
@@ -298,6 +312,7 @@ interface BuildMenuArgs {
   categoryType?: string
   isReadOnly: boolean
   openSchemaInfoTab: () => void
+  openViewDataTab: () => void
   copyName: () => void
   refreshNode: () => void
   onCreateDatabase?: () => void
@@ -328,6 +343,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
     categoryType,
     isReadOnly,
     openSchemaInfoTab,
+    openViewDataTab,
     copyName,
     refreshNode,
     onCreateDatabase,
@@ -381,6 +397,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         objectName,
         isReadOnly,
         openSchemaInfoTab,
+        openViewDataTab,
         copyName,
         refreshNode,
         onAlterObject,
@@ -837,6 +854,7 @@ function buildViewMenu(args: {
   objectName: string
   isReadOnly: boolean
   openSchemaInfoTab: () => void
+  openViewDataTab: () => void
   copyName: () => void
   refreshNode: () => void
   onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
@@ -848,6 +866,7 @@ function buildViewMenu(args: {
     objectName,
     isReadOnly,
     openSchemaInfoTab,
+    openViewDataTab,
     copyName,
     refreshNode,
     onAlterObject,
@@ -857,6 +876,14 @@ function buildViewMenu(args: {
 
   if (isReadOnly) {
     return [
+      {
+        key: 'view-data',
+        label: 'View Data',
+        icon: <Rows size={18} weight="regular" />,
+        disabled: false,
+        destructive: false,
+        action: openViewDataTab,
+      },
       {
         key: 'schema-info',
         label: 'Schema Info',
@@ -885,6 +912,14 @@ function buildViewMenu(args: {
   }
 
   return [
+    {
+      key: 'view-data',
+      label: 'View Data',
+      icon: <Rows size={18} weight="regular" />,
+      disabled: false,
+      destructive: false,
+      action: openViewDataTab,
+    },
     {
       key: 'schema-info',
       label: 'Schema Info',

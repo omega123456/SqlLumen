@@ -477,4 +477,32 @@ describe('ExportDialog', () => {
     await pickExportFormat(user, 'json')
     expect(dialog.textContent).toContain('.json')
   })
+
+  it('hides SQL INSERT format option when isView=true', async () => {
+    const user = userEvent.setup()
+    render(<ExportDialog {...defaultProps} isView={true} />)
+
+    const listbox = await openExportFormatListbox(user)
+    expect(listbox).toHaveTextContent('Comma Separated Values')
+    expect(listbox).toHaveTextContent('JSON Array of Objects')
+    expect(listbox).toHaveTextContent('Excel Spreadsheet (.xlsx)')
+    expect(listbox).not.toHaveTextContent('SQL INSERT Statements')
+  })
+
+  it('resets format to csv if isView=true and format was sql-insert', async () => {
+    const user = userEvent.setup()
+    // First render without isView — select SQL INSERT
+    const { rerender } = render(<ExportDialog {...defaultProps} />)
+
+    await pickExportFormat(user, 'sql-insert')
+    const combo = screen.getByTestId('export-format-select')
+    expect(combo).toHaveTextContent('SQL INSERT')
+
+    // Re-render with isView=true — format should reset to CSV
+    rerender(<ExportDialog {...defaultProps} isView={true} />)
+
+    await waitFor(() => {
+      expect(combo).toHaveTextContent('CSV')
+    })
+  })
 })

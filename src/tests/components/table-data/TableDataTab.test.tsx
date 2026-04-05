@@ -511,4 +511,73 @@ describe('TableDataTab', () => {
     // Read-only badge should appear in toolbar
     expect(screen.getByTestId('readonly-badge')).toBeInTheDocument()
   })
+
+  // ---------------------------------------------------------------------------
+  // View objectType tests (Phase 3 — View Data mode)
+  // ---------------------------------------------------------------------------
+
+  it('view objectType shows VIEW badge in toolbar', async () => {
+    setupConnection()
+    render(<TableDataTab tab={makeTab({ objectType: 'view', objectName: 'my_view' })} />)
+    await waitForTableDataLoaded()
+    expect(screen.getByTestId('view-badge')).toBeInTheDocument()
+  })
+
+  it('view objectType suppresses no-PK warning even without primaryKey', async () => {
+    setupConnection()
+
+    const { fetchTableData } = await import('../../../lib/table-data-commands')
+    vi.mocked(fetchTableData).mockResolvedValueOnce({
+      columns: [
+        {
+          name: 'user_id',
+          dataType: 'bigint',
+          isNullable: false,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isBooleanAlias: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [[1]],
+      totalRows: 1,
+      currentPage: 1,
+      totalPages: 1,
+      pageSize: 1000,
+      primaryKey: null,
+      executionTimeMs: 10,
+    })
+
+    render(<TableDataTab tab={makeTab({ objectType: 'view', objectName: 'my_view' })} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(useTableDataStore.getState().tabs['tab-1']?.isLoading).toBe(false)
+    })
+
+    expect(screen.queryByTestId('no-pk-warning')).not.toBeInTheDocument()
+  })
+
+  it('view objectType hides mutation buttons', async () => {
+    setupConnection()
+    render(<TableDataTab tab={makeTab({ objectType: 'view', objectName: 'my_view' })} />)
+    await waitForTableDataLoaded()
+    expect(screen.queryByTestId('btn-add-row')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-delete-row')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-save')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-discard')).not.toBeInTheDocument()
+  })
+
+  it('table objectType still shows mutation buttons', async () => {
+    setupConnection()
+    render(<TableDataTab tab={makeTab({ objectType: 'table', objectName: 'users' })} />)
+    await waitForTableDataLoaded()
+    expect(screen.getByTestId('btn-add-row')).toBeInTheDocument()
+    expect(screen.queryByTestId('view-badge')).not.toBeInTheDocument()
+  })
 })

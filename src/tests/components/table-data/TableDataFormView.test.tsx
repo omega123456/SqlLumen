@@ -1028,6 +1028,28 @@ describe('TableDataFormView', () => {
     expect(idInput.tagName).toBe('DIV')
   })
 
+  it('fields are read-only when isView=true even with PK', () => {
+    setupConnection() // writable connection
+    useTableDataStore.setState({
+      tabs: { 'tab-1': makeTabState() }, // has PK
+    })
+    render(<TableDataFormView tabId="tab-1" isView={true} />)
+
+    // With isView=true, inputs should be rendered as read-only divs
+    const idInput = screen.getByTestId('form-input-id')
+    expect(idInput.tagName).toBe('DIV')
+
+    const nameInput = screen.getByTestId('form-input-name')
+    expect(nameInput.tagName).toBe('DIV')
+
+    // Save and discard buttons should not be present
+    expect(screen.queryByTestId('btn-form-save')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-form-discard')).not.toBeInTheDocument()
+
+    // NULL toggle should not be shown for read-only views
+    expect(screen.queryByTestId('btn-null-name')).not.toBeInTheDocument()
+  })
+
   it('BLOB field shows data when value is not null', () => {
     setupStore()
     renderFormView()

@@ -951,3 +951,41 @@ describe('TableDataToolbar — Filter button', () => {
     expect(screen.queryByTestId('filter-badge')).not.toBeInTheDocument()
   })
 })
+
+// ---------------------------------------------------------------------------
+// isView mode tests (Phase 3 — View Data mode)
+// ---------------------------------------------------------------------------
+
+describe('TableDataToolbar — isView mode', () => {
+  it('shows VIEW badge when isView=true', () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataToolbar tabId="tab-1" isView={true} />)
+    expect(screen.getByTestId('view-badge')).toBeInTheDocument()
+  })
+
+  it('hides mutation buttons when isView=true', () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataToolbar tabId="tab-1" isView={true} />)
+    expect(screen.queryByTestId('btn-add-row')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-delete-row')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-save')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-discard')).not.toBeInTheDocument()
+  })
+
+  it('hides NO KEY badge when isView=true even if no PK', () => {
+    setupConnection()
+    setupTabState({ primaryKey: null })
+    render(<TableDataToolbar tabId="tab-1" isView={true} />)
+    expect(screen.queryByTestId('nopk-badge')).not.toBeInTheDocument()
+    expect(screen.getByTestId('view-badge')).toBeInTheDocument()
+  })
+
+  it('shows mutation buttons when isView=false/undefined', () => {
+    setupConnection()
+    setupTabState()
+    render(<TableDataToolbar tabId="tab-1" />)
+    expect(screen.getByTestId('btn-add-row')).toBeInTheDocument()
+  })
+})

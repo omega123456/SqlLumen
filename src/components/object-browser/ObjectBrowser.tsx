@@ -175,6 +175,15 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
           })
           break
         case 'view':
+          openTab({
+            type: 'table-data',
+            label: node.label,
+            connectionId,
+            databaseName: dbName,
+            objectName: node.label,
+            objectType: 'view' as ObjectType,
+          })
+          break
         case 'procedure':
         case 'function':
         case 'trigger':

@@ -6,7 +6,7 @@ import { useConnectionStore } from '../../../stores/connection-store'
 import { useSchemaStore, makeNodeId } from '../../../stores/schema-store'
 import { useWorkspaceStore, _resetTabIdCounter } from '../../../stores/workspace-store'
 import type { ActiveConnection, SavedConnection } from '../../../types/connection'
-import type { TreeNode as TreeNodeType } from '../../../types/schema'
+import type { TreeNode as TreeNodeType, WorkspaceTab } from '../../../types/schema'
 
 // Mock clipboard
 vi.mock('../../../lib/context-menu-utils', async (importOriginal) => {
@@ -540,7 +540,7 @@ describe('ObjectBrowser', () => {
     expect(screen.queryByText('Create Table...')).not.toBeInTheDocument()
   })
 
-  it('double-clicking a view node opens a schema-info workspace tab', async () => {
+  it('double-clicking a view node opens a table-data tab with objectType view', async () => {
     const user = userEvent.setup()
     setupConnectedState()
 
@@ -600,9 +600,10 @@ describe('ObjectBrowser', () => {
     const tabs = state.tabsByConnection[CONN_ID]
     expect(tabs).toHaveLength(1)
     expect(tabs[0]).toMatchObject({
-      type: 'schema-info',
+      type: 'table-data',
       label: 'user_stats',
       objectType: 'view',
+      objectName: 'user_stats',
     })
   })
 
@@ -927,6 +928,69 @@ describe('ObjectBrowser', () => {
       await waitFor(() => {
         expect(refreshAll).toHaveBeenCalledWith(CONN_ID)
       })
+    })
+  })
+
+  describe('closeTabsByObject: view table-data tabs', () => {
+    it('closes view table-data tab when dropping a view via closeTabsByObject', () => {
+      setupConnectedState()
+
+      // Simulate an open view table-data tab
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          [CONN_ID]: [
+            {
+              id: 'tab-view-1',
+              type: 'table-data',
+              label: 'user_stats',
+              connectionId: CONN_ID,
+              databaseName: 'ecommerce_db',
+              objectName: 'user_stats',
+              objectType: 'view',
+            } as WorkspaceTab,
+          ],
+        },
+        activeTabByConnection: {
+          [CONN_ID]: 'tab-view-1',
+        },
+      })
+
+      // Call closeTabsByObject with objectType 'view' — as handleDropObjectConfirm does
+      useWorkspaceStore.getState().closeTabsByObject(CONN_ID, 'ecommerce_db', 'user_stats', 'view')
+
+      const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
+      expect(tabs).toHaveLength(0)
+    })
+
+    it('does not close a table table-data tab when dropping a view with the same name', () => {
+      setupConnectedState()
+
+      // Simulate an open TABLE tab with the same name as the view being dropped
+      useWorkspaceStore.setState({
+        tabsByConnection: {
+          [CONN_ID]: [
+            {
+              id: 'tab-table-1',
+              type: 'table-data',
+              label: 'shared_name',
+              connectionId: CONN_ID,
+              databaseName: 'ecommerce_db',
+              objectName: 'shared_name',
+              objectType: 'table',
+            } as WorkspaceTab,
+          ],
+        },
+        activeTabByConnection: {
+          [CONN_ID]: 'tab-table-1',
+        },
+      })
+
+      // Dropping a VIEW named 'shared_name' should NOT close the table's tab
+      useWorkspaceStore.getState().closeTabsByObject(CONN_ID, 'ecommerce_db', 'shared_name', 'view')
+
+      const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
+      expect(tabs).toHaveLength(1)
+      expect(tabs[0].id).toBe('tab-table-1')
     })
   })
 })

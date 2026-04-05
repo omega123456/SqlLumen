@@ -415,6 +415,7 @@ describe('TableDataGrid', () => {
       foreignKeys: [
         {
           columnName: 'user_id',
+          referencedDatabase: 'test_db',
           referencedTable: 'users',
           referencedColumn: 'id',
           constraintName: 'fk_user',
