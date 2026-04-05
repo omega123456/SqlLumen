@@ -3,6 +3,7 @@ pub mod connections;
 pub mod export;
 pub mod frontend_log;
 pub mod mysql;
+pub mod object_editor;
 pub mod query;
 pub mod schema;
 pub mod session;

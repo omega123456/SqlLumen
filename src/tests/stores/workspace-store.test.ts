@@ -6,7 +6,13 @@ import {
 } from '../../stores/workspace-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
-import type { TableDataTab, SchemaInfoTab, TableDesignerTab } from '../../types/schema'
+import { useObjectEditorStore } from '../../stores/object-editor-store'
+import type {
+  TableDataTab,
+  SchemaInfoTab,
+  TableDesignerTab,
+  ObjectEditorTab,
+} from '../../types/schema'
 
 beforeEach(() => {
   useWorkspaceStore.setState({
@@ -15,6 +21,7 @@ beforeEach(() => {
   })
   useTableDataStore.setState({ tabs: {} })
   useTableDesignerStore.setState({ tabs: {} })
+  useObjectEditorStore.setState({ tabs: {} })
   _resetTabIdCounter()
   _resetQueryTabCounter()
 })
@@ -59,6 +66,21 @@ function makeDesignerTab(
   }
 }
 
+function makeObjectEditorTab(
+  overrides: Partial<Omit<ObjectEditorTab, 'id'>> = {}
+): Omit<ObjectEditorTab, 'id'> {
+  return {
+    type: 'object-editor',
+    label: 'Stored Procedure: my_proc',
+    connectionId: 'conn-1',
+    databaseName: 'mydb',
+    objectName: 'my_proc',
+    objectType: 'procedure',
+    mode: 'alter',
+    ...overrides,
+  }
+}
+
 describe('useWorkspaceStore — openTab', () => {
   it('creates a new tab and sets it active', () => {
     useWorkspaceStore.getState().openTab(makeTab())
@@ -96,6 +118,75 @@ describe('useWorkspaceStore — openTab', () => {
     const firstId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
 
     useWorkspaceStore.getState().openTab(makeDesignerTab())
+
+    const state = useWorkspaceStore.getState()
+    expect(state.tabsByConnection['conn-1']).toHaveLength(1)
+    expect(state.activeTabByConnection['conn-1']).toBe(firstId)
+  })
+})
+
+describe('useWorkspaceStore — openTab (object-editor)', () => {
+  it('creates a new object-editor tab and sets it active', () => {
+    useWorkspaceStore.getState().openTab(makeObjectEditorTab())
+
+    const state = useWorkspaceStore.getState()
+    expect(state.tabsByConnection['conn-1']).toHaveLength(1)
+    const tab = state.tabsByConnection['conn-1'][0] as ObjectEditorTab
+    expect(tab.type).toBe('object-editor')
+    expect(tab.objectType).toBe('procedure')
+    expect(tab.objectName).toBe('my_proc')
+  })
+
+  it('dedups object-editor tabs by connectionId + databaseName + objectName + type + objectType', () => {
+    useWorkspaceStore.getState().openTab(makeObjectEditorTab())
+    const firstId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    useWorkspaceStore.getState().openTab(makeObjectEditorTab())
+
+    const state = useWorkspaceStore.getState()
+    expect(state.tabsByConnection['conn-1']).toHaveLength(1)
+    expect(state.activeTabByConnection['conn-1']).toBe(firstId)
+  })
+
+  it('allows two object-editor tabs for same-named objects of different types', () => {
+    useWorkspaceStore.getState().openTab(
+      makeObjectEditorTab({
+        objectName: 'my_obj',
+        objectType: 'procedure',
+        label: 'Stored Procedure: my_obj',
+      })
+    )
+    useWorkspaceStore.getState().openTab(
+      makeObjectEditorTab({
+        objectName: 'my_obj',
+        objectType: 'function',
+        label: 'Function: my_obj',
+      })
+    )
+
+    const state = useWorkspaceStore.getState()
+    expect(state.tabsByConnection['conn-1']).toHaveLength(2)
+    expect((state.tabsByConnection['conn-1'][0] as ObjectEditorTab).objectType).toBe('procedure')
+    expect((state.tabsByConnection['conn-1'][1] as ObjectEditorTab).objectType).toBe('function')
+  })
+
+  it('dedups create-mode tabs by placeholder name and objectType', () => {
+    useWorkspaceStore.getState().openTab(
+      makeObjectEditorTab({
+        objectName: 'new_procedure',
+        objectType: 'procedure',
+        mode: 'create',
+      })
+    )
+    const firstId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    useWorkspaceStore.getState().openTab(
+      makeObjectEditorTab({
+        objectName: 'new_procedure',
+        objectType: 'procedure',
+        mode: 'create',
+      })
+    )
 
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(1)
@@ -161,6 +252,69 @@ describe('useWorkspaceStore — closeTab', () => {
     expect(requestNavigationAction).toHaveBeenCalledTimes(1)
     expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(1)
   })
+
+  it('closeTab with dirty object-editor tab calls requestNavigationAction instead of closing', () => {
+    useWorkspaceStore.getState().openTab(makeObjectEditorTab())
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    const requestNavigationAction = vi.spyOn(
+      useObjectEditorStore.getState(),
+      'requestNavigationAction'
+    )
+
+    useObjectEditorStore.setState({
+      tabs: {
+        [tabId]: {
+          connectionId: 'conn-1',
+          database: 'mydb',
+          objectName: 'my_proc',
+          objectType: 'procedure',
+          mode: 'alter',
+          content: 'modified',
+          originalContent: 'original',
+          isLoading: false,
+          isSaving: false,
+          error: null,
+          pendingNavigationAction: null,
+          savedObjectName: null,
+        },
+      },
+    })
+
+    useWorkspaceStore.getState().closeTab('conn-1', tabId)
+
+    expect(requestNavigationAction).toHaveBeenCalledTimes(1)
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(1)
+  })
+
+  it('closeTab on clean object-editor tab closes immediately', () => {
+    useWorkspaceStore.getState().openTab(makeObjectEditorTab())
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    const cleanupSpy = vi.spyOn(useObjectEditorStore.getState(), 'cleanupTab')
+
+    useObjectEditorStore.setState({
+      tabs: {
+        [tabId]: {
+          connectionId: 'conn-1',
+          database: 'mydb',
+          objectName: 'my_proc',
+          objectType: 'procedure',
+          mode: 'alter',
+          content: 'same',
+          originalContent: 'same',
+          isLoading: false,
+          isSaving: false,
+          error: null,
+          pendingNavigationAction: null,
+          savedObjectName: null,
+        },
+      },
+    })
+
+    useWorkspaceStore.getState().closeTab('conn-1', tabId)
+
+    expect(cleanupSpy).toHaveBeenCalledWith(tabId)
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(0)
+  })
 })
 
 describe('useWorkspaceStore — closeTabsByDatabase', () => {
@@ -181,6 +335,31 @@ describe('useWorkspaceStore — closeTabsByDatabase', () => {
     expect(state.tabsByConnection['conn-1']).toHaveLength(1)
     expect((state.tabsByConnection['conn-1'][0] as TableDataTab).databaseName).toBe('db2')
   })
+
+  it('closes object-editor tabs for a database', () => {
+    useWorkspaceStore
+      .getState()
+      .openTab(makeObjectEditorTab({ databaseName: 'db1', objectName: 'proc1' }))
+    useWorkspaceStore
+      .getState()
+      .openTab(makeObjectEditorTab({ databaseName: 'db2', objectName: 'proc2' }))
+
+    const cleanupSpy = vi.fn()
+    const originalCleanup = useObjectEditorStore.getState().cleanupTab
+    useObjectEditorStore.setState({
+      cleanupTab: (...args: Parameters<typeof originalCleanup>) => {
+        cleanupSpy(...args)
+        originalCleanup(...args)
+      },
+    })
+
+    useWorkspaceStore.getState().closeTabsByDatabase('conn-1', 'db1')
+
+    const state = useWorkspaceStore.getState()
+    expect(state.tabsByConnection['conn-1']).toHaveLength(1)
+    expect((state.tabsByConnection['conn-1'][0] as ObjectEditorTab).databaseName).toBe('db2')
+    expect(cleanupSpy).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('useWorkspaceStore — closeTabsByObject', () => {
@@ -199,6 +378,83 @@ describe('useWorkspaceStore — closeTabsByObject', () => {
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(1)
     expect((state.tabsByConnection['conn-1'][0] as TableDataTab).objectName).toBe('orders')
+  })
+
+  it('closes object-editor tabs without objectType arg (backward compat)', () => {
+    useWorkspaceStore.getState().openTab(
+      makeObjectEditorTab({
+        objectName: 'my_proc',
+        objectType: 'procedure',
+        label: 'Proc: my_proc',
+      })
+    )
+    useWorkspaceStore.getState().openTab(
+      makeObjectEditorTab({
+        objectName: 'my_proc',
+        objectType: 'function',
+        label: 'Func: my_proc',
+      })
+    )
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'orders', label: 'orders' }))
+
+    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'my_proc')
+
+    const state = useWorkspaceStore.getState()
+    // Both object-editor tabs should be closed
+    expect(state.tabsByConnection['conn-1']).toHaveLength(1)
+    expect((state.tabsByConnection['conn-1'][0] as TableDataTab).objectName).toBe('orders')
+  })
+
+  it("closeTabsByObject with objectType='procedure' does NOT close table-data tabs for same-named table", () => {
+    // A table-data tab for a table named "orders"
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'orders', label: 'orders data' }))
+    // A table-designer tab for that same table
+    useWorkspaceStore
+      .getState()
+      .openTab(makeDesignerTab({ objectName: 'orders', label: 'orders designer' }))
+    // An object-editor tab for a procedure also named "orders"
+    useWorkspaceStore.getState().openTab(
+      makeObjectEditorTab({
+        objectName: 'orders',
+        objectType: 'procedure',
+        label: 'Proc: orders',
+      })
+    )
+
+    // Dropping the procedure named "orders" should NOT touch the table tabs
+    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'orders', 'procedure')
+
+    const state = useWorkspaceStore.getState()
+    // table-data and table-designer tabs should survive
+    expect(state.tabsByConnection['conn-1']).toHaveLength(2)
+    const types = state.tabsByConnection['conn-1'].map((t) => t.type)
+    expect(types).toContain('table-data')
+    expect(types).toContain('table-designer')
+    // The procedure object-editor tab should be gone
+    expect(types).not.toContain('object-editor')
+  })
+
+  it('closeTabsByObject with 4th objectType arg closes only matching-type object-editor tabs', () => {
+    useWorkspaceStore.getState().openTab(
+      makeObjectEditorTab({
+        objectName: 'my_obj',
+        objectType: 'procedure',
+        label: 'Proc: my_obj',
+      })
+    )
+    useWorkspaceStore.getState().openTab(
+      makeObjectEditorTab({
+        objectName: 'my_obj',
+        objectType: 'function',
+        label: 'Func: my_obj',
+      })
+    )
+
+    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'my_obj', 'procedure')
+
+    const state = useWorkspaceStore.getState()
+    expect(state.tabsByConnection['conn-1']).toHaveLength(1)
+    expect((state.tabsByConnection['conn-1'][0] as ObjectEditorTab).objectType).toBe('function')
   })
 })
 
@@ -259,6 +515,51 @@ describe('useWorkspaceStore — updateTableDesignerTab', () => {
   })
 })
 
+describe('useWorkspaceStore — updateObjectEditorTab', () => {
+  it('updates objectName, mode, and label on an object-editor tab', () => {
+    useWorkspaceStore.getState().openTab(makeObjectEditorTab())
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    useWorkspaceStore.getState().updateObjectEditorTab(tabId, {
+      objectName: 'renamed_proc',
+      mode: 'alter',
+      label: 'Stored Procedure: renamed_proc',
+    })
+
+    const tab = useWorkspaceStore.getState().tabsByConnection['conn-1'][0] as ObjectEditorTab
+    expect(tab.objectName).toBe('renamed_proc')
+    expect(tab.mode).toBe('alter')
+    expect(tab.label).toBe('Stored Procedure: renamed_proc')
+  })
+
+  it('does not affect non-object-editor tabs', () => {
+    useWorkspaceStore.getState().openTab(makeTab())
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    useWorkspaceStore.getState().updateObjectEditorTab(tabId, {
+      objectName: 'renamed',
+      label: 'renamed',
+    })
+
+    const tab = useWorkspaceStore.getState().tabsByConnection['conn-1'][0] as TableDataTab
+    expect(tab.objectName).toBe('users')
+    expect(tab.label).toBe('users')
+  })
+
+  it('preserves existing label if no label in partial', () => {
+    useWorkspaceStore.getState().openTab(makeObjectEditorTab())
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    useWorkspaceStore.getState().updateObjectEditorTab(tabId, {
+      mode: 'alter',
+    })
+
+    const tab = useWorkspaceStore.getState().tabsByConnection['conn-1'][0] as ObjectEditorTab
+    expect(tab.mode).toBe('alter')
+    expect(tab.label).toBe('Stored Procedure: my_proc')
+  })
+})
+
 describe('useWorkspaceStore — forceCloseTab', () => {
   it('forceCloseTab calls tableDesignerStore.cleanupTab', () => {
     useWorkspaceStore.getState().openTab(makeDesignerTab())
@@ -268,6 +569,17 @@ describe('useWorkspaceStore — forceCloseTab', () => {
     useWorkspaceStore.getState().forceCloseTab('conn-1', tabId)
 
     expect(cleanupSpy).toHaveBeenCalledWith(tabId)
+  })
+
+  it('forceCloseTab calls objectEditorStore.cleanupTab for object-editor tabs', () => {
+    useWorkspaceStore.getState().openTab(makeObjectEditorTab())
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    const cleanupSpy = vi.spyOn(useObjectEditorStore.getState(), 'cleanupTab')
+
+    useWorkspaceStore.getState().forceCloseTab('conn-1', tabId)
+
+    expect(cleanupSpy).toHaveBeenCalledWith(tabId)
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(0)
   })
 })
 
@@ -280,5 +592,16 @@ describe('useWorkspaceStore — clearConnectionTabs', () => {
     useWorkspaceStore.getState().clearConnectionTabs('conn-1')
 
     expect(cleanupSpy).toHaveBeenCalledWith(tabId)
+  })
+
+  it('clearConnectionTabs calls objectEditorStore.cleanupTab for object-editor tabs', () => {
+    useWorkspaceStore.getState().openTab(makeObjectEditorTab())
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    const cleanupSpy = vi.spyOn(useObjectEditorStore.getState(), 'cleanupTab')
+
+    useWorkspaceStore.getState().clearConnectionTabs('conn-1')
+
+    expect(cleanupSpy).toHaveBeenCalledWith(tabId)
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toBeUndefined()
   })
 })

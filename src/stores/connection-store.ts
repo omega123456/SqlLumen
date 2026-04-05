@@ -18,6 +18,7 @@ import { useSchemaStore } from './schema-store'
 import { useWorkspaceStore } from './workspace-store'
 import { useQueryStore } from './query-store'
 import { useTableDataStore } from './table-data-store'
+import { useObjectEditorStore } from './object-editor-store'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { invalidateCache } from '../components/query-editor/schema-metadata-cache'
 
@@ -154,6 +155,18 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
             }
           }
         }
+      }
+
+      // Check for dirty object-editor tabs before closing
+      const objectEditorState = useObjectEditorStore.getState()
+      const dirtyObjectEditorTabs = workspaceTabs.filter(
+        (tab) => tab.type === 'object-editor' && objectEditorState.isDirty(tab.id)
+      )
+      if (dirtyObjectEditorTabs.length > 0) {
+        const confirmed = globalThis.confirm(
+          'You have unsaved changes in object editor tabs. Close connection anyway?'
+        )
+        if (!confirmed) return
       }
 
       await closeConnectionIPC(id)

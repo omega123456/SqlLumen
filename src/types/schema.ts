@@ -46,12 +46,20 @@ export interface TreeNode {
 // ---------------------------------------------------------------------------
 
 /** The kind of workspace tab. */
-export type TabType = 'schema-info' | 'table-data' | 'query-editor' | 'table-designer'
+export type TabType =
+  | 'schema-info'
+  | 'table-data'
+  | 'query-editor'
+  | 'table-designer'
+  | 'object-editor'
 
 export type DesignerSubTab = 'columns' | 'indexes' | 'fks' | 'properties' | 'ddl'
 
 /** Database object types (excludes 'column' and 'category'). */
 export type ObjectType = 'table' | 'view' | 'procedure' | 'function' | 'trigger' | 'event'
+
+/** Object types that can be opened in the object editor. */
+export type EditableObjectType = 'view' | 'procedure' | 'function' | 'trigger' | 'event'
 
 /** Base fields shared by all workspace tab variants. */
 interface WorkspaceTabBase {
@@ -92,8 +100,22 @@ export interface TableDesignerTab extends WorkspaceTabBase {
   objectName: string
 }
 
+/** An object editor tab (DDL editor for views, procedures, functions, triggers, events). */
+export interface ObjectEditorTab extends WorkspaceTabBase {
+  type: 'object-editor'
+  databaseName: string
+  objectName: string
+  objectType: EditableObjectType
+  mode: 'create' | 'alter'
+}
+
 /** Union of all workspace tab variants. */
-export type WorkspaceTab = SchemaInfoTab | TableDataTab | QueryEditorTab | TableDesignerTab
+export type WorkspaceTab =
+  | SchemaInfoTab
+  | TableDataTab
+  | QueryEditorTab
+  | TableDesignerTab
+  | ObjectEditorTab
 
 /** Distributive Omit — works correctly on union types. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -464,3 +486,23 @@ export interface QueryTableEditInfo {
 
 /** Map of result-set column index → whether the column is editable. */
 export type QueryEditableColumnMap = Map<number, boolean>
+
+// ---------------------------------------------------------------------------
+// Object Editor types (Phase 8)
+// ---------------------------------------------------------------------------
+
+/** Parameter metadata for a stored procedure or function. */
+export interface RoutineParameter {
+  name: string
+  dataType: string
+  mode: string
+  ordinalPosition: number
+}
+
+/** Response from the save_object backend command. */
+export interface SaveObjectResponse {
+  success: boolean
+  errorMessage: string | null
+  dropSucceeded: boolean
+  savedObjectName: string | null
+}

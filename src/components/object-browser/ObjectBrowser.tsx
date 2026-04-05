@@ -260,6 +260,10 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
         onRenameTable={actions.onRenameTable}
         onDesignTable={handleDesignTable}
         onCreateTable={handleCreateTable}
+        onAlterObject={actions.onAlterObject}
+        onDropObject={actions.onDropObject}
+        onCreateObject={actions.onCreateObject}
+        onExecuteRoutine={actions.onExecuteRoutine}
       />
 
       {actions.dialogs}

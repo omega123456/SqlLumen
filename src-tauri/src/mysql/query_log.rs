@@ -187,3 +187,11 @@ pub fn log_execute_result(r: &sqlx::mysql::MySqlQueryResult) {
         "mysql execute result",
     );
 }
+
+pub fn log_execute_error(e: &sqlx::Error) {
+    tracing::debug!(
+        target: TARGET,
+        error = %e,
+        "mysql execute error",
+    );
+}

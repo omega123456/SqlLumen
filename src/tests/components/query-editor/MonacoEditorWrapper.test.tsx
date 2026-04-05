@@ -245,4 +245,91 @@ describe('MonacoEditorWrapper', () => {
     // Should still unregister using the captured URI from mount time
     expect(mockUnregisterModelConnection).toHaveBeenCalledWith('inmemory://model/1')
   })
+
+  // -----------------------------------------------------------------------
+  // Override prop tests (used by object-editor)
+  // -----------------------------------------------------------------------
+
+  describe('override props', () => {
+    it('uses override value instead of query-store content when value prop is provided', () => {
+      useQueryStore.getState().setContent('tab-1', 'store content')
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" value="override content" />)
+      const editor = screen.getByTestId('monaco-editor')
+      expect(editor).toHaveValue('override content')
+    })
+
+    it('calls override onChange instead of query-store setContent', () => {
+      const onChange = vi.fn()
+      render(
+        <MonacoEditorWrapper
+          tabId="tab-1"
+          connectionId="conn-1"
+          value="initial"
+          onChange={onChange}
+        />
+      )
+      const editor = screen.getByTestId('monaco-editor')
+      fireEvent.change(editor, { target: { value: 'new value' } })
+      expect(onChange).toHaveBeenCalledWith('new value')
+      // Query store should NOT have been updated
+      expect(useQueryStore.getState().tabs['tab-1']?.content ?? '').toBe('')
+    })
+
+    it('skips cursor position restore when value prop is provided', () => {
+      // Set a saved cursor position in query store
+      useQueryStore.getState().setContent('tab-1', '')
+      useQueryStore.getState().setCursorPosition('tab-1', { lineNumber: 5, column: 10 })
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" value="override" />)
+
+      // setPosition should NOT have been called because we're in override mode
+      expect(mockEditorInstance.setPosition).not.toHaveBeenCalled()
+    })
+
+    it('skips cursor position tracking when value prop is provided', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" value="override" />)
+
+      // onDidChangeCursorPosition should NOT have been called in override mode
+      expect(mockEditorInstance.onDidChangeCursorPosition).not.toHaveBeenCalled()
+    })
+
+    it('uses override readOnly prop instead of status-based computation', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" readOnly={true} />)
+      const lastCall = mockEditorComponent.mock.calls[mockEditorComponent.mock.calls.length - 1]
+      const props = lastCall[0]
+      expect(props.options.readOnly).toBe(true)
+    })
+
+    it('uses override readOnly=false even when status is running', () => {
+      // Set status to running in query store
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            ...useQueryStore.getState().getTabState('tab-1'),
+            status: 'running',
+          },
+        },
+      })
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" readOnly={false} />)
+      const lastCall = mockEditorComponent.mock.calls[mockEditorComponent.mock.calls.length - 1]
+      const props = lastCall[0]
+      expect(props.options.readOnly).toBe(false)
+    })
+
+    it('falls back to query-store content when value prop is not provided', () => {
+      useQueryStore.getState().setContent('tab-1', 'store content')
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+      const editor = screen.getByTestId('monaco-editor')
+      expect(editor).toHaveValue('store content')
+    })
+
+    it('falls back to query-store setContent when onChange is not provided', () => {
+      useQueryStore.getState().setContent('tab-1', '')
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+      const editor = screen.getByTestId('monaco-editor')
+      fireEvent.change(editor, { target: { value: 'NEW CONTENT' } })
+      expect(useQueryStore.getState().tabs['tab-1']?.content).toBe('NEW CONTENT')
+    })
+  })
 })

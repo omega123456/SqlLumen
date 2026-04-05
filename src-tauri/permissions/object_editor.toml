@@ -1,0 +1,23 @@
+[[permission]]
+identifier = "allow-get-object-body"
+description = "Enables the get_object_body command without any pre-configured scope."
+commands.allow = ["get_object_body"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-save-object"
+description = "Enables the save_object command without any pre-configured scope."
+commands.allow = ["save_object"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-drop-object"
+description = "Enables the drop_object command without any pre-configured scope."
+commands.allow = ["drop_object"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-get-routine-parameters"
+description = "Enables the get_routine_parameters command without any pre-configured scope."
+commands.allow = ["get_routine_parameters"]
+commands.deny = []

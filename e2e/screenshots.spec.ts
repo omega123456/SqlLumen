@@ -1364,6 +1364,110 @@ for (const theme of themes) {
         animations: 'disabled',
       })
     })
+
+    // --- Object Editor screenshots (Phase 8.6) ---
+
+    test('ObjectEditorTab — alter mode (procedure DDL)', async ({ page }) => {
+      await connectToSample(page)
+
+      // Open an object-editor tab in alter mode via the workspace store
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => { openTab: (tab: Record<string, unknown>) => void }
+        }
+        store.getState().openTab({
+          type: 'object-editor',
+          label: 'Stored Procedure: sp_get_orders',
+          connectionId: 'session-playwright-1',
+          databaseName: 'ecommerce_db',
+          objectName: 'sp_get_orders',
+          objectType: 'procedure',
+          mode: 'alter',
+        })
+      })
+
+      await expect(page.getByTestId('object-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('object-editor-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+      // Wait for DDL to load (alter mode fetches from mock)
+      await expect(page.getByTestId('object-editor-tab')).toContainText('CREATE PROCEDURE', {
+        timeout: APP_READY_MS,
+      })
+
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('object-editor-tab')).toHaveScreenshot(
+        `object-editor-alter-procedure-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('ObjectEditorTab — create mode (new procedure template)', async ({ page }) => {
+      await connectToSample(page)
+
+      // Open an object-editor tab in create mode via the workspace store
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => { openTab: (tab: Record<string, unknown>) => void }
+        }
+        store.getState().openTab({
+          type: 'object-editor',
+          label: 'New Stored Procedure',
+          connectionId: 'session-playwright-1',
+          databaseName: 'ecommerce_db',
+          objectName: 'procedure_name',
+          objectType: 'procedure',
+          mode: 'create',
+        })
+      })
+
+      await expect(page.getByTestId('object-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('object-editor-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+      // Wait for template content to load (create mode uses template)
+      await expect(page.getByTestId('object-editor-tab')).toContainText('CREATE PROCEDURE', {
+        timeout: APP_READY_MS,
+      })
+
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('object-editor-tab')).toHaveScreenshot(
+        `object-editor-create-procedure-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('ObjectBrowserContextMenu — procedure node (non-read-only)', async ({ page }) => {
+      await connectToSample(page)
+
+      // Expand database and Procedures category
+      await page.getByText('ecommerce_db').first().click()
+      await expect(page.getByText('Procedures')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByText('Procedures', { exact: true }).click()
+      await expect(page.getByText('sp_get_orders')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Right-click on the procedure node
+      await page.getByText('sp_get_orders').click({ button: 'right' })
+      await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
+
+      await expect(page.getByTestId('object-browser-context-menu')).toHaveScreenshot(
+        `context-menu-procedure-${theme}.png`
+      )
+    })
+
+    test('ObjectBrowserContextMenu — view node (non-read-only)', async ({ page }) => {
+      await connectToSample(page)
+
+      // Expand database and Views category
+      await page.getByText('ecommerce_db').first().click()
+      await expect(page.getByText('Views')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByText('Views', { exact: true }).click()
+      await expect(page.getByText('user_stats_view')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Right-click on the view node
+      await page.getByText('user_stats_view').click({ button: 'right' })
+      await expect(page.getByTestId('object-browser-context-menu')).toBeVisible()
+
+      await expect(page.getByTestId('object-browser-context-menu')).toHaveScreenshot(
+        `context-menu-view-${theme}.png`
+      )
+    })
   })
 }
 

@@ -59,6 +59,10 @@
     "allow-delete-table-row",
     "allow-export-table-data",
     "allow-log-frontend",
+    "allow-get-object-body",
+    "allow-save-object",
+    "allow-drop-object",
+    "allow-get-routine-parameters",
     "dialog:allow-save",
     "dialog:allow-open"
   ]

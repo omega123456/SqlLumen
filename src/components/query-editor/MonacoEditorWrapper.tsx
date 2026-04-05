@@ -25,9 +25,22 @@ interface MonacoEditorWrapperProps {
   connectionId?: string
   /** Called with the Monaco editor instance after mount */
   onMount?: (editor: MonacoType.editor.IStandaloneCodeEditor) => void
+  /** Override value — when provided, bypasses query-store content binding */
+  value?: string
+  /** Override onChange — when provided, bypasses query-store setContent binding */
+  onChange?: (value: string) => void
+  /** Override readOnly — when provided, bypasses status-based readOnly computation */
+  readOnly?: boolean
 }
 
-export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEditorWrapperProps) {
+export function MonacoEditorWrapper({
+  tabId,
+  connectionId,
+  onMount,
+  value: overrideValue,
+  onChange: overrideOnChange,
+  readOnly: overrideReadOnly,
+}: MonacoEditorWrapperProps) {
   const monaco = useMonaco()
   const editorRef = useRef<MonacoType.editor.IStandaloneCodeEditor | null>(null)
   const modelUriRef = useRef<string | undefined>(undefined)
@@ -41,7 +54,10 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
   const setContent = useQueryStore((state) => state.setContent)
   const setCursorPosition = useQueryStore((state) => state.setCursorPosition)
 
-  const isReadOnly = status === 'running'
+  // Determine whether we are using override props (object-editor mode) or query-store bindings
+  const isOverrideMode = overrideValue !== undefined
+  const effectiveContent = isOverrideMode ? overrideValue : content
+  const isReadOnly = overrideReadOnly !== undefined ? overrideReadOnly : status === 'running'
 
   // Register themes once Monaco is loaded
   useEffect(() => {
@@ -107,20 +123,25 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
     const themeName = getMonacoThemeName(theme, resolvedTheme === 'dark')
     monacoInstance.editor.setTheme(themeName)
 
-    // Restore cursor position from the store if available
-    const savedPosition = useQueryStore.getState().tabs[tabId]?.cursorPosition
-    if (savedPosition) {
-      editor.setPosition(savedPosition)
-      editor.revealPositionInCenter(savedPosition)
+    // Restore cursor position from the store if available (only in query-store mode)
+    if (!isOverrideMode) {
+      const savedPosition = useQueryStore.getState().tabs[tabId]?.cursorPosition
+      if (savedPosition) {
+        editor.setPosition(savedPosition)
+        editor.revealPositionInCenter(savedPosition)
+      }
     }
 
-    // Track cursor position changes and persist to store
-    const cursorDisposable = editor.onDidChangeCursorPosition((e) => {
-      setCursorPosition(tabId, { lineNumber: e.position.lineNumber, column: e.position.column })
-    })
+    // Track cursor position changes and persist to store (only in query-store mode)
+    let cursorDisposable: MonacoType.IDisposable | null = null
+    if (!isOverrideMode) {
+      cursorDisposable = editor.onDidChangeCursorPosition((e) => {
+        setCursorPosition(tabId, { lineNumber: e.position.lineNumber, column: e.position.column })
+      })
+    }
 
     editor.onDidDispose(() => {
-      cursorDisposable.dispose()
+      cursorDisposable?.dispose()
       // Unregister using the captured URI — model may already be disposed
       if (modelUriRef.current) unregisterModelConnection(modelUriRef.current)
     })
@@ -129,7 +150,12 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
   }
 
   function handleChange(value: string | undefined) {
-    setContent(tabId, value ?? '')
+    const v = value ?? ''
+    if (overrideOnChange) {
+      overrideOnChange(v)
+    } else {
+      setContent(tabId, v)
+    }
   }
 
   return (
@@ -138,7 +164,7 @@ export function MonacoEditorWrapper({ tabId, connectionId, onMount }: MonacoEdit
         height="100%"
         language="mysql"
         theme={currentThemeName}
-        value={content}
+        value={effectiveContent}
         onChange={handleChange}
         onMount={handleEditorMount}
         options={{

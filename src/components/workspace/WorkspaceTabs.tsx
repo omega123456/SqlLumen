@@ -1,5 +1,6 @@
 import type { WorkspaceTab } from '../../types/schema'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
+import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import { Plus } from '@phosphor-icons/react'
@@ -12,9 +13,18 @@ export interface WorkspaceTabsProps {
 }
 
 function WorkspaceTabLabel({ tab }: { tab: WorkspaceTab }) {
-  const isDirty = useTableDesignerStore((state) =>
+  const isDesignerDirty = useTableDesignerStore((state) =>
     tab.type === 'table-designer' ? (state.tabs[tab.id]?.isDirty ?? false) : false
   )
+
+  const isObjectEditorDirty = useObjectEditorStore((state) => {
+    if (tab.type !== 'object-editor') return false
+    const tabState = state.tabs[tab.id]
+    if (!tabState) return false
+    return tabState.content !== tabState.originalContent
+  })
+
+  const isDirty = isDesignerDirty || isObjectEditorDirty
 
   return (
     <span className={styles.tabLabel}>

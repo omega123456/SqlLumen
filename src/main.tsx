@@ -60,12 +60,14 @@ async function init() {
     const { useQueryStore } = await import('./stores/query-store')
     const { useTableDataStore } = await import('./stores/table-data-store')
     const { useTableDesignerStore } = await import('./stores/table-designer-store')
+    const { useObjectEditorStore } = await import('./stores/object-editor-store')
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
     ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
     ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore
     ;(window as unknown as Record<string, unknown>).__queryStore__ = useQueryStore
     ;(window as unknown as Record<string, unknown>).__tableDataStore__ = useTableDataStore
     ;(window as unknown as Record<string, unknown>).__tableDesignerStore__ = useTableDesignerStore
+    ;(window as unknown as Record<string, unknown>).__objectEditorStore__ = useObjectEditorStore
   }
 
   // Apply theme before React renders to prevent flash

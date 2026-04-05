@@ -172,6 +172,10 @@ pub fn run() {
             commands::table_data::delete_table_row,
             commands::table_data::export_table_data,
             commands::frontend_log::log_frontend,
+            commands::object_editor::get_object_body,
+            commands::object_editor::save_object,
+            commands::object_editor::drop_object,
+            commands::object_editor::get_routine_parameters,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

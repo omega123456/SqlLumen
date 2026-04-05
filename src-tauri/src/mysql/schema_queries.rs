@@ -785,3 +785,66 @@ async fn count_query(pool: &MySqlPool, sql: &str, bind: &str) -> Result<i64, Str
 pub async fn query_table_names(pool: &MySqlPool, database: &str) -> Result<Vec<String>, String> {
     query_list_schema_objects(pool, database, "table").await
 }
+
+// ---------------------------------------------------------------------------
+// Routine parameter queries
+// ---------------------------------------------------------------------------
+
+/// Row returned by `query_routine_parameters`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutineParameterRow {
+    pub name: String,
+    pub data_type: String,
+    pub mode: String,
+    pub ordinal_position: i32,
+}
+
+/// Query INFORMATION_SCHEMA.PARAMETERS for a stored procedure or function.
+///
+/// Excludes `ORDINAL_POSITION = 0` rows (function return type).
+/// `routine_type` must be `"PROCEDURE"` or `"FUNCTION"`.
+#[cfg(not(coverage))]
+pub async fn query_routine_parameters(
+    pool: &MySqlPool,
+    database: &str,
+    routine_name: &str,
+    routine_type: &str,
+) -> Result<Vec<RoutineParameterRow>, String> {
+    let sql = "SELECT \
+        PARAMETER_NAME, DTD_IDENTIFIER, PARAMETER_MODE, \
+        CAST(ORDINAL_POSITION AS SIGNED) \
+        FROM INFORMATION_SCHEMA.PARAMETERS \
+        WHERE SPECIFIC_SCHEMA = ? AND SPECIFIC_NAME = ? \
+        AND ROUTINE_TYPE = ? AND ORDINAL_POSITION > 0 \
+        ORDER BY ORDINAL_POSITION";
+    query_log::log_outgoing_sql_bound(
+        sql,
+        &[
+            database.to_string(),
+            routine_name.to_string(),
+            routine_type.to_string(),
+        ],
+    );
+    let rows = sqlx::query(sql)
+        .bind(database)
+        .bind(routine_name)
+        .bind(routine_type)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to get routine parameters: {e}"))?;
+    query_log::log_mysql_rows(&rows);
+
+    let mut params = Vec::with_capacity(rows.len());
+    for row in &rows {
+        params.push(RoutineParameterRow {
+            name: decode_mysql_optional_text_cell(row, 0)?
+                .unwrap_or_default(),
+            data_type: decode_mysql_text_cell(row, 1)?,
+            mode: decode_mysql_optional_text_cell(row, 2)?
+                .unwrap_or_default(),
+            ordinal_position: row.try_get::<i64, _>(3).unwrap_or(0) as i32,
+        });
+    }
+    Ok(params)
+}

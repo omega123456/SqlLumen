@@ -9,14 +9,42 @@ import {
   renameDatabase,
   renameTable,
 } from '../lib/schema-commands'
+import { dropObject, getRoutineParameters } from '../lib/object-editor-commands'
+import { buildExecuteTemplate } from '../lib/execute-template-builder'
 import { ConfirmDialog } from '../components/dialogs/ConfirmDialog'
 import { CreateDatabaseDialog } from '../components/dialogs/CreateDatabaseDialog'
 import { AlterDatabaseDialog } from '../components/dialogs/AlterDatabaseDialog'
 import { RenameDialog } from '../components/dialogs/RenameDialog'
-import { showErrorToast, showSuccessToast } from '../stores/toast-store'
+import { showErrorToast, showSuccessToast, showWarningToast } from '../stores/toast-store'
+import { useQueryStore } from '../stores/query-store'
+import type { EditableObjectType } from '../types/schema'
 
 const RENAME_DB_WARNING =
   'This operation will create a new database, move all tables, and drop the original. Only works for databases containing tables only (no views, procedures, functions, triggers, or events).'
+
+const OBJECT_TYPE_LABELS: Record<EditableObjectType, string> = {
+  view: 'View',
+  procedure: 'Procedure',
+  function: 'Function',
+  trigger: 'Trigger',
+  event: 'Event',
+}
+
+const PLACEHOLDER_NAMES: Record<EditableObjectType, string> = {
+  procedure: 'new_procedure',
+  function: 'new_function',
+  trigger: 'new_trigger',
+  event: 'new_event',
+  view: 'new_view',
+}
+
+const CREATE_LABELS: Record<EditableObjectType, string> = {
+  procedure: 'New Procedure',
+  function: 'New Function',
+  trigger: 'New Trigger',
+  event: 'New Event',
+  view: 'New View',
+}
 
 export interface UseObjectBrowserActionsReturn {
   // Dialog open state (for conditional rendering checks if needed)
@@ -33,6 +61,18 @@ export interface UseObjectBrowserActionsReturn {
   onTruncateTable: (db: string, table: string) => void
   onRenameTable: (db: string, table: string) => void
 
+  // Object editor callbacks (Phase 8.4)
+  onAlterObject: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  onCreateObject: (databaseName: string, objectType: EditableObjectType) => void
+  onDropObject: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+
+  // Execute routine callback (Phase 8.5)
+  onExecuteRoutine: (
+    databaseName: string,
+    routineName: string,
+    routineType: 'procedure' | 'function'
+  ) => void
+
   // Rendered dialogs (JSX — render at bottom of ObjectBrowser)
   dialogs: React.ReactNode
 }
@@ -45,6 +85,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
   const closeTabsByObject = useWorkspaceStore((state) => state.closeTabsByObject)
   const updateTabDatabase = useWorkspaceStore((state) => state.updateTabDatabase)
   const updateTabObject = useWorkspaceStore((state) => state.updateTabObject)
+  const openTab = useWorkspaceStore((state) => state.openTab)
 
   // Dialog states
   const [createDbOpen, setCreateDbOpen] = useState(false)
@@ -64,6 +105,11 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
   const [renameTableOpen, setRenameTableOpen] = useState<{
     db: string
     table: string
+  } | null>(null)
+  const [dropObjectConfirm, setDropObjectConfirm] = useState<{
+    databaseName: string
+    objectName: string
+    objectType: EditableObjectType
   } | null>(null)
 
   // Shared loading/error state for confirm dialogs
@@ -125,6 +171,76 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
     setRenameError(null)
     setRenameLoading(false)
   }, [])
+
+  // Object editor action callbacks (Phase 8.4)
+
+  const onAlterObject = useCallback(
+    (databaseName: string, objectName: string, objectType: EditableObjectType) => {
+      openTab({
+        type: 'object-editor',
+        label: `${OBJECT_TYPE_LABELS[objectType]}: ${objectName}`,
+        connectionId,
+        databaseName,
+        objectName,
+        objectType,
+        mode: 'alter',
+      })
+    },
+    [connectionId, openTab]
+  )
+
+  const onCreateObject = useCallback(
+    (databaseName: string, objectType: EditableObjectType) => {
+      const placeholderName = PLACEHOLDER_NAMES[objectType]
+      openTab({
+        type: 'object-editor',
+        label: CREATE_LABELS[objectType],
+        connectionId,
+        databaseName,
+        objectName: placeholderName,
+        objectType,
+        mode: 'create',
+      })
+    },
+    [connectionId, openTab]
+  )
+
+  const onDropObject = useCallback(
+    (databaseName: string, objectName: string, objectType: EditableObjectType) => {
+      setDropObjectConfirm({ databaseName, objectName, objectType })
+      setConfirmError(null)
+      setConfirmLoading(false)
+    },
+    []
+  )
+
+  // Execute routine handler (Phase 8.5)
+
+  const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
+
+  const onExecuteRoutine = useCallback(
+    async (databaseName: string, routineName: string, routineType: 'procedure' | 'function') => {
+      try {
+        const parameters = await getRoutineParameters(
+          connectionId,
+          databaseName,
+          routineName,
+          routineType
+        )
+        const template = buildExecuteTemplate(databaseName, routineName, routineType, parameters)
+        const tabId = openQueryTab(connectionId, `Execute: ${routineName}`)
+        useQueryStore.getState().setContent(tabId, template)
+      } catch (_error) {
+        // Fall back to simple template
+        const keyword = routineType === 'procedure' ? 'CALL' : 'SELECT'
+        const fallbackTemplate = `${keyword} \`${databaseName}\`.\`${routineName}\`( /* Add parameters here */ );`
+        const tabId = openQueryTab(connectionId, `Execute: ${routineName}`)
+        useQueryStore.getState().setContent(tabId, fallbackTemplate)
+        showWarningToast('Could not load parameters', 'Showing basic template')
+      }
+    },
+    [connectionId, openQueryTab]
+  )
 
   // ---------------------------------------------------------------------------
   // Dialog confirm handlers
@@ -270,6 +386,40 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
     [connectionId, renameTableOpen, updateTabObject, refreshCategory]
   )
 
+  const handleDropObjectConfirm = useCallback(async () => {
+    if (!dropObjectConfirm) return
+    setConfirmLoading(true)
+    setConfirmError(null)
+    try {
+      const { databaseName, objectName, objectType } = dropObjectConfirm
+      await dropObject(connectionId, databaseName, objectName, objectType)
+      closeTabsByObject(connectionId, databaseName, objectName, objectType)
+      setDropObjectConfirm(null)
+      // Refresh schema tree — call both refreshCategory and refreshDatabase.
+      // refreshCategory may silently no-op if the category node hasn't been expanded,
+      // so always also call refreshDatabase to ensure tree awareness.
+      try {
+        await refreshCategory(connectionId, databaseName, objectType)
+      } catch {
+        // Ignore refreshCategory errors
+      }
+      try {
+        await refreshDatabase(connectionId, databaseName)
+      } catch {
+        // Ignore refresh errors — the drop itself succeeded
+      }
+      const typeLabel = OBJECT_TYPE_LABELS[objectType]
+      showSuccessToast(`${typeLabel} dropped`, `${databaseName}.${objectName}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setConfirmError(msg)
+      const typeLabel = dropObjectConfirm.objectType
+      showErrorToast(`Failed to drop ${typeLabel}`, msg)
+    } finally {
+      setConfirmLoading(false)
+    }
+  }, [connectionId, dropObjectConfirm, closeTabsByObject, refreshCategory, refreshDatabase])
+
   // ---------------------------------------------------------------------------
   // Rendered dialogs
   // ---------------------------------------------------------------------------
@@ -375,6 +525,29 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         onConfirm={handleRenameTable}
         onCancel={() => setRenameTableOpen(null)}
       />
+
+      {/* Object drop confirmation dialog */}
+      {dropObjectConfirm && (
+        <ConfirmDialog
+          isOpen
+          title={`Drop ${OBJECT_TYPE_LABELS[dropObjectConfirm.objectType]}`}
+          message={
+            <>
+              Are you sure you want to drop{' '}
+              {OBJECT_TYPE_LABELS[dropObjectConfirm.objectType].toLowerCase()}{' '}
+              <strong>&apos;{dropObjectConfirm.objectName}&apos;</strong> from database{' '}
+              <strong>&apos;{dropObjectConfirm.databaseName}&apos;</strong>? This action cannot be
+              undone.
+            </>
+          }
+          confirmLabel={`Drop ${OBJECT_TYPE_LABELS[dropObjectConfirm.objectType]}`}
+          isDestructive
+          isLoading={confirmLoading}
+          error={confirmError}
+          onConfirm={handleDropObjectConfirm}
+          onCancel={() => setDropObjectConfirm(null)}
+        />
+      )}
     </>
   )
 
@@ -389,6 +562,10 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
     onDropTable,
     onTruncateTable,
     onRenameTable,
+    onAlterObject,
+    onCreateObject,
+    onDropObject,
+    onExecuteRoutine,
     dialogs,
   }
 }

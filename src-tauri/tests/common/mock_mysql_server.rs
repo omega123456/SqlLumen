@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use opensrv_mysql::{
     AsyncMysqlIntermediary, AsyncMysqlShim, Column, ColumnFlags, ColumnType, ErrorKind,
-    OkResponse, ParamParser, QueryResultWriter, StatementMetaWriter, ToMysqlValue,
+    InitWriter, OkResponse, ParamParser, QueryResultWriter, StatementMetaWriter, ToMysqlValue,
 };
 use std::collections::HashMap;
 use std::io;
@@ -145,6 +145,7 @@ impl From<MockQueryResponse> for MockQueryStep {
 #[derive(Clone)]
 struct MockMySqlBackend {
     steps: Arc<Vec<MockQueryStep>>,
+    unsupported_prepared_prefixes: Arc<Vec<String>>,
     prepared_steps: HashMap<u32, MockQueryStep>,
     next_statement_id: u32,
 }
@@ -159,8 +160,21 @@ impl MockMySqlBackend {
     }
 
     fn with_steps(steps: Vec<MockQueryStep>) -> Self {
+        Self::with_steps_and_unsupported_prepared_prefixes(steps, vec![])
+    }
+
+    fn with_steps_and_unsupported_prepared_prefixes(
+        steps: Vec<MockQueryStep>,
+        unsupported_prepared_prefixes: Vec<String>,
+    ) -> Self {
         Self {
             steps: Arc::new(steps),
+            unsupported_prepared_prefixes: Arc::new(
+                unsupported_prepared_prefixes
+                    .into_iter()
+                    .map(|prefix| prefix.to_ascii_uppercase())
+                    .collect(),
+            ),
             prepared_steps: HashMap::new(),
             next_statement_id: FIRST_QUERY_STATEMENT_ID,
         }
@@ -181,6 +195,13 @@ impl MockMySqlBackend {
             .iter()
             .find(|step| Self::normalize_query(step.query).eq_ignore_ascii_case(&normalized))
             .cloned()
+    }
+
+    fn rejects_prepared_statement(&self, query: &str) -> bool {
+        let normalized = Self::normalize_query(query).to_ascii_uppercase();
+        self.unsupported_prepared_prefixes
+            .iter()
+            .any(|prefix| normalized.starts_with(prefix))
     }
 
     fn step_columns(step: &MockQueryStep) -> Vec<Column> {
@@ -247,6 +268,15 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
             return info.reply(VERSION_STATEMENT_ID, &[], &columns).await;
         }
 
+        if self.rejects_prepared_statement(query) {
+            return info
+                .error(
+                    ErrorKind::ER_UNSUPPORTED_PS,
+                    b"This command is not supported in the prepared statement protocol yet",
+                )
+                .await;
+        }
+
         if let Some(step) = self.find_step(query) {
             let statement_id = self.next_statement_id;
             self.next_statement_id += 1;
@@ -284,6 +314,14 @@ impl AsyncMysqlShim<BufWriter<OwnedWriteHalf>> for MockMySqlBackend {
     }
 
     async fn on_close<'a>(&'a mut self, _stmt: u32) {}
+
+    async fn on_init<'a>(
+        &'a mut self,
+        _db: &'a str,
+        writer: InitWriter<'a, BufWriter<OwnedWriteHalf>>,
+    ) -> Result<(), Self::Error> {
+        writer.ok().await
+    }
 
     async fn on_query<'a>(
         &'a mut self,
@@ -323,6 +361,13 @@ impl MockMySqlServer {
     }
 
     pub async fn start_script(steps: Vec<MockQueryStep>) -> Self {
+        Self::start_script_with_unsupported_prepared_prefixes(steps, vec![]).await
+    }
+
+    pub async fn start_script_with_unsupported_prepared_prefixes(
+        steps: Vec<MockQueryStep>,
+        unsupported_prepared_prefixes: Vec<&'static str>,
+    ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("should bind mock mysql server");
@@ -330,7 +375,13 @@ impl MockMySqlServer {
             .local_addr()
             .expect("should read local addr")
             .port();
-        let backend = MockMySqlBackend::with_steps(steps);
+        let backend = MockMySqlBackend::with_steps_and_unsupported_prepared_prefixes(
+            steps,
+            unsupported_prepared_prefixes
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        );
 
         let accept_task = tokio::spawn(async move {
             loop {

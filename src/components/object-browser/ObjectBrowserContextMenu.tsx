@@ -19,7 +19,7 @@ import { clampContextMenuPosition, writeClipboardText } from '../../lib/context-
 import { DISMISS_ALL_CONTEXT_MENUS } from '../../lib/context-menu-events'
 import { parseNodeId, useSchemaStore, type ConnectionTreeState } from '../../stores/schema-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import type { NodeType, ObjectType } from '../../types/schema'
+import type { NodeType, ObjectType, EditableObjectType } from '../../types/schema'
 
 // ---------------------------------------------------------------------------
 // Props
@@ -43,6 +43,16 @@ export interface ObjectBrowserContextMenuProps {
   onRenameTable?: (databaseName: string, tableName: string) => void
   onDesignTable?: (databaseName: string, tableName: string) => void
   onCreateTable?: (databaseName: string) => void
+  // Object editor callbacks (Phase 8.4)
+  onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  onDropObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  onCreateObject?: (databaseName: string, objectType: EditableObjectType) => void
+  // Execute routine callback (Phase 8.5)
+  onExecuteRoutine?: (
+    databaseName: string,
+    routineName: string,
+    routineType: 'procedure' | 'function'
+  ) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +101,10 @@ export function ObjectBrowserContextMenu({
   onRenameTable,
   onDesignTable,
   onCreateTable,
+  onAlterObject,
+  onDropObject,
+  onCreateObject,
+  onExecuteRoutine,
 }: ObjectBrowserContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const openTab = useWorkspaceStore((state) => state.openTab)
@@ -217,6 +231,10 @@ export function ObjectBrowserContextMenu({
     onRenameTable,
     onDesignTable,
     onCreateTable,
+    onAlterObject,
+    onDropObject,
+    onCreateObject,
+    onExecuteRoutine,
     closeMenu,
   })
 
@@ -291,6 +309,14 @@ interface BuildMenuArgs {
   onRenameTable?: (databaseName: string, tableName: string) => void
   onDesignTable?: (databaseName: string, tableName: string) => void
   onCreateTable?: (databaseName: string) => void
+  onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  onDropObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  onCreateObject?: (databaseName: string, objectType: EditableObjectType) => void
+  onExecuteRoutine?: (
+    databaseName: string,
+    routineName: string,
+    routineType: 'procedure' | 'function'
+  ) => void
   closeMenu: () => void
 }
 
@@ -313,6 +339,10 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
     onRenameTable,
     onDesignTable,
     onCreateTable,
+    onAlterObject,
+    onDropObject,
+    onCreateObject,
+    onExecuteRoutine,
     closeMenu,
   } = args
 
@@ -327,6 +357,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         onAlterDatabase,
         onRenameDatabase,
         onDropDatabase,
+        onCreateObject,
         closeMenu,
       })
     case 'table':
@@ -345,18 +376,45 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         closeMenu,
       })
     case 'view':
-      return buildViewMenu({ isReadOnly, openSchemaInfoTab, copyName, refreshNode })
+      return buildViewMenu({
+        databaseName,
+        objectName,
+        isReadOnly,
+        openSchemaInfoTab,
+        copyName,
+        refreshNode,
+        onAlterObject,
+        onDropObject,
+        closeMenu,
+      })
     case 'procedure':
     case 'function':
-      return buildRoutineMenu({ nodeType, isReadOnly, openSchemaInfoTab, copyName, refreshNode })
-    case 'trigger':
-    case 'event':
-      return buildTriggerEventMenu({
+      return buildRoutineMenu({
+        databaseName,
+        objectName,
         nodeType,
         isReadOnly,
         openSchemaInfoTab,
         copyName,
         refreshNode,
+        onAlterObject,
+        onDropObject,
+        onExecuteRoutine,
+        closeMenu,
+      })
+    case 'trigger':
+    case 'event':
+      return buildTriggerEventMenu({
+        databaseName,
+        objectName,
+        nodeType,
+        isReadOnly,
+        openSchemaInfoTab,
+        copyName,
+        refreshNode,
+        onAlterObject,
+        onDropObject,
+        closeMenu,
       })
     case 'category':
       return buildCategoryMenu({
@@ -365,6 +423,7 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         isReadOnly,
         refreshNode,
         onCreateTable,
+        onCreateObject,
         closeMenu,
       })
     case 'column':
@@ -392,6 +451,7 @@ function buildDatabaseMenu(args: {
   onRenameDatabase?: (databaseName: string) => void
   onDropDatabase?: (databaseName: string) => void
   onCreateTable?: (databaseName: string) => void
+  onCreateObject?: (databaseName: string, objectType: EditableObjectType) => void
   closeMenu: () => void
 }): MenuEntry[] {
   const {
@@ -403,6 +463,7 @@ function buildDatabaseMenu(args: {
     onRenameDatabase,
     onDropDatabase,
     onCreateTable,
+    onCreateObject,
     closeMenu,
   } = args
 
@@ -439,6 +500,61 @@ function buildDatabaseMenu(args: {
       destructive: false,
       action: () => {
         onCreateTable?.(databaseName)
+        closeMenu()
+      },
+    },
+    {
+      key: 'create-view',
+      label: 'Create View...',
+      icon: <PlusCircle size={18} weight="regular" />,
+      disabled: !onCreateObject,
+      destructive: false,
+      action: () => {
+        onCreateObject?.(databaseName, 'view')
+        closeMenu()
+      },
+    },
+    {
+      key: 'create-procedure',
+      label: 'Create Procedure...',
+      icon: <PlusCircle size={18} weight="regular" />,
+      disabled: !onCreateObject,
+      destructive: false,
+      action: () => {
+        onCreateObject?.(databaseName, 'procedure')
+        closeMenu()
+      },
+    },
+    {
+      key: 'create-function',
+      label: 'Create Function...',
+      icon: <PlusCircle size={18} weight="regular" />,
+      disabled: !onCreateObject,
+      destructive: false,
+      action: () => {
+        onCreateObject?.(databaseName, 'function')
+        closeMenu()
+      },
+    },
+    {
+      key: 'create-trigger',
+      label: 'Create Trigger...',
+      icon: <PlusCircle size={18} weight="regular" />,
+      disabled: !onCreateObject,
+      destructive: false,
+      action: () => {
+        onCreateObject?.(databaseName, 'trigger')
+        closeMenu()
+      },
+    },
+    {
+      key: 'create-event',
+      label: 'Create Event...',
+      icon: <PlusCircle size={18} weight="regular" />,
+      disabled: !onCreateObject,
+      destructive: false,
+      action: () => {
+        onCreateObject?.(databaseName, 'event')
         closeMenu()
       },
     },
@@ -647,9 +763,18 @@ function buildCategoryMenu(args: {
   isReadOnly: boolean
   refreshNode: () => void
   onCreateTable?: (databaseName: string) => void
+  onCreateObject?: (databaseName: string, objectType: EditableObjectType) => void
   closeMenu: () => void
 }): MenuEntry[] {
-  const { categoryType, databaseName, isReadOnly, refreshNode, onCreateTable, closeMenu } = args
+  const {
+    categoryType,
+    databaseName,
+    isReadOnly,
+    refreshNode,
+    onCreateTable,
+    onCreateObject,
+    closeMenu,
+  } = args
 
   const entries: MenuEntry[] = []
 
@@ -662,6 +787,30 @@ function buildCategoryMenu(args: {
       destructive: false,
       action: () => {
         onCreateTable?.(databaseName)
+        closeMenu()
+      },
+    })
+  }
+
+  // Create items for object-editor categories
+  const objectCategoryMap: Record<string, EditableObjectType> = {
+    view: 'view',
+    procedure: 'procedure',
+    function: 'function',
+    trigger: 'trigger',
+    event: 'event',
+  }
+  const objectType = categoryType ? objectCategoryMap[categoryType] : undefined
+  if (objectType && !isReadOnly) {
+    const typeLabel = categoryType!.charAt(0).toUpperCase() + categoryType!.slice(1)
+    entries.push({
+      key: `create-${objectType}`,
+      label: `Create ${typeLabel}...`,
+      icon: <PlusCircle size={18} weight="regular" />,
+      disabled: !onCreateObject,
+      destructive: false,
+      action: () => {
+        onCreateObject?.(databaseName, objectType)
         closeMenu()
       },
     })
@@ -684,12 +833,27 @@ function buildCategoryMenu(args: {
 }
 
 function buildViewMenu(args: {
+  databaseName: string
+  objectName: string
   isReadOnly: boolean
   openSchemaInfoTab: () => void
   copyName: () => void
   refreshNode: () => void
+  onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  onDropObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  closeMenu: () => void
 }): MenuEntry[] {
-  const { isReadOnly, openSchemaInfoTab, copyName, refreshNode } = args
+  const {
+    databaseName,
+    objectName,
+    isReadOnly,
+    openSchemaInfoTab,
+    copyName,
+    refreshNode,
+    onAlterObject,
+    onDropObject,
+    closeMenu,
+  } = args
 
   if (isReadOnly) {
     return [
@@ -729,16 +893,27 @@ function buildViewMenu(args: {
       destructive: false,
       action: openSchemaInfoTab,
     },
+    {
+      key: 'alter-view',
+      label: 'Alter View...',
+      icon: <PencilSimple size={18} weight="regular" />,
+      disabled: !onAlterObject,
+      destructive: false,
+      action: () => {
+        onAlterObject?.(databaseName, objectName, 'view')
+        closeMenu()
+      },
+    },
     { key: 'sep-1', separator: true },
     {
       key: 'drop-view',
       label: 'Drop View...',
       icon: <Trash size={18} weight="regular" />,
-      disabled: true,
+      disabled: !onDropObject,
       destructive: true,
-      title: 'Coming in Phase 8',
       action: () => {
-        /* Phase 8 */
+        onDropObject?.(databaseName, objectName, 'view')
+        closeMenu()
       },
     },
     { key: 'sep-2', separator: true },
@@ -762,13 +937,35 @@ function buildViewMenu(args: {
 }
 
 function buildRoutineMenu(args: {
+  databaseName: string
+  objectName: string
   nodeType: 'procedure' | 'function'
   isReadOnly: boolean
   openSchemaInfoTab: () => void
   copyName: () => void
   refreshNode: () => void
+  onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  onDropObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  onExecuteRoutine?: (
+    databaseName: string,
+    routineName: string,
+    routineType: 'procedure' | 'function'
+  ) => void
+  closeMenu: () => void
 }): MenuEntry[] {
-  const { nodeType, isReadOnly, openSchemaInfoTab, copyName, refreshNode } = args
+  const {
+    databaseName,
+    objectName,
+    nodeType,
+    isReadOnly,
+    openSchemaInfoTab,
+    copyName,
+    refreshNode,
+    onAlterObject,
+    onDropObject,
+    onExecuteRoutine,
+    closeMenu,
+  } = args
   const typeLabel = nodeType === 'procedure' ? 'Procedure' : 'Function'
 
   if (isReadOnly) {
@@ -813,22 +1010,22 @@ function buildRoutineMenu(args: {
       key: 'execute',
       label: 'Execute',
       icon: <Play size={18} weight="regular" />,
-      disabled: true,
+      disabled: !onExecuteRoutine,
       destructive: false,
-      title: 'Coming soon',
       action: () => {
-        /* Future phase */
+        onExecuteRoutine?.(databaseName, objectName, nodeType)
+        closeMenu()
       },
     },
     {
       key: `alter-${nodeType}`,
       label: `Alter ${typeLabel}...`,
       icon: <PencilSimple size={18} weight="regular" />,
-      disabled: true,
+      disabled: !onAlterObject,
       destructive: false,
-      title: 'Coming in Phase 8',
       action: () => {
-        /* Phase 8 */
+        onAlterObject?.(databaseName, objectName, nodeType)
+        closeMenu()
       },
     },
     { key: 'sep-1', separator: true },
@@ -836,11 +1033,11 @@ function buildRoutineMenu(args: {
       key: `drop-${nodeType}`,
       label: `Drop ${typeLabel}...`,
       icon: <Trash size={18} weight="regular" />,
-      disabled: true,
+      disabled: !onDropObject,
       destructive: true,
-      title: 'Coming soon',
       action: () => {
-        /* Future phase */
+        onDropObject?.(databaseName, objectName, nodeType)
+        closeMenu()
       },
     },
     { key: 'sep-2', separator: true },
@@ -864,13 +1061,29 @@ function buildRoutineMenu(args: {
 }
 
 function buildTriggerEventMenu(args: {
+  databaseName: string
+  objectName: string
   nodeType: 'trigger' | 'event'
   isReadOnly: boolean
   openSchemaInfoTab: () => void
   copyName: () => void
   refreshNode: () => void
+  onAlterObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  onDropObject?: (databaseName: string, objectName: string, objectType: EditableObjectType) => void
+  closeMenu: () => void
 }): MenuEntry[] {
-  const { nodeType, isReadOnly, openSchemaInfoTab, copyName, refreshNode } = args
+  const {
+    databaseName,
+    objectName,
+    nodeType,
+    isReadOnly,
+    openSchemaInfoTab,
+    copyName,
+    refreshNode,
+    onAlterObject,
+    onDropObject,
+    closeMenu,
+  } = args
   const typeLabel = nodeType === 'trigger' ? 'Trigger' : 'Event'
 
   if (isReadOnly) {
@@ -915,11 +1128,11 @@ function buildTriggerEventMenu(args: {
       key: `alter-${nodeType}`,
       label: `Alter ${typeLabel}...`,
       icon: <PencilSimple size={18} weight="regular" />,
-      disabled: true,
+      disabled: !onAlterObject,
       destructive: false,
-      title: 'Coming in Phase 8',
       action: () => {
-        /* Phase 8 */
+        onAlterObject?.(databaseName, objectName, nodeType)
+        closeMenu()
       },
     },
     { key: 'sep-1', separator: true },
@@ -927,11 +1140,11 @@ function buildTriggerEventMenu(args: {
       key: `drop-${nodeType}`,
       label: `Drop ${typeLabel}...`,
       icon: <Trash size={18} weight="regular" />,
-      disabled: true,
+      disabled: !onDropObject,
       destructive: true,
-      title: 'Coming soon',
       action: () => {
-        /* Future phase */
+        onDropObject?.(databaseName, objectName, nodeType)
+        closeMenu()
       },
     },
     { key: 'sep-2', separator: true },

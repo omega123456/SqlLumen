@@ -1003,6 +1003,42 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'export_table_data':
       return null
 
+    // --- Object editor commands (Phase 8) ---
+    case 'get_object_body': {
+      const objectType = (args as Record<string, unknown>)?.objectType as string | undefined
+      switch (objectType) {
+        case 'procedure':
+          return 'CREATE PROCEDURE `test_db`.`mock_proc`(\n  IN p_id INT\n)\nBEGIN\n  SELECT p_id;\nEND'
+        case 'function':
+          return 'CREATE FUNCTION `test_db`.`mock_func`(\n  p_input INT\n) RETURNS INT\nDETERMINISTIC\nBEGIN\n  RETURN p_input;\nEND'
+        case 'trigger':
+          return 'CREATE TRIGGER `test_db`.`mock_trigger`\nBEFORE INSERT ON `mock_table`\nFOR EACH ROW\nBEGIN\n  SET NEW.created_at = NOW();\nEND'
+        case 'event':
+          return 'CREATE EVENT `test_db`.`mock_event`\nON SCHEDULE EVERY 1 DAY\nDO BEGIN\n  -- Event body\nEND'
+        case 'view':
+          return 'CREATE OR REPLACE VIEW `test_db`.`mock_view` AS\nSELECT id, name FROM users'
+        default:
+          return 'CREATE ...'
+      }
+    }
+
+    case 'save_object':
+      return {
+        success: true,
+        errorMessage: null,
+        dropSucceeded: true,
+        savedObjectName: 'mock_object',
+      }
+
+    case 'drop_object':
+      return undefined
+
+    case 'get_routine_parameters':
+      return [
+        { name: 'p_id', dataType: 'int', mode: 'IN', ordinalPosition: 1 },
+        { name: 'p_result', dataType: 'varchar(255)', mode: 'OUT', ordinalPosition: 2 },
+      ]
+
     case 'read_file':
       return "SELECT * FROM users\nWHERE status = 'active'\nLIMIT 100;"
 

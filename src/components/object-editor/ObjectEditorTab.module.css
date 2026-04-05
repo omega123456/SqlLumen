@@ -1,0 +1,49 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.editorArea {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.loadingState {
+  display: flex;
+  flex: 1;
+  min-height: 240px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-sm);
+  color: var(--on-surface-variant);
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(var(--outline-variant-rgb), 0.35);
+  border-top-color: var(--primary);
+  border-radius: 999px;
+  animation: object-editor-spin 0.85s linear infinite;
+}
+
+.errorState {
+  display: flex;
+  flex: 1;
+  min-height: 240px;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+  color: var(--error);
+}
+
+@keyframes object-editor-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
