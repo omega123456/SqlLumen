@@ -39,6 +39,7 @@ export function AlterDatabaseDialog({
     setIsSubmitting(false)
     setDetailsError(null)
     setSubmitError(null)
+    setInitialEncoding({})
   }, [isOpen])
 
   // Load current database details on open

@@ -228,6 +228,13 @@ describe('MonacoEditorWrapper', () => {
     expect(props.language).toBe('mysql')
   })
 
+  it('enables fixedOverflowWidgets so suggest popup is not clipped by container', () => {
+    render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+    const lastCall = mockEditorComponent.mock.calls[mockEditorComponent.mock.calls.length - 1]
+    const props = lastCall[0]
+    expect(props.options.fixedOverflowWidgets).toBe(true)
+  })
+
   it('unregisters model-connection using captured URI even when getModel returns null on dispose', () => {
     render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
 

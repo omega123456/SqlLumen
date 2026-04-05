@@ -37,6 +37,12 @@ export function QueryEditorTab({ tab }: QueryEditorTabProps) {
     })
   }, [])
 
+  /** Explicitly relayout the Monaco editor when the panel is resized so
+   *  overlay widgets (suggest popup, parameter hints) know the new viewport. */
+  const handleEditorPanelResize = useCallback(() => {
+    editorRef.current?.layout()
+  }, [])
+
   return (
     <div className={styles.container} data-testid="query-editor-tab">
       <EditorToolbar
@@ -48,7 +54,12 @@ export function QueryEditorTab({ tab }: QueryEditorTabProps) {
       <div className={styles.contentArea}>
         {status === 'running' && <QueryExecutionOverlay />}
         <Group orientation="vertical" className={styles.panelGroup}>
-          <Panel defaultSize="60%" minSize="20%" className={styles.editorPanel}>
+          <Panel
+            defaultSize="60%"
+            minSize="20%"
+            className={styles.editorPanel}
+            onResize={handleEditorPanelResize}
+          >
             <MonacoEditorWrapper
               tabId={tab.id}
               connectionId={tab.connectionId}

@@ -180,6 +180,7 @@ export function MonacoEditorWrapper({
           tabSize: 2,
           insertSpaces: true,
           automaticLayout: true,
+          fixedOverflowWidgets: true,
           padding: { top: 16, bottom: 16 },
           overviewRulerLanes: 0,
           hideCursorInOverviewRuler: true,
