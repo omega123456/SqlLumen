@@ -20,6 +20,8 @@ import {
   buildRowEditState,
   buildUpdatePayload,
 } from '../lib/query-edit-utils'
+import { mapSingleColumnForeignKeys } from '../lib/foreign-key-utils'
+import type { ForeignKeyColumnInfo } from '../types/schema'
 
 /**
  * Strip leading SQL comments (block, line `-- ...`, and `# ...`)
@@ -146,6 +148,8 @@ export interface TabQueryState {
   editMode: string | null
   /** Cached table metadata keyed by composite `database.table` key. */
   editTableMetadata: Record<string, QueryTableEditInfo>
+  /** FK metadata for the selected edit table (single-column constraints only). */
+  editForeignKeys: ForeignKeyColumnInfo[]
   /** Current row edit state. */
   editState: RowEditState | null
   /** True while analyze_query_for_edit is in flight. */
@@ -198,6 +202,7 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   // Edit mode defaults
   editMode: null,
   editTableMetadata: {},
+  editForeignKeys: [],
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),
@@ -216,6 +221,7 @@ const DEFAULT_TAB_STATE: TabQueryState = {
 const EDIT_STATE_DEFAULTS: Partial<TabQueryState> = {
   editMode: null,
   editTableMetadata: {},
+  editForeignKeys: [],
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),
@@ -700,6 +706,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
               editableColumnMap: new Map(),
               editColumnBindings: new Map(),
               editBoundColumnIndexMap: new Map(),
+              editForeignKeys: [],
               editTableMetadata: {},
               editState: null,
               editingRowIndex: null,
@@ -781,6 +788,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         editableColumnMap: new Map(),
         editColumnBindings: new Map(),
         editBoundColumnIndexMap: new Map(),
+        editForeignKeys: [],
         editTableMetadata: {},
         editState: null,
         editingRowIndex: null,
@@ -896,6 +904,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           editableColumnMap: new Map(),
           editColumnBindings: new Map(),
           editBoundColumnIndexMap: new Map(),
+          editForeignKeys: [],
           editState: null,
           editConnectionId: null,
           editingRowIndex: null,
@@ -1005,6 +1014,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         editableColumnMap: editableMap,
         editColumnBindings: columnBindings,
         editBoundColumnIndexMap: boundColumnIndexMap,
+        editForeignKeys: mapSingleColumnForeignKeys(tableInfo.foreignKeys),
         editState: null,
         editConnectionId: connectionId,
         editingRowIndex: null,

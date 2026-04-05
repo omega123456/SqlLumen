@@ -1784,6 +1784,7 @@ describe('BaseGridView', () => {
       makeColumn('user_id', 'bigint', {
         foreignKey: {
           columnName: 'user_id',
+          referencedDatabase: 'testdb',
           referencedTable: 'users',
           referencedColumn: 'id',
           constraintName: 'fk_user',
@@ -1812,6 +1813,7 @@ describe('BaseGridView', () => {
         editable: false,
         foreignKey: {
           columnName: 'user_id',
+          referencedDatabase: 'testdb',
           referencedTable: 'users',
           referencedColumn: 'id',
           constraintName: 'fk_user',

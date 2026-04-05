@@ -130,6 +130,7 @@ function makeDefaultProps(overrides: Partial<FkLookupDialogProps> = {}): FkLooku
     sourceTable: 'orders',
     sourceColumn: 'user_id',
     currentValue: 1,
+    // database prop is the referenced table database used by the dialog query
     referencedTable: 'users',
     referencedColumn: 'id',
     isReadOnly: false,

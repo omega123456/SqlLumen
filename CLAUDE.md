@@ -66,6 +66,45 @@ The frontend **never** touches SQLite or MySQL directly. All persistence and dat
 
 Playwright runs the web build with `VITE_PLAYWRIGHT=true`; extend **`src/lib/playwright-ipc-mock.ts`** when new UI depends on IPC so E2E stays deterministic.
 
+### Tauri permissions (capabilities)
+
+Tauri v2 does not expose IPC commands to the webview unless they are allowed by a **capability** for that window. This repo uses two layers: permission definitions (what each command needs) and capabilities (which windows get which permissions).
+
+**1. Declare a permission for each custom command**
+
+- Custom (app) commands are listed in `src-tauri/permissions/*.toml`. Files are grouped by area (`settings.toml`, `connections.toml`, `query.toml`, etc.); Tauri picks up every `*.toml` in that folder at build time.
+- Add a block per command (or reuse an existing one that already allows the right `commands.allow` list):
+
+```toml
+[[permission]]
+identifier = "allow-my-command"
+description = "Enables the my_command IPC."
+commands.allow = ["my_command"]
+commands.deny = []
+```
+
+- **`identifier`** — Stable string you will reference from capabilities (kebab-case with an `allow-` prefix matches the rest of this project).
+- **`commands.allow`** — Must use the **exact** Rust command name registered with `#[tauri::command]` (snake_case), not the frontend `invoke` camelCase name.
+
+**2. Grant the permission to the main window**
+
+- Edit **`src-tauri/capabilities/default.json`**: add the permission `identifier` to the `permissions` array.
+- **`windows`** must include the window **label** from `tauri.conf.json` (this app uses `"main"` for the primary window). If a window matches no capability, it has **no** IPC access.
+
+**3. Plugin commands**
+
+- First-party plugins use prefixed identifiers in capabilities, e.g. `dialog:allow-open`, `dialog:allow-save`, `clipboard-manager:default`, `core:default`, `mcp-bridge:default`. Add the minimal plugin permissions the UI actually needs; see each plugin’s docs or the generated descriptions in `src-tauri/gen/schemas/desktop-schema.json`.
+- Enabling a plugin in Rust (`Cargo.toml` optional feature + `Builder` in `lib.rs`) is not enough — the capability file must still list the plugin permissions you rely on.
+
+**4. Checklist when adding IPC**
+
+1. Implement and register the command in Rust; add the TypeScript `invoke` wrapper.
+2. Add or extend a `[[permission]]` in `src-tauri/permissions/` with `commands.allow = ["your_command"]`.
+3. Append `allow-your-command` (the identifier) to `src-tauri/capabilities/default.json`.
+4. For Playwright / `VITE_PLAYWRIGHT`, update **`src/lib/playwright-ipc-mock.ts`** if the UI now calls that command.
+
+If `invoke` fails at runtime with a **permission** or **forbidden** style error, the usual fix is a missing or mistyped entry in `capabilities/default.json` or a mismatch between the TOML `commands.allow` name and the registered command name.
+
 ### Rust Backend Layout
 
 ```
@@ -253,6 +292,6 @@ When a bug is **visual** or **desktop-specific** (layout, focus, scrolling, reac
 
 - **ESLint 10 + react-hooks**: `pnpm.peerDependencyRules.allowedVersions.eslint: "10"` is set in `package.json` because `eslint-plugin-react-hooks` hasn't declared ESLint 10 support yet. Don't remove it.
 - **`csp: null`** in `tauri.conf.json` is intentional for now — will be tightened in a later phase.
-- **Tauri v2 permissions**: Capability files live in `src-tauri/capabilities/`. Tauri v2 requires explicit permission grants for any plugin (fs, dialog, etc.).
+- **Tauri v2 permissions**: Capability files live in `src-tauri/capabilities/`; custom command allowlists live in `src-tauri/permissions/*.toml`. See **Tauri permissions (capabilities)** under Architecture for the full setup checklist.
 - **Package manager**: `pnpm` only. Do not use npm or yarn.
 - **Monaco editor**: SQL worker wiring lives in `main.tsx` / `src/lib/monaco-worker-setup.ts`; keep Playwright and dev builds consistent when upgrading Monaco.

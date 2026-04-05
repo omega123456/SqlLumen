@@ -27,6 +27,7 @@ import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { DateTimePicker } from '../table-data/DateTimePicker'
 import { TextInput } from '../common/TextInput'
+import { FkLookupTriggerButton } from './FkLookupTriggerButton'
 import tiStyles from '../common/TextInput.module.css'
 import { ENUM_NULL_SENTINEL } from '../table-data/enum-field-utils'
 import type { BaseFormViewProps, GridColumnDescriptor } from '../../types/shared-data-view'
@@ -62,6 +63,7 @@ function isNullish(value: unknown): value is null | undefined {
 export function BaseFormView({
   columns,
   currentRow,
+  currentRowData = null,
   totalRows,
   currentAbsoluteIndex,
   isFirstRecord,
@@ -252,6 +254,7 @@ export function BaseFormView({
               col={col}
               colIdx={colIdx}
               currentRow={currentRow}
+              currentRowData={currentRowData}
               editState={editState}
               isModified={modifiedKeys.has(col.key)}
               hasEditCapability={hasEditCapability}
@@ -279,6 +282,7 @@ interface FormFieldProps {
   col: GridColumnDescriptor
   colIdx: number
   currentRow: unknown[]
+  currentRowData: Record<string, unknown> | null
   editState: BaseFormViewProps['editState']
   isModified: boolean
   hasEditCapability: boolean
@@ -296,6 +300,7 @@ function FormField({
   col,
   colIdx,
   currentRow,
+  currentRowData,
   editState,
   isModified,
   hasEditCapability,
@@ -340,6 +345,7 @@ function FormField({
 
   // Lock icon: non-editable column in edit mode with active editState
   const showLock = !col.editable && hasEditCapability && editState !== null
+  const showFkTrigger = !!(col.foreignKey && currentRowData)
 
   return (
     <div className={styles.fieldGroup} data-testid={`form-field-${col.displayName}`}>
@@ -468,6 +474,16 @@ function FormField({
           >
             {temporalType === 'TIME' ? <Clock size={14} /> : <CalendarBlank size={14} />}
           </button>
+        )}
+
+        {showFkTrigger && currentRowData && col.foreignKey && (
+          <FkLookupTriggerButton
+            foreignKey={col.foreignKey}
+            columnKey={col.key}
+            currentValue={rawValue}
+            rowData={currentRowData}
+            className={styles.fieldFkButton}
+          />
         )}
 
         <button

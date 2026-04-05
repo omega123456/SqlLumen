@@ -682,6 +682,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
               table: 'users',
               columns: [],
               primaryKey: null, // No PK → save will fail
+              foreignKeys: [],
             },
           },
         },
@@ -846,6 +847,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
                 hasAutoIncrement: true,
                 isUniqueKeyFallback: false,
               },
+              foreignKeys: [],
             },
           },
         },

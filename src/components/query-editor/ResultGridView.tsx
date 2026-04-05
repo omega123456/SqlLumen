@@ -13,8 +13,9 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { BaseGridView } from '../shared/BaseGridView'
-import { colKey, colIndexFromKey, buildTableColLookup } from '../../lib/col-key-utils'
+import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
 import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
+import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
 import type {
   GridColumnDescriptor,
@@ -61,6 +62,8 @@ interface ResultGridViewProps {
   editingRowIndex: number | null
   /** Column metadata from the edit table (for cell editor selection). */
   editTableColumns: TableDataColumnMeta[]
+  /** FK metadata from the edit table (single-column constraints only). */
+  editForeignKeys?: import('../../types/schema').ForeignKeyColumnInfo[]
   /** Result column index → bound source-table column name. */
   editColumnBindings: Map<number, string>
   /** Start editing a row by its page-local index. */
@@ -75,6 +78,7 @@ interface ResultGridViewProps {
 
 const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
+const EMPTY_FOREIGN_KEYS: import('../../types/schema').ForeignKeyColumnInfo[] = []
 const EMPTY_BINDINGS = new Map<number, string>()
 
 export function ResultGridView({
@@ -93,6 +97,7 @@ export function ResultGridView({
   editState = null,
   editingRowIndex = null,
   editTableColumns = EMPTY_TABLE_COLUMNS,
+  editForeignKeys = EMPTY_FOREIGN_KEYS,
   editColumnBindings = EMPTY_BINDINGS,
   onStartEditing,
   onUpdateCellValue: _onUpdateCellValue,
@@ -118,7 +123,6 @@ export function ResultGridView({
   // Table column lookup map — case-insensitive name → TableDataColumnMeta.
   // Used by column descriptors and shared with the form view pattern.
   // ---------------------------------------------------------------------------
-  const tableColLookup = useMemo(() => buildTableColLookup(editTableColumns), [editTableColumns])
   const boundColumnIndexLookup = useMemo(() => {
     const lookup = new Map<string, number>()
     for (const [index, columnName] of editColumnBindings) {
@@ -151,54 +155,37 @@ export function ResultGridView({
     })
   }, [rows, columns, editState, editingRowIndex, boundColumnIndexLookup])
 
-  const tableMetaByColumnIndex = useMemo(() => {
-    return columns.map((col, index) => {
-      const boundName = editColumnBindings.get(index) ?? col.name
-      const tableColMeta = tableColLookup.get(boundName.toLowerCase())
-      return (tableColMeta ?? {
-        name: boundName,
-        dataType: col.dataType,
-        isNullable: true,
-        isPrimaryKey: false,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isBooleanAlias: false,
-        isAutoIncrement: false,
-      }) satisfies TableDataColumnMeta
-    })
-  }, [columns, tableColLookup, editColumnBindings])
+  const resolvedColumns = useMemo(
+    () =>
+      resolveQueryResultColumns({
+        resultColumns: columns,
+        editMode,
+        editableColumnMap,
+        editTableColumns,
+        editForeignKeys,
+        editColumnBindings,
+      }),
+    [columns, editMode, editableColumnMap, editTableColumns, editForeignKeys, editColumnBindings]
+  )
 
   // ---------------------------------------------------------------------------
   // Column descriptors: build GridColumnDescriptor[] from ColumnMeta[].
   // ---------------------------------------------------------------------------
   const gridColumns: GridColumnDescriptor[] = useMemo(() => {
-    return columns.map((col, i) => {
-      const key = colKey(i)
-      const isEditable =
-        editMode !== null && editableColumnMap.size > 0
-          ? (editableColumnMap.get(i) ?? false)
-          : false
-
-      // Find matching table column meta for cell editor via lookup map
-      const boundName = editColumnBindings.get(i) ?? col.name
-      const tableColMeta = isEditable ? tableColLookup.get(boundName.toLowerCase()) : undefined
-
-      return {
-        key,
-        displayName: col.name,
-        dataType: col.dataType,
-        editable: isEditable,
-        isBinary: false,
-        isNullable: tableColMeta?.isNullable ?? true,
-        isPrimaryKey: tableColMeta?.isPrimaryKey ?? false,
-        isUniqueKey: tableColMeta?.isUniqueKey ?? false,
-        enumValues: tableColMeta?.enumValues,
-        tableColumnMeta: tableColMeta,
-      } as GridColumnDescriptor
-    })
-  }, [columns, editMode, editableColumnMap, tableColLookup, editColumnBindings])
+    return resolvedColumns.map((column) => ({
+      key: column.key,
+      displayName: column.displayName,
+      dataType: column.dataType,
+      editable: column.editable,
+      isBinary: false,
+      isNullable: column.tableColumnMeta?.isNullable ?? true,
+      isPrimaryKey: column.tableColumnMeta?.isPrimaryKey ?? false,
+      isUniqueKey: column.tableColumnMeta?.isUniqueKey ?? false,
+      enumValues: column.tableColumnMeta?.enumValues,
+      tableColumnMeta: column.editable ? column.tableColumnMeta : undefined,
+      foreignKey: column.foreignKey,
+    }))
+  }, [resolvedColumns])
 
   // ---------------------------------------------------------------------------
   // Sort state: translate between app (lowercase, real names) and BaseGridView
@@ -389,7 +376,7 @@ export function ResultGridView({
       enabled: true,
       computeWidth: (col, gridRows) => {
         const index = colIndexFromKey(col.key)
-        const tableMeta = tableMetaByColumnIndex[index]
+        const tableMeta = resolvedColumns[index]?.effectiveTableMeta
         if (!tableMeta) return 150
         const arrayRows = gridRows.map((row) =>
           columns.map((_, columnIndex) => row[colKey(columnIndex)])
@@ -406,7 +393,7 @@ export function ResultGridView({
         )
       },
     }
-  }, [columns, tableMetaByColumnIndex])
+  }, [columns, resolvedColumns])
 
   const handleCellClipboardEdit = useCallback(
     async (args: CellClipboardEditArgs) => {

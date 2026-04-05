@@ -21,6 +21,7 @@ import type { ForeignKeyColumnInfo } from '../../../types/schema'
 
 const sampleFk: ForeignKeyColumnInfo = {
   columnName: 'user_id',
+  referencedDatabase: 'testdb',
   referencedTable: 'users',
   referencedColumn: 'id',
   constraintName: 'fk_orders_user_id',

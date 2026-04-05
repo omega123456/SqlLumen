@@ -11,16 +11,20 @@
  * current row before completing the view mode switch.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Play, CheckCircle } from '@phosphor-icons/react'
 import { useQueryStore } from '../../stores/query-store'
+import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
+import { FkLookupDialog } from '../table-data/FkLookupDialog'
 import { ResultToolbar } from './ResultToolbar'
 import { ResultGridView } from './ResultGridView'
 import { ResultFormView } from './ResultFormView'
 import { ResultTextView } from './ResultTextView'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import ExportDialog from '../dialogs/ExportDialog'
-import type { ColumnMeta, TableDataColumnMeta } from '../../types/schema'
+import type { ColumnMeta, ForeignKeyColumnInfo, TableDataColumnMeta } from '../../types/schema'
+import { colIndexFromKey } from '../../lib/col-key-utils'
+import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
 import styles from './ResultPanel.module.css'
 
 interface ResultPanelProps {
@@ -29,6 +33,7 @@ interface ResultPanelProps {
 }
 
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
+const EMPTY_FOREIGN_KEYS: ForeignKeyColumnInfo[] = []
 
 export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const tabState = useQueryStore((state) => state.tabs[tabId])
@@ -69,6 +74,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const editColumnBindings = tabState?.editColumnBindings ?? new Map<number, string>()
   const editState = tabState?.editState ?? null
   const editingRowIndex = tabState?.editingRowIndex ?? null
+  const editForeignKeys = tabState?.editForeignKeys ?? EMPTY_FOREIGN_KEYS
   const pendingNavigationAction = tabState?.pendingNavigationAction ?? null
   const saveError = tabState?.saveError ?? null
   const editTableColumns =
@@ -192,6 +198,116 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
     discardCurrentRow(tabId)
   }, [discardCurrentRow, tabId])
 
+  const [fkLookupOpen, setFkLookupOpen] = useState(false)
+  const [fkLookupContext, setFkLookupContext] = useState<{
+    columnKey: string
+    sourceColumn: string
+    currentValue: unknown
+    foreignKey: ForeignKeyColumnInfo
+    rowData: Record<string, unknown>
+  } | null>(null)
+
+  const resultForeignKeyLookup = useMemo(
+    () => buildForeignKeyLookup(editForeignKeys),
+    [editForeignKeys]
+  )
+
+  const resolveResultForeignKey = useCallback(
+    (columnKey: string) => {
+      const resultColumnIndex = colIndexFromKey(columnKey)
+      if (resultColumnIndex < 0) return null
+      const sourceColumnName = editColumnBindings.get(resultColumnIndex)
+      if (!sourceColumnName) return null
+      const foreignKey = resultForeignKeyLookup.get(sourceColumnName.toLowerCase())
+      if (!foreignKey) return null
+      return { sourceColumnName, foreignKey }
+    },
+    [editColumnBindings, resultForeignKeyLookup]
+  )
+
+  const handleFkLookup = useCallback(
+    async (args: FkLookupArgs) => {
+      const resolved = resolveResultForeignKey(args.columnKey)
+      if (!resolved || !editMode) return
+
+      const { sourceColumnName, foreignKey } = resolved
+
+      const rowIndexRaw = args.rowData.__rowIdx
+      const rowIndex = typeof rowIndexRaw === 'number' ? rowIndexRaw : 0
+
+      const currentEditingRow = useQueryStore.getState().tabs[tabId]?.editingRowIndex ?? null
+      const currentEditState = useQueryStore.getState().tabs[tabId]?.editState ?? null
+
+      if (currentEditingRow !== null && currentEditingRow !== rowIndex) {
+        if (currentEditState && currentEditState.modifiedColumns.size > 0) {
+          const saveSucceeded = await saveCurrentRow(tabId)
+          if (!saveSucceeded) return
+        } else {
+          discardCurrentRow(tabId)
+        }
+
+        startEditingRow(tabId, rowIndex)
+      } else if (currentEditingRow === null) {
+        startEditingRow(tabId, rowIndex)
+      }
+
+      handleRowSelected(rowIndex)
+
+      setFkLookupContext({
+        columnKey: args.columnKey,
+        sourceColumn: sourceColumnName,
+        currentValue: args.currentValue,
+        foreignKey,
+        rowData: args.rowData,
+      })
+      setFkLookupOpen(true)
+    },
+    [
+      resolveResultForeignKey,
+      editMode,
+      tabId,
+      saveCurrentRow,
+      discardCurrentRow,
+      handleRowSelected,
+      startEditingRow,
+    ]
+  )
+
+  const handleFkApply = useCallback(
+    (selectedValue: unknown) => {
+      if (!fkLookupContext) return
+
+      const rowIndexRaw = fkLookupContext.rowData.__rowIdx
+      const rowIndex = typeof rowIndexRaw === 'number' ? rowIndexRaw : 0
+      const resultColumnIndex = colIndexFromKey(fkLookupContext.columnKey)
+      if (resultColumnIndex < 0) {
+        setFkLookupOpen(false)
+        return
+      }
+
+      const currentEdit = useQueryStore.getState().tabs[tabId]?.editState
+      const sameRow = currentEdit && editingRowIndex === rowIndex
+
+      if (
+        selectedValue === fkLookupContext.currentValue &&
+        (!sameRow || currentEdit.modifiedColumns.size === 0)
+      ) {
+        handleRowSelected(rowIndex)
+        setFkLookupOpen(false)
+        return
+      }
+
+      if (!sameRow) {
+        startEditingRow(tabId, rowIndex)
+      }
+
+      syncCellValue(tabId, resultColumnIndex, selectedValue)
+      handleRowSelected(rowIndex)
+      setFkLookupOpen(false)
+    },
+    [fkLookupContext, tabId, editingRowIndex, handleRowSelected, startEditingRow, syncCellValue]
+  )
+
   return (
     <div className={styles.container} data-testid="result-panel">
       {status === 'idle' && (
@@ -212,7 +328,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
         <>
           <ResultToolbar tabId={tabId} connectionId={connectionId} />
           {columns.length > 0 ? (
-            <>
+            <FkLookupProvider onFkLookup={handleFkLookup}>
               {viewMode === 'grid' && (
                 <ResultGridView
                   columns={columns}
@@ -231,6 +347,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
                   editState={editState}
                   editingRowIndex={editingRowIndex}
                   editTableColumns={editTableColumns}
+                  editForeignKeys={editForeignKeys}
                   onStartEditing={handleStartEditing}
                   onUpdateCellValue={handleUpdateCellValue}
                   onSyncCellValue={handleSyncCellValue}
@@ -253,6 +370,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
                   editState={editState}
                   editingRowIndex={editingRowIndex}
                   editTableColumns={editTableColumns}
+                  editForeignKeys={editForeignKeys}
                   onStartEdit={handleStartEditing}
                   onUpdateCell={handleUpdateCellValue}
                   onSaveRow={handleFormSave}
@@ -260,7 +378,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
                 />
               )}
               {viewMode === 'text' && <ResultTextView columns={columns} rows={rows} />}
-            </>
+            </FkLookupProvider>
           ) : (
             <div className={styles.emptyState} data-testid="dml-success">
               <CheckCircle size={32} weight="duotone" className={styles.successIcon} />
@@ -300,6 +418,26 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
           onDiscard={handleDialogDiscard}
           onCancel={handleDialogCancel}
           error={saveError}
+        />
+      )}
+
+      {fkLookupOpen && fkLookupContext && editMode && (
+        <FkLookupDialog
+          isOpen={fkLookupOpen}
+          onClose={() => setFkLookupOpen(false)}
+          onApply={handleFkApply}
+          connectionId={connectionId}
+          database={
+            fkLookupContext.foreignKey.referencedDatabase ||
+            tabState?.editTableMetadata?.[editMode]?.database ||
+            ''
+          }
+          sourceTable={tabState?.editTableMetadata?.[editMode]?.table ?? editMode}
+          sourceColumn={fkLookupContext.sourceColumn}
+          currentValue={fkLookupContext.currentValue}
+          referencedTable={fkLookupContext.foreignKey.referencedTable}
+          referencedColumn={fkLookupContext.foreignKey.referencedColumn}
+          isReadOnly={false}
         />
       )}
     </div>

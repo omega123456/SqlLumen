@@ -57,6 +57,7 @@ const mockAnalyzeQueryForEditFn = vi.fn(() => [
       },
     ],
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+    foreignKeys: [],
   },
 ])
 const mockUpdateResultCellFn = vi.fn(() => null)

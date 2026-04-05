@@ -29,6 +29,7 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   lastExecutedSql: null,
   editMode: null,
   editTableMetadata: {},
+  editForeignKeys: [],
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),

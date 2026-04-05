@@ -74,6 +74,7 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   lastExecutedSql: null,
   editMode: null,
   editTableMetadata: {},
+  editForeignKeys: [],
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),
@@ -244,5 +245,46 @@ describe('ResultPanel edit mode callbacks', () => {
 
     expect(capturedGridProps.editState).toBe(editState)
     expect(capturedGridProps.editingRowIndex).toBe(0)
+  })
+
+  it('passes editForeignKeys from store to ResultGridView', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...DEFAULT_TAB_STATE,
+          status: 'success',
+          viewMode: 'grid',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'email', dataType: 'VARCHAR' },
+          ],
+          rows: [['1', 'alice@example.com']],
+          totalRows: 1,
+          queryId: 'q1',
+          editMode: 'users',
+          editForeignKeys: [
+            {
+              columnName: 'email',
+              referencedDatabase: 'testdb',
+              referencedTable: 'users',
+              referencedColumn: 'id',
+              constraintName: 'fk_users_email',
+            },
+          ],
+        },
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+
+    expect(capturedGridProps.editForeignKeys).toEqual([
+      {
+        columnName: 'email',
+        referencedDatabase: 'testdb',
+        referencedTable: 'users',
+        referencedColumn: 'id',
+        constraintName: 'fk_users_email',
+      },
+    ])
   })
 })

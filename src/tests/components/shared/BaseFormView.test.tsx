@@ -3,6 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { GridColumnDescriptor, RowEditState } from '../../../types/shared-data-view'
 
+vi.mock('../../../components/shared/fk-lookup-context', () => ({
+  useFkLookup: () => ({ onFkLookup: vi.fn() }),
+}))
+
 // Mock DateTimePicker — avoids portal + react-datepicker complexity in unit tests
 vi.mock('../../../components/table-data/DateTimePicker', async () => {
   const React = await import('react')
@@ -146,6 +150,26 @@ const enumColumns: GridColumnDescriptor[] = [
     isPrimaryKey: false,
     isUniqueKey: false,
     enumValues: ['active', 'disabled'],
+  },
+]
+
+const fkColumns: GridColumnDescriptor[] = [
+  {
+    key: 'user_id',
+    displayName: 'user_id',
+    dataType: 'INT',
+    editable: true,
+    isBinary: false,
+    isNullable: false,
+    isPrimaryKey: false,
+    isUniqueKey: false,
+    foreignKey: {
+      columnName: 'user_id',
+      referencedDatabase: 'testdb',
+      referencedTable: 'users',
+      referencedColumn: 'id',
+      constraintName: 'fk_orders_user',
+    },
   },
 ]
 
@@ -726,6 +750,30 @@ describe('BaseFormView — enum fields', () => {
     await user.click(screen.getByTestId('form-input-status'))
     await user.click(screen.getByRole('option', { name: 'disabled' }))
     expect(onUpdateCell).toHaveBeenCalledWith('status', 'disabled')
+  })
+})
+
+describe('BaseFormView — foreign key trigger', () => {
+  it('renders FK lookup trigger for editable FK field when row data is provided', () => {
+    renderForm({
+      columns: fkColumns,
+      currentRow: [101],
+      currentRowData: { user_id: 101 },
+      onSave: vi.fn(),
+    })
+
+    expect(screen.getByTestId('fk-lookup-trigger')).toBeInTheDocument()
+  })
+
+  it('does not render FK lookup trigger without row data', () => {
+    renderForm({
+      columns: fkColumns,
+      currentRow: [101],
+      currentRowData: null,
+      onSave: vi.fn(),
+    })
+
+    expect(screen.queryByTestId('fk-lookup-trigger')).not.toBeInTheDocument()
   })
 })
 

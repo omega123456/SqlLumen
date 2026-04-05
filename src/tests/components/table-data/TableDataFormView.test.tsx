@@ -68,8 +68,33 @@ vi.mock('../../../components/table-data/DateTimePicker', async () => {
   }
 })
 
+let capturedFkLookupDialogProps: Record<string, unknown> | null = null
+
+vi.mock('../../../components/table-data/FkLookupDialog', () => ({
+  FkLookupDialog: (props: Record<string, unknown>) => {
+    capturedFkLookupDialogProps = props
+    if (!props.isOpen) return null
+    return (
+      <div data-testid="fk-lookup-dialog" data-database={String(props.database)}>
+        <button
+          type="button"
+          data-testid="mock-fk-apply"
+          onClick={() => (props.onApply as (value: unknown) => void)?.(999)}
+        >
+          Apply FK
+        </button>
+      </div>
+    )
+  },
+}))
+
 import { TableDataFormView } from '../../../components/table-data/TableDataFormView'
 import { updateTableRow, fetchTableData } from '../../../lib/table-data-commands'
+
+vi.mock('../../../components/shared/fk-lookup-context', async () => {
+  const actual = await vi.importActual('../../../components/shared/fk-lookup-context')
+  return actual
+})
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -282,6 +307,7 @@ beforeEach(() => {
   useConnectionStore.setState({ activeConnections: {}, activeTabId: null })
   mockIPC(() => null)
   vi.clearAllMocks()
+  capturedFkLookupDialogProps = null
 
   Object.defineProperty(navigator, 'clipboard', {
     value: {
@@ -477,6 +503,199 @@ describe('TableDataFormView', () => {
 
     const nameInput = screen.getByTestId('form-input-name')
     expect(nameInput.tagName).toBe('DIV')
+  })
+
+  it('renders FK lookup trigger for FK-backed form fields', () => {
+    setupStore({
+      columns: [
+        mockColumns[0],
+        {
+          name: 'user_id',
+          dataType: 'INT',
+          isNullable: false,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isBooleanAlias: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [[1, 42]],
+      selectedRowKey: { id: 1 },
+      foreignKeys: [
+        {
+          columnName: 'user_id',
+          referencedDatabase: 'mydb',
+          referencedTable: 'users',
+          referencedColumn: 'id',
+          constraintName: 'fk_orders_user',
+        },
+      ],
+    })
+
+    renderFormView()
+
+    expect(screen.getByTestId('fk-lookup-trigger')).toBeInTheDocument()
+  })
+
+  it('opens FK lookup dialog when form FK trigger is clicked', async () => {
+    vi.mocked(fetchTableData).mockResolvedValueOnce({
+      columns: [mockColumns[0]],
+      rows: [[1]],
+      totalRows: 1,
+      currentPage: 1,
+      totalPages: 1,
+      pageSize: 100,
+      primaryKey: mockPK,
+      executionTimeMs: 4,
+    })
+
+    setupStore({
+      columns: [
+        mockColumns[0],
+        {
+          name: 'user_id',
+          dataType: 'INT',
+          isNullable: false,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isBooleanAlias: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [[1, 42]],
+      selectedRowKey: { id: 1 },
+      foreignKeys: [
+        {
+          columnName: 'user_id',
+          referencedDatabase: 'mydb',
+          referencedTable: 'users',
+          referencedColumn: 'id',
+          constraintName: 'fk_orders_user',
+        },
+      ],
+    })
+
+    renderFormView()
+
+    fireEvent.click(screen.getByTestId('fk-lookup-trigger'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
+    })
+    expect(capturedFkLookupDialogProps?.database).toBe('mydb')
+  })
+
+  it('uses referencedDatabase for cross-database FK lookups', async () => {
+    vi.mocked(fetchTableData).mockResolvedValueOnce({
+      columns: [mockColumns[0]],
+      rows: [[1]],
+      totalRows: 1,
+      currentPage: 1,
+      totalPages: 1,
+      pageSize: 100,
+      primaryKey: mockPK,
+      executionTimeMs: 4,
+    })
+
+    setupStore({
+      columns: [
+        mockColumns[0],
+        {
+          name: 'user_id',
+          dataType: 'INT',
+          isNullable: false,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isBooleanAlias: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [[1, 42]],
+      selectedRowKey: { id: 1 },
+      foreignKeys: [
+        {
+          columnName: 'user_id',
+          referencedDatabase: 'accounts_db',
+          referencedTable: 'users',
+          referencedColumn: 'id',
+          constraintName: 'fk_orders_user',
+        },
+      ],
+    })
+
+    renderFormView()
+
+    fireEvent.click(screen.getByTestId('fk-lookup-trigger'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
+    })
+    expect(capturedFkLookupDialogProps?.database).toBe('accounts_db')
+  })
+
+  it('applies selected FK values back into table data form state', async () => {
+    vi.mocked(fetchTableData).mockResolvedValueOnce({
+      columns: [mockColumns[0]],
+      rows: [[1]],
+      totalRows: 1,
+      currentPage: 1,
+      totalPages: 1,
+      pageSize: 100,
+      primaryKey: mockPK,
+      executionTimeMs: 4,
+    })
+
+    setupStore({
+      columns: [
+        mockColumns[0],
+        {
+          name: 'user_id',
+          dataType: 'INT',
+          isNullable: false,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isBooleanAlias: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [[1, 42]],
+      selectedRowKey: { id: 1 },
+      foreignKeys: [
+        {
+          columnName: 'user_id',
+          referencedDatabase: 'mydb',
+          referencedTable: 'users',
+          referencedColumn: 'id',
+          constraintName: 'fk_orders_user',
+        },
+      ],
+    })
+
+    renderFormView()
+
+    fireEvent.click(screen.getByTestId('fk-lookup-trigger'))
+    await waitFor(() => {
+      expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByTestId('mock-fk-apply'))
+
+    await waitFor(() => {
+      const state = useTableDataStore.getState().tabs['tab-1']
+      expect(state?.rows[0]?.[1]).toBe(999)
+    })
   })
 
   it('displays correct record position with pagination', () => {

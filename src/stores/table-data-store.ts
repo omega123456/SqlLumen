@@ -4,7 +4,6 @@ import type {
   TableDataTabState,
   FilterCondition,
   RowEditState,
-  ForeignKeyColumnInfo,
 } from '../types/schema'
 import {
   fetchTableData as fetchTableDataCmd,
@@ -17,6 +16,7 @@ import { logFrontend } from '../lib/app-log-commands'
 import { getTemporalValidationResult } from '../lib/table-data-save-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../lib/date-utils'
 import { showErrorToast, showSuccessToast } from './toast-store'
+import { mapSingleColumnForeignKeys } from '../lib/foreign-key-utils'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -393,27 +393,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           // Guard: tab may have been cleaned up during the async call
           if (!get().tabs[tabId]) return
 
-          // Map ForeignKeyInfo[] → ForeignKeyColumnInfo[]
-          const mapped: ForeignKeyColumnInfo[] = fkInfos.map((fk) => ({
-            columnName: fk.columnName,
-            referencedTable: fk.referencedTable,
-            referencedColumn: fk.referencedColumn,
-            constraintName: fk.name,
-          }))
-
-          // Filter out composite FKs: exclude any constraintName that appears more than once
-          const countByConstraint = new Map<string, number>()
-          for (const fk of mapped) {
-            countByConstraint.set(
-              fk.constraintName,
-              (countByConstraint.get(fk.constraintName) ?? 0) + 1
-            )
-          }
-          const filtered = mapped.filter(
-            (fk) => (countByConstraint.get(fk.constraintName) ?? 0) <= 1
-          )
-
-          patchTab(tabId, { foreignKeys: filtered })
+          patchTab(tabId, { foreignKeys: mapSingleColumnForeignKeys(fkInfos) })
         })
         .catch((error: unknown) => {
           const errorMessage = error instanceof Error ? error.message : String(error)

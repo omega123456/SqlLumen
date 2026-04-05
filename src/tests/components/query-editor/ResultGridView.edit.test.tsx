@@ -217,6 +217,43 @@ describe('ResultGridView edit mode', () => {
     expect(colDefs[2].tableColumnMeta).toBeDefined() // email — editable
   })
 
+  it('adds foreignKey metadata for bound FK columns', () => {
+    const editableMap = new Map<number, boolean>([
+      [0, false],
+      [1, true],
+      [2, true],
+    ])
+    const bindings = new Map<number, string>([
+      [1, 'name'],
+      [2, 'email'],
+    ])
+    const editForeignKeys = [
+      {
+        columnName: 'email',
+        referencedDatabase: 'testdb',
+        referencedTable: 'users',
+        referencedColumn: 'id',
+        constraintName: 'fk_users_email',
+      },
+    ]
+
+    render(
+      <ResultGridView
+        {...baseProps}
+        editMode="users"
+        editableColumnMap={editableMap}
+        editColumnBindings={bindings}
+        editTableColumns={editTableColumns}
+        editForeignKeys={editForeignKeys}
+      />
+    )
+
+    const props = getLatestBaseGridProps()
+    const colDefs = props.columns as GridColumnDescriptor[]
+    expect(colDefs[2].foreignKey).toEqual(editForeignKeys[0])
+    expect(colDefs[1].foreignKey).toBeUndefined()
+  })
+
   it('passes showReadOnlyHeaders=true when editMode is active', () => {
     const editableMap = new Map<number, boolean>([
       [0, false],

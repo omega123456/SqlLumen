@@ -325,6 +325,28 @@
   pointer-events: none;
 }
 
+.fieldFkButton {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.fieldFkButton:hover {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
 /* "Unsaved change detected" note */
 .fieldModifiedNote {
   display: flex;

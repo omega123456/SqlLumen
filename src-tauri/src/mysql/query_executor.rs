@@ -109,6 +109,7 @@ pub struct QueryTableEditInfo {
     pub table: String,
     pub columns: Vec<crate::mysql::table_data::TableDataColumnMeta>,
     pub primary_key: Option<crate::mysql::table_data::PrimaryKeyInfo>,
+    pub foreign_keys: Vec<crate::mysql::schema_queries::ForeignKeyInfo>,
 }
 
 // ── SQL comment stripping & keyword helpers ─────────────────────────────────────
@@ -1501,6 +1502,22 @@ pub async fn analyze_query_for_edit_impl(
             .await
         {
             Ok((pk_info, columns)) => {
+                let foreign_keys = crate::mysql::schema_queries::query_foreign_keys(
+                    &pool,
+                    database,
+                    &table_ref.table,
+                )
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        table = %table_ref.table,
+                        database = %database,
+                        error = %e,
+                        "analyze_query_for_edit: foreign key lookup failed; continuing without FK metadata"
+                    );
+                    vec![]
+                });
+
                 tracing::debug!(
                     table = %table_ref.table,
                     database = %database,
@@ -1513,6 +1530,7 @@ pub async fn analyze_query_for_edit_impl(
                     table: table_ref.table.clone(),
                     columns,
                     primary_key: pk_info,
+                    foreign_keys,
                 });
             }
             Err(e) => {

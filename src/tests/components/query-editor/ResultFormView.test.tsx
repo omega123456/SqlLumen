@@ -65,6 +65,7 @@ function buildTabState(overrides: Record<string, unknown> = {}) {
     lastExecutedSql: null,
     editMode: null,
     editTableMetadata: {},
+    editForeignKeys: [],
     editState: null,
     isAnalyzingQuery: false,
     editableColumnMap: new Map<number, boolean>(),
@@ -74,6 +75,9 @@ function buildTabState(overrides: Record<string, unknown> = {}) {
     saveError: null,
     editConnectionId: null,
     editingRowIndex: null,
+    executionStartedAt: null,
+    isCancelling: false,
+    wasCancelled: false,
     ...overrides,
   }
 }
@@ -345,6 +349,27 @@ describe('ResultFormView — Edit Mode', () => {
     render(<ResultFormView {...defaultProps} {...buildEditProps({ onUpdateCell })} />)
     fireEvent.change(screen.getByTestId('form-input-name'), { target: { value: 'Bob' } })
     expect(onUpdateCell).toHaveBeenCalledWith(1, 'Bob')
+  })
+
+  it('renders FK lookup trigger for editable FK fields when row data is available', () => {
+    render(
+      <ResultFormView
+        {...defaultProps}
+        {...buildEditProps({
+          editForeignKeys: [
+            {
+              columnName: 'email',
+              referencedDatabase: 'testdb',
+              referencedTable: 'users',
+              referencedColumn: 'id',
+              constraintName: 'fk_users_email',
+            },
+          ],
+        })}
+      />
+    )
+
+    expect(screen.getByTestId('fk-lookup-trigger')).toBeInTheDocument()
   })
 
   it('uses bound source values for aliased editable fields', () => {

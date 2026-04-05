@@ -1000,6 +1000,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
       {
         name: 'fk_user_dept',
         columnName: 'department_id',
+        referencedDatabase: 'mydb',
         referencedTable: 'departments',
         referencedColumn: 'id',
         onDelete: 'CASCADE',
@@ -1017,6 +1018,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
       expect(tab.foreignKeys).toEqual([
         {
           columnName: 'department_id',
+          referencedDatabase: 'mydb',
           referencedTable: 'departments',
           referencedColumn: 'id',
           constraintName: 'fk_user_dept',
@@ -1032,6 +1034,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
       {
         name: 'fk_simple',
         columnName: 'author_id',
+        referencedDatabase: 'mydb',
         referencedTable: 'authors',
         referencedColumn: 'id',
         onDelete: 'CASCADE',
@@ -1040,6 +1043,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
       {
         name: 'fk_composite',
         columnName: 'org_id',
+        referencedDatabase: 'mydb',
         referencedTable: 'orgs',
         referencedColumn: 'id',
         onDelete: 'CASCADE',
@@ -1048,6 +1052,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
       {
         name: 'fk_composite',
         columnName: 'dept_id',
+        referencedDatabase: 'mydb',
         referencedTable: 'orgs',
         referencedColumn: 'dept_id',
         onDelete: 'CASCADE',
@@ -1065,6 +1070,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
       expect(tab.foreignKeys).toEqual([
         {
           columnName: 'author_id',
+          referencedDatabase: 'mydb',
           referencedTable: 'authors',
           referencedColumn: 'id',
           constraintName: 'fk_simple',
@@ -1101,6 +1107,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
       {
         name: 'fk_user_dept',
         columnName: 'department_id',
+        referencedDatabase: 'mydb',
         referencedTable: 'departments',
         referencedColumn: 'id',
         onDelete: 'CASCADE',

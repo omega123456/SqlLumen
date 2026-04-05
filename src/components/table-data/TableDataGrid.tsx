@@ -684,7 +684,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
             onClose={() => setFkLookupOpen(false)}
             onApply={handleFkApply}
             connectionId={tabState.connectionId}
-            database={tabState.database}
+            database={fkLookupContext.foreignKey.referencedDatabase || tabState.database}
             sourceTable={tabState.table}
             sourceColumn={fkLookupContext.columnKey}
             currentValue={fkLookupContext.currentValue}

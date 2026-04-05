@@ -3,7 +3,7 @@
 //! This module contains SQL query helpers that run against a live MySQL/MariaDB
 //! server. It is intentionally separate from the `db/` module which is SQLite-only.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
 #[cfg(not(coverage))]
@@ -78,11 +78,12 @@ pub struct IndexInfo {
     pub is_unique: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ForeignKeyInfo {
     pub name: String,
     pub column_name: String,
+    pub referenced_database: String,
     pub referenced_table: String,
     pub referenced_column: String,
     pub on_delete: String,
@@ -487,6 +488,7 @@ pub async fn query_foreign_keys(
 ) -> Result<Vec<ForeignKeyInfo>, String> {
     let sql = "SELECT \
              kcu.CONSTRAINT_NAME, kcu.COLUMN_NAME, \
+             kcu.REFERENCED_TABLE_SCHEMA, \
              kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, \
              rc.DELETE_RULE, rc.UPDATE_RULE \
          FROM information_schema.KEY_COLUMN_USAGE kcu \
@@ -510,10 +512,11 @@ pub async fn query_foreign_keys(
         out.push(ForeignKeyInfo {
             name: decode_mysql_text_cell(row, 0).unwrap_or_default(),
             column_name: decode_mysql_text_cell(row, 1).unwrap_or_default(),
-            referenced_table: decode_mysql_text_cell(row, 2).unwrap_or_default(),
-            referenced_column: decode_mysql_text_cell(row, 3).unwrap_or_default(),
-            on_delete: decode_mysql_text_cell(row, 4).unwrap_or_default(),
-            on_update: decode_mysql_text_cell(row, 5).unwrap_or_default(),
+            referenced_database: decode_mysql_text_cell(row, 2).unwrap_or_default(),
+            referenced_table: decode_mysql_text_cell(row, 3).unwrap_or_default(),
+            referenced_column: decode_mysql_text_cell(row, 4).unwrap_or_default(),
+            on_delete: decode_mysql_text_cell(row, 5).unwrap_or_default(),
+            on_update: decode_mysql_text_cell(row, 6).unwrap_or_default(),
         });
     }
     Ok(out)

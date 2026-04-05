@@ -4,6 +4,9 @@ import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, type TabQueryState } from '../../../stores/query-store'
 import { fetchResultPage } from '../../../lib/query-commands'
+import { fetchTableData } from '../../../lib/table-data-commands'
+
+let capturedFkLookupDialogProps: Record<string, unknown> | null = null
 
 let lastReactDataGridProps: Record<string, unknown> = {}
 
@@ -72,6 +75,45 @@ vi.mock('../../../lib/query-commands', () => ({
   sortResults: vi.fn().mockResolvedValue({ rows: [], page: 1, totalPages: 1 }),
 }))
 
+vi.mock('../../../lib/table-data-commands', () => ({
+  fetchTableData: vi.fn().mockResolvedValue({
+    columns: [],
+    rows: [],
+    totalRows: 0,
+    currentPage: 1,
+    totalPages: 1,
+    pageSize: 100,
+    primaryKey: null,
+    executionTimeMs: 0,
+  }),
+  updateTableRow: vi.fn().mockResolvedValue(undefined),
+  insertTableRow: vi.fn().mockResolvedValue([]),
+  deleteTableRow: vi.fn().mockResolvedValue(undefined),
+  exportTableData: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../../components/table-data/FkLookupDialog', () => ({
+  FkLookupDialog: (props: Record<string, unknown>) => {
+    capturedFkLookupDialogProps = props
+    if (!props.isOpen) return null
+    return (
+      <div
+        data-testid="fk-lookup-dialog"
+        data-database={String(props.database)}
+        data-referenced-table={String(props.referencedTable)}
+      >
+        <button
+          type="button"
+          data-testid="mock-fk-apply"
+          onClick={() => (props.onApply as (value: unknown) => void)?.(999)}
+        >
+          Apply FK
+        </button>
+      </div>
+    )
+  },
+}))
+
 const DEFAULT_TAB_STATE: TabQueryState = {
   content: '',
   filePath: null,
@@ -96,6 +138,7 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   lastExecutedSql: null,
   editMode: null,
   editTableMetadata: {},
+  editForeignKeys: [],
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),
@@ -114,6 +157,7 @@ beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   mockIPC(() => null)
   lastReactDataGridProps = {}
+  capturedFkLookupDialogProps = null
 })
 
 describe('ResultPanel', () => {
@@ -125,6 +169,568 @@ describe('ResultPanel', () => {
   it('shows idle state with "Run a query to see results" when no tab state', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByText('Run a query to see results')).toBeInTheDocument()
+  })
+
+  it('opens FK lookup dialog from query result form view when FK trigger is clicked', async () => {
+    vi.mocked(fetchTableData).mockResolvedValueOnce({
+      columns: [
+        {
+          name: 'id',
+          dataType: 'INT',
+          isNullable: false,
+          isPrimaryKey: true,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isBooleanAlias: false,
+          isAutoIncrement: true,
+        },
+      ],
+      rows: [[1]],
+      totalRows: 1,
+      currentPage: 1,
+      totalPages: 1,
+      pageSize: 100,
+      primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+      executionTimeMs: 5,
+    })
+
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...DEFAULT_TAB_STATE,
+          status: 'success',
+          viewMode: 'form',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'email', dataType: 'VARCHAR' },
+          ],
+          rows: [[1, 'alice@example.com']],
+          totalRows: 1,
+          selectedRowIndex: 0,
+          editMode: 'testdb.users',
+          editableColumnMap: new Map([
+            [0, false],
+            [1, true],
+          ]),
+          editColumnBindings: new Map([
+            [0, 'id'],
+            [1, 'email'],
+          ]),
+          editBoundColumnIndexMap: new Map([
+            ['id', 0],
+            ['email', 1],
+          ]),
+          editForeignKeys: [
+            {
+              columnName: 'email',
+              referencedDatabase: 'testdb',
+              referencedTable: 'users',
+              referencedColumn: 'id',
+              constraintName: 'fk_users_email',
+            },
+          ],
+          editTableMetadata: {
+            'testdb.users': {
+              database: 'testdb',
+              table: 'users',
+              columns: [
+                {
+                  name: 'id',
+                  dataType: 'INT',
+                  isBooleanAlias: false,
+                  isNullable: false,
+                  isPrimaryKey: true,
+                  isUniqueKey: false,
+                  hasDefault: false,
+                  columnDefault: null,
+                  isBinary: false,
+                  isAutoIncrement: true,
+                },
+                {
+                  name: 'email',
+                  dataType: 'VARCHAR',
+                  isBooleanAlias: false,
+                  isNullable: false,
+                  isPrimaryKey: false,
+                  isUniqueKey: false,
+                  hasDefault: false,
+                  columnDefault: null,
+                  isBinary: false,
+                  isAutoIncrement: false,
+                },
+              ],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+              foreignKeys: [
+                {
+                  name: 'fk_users_email',
+                  columnName: 'email',
+                  referencedDatabase: 'testdb',
+                  referencedTable: 'users',
+                  referencedColumn: 'id',
+                  onDelete: 'CASCADE',
+                  onUpdate: 'CASCADE',
+                },
+              ],
+            },
+          },
+        },
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+
+    fireEvent.click(screen.getByTestId('fk-lookup-trigger'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
+    })
+    expect(capturedFkLookupDialogProps?.database).toBe('testdb')
+  })
+
+  it('uses referencedDatabase for cross-database FK lookups in query result form view', async () => {
+    vi.mocked(fetchTableData).mockResolvedValueOnce({
+      columns: [
+        {
+          name: 'id',
+          dataType: 'INT',
+          isNullable: false,
+          isPrimaryKey: true,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isBooleanAlias: false,
+          isAutoIncrement: true,
+        },
+      ],
+      rows: [[1]],
+      totalRows: 1,
+      currentPage: 1,
+      totalPages: 1,
+      pageSize: 100,
+      primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+      executionTimeMs: 5,
+    })
+
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...DEFAULT_TAB_STATE,
+          status: 'success',
+          viewMode: 'form',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'email', dataType: 'VARCHAR' },
+          ],
+          rows: [[1, 'alice@example.com']],
+          totalRows: 1,
+          selectedRowIndex: 0,
+          editMode: 'testdb.users',
+          editableColumnMap: new Map([
+            [0, false],
+            [1, true],
+          ]),
+          editColumnBindings: new Map([
+            [0, 'id'],
+            [1, 'email'],
+          ]),
+          editBoundColumnIndexMap: new Map([
+            ['id', 0],
+            ['email', 1],
+          ]),
+          editForeignKeys: [
+            {
+              columnName: 'email',
+              referencedDatabase: 'accounts_db',
+              referencedTable: 'users',
+              referencedColumn: 'id',
+              constraintName: 'fk_users_email',
+            },
+          ],
+          editTableMetadata: {
+            'testdb.users': {
+              database: 'testdb',
+              table: 'users',
+              columns: [],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+              foreignKeys: [
+                {
+                  name: 'fk_users_email',
+                  columnName: 'email',
+                  referencedDatabase: 'accounts_db',
+                  referencedTable: 'users',
+                  referencedColumn: 'id',
+                  onDelete: 'CASCADE',
+                  onUpdate: 'CASCADE',
+                },
+              ],
+            },
+          },
+        },
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+
+    fireEvent.click(screen.getByTestId('fk-lookup-trigger'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
+    })
+    expect(capturedFkLookupDialogProps?.database).toBe('accounts_db')
+  })
+
+  it('applies selected FK values back into the bound query result column', async () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...DEFAULT_TAB_STATE,
+          status: 'success',
+          viewMode: 'form',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'email_alias', dataType: 'VARCHAR' },
+          ],
+          rows: [[1, 'alice@example.com']],
+          totalRows: 1,
+          selectedRowIndex: 0,
+          editMode: 'testdb.users',
+          editableColumnMap: new Map([
+            [0, false],
+            [1, true],
+          ]),
+          editColumnBindings: new Map([
+            [0, 'id'],
+            [1, 'email'],
+          ]),
+          editBoundColumnIndexMap: new Map([
+            ['id', 0],
+            ['email', 1],
+          ]),
+          editForeignKeys: [
+            {
+              columnName: 'email',
+              referencedDatabase: 'testdb',
+              referencedTable: 'users',
+              referencedColumn: 'id',
+              constraintName: 'fk_users_email',
+            },
+          ],
+          editTableMetadata: {
+            'testdb.users': {
+              database: 'testdb',
+              table: 'users',
+              columns: [
+                {
+                  name: 'id',
+                  dataType: 'INT',
+                  isBooleanAlias: false,
+                  isNullable: false,
+                  isPrimaryKey: true,
+                  isUniqueKey: false,
+                  hasDefault: false,
+                  columnDefault: null,
+                  isBinary: false,
+                  isAutoIncrement: true,
+                },
+                {
+                  name: 'email',
+                  dataType: 'VARCHAR',
+                  isBooleanAlias: false,
+                  isNullable: false,
+                  isPrimaryKey: false,
+                  isUniqueKey: false,
+                  hasDefault: false,
+                  columnDefault: null,
+                  isBinary: false,
+                  isAutoIncrement: false,
+                },
+              ],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+              foreignKeys: [
+                {
+                  name: 'fk_users_email',
+                  columnName: 'email',
+                  referencedDatabase: 'testdb',
+                  referencedTable: 'users',
+                  referencedColumn: 'id',
+                  onDelete: 'CASCADE',
+                  onUpdate: 'CASCADE',
+                },
+              ],
+            },
+          },
+        },
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+
+    fireEvent.click(screen.getByTestId('fk-lookup-trigger'))
+    await waitFor(() => {
+      expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByTestId('mock-fk-apply'))
+
+    await waitFor(() => {
+      expect(useQueryStore.getState().tabs['tab-1']?.rows[0]?.[1]).toBe(999)
+    })
+  })
+
+  it('does not open FK lookup when the selected query column is not bound to a source column', async () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...DEFAULT_TAB_STATE,
+          status: 'success',
+          viewMode: 'form',
+          columns: [{ name: 'email_alias', dataType: 'VARCHAR' }],
+          rows: [['alice@example.com']],
+          totalRows: 1,
+          selectedRowIndex: 0,
+          editMode: 'testdb.users',
+          editableColumnMap: new Map([[0, true]]),
+          editColumnBindings: new Map(),
+          editBoundColumnIndexMap: new Map(),
+          editForeignKeys: [
+            {
+              columnName: 'email',
+              referencedDatabase: 'testdb',
+              referencedTable: 'users',
+              referencedColumn: 'id',
+              constraintName: 'fk_users_email',
+            },
+          ],
+          editTableMetadata: {
+            'testdb.users': {
+              database: 'testdb',
+              table: 'users',
+              columns: [],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+              foreignKeys: [],
+            },
+          },
+        },
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+
+    expect(screen.queryByTestId('fk-lookup-trigger')).not.toBeInTheDocument()
+    expect(capturedFkLookupDialogProps).toBeNull()
+  })
+
+  it('closes FK lookup without syncing when the selected value is unchanged on an unmodified row', async () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...DEFAULT_TAB_STATE,
+          status: 'success',
+          viewMode: 'form',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'email_alias', dataType: 'VARCHAR' },
+          ],
+          rows: [[1, 'alice@example.com']],
+          totalRows: 1,
+          selectedRowIndex: 0,
+          editMode: 'testdb.users',
+          editableColumnMap: new Map([
+            [0, false],
+            [1, true],
+          ]),
+          editColumnBindings: new Map([
+            [0, 'id'],
+            [1, 'email'],
+          ]),
+          editBoundColumnIndexMap: new Map([
+            ['id', 0],
+            ['email', 1],
+          ]),
+          editForeignKeys: [
+            {
+              columnName: 'email',
+              referencedDatabase: 'testdb',
+              referencedTable: 'users',
+              referencedColumn: 'id',
+              constraintName: 'fk_users_email',
+            },
+          ],
+          editTableMetadata: {
+            'testdb.users': {
+              database: 'testdb',
+              table: 'users',
+              columns: [
+                {
+                  name: 'id',
+                  dataType: 'INT',
+                  isBooleanAlias: false,
+                  isNullable: false,
+                  isPrimaryKey: true,
+                  isUniqueKey: false,
+                  hasDefault: false,
+                  columnDefault: null,
+                  isBinary: false,
+                  isAutoIncrement: true,
+                },
+                {
+                  name: 'email',
+                  dataType: 'VARCHAR',
+                  isBooleanAlias: false,
+                  isNullable: false,
+                  isPrimaryKey: false,
+                  isUniqueKey: false,
+                  hasDefault: false,
+                  columnDefault: null,
+                  isBinary: false,
+                  isAutoIncrement: false,
+                },
+              ],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+              foreignKeys: [],
+            },
+          },
+        },
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+
+    fireEvent.click(screen.getByTestId('fk-lookup-trigger'))
+    await waitFor(() => {
+      expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
+    })
+
+    act(() => {
+      ;(capturedFkLookupDialogProps?.onApply as (value: unknown) => void)?.('alice@example.com')
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('fk-lookup-dialog')).not.toBeInTheDocument()
+    })
+    expect(useQueryStore.getState().tabs['tab-1']?.rows[0]?.[1]).toBe('alice@example.com')
+  })
+
+  it('switches editing to the FK target row after discarding an unmodified edit on another row', async () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...DEFAULT_TAB_STATE,
+          status: 'success',
+          viewMode: 'form',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'email_alias', dataType: 'VARCHAR' },
+          ],
+          rows: [
+            [1, 'alice@example.com'],
+            [2, 'bob@example.com'],
+          ],
+          totalRows: 2,
+          selectedRowIndex: 1,
+          editMode: 'testdb.users',
+          editableColumnMap: new Map([
+            [0, false],
+            [1, true],
+          ]),
+          editColumnBindings: new Map([
+            [0, 'id'],
+            [1, 'email'],
+          ]),
+          editBoundColumnIndexMap: new Map([
+            ['id', 0],
+            ['email', 1],
+          ]),
+          editForeignKeys: [
+            {
+              columnName: 'email',
+              referencedDatabase: 'testdb',
+              referencedTable: 'users',
+              referencedColumn: 'id',
+              constraintName: 'fk_users_email',
+            },
+          ],
+          editState: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1, email: 'alice@example.com' },
+            currentValues: { id: 1, email: 'alice@example.com' },
+            modifiedColumns: new Set<string>(),
+            isNewRow: false,
+          },
+          editingRowIndex: 0,
+          editTableMetadata: {
+            'testdb.users': {
+              database: 'testdb',
+              table: 'users',
+              columns: [
+                {
+                  name: 'id',
+                  dataType: 'INT',
+                  isBooleanAlias: false,
+                  isNullable: false,
+                  isPrimaryKey: true,
+                  isUniqueKey: false,
+                  hasDefault: false,
+                  columnDefault: null,
+                  isBinary: false,
+                  isAutoIncrement: true,
+                },
+                {
+                  name: 'email',
+                  dataType: 'VARCHAR',
+                  isBooleanAlias: false,
+                  isNullable: false,
+                  isPrimaryKey: false,
+                  isUniqueKey: false,
+                  hasDefault: false,
+                  columnDefault: null,
+                  isBinary: false,
+                  isAutoIncrement: false,
+                },
+              ],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+              foreignKeys: [],
+            },
+          },
+        },
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+
+    fireEvent.click(screen.getByTestId('fk-lookup-trigger'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
+      expect(useQueryStore.getState().tabs['tab-1']?.editingRowIndex).toBe(1)
+    })
   })
 
   it('shows idle state when tab has idle status', () => {

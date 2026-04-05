@@ -600,6 +600,17 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             hasAutoIncrement: true,
             isUniqueKeyFallback: false,
           },
+          foreignKeys: [
+            {
+              name: 'fk_users_email',
+              columnName: 'email',
+              referencedDatabase: 'ecommerce_db',
+              referencedTable: 'users',
+              referencedColumn: 'id',
+              onDelete: 'CASCADE',
+              onUpdate: 'CASCADE',
+            },
+          ],
         },
       ]
 
@@ -960,6 +971,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           {
             name: 'fk_orders_user',
             columnName: 'user_id',
+            referencedDatabase: 'ecommerce_db',
             referencedTable: 'users',
             referencedColumn: 'id',
             onDelete: 'CASCADE',

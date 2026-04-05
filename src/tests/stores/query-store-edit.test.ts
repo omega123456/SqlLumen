@@ -104,6 +104,7 @@ const mockAnalyzeResult: QueryTableEditInfo[] = [
     table: 'users',
     columns: mockTableColumns,
     primaryKey: mockPrimaryKey,
+    foreignKeys: [],
   },
 ]
 
@@ -114,6 +115,7 @@ const mockJoinAnalyzeResult: QueryTableEditInfo[] = [
     table: 'orders',
     columns: mockOrderColumns,
     primaryKey: mockOrderPrimaryKey,
+    foreignKeys: [],
   },
 ]
 
@@ -191,6 +193,70 @@ describe('useQueryStore — setEditMode', () => {
     expect(tab.editableColumnMap.size).toBeGreaterThan(0)
     expect(tab.editConnectionId).toBe('conn-1')
     expect(tab.editState).toBeNull()
+  })
+
+  it('maps single-column foreign keys into editForeignKeys when enabling edit mode', async () => {
+    const analyzeWithForeignKeys: QueryTableEditInfo[] = [
+      {
+        ...mockAnalyzeResult[0],
+        foreignKeys: [
+          {
+            name: 'fk_users_email',
+            columnName: 'email',
+            referencedDatabase: 'testdb',
+            referencedTable: 'accounts',
+            referencedColumn: 'id',
+            onDelete: 'CASCADE',
+            onUpdate: 'CASCADE',
+          },
+        ],
+      },
+    ]
+
+    mockIPC((cmd) => {
+      switch (cmd) {
+        case 'execute_query':
+          return {
+            queryId: 'q-mock',
+            columns: [
+              { name: 'id', dataType: 'INT' },
+              { name: 'name', dataType: 'VARCHAR' },
+              { name: 'email', dataType: 'VARCHAR' },
+            ],
+            totalRows: 2,
+            executionTimeMs: 10,
+            affectedRows: 0,
+            firstPage: [
+              [1, 'Alice', 'alice@test.com'],
+              [2, 'Bob', 'bob@test.com'],
+            ],
+            totalPages: 1,
+            autoLimitApplied: false,
+          }
+        case 'analyze_query_for_edit':
+          return analyzeWithForeignKeys
+        case 'update_table_row':
+        case 'update_result_cell':
+        case 'evict_results':
+          return null
+        default:
+          return null
+      }
+    })
+
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+
+    const tab = useQueryStore.getState().getTabState('tab-1')
+    expect(tab.editForeignKeys).toEqual([
+      {
+        columnName: 'email',
+        referencedDatabase: 'testdb',
+        referencedTable: 'accounts',
+        referencedColumn: 'id',
+        constraintName: 'fk_users_email',
+      },
+    ])
   })
 
   it('disables edit mode when tableName is null', async () => {
@@ -481,12 +547,14 @@ describe('useQueryStore — setEditMode', () => {
         table: 'users',
         columns: usersWithCreatedAt,
         primaryKey: mockPrimaryKey,
+        foreignKeys: [],
       },
       {
         database: 'testdb',
         table: 'orders',
         columns: ordersWithCreatedAt,
         primaryKey: mockOrderPrimaryKey,
+        foreignKeys: [],
       },
     ]
 
@@ -801,6 +869,7 @@ describe('useQueryStore — setEditMode', () => {
         table: 'users',
         columns: mockTableColumns,
         primaryKey: null,
+        foreignKeys: [],
       },
     ]
 

@@ -144,6 +144,7 @@ export interface IndexInfo {
 export interface ForeignKeyInfo {
   name: string
   columnName: string
+  referencedDatabase: string
   referencedTable: string
   referencedColumn: string
   onDelete: string
@@ -153,6 +154,7 @@ export interface ForeignKeyInfo {
 /** Lightweight FK info for column-level display (omits onDelete/onUpdate). */
 export interface ForeignKeyColumnInfo {
   columnName: string
+  referencedDatabase: string
   referencedTable: string
   referencedColumn: string
   constraintName: string
@@ -457,6 +459,7 @@ export interface QueryTableEditInfo {
   table: string
   columns: TableDataColumnMeta[]
   primaryKey: PrimaryKeyInfo | null
+  foreignKeys?: ForeignKeyInfo[]
 }
 
 /** Map of result-set column index → whether the column is editable. */

@@ -106,6 +106,7 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   lastExecutedSql: null,
   editMode: null,
   editTableMetadata: {},
+  editForeignKeys: [],
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),
@@ -198,6 +199,7 @@ describe('ResultPanel edit-mode callback stability (focus-loss regression)', () 
                 hasAutoIncrement: true,
                 isUniqueKeyFallback: false,
               },
+              foreignKeys: [],
             },
           },
           editState: {

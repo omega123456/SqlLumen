@@ -12,12 +12,18 @@
 import { useCallback, useMemo } from 'react'
 import { useQueryStore } from '../../stores/query-store'
 import { BaseFormView } from '../shared/BaseFormView'
-import { colKey, colIndexFromKey, buildTableColLookup } from '../../lib/col-key-utils'
+import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
+import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
 } from '../../types/shared-data-view'
-import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
+import type {
+  ColumnMeta,
+  ForeignKeyColumnInfo,
+  TableDataColumnMeta,
+  RowEditState,
+} from '../../types/schema'
 
 // ---------------------------------------------------------------------------
 // Props (unchanged external interface)
@@ -48,6 +54,8 @@ export interface ResultFormViewProps {
   editingRowIndex?: number | null
   /** Column metadata from the edit table (for cell editor selection). */
   editTableColumns?: TableDataColumnMeta[]
+  /** FK metadata from the edit table (single-column constraints only). */
+  editForeignKeys?: ForeignKeyColumnInfo[]
   /** Result column index → bound source-table column name. */
   editColumnBindings?: Map<number, string>
   /** Start editing a row by its page-local index. */
@@ -62,6 +70,7 @@ export interface ResultFormViewProps {
 
 const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
+const EMPTY_FOREIGN_KEYS: ForeignKeyColumnInfo[] = []
 const EMPTY_BINDINGS = new Map<number, string>()
 
 // ---------------------------------------------------------------------------
@@ -82,6 +91,7 @@ export function ResultFormView({
   editState = null,
   editingRowIndex = null,
   editTableColumns = EMPTY_TABLE_COLUMNS,
+  editForeignKeys = EMPTY_FOREIGN_KEYS,
   editColumnBindings = EMPTY_BINDINGS,
   onStartEdit,
   onUpdateCell,
@@ -98,37 +108,63 @@ export function ResultFormView({
   const localIndex = absoluteIndex - pageStartOffset
   const clampedLocal = Math.max(0, Math.min(localIndex, rows.length - 1))
   const currentRow = rows.length > 0 ? ((rows[clampedLocal] as unknown[]) ?? null) : null
+  const currentRowData = useMemo(() => {
+    if (currentRow === null) return null
+
+    const rowData: Record<string, unknown> = { __rowIdx: clampedLocal }
+    for (let i = 0; i < columns.length; i++) {
+      rowData[colKey(i)] = currentRow[i] ?? null
+    }
+
+    if (editingRowIndex === clampedLocal && editState) {
+      for (let i = 0; i < columns.length; i++) {
+        const boundName = editColumnBindings.get(i)
+        if (boundName && boundName in editState.currentValues) {
+          rowData[colKey(i)] = editState.currentValues[boundName]
+        }
+      }
+    }
+
+    return rowData
+  }, [columns, currentRow, editState, editingRowIndex, clampedLocal, editColumnBindings])
 
   const isInEditMode = editMode !== null
   const isEditingCurrentRow = editState !== null && editingRowIndex === clampedLocal
 
   void _totalPages
 
-  // --- Table column lookup (for column meta enrichment) ---
-
-  const tableColLookup = useMemo(() => buildTableColLookup(editTableColumns), [editTableColumns])
+  const resolvedColumns = useMemo(
+    () =>
+      resolveQueryResultColumns({
+        resultColumns: columns,
+        editMode,
+        editableColumnMap,
+        editTableColumns,
+        editForeignKeys,
+        editColumnBindings,
+      }),
+    [columns, editMode, editableColumnMap, editTableColumns, editForeignKeys, editColumnBindings]
+  )
 
   // --- Transform columns → GridColumnDescriptor[] ---
 
   const gridColumns: GridColumnDescriptor[] = useMemo(() => {
-    return columns.map((col, i) => {
-      const boundName = editColumnBindings.get(i) ?? col.name
-      const tableCol = tableColLookup.get(boundName.toLowerCase())
-      const isEditable = isInEditMode && editableColumnMap.get(i) === true
+    return resolvedColumns.map((col) => {
       return {
-        key: colKey(i),
-        displayName: col.name,
-        dataType: tableCol?.dataType ?? col.dataType,
-        editable: isEditable,
-        isBinary: tableCol?.isBinary ?? false,
-        isNullable: tableCol?.isNullable ?? false,
-        isPrimaryKey: tableCol?.isPrimaryKey ?? false,
-        isUniqueKey: tableCol?.isUniqueKey ?? false,
-        enumValues: tableCol?.enumValues,
-        tableColumnMeta: tableCol,
+        key: col.key,
+        displayName: col.displayName,
+        dataType: col.tableColumnMeta?.dataType ?? col.dataType,
+        editable: col.editable,
+        isBinary: col.tableColumnMeta?.isBinary ?? false,
+        isNullable: col.tableColumnMeta?.isNullable ?? false,
+        isPrimaryKey: col.tableColumnMeta?.isPrimaryKey ?? false,
+        isUniqueKey: col.tableColumnMeta?.isUniqueKey ?? false,
+        enumValues: col.tableColumnMeta?.enumValues,
+        tableColumnMeta: col.tableColumnMeta,
+        foreignKey: col.foreignKey,
       }
     })
-  }, [columns, tableColLookup, isInEditMode, editableColumnMap, editColumnBindings])
+  }, [resolvedColumns])
 
   // --- Transform edit state: remap real column name keys → col_N keys ---
 
@@ -213,6 +249,7 @@ export function ResultFormView({
     <BaseFormView
       columns={gridColumns}
       currentRow={currentRow}
+      currentRowData={currentRowData}
       totalRows={totalRows}
       currentAbsoluteIndex={absoluteIndex}
       isFirstRecord={absoluteIndex <= 0}

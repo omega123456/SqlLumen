@@ -31,6 +31,7 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   lastExecutedSql: null,
   editMode: null,
   editTableMetadata: {},
+  editForeignKeys: [],
   editState: null,
   isAnalyzingQuery: false,
   editableColumnMap: new Map(),
@@ -79,6 +80,7 @@ const MOCK_TABLE_INFO: QueryTableEditInfo = {
     hasAutoIncrement: true,
     isUniqueKeyFallback: false,
   },
+  foreignKeys: [],
 }
 
 const MOCK_TABLE_INFO_2: QueryTableEditInfo = {
@@ -103,6 +105,7 @@ const MOCK_TABLE_INFO_2: QueryTableEditInfo = {
     hasAutoIncrement: true,
     isUniqueKeyFallback: false,
   },
+  foreignKeys: [],
 }
 
 function setupTabState(tabId: string, overrides: Partial<TabQueryState> = {}) {

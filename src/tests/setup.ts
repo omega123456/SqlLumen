@@ -27,11 +27,15 @@ process.stderr.write = ((chunk: string | Uint8Array, encoding?: unknown, cb?: un
     if (typeof encoding === 'function') {
       ;(encoding as () => void)()
     } else if (typeof cb === 'function') {
-      ;(cb as (err?: Error) => void)()
+      ;(cb as (err?: Error | null) => void)()
     }
     return true
   }
-  return originalStderrWrite(chunk as Buffer, encoding as BufferEncoding, cb as (err?: Error) => void)
+  return originalStderrWrite(
+    chunk as Buffer,
+    encoding as BufferEncoding,
+    cb as ((err?: Error | null) => void) | undefined
+  )
 }) as typeof process.stderr.write
 
 // Default IPC: log_frontend + Tauri event listen/unlisten (used by App / connection store).

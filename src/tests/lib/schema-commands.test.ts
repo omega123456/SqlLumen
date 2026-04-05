@@ -179,6 +179,7 @@ describe('getTableForeignKeys', () => {
       {
         name: 'fk_orders_user',
         columnName: 'user_id',
+        referencedDatabase: 'mydb',
         referencedTable: 'users',
         referencedColumn: 'id',
         onDelete: 'CASCADE',

@@ -43,12 +43,14 @@ function queryTable(
   table: string
   columns: TableDataColumnMeta[]
   primaryKey: { keyColumns: string[]; hasAutoIncrement: boolean; isUniqueKeyFallback: boolean }
+  foreignKeys: []
 } {
   return {
     database,
     table,
     columns,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+    foreignKeys: [],
   }
 }
 

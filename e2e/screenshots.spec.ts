@@ -1014,6 +1014,26 @@ for (const theme of themes) {
       )
     })
 
+    test('ResultFormView — FK trigger visible in edit mode', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+      await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
+
+      await page.getByTestId('edit-mode-dropdown').click()
+      await page.getByRole('option').nth(1).click()
+
+      await page.getByTestId('view-mode-form').click()
+      await expect(page.getByTestId('result-form-view')).toBeVisible({ timeout: APP_READY_MS })
+
+      const editableInput = page.getByTestId('form-input-name')
+      await editableInput.click()
+      await expect(page.getByTestId('fk-lookup-trigger')).toBeVisible({ timeout: APP_READY_MS })
+
+      await expect(page.getByTestId('result-form-view')).toHaveScreenshot(
+        `result-form-view-fk-trigger-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('ResultTextView — text view', async ({ page }) => {
       await openQueryEditorWithResults(page)
       // Switch to text view
@@ -1126,6 +1146,19 @@ for (const theme of themes) {
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
         `table-data-form-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('TableDataFormView — FK trigger visible for orders table', async ({ page }) => {
+      await openOrdersTableDataTab(page)
+      await page.getByTestId('view-mode-form').click()
+      await expect(page.getByTestId('table-data-form-view')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('fk-lookup-trigger')).toBeVisible({ timeout: APP_READY_MS })
+
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
+        `table-data-form-fk-trigger-${theme}.png`,
         { animations: 'disabled' }
       )
     })

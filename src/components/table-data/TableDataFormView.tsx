@@ -7,17 +7,20 @@
  * here (BaseFormView is store-free and toast-free).
  */
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
+import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
 import { BaseFormView } from '../shared/BaseFormView'
+import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
+import { FkLookupDialog } from './FkLookupDialog'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
 } from '../../types/shared-data-view'
-import type { TableDataColumnMeta } from '../../types/schema'
+import type { ForeignKeyColumnInfo, TableDataColumnMeta } from '../../types/schema'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -108,6 +111,16 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
   const storeEditState = tabState?.editState ?? null
   const selectedRowKey = tabState?.selectedRowKey ?? null
   const isLoading = tabState?.isLoading ?? false
+  const foreignKeys = useMemo(() => tabState?.foreignKeys ?? [], [tabState?.foreignKeys])
+  const foreignKeyLookup = useMemo(() => buildForeignKeyLookup(foreignKeys), [foreignKeys])
+
+  const [fkLookupOpen, setFkLookupOpen] = useState(false)
+  const [fkLookupContext, setFkLookupContext] = useState<{
+    columnKey: string
+    currentValue: unknown
+    foreignKey: ForeignKeyColumnInfo
+    rowData: Record<string, unknown>
+  } | null>(null)
 
   const hasPk = primaryKey !== null
   const isEditable = !isConnectionReadOnly && hasPk
@@ -119,7 +132,14 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
   const effectiveTotalRows = hasTempRow ? totalRows + 1 : totalRows
 
   // --- Grid columns (stable) ---
-  const gridColumns = useMemo(() => toGridColumns(columns), [columns])
+  const gridColumns = useMemo(
+    () =>
+      toGridColumns(columns).map((col) => ({
+        ...col,
+        foreignKey: foreignKeyLookup.get(col.key.toLowerCase()),
+      })),
+    [columns, foreignKeyLookup]
+  )
 
   // --- Find local index of selected row ---
   const localIndex = useMemo(() => {
@@ -152,6 +172,24 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
     if (!storeEditState || !currentRowKey) return false
     return isSameRowKey(storeEditState.rowKey, currentRowKey)
   }, [storeEditState, currentRowKey])
+
+  const currentRowData = useMemo(() => {
+    if (!currentRow) return null
+
+    const rowData: Record<string, unknown> = {}
+    for (let i = 0; i < columns.length; i++) {
+      rowData[columns[i].name] = currentRow[i] ?? null
+    }
+
+    if (storeEditState && isEditingCurrentRow) {
+      rowData.__editingRowKey = storeEditState.rowKey
+      for (const [columnName, value] of Object.entries(storeEditState.currentValues)) {
+        rowData[columnName] = value
+      }
+    }
+
+    return rowData
+  }, [currentRow, columns, storeEditState, isEditingCurrentRow])
 
   // --- Adapt store RowEditState → shared RowEditState ---
   const sharedEditState: SharedRowEditState | null = useMemo(() => {
@@ -274,24 +312,105 @@ export function TableDataFormView({ tabId }: TableDataFormViewProps) {
     discardCurrentRow(tabId)
   }, [discardCurrentRow, tabId])
 
+  const onFkLookup = useCallback(
+    async (args: FkLookupArgs) => {
+      if (!currentRowKey) return
+
+      if (storeEditState && !isSameRowKey(storeEditState.rowKey, currentRowKey)) {
+        await saveCurrentRow(tabId)
+        const refreshedState = useTableDataStore.getState().tabs[tabId]
+        if (refreshedState?.saveError) return
+      }
+
+      setSelectedRow(tabId, currentRowKey)
+      setFkLookupContext({
+        columnKey: args.columnKey,
+        currentValue: args.currentValue,
+        foreignKey: args.foreignKey,
+        rowData: args.rowData,
+      })
+      setFkLookupOpen(true)
+    },
+    [currentRowKey, storeEditState, saveCurrentRow, tabId, setSelectedRow]
+  )
+
+  const onFkApply = useCallback(
+    (selectedValue: unknown) => {
+      if (!fkLookupContext || !currentRowKey || !currentRowData) return
+
+      const currentEdit = useTableDataStore.getState().tabs[tabId]?.editState
+      const alreadyEditing = currentEdit && isSameRowKey(currentEdit.rowKey, currentRowKey)
+
+      if (
+        selectedValue === fkLookupContext.currentValue &&
+        (!alreadyEditing || currentEdit.modifiedColumns.size === 0)
+      ) {
+        setFkLookupOpen(false)
+        return
+      }
+
+      if (!alreadyEditing) {
+        ensureEditingCurrentRow()
+      }
+
+      updateCellValue(tabId, fkLookupContext.columnKey, selectedValue)
+      useTableDataStore
+        .getState()
+        .syncCellValue(
+          tabId,
+          currentRowData,
+          fkLookupContext.columnKey,
+          selectedValue,
+          currentRowKey
+        )
+      setFkLookupOpen(false)
+    },
+    [
+      fkLookupContext,
+      currentRowKey,
+      currentRowData,
+      tabId,
+      ensureEditingCurrentRow,
+      updateCellValue,
+    ]
+  )
+
   // --- Render ---
   return (
-    <BaseFormView
-      columns={gridColumns}
-      currentRow={currentRow}
-      totalRows={effectiveTotalRows}
-      currentAbsoluteIndex={absoluteIndex}
-      isFirstRecord={isFirstRecord}
-      isLastRecord={isLastRecord}
-      onNavigatePrev={onNavigatePrev}
-      onNavigateNext={onNavigateNext}
-      editState={sharedEditState}
-      onEnsureEditing={onEnsureEditing}
-      onUpdateCell={onUpdateCell}
-      onSave={isEditable ? onSave : undefined}
-      onDiscard={isEditable ? onDiscard : undefined}
-      readOnly={!isEditable}
-      testId="table-data-form-view"
-    />
+    <FkLookupProvider onFkLookup={onFkLookup}>
+      <BaseFormView
+        columns={gridColumns}
+        currentRow={currentRow}
+        currentRowData={currentRowData}
+        totalRows={effectiveTotalRows}
+        currentAbsoluteIndex={absoluteIndex}
+        isFirstRecord={isFirstRecord}
+        isLastRecord={isLastRecord}
+        onNavigatePrev={onNavigatePrev}
+        onNavigateNext={onNavigateNext}
+        editState={sharedEditState}
+        onEnsureEditing={onEnsureEditing}
+        onUpdateCell={onUpdateCell}
+        onSave={isEditable ? onSave : undefined}
+        onDiscard={isEditable ? onDiscard : undefined}
+        readOnly={!isEditable}
+        testId="table-data-form-view"
+      />
+      {fkLookupOpen && fkLookupContext && tabState && (
+        <FkLookupDialog
+          isOpen={fkLookupOpen}
+          onClose={() => setFkLookupOpen(false)}
+          onApply={onFkApply}
+          connectionId={tabState.connectionId}
+          database={fkLookupContext.foreignKey.referencedDatabase || tabState.database}
+          sourceTable={tabState.table}
+          sourceColumn={fkLookupContext.columnKey}
+          currentValue={fkLookupContext.currentValue}
+          referencedTable={fkLookupContext.foreignKey.referencedTable}
+          referencedColumn={fkLookupContext.foreignKey.referencedColumn}
+          isReadOnly={!isEditable}
+        />
+      )}
+    </FkLookupProvider>
   )
 }

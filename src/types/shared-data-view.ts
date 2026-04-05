@@ -152,6 +152,7 @@ export interface BaseGridViewProps {
 export interface BaseFormViewProps {
   columns: GridColumnDescriptor[]
   currentRow: unknown[] | null
+  currentRowData?: Record<string, unknown> | null
   totalRows: number
   /** 0-based absolute index across all pages. */
   currentAbsoluteIndex: number

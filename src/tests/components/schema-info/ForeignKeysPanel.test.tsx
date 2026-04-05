@@ -7,6 +7,7 @@ function makeFk(overrides: Partial<ForeignKeyInfo> = {}): ForeignKeyInfo {
   return {
     name: 'fk_order_user',
     columnName: 'user_id',
+    referencedDatabase: 'testdb',
     referencedTable: 'users',
     referencedColumn: 'id',
     onDelete: 'CASCADE',
