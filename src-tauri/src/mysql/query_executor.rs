@@ -400,7 +400,7 @@ fn find_trailing_lock_clause(sql: &str) -> Option<usize> {
 pub fn is_select_like(keyword: &str) -> bool {
     matches!(
         keyword,
-        "SELECT" | "SHOW" | "DESCRIBE" | "DESC" | "EXPLAIN"
+        "SELECT" | "SHOW" | "DESCRIBE" | "DESC" | "EXPLAIN" | "CALL"
     )
 }
 

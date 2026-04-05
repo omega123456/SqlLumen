@@ -8,7 +8,7 @@ mod common;
 use chrono::NaiveDate;
 use common::log_capture::LogCaptureGuard;
 use common::mock_mysql_server::{
-    MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse, MockTimeValue,
+    MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse, MockQueryStep, MockTimeValue,
 };
 use opensrv_mysql::{ColumnFlags, ColumnType};
 use mysql_client_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
@@ -164,7 +164,20 @@ struct ExecuteQueryResultDto {
 
 async fn execute_query_via_mock(response: MockQueryResponse) -> ExecuteQueryResultDto {
     let sql = response.query;
-    let server = MockMySqlServer::start(response).await;
+    let server = MockMySqlServer::start_script(vec![
+        MockQueryStep {
+            query: "SELECT CONNECTION_ID()",
+            columns: vec![MockColumnDef {
+                name: "CONNECTION_ID()",
+                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                colflags: ColumnFlags::UNSIGNED_FLAG,
+            }],
+            rows: vec![vec![MockCell::U64(42)]],
+            error: None,
+        },
+        response.into(),
+    ])
+    .await;
     let (_app, webview) = build_query_commands_app();
 
     let profile_id: String = invoke_tauri_command(
@@ -445,4 +458,33 @@ async fn execute_query_ipc_serializes_timestamp_and_negative_mysql_time_strings(
             serde_json::json!("-27:15:00.123456"),
         ]
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn execute_query_ipc_returns_stored_procedure_result_sets() {
+    let result = execute_query_via_mock(MockQueryResponse {
+        query: "CALL sp_list_users()",
+        columns: vec![
+            MockColumnDef {
+                name: "id",
+                coltype: ColumnType::MYSQL_TYPE_LONG,
+                colflags: ColumnFlags::UNSIGNED_FLAG,
+            },
+            MockColumnDef {
+                name: "name",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+        ],
+        row: vec![MockCell::U32(1), MockCell::Bytes(b"Alice")],
+    })
+    .await;
+
+    assert_eq!(
+        result.columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
+        vec!["id", "name"]
+    );
+    assert_eq!(result.affected_rows, 0);
+    assert_eq!(result.total_rows, 1);
+    assert_eq!(result.first_page, vec![vec![serde_json::json!(1), serde_json::json!("Alice")]]);
 }
