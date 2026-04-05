@@ -150,6 +150,14 @@ export interface ForeignKeyInfo {
   onUpdate: string
 }
 
+/** Lightweight FK info for column-level display (omits onDelete/onUpdate). */
+export interface ForeignKeyColumnInfo {
+  columnName: string
+  referencedTable: string
+  referencedColumn: string
+  constraintName: string
+}
+
 export interface TableMetadata {
   engine: string
   collation: string
@@ -425,6 +433,9 @@ export interface TableDataTabState {
   // Filter/sort
   filterModel: FilterCondition[]
   sort: TableDataSortInfo | null
+
+  // Foreign key metadata
+  foreignKeys?: ForeignKeyColumnInfo[]
 
   // UI state
   isLoading: boolean

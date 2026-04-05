@@ -39,7 +39,8 @@ import type {
 import { DataGrid } from './DataGrid'
 import type { Column, SortColumn, DataGridHandle } from './DataGrid'
 import { TableDataCellRenderer } from './grid-cell-renderers'
-import { ReadOnlyColumnHeaderCell } from './grid-header-renderers'
+import { FkCellRenderer } from './FkCellRenderer'
+import { ReadOnlyColumnHeaderCell, ForeignKeyColumnHeaderCell } from './grid-header-renderers'
 import type { CellEditorCallbackProps } from './grid-cell-editors'
 import { getCellEditorForColumn } from './grid-column-editor-utils'
 import { getGridCellClass, getDefaultColumnWidth } from '../../lib/grid-column-style'
@@ -123,6 +124,9 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     autoSizeConfig,
     showReadOnlyHeaders,
     testId,
+    onCellDoubleClick,
+    onRowClick,
+    highlightColumnKey,
   } = props
 
   const gridRef = useRef<DataGridHandle | null>(null)
@@ -254,6 +258,20 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     return widths
   }, [autoSizeConfig, columns, rows, editState])
 
+  // When FK metadata arrives asynchronously, autoColumnWidths recomputes with
+  // wider widths (FK icon offset). However, react-data-grid caches the initial
+  // column.width and won't re-read it. Resetting columnWidths to a new empty
+  // Map forces RDG to pick up the fresh column.width from rdgColumns.
+  const autoColumnWidthsFingerprintRef = useRef<string>('')
+
+  useEffect(() => {
+    const nextFingerprint = JSON.stringify(autoColumnWidths)
+    if (nextFingerprint !== autoColumnWidthsFingerprintRef.current) {
+      autoColumnWidthsFingerprintRef.current = nextFingerprint
+      setColumnWidths(new Map())
+    }
+  }, [autoColumnWidths])
+
   const handleColumnResize = useCallback(
     (column: { key: string }, width: number) => {
       onColumnResizeProp?.(column.key, width)
@@ -312,6 +330,10 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
           }
         }
 
+        if (highlightColumnKey && col.key === highlightColumnKey) {
+          classes.push('rdg-highlight-column')
+        }
+
         return classes.join(' ')
       }
 
@@ -323,14 +345,41 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         sortable: !!onSortChange,
         renderCell: TableDataCellRenderer,
         cellClass,
+        ...(highlightColumnKey &&
+          col.key === highlightColumnKey && {
+            headerCellClass: 'rdg-highlight-column-header',
+          }),
       }
 
       if (col.editable && col.tableColumnMeta) {
-        const editorConfig = getCellEditorForColumn(col.tableColumnMeta, NOOP_EDITOR_CALLBACKS)
+        const editorConfig = getCellEditorForColumn(
+          col.tableColumnMeta,
+          NOOP_EDITOR_CALLBACKS,
+          col.foreignKey
+        )
+
+        // FK header takes precedence over read-only header
+        const fkHeaderProps = col.foreignKey ? { renderHeaderCell: ForeignKeyColumnHeaderCell } : {}
+        const fkCellProps = col.foreignKey
+          ? { renderCell: FkCellRenderer, foreignKey: col.foreignKey }
+          : {}
+
         return {
           ...baseProps,
+          ...fkHeaderProps,
+          ...fkCellProps,
           renderEditCell: editorConfig.renderEditCell,
           ...(editorConfig.editorOptions && { editorOptions: editorConfig.editorOptions }),
+        } as Column<GridRow>
+      }
+
+      // FK header takes precedence over read-only header
+      if (col.foreignKey) {
+        return {
+          ...baseProps,
+          renderHeaderCell: ForeignKeyColumnHeaderCell,
+          renderCell: FkCellRenderer,
+          foreignKey: col.foreignKey,
         } as Column<GridRow>
       }
 
@@ -344,54 +393,66 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
 
       return baseProps as Column<GridRow>
     })
-  }, [columns, autoColumnWidths, onSortChange, showReadOnlyHeaders])
+  }, [columns, autoColumnWidths, onSortChange, showReadOnlyHeaders, highlightColumnKey])
 
   const handleCellClick = useCallback(
     async (args: CellMouseArgs<GridRow>, event: CellMouseEvent) => {
-      if (!onCellClickGuard) return
+      if (onCellClickGuard) {
+        event.preventGridDefault()
+        const requestId = ++cellClickGuardRequestIdRef.current
+        const selectionAtGuardStart = selectedCellRef.current
+        const selectionBeforeGuardStart = previousSelectedCellRef.current
 
-      event.preventGridDefault()
-      const requestId = ++cellClickGuardRequestIdRef.current
-      const selectionAtGuardStart = selectedCellRef.current
-      const selectionBeforeGuardStart = previousSelectedCellRef.current
+        const guardArgs: CellClickGuardArgs = {
+          rowIdx: args.rowIdx,
+          columnKey: args.column.key,
+          rowData: args.row,
+        }
 
-      const guardArgs: CellClickGuardArgs = {
-        rowIdx: args.rowIdx,
-        columnKey: args.column.key,
-        rowData: args.row,
-      }
+        const result = await onCellClickGuard(guardArgs)
+        if (requestId !== cellClickGuardRequestIdRef.current) {
+          return
+        }
 
-      const result = await onCellClickGuard(guardArgs)
-      if (requestId !== cellClickGuardRequestIdRef.current) {
+        if (result.proceed) {
+          const nextSelection = buildSelectedCellState(
+            result.targetRowIdx,
+            result.targetColIdx,
+            result.enableEditor
+          )
+          setTrackedSelectedCell(nextSelection)
+          gridRef.current?.selectCell(
+            { rowIdx: result.targetRowIdx, idx: result.targetColIdx },
+            { enableEditor: result.enableEditor }
+          )
+        } else if (result.restoreFocus) {
+          const restoreTarget = getRestoreTarget(
+            result,
+            { rowIdx: args.rowIdx, idx: args.column.idx },
+            selectionAtGuardStart,
+            selectionBeforeGuardStart
+          )
+          setTrackedSelectedCell(restoreTarget)
+          gridRef.current?.selectCell(
+            { rowIdx: restoreTarget.rowIdx, idx: restoreTarget.idx },
+            { enableEditor: restoreTarget.editable, shouldFocusCell: true }
+          )
+        }
         return
       }
 
-      if (result.proceed) {
-        const nextSelection = buildSelectedCellState(
-          result.targetRowIdx,
-          result.targetColIdx,
-          result.enableEditor
-        )
-        setTrackedSelectedCell(nextSelection)
-        gridRef.current?.selectCell(
-          { rowIdx: result.targetRowIdx, idx: result.targetColIdx },
-          { enableEditor: result.enableEditor }
-        )
-      } else if (result.restoreFocus) {
-        const restoreTarget = getRestoreTarget(
-          result,
-          { rowIdx: args.rowIdx, idx: args.column.idx },
-          selectionAtGuardStart,
-          selectionBeforeGuardStart
-        )
-        setTrackedSelectedCell(restoreTarget)
-        gridRef.current?.selectCell(
-          { rowIdx: restoreTarget.rowIdx, idx: restoreTarget.idx },
-          { enableEditor: restoreTarget.editable, shouldFocusCell: true }
-        )
+      if (onRowClick) {
+        onRowClick(args.row)
       }
     },
-    [getRestoreTarget, onCellClickGuard, setTrackedSelectedCell]
+    [getRestoreTarget, onCellClickGuard, onRowClick, setTrackedSelectedCell]
+  )
+
+  const handleCellDoubleClick = useCallback(
+    (args: CellMouseArgs<GridRow>, _event: CellMouseEvent) => {
+      onCellDoubleClick?.(args.row, args.column.key)
+    },
+    [onCellDoubleClick]
   )
 
   const handleRowsChange = useCallback(
@@ -636,6 +697,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         sortColumns={sortColumnsRdg}
         onSortColumnsChange={onSortChange ? handleSortColumnsChange : undefined}
         onCellClick={handleCellClick}
+        onCellDoubleClick={onCellDoubleClick ? handleCellDoubleClick : undefined}
         onCellContextMenu={handleCellContextMenu}
         onCellKeyDown={handleCellKeyDown}
         onSelectedCellChange={handleSelectedCellChange}

@@ -394,7 +394,16 @@ export function ResultGridView({
         const arrayRows = gridRows.map((row) =>
           columns.map((_, columnIndex) => row[colKey(columnIndex)])
         )
-        return getAutoSizedColumnWidth(tableMeta, index, arrayRows)
+        // Lock icon shown for non-editable columns in edit mode: 10px icon + 4px gap
+        const isEditable = editableColumnMap.get(index) ?? false
+        const headerIconWidthPx = !isEditable ? 14 : 0
+        return getAutoSizedColumnWidth(
+          tableMeta,
+          index,
+          arrayRows,
+          col.displayName,
+          headerIconWidthPx
+        )
       },
     }
   }, [columns, tableMetaByColumnIndex])

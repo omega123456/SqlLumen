@@ -391,3 +391,39 @@
   color: var(--on-surface-variant);
   font-size: 13px;
 }
+
+/* ==========================================================================
+   FK Trigger Button — visibility controlled via [data-fk-trigger] attribute
+   ========================================================================== */
+
+/* FK trigger button — hidden by default, shown on row hover/selection */
+.rdg-precision [data-fk-trigger] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rdg-precision .rdg-row:hover [data-fk-trigger],
+.rdg-precision .rdg-row-precision-selected [data-fk-trigger] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.rdg-precision .rdg-editing-row [data-fk-trigger] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.rdg-precision [data-fk-trigger]:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* FK referenced column highlight (for FK lookup dialog) */
+.rdg-highlight-column {
+  background-color: var(--fk-lookup-target-col-bg) !important;
+}
+
+.rdg-highlight-column-header {
+  color: var(--fk-lookup-target-col-header-fg) !important;
+  border-bottom: 2px solid var(--fk-lookup-target-col-header-fg) !important;
+}

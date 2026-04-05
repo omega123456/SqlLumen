@@ -1,0 +1,25 @@
+.triggerButton {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  color: inherit;
+  transition:
+    background-color 0.1s,
+    border-color 0.1s;
+}
+
+.triggerButton:hover {
+  background: var(--fk-lookup-trigger-hover-bg);
+  border-color: var(--fk-lookup-trigger-hover-border-color);
+}

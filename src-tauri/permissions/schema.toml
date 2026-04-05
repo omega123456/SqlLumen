@@ -81,3 +81,9 @@ identifier = "allow-rename-table"
 description = "Enables the rename_table command without any pre-configured scope."
 commands.allow = ["rename_table"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-get-table-foreign-keys"
+description = "Enables the get_table_foreign_keys command without any pre-configured scope."
+commands.allow = ["get_table_foreign_keys"]
+commands.deny = []

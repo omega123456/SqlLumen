@@ -9,13 +9,15 @@
  * dispatch) lives here — BaseGridView stays store-agnostic.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BaseGridView } from '../shared/BaseGridView'
 import type { DataGridHandle } from '../shared/DataGrid'
 import {
   EditorCallbacksContext,
   type EditorCallbacksContextType,
 } from '../shared/editor-callbacks-context'
+import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
+import { FkLookupDialog } from './FkLookupDialog'
 import { useTableDataStore, isSameRowKey, findRowIndexByKey } from '../../stores/table-data-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
@@ -28,7 +30,7 @@ import type {
   CellClipboardEditArgs,
   AutoSizeConfig,
 } from '../../types/shared-data-view'
-import type { TableDataColumnMeta } from '../../types/schema'
+import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/schema'
 import { buildColumnDescriptors } from './table-data-grid-columns'
 
 // ---------------------------------------------------------------------------
@@ -89,6 +91,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const editState = tabState?.editState ?? null
   const sort = tabState?.sort ?? null
   const selectedRowKey = tabState?.selectedRowKey ?? null
+  const foreignKeys = useMemo(() => tabState?.foreignKeys ?? [], [tabState?.foreignKeys])
 
   const pkColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
   const hasPk = primaryKey !== null
@@ -113,11 +116,22 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   )
 
   // ---------------------------------------------------------------------------
+  // FK Lookup state — Phase 6B: opens the FkLookupDialog with context.
+  // ---------------------------------------------------------------------------
+  const [fkLookupOpen, setFkLookupOpen] = useState(false)
+  const [fkLookupContext, setFkLookupContext] = useState<{
+    columnKey: string
+    currentValue: unknown
+    foreignKey: ForeignKeyColumnInfo
+    rowData: Record<string, unknown>
+  } | null>(null)
+
+  // ---------------------------------------------------------------------------
   // Column descriptors: TableDataColumnMeta[] → GridColumnDescriptor[]
   // ---------------------------------------------------------------------------
   const descriptorColumns = useMemo(
-    () => buildColumnDescriptors(columns, isReadOnly, hasPk),
-    [columns, isReadOnly, hasPk]
+    () => buildColumnDescriptors(columns, isReadOnly, hasPk, foreignKeys),
+    [columns, isReadOnly, hasPk, foreignKeys]
   )
 
   // ---------------------------------------------------------------------------
@@ -251,7 +265,15 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         if (!entry) return 150
         // Convert Record rows to array format for the sizing function
         const arrayRows = gridRows.map((r) => columns.map((c) => r[c.name]))
-        return getAutoSizedColumnWidth(entry.meta, entry.index, arrayRows)
+        // FK icon (Link, 10px) or read-only lock icon (Lock, 10px) + 4px gap
+        const headerIconWidthPx = col.foreignKey || !col.editable ? 14 : 0
+        return getAutoSizedColumnWidth(
+          entry.meta,
+          entry.index,
+          arrayRows,
+          col.key,
+          headerIconWidthPx
+        )
       },
     }
   }, [columns])
@@ -547,27 +569,131 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   )
 
   // ---------------------------------------------------------------------------
-  // Render: wrap BaseGridView with EditorCallbacksContext
+  // FK Lookup callback — runs the unsaved-edit guard, then stores the lookup
+  // request in local state. Phase 6B renders FkLookupDialog with this context.
+  // ---------------------------------------------------------------------------
+  const handleFkLookup = useCallback(
+    async (args: FkLookupArgs) => {
+      const targetRowKey = getRowKey(args.rowData, pkColumns)
+
+      // Find the row index in the latest rowData snapshot
+      const fallbackRowIdx = rowDataRef.current.findIndex((r) => {
+        const rk = getRowKey(r, pkColumns)
+        return isSameRowKey(rk, targetRowKey)
+      })
+
+      // Find the column index in descriptorColumns
+      const targetColIdx = descriptorColumns.findIndex((c) => c.key === args.columnKey)
+
+      // Run the unsaved-edit guard (same pattern as cell click guard)
+      const guardResult = await validateAndCommitCurrentEdit(
+        targetRowKey,
+        fallbackRowIdx >= 0 ? fallbackRowIdx : 0,
+        targetColIdx >= 0 ? targetColIdx : 0
+      )
+
+      if (guardResult.passed) {
+        setSelectedRow(tabId, targetRowKey)
+        setFkLookupContext({
+          columnKey: args.columnKey,
+          currentValue: args.currentValue,
+          foreignKey: args.foreignKey,
+          rowData: args.rowData,
+        })
+        setFkLookupOpen(true)
+      }
+    },
+    [pkColumns, descriptorColumns, validateAndCommitCurrentEdit, setSelectedRow, tabId]
+  )
+
+  // ---------------------------------------------------------------------------
+  // FK Apply callback — applies the selected FK value to the editing cell.
+  // ---------------------------------------------------------------------------
+  const handleFkApply = useCallback(
+    (selectedValue: unknown) => {
+      if (!fkLookupContext) return
+      const { columnKey, rowData: fkRowData } = fkLookupContext
+
+      // Extract row key using the existing getRowKey helper + pkColumns
+      const rowKey = getRowKey(fkRowData, pkColumns)
+
+      // If the selected value is the same as the current cell value AND
+      // there's no existing edit with modifications on this row, skip editing
+      const currentCellValue = fkLookupContext.currentValue
+      const currentEditState = useTableDataStore.getState().tabs[tabId]?.editState
+      const isAlreadyEditing = currentEditState && isSameRowKey(currentEditState.rowKey, rowKey)
+
+      if (
+        selectedValue === currentCellValue &&
+        (!isAlreadyEditing || currentEditState.modifiedColumns.size === 0)
+      ) {
+        setSelectedRow(tabId, rowKey)
+        setFkLookupOpen(false)
+        return
+      }
+
+      // Check if this row is already being edited; if not, start editing
+      if (!currentEditState || !isSameRowKey(currentEditState.rowKey, rowKey)) {
+        // Start editing with current row values as base
+        const currentValues: Record<string, unknown> = {}
+        columns.forEach((c) => {
+          currentValues[c.name] = fkRowData[c.name]
+        })
+        startEditing(tabId, rowKey, currentValues)
+      }
+
+      // Update the FK cell with the selected value
+      storeUpdateCellValue(tabId, columnKey, selectedValue)
+      useTableDataStore.getState().syncCellValue(tabId, fkRowData, columnKey, selectedValue, rowKey)
+
+      // Select the edited row so toolbar actions target it correctly
+      setSelectedRow(tabId, rowKey)
+
+      // Close the dialog
+      setFkLookupOpen(false)
+    },
+    [fkLookupContext, tabId, pkColumns, columns, startEditing, storeUpdateCellValue, setSelectedRow]
+  )
+
+  // ---------------------------------------------------------------------------
+  // Render: wrap BaseGridView with EditorCallbacksContext and FkLookupProvider
   // ---------------------------------------------------------------------------
   return (
     <EditorCallbacksContext.Provider value={editorCallbacksCtx}>
-      <BaseGridView
-        ref={gridRef}
-        rows={rowData}
-        columns={descriptorColumns}
-        editState={sharedEditState}
-        sortColumn={sort?.column ?? null}
-        sortDirection={sort ? (sort.direction.toUpperCase() as 'ASC' | 'DESC') : null}
-        onSortChange={handleSortChange}
-        onCellClickGuard={handleCellClickGuard}
-        onCellClipboardEdit={handleCellClipboardEdit}
-        onRowsChange={handleRowsChange}
-        rowKeyGetter={rowKeyGetter}
-        getRowClass={getRowClass}
-        isModifiedCell={isModifiedCell}
-        autoSizeConfig={autoSizeConfig}
-        testId="table-data-grid"
-      />
+      <FkLookupProvider onFkLookup={handleFkLookup}>
+        <BaseGridView
+          ref={gridRef}
+          rows={rowData}
+          columns={descriptorColumns}
+          editState={sharedEditState}
+          sortColumn={sort?.column ?? null}
+          sortDirection={sort ? (sort.direction.toUpperCase() as 'ASC' | 'DESC') : null}
+          onSortChange={handleSortChange}
+          onCellClickGuard={handleCellClickGuard}
+          onCellClipboardEdit={handleCellClipboardEdit}
+          onRowsChange={handleRowsChange}
+          rowKeyGetter={rowKeyGetter}
+          getRowClass={getRowClass}
+          isModifiedCell={isModifiedCell}
+          autoSizeConfig={autoSizeConfig}
+          testId="table-data-grid"
+        />
+        {fkLookupOpen && fkLookupContext && (
+          <FkLookupDialog
+            isOpen={fkLookupOpen}
+            onClose={() => setFkLookupOpen(false)}
+            onApply={handleFkApply}
+            connectionId={tabState.connectionId}
+            database={tabState.database}
+            sourceTable={tabState.table}
+            sourceColumn={fkLookupContext.columnKey}
+            currentValue={fkLookupContext.currentValue}
+            referencedTable={fkLookupContext.foreignKey.referencedTable}
+            referencedColumn={fkLookupContext.foreignKey.referencedColumn}
+            isReadOnly={isReadOnly || !hasPk}
+          />
+        )}
+      </FkLookupProvider>
     </EditorCallbacksContext.Provider>
   )
 }

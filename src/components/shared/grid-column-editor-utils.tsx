@@ -5,7 +5,7 @@ import {
   getEnumFallbackValue,
   isEnumColumn,
 } from '../table-data/enum-field-utils'
-import type { TableDataColumnMeta } from '../../types/schema'
+import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/schema'
 import type { CellEditorBaseProps, CellEditorCallbackProps } from './grid-cell-editors'
 import { EnumCellEditor, NullableCellEditor } from './grid-cell-editors'
 
@@ -22,7 +22,8 @@ void getEnumFallbackValue
 
 export function getCellEditorForColumn(
   col: TableDataColumnMeta | undefined,
-  callbacks: CellEditorCallbackProps
+  callbacks: CellEditorCallbackProps,
+  foreignKey?: ForeignKeyColumnInfo
 ): CellEditorConfig {
   const temporalType = col ? getTemporalColumnType(col.dataType) : null
   const sharedEditorOptions = { closeOnExternalRowChange: false }
@@ -53,6 +54,7 @@ export function getCellEditorForColumn(
           {...props}
           isNullable={col.isNullable}
           columnMeta={col}
+          foreignKey={foreignKey}
           tabId={callbacks.tabId}
           updateCellValue={callbacks.updateCellValue}
           syncCellValue={callbacks.syncCellValue}
@@ -68,6 +70,7 @@ export function getCellEditorForColumn(
         {...props}
         isNullable={col?.isNullable ?? false}
         columnMeta={col}
+        foreignKey={foreignKey}
         tabId={callbacks.tabId}
         updateCellValue={callbacks.updateCellValue}
         syncCellValue={callbacks.syncCellValue}

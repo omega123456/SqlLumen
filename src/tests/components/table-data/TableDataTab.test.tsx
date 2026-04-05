@@ -51,6 +51,16 @@ vi.mock('../../../lib/table-data-commands', () => ({
   exportTableData: vi.fn().mockResolvedValue(undefined),
 }))
 
+// Mock schema-commands (getTableForeignKeys used by table-data-store)
+vi.mock('../../../lib/schema-commands', () => ({
+  getTableForeignKeys: vi.fn().mockResolvedValue([]),
+}))
+
+// Mock app-log-commands (logFrontend used by table-data-store on FK fetch failure)
+vi.mock('../../../lib/app-log-commands', () => ({
+  logFrontend: vi.fn(),
+}))
+
 // Mock the shared DataGrid wrapper (used by TableDataGrid)
 vi.mock('../../../components/shared/DataGrid', async () => {
   const React = await import('react')

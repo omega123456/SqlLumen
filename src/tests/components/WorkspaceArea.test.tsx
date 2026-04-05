@@ -39,6 +39,7 @@ vi.mock('../../lib/schema-commands', () => ({
       indexLength: 8192,
     },
   }),
+  getTableForeignKeys: vi.fn().mockResolvedValue([]),
 }))
 
 // Mock table-data-commands to prevent real IPC calls

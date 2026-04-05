@@ -11,3 +11,29 @@
   box-sizing: border-box;
   padding: 0;
 }
+
+/* FK trigger button inside the cell editor shell */
+.fkTriggerButton {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  color: inherit;
+  flex-shrink: 0;
+  transition:
+    background-color 0.1s,
+    border-color 0.1s;
+}
+
+.fkTriggerButton:hover {
+  background: var(--fk-lookup-trigger-hover-bg);
+  border-color: var(--fk-lookup-trigger-hover-border-color);
+}

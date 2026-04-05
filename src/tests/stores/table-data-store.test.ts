@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Mock } from 'vitest'
-import type { TableDataResponse, PrimaryKeyInfo, TableDataColumnMeta } from '../../types/schema'
+import type {
+  TableDataResponse,
+  PrimaryKeyInfo,
+  TableDataColumnMeta,
+  ForeignKeyInfo,
+} from '../../types/schema'
 
 // Mock the IPC commands module
 vi.mock('../../lib/table-data-commands', () => ({
@@ -11,6 +16,14 @@ vi.mock('../../lib/table-data-commands', () => ({
   exportTableData: vi.fn(),
 }))
 
+vi.mock('../../lib/schema-commands', () => ({
+  getTableForeignKeys: vi.fn(),
+}))
+
+vi.mock('../../lib/app-log-commands', () => ({
+  logFrontend: vi.fn(),
+}))
+
 import { useTableDataStore } from '../../stores/table-data-store'
 import {
   fetchTableData,
@@ -18,6 +31,8 @@ import {
   insertTableRow,
   deleteTableRow,
 } from '../../lib/table-data-commands'
+import { getTableForeignKeys } from '../../lib/schema-commands'
+import { logFrontend } from '../../lib/app-log-commands'
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -111,6 +126,7 @@ beforeEach(() => {
     ['name', 'Charlie'],
   ])
   ;(deleteTableRow as Mock).mockResolvedValue(undefined)
+  ;(getTableForeignKeys as Mock).mockResolvedValue([])
 })
 
 // Helper: init a tab with data loaded
@@ -914,5 +930,150 @@ describe('useTableDataStore — refreshData', () => {
 
     await useTableDataStore.getState().refreshData('tab-1')
     expect(fetchTableData).toHaveBeenCalledTimes(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Foreign key metadata tests
+// ---------------------------------------------------------------------------
+
+describe('useTableDataStore — FK metadata in initTab', () => {
+  it('initializes foreignKeys to an empty array', () => {
+    useTableDataStore.getState().initTab('tab-fk', 'conn-1', 'mydb', 'users')
+    const tab = useTableDataStore.getState().tabs['tab-fk']
+    expect(tab.foreignKeys).toEqual([])
+  })
+})
+
+describe('useTableDataStore — FK metadata in loadTableData', () => {
+  it('fetches and stores FK metadata in parallel with table data', async () => {
+    const mockFKs: ForeignKeyInfo[] = [
+      {
+        name: 'fk_user_dept',
+        columnName: 'department_id',
+        referencedTable: 'departments',
+        referencedColumn: 'id',
+        onDelete: 'CASCADE',
+        onUpdate: 'NO ACTION',
+      },
+    ]
+    ;(getTableForeignKeys as Mock).mockResolvedValueOnce(mockFKs)
+
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    await useTableDataStore.getState().loadTableData('tab-1')
+
+    // Wait for the fire-and-forget FK promise to settle
+    await vi.waitFor(() => {
+      const tab = useTableDataStore.getState().tabs['tab-1']
+      expect(tab.foreignKeys).toEqual([
+        {
+          columnName: 'department_id',
+          referencedTable: 'departments',
+          referencedColumn: 'id',
+          constraintName: 'fk_user_dept',
+        },
+      ])
+    })
+
+    expect(getTableForeignKeys).toHaveBeenCalledWith('conn-1', 'mydb', 'users')
+  })
+
+  it('filters out composite FKs (same constraintName appearing more than once)', async () => {
+    const mockFKs: ForeignKeyInfo[] = [
+      {
+        name: 'fk_simple',
+        columnName: 'author_id',
+        referencedTable: 'authors',
+        referencedColumn: 'id',
+        onDelete: 'CASCADE',
+        onUpdate: 'NO ACTION',
+      },
+      {
+        name: 'fk_composite',
+        columnName: 'org_id',
+        referencedTable: 'orgs',
+        referencedColumn: 'id',
+        onDelete: 'CASCADE',
+        onUpdate: 'NO ACTION',
+      },
+      {
+        name: 'fk_composite',
+        columnName: 'dept_id',
+        referencedTable: 'orgs',
+        referencedColumn: 'dept_id',
+        onDelete: 'CASCADE',
+        onUpdate: 'NO ACTION',
+      },
+    ]
+    ;(getTableForeignKeys as Mock).mockResolvedValueOnce(mockFKs)
+
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    await useTableDataStore.getState().loadTableData('tab-1')
+
+    await vi.waitFor(() => {
+      const tab = useTableDataStore.getState().tabs['tab-1']
+      // Only the simple FK should remain; both composite entries excluded
+      expect(tab.foreignKeys).toEqual([
+        {
+          columnName: 'author_id',
+          referencedTable: 'authors',
+          referencedColumn: 'id',
+          constraintName: 'fk_simple',
+        },
+      ])
+    })
+  })
+
+  it('does not block table data loading when FK fetch fails', async () => {
+    ;(getTableForeignKeys as Mock).mockRejectedValueOnce(new Error('FK fetch error'))
+
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    await useTableDataStore.getState().loadTableData('tab-1')
+
+    // Wait for the fire-and-forget FK promise to settle (catch handler)
+    await vi.waitFor(() => {
+      expect(logFrontend).toHaveBeenCalledWith('warn', 'FK metadata fetch failed: FK fetch error')
+    })
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    // Table data should still be loaded normally
+    expect(tab.columns).toEqual(mockColumns)
+    expect(tab.rows).toEqual([
+      [1, 'Alice'],
+      [2, 'Bob'],
+    ])
+    expect(tab.error).toBeNull()
+    // foreignKeys should remain as empty array
+    expect(tab.foreignKeys).toEqual([])
+  })
+
+  it('resets foreignKeys to empty array on re-load', async () => {
+    const mockFKs: ForeignKeyInfo[] = [
+      {
+        name: 'fk_user_dept',
+        columnName: 'department_id',
+        referencedTable: 'departments',
+        referencedColumn: 'id',
+        onDelete: 'CASCADE',
+        onUpdate: 'NO ACTION',
+      },
+    ]
+    ;(getTableForeignKeys as Mock).mockResolvedValue(mockFKs)
+
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    await useTableDataStore.getState().loadTableData('tab-1')
+
+    // Wait for FK data to be stored
+    await vi.waitFor(() => {
+      expect(useTableDataStore.getState().tabs['tab-1'].foreignKeys!.length).toBe(1)
+    })
+
+    // Now trigger a second load — FK should be temporarily reset to []
+    ;(getTableForeignKeys as Mock).mockResolvedValueOnce([])
+    await useTableDataStore.getState().loadTableData('tab-1')
+
+    await vi.waitFor(() => {
+      expect(useTableDataStore.getState().tabs['tab-1'].foreignKeys).toEqual([])
+    })
   })
 })

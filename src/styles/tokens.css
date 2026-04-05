@@ -341,7 +341,11 @@
   --ui-toast-dark-close-hover-fg: #cbd5e1;
   --ui-toast-icon-well-size: 40px;
   --ui-toast-dark-icon-well-radius: 4px;
-  --ui-toast-dark-icon-well-warning-bg: color-mix(in srgb, var(--warning-container) 20%, transparent);
+  --ui-toast-dark-icon-well-warning-bg: color-mix(
+    in srgb,
+    var(--warning-container) 20%,
+    transparent
+  );
   --ui-toast-dark-icon-well-error-bg: color-mix(in srgb, var(--error-container) 20%, transparent);
   --ui-toast-dark-icon-well-success-bg: color-mix(
     in srgb,
@@ -386,6 +390,12 @@
   --td-readonly-badge-bg: var(--surface-container-highest);
   --td-readonly-badge-text: var(--on-surface-variant);
 
+  /* ---------- FK Lookup ---------- */
+  --fk-lookup-trigger-hover-bg: rgba(255, 255, 255, 0.08);
+  --fk-lookup-trigger-hover-border-color: rgba(255, 255, 255, 0.15);
+  --fk-lookup-target-col-bg: rgba(99, 102, 241, 0.08);
+  --fk-lookup-target-col-header-fg: #818cf8;
+
   /* ---------- Query Result Grid Editing ---------- */
   --color-cell-readonly-bg: rgba(255, 255, 255, 0.03);
   --color-cell-readonly-opacity: 0.65;
@@ -403,9 +413,9 @@
   --surface-bright: #ffffff;
   --surface-container-lowest: #ffffff;
   --surface-container-low: #f2f4f6;
-    --surface-container: #f2f4f6;
-    --surface-container-high: #e6e8ea;
-    --surface-container-highest: #dee1e5;
+  --surface-container: #f2f4f6;
+  --surface-container-high: #e6e8ea;
+  --surface-container-highest: #dee1e5;
   --surface-variant: #e6e8ea;
   --surface-tint: #0066cc;
   --surface-tint-rgb: 0, 102, 204;
@@ -657,6 +667,12 @@
   --autocomplete-bg: color-mix(in srgb, var(--surface-container-low) 95%, transparent);
   --autocomplete-border: rgba(var(--outline-variant-rgb), 0.2);
   --autocomplete-backdrop: blur(20px);
+
+  /* FK Lookup — light overrides */
+  --fk-lookup-trigger-hover-bg: rgba(0, 0, 0, 0.06);
+  --fk-lookup-trigger-hover-border-color: rgba(0, 0, 0, 0.15);
+  --fk-lookup-target-col-bg: rgba(99, 102, 241, 0.06);
+  --fk-lookup-target-col-header-fg: #4f46e5;
 
   /* Query Result Grid Editing — light */
   --color-cell-readonly-bg: rgba(0, 0, 0, 0.03);

@@ -5,6 +5,7 @@ import type {
   DatabaseDetails,
   CharsetInfo,
   CollationInfo,
+  ForeignKeyInfo,
   ObjectType,
 } from '../types/schema'
 
@@ -66,6 +67,15 @@ export async function listCharsets(connectionId: string): Promise<CharsetInfo[]>
 /** List available collations on the server. */
 export async function listCollations(connectionId: string): Promise<CollationInfo[]> {
   return invoke<CollationInfo[]>('list_collations', { connectionId })
+}
+
+/** Get foreign key constraints for a table. */
+export async function getTableForeignKeys(
+  connectionId: string,
+  database: string,
+  table: string
+): Promise<ForeignKeyInfo[]> {
+  return invoke<ForeignKeyInfo[]>('get_table_foreign_keys', { connectionId, database, table })
 }
 
 // ---------------------------------------------------------------------------

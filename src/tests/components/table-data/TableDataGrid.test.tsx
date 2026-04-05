@@ -254,7 +254,7 @@ beforeEach(() => {
 
 describe('buildColumnDescriptors', () => {
   it('creates correct column descriptors', () => {
-    const defs = buildColumnDescriptors(testColumns, false, true)
+    const defs = buildColumnDescriptors(testColumns, false, true, [])
     expect(defs).toHaveLength(3)
     expect(defs[0].key).toBe('id')
     expect(defs[0].displayName).toBe('id')
@@ -263,21 +263,21 @@ describe('buildColumnDescriptors', () => {
   })
 
   it('marks binary columns as NOT editable', () => {
-    const defs = buildColumnDescriptors(testColumns, false, true)
+    const defs = buildColumnDescriptors(testColumns, false, true, [])
     expect(defs[0].editable).toBe(true) // id (non-binary)
     expect(defs[1].editable).toBe(true) // name (non-binary)
     expect(defs[2].editable).toBe(false) // avatar (binary)
   })
 
   it('all columns non-editable when read-only', () => {
-    const defs = buildColumnDescriptors(testColumns, true, true)
+    const defs = buildColumnDescriptors(testColumns, true, true, [])
     defs.forEach((d) => {
       expect(d.editable).toBe(false)
     })
   })
 
   it('all columns non-editable when no PK', () => {
-    const defs = buildColumnDescriptors(testColumns, false, false)
+    const defs = buildColumnDescriptors(testColumns, false, false, [])
     defs.forEach((d) => {
       expect(d.editable).toBe(false)
     })

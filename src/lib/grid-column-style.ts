@@ -178,11 +178,25 @@ function stringifyGridValue(value: unknown): string {
 export function getAutoSizedColumnWidth(
   column: TableDataColumnMeta,
   columnIndex: number,
-  rows: readonly unknown[][]
+  rows: readonly unknown[][],
+  displayName?: string,
+  headerIconWidthPx = 0
 ): number {
   const sizing = getColumnWidthSizing(column.dataType, column.isNullable)
 
-  let maxTextLength = column.name.length
+  // Header width: 10px bold font with 0.08-0.1em letter-spacing = ~8.5px/char.
+  // Cell padding uses 24px per side in light theme (worst case) = 48px total.
+  // An extra 12px buffer prevents off-by-one ellipsis at subpixel boundaries.
+  // headerIconWidthPx is added by the caller for FK/lock icon columns.
+  const HEADER_CHAR_PX = 8.5
+  const HEADER_PADDING_PX = 60 // 48px cell padding (light theme) + 12px buffer
+  const headerText = displayName ?? column.name
+  const headerWidth = Math.ceil(
+    headerText.length * HEADER_CHAR_PX + HEADER_PADDING_PX + headerIconWidthPx
+  )
+
+  // Data width — scan all rows for the longest value
+  let maxTextLength = 0
 
   for (const row of rows) {
     const value = row[columnIndex]
@@ -192,7 +206,8 @@ export function getAutoSizedColumnWidth(
     }
   }
 
-  const measuredWidth = Math.ceil(maxTextLength * sizing.autoCharPx + sizing.autoPaddingPx)
+  const dataWidth = Math.ceil(maxTextLength * sizing.autoCharPx + sizing.autoPaddingPx)
+  const measuredWidth = Math.max(headerWidth, dataWidth)
   return Math.max(sizing.autoMinWidth, Math.min(AUTO_WIDTH_MAX, measuredWidth))
 }
 

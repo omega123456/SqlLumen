@@ -15,10 +15,12 @@
 
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import type { TableDataColumnMeta } from '../../types/schema'
+import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/schema'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { ENUM_NULL_SENTINEL, getEnumFallbackValue } from '../table-data/enum-field-utils'
 import { useEditorCallbacks } from './editor-callbacks-context'
+import { useFkLookup } from './fk-lookup-context'
+import { FkLookupTriggerButton } from './FkLookupTriggerButton'
 import { TextInput } from '../common/TextInput'
 import styles from './grid-cell-editors.module.css'
 
@@ -43,6 +45,8 @@ export interface CellEditorBaseProps {
   // Editor-specific
   isNullable?: boolean
   columnMeta?: TableDataColumnMeta
+  /** FK metadata — when set, a FK trigger button is rendered in the editor. */
+  foreignKey?: ForeignKeyColumnInfo
   // Store callbacks (provided via closures in column defs)
   tabId?: string
   updateCellValue?: (tabId: string, columnName: string, value: unknown) => void
@@ -62,6 +66,8 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
   const { row, column, onRowChange, onClose } = props
   const isNullable = props.isNullable ?? false
   const fieldName = column.key
+  const foreignKey = props.foreignKey
+  const fkLookup = useFkLookup()
 
   const rawValue = row[fieldName]
   const initialNull = isNullish(rawValue)
@@ -148,6 +154,25 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
           onChange={(e) => handleChange(e.target.value)}
           onBlur={(e) => handleBlur(e.relatedTarget)}
           onKeyDown={(e) => {
+            if (
+              e.key === 'F4' &&
+              !e.altKey &&
+              !e.ctrlKey &&
+              !e.metaKey &&
+              !e.shiftKey &&
+              foreignKey &&
+              fkLookup
+            ) {
+              e.preventDefault()
+              e.stopPropagation()
+              fkLookup.onFkLookup({
+                columnKey: fieldName,
+                currentValue: isNull ? null : value,
+                foreignKey: foreignKey,
+                rowData: row,
+              })
+              return
+            }
             if (e.key === 'Tab' || e.key === 'Enter') {
               // Commit and focus grid for navigation
               onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
@@ -177,6 +202,15 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
             NULL
           </button>
         )}
+        {foreignKey && fkLookup && (
+          <FkLookupTriggerButton
+            foreignKey={foreignKey}
+            columnKey={fieldName}
+            currentValue={row[fieldName]}
+            rowData={row}
+            className={styles.fkTriggerButton}
+          />
+        )}
       </div>
     </div>
   )
@@ -191,6 +225,8 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
   const enumValues = props.columnMeta?.enumValues ?? []
   const isNullable = props.isNullable ?? false
   const fieldName = column.key
+  const foreignKey = props.foreignKey
+  const fkLookup = useFkLookup()
 
   const rawValue = row[fieldName]
   const initialNull = isNullish(rawValue)
@@ -271,6 +307,25 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
 
   const handleCommitKeys = useCallback(
     (e: ReactKeyboardEvent) => {
+      if (
+        e.key === 'F4' &&
+        !e.altKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        foreignKey &&
+        fkLookup
+      ) {
+        e.preventDefault()
+        e.stopPropagation()
+        fkLookup.onFkLookup({
+          columnKey: fieldName,
+          currentValue: isNull ? null : value,
+          foreignKey: foreignKey,
+          rowData: row,
+        })
+        return
+      }
       if (e.key === 'Tab' || e.key === 'Enter') {
         onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
         onClose(true, true)
@@ -287,6 +342,8 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
     },
     [
       fieldName,
+      fkLookup,
+      foreignKey,
       initialNull,
       initialValue,
       isNull,
@@ -355,6 +412,15 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
           >
             NULL
           </button>
+        )}
+        {foreignKey && fkLookup && (
+          <FkLookupTriggerButton
+            foreignKey={foreignKey}
+            columnKey={fieldName}
+            currentValue={row[fieldName]}
+            rowData={row}
+            className={styles.fkTriggerButton}
+          />
         )}
       </div>
     </div>

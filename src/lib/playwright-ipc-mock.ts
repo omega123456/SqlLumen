@@ -678,12 +678,132 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       )
 
     // --- Table data browser/editor ---
-    case 'fetch_table_data':
+    case 'fetch_table_data': {
+      const table = (args as Record<string, unknown>)?.table
+
+      if (table === 'users') {
+        return {
+          columns: [
+            {
+              name: 'id',
+              dataType: 'INT',
+              isBooleanAlias: false,
+              isNullable: false,
+              isPrimaryKey: true,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: true,
+            },
+            {
+              name: 'name',
+              dataType: 'VARCHAR',
+              isBooleanAlias: false,
+              isNullable: true,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+            {
+              name: 'email',
+              dataType: 'VARCHAR',
+              isBooleanAlias: false,
+              isNullable: true,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+          ],
+          rows: [
+            [1, 'Alice', 'alice@example.com'],
+            [2, 'Bob', 'bob@example.com'],
+            [3, 'Charlie', 'charlie@example.com'],
+          ],
+          totalRows: 3,
+          currentPage: 1,
+          totalPages: 1,
+          pageSize: 100,
+          primaryKey: {
+            keyColumns: ['id'],
+            hasAutoIncrement: true,
+            isUniqueKeyFallback: false,
+          },
+          executionTimeMs: 12,
+        }
+      }
+
+      if (table === 'orders') {
+        return {
+          columns: [
+            {
+              name: 'id',
+              dataType: 'INT',
+              isBooleanAlias: false,
+              isNullable: false,
+              isPrimaryKey: true,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: true,
+            },
+            {
+              name: 'user_id',
+              dataType: 'BIGINT',
+              isBooleanAlias: false,
+              isNullable: false,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+            {
+              name: 'status',
+              dataType: 'VARCHAR',
+              isBooleanAlias: false,
+              isNullable: false,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: true,
+              columnDefault: 'pending',
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+          ],
+          rows: [
+            [1, 101, 'pending'],
+            [2, 102, 'shipped'],
+            [3, 101, 'delivered'],
+          ],
+          totalRows: 3,
+          currentPage: 1,
+          totalPages: 1,
+          pageSize: 1000,
+          primaryKey: {
+            keyColumns: ['id'],
+            hasAutoIncrement: true,
+            isUniqueKeyFallback: false,
+          },
+          executionTimeMs: 8,
+        }
+      }
+
+      // Default response (original)
       return {
         columns: [
           {
             name: 'id',
             dataType: 'INT',
+            isBooleanAlias: false,
             isNullable: false,
             isPrimaryKey: true,
             isUniqueKey: false,
@@ -695,6 +815,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           {
             name: 'name',
             dataType: 'VARCHAR',
+            isBooleanAlias: false,
             isNullable: true,
             isPrimaryKey: false,
             isUniqueKey: false,
@@ -706,6 +827,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           {
             name: 'email',
             dataType: 'VARCHAR',
+            isBooleanAlias: false,
             isNullable: true,
             isPrimaryKey: false,
             isUniqueKey: false,
@@ -717,6 +839,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           {
             name: 'status',
             dataType: 'ENUM',
+            isBooleanAlias: false,
             enumValues: ['active', 'inactive'],
             isNullable: false,
             isPrimaryKey: false,
@@ -729,6 +852,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           {
             name: 'created_at',
             dataType: 'DATETIME',
+            isBooleanAlias: false,
             isNullable: true,
             isPrimaryKey: false,
             isUniqueKey: false,
@@ -740,6 +864,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           {
             name: 'updated_at',
             dataType: 'TIMESTAMP',
+            isBooleanAlias: false,
             isNullable: true,
             isPrimaryKey: false,
             isUniqueKey: false,
@@ -751,6 +876,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           {
             name: 'birth_date',
             dataType: 'DATE',
+            isBooleanAlias: false,
             isNullable: true,
             isPrimaryKey: false,
             isUniqueKey: false,
@@ -762,6 +888,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           {
             name: 'login_time',
             dataType: 'TIME',
+            isBooleanAlias: false,
             isNullable: true,
             isPrimaryKey: false,
             isUniqueKey: false,
@@ -824,6 +951,24 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         },
         executionTimeMs: 42,
       }
+    }
+
+    case 'get_table_foreign_keys': {
+      const table = (args as Record<string, unknown>)?.table
+      if (table === 'orders') {
+        return [
+          {
+            name: 'fk_orders_user',
+            columnName: 'user_id',
+            referencedTable: 'users',
+            referencedColumn: 'id',
+            onDelete: 'CASCADE',
+            onUpdate: 'CASCADE',
+          },
+        ]
+      }
+      return []
+    }
 
     case 'update_table_row':
       return null

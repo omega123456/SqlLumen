@@ -4,6 +4,7 @@ import type {
   TableDataTabState,
   FilterCondition,
   RowEditState,
+  ForeignKeyColumnInfo,
 } from '../types/schema'
 import {
   fetchTableData as fetchTableDataCmd,
@@ -11,6 +12,8 @@ import {
   insertTableRow as insertTableRowCmd,
   deleteTableRow as deleteTableRowCmd,
 } from '../lib/table-data-commands'
+import { getTableForeignKeys } from '../lib/schema-commands'
+import { logFrontend } from '../lib/app-log-commands'
 import { getTemporalColumnType, getTodayMysqlString } from '../lib/date-utils'
 
 // ---------------------------------------------------------------------------
@@ -261,6 +264,7 @@ function createDefaultTabState(
     selectedRowKey: null,
     filterModel: [],
     sort: null,
+    foreignKeys: [],
     isLoading: false,
     error: null,
     saveError: null,
@@ -378,7 +382,43 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         editState: null,
         saveError: null,
         error: null,
+        foreignKeys: [],
       })
+
+      // Fire FK metadata fetch in parallel (fire-and-forget)
+      getTableForeignKeys(tab.connectionId, tab.database, tab.table)
+        .then((fkInfos) => {
+          // Guard: tab may have been cleaned up during the async call
+          if (!get().tabs[tabId]) return
+
+          // Map ForeignKeyInfo[] → ForeignKeyColumnInfo[]
+          const mapped: ForeignKeyColumnInfo[] = fkInfos.map((fk) => ({
+            columnName: fk.columnName,
+            referencedTable: fk.referencedTable,
+            referencedColumn: fk.referencedColumn,
+            constraintName: fk.name,
+          }))
+
+          // Filter out composite FKs: exclude any constraintName that appears more than once
+          const countByConstraint = new Map<string, number>()
+          for (const fk of mapped) {
+            countByConstraint.set(
+              fk.constraintName,
+              (countByConstraint.get(fk.constraintName) ?? 0) + 1
+            )
+          }
+          const filtered = mapped.filter(
+            (fk) => (countByConstraint.get(fk.constraintName) ?? 0) <= 1
+          )
+
+          patchTab(tabId, { foreignKeys: filtered })
+        })
+        .catch((error: unknown) => {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          console.warn('[table-data-store] FK metadata fetch failed:', error)
+          logFrontend('warn', 'FK metadata fetch failed: ' + errorMessage)
+          // Leave foreignKeys as [] — do NOT set error on the tab
+        })
 
       await get().fetchPage(tabId, 1)
     },

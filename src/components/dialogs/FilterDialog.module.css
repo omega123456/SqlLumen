@@ -103,20 +103,30 @@
   box-shadow: var(--ui-input-focus-shadow);
 }
 
+/* Wrapper for Dropdown components — ensures the flex layout applies to
+   the Dropdown's outer <div> rather than only the trigger button. */
+.dropdownWrapper {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+}
+
 .columnSelect {
-  flex: 3;
+  flex: 1;
+  width: 100%;
   min-width: 0;
   cursor: pointer;
 }
 
 .operatorSelect {
-  flex: 2;
+  flex: 1;
+  width: 100%;
   min-width: 0;
   cursor: pointer;
 }
 
 .valueInput {
-  flex: 3;
+  flex: 1 1 0;
   min-width: 0;
 }
 

@@ -139,6 +139,7 @@ pub fn run() {
             commands::schema::list_databases,
             commands::schema::list_schema_objects,
             commands::schema::list_columns,
+            commands::schema::get_table_foreign_keys,
             commands::schema::get_schema_info,
             commands::schema::get_database_details,
             commands::schema::list_charsets,

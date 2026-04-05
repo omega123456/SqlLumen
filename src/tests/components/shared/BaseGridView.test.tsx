@@ -1592,4 +1592,251 @@ describe('BaseGridView', () => {
     expect(onInsertRow).not.toHaveBeenCalled()
     expect(onDeleteRow).not.toHaveBeenCalled()
   })
+
+  // -----------------------------------------------------------------------
+  // onRowClick
+  // -----------------------------------------------------------------------
+
+  it('onRowClick fires when onCellClickGuard is absent and a cell is clicked', async () => {
+    const onRowClick = vi.fn()
+    render(
+      <BaseGridView
+        columns={testColumns}
+        rows={testRows}
+        editState={null}
+        onRowClick={onRowClick}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const onCellClick = props.onCellClick as (
+      args: {
+        row: Record<string, unknown>
+        rowIdx: number
+        column: { key: string; idx: number }
+      },
+      event: { preventGridDefault: () => void }
+    ) => Promise<void>
+
+    const mockPrevent = vi.fn()
+
+    await act(async () => {
+      await onCellClick(
+        {
+          row: testRows[0],
+          rowIdx: 0,
+          column: { key: 'name', idx: 1 },
+        },
+        { preventGridDefault: mockPrevent }
+      )
+    })
+
+    expect(onRowClick).toHaveBeenCalledWith(testRows[0])
+    // Should NOT call preventGridDefault when guard is absent
+    expect(mockPrevent).not.toHaveBeenCalled()
+  })
+
+  it('onRowClick does NOT fire when onCellClickGuard is provided', async () => {
+    const onRowClick = vi.fn()
+    const guard = vi.fn().mockResolvedValue({
+      proceed: true,
+      targetRowIdx: 0,
+      targetColIdx: 1,
+      enableEditor: false,
+    })
+
+    render(
+      <BaseGridView
+        columns={testColumns}
+        rows={testRows}
+        editState={null}
+        onCellClickGuard={guard}
+        onRowClick={onRowClick}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const onCellClick = props.onCellClick as (
+      args: {
+        row: Record<string, unknown>
+        rowIdx: number
+        column: { key: string; idx: number }
+      },
+      event: { preventGridDefault: () => void }
+    ) => Promise<void>
+
+    await act(async () => {
+      await onCellClick(
+        {
+          row: testRows[0],
+          rowIdx: 0,
+          column: { key: 'name', idx: 1 },
+        },
+        { preventGridDefault: vi.fn() }
+      )
+    })
+
+    expect(guard).toHaveBeenCalled()
+    expect(onRowClick).not.toHaveBeenCalled()
+  })
+
+  // -----------------------------------------------------------------------
+  // onCellDoubleClick
+  // -----------------------------------------------------------------------
+
+  it('onCellDoubleClick fires with correct (rowData, columnKey) args when a cell is double-clicked', () => {
+    const onCellDoubleClick = vi.fn()
+    render(
+      <BaseGridView
+        columns={testColumns}
+        rows={testRows}
+        editState={null}
+        onCellDoubleClick={onCellDoubleClick}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const onDblClick = props.onCellDoubleClick as (
+      args: {
+        row: Record<string, unknown>
+        rowIdx: number
+        column: { key: string; idx: number }
+      },
+      event: { preventGridDefault: () => void }
+    ) => void
+
+    expect(onDblClick).toBeDefined()
+
+    act(() => {
+      onDblClick(
+        {
+          row: testRows[1],
+          rowIdx: 1,
+          column: { key: 'id', idx: 0 },
+        },
+        { preventGridDefault: vi.fn() }
+      )
+    })
+
+    expect(onCellDoubleClick).toHaveBeenCalledWith(testRows[1], 'id')
+  })
+
+  it('does not pass onCellDoubleClick to DataGrid when prop is not provided', () => {
+    render(<BaseGridView columns={testColumns} rows={testRows} editState={null} />)
+
+    const props = getLatestGridProps()
+    expect(props.onCellDoubleClick).toBeUndefined()
+  })
+
+  // -----------------------------------------------------------------------
+  // highlightColumnKey
+  // -----------------------------------------------------------------------
+
+  it('highlightColumnKey adds rdg-highlight-column class to cells in the highlighted column', () => {
+    const cols = [
+      makeColumn('id', 'bigint', { isPrimaryKey: true }),
+      makeColumn('user_id', 'bigint'),
+      makeColumn('name', 'varchar'),
+    ]
+    render(
+      <BaseGridView
+        columns={cols}
+        rows={[{ id: 1, user_id: 10, name: 'Alice' }]}
+        editState={null}
+        highlightColumnKey="user_id"
+      />
+    )
+
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{
+      key: string
+      cellClass: (row: Record<string, unknown>) => string
+      headerCellClass?: string
+    }>
+
+    const userIdCol = colDefs.find((c) => c.key === 'user_id')!
+    const idCol = colDefs.find((c) => c.key === 'id')!
+    const nameCol = colDefs.find((c) => c.key === 'name')!
+
+    // Highlighted column should have the class
+    expect(userIdCol.cellClass({ id: 1, user_id: 10, name: 'Alice' })).toContain(
+      'rdg-highlight-column'
+    )
+    expect(userIdCol.headerCellClass).toBe('rdg-highlight-column-header')
+
+    // Other columns should NOT have the class
+    expect(idCol.cellClass({ id: 1, user_id: 10, name: 'Alice' })).not.toContain(
+      'rdg-highlight-column'
+    )
+    expect(idCol.headerCellClass).toBeUndefined()
+    expect(nameCol.cellClass({ id: 1, user_id: 10, name: 'Alice' })).not.toContain(
+      'rdg-highlight-column'
+    )
+    expect(nameCol.headerCellClass).toBeUndefined()
+  })
+
+  // -----------------------------------------------------------------------
+  // FK column header renderer
+  // -----------------------------------------------------------------------
+
+  it('uses ForeignKeyColumnHeaderCell for columns with foreignKey set', () => {
+    const cols = [
+      makeColumn('id', 'bigint', { isPrimaryKey: true }),
+      makeColumn('user_id', 'bigint', {
+        foreignKey: {
+          columnName: 'user_id',
+          referencedTable: 'users',
+          referencedColumn: 'id',
+          constraintName: 'fk_user',
+        },
+      }),
+    ]
+    render(<BaseGridView columns={cols} rows={[{ id: 1, user_id: 10 }]} editState={null} />)
+
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{
+      key: string
+      renderHeaderCell?: unknown
+    }>
+
+    // FK column should have renderHeaderCell
+    expect(colDefs[1].renderHeaderCell).toBeDefined()
+    expect(typeof colDefs[1].renderHeaderCell).toBe('function')
+
+    // Non-FK column should NOT have renderHeaderCell
+    expect(colDefs[0].renderHeaderCell).toBeUndefined()
+  })
+
+  it('FK header takes precedence over read-only header', () => {
+    const cols = [
+      makeColumn('user_id', 'bigint', {
+        editable: false,
+        foreignKey: {
+          columnName: 'user_id',
+          referencedTable: 'users',
+          referencedColumn: 'id',
+          constraintName: 'fk_user',
+        },
+      }),
+    ]
+    render(
+      <BaseGridView
+        columns={cols}
+        rows={[{ user_id: 10 }]}
+        editState={null}
+        showReadOnlyHeaders={true}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{
+      key: string
+      renderHeaderCell?: unknown
+      headerCellClass?: string
+    }>
+
+    // FK header takes precedence — should NOT have rdg-readonly-cell headerCellClass
+    expect(colDefs[0].renderHeaderCell).toBeDefined()
+    expect(colDefs[0].headerCellClass).toBeUndefined()
+  })
 })

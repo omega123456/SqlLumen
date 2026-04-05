@@ -163,6 +163,7 @@ export function FilterDialog({
                         value={cond.column}
                         onChange={(v) => handleChange(idx, 'column', v)}
                         data-testid={`filter-column-select-${idx}`}
+                        className={styles.dropdownWrapper}
                         triggerClassName={styles.columnSelect}
                       />
 
@@ -174,6 +175,7 @@ export function FilterDialog({
                         value={cond.operator}
                         onChange={(v) => handleChange(idx, 'operator', v)}
                         data-testid={`filter-operator-select-${idx}`}
+                        className={styles.dropdownWrapper}
                         triggerClassName={styles.operatorSelect}
                       />
 

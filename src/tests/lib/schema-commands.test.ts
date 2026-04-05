@@ -7,6 +7,7 @@ import {
   getDatabaseDetails,
   listCharsets,
   listCollations,
+  getTableForeignKeys,
   createDatabase,
   dropDatabase,
   alterDatabase,
@@ -169,6 +170,47 @@ describe('listCollations', () => {
   it('propagates errors from invoke', async () => {
     mockInvoke.mockRejectedValue(new Error('Collation error'))
     await expect(listCollations('conn-1')).rejects.toThrow('Collation error')
+  })
+})
+
+describe('getTableForeignKeys', () => {
+  it('calls invoke with correct command and args', async () => {
+    const mockFKs = [
+      {
+        name: 'fk_orders_user',
+        columnName: 'user_id',
+        referencedTable: 'users',
+        referencedColumn: 'id',
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE',
+      },
+    ]
+    mockInvoke.mockResolvedValue(mockFKs)
+    const result = await getTableForeignKeys('conn-1', 'mydb', 'orders')
+    expect(mockInvoke).toHaveBeenCalledWith('get_table_foreign_keys', {
+      connectionId: 'conn-1',
+      database: 'mydb',
+      table: 'orders',
+    })
+    expect(result).toEqual(mockFKs)
+  })
+
+  it('returns empty array for tables without foreign keys', async () => {
+    mockInvoke.mockResolvedValue([])
+    const result = await getTableForeignKeys('conn-1', 'mydb', 'standalone')
+    expect(mockInvoke).toHaveBeenCalledWith('get_table_foreign_keys', {
+      connectionId: 'conn-1',
+      database: 'mydb',
+      table: 'standalone',
+    })
+    expect(result).toEqual([])
+  })
+
+  it('propagates errors from invoke', async () => {
+    mockInvoke.mockRejectedValue(new Error('FK lookup failed'))
+    await expect(getTableForeignKeys('conn-1', 'mydb', 'orders')).rejects.toThrow(
+      'FK lookup failed'
+    )
   })
 })
 

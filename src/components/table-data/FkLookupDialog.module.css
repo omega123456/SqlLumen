@@ -1,0 +1,230 @@
+/* FkLookupDialog — FK lookup modal dialog styles */
+
+/* Internal layout: column-flex, fills available space */
+.dialogContent {
+  display: flex;
+  flex-direction: column;
+  height: 70vh;
+  min-height: 400px;
+}
+
+/* Header section */
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+}
+
+.headerText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 2px;
+  color: var(--on-surface);
+}
+
+.subtitle {
+  font-size: 12px;
+  color: var(--on-surface-variant);
+  margin: 0;
+}
+
+.closeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.closeButton:hover {
+  color: var(--on-surface);
+  background: rgba(var(--on-surface-rgb, 255 255 255), 0.06);
+}
+
+/* Toolbar - matches TableDataToolbar visual style */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 24px;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  background: var(--surface-container);
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+:global([data-theme='light']) .toolbar {
+  height: 48px;
+  background: var(--surface-container-high);
+}
+
+.toolbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.toolbarRight {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Filter button wrapper (matches TableDataToolbar.module.css) */
+.filterButtonWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.filterButtonActive .toolbarButton {
+  color: var(--primary);
+  border-color: rgba(var(--primary-rgb), 0.35);
+}
+
+/* Toolbar button (matches TableDataToolbar.module.css) */
+.toolbarButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.toolbarButton:hover:not(:disabled) {
+  color: var(--primary);
+  border-color: rgba(var(--primary-rgb), 0.35);
+  background: rgba(var(--primary-rgb), 0.06);
+}
+
+.toolbarButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Filter badge (matches TableDataToolbar.module.css) */
+.filterBadge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: var(--type-size-3xs, 9px);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 2px;
+  pointer-events: none;
+}
+
+/* Grid container - fills remaining height */
+.gridContainer {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Footer */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  background: var(--surface-container);
+  flex-shrink: 0;
+}
+
+/* Loading state */
+.loadingContainer {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-surface-variant);
+  gap: 8px;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(var(--on-surface-variant-rgb, 160 160 160), 0.3);
+  border-top-color: var(--on-surface-variant);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Error state */
+.errorContainer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--error, #ef4444);
+}
+
+.errorMessage {
+  font-size: 13px;
+  max-width: 400px;
+  text-align: center;
+}
+
+/* Empty state */
+.emptyContainer {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-surface-variant);
+  font-size: 13px;
+}

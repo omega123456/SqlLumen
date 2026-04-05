@@ -288,7 +288,7 @@ async function openQueryEditorWithResults(page: Page) {
   await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
 }
 
-/** Open a table data tab for the `users` table and wait for data to load. */
+/** Open a table data tab for `sample_table` and wait for data to load. */
 async function openTableDataTab(page: Page) {
   await connectToSample(page)
 
@@ -299,10 +299,38 @@ async function openTableDataTab(page: Page) {
     }
     store.getState().openTab({
       type: 'table-data',
-      label: 'users',
+      label: 'sample_table',
       connectionId: 'session-playwright-1',
       databaseName: 'ecommerce_db',
-      objectName: 'users',
+      objectName: 'sample_table',
+      objectType: 'table',
+    })
+  })
+
+  // Wait for the table data tab to mount and data to load
+  await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+  // Wait for loading to finish — the toolbar shows row count when done
+  await expect(page.getByTestId('table-data-toolbar')).toContainText('Rows', {
+    timeout: APP_READY_MS,
+  })
+}
+
+/** Open a table data tab for the `orders` table and wait for data to load. */
+async function openOrdersTableDataTab(page: Page) {
+  await connectToSample(page)
+
+  // Programmatically open a table-data tab via the workspace store
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-data',
+      label: 'orders',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'orders',
       objectType: 'table',
     })
   })
@@ -1030,6 +1058,64 @@ for (const theme of themes) {
         `table-data-grid-${theme}.png`,
         { animations: 'disabled' }
       )
+    })
+
+    test('TableDataGrid — FK column header (orders table with user_id FK)', async ({ page }) => {
+      await openOrdersTableDataTab(page)
+      const grid = page.getByTestId('table-data-grid')
+      await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+      // Wait for FK metadata to load (async fire-and-forget in store)
+      await page.waitForTimeout(500)
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
+        `table-data-grid-fk-header-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('TableDataGrid — FK trigger button visible on row hover (orders table)', async ({
+      page,
+    }) => {
+      await openOrdersTableDataTab(page)
+      const grid = page.getByTestId('table-data-grid')
+      await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+      // Wait for FK metadata to load (async fire-and-forget in store)
+      await page.waitForTimeout(500)
+      // Hover over the first data row to trigger the FK button CSS visibility
+      await grid.locator('.rdg-row').first().hover()
+      await page.waitForTimeout(200) // Let CSS transition settle
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
+        `table-data-grid-fk-trigger-hover-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('FkLookupDialog — open with data loaded (orders table)', async ({ page }) => {
+      await openOrdersTableDataTab(page)
+      const grid = page.getByTestId('table-data-grid')
+      await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+      // Wait for FK metadata to load (async fire-and-forget in store)
+      await page.waitForTimeout(500)
+      // Hover over the first data row to make the FK trigger button visible
+      await grid.locator('.rdg-row').first().hover()
+      await page.waitForTimeout(200) // Let CSS transition settle
+      // Click the FK lookup trigger button
+      const fkTrigger = page.getByTestId('fk-lookup-trigger').first()
+      await expect(fkTrigger).toBeVisible({ timeout: APP_READY_MS })
+      await fkTrigger.click()
+      // Wait for the FK lookup dialog to appear and data to load
+      await expect(page.getByTestId('fk-lookup-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('fk-lookup-base-grid')).toBeVisible({ timeout: APP_READY_MS })
+      // Reset scroll positions for stable screenshots
+      await resetChromeScrollPositions(page)
+      // Full viewport screenshot — dialog is a modal
+      await expect(page).toHaveScreenshot(`fk-lookup-dialog-open-${theme}.png`, {
+        animations: 'disabled',
+      })
     })
 
     test('TableDataFormView — form view with record', async ({ page }) => {

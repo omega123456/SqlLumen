@@ -49,10 +49,10 @@ async function openTableDataTab(page: Page) {
     }
     store.getState().openTab({
       type: 'table-data',
-      label: 'users',
+      label: 'sample_table',
       connectionId: 'session-playwright-1',
       databaseName: 'ecommerce_db',
-      objectName: 'users',
+      objectName: 'sample_table',
       objectType: 'table',
     })
   })

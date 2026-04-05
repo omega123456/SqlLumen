@@ -195,6 +195,14 @@ mod coverage_stubs {
     }
 
     #[tokio::test]
+    async fn test_get_table_foreign_keys_impl_coverage() {
+        let state = common::test_app_state();
+        let result = get_table_foreign_keys_impl(&state, "test-conn", "db", "tbl").await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn test_get_schema_info_impl_coverage() {
         let state = common::test_app_state();
         let result = get_schema_info_impl(&state, "test-conn", "db", "obj", "table").await;

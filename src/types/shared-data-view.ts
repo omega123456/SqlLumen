@@ -11,7 +11,7 @@
 
 import type { ReactNode } from 'react'
 import type { RowsChangeData } from 'react-data-grid'
-import type { TableDataColumnMeta } from './schema'
+import type { ForeignKeyColumnInfo, TableDataColumnMeta } from './schema'
 
 // ---------------------------------------------------------------------------
 // Column descriptor
@@ -42,6 +42,8 @@ export interface GridColumnDescriptor {
   enumValues?: string[]
   /** Optional full table-data column meta for editor factory. */
   tableColumnMeta?: TableDataColumnMeta
+  /** FK metadata for this column (set when the column is an FK source). */
+  foreignKey?: ForeignKeyColumnInfo
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +135,13 @@ export interface BaseGridViewProps {
   onDeleteRow?: (rowKey: string) => void
   canInsert?: boolean
   canDelete?: boolean
+
+  // General-purpose interaction callbacks
+  onCellDoubleClick?: (rowData: Record<string, unknown>, columnKey: string) => void
+  onRowClick?: (rowData: Record<string, unknown>) => void
+
+  // Column highlight (e.g. FK lookup dialog highlights the referenced column)
+  highlightColumnKey?: string
 }
 
 // ---------------------------------------------------------------------------

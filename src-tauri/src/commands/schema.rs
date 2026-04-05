@@ -6,7 +6,8 @@
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
 use crate::mysql::schema_queries::{
-    self, CharsetInfo, CollationInfo, ColumnInfo, DatabaseDetails, SchemaInfoResponse,
+    self, CharsetInfo, CollationInfo, ColumnInfo, DatabaseDetails, ForeignKeyInfo,
+    SchemaInfoResponse,
 };
 use crate::state::AppState;
 #[cfg(not(coverage))]
@@ -149,6 +150,29 @@ pub async fn list_columns_impl(
     _database: &str,
     _table: &str,
 ) -> Result<Vec<ColumnInfo>, String> {
+    Ok(vec![])
+}
+
+// ---- get_table_foreign_keys ----
+
+#[cfg(not(coverage))]
+pub async fn get_table_foreign_keys_impl(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    table: &str,
+) -> Result<Vec<ForeignKeyInfo>, String> {
+    let pool = get_pool(state, connection_id)?;
+    schema_queries::query_foreign_keys(&pool, database, table).await
+}
+
+#[cfg(coverage)]
+pub async fn get_table_foreign_keys_impl(
+    _state: &AppState,
+    _connection_id: &str,
+    _database: &str,
+    _table: &str,
+) -> Result<Vec<ForeignKeyInfo>, String> {
     Ok(vec![])
 }
 
@@ -589,6 +613,17 @@ pub async fn list_columns(
     state: State<'_, AppState>,
 ) -> Result<Vec<ColumnInfo>, String> {
     list_columns_impl(&state, &connection_id, &database, &table).await
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn get_table_foreign_keys(
+    connection_id: String,
+    database: String,
+    table: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ForeignKeyInfo>, String> {
+    get_table_foreign_keys_impl(&state, &connection_id, &database, &table).await
 }
 
 #[cfg(not(coverage))]
