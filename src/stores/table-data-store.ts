@@ -14,7 +14,9 @@ import {
 } from '../lib/table-data-commands'
 import { getTableForeignKeys } from '../lib/schema-commands'
 import { logFrontend } from '../lib/app-log-commands'
+import { getTemporalValidationResult } from '../lib/table-data-save-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../lib/date-utils'
+import { showErrorToast, showSuccessToast } from './toast-store'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -857,10 +859,24 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       const tab = get().tabs[tabId]
       if (!tab) return
 
+      if (tab.editState) {
+        const validationError = getTemporalValidationResult(tab.editState, tab.columns)
+        if (validationError) {
+          showErrorToast(
+            'Invalid date value',
+            `${validationError.columnName}: ${validationError.error}`
+          )
+          return
+        }
+      }
+
       await get().saveCurrentRow(tabId)
 
       const afterSave = get().tabs[tabId]
       if (afterSave && !afterSave.saveError) {
+        if (!afterSave.editState) {
+          showSuccessToast('Row saved', 'Changes saved successfully.')
+        }
         const action = afterSave.pendingNavigationAction
         patchTab(tabId, { pendingNavigationAction: null })
         action?.()

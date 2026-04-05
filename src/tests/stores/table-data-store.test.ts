@@ -24,7 +24,14 @@ vi.mock('../../lib/app-log-commands', () => ({
   logFrontend: vi.fn(),
 }))
 
+vi.mock('../../stores/toast-store', () => ({
+  showSuccessToast: vi.fn(),
+  showErrorToast: vi.fn(),
+  showWarningToast: vi.fn(),
+}))
+
 import { useTableDataStore } from '../../stores/table-data-store'
+import { showSuccessToast, showErrorToast } from '../../stores/toast-store'
 import {
   fetchTableData,
   updateTableRow,
@@ -696,8 +703,50 @@ describe('useTableDataStore — confirmNavigationSave', () => {
     await useTableDataStore.getState().confirmNavigationSave('tab-1')
 
     expect(updateTableRow).toHaveBeenCalled()
+    expect(showSuccessToast).toHaveBeenCalledWith('Row saved', 'Changes saved successfully.')
     expect(action).toHaveBeenCalledTimes(1)
     expect(useTableDataStore.getState().tabs['tab-1'].pendingNavigationAction).toBeNull()
+  })
+
+  it('does not save or navigate when temporal validation fails', async () => {
+    const dateColumns: TableDataColumnMeta[] = [
+      mockColumns[0],
+      {
+        name: 'd',
+        dataType: 'DATE',
+        isBooleanAlias: false,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+    ]
+    const responseWithDate: TableDataResponse = {
+      ...mockResponse,
+      columns: dateColumns,
+      rows: [
+        [1, '2024-01-01'],
+        [2, '2024-01-02'],
+      ],
+    }
+    ;(fetchTableData as Mock).mockResolvedValueOnce(responseWithDate)
+
+    await setupTabWithData()
+    useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, d: '2024-01-01' })
+    useTableDataStore.getState().updateCellValue('tab-1', 'd', 'not-a-date')
+
+    const action = vi.fn()
+    useTableDataStore.getState().requestNavigationAction('tab-1', action)
+
+    await useTableDataStore.getState().confirmNavigationSave('tab-1')
+
+    expect(showErrorToast).toHaveBeenCalled()
+    expect(updateTableRow).not.toHaveBeenCalled()
+    expect(action).not.toHaveBeenCalled()
+    expect(useTableDataStore.getState().tabs['tab-1'].pendingNavigationAction).not.toBeNull()
   })
 
   it('keeps pendingNavigationAction if save fails', async () => {
