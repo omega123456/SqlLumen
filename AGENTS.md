@@ -165,6 +165,7 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
 
 - Specs live in `e2e/`. `pnpm test:e2e` (and therefore `pnpm test:all`) always includes `screenshots.spec.ts`.
 - Every new component / visible UI state needs screenshot coverage for **both light and dark** themes in `e2e/screenshots.spec.ts`.
+- **Do not increase Playwright screenshot pixel tolerance** (or any visual diff threshold) to make tests pass; fix the UI/regression or intentionally update baselines instead.
 - Add `data-testid` attributes on new layout surfaces when CSS modules prevent reliable selectors.
 - Update `playwright-ipc-mock.ts` for any new IPC command called from the UI (`VITE_PLAYWRIGHT=true` build).
 - After intentional visual changes, regenerate baselines: `pnpm exec playwright test e2e/screenshots.spec.ts --update-snapshots` and commit the updated snapshot files.
