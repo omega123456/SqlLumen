@@ -102,7 +102,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
       <DialogShell
         isOpen={isOpen}
         onClose={handleCancel}
-        maxWidth={960}
+        maxWidth={1400}
         testId="settings-dialog"
         ariaLabel="Settings"
       >
