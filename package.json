@@ -1,5 +1,5 @@
 {
-  "name": "mysql-client",
+  "name": "sqllumen",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -12,8 +12,8 @@
     "clean:rust-target": "cargo clean --manifest-path src-tauri/Cargo.toml",
     "test:watch": "vitest",
     "test:coverage": "pnpm exec vitest run --coverage --reporter=default",
-    "test:rust": "cargo mysql-client-test-integration",
-    "test:rust:coverage": "cargo mysql-client-llvm-cov",
+    "test:rust": "cargo sqllumen-test-integration",
+    "test:rust:coverage": "cargo sqllumen-llvm-cov",
     "test:all": "pnpm test:coverage && pnpm test:rust:coverage && pnpm test:e2e",
     "test:e2e": "node scripts/ensure-playwright-port.mjs && pnpm exec playwright test --reporter=line",
     "test:screenshots": "node scripts/ensure-playwright-port.mjs && node scripts/playwright-screenshots.mjs",

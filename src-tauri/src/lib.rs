@@ -15,7 +15,7 @@ use std::path::Path;
 /// Opens the database at the given app data directory and runs all pending migrations.
 /// Returns the raw Connection — caller assembles AppState.
 pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
-    let db_path = app_data_dir.join("mysql-client.db");
+    let db_path = app_data_dir.join("sqllumen.db");
     let conn =
         open_database(db_path).map_err(|e| format!("failed to open SQLite database: {e}"))?;
     run_migrations(&conn).map_err(|e| format!("failed to run database migrations: {e}"))?;
@@ -104,7 +104,7 @@ pub fn run() {
             }
 
             tracing::info!(
-                target: "mysql_client_lib",
+                target: "sqllumen_lib",
                 rust_log_env_set = logging_init.rust_log_env_set,
                 log_dir = %log_dir.display(),
                 "logging initialized"
@@ -133,7 +133,7 @@ pub fn run() {
                         match crate::db::history::prune_all_history(&conn) {
                             Ok(pruned) if pruned > 0 => {
                                 tracing::info!(
-                                    target: "mysql_client_lib",
+                                    target: "sqllumen_lib",
                                     pruned,
                                     "pruned old history entries on startup"
                                 );

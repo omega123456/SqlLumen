@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use mysql_client_lib::logging::{parse_log_level_setting, prune_old_logs, ROLLING_LOG_STEM};
+use sqllumen_lib::logging::{parse_log_level_setting, prune_old_logs, ROLLING_LOG_STEM};
 use std::fs::File;
 use std::path::Path;
 use std::sync::Mutex;
@@ -56,46 +56,46 @@ fn touch(path: &Path) {
 fn prune_only_today_no_deletes() {
     let dir = tempfile::tempdir().unwrap();
     let today = NaiveDate::from_ymd_opt(2025, 3, 22).unwrap();
-    touch(&dir.path().join("mysql-client.2025-03-22.log"));
+    touch(&dir.path().join("sqllumen.2025-03-22.log"));
     prune_old_logs(dir.path(), ROLLING_LOG_STEM, today).unwrap();
-    assert!(dir.path().join("mysql-client.2025-03-22.log").exists());
+    assert!(dir.path().join("sqllumen.2025-03-22.log").exists());
 }
 
 #[test]
 fn prune_deletes_stale_keeps_recent() {
     let dir = tempfile::tempdir().unwrap();
     let today = NaiveDate::from_ymd_opt(2025, 3, 22).unwrap();
-    touch(&dir.path().join("mysql-client.2025-03-22.log"));
-    touch(&dir.path().join("mysql-client.2025-03-21.log"));
-    touch(&dir.path().join("mysql-client.2025-03-10.log"));
+    touch(&dir.path().join("sqllumen.2025-03-22.log"));
+    touch(&dir.path().join("sqllumen.2025-03-21.log"));
+    touch(&dir.path().join("sqllumen.2025-03-10.log"));
     prune_old_logs(dir.path(), ROLLING_LOG_STEM, today).unwrap();
-    assert!(dir.path().join("mysql-client.2025-03-22.log").exists());
-    assert!(dir.path().join("mysql-client.2025-03-21.log").exists());
-    assert!(!dir.path().join("mysql-client.2025-03-10.log").exists());
+    assert!(dir.path().join("sqllumen.2025-03-22.log").exists());
+    assert!(dir.path().join("sqllumen.2025-03-21.log").exists());
+    assert!(!dir.path().join("sqllumen.2025-03-10.log").exists());
 }
 
 #[test]
 fn prune_protects_only_pre_today_when_it_would_be_deleted() {
     let dir = tempfile::tempdir().unwrap();
     let today = NaiveDate::from_ymd_opt(2025, 3, 22).unwrap();
-    touch(&dir.path().join("mysql-client.2025-03-22.log"));
-    touch(&dir.path().join("mysql-client.2025-03-10.log"));
+    touch(&dir.path().join("sqllumen.2025-03-22.log"));
+    touch(&dir.path().join("sqllumen.2025-03-10.log"));
     prune_old_logs(dir.path(), ROLLING_LOG_STEM, today).unwrap();
-    assert!(dir.path().join("mysql-client.2025-03-22.log").exists());
-    assert!(dir.path().join("mysql-client.2025-03-10.log").exists());
+    assert!(dir.path().join("sqllumen.2025-03-22.log").exists());
+    assert!(dir.path().join("sqllumen.2025-03-10.log").exists());
 }
 
 #[test]
 fn prune_yesterday_and_stale_deletes_only_stale() {
     let dir = tempfile::tempdir().unwrap();
     let today = NaiveDate::from_ymd_opt(2025, 3, 22).unwrap();
-    touch(&dir.path().join("mysql-client.2025-03-22.log"));
-    touch(&dir.path().join("mysql-client.2025-03-21.log"));
-    touch(&dir.path().join("mysql-client.2025-03-10.log"));
+    touch(&dir.path().join("sqllumen.2025-03-22.log"));
+    touch(&dir.path().join("sqllumen.2025-03-21.log"));
+    touch(&dir.path().join("sqllumen.2025-03-10.log"));
     prune_old_logs(dir.path(), ROLLING_LOG_STEM, today).unwrap();
-    assert!(dir.path().join("mysql-client.2025-03-22.log").exists());
-    assert!(dir.path().join("mysql-client.2025-03-21.log").exists());
-    assert!(!dir.path().join("mysql-client.2025-03-10.log").exists());
+    assert!(dir.path().join("sqllumen.2025-03-22.log").exists());
+    assert!(dir.path().join("sqllumen.2025-03-21.log").exists());
+    assert!(!dir.path().join("sqllumen.2025-03-10.log").exists());
 }
 
 #[test]
@@ -115,24 +115,24 @@ fn parse_log_level_accepts_trace_and_info() {
 fn prune_old_logs_ignores_non_matching_and_invalid_filenames() {
     let dir = tempfile::tempdir().unwrap();
     let today = NaiveDate::from_ymd_opt(2025, 3, 22).unwrap();
-    touch(&dir.path().join("mysql-client.not-a-date.log"));
+    touch(&dir.path().join("sqllumen.not-a-date.log"));
     touch(&dir.path().join("other-app.2025-03-01.log"));
-    touch(&dir.path().join("mysql-client.2025-03-22.log"));
+    touch(&dir.path().join("sqllumen.2025-03-22.log"));
 
     prune_old_logs(dir.path(), ROLLING_LOG_STEM, today).unwrap();
 
-    assert!(dir.path().join("mysql-client.not-a-date.log").exists());
+    assert!(dir.path().join("sqllumen.not-a-date.log").exists());
     assert!(dir.path().join("other-app.2025-03-01.log").exists());
-    assert!(dir.path().join("mysql-client.2025-03-22.log").exists());
+    assert!(dir.path().join("sqllumen.2025-03-22.log").exists());
 }
 
 #[test]
 fn apply_log_level_from_settings_returns_early_when_rust_log_is_set() {
     let _guard = RustLogGuard::set("info");
     let conn = common::test_db();
-    mysql_client_lib::db::settings::set_setting(
+    sqllumen_lib::db::settings::set_setting(
         &conn,
-        mysql_client_lib::logging::LOG_LEVEL_SETTING_KEY,
+        sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY,
         "warn",
     )
     .expect("set log level setting");
@@ -143,14 +143,14 @@ fn apply_log_level_from_settings_returns_early_when_rust_log_is_set() {
     );
     let _subscriber = subscriber.with(layer);
 
-    mysql_client_lib::logging::apply_log_level_from_settings(&conn, &handle);
+    sqllumen_lib::logging::apply_log_level_from_settings(&conn, &handle);
 }
 
 #[test]
 fn reload_log_level_from_setting_value_returns_early_for_missing_handle_and_rust_log() {
     {
         let _guard = RustLogGuard::remove();
-        mysql_client_lib::logging::reload_log_level_from_setting_value(None, "info");
+        sqllumen_lib::logging::reload_log_level_from_setting_value(None, "info");
     }
 
     {
@@ -161,7 +161,7 @@ fn reload_log_level_from_setting_value_returns_early_for_missing_handle_and_rust
         );
         let _subscriber = subscriber.with(layer);
 
-        mysql_client_lib::logging::reload_log_level_from_setting_value(Some(&handle), "error");
+        sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&handle), "error");
     }
 }
 

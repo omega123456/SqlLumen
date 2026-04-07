@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Agent guidance for the **mysql-client** repo — a cross-platform desktop MySQL/MariaDB client built with **Tauri v2** (Rust backend) + **React 19 / TypeScript** (frontend). They communicate exclusively via Tauri IPC (`invoke`).
+Agent guidance for the **SqlLumen** repo — a cross-platform desktop MySQL/MariaDB client built with **Tauri v2** (Rust backend) + **React 19 / TypeScript** (frontend). They communicate exclusively via Tauri IPC (`invoke`).
 
 ---
 
@@ -158,7 +158,7 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
 
 - Tests only in `src-tauri/tests/<area>_<focus>_integration.rs`. Name files after what they test, not meta-goals like `coverage_boost`.
 - Use in-memory SQLite (`Connection::open_in_memory()`) — never mock the DB layer.
-- After adding a new test file, register it in **both** aliases in `.cargo/config.toml`: `mysql-client-test-integration` and `mysql-client-llvm-cov`.
+- After adding a new test file, register it in **both** aliases in `.cargo/config.toml`: `sqllumen-test-integration` and `sqllumen-llvm-cov`.
 - Run with `pnpm test:rust` for fast iteration; `pnpm test:rust:coverage` for the coverage gate.
 
 ### Playwright (E2E + Visual Regression)

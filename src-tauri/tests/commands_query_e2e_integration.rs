@@ -1,4 +1,4 @@
-//! Query IPC against the in-process mock MySQL server. Omitted from `cargo mysql-client-llvm-cov`:
+//! Query IPC against the in-process mock MySQL server. Omitted from `cargo sqllumen-llvm-cov`:
 //! instrumented builds hit sqlx pool acquire timeouts against the mock; `pnpm test:rust` runs this suite.
 
 #![cfg(not(coverage))]
@@ -11,10 +11,10 @@ use common::mock_mysql_server::{
     MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse, MockQueryStep, MockTimeValue,
 };
 use opensrv_mysql::{ColumnFlags, ColumnType};
-use mysql_client_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
-use mysql_client_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
-use mysql_client_lib::mysql::query_executor::{execute_query_impl, ExecuteQueryResult};
-use mysql_client_lib::state::AppState;
+use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
+use sqllumen_lib::mysql::query_executor::{execute_query_impl, ExecuteQueryResult};
+use sqllumen_lib::state::AppState;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde_json::json;

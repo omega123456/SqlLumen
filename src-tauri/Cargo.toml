@@ -1,10 +1,10 @@
 [package]
-name = "mysql-client"
+name = "sqllumen"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "mysql_client_lib"
+name = "sqllumen_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]

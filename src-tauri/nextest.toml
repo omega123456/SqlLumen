@@ -3,7 +3,7 @@
 
 [profile.default]
 # Which integration binaries run is set in the repo-root `.cargo/config.toml` aliases
-# (`mysql-client-test-integration`, `mysql-client-llvm-cov`) via repeated `--test <name>`.
+# (`sqllumen-test-integration`, `sqllumen-llvm-cov`) via repeated `--test <name>`.
 # Nextest `default-filter` alone is not enough: Cargo still builds/lists the lib test harness,
 # which breaks `cargo llvm-cov nextest` on some Windows setups when that binary is probed.
 # Integration tests may block on I/O or DB; avoid false “hung test” kills.

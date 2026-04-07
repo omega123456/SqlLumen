@@ -2,7 +2,7 @@
 
 mod common;
 
-use mysql_client_lib::commands::settings::{
+use sqllumen_lib::commands::settings::{
     get_all_settings_impl, get_setting_impl, set_setting_impl,
 };
 

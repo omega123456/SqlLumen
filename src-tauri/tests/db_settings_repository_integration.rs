@@ -2,7 +2,7 @@
 
 mod common;
 
-use mysql_client_lib::db::settings;
+use sqllumen_lib::db::settings;
 
 #[test]
 fn test_get_setting_returns_none_for_missing_key() {

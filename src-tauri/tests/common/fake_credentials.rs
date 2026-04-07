@@ -1,6 +1,6 @@
 //! In-memory credential backend for integration tests (no OS keychain).
 
-use mysql_client_lib::credentials::{set_test_credential_backend, TestCredentialBackend};
+use sqllumen_lib::credentials::{set_test_credential_backend, TestCredentialBackend};
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, Once};
 

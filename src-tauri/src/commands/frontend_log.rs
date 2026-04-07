@@ -1,6 +1,6 @@
 //! Frontend-originated log lines (application logger / tracing), not toast-specific.
 
-const TARGET: &str = "mysql_client_lib::frontend";
+const TARGET: &str = "sqllumen_lib::frontend";
 
 pub fn log_frontend_impl(level: &str, message: &str) -> Result<(), String> {
     let level_norm = level.trim().to_ascii_lowercase();

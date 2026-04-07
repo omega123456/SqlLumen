@@ -1,4 +1,4 @@
--- Initial schema for MySQL Client
+-- Initial schema for SqlLumen
 -- Phase 1: Foundation
 
 -- Settings table — key-value store for app configuration

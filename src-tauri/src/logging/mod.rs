@@ -21,7 +21,7 @@ use tracing_subscriber::{EnvFilter, Registry};
 pub const LOG_LEVEL_SETTING_KEY: &str = "log.level";
 
 /// Base name for daily log files: `{stem}.{YYYY-MM-DD}.log` (via `tracing-appender` suffix API).
-pub const ROLLING_LOG_STEM: &str = "mysql-client";
+pub const ROLLING_LOG_STEM: &str = "sqllumen";
 
 static LOG_WORKER_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 
@@ -71,7 +71,7 @@ pub fn apply_log_level_from_settings(conn: &rusqlite::Connection, handle: &LogFi
     if let Some(filter) = parse_log_level_setting(&raw) {
         if let Err(e) = handle.reload(filter) {
             tracing::warn!(
-                target: "mysql_client_lib::logging",
+                target: "sqllumen_lib::logging",
                 "failed to reload log filter from settings: {e}"
             );
         }
@@ -89,7 +89,7 @@ pub fn reload_log_level_from_setting_value(handle: Option<&LogFilterReloadHandle
     if let Some(filter) = parse_log_level_setting(value) {
         if let Err(e) = h.reload(filter) {
             tracing::warn!(
-                target: "mysql_client_lib::logging",
+                target: "sqllumen_lib::logging",
                 "failed to reload log filter: {e}"
             );
         }
@@ -194,7 +194,7 @@ pub fn prune_old_logs(log_dir: &Path, stem: &str, today: NaiveDate) -> io::Resul
     for path in stale_paths {
         if let Err(e) = fs::remove_file(&path) {
             tracing::warn!(
-                target: "mysql_client_lib::logging",
+                target: "sqllumen_lib::logging",
                 path = %path.display(),
                 "failed to remove old log file: {e}"
             );

@@ -6,10 +6,10 @@ pub mod fake_credentials;
 pub mod log_capture;
 pub mod mock_mysql_server;
 
-use mysql_client_lib::commands::connections::SaveConnectionInput;
-use mysql_client_lib::db::migrations;
-use mysql_client_lib::mysql::registry::ConnectionRegistry;
-use mysql_client_lib::state::AppState;
+use sqllumen_lib::commands::connections::SaveConnectionInput;
+use sqllumen_lib::db::migrations;
+use sqllumen_lib::mysql::registry::ConnectionRegistry;
+use sqllumen_lib::state::AppState;
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

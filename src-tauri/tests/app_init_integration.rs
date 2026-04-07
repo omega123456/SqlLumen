@@ -2,7 +2,7 @@
 
 mod common;
 
-use mysql_client_lib::initialize_database;
+use sqllumen_lib::initialize_database;
 use rusqlite::Connection;
 
 #[test]
@@ -111,7 +111,7 @@ fn test_initialize_database_surfaces_open_database_errors() {
 fn test_initialize_database_surfaces_migration_errors() {
     let (app_data_dir, _) = common::unique_temp_dir("test_init_migration_err");
     std::fs::create_dir_all(&app_data_dir).expect("should create app data dir");
-    let db_path = app_data_dir.join("mysql-client.db");
+    let db_path = app_data_dir.join("sqllumen.db");
     let conn = Connection::open(&db_path).expect("should create database file");
     conn.execute("CREATE TABLE _migrations (bad INTEGER)", [])
         .expect("should create incompatible migrations table");

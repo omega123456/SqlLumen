@@ -1,7 +1,7 @@
 mod common;
 
-use mysql_client_lib::db::connection_groups;
-use mysql_client_lib::db::connections::{self, NewConnectionData};
+use sqllumen_lib::db::connection_groups;
+use sqllumen_lib::db::connections::{self, NewConnectionData};
 
 // --- Connection CRUD Integration Tests ---
 

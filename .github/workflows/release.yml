@@ -55,7 +55,7 @@ jobs:
         with:
           tauriScript: pnpm tauri
           tagName: v__VERSION__
-          releaseName: MySQL Client v__VERSION__
+          releaseName: SqlLumen v__VERSION__
           releaseBody: 'See the release assets to download installers for Windows and macOS.'
           releaseDraft: true
           prerelease: false

@@ -1,10 +1,10 @@
 mod common;
 
-use mysql_client_lib::commands::session::select_database_impl;
-use mysql_client_lib::commands::session::set_test_select_database_hook;
-use mysql_client_lib::mysql::pool::{set_test_pool_factory, ConnectionParams};
-use mysql_client_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-use mysql_client_lib::state::AppState;
+use sqllumen_lib::commands::session::select_database_impl;
+use sqllumen_lib::commands::session::set_test_select_database_hook;
+use sqllumen_lib::mysql::pool::{set_test_pool_factory, ConnectionParams};
+use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
+use sqllumen_lib::state::AppState;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use std::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -182,7 +182,7 @@ async fn select_database_reconnects_with_password_and_updates_registry_without_h
     let _pool_guard = install_test_pool_factory(forced_pool_success);
     let state = test_state();
     register_connection_with_password(&state, "conn-1", "profile-select-success", None);
-    mysql_client_lib::credentials::store_password("profile-select-success", "secret")
+    sqllumen_lib::credentials::store_password("profile-select-success", "secret")
         .expect("password should be stored");
 
     select_database_impl(&state, "conn-1", "analytics_db")
@@ -207,7 +207,7 @@ async fn select_database_surfaces_pool_errors_after_password_lookup() {
         "profile-select-failure",
         Some("legacy-select-ref"),
     );
-    mysql_client_lib::credentials::store_password("legacy-select-ref", "secret")
+    sqllumen_lib::credentials::store_password("legacy-select-ref", "secret")
         .expect("password should be stored");
 
     let err = select_database_impl(&state, "conn-1", "analytics_db")

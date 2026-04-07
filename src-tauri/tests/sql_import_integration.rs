@@ -2,7 +2,7 @@
 
 mod common;
 
-use mysql_client_lib::export::sql_import::parse_sql_statements;
+use sqllumen_lib::export::sql_import::parse_sql_statements;
 
 #[test]
 fn parse_simple_statements() {
@@ -191,7 +191,7 @@ fn parse_windows_line_endings() {
 
 #[test]
 fn import_progress_types_serialize() {
-    use mysql_client_lib::state::{ImportJobProgress, ImportJobStatus, ImportError};
+    use sqllumen_lib::state::{ImportJobProgress, ImportJobStatus, ImportError};
 
     let progress = ImportJobProgress {
         job_id: "test-123".to_string(),
@@ -218,7 +218,7 @@ fn import_progress_types_serialize() {
 
 #[test]
 fn import_job_status_variants_serialize() {
-    use mysql_client_lib::state::ImportJobStatus;
+    use sqllumen_lib::state::ImportJobStatus;
 
     let running = serde_json::to_string(&ImportJobStatus::Running).unwrap();
     assert_eq!(running, "\"running\"");
@@ -382,7 +382,7 @@ fn parse_single_statement_without_semicolon() {
 
 #[test]
 fn import_error_serde_round_trip() {
-    use mysql_client_lib::state::ImportError;
+    use sqllumen_lib::state::ImportError;
 
     let err = ImportError {
         statement_index: 42,
@@ -403,7 +403,7 @@ fn import_error_serde_round_trip() {
 
 #[test]
 fn import_job_progress_serde_round_trip() {
-    use mysql_client_lib::state::{ImportJobProgress, ImportJobStatus, ImportError};
+    use sqllumen_lib::state::{ImportJobProgress, ImportJobStatus, ImportError};
 
     let progress = ImportJobProgress {
         job_id: "imp-456".to_string(),

@@ -2,7 +2,7 @@
 
 mod common;
 
-use mysql_client_lib::db::connections::{
+use sqllumen_lib::db::connections::{
     delete_connection, get_connection, insert_connection, list_connections, update_connection,
     NewConnectionData, UpdateConnectionData,
 };

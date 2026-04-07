@@ -5,10 +5,10 @@
 
 mod common;
 
-use mysql_client_lib::export::sql_dump::{
+use sqllumen_lib::export::sql_dump::{
     self, DumpOptions, SqlDumpValue, INSERT_BATCH_SIZE,
 };
-use mysql_client_lib::state::{DumpJobProgress, DumpJobStatus};
+use sqllumen_lib::state::{DumpJobProgress, DumpJobStatus};
 
 // ── Header/Footer generation ──────────────────────────────────────────────
 
@@ -367,7 +367,7 @@ fn test_dump_job_status_variants() {
 #[test]
 fn test_get_dump_progress_not_found() {
     let state = common::test_app_state();
-    let result = mysql_client_lib::commands::sql_dump::get_dump_progress_impl(&state, "nonexistent");
+    let result = sqllumen_lib::commands::sql_dump::get_dump_progress_impl(&state, "nonexistent");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found"));
 }
@@ -394,7 +394,7 @@ fn test_get_dump_progress_found() {
         );
     }
 
-    let progress = mysql_client_lib::commands::sql_dump::get_dump_progress_impl(&state, "job-1")
+    let progress = sqllumen_lib::commands::sql_dump::get_dump_progress_impl(&state, "job-1")
         .expect("should find progress");
     assert_eq!(progress.job_id, "job-1");
     assert_eq!(progress.status, DumpJobStatus::Completed);
@@ -406,15 +406,15 @@ fn test_get_dump_progress_found() {
 
 #[test]
 fn test_exportable_database_serde() {
-    let db = mysql_client_lib::commands::sql_dump::ExportableDatabase {
+    let db = sqllumen_lib::commands::sql_dump::ExportableDatabase {
         name: "test_db".to_string(),
         tables: vec![
-            mysql_client_lib::commands::sql_dump::ExportableTable {
+            sqllumen_lib::commands::sql_dump::ExportableTable {
                 name: "users".to_string(),
                 object_type: "table".to_string(),
                 estimated_rows: 1000,
             },
-            mysql_client_lib::commands::sql_dump::ExportableTable {
+            sqllumen_lib::commands::sql_dump::ExportableTable {
                 name: "user_stats".to_string(),
                 object_type: "view".to_string(),
                 estimated_rows: 0,
@@ -451,7 +451,7 @@ fn test_start_dump_input_serde() {
         }
     });
 
-    let input: mysql_client_lib::commands::sql_dump::StartDumpInput =
+    let input: sqllumen_lib::commands::sql_dump::StartDumpInput =
         serde_json::from_value(input_json).expect("deserialize StartDumpInput");
 
     assert_eq!(input.connection_id, "conn-1");
@@ -632,14 +632,14 @@ fn test_sql_dump_value_mixed_types_in_row() {
 #[test]
 fn test_get_import_progress_not_found() {
     let state = common::test_app_state();
-    let result = mysql_client_lib::commands::sql_dump::get_import_progress_impl(&state, "nonexistent");
+    let result = sqllumen_lib::commands::sql_dump::get_import_progress_impl(&state, "nonexistent");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found"));
 }
 
 #[test]
 fn test_get_import_progress_found() {
-    use mysql_client_lib::state::{ImportJobProgress, ImportJobStatus};
+    use sqllumen_lib::state::{ImportJobProgress, ImportJobStatus};
 
     let state = common::test_app_state();
 
@@ -660,7 +660,7 @@ fn test_get_import_progress_found() {
         );
     }
 
-    let progress = mysql_client_lib::commands::sql_dump::get_import_progress_impl(&state, "import-1")
+    let progress = sqllumen_lib::commands::sql_dump::get_import_progress_impl(&state, "import-1")
         .expect("should find progress");
     assert_eq!(progress.job_id, "import-1");
     assert_eq!(progress.status, ImportJobStatus::Running);
@@ -672,7 +672,7 @@ fn test_get_import_progress_found() {
 
 #[test]
 fn test_cancel_import_success() {
-    use mysql_client_lib::state::{ImportJobProgress, ImportJobStatus};
+    use sqllumen_lib::state::{ImportJobProgress, ImportJobStatus};
 
     let state = common::test_app_state();
 
@@ -693,7 +693,7 @@ fn test_cancel_import_success() {
         );
     }
 
-    mysql_client_lib::commands::sql_dump::cancel_import_impl(&state, "import-cancel")
+    sqllumen_lib::commands::sql_dump::cancel_import_impl(&state, "import-cancel")
         .expect("cancel should succeed");
 
     // Verify cancel_requested is set
@@ -704,7 +704,7 @@ fn test_cancel_import_success() {
 #[test]
 fn test_cancel_import_not_found() {
     let state = common::test_app_state();
-    let result = mysql_client_lib::commands::sql_dump::cancel_import_impl(&state, "nonexistent");
+    let result = sqllumen_lib::commands::sql_dump::cancel_import_impl(&state, "nonexistent");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found"));
 }
@@ -749,17 +749,17 @@ fn test_stale_dump_job_cleanup() {
     }
 
     // Accessing get_dump_progress_impl triggers cleanup
-    let result = mysql_client_lib::commands::sql_dump::get_dump_progress_impl(&state, "running-dump");
+    let result = sqllumen_lib::commands::sql_dump::get_dump_progress_impl(&state, "running-dump");
     assert!(result.is_ok());
 
     // Stale job should be cleaned up
-    let stale = mysql_client_lib::commands::sql_dump::get_dump_progress_impl(&state, "stale-dump");
+    let stale = sqllumen_lib::commands::sql_dump::get_dump_progress_impl(&state, "stale-dump");
     assert!(stale.is_err());
 }
 
 #[test]
 fn test_stale_import_job_cleanup() {
-    use mysql_client_lib::state::{ImportJobProgress, ImportJobStatus};
+    use sqllumen_lib::state::{ImportJobProgress, ImportJobStatus};
 
     let state = common::test_app_state();
 
@@ -796,11 +796,11 @@ fn test_stale_import_job_cleanup() {
     }
 
     // Accessing get_import_progress_impl triggers cleanup
-    let result = mysql_client_lib::commands::sql_dump::get_import_progress_impl(&state, "running-import");
+    let result = sqllumen_lib::commands::sql_dump::get_import_progress_impl(&state, "running-import");
     assert!(result.is_ok());
 
     // Stale import job should be cleaned up
-    let stale = mysql_client_lib::commands::sql_dump::get_import_progress_impl(&state, "stale-import");
+    let stale = sqllumen_lib::commands::sql_dump::get_import_progress_impl(&state, "stale-import");
     assert!(stale.is_err());
 }
 
@@ -814,7 +814,7 @@ fn test_start_import_input_serde() {
         "stopOnError": true
     });
 
-    let input: mysql_client_lib::commands::sql_dump::StartImportInput =
+    let input: sqllumen_lib::commands::sql_dump::StartImportInput =
         serde_json::from_value(input_json).expect("deserialize StartImportInput");
 
     assert_eq!(input.connection_id, "conn-2");
@@ -885,7 +885,7 @@ fn test_start_dump_input_empty_tables() {
         }
     });
 
-    let input: mysql_client_lib::commands::sql_dump::StartDumpInput =
+    let input: sqllumen_lib::commands::sql_dump::StartDumpInput =
         serde_json::from_value(input_json).expect("deserialize");
 
     assert_eq!(input.databases.len(), 2);

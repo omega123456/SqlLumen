@@ -1,6 +1,6 @@
 mod common;
 
-use mysql_client_lib::db::settings;
+use sqllumen_lib::db::settings;
 
 #[test]
 fn test_full_settings_workflow() {

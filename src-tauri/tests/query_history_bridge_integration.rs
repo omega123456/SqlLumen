@@ -7,8 +7,8 @@
 
 mod common;
 
-use mysql_client_lib::commands::history::list_history_impl;
-use mysql_client_lib::db::history::{self, NewHistoryEntry};
+use sqllumen_lib::commands::history::list_history_impl;
+use sqllumen_lib::db::history::{self, NewHistoryEntry};
 
 /// Verify that history entries with the new schema fields can be inserted and listed.
 #[test]
@@ -138,14 +138,14 @@ fn test_history_pruning() {
 #[cfg(coverage)]
 mod coverage_bridge_tests {
     use super::common;
-    use mysql_client_lib::commands::history::list_history_impl;
-    use mysql_client_lib::commands::query_history_bridge::{
+    use sqllumen_lib::commands::history::list_history_impl;
+    use sqllumen_lib::commands::query_history_bridge::{
         execute_call_query_bridge, execute_multi_query_bridge, execute_query_bridge,
     };
-    use mysql_client_lib::mysql::registry::{
+    use sqllumen_lib::mysql::registry::{
         ConnectionStatus, RegistryEntry, StoredConnectionParams,
     };
-    use mysql_client_lib::state::AppState;
+    use sqllumen_lib::state::AppState;
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 

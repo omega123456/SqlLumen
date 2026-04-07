@@ -2,7 +2,7 @@
 
 mod common;
 
-use mysql_client_lib::commands::connections::{
+use sqllumen_lib::commands::connections::{
     delete_connection_impl, get_connection_impl, list_connections_impl, save_connection_impl,
     update_connection_impl, UpdateConnectionInput,
 };
@@ -233,7 +233,7 @@ fn test_delete_connection_tolerates_missing_keychain_entry() {
 
 #[test]
 fn test_save_connection_input_deserialize_from_json() {
-    use mysql_client_lib::commands::connections::SaveConnectionInput;
+    use sqllumen_lib::commands::connections::SaveConnectionInput;
 
     let json = serde_json::json!({
         "name": "My DB",

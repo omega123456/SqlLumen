@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MySQL Client",
+  "productName": "SqlLumen",
   "version": "0.1.0",
-  "identifier": "io.mysqlclient.app",
+  "identifier": "app.sqllumen.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "MySQL Client",
+        "title": "SqlLumen",
         "width": 1280,
         "height": 800,
         "minWidth": 800,
@@ -28,7 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "copyright": "© 2025 MySQL Client Contributors",
+    "copyright": "© 2026 SqlLumen Contributors",
     "shortDescription": "A cross-platform desktop MySQL/MariaDB client",
     "icon": [
       "icons/32x32.png",

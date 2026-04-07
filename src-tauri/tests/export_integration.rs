@@ -1,14 +1,14 @@
 //! Integration tests for the export module — CSV, JSON, SQL, and XLSX writers.
 
-use mysql_client_lib::export::csv_writer::write_csv;
-use mysql_client_lib::export::json_writer::write_json;
-use mysql_client_lib::export::sql_writer::write_sql;
-use mysql_client_lib::export::xlsx_writer::write_xlsx;
-use mysql_client_lib::export::{ExportFormat, ExportOptions};
-use mysql_client_lib::commands::export::{export_results_impl, export_with_data};
-use mysql_client_lib::mysql::query_executor::{ColumnMeta, StoredResult};
-use mysql_client_lib::mysql::registry::ConnectionRegistry;
-use mysql_client_lib::state::AppState;
+use sqllumen_lib::export::csv_writer::write_csv;
+use sqllumen_lib::export::json_writer::write_json;
+use sqllumen_lib::export::sql_writer::write_sql;
+use sqllumen_lib::export::xlsx_writer::write_xlsx;
+use sqllumen_lib::export::{ExportFormat, ExportOptions};
+use sqllumen_lib::commands::export::{export_results_impl, export_with_data};
+use sqllumen_lib::mysql::query_executor::{ColumnMeta, StoredResult};
+use sqllumen_lib::mysql::registry::ConnectionRegistry;
+use sqllumen_lib::state::AppState;
 use rusqlite::Connection;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
@@ -18,7 +18,7 @@ mod common;
 fn test_state() -> AppState {
     common::ensure_fake_backend_once();
     let conn = Connection::open_in_memory().expect("should open in-memory db");
-    mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
+    sqllumen_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
     AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),
@@ -517,7 +517,7 @@ fn test_export_options_serde_camel_case() {
 
 #[test]
 fn test_export_result_serde_round_trip() {
-    use mysql_client_lib::export::ExportResult;
+    use sqllumen_lib::export::ExportResult;
     let result = ExportResult {
         bytes_written: 1024,
         rows_exported: 42,
@@ -530,7 +530,7 @@ fn test_export_result_serde_round_trip() {
 
 #[test]
 fn test_export_result_serde_camel_case() {
-    use mysql_client_lib::export::ExportResult;
+    use sqllumen_lib::export::ExportResult;
     let result = ExportResult {
         bytes_written: 256,
         rows_exported: 10,

@@ -1,11 +1,11 @@
 mod common;
 
-use mysql_client_lib::credentials;
-use mysql_client_lib::mysql::registry::{
+use sqllumen_lib::credentials;
+use sqllumen_lib::mysql::registry::{
     ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams,
 };
 #[cfg(not(coverage))]
-use mysql_client_lib::mysql::schema_queries::{
+use sqllumen_lib::mysql::schema_queries::{
     decode_mysql_optional_text_cell_for_test, decode_mysql_text_cell_for_test,
     decode_mysql_text_cell_named_for_test,
 };
@@ -373,7 +373,7 @@ fn test_create_pool_with_live_mysql() {
 
     let rt = tokio::runtime::Runtime::new().expect("should create tokio runtime");
     rt.block_on(async {
-        use mysql_client_lib::mysql::pool::{create_pool, ConnectionParams};
+        use sqllumen_lib::mysql::pool::{create_pool, ConnectionParams};
 
         let params = ConnectionParams {
             host: host.to_string(),
@@ -502,7 +502,7 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
         db.to_string()
     };
 
-    use mysql_client_lib::mysql::table_data::{insert_table_row_impl, PrimaryKeyInfo};
+    use sqllumen_lib::mysql::table_data::{insert_table_row_impl, PrimaryKeyInfo};
     use std::collections::HashMap;
 
     let pool = MySqlPoolOptions::new()

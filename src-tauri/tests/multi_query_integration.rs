@@ -8,16 +8,16 @@
 mod common;
 
 use common::test_app_state;
-use mysql_client_lib::commands::export::export_results_impl;
-use mysql_client_lib::export::{ExportFormat, ExportOptions};
-use mysql_client_lib::mysql::query_executor::{
+use sqllumen_lib::commands::export::export_results_impl;
+use sqllumen_lib::export::{ExportFormat, ExportOptions};
+use sqllumen_lib::mysql::query_executor::{
     fetch_result_page_impl, sort_results_impl, update_result_cell_impl, ColumnMeta, StoredResult,
 };
 use std::collections::HashMap;
 
 /// Helper: insert a multi-result vector into state.
 fn insert_multi_results(
-    state: &mysql_client_lib::state::AppState,
+    state: &sqllumen_lib::state::AppState,
     conn_id: &str,
     tab_id: &str,
     result_vec: Vec<StoredResult>,
@@ -266,8 +266,8 @@ fn export_with_none_defaults_to_first_result() {
 #[cfg(coverage)]
 mod coverage_reexecute {
     use super::*;
-    use mysql_client_lib::mysql::query_executor::reexecute_single_result_impl;
-    use mysql_client_lib::mysql::registry::{
+    use sqllumen_lib::mysql::query_executor::reexecute_single_result_impl;
+    use sqllumen_lib::mysql::registry::{
         ConnectionStatus, RegistryEntry, StoredConnectionParams,
     };
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
@@ -301,7 +301,7 @@ mod coverage_reexecute {
     }
 
     fn register_lazy_pool(
-        state: &mysql_client_lib::state::AppState,
+        state: &sqllumen_lib::state::AppState,
         connection_id: &str,
         read_only: bool,
     ) {
@@ -443,8 +443,8 @@ mod coverage_reexecute {
 #[cfg(coverage)]
 mod coverage_multi_query {
     use super::*;
-    use mysql_client_lib::mysql::query_executor::execute_multi_query_impl;
-    use mysql_client_lib::mysql::registry::{
+    use sqllumen_lib::mysql::query_executor::execute_multi_query_impl;
+    use sqllumen_lib::mysql::registry::{
         ConnectionStatus, RegistryEntry, StoredConnectionParams,
     };
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
@@ -478,7 +478,7 @@ mod coverage_multi_query {
     }
 
     fn register_lazy_pool(
-        state: &mysql_client_lib::state::AppState,
+        state: &sqllumen_lib::state::AppState,
         connection_id: &str,
         read_only: bool,
     ) {
@@ -738,8 +738,8 @@ mod coverage_multi_query {
     ///     [3] SELECT 2           → re_executable=true,  source_sql="SELECT 2"
     #[test]
     fn call_in_batch_structural_contract() {
-        use mysql_client_lib::mysql::multi_result::is_call_statement;
-        use mysql_client_lib::mysql::query_executor::MultiQueryResultItem;
+        use sqllumen_lib::mysql::multi_result::is_call_statement;
+        use sqllumen_lib::mysql::query_executor::MultiQueryResultItem;
 
         let stmts = vec![
             "SELECT 1".to_string(),
@@ -839,8 +839,8 @@ mod coverage_multi_query {
     /// the same source_sql and having re_executable=false.
     #[test]
     fn batch_entry_ordering_and_source_sql_assignment() {
-        use mysql_client_lib::mysql::multi_result::is_call_statement;
-        use mysql_client_lib::mysql::query_executor::MultiQueryResultItem;
+        use sqllumen_lib::mysql::multi_result::is_call_statement;
+        use sqllumen_lib::mysql::query_executor::MultiQueryResultItem;
 
         let stmts = vec![
             "SELECT 1 AS a",
@@ -920,8 +920,8 @@ mod coverage_multi_query {
 #[cfg(coverage)]
 mod coverage_call_query {
     use super::*;
-    use mysql_client_lib::mysql::query_executor::execute_call_query_impl;
-    use mysql_client_lib::mysql::registry::{
+    use sqllumen_lib::mysql::query_executor::execute_call_query_impl;
+    use sqllumen_lib::mysql::registry::{
         ConnectionStatus, RegistryEntry, StoredConnectionParams,
     };
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
@@ -955,7 +955,7 @@ mod coverage_call_query {
     }
 
     fn register_lazy_pool(
-        state: &mysql_client_lib::state::AppState,
+        state: &sqllumen_lib::state::AppState,
         connection_id: &str,
         read_only: bool,
     ) {
@@ -1037,7 +1037,7 @@ mod coverage_call_query {
 // ── Serialization parity tests ───────────────────────────────────────────────
 
 mod serialization_parity {
-    use mysql_client_lib::mysql::multi_result::{
+    use sqllumen_lib::mysql::multi_result::{
         serialize_mysql_value, serialize_bytes_value, column_type_display_name,
         is_call_statement, JS_SAFE_INTEGER_MAX,
     };
@@ -1263,7 +1263,7 @@ mod serialization_parity {
 
     #[test]
     fn statement_classification_pipeline() {
-        use mysql_client_lib::mysql::query_executor::{
+        use sqllumen_lib::mysql::query_executor::{
             strip_non_executable_comments, get_first_keyword, is_select_like,
         };
 

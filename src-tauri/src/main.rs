@@ -3,10 +3,10 @@
 
 #[cfg(not(coverage))]
 fn main() {
-    mysql_client_lib::run()
+    sqllumen_lib::run()
 }
 
 #[cfg(coverage)]
 fn main() {
-    mysql_client_lib::run()
+    sqllumen_lib::run()
 }

@@ -2,16 +2,16 @@
 //! These tests do not require a real MySQL connection — they test the
 //! SQL parsing, comment stripping, read-only enforcement, and file I/O logic.
 
-use mysql_client_lib::mysql::query_executor::ColumnMeta;
-use mysql_client_lib::mysql::query_executor::StoredResult;
-use mysql_client_lib::mysql::query_executor::{
+use sqllumen_lib::mysql::query_executor::ColumnMeta;
+use sqllumen_lib::mysql::query_executor::StoredResult;
+use sqllumen_lib::mysql::query_executor::{
     calculate_total_pages, evict_results_impl, fetch_result_page_impl, find_with_main_keyword,
     get_first_keyword, get_page_rows, has_top_level_limit, inject_limit_into_select,
     is_read_only_allowed, is_select_like, needs_auto_limit, read_file_impl,
     strip_non_executable_comments, write_file_impl,
 };
-use mysql_client_lib::mysql::registry::ConnectionRegistry;
-use mysql_client_lib::state::AppState;
+use sqllumen_lib::mysql::registry::ConnectionRegistry;
+use sqllumen_lib::state::AppState;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
@@ -20,7 +20,7 @@ mod common;
 fn test_state() -> AppState {
     common::ensure_fake_backend_once();
     let conn = Connection::open_in_memory().expect("should open in-memory db");
-    mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
+    sqllumen_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
     AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),
@@ -787,10 +787,10 @@ fn get_page_rows_full_page() {
 #[cfg(coverage)]
 mod coverage_stubs {
     use super::*;
-    use mysql_client_lib::mysql::query_executor::{
+    use sqllumen_lib::mysql::query_executor::{
         execute_query_impl, fetch_schema_metadata_impl,
     };
-    use mysql_client_lib::mysql::registry::{
+    use sqllumen_lib::mysql::registry::{
         ConnectionStatus, RegistryEntry, StoredConnectionParams,
     };
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};

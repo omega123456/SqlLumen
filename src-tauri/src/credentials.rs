@@ -5,9 +5,9 @@
 //! - Windows: Credential Manager (`windows-native`)
 //! - Linux: keyutils + Secret Service (`linux-native-sync-persistent`, etc.)
 //!
-//! Service name is `"mysql-client"`, user key is the connection UUID.
+//! Service name is `"sqllumen"`, user key is the connection UUID.
 
-const SERVICE_NAME: &str = "mysql-client";
+const SERVICE_NAME: &str = "sqllumen";
 
 #[cfg(any(test, feature = "test-utils"))]
 #[derive(Clone, Copy)]

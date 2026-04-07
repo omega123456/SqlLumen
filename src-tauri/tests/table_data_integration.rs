@@ -1,12 +1,12 @@
 //! Integration tests for table data operations — filter translation and coverage stubs.
 
-use mysql_client_lib::mysql::table_data::{
+use sqllumen_lib::mysql::table_data::{
     translate_filter_model, translate_filter_model_with_columns, ExportTableOptions,
     FilterCondition, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
 };
-use mysql_client_lib::commands::table_data::interpolate_sql_params;
+use sqllumen_lib::commands::table_data::interpolate_sql_params;
 #[cfg(not(coverage))]
-use mysql_client_lib::mysql::table_data::parse_enum_values;
+use sqllumen_lib::mysql::table_data::parse_enum_values;
 
 mod common;
 
@@ -15,12 +15,12 @@ mod type_aware_filter_integration {
     use super::*;
     use chrono::NaiveDate;
     use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
-    use mysql_client_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
-    use mysql_client_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
-    use mysql_client_lib::commands::table_data as table_data_commands;
-    use mysql_client_lib::mysql::pool::set_test_pool_factory;
-    use mysql_client_lib::mysql::registry::ConnectionRegistry;
-    use mysql_client_lib::state::AppState;
+    use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+    use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
+    use sqllumen_lib::commands::table_data as table_data_commands;
+    use sqllumen_lib::mysql::pool::set_test_pool_factory;
+    use sqllumen_lib::mysql::registry::ConnectionRegistry;
+    use sqllumen_lib::state::AppState;
     use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
@@ -33,7 +33,7 @@ mod type_aware_filter_integration {
     fn test_state() -> AppState {
         common::ensure_fake_backend_once();
         let conn = Connection::open_in_memory().expect("should open in-memory db");
-        mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
+        sqllumen_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
         AppState {
             db: Arc::new(Mutex::new(conn)),
             registry: ConnectionRegistry::new(),
@@ -94,8 +94,8 @@ mod type_aware_filter_integration {
         page_size: u32,
         sort_column: Option<String>,
         sort_direction: Option<String>,
-        filter_model: Option<Vec<mysql_client_lib::mysql::table_data::FilterCondition>>,
-    ) -> Result<mysql_client_lib::mysql::table_data::TableDataResponse, String> {
+        filter_model: Option<Vec<sqllumen_lib::mysql::table_data::FilterCondition>>,
+    ) -> Result<sqllumen_lib::mysql::table_data::TableDataResponse, String> {
         table_data_commands::fetch_table_data(
             state,
             connection_id,
@@ -276,7 +276,7 @@ mod type_aware_filter_integration {
         )
         .expect("open_connection IPC should succeed");
 
-        let response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+        let response = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
             &webview,
             "fetch_table_data",
             json!({
@@ -410,7 +410,7 @@ mod type_aware_filter_integration {
         )
         .expect("open_connection IPC should succeed");
 
-        let response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+        let response = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
             &webview,
             "fetch_table_data",
             json!({
@@ -622,7 +622,7 @@ mod type_aware_filter_integration {
         )
         .expect("open_connection IPC should succeed");
 
-        let response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+        let response = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
             &webview,
             "fetch_table_data",
             json!({
@@ -649,9 +649,9 @@ mod type_aware_filter_integration {
 #[cfg(coverage)]
 mod command_wrapper_coverage {
     use super::*;
-    use mysql_client_lib::commands::table_data as table_data_commands;
-    use mysql_client_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use mysql_client_lib::state::AppState;
+    use sqllumen_lib::commands::table_data as table_data_commands;
+    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
+    use sqllumen_lib::state::AppState;
     use serde::de::DeserializeOwned;
     use serde_json::json;
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
@@ -752,8 +752,8 @@ mod command_wrapper_coverage {
         page_size: u32,
         sort_column: Option<String>,
         sort_direction: Option<String>,
-        filter_model: Option<Vec<mysql_client_lib::mysql::table_data::FilterCondition>>,
-    ) -> Result<mysql_client_lib::mysql::table_data::TableDataResponse, String> {
+        filter_model: Option<Vec<sqllumen_lib::mysql::table_data::FilterCondition>>,
+    ) -> Result<sqllumen_lib::mysql::table_data::TableDataResponse, String> {
         table_data_commands::fetch_table_data(
             state,
             connection_id,
@@ -797,7 +797,7 @@ mod command_wrapper_coverage {
         database: String,
         table: String,
         values: HashMap<String, serde_json::Value>,
-        pk_info: mysql_client_lib::mysql::table_data::PrimaryKeyInfo,
+        pk_info: sqllumen_lib::mysql::table_data::PrimaryKeyInfo,
     ) -> Result<Vec<(String, serde_json::Value)>, String> {
         table_data_commands::insert_table_row(state, connection_id, database, table, values, pk_info)
             .await
@@ -833,7 +833,7 @@ mod command_wrapper_coverage {
         file_path: String,
         include_headers: bool,
         table_name_for_sql: String,
-        filter_model: Option<Vec<mysql_client_lib::mysql::table_data::FilterCondition>>,
+        filter_model: Option<Vec<sqllumen_lib::mysql::table_data::FilterCondition>>,
         sort_column: Option<String>,
         sort_direction: Option<String>,
     ) -> Result<(), String> {
@@ -859,7 +859,7 @@ mod command_wrapper_coverage {
         register_connection(&state, "conn-1", false);
         let webview = build_app(state);
 
-        let zero_page_size_err = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+        let zero_page_size_err = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
             &webview,
             "fetch_table_data",
             json!({
@@ -876,7 +876,7 @@ mod command_wrapper_coverage {
         .expect_err("page size zero should error");
         assert!(zero_page_size_err.to_string().contains("page_size must be at least 1"));
 
-        let missing_connection_err = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+        let missing_connection_err = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
             &webview,
             "fetch_table_data",
             json!({
@@ -893,7 +893,7 @@ mod command_wrapper_coverage {
         .expect_err("missing connection should error");
         assert!(missing_connection_err.to_string().contains("not found"));
 
-        let response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+        let response = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
             &webview,
             "fetch_table_data",
             json!({
@@ -1050,7 +1050,7 @@ mod command_wrapper_coverage {
         register_connection(&state, "hist-conn", false);
         let webview = build_app(state);
 
-        let _response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+        let _response = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
             &webview,
             "fetch_table_data",
             json!({
@@ -1070,7 +1070,7 @@ mod command_wrapper_coverage {
 
         // Verify history was logged
         let conn = db.lock().expect("db lock");
-        let page = mysql_client_lib::db::history::list_history(&conn, "hist-conn", 1, 50, None)
+        let page = sqllumen_lib::db::history::list_history(&conn, "hist-conn", 1, 50, None)
             .expect("list history");
         assert_eq!(page.total, 1, "one history entry should be logged");
         let entry = &page.entries[0];
@@ -1089,7 +1089,7 @@ mod command_wrapper_coverage {
         register_connection(&state, "hist-sf", false);
         let webview = build_app(state);
 
-        let _response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+        let _response = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
             &webview,
             "fetch_table_data",
             json!({
@@ -1114,7 +1114,7 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = mysql_client_lib::db::history::list_history(&conn, "hist-sf", 1, 50, None)
+        let page = sqllumen_lib::db::history::list_history(&conn, "hist-sf", 1, 50, None)
             .expect("list history");
         assert_eq!(page.total, 1);
         let entry = &page.entries[0];
@@ -1136,7 +1136,7 @@ mod command_wrapper_coverage {
         // Don't register any connection
         let webview = build_app(state);
 
-        let _err = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+        let _err = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
             &webview,
             "fetch_table_data",
             json!({
@@ -1158,7 +1158,7 @@ mod command_wrapper_coverage {
         // (the pool lookup fails before the impl call), so we expect NO history entry
         // since the error path logs with the session_id fallback
         let conn = db.lock().expect("db lock");
-        let page = mysql_client_lib::db::history::list_history(&conn, "missing-conn", 1, 50, None)
+        let page = sqllumen_lib::db::history::list_history(&conn, "missing-conn", 1, 50, None)
             .expect("list history");
         // No history logged because the error happens before the impl call
         // and the wrapper returns Err before reaching the history logging code
@@ -1193,7 +1193,7 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = mysql_client_lib::db::history::list_history(&conn, "hist-export", 1, 50, None)
+        let page = sqllumen_lib::db::history::list_history(&conn, "hist-export", 1, 50, None)
             .expect("list history");
         assert_eq!(page.total, 1, "one history entry should be logged for export");
         let entry = &page.entries[0];
@@ -1239,7 +1239,7 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = mysql_client_lib::db::history::list_history(&conn, "hist-export-sf", 1, 50, None)
+        let page = sqllumen_lib::db::history::list_history(&conn, "hist-export-sf", 1, 50, None)
             .expect("list history");
         assert_eq!(page.total, 1);
         let entry = &page.entries[0];
@@ -1276,7 +1276,7 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = mysql_client_lib::db::history::list_history(&conn, "hist-update", 1, 50, None)
+        let page = sqllumen_lib::db::history::list_history(&conn, "hist-update", 1, 50, None)
             .expect("list history");
         assert_eq!(page.total, 1);
         let entry = &page.entries[0];
@@ -1314,7 +1314,7 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = mysql_client_lib::db::history::list_history(&conn, "hist-insert", 1, 50, None)
+        let page = sqllumen_lib::db::history::list_history(&conn, "hist-insert", 1, 50, None)
             .expect("list history");
         assert_eq!(page.total, 1);
         let entry = &page.entries[0];
@@ -1348,7 +1348,7 @@ mod command_wrapper_coverage {
         wait_for_history_logging().await;
 
         let conn = db.lock().expect("db lock");
-        let page = mysql_client_lib::db::history::list_history(&conn, "hist-delete", 1, 50, None)
+        let page = sqllumen_lib::db::history::list_history(&conn, "hist-delete", 1, 50, None)
             .expect("list history");
         assert_eq!(page.total, 1);
         let entry = &page.entries[0];
@@ -1456,8 +1456,8 @@ mod command_wrapper_coverage {
 
 #[cfg(coverage)]
 mod build_select_sql_tests {
-    use mysql_client_lib::commands::table_data::build_select_sql;
-    use mysql_client_lib::mysql::table_data::{FilterCondition, SortInfo};
+    use sqllumen_lib::commands::table_data::build_select_sql;
+    use sqllumen_lib::mysql::table_data::{FilterCondition, SortInfo};
 
     #[test]
     fn build_select_sql_basic_no_filter_no_sort() {
@@ -2044,7 +2044,7 @@ fn export_table_options_serializes() {
 #[cfg(coverage)]
 mod coverage_stubs {
     use super::*;
-    use mysql_client_lib::mysql::table_data::{
+    use sqllumen_lib::mysql::table_data::{
         delete_table_row_impl, export_table_data_impl, fetch_table_data_impl,
         insert_table_row_impl, update_table_row_impl,
     };

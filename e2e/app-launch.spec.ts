@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 test('app loads and has correct title', async ({ page }) => {
   await page.goto('/')
-  await expect(page).toHaveTitle(/MySQL Client/)
+  await expect(page).toHaveTitle(/SqlLumen/)
 })
 
 test('layout sections are visible', async ({ page }) => {

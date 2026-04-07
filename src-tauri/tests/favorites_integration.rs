@@ -2,10 +2,10 @@
 
 mod common;
 
-use mysql_client_lib::commands::favorites::{
+use sqllumen_lib::commands::favorites::{
     create_favorite_impl, delete_favorite_impl, list_favorites_impl, update_favorite_impl,
 };
-use mysql_client_lib::db::favorites::{CreateFavoriteInput, UpdateFavoriteInput};
+use sqllumen_lib::db::favorites::{CreateFavoriteInput, UpdateFavoriteInput};
 
 fn sample_create_input(connection_id: Option<&str>, name: &str) -> CreateFavoriteInput {
     CreateFavoriteInput {
@@ -183,7 +183,7 @@ fn test_get_favorite_by_id() {
     let id = create_favorite_impl(&state, sample_create_input(Some("p1"), "my_query")).expect("create");
 
     let conn = state.db.lock().expect("db lock");
-    let favorite = mysql_client_lib::db::favorites::get_favorite(&conn, id)
+    let favorite = sqllumen_lib::db::favorites::get_favorite(&conn, id)
         .expect("should succeed")
         .expect("should find favorite");
 
@@ -199,7 +199,7 @@ fn test_get_favorite_by_id() {
 fn test_get_favorite_nonexistent() {
     let state = common::test_app_state();
     let conn = state.db.lock().expect("db lock");
-    let result = mysql_client_lib::db::favorites::get_favorite(&conn, 99999)
+    let result = sqllumen_lib::db::favorites::get_favorite(&conn, 99999)
         .expect("should succeed");
     assert!(result.is_none());
 }
@@ -209,7 +209,7 @@ fn test_get_favorite_nonexistent() {
 #[test]
 fn test_create_favorite_with_category() {
     let state = common::test_app_state();
-    let input = mysql_client_lib::db::favorites::CreateFavoriteInput {
+    let input = sqllumen_lib::db::favorites::CreateFavoriteInput {
         name: "categorized".to_string(),
         sql_text: "SELECT * FROM reports".to_string(),
         description: Some("A report query".to_string()),
@@ -232,7 +232,7 @@ fn test_get_global_favorite_by_id() {
     let id = create_favorite_impl(&state, sample_create_input(None, "global_q")).expect("create");
 
     let conn = state.db.lock().expect("db lock");
-    let favorite = mysql_client_lib::db::favorites::get_favorite(&conn, id)
+    let favorite = sqllumen_lib::db::favorites::get_favorite(&conn, id)
         .expect("should succeed")
         .expect("should find favorite");
 
@@ -365,7 +365,7 @@ fn test_update_favorite_input_deserialize_from_json() {
 
 #[test]
 fn test_favorite_entry_deserialize_from_json() {
-    use mysql_client_lib::db::favorites::FavoriteEntry;
+    use sqllumen_lib::db::favorites::FavoriteEntry;
 
     let json = serde_json::json!({
         "id": 7,

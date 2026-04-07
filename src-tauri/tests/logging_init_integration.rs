@@ -31,7 +31,7 @@ impl Drop for RustLogGuard {
 fn init_logging_and_reload_helpers() {
     let _g = RustLogGuard::isolate();
     let dir = tempfile::tempdir().expect("tempdir");
-    let init = mysql_client_lib::logging::init_logging(dir.path()).expect("init logging");
+    let init = sqllumen_lib::logging::init_logging(dir.path()).expect("init logging");
     assert!(!init.rust_log_env_set);
 
     let log_files: Vec<_> = std::fs::read_dir(dir.path())
@@ -44,22 +44,22 @@ fn init_logging_and_reload_helpers() {
     );
 
     let conn = common::test_db();
-    mysql_client_lib::db::settings::set_setting(
+    sqllumen_lib::db::settings::set_setting(
         &conn,
-        mysql_client_lib::logging::LOG_LEVEL_SETTING_KEY,
+        sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY,
         "warn",
     )
     .expect("set log.level");
-    mysql_client_lib::logging::apply_log_level_from_settings(&conn, &init.filter_reload);
+    sqllumen_lib::logging::apply_log_level_from_settings(&conn, &init.filter_reload);
 
-    mysql_client_lib::logging::reload_log_level_from_setting_value(
+    sqllumen_lib::logging::reload_log_level_from_setting_value(
         Some(&init.filter_reload),
         "error",
     );
-    mysql_client_lib::logging::reload_log_level_from_setting_value(None, "trace");
-    mysql_client_lib::logging::reload_log_level_from_setting_value(Some(&init.filter_reload), "bogus");
+    sqllumen_lib::logging::reload_log_level_from_setting_value(None, "trace");
+    sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&init.filter_reload), "bogus");
 
-    let second = mysql_client_lib::logging::init_logging(dir.path());
+    let second = sqllumen_lib::logging::init_logging(dir.path());
     let err = match second {
         Err(e) => e,
         Ok(_) => panic!("second init should fail"),

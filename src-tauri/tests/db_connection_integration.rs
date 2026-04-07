@@ -1,6 +1,6 @@
 //! On-disk `open_database` and basic SQLite connectivity (`db/connection.rs`).
 
-use mysql_client_lib::db::connection::open_database;
+use sqllumen_lib::db::connection::open_database;
 use rusqlite::Connection;
 
 fn unique_temp_path(prefix: &str, file_name: &str) -> std::path::PathBuf {

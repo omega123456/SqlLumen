@@ -5,7 +5,7 @@ mod common;
 use chrono::NaiveDate;
 use common::log_capture::LogCaptureGuard;
 use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse};
-use mysql_client_lib::mysql::query_log;
+use sqllumen_lib::mysql::query_log;
 use opensrv_mysql::{ColumnFlags, ColumnType};
 use sqlx::mysql::MySqlPoolOptions;
 

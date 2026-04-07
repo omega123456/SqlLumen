@@ -3,7 +3,7 @@
 mod common;
 
 use common::test_app_state;
-use mysql_client_lib::mysql::query_executor::{
+use sqllumen_lib::mysql::query_executor::{
     analyze_query_for_edit_impl, update_result_cell_impl, ColumnMeta, StoredResult,
 };
 use std::collections::HashMap;

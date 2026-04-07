@@ -2,12 +2,12 @@
 
 mod common;
 
-use mysql_client_lib::commands::history::{
+use sqllumen_lib::commands::history::{
     clear_history_impl, delete_history_entry_impl, list_history_impl,
 };
-use mysql_client_lib::db::history::{self, NewHistoryEntry};
+use sqllumen_lib::db::history::{self, NewHistoryEntry};
 
-fn insert_sample_entries(state: &mysql_client_lib::state::AppState, connection_id: &str, count: usize) {
+fn insert_sample_entries(state: &sqllumen_lib::state::AppState, connection_id: &str, count: usize) {
     let conn = state.db.lock().expect("db lock");
     for i in 0..count {
         let entry = NewHistoryEntry {
@@ -348,7 +348,7 @@ fn test_clear_history_impl_error_when_table_missing() {
 
 #[test]
 fn test_history_entry_deserialize_from_json() {
-    use mysql_client_lib::db::history::HistoryEntry;
+    use sqllumen_lib::db::history::HistoryEntry;
 
     let json = serde_json::json!({
         "id": 42,
@@ -379,7 +379,7 @@ fn test_history_entry_deserialize_from_json() {
 
 #[test]
 fn test_history_page_deserialize_from_json() {
-    use mysql_client_lib::db::history::HistoryPage;
+    use sqllumen_lib::db::history::HistoryPage;
 
     let json = serde_json::json!({
         "entries": [

@@ -1,27 +1,27 @@
-use mysql_client_lib::commands::connection_groups::{
+use sqllumen_lib::commands::connection_groups::{
     create_connection_group_impl, delete_connection_group_impl, list_connection_groups_impl,
     update_connection_group_impl,
 };
-use mysql_client_lib::commands::connections::{
+use sqllumen_lib::commands::connections::{
     delete_connection_impl, get_connection_impl, list_connections_impl, save_connection_impl,
     update_connection_impl, SaveConnectionInput, UpdateConnectionInput,
 };
-use mysql_client_lib::commands::mysql::{
+use sqllumen_lib::commands::mysql::{
     close_connection_impl, get_connection_status_impl, open_connection_impl, test_connection_impl,
     OpenConnectionPayload, OpenConnectionResult, TestConnectionInput,
 };
-use mysql_client_lib::commands::settings::{
+use sqllumen_lib::commands::settings::{
     get_all_settings_impl, get_setting_impl, set_setting_impl,
 };
-use mysql_client_lib::credentials::{self};
-use mysql_client_lib::db::connections::set_keychain_ref;
+use sqllumen_lib::credentials::{self};
+use sqllumen_lib::db::connections::set_keychain_ref;
 #[cfg(coverage)]
-use mysql_client_lib::mysql::health::spawn_health_monitor;
-use mysql_client_lib::mysql::pool::{
+use sqllumen_lib::mysql::health::spawn_health_monitor;
+use sqllumen_lib::mysql::pool::{
     build_connect_options, create_pool, set_test_pool_factory, ConnectionParams,
 };
-use mysql_client_lib::mysql::registry::{ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams};
-use mysql_client_lib::state::AppState;
+use sqllumen_lib::mysql::registry::{ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams};
+use sqllumen_lib::state::AppState;
 use rusqlite::Connection;
 use serde::de::DeserializeOwned;
 use serde_json::json;
@@ -68,7 +68,7 @@ fn install_test_pool_factory(
 fn test_state() -> AppState {
     common::ensure_fake_backend_once();
     let conn = Connection::open_in_memory().expect("should open in-memory db");
-    mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
+    sqllumen_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
     AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),
@@ -134,7 +134,7 @@ fn update_connection(
 fn get_connection(
     id: String,
     state: tauri::State<'_, AppState>,
-) -> Result<Option<mysql_client_lib::db::connections::ConnectionRecord>, String> {
+) -> Result<Option<sqllumen_lib::db::connections::ConnectionRecord>, String> {
     get_connection_impl(&state, &id)
 }
 
@@ -393,10 +393,10 @@ fn update_connection_impl_surfaces_password_update_errors() {
     let connection_id = save_connection_impl(&state, sample_save_input(None))
         .expect("save should succeed");
     common::fake_credentials::queue_fake_credential_error("update failed");
-    let error = mysql_client_lib::commands::connections::update_connection_impl(
+    let error = sqllumen_lib::commands::connections::update_connection_impl(
         &state,
         &connection_id,
-        mysql_client_lib::commands::connections::UpdateConnectionInput {
+        sqllumen_lib::commands::connections::UpdateConnectionInput {
             name: "Updated".to_string(),
             host: "localhost".to_string(),
             port: 3306,
@@ -1122,7 +1122,7 @@ async fn health_reconnect_uses_stored_keychain_ref() {
         .manage(state)
         .build(tauri::test::mock_context(tauri::test::noop_assets()))
         .expect("should build app");
-    let token = mysql_client_lib::mysql::health::spawn_health_monitor(
+    let token = sqllumen_lib::mysql::health::spawn_health_monitor(
         connection_id.clone(),
         1,
         tauri::AppHandle::clone(&app.handle()),
@@ -1218,10 +1218,10 @@ fn health_monitor_coverage_stub_returns_token() {
 #[test]
 fn settings_command_wrappers_work_via_ipc() {
     let state = test_state();
-    mysql_client_lib::commands::settings::set_setting_impl(&state, "theme", "dark")
+    sqllumen_lib::commands::settings::set_setting_impl(&state, "theme", "dark")
         .expect("set should succeed");
     assert_eq!(
-        mysql_client_lib::commands::settings::get_setting_impl(&state, "theme")
+        sqllumen_lib::commands::settings::get_setting_impl(&state, "theme")
             .expect("get should succeed"),
         Some("dark".to_string())
     );
@@ -1230,18 +1230,18 @@ fn settings_command_wrappers_work_via_ipc() {
 #[test]
 fn connection_group_command_wrappers_work_via_ipc() {
     let state = test_state();
-    let id = mysql_client_lib::commands::connection_groups::create_connection_group_impl(
+    let id = sqllumen_lib::commands::connection_groups::create_connection_group_impl(
         &state,
         "Production",
     )
     .expect("create should succeed");
-    mysql_client_lib::commands::connection_groups::update_connection_group_impl(
+    sqllumen_lib::commands::connection_groups::update_connection_group_impl(
         &state,
         &id,
         "Renamed",
     )
     .expect("update should succeed");
-    let groups = mysql_client_lib::commands::connection_groups::list_connection_groups_impl(&state)
+    let groups = sqllumen_lib::commands::connection_groups::list_connection_groups_impl(&state)
         .expect("list should succeed");
     assert_eq!(groups[0].name, "Renamed");
 }
@@ -1250,7 +1250,7 @@ fn connection_group_command_wrappers_work_via_ipc() {
 fn connection_command_wrappers_work_via_ipc() {
     let state = test_state();
     let id = save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
-    let record = mysql_client_lib::commands::connections::get_connection_impl(&state, &id)
+    let record = sqllumen_lib::commands::connections::get_connection_impl(&state, &id)
         .expect("get should succeed")
         .expect("record should exist");
     assert_eq!(record.name, "Saved DB");
@@ -1271,7 +1271,7 @@ fn registry_default_creates_empty_registry() {
 #[cfg(coverage)]
 #[test]
 fn coverage_binary_main_exits_successfully() {
-    let status = Command::new(env!("CARGO_BIN_EXE_mysql-client"))
+    let status = Command::new(env!("CARGO_BIN_EXE_sqllumen"))
         .status()
         .expect("coverage binary should launch");
     assert!(status.success());
@@ -1280,7 +1280,7 @@ fn coverage_binary_main_exits_successfully() {
 #[cfg(coverage)]
 #[test]
 fn coverage_stub_run_function_is_callable() {
-    mysql_client_lib::run();
+    sqllumen_lib::run();
 }
 
 #[tokio::test]

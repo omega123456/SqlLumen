@@ -4,7 +4,7 @@
 //! including FROM clauses, JOIN types, subqueries, aliases, backtick quoting,
 //! schema qualification, and deduplication.
 
-use mysql_client_lib::mysql::sql_table_parser::{extract_tables, TableReference};
+use sqllumen_lib::mysql::sql_table_parser::{extract_tables, TableReference};
 
 // ── Helper ─────────────────────────────────────────────────────────────────────
 

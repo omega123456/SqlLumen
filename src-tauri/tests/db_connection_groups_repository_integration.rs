@@ -2,10 +2,10 @@
 
 mod common;
 
-use mysql_client_lib::db::connection_groups::{
+use sqllumen_lib::db::connection_groups::{
     delete_group, get_group, insert_group, list_groups, update_group,
 };
-use mysql_client_lib::db::connections::{get_connection, insert_connection, NewConnectionData};
+use sqllumen_lib::db::connections::{get_connection, insert_connection, NewConnectionData};
 
 #[test]
 fn test_insert_group_returns_uuid() {

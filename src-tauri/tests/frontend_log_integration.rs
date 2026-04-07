@@ -1,4 +1,4 @@
-use mysql_client_lib::commands::frontend_log::log_frontend_impl;
+use sqllumen_lib::commands::frontend_log::log_frontend_impl;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 use tracing::Level;

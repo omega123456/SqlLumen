@@ -1,6 +1,6 @@
 # MCP + Tauri manual testing: table data (grid & form)
 
-This checklist repeats the process for driving the **mysql-client** desktop app via the **Hypothesi Tauri MCP** bridge, opening **`pi_management`.`permissions`**, inserting a row in **grid** and **form** view, and checking logs. Adapt database/table names if your target differs.
+This checklist repeats the process for driving the **SqlLumen** desktop app via the **Hypothesi Tauri MCP** bridge, opening **`pi_management`.`permissions`**, inserting a row in **grid** and **form** view, and checking logs. Adapt database/table names if your target differs.
 
 **After every meaningful interaction** (e.g. connect, open a table, add or edit a row, save, switch grid/form, refresh), confirm there were **no new errors**: use **`read_logs` → console** (§7), the **dev terminal** (§8), and especially the **on-disk application log** (§8 — tail today’s file and scan for `ERROR` / `WARN` lines). Silent backend failures may not show a lasting toast; the log file is the durable source of truth alongside stderr.
 
@@ -9,7 +9,7 @@ This checklist repeats the process for driving the **mysql-client** desktop app 
 1. **Tauri dev build** with the MCP bridge enabled (see `AGENTS.md` / `tauri.conf.json` — `withGlobalTauri: true`, bridge plugin on `127.0.0.1:9223` or the next free port in `9223–9322`).
 2. **MySQL** reachable from the machine, with a user that can **INSERT** into `pi_management.permissions` (and any NOT NULL / FK constraints satisfied).
 3. **Cursor MCP** configured to run `pnpm exec mcp-server-tauri` (or your project’s equivalent) so tools like `driver_session` and `webview_*` are available.
-4. **Optional but recommended:** Open your **`logs`** folder in a terminal or editor (paths in §8) so you can **`tail -f`** (or **Get-Content -Wait** on Windows) the current day’s **`mysql-client.*.log`** while testing.
+4. **Optional but recommended:** Open your **`logs`** folder in a terminal or editor (paths in §8) so you can **`tail -f`** (or **Get-Content -Wait** on Windows) the current day’s **`sqllumen.*.log`** while testing.
 
 ## 1. Start the app
 
@@ -112,13 +112,13 @@ Optional: pass `"filter": "error"` (or a substring) to narrow output.
 
 ### Application log file location
 
-The Rust backend writes to **`app.path().app_data_dir()`** + **`logs/`**, with file names shaped like **`mysql-client.YYYY-MM-DD.log`** (one file per local calendar day; see `src-tauri/src/lib.rs` setup and `src-tauri/src/logging/mod.rs`). The Tauri bundle identifier is **`io.mysqlclient.app`** (`tauri.conf.json`), which determines **`app_data_dir`**:
+The Rust backend writes to **`app.path().app_data_dir()`** + **`logs/`**, with file names shaped like **`sqllumen.YYYY-MM-DD.log`** (one file per local calendar day; see `src-tauri/src/lib.rs` setup and `src-tauri/src/logging/mod.rs`). The Tauri bundle identifier is **`app.sqllumen.desktop`** (`tauri.conf.json`), which determines **`app_data_dir`**:
 
 | OS          | Typical `app_data_dir`                                  | Log directory                        | Today’s file (example)        |
 | ----------- | ------------------------------------------------------- | ------------------------------------ | ----------------------------- |
-| **Windows** | `%APPDATA%\io.mysqlclient.app`                          | `%APPDATA%\io.mysqlclient.app\logs\` | `mysql-client.2026-03-31.log` |
-| **macOS**   | `~/Library/Application Support/io.mysqlclient.app`      | `…/io.mysqlclient.app/logs/`         | same pattern                  |
-| **Linux**   | `~/.local/share/io.mysqlclient.app` (typical for Tauri) | `…/io.mysqlclient.app/logs/`         | same pattern                  |
+| **Windows** | `%APPDATA%\app.sqllumen.desktop`                          | `%APPDATA%\app.sqllumen.desktop\logs\` | `sqllumen.2026-03-31.log` |
+| **macOS**   | `~/Library/Application Support/app.sqllumen.desktop`      | `…/app.sqllumen.desktop/logs/`         | same pattern                  |
+| **Linux**   | `~/.local/share/app.sqllumen.desktop` (typical for Tauri) | `…/app.sqllumen.desktop/logs/`         | same pattern                  |
 
 **During MCP runs:** after each step (navigation, save, dialog), **re-read the tail** of today’s log (or keep **`tail -f`** / **`Get-Content … -Wait`** open) and confirm no new **`ERROR`** lines (and review **`WARN`** if anything looked wrong in the UI). Old days’ files may remain until pruned by the app’s retention logic — always prefer the **current date**’s file for the session you are testing.
 
@@ -152,7 +152,7 @@ The MCP tool **`ipc_execute_command`** only supports a **subset** of Tauri comma
 | **Form:** Add → **`btn-form-null-name`** + **`btn-form-null-key`** → fill fields → **`btn-form-save`** | In-app **Save failed**: **`LAST_INSERT_ID`** decode — **`BIGINT UNSIGNED`** vs Rust **`i64`**                      |
 | **`read_logs` `console`**                                                                              | Mostly bridge + React DevTools; optional **`UNHANDLED_REJECTION`… circular structure** from MCP bridge             |
 | **`read_logs` `system`**                                                                               | **Windows:** may fail (`log` missing); use **`pnpm tauri dev`** terminal for Rust                                  |
-| **On-disk `logs/mysql-client.*.log`**                                                                  | Check tail after each interaction for **`ERROR`** / unexpected **`WARN`** (see §8)                                 |
+| **On-disk `logs/sqllumen.*.log`**                                                                  | Check tail after each interaction for **`ERROR`** / unexpected **`WARN`** (see §8)                                 |
 
 ### RDG cell edit helper (run in `webview_execute_js` after focus is in the cell’s `<input>`)
 

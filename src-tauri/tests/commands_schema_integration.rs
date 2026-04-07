@@ -5,10 +5,10 @@
 
 mod common;
 
-use mysql_client_lib::commands::schema::{create_database_impl, list_databases_impl};
-use mysql_client_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-use mysql_client_lib::mysql::schema_queries::safe_identifier;
-use mysql_client_lib::state::AppState;
+use sqllumen_lib::commands::schema::{create_database_impl, list_databases_impl};
+use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
+use sqllumen_lib::mysql::schema_queries::safe_identifier;
+use sqllumen_lib::state::AppState;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use tokio_util::sync::CancellationToken;
 
@@ -162,7 +162,7 @@ fn test_registry_contains_returns_false_for_unknown_id() {
 #[cfg(coverage)]
 mod coverage_stubs {
     use super::*;
-    use mysql_client_lib::commands::schema::*;
+    use sqllumen_lib::commands::schema::*;
 
     #[tokio::test]
     async fn test_list_databases_impl_coverage() {

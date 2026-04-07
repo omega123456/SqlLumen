@@ -4,7 +4,7 @@
 
 [alias]
 # Integration test targets for this crate (src-tauri/tests/*.rs). Edit here when adding a suite.
-mysql-client-test-integration = [
+sqllumen-test-integration = [
   "nextest",
   "run",
   "--manifest-path",
@@ -89,7 +89,7 @@ mysql-client-test-integration = [
   "sql_import_integration",
 ]
 
-mysql-client-llvm-cov = [
+sqllumen-llvm-cov = [
   "llvm-cov",
   "nextest",
   "--summary-only",

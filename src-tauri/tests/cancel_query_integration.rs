@@ -7,8 +7,8 @@
 
 mod common;
 
-use mysql_client_lib::mysql::query_executor::cancel_query_impl;
-use mysql_client_lib::state::AppState;
+use sqllumen_lib::mysql::query_executor::cancel_query_impl;
+use sqllumen_lib::state::AppState;
 
 // ── No-op cancel (no running query) ──────────────────────────────────────────
 
@@ -82,8 +82,8 @@ async fn running_queries_insert_and_remove() {
 #[cfg(coverage)]
 mod coverage_cancel {
     use super::*;
-    use mysql_client_lib::mysql::query_executor::execute_query_impl;
-    use mysql_client_lib::mysql::registry::{
+    use sqllumen_lib::mysql::query_executor::execute_query_impl;
+    use sqllumen_lib::mysql::registry::{
         ConnectionStatus, RegistryEntry, StoredConnectionParams,
     };
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
@@ -202,7 +202,7 @@ mod coverage_cancel {
 mod mock_cancel {
     use super::*;
     use common::mock_mysql_server::{MockColumnDef, MockMySqlServer, MockQueryStep, MockCell};
-    use mysql_client_lib::mysql::registry::{
+    use sqllumen_lib::mysql::registry::{
         ConnectionStatus, RegistryEntry, StoredConnectionParams,
     };
     use opensrv_mysql::{ColumnFlags, ColumnType};

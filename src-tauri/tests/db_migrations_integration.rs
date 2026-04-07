@@ -1,6 +1,6 @@
 //! Migration runner (`db/migrations.rs`).
 
-use mysql_client_lib::db::migrations::run_migrations;
+use sqllumen_lib::db::migrations::run_migrations;
 use rusqlite::Connection;
 
 fn test_conn() -> Connection {

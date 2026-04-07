@@ -1,9 +1,9 @@
-use mysql_client_lib::mysql::table_designer::{
+use sqllumen_lib::mysql::table_designer::{
     derive_charset_from_collation, generate_alter_table_ddl, generate_create_table_ddl,
     validate_schema, DefaultValueModel, DesignerColumnDef, DesignerForeignKeyDef, DesignerIndexDef,
     DesignerTableProperties, DesignerTableSchema, GenerateDdlRequest, GenerateDdlResponse,
 };
-use mysql_client_lib::commands::table_designer::{generate_table_ddl_impl, parse_column_type};
+use sqllumen_lib::commands::table_designer::{generate_table_ddl_impl, parse_column_type};
 
 mod common;
 
@@ -1128,11 +1128,11 @@ fn test_alter_table_auto_increment_removed() {
 mod command_wrapper_integration {
     use super::*;
     use crate::common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
-    use mysql_client_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
-    use mysql_client_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
-    use mysql_client_lib::commands::table_designer::load_table_for_designer_impl;
-    use mysql_client_lib::mysql::registry::ConnectionRegistry;
-    use mysql_client_lib::state::AppState;
+    use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
+    use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
+    use sqllumen_lib::commands::table_designer::load_table_for_designer_impl;
+    use sqllumen_lib::mysql::registry::ConnectionRegistry;
+    use sqllumen_lib::state::AppState;
     use opensrv_mysql::{ColumnFlags, ColumnType};
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
@@ -1145,7 +1145,7 @@ mod command_wrapper_integration {
     fn test_state() -> AppState {
         common::ensure_fake_backend_once();
         let conn = Connection::open_in_memory().expect("should open in-memory db");
-        mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
+        sqllumen_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
         AppState {
             db: Arc::new(Mutex::new(conn)),
             registry: ConnectionRegistry::new(),
@@ -1290,7 +1290,7 @@ mod command_wrapper_integration {
                 error: None,
             },
             MockQueryStep {
-                query: mysql_client_lib::mysql::table_designer::load_columns_query(),
+                query: sqllumen_lib::mysql::table_designer::load_columns_query(),
                 columns: vec![
                     MockColumnDef {
                         name: "COLUMN_NAME",
@@ -1356,7 +1356,7 @@ mod command_wrapper_integration {
                 error: None,
             },
             MockQueryStep {
-                query: mysql_client_lib::mysql::table_designer::load_table_metadata_query(),
+                query: sqllumen_lib::mysql::table_designer::load_table_metadata_query(),
                 columns: vec![
                     MockColumnDef {
                         name: "ENGINE",
@@ -1394,7 +1394,7 @@ mod command_wrapper_integration {
                 error: None,
             },
             MockQueryStep {
-                query: mysql_client_lib::mysql::table_designer::load_indexes_query(),
+                query: sqllumen_lib::mysql::table_designer::load_indexes_query(),
                 columns: vec![
                     MockColumnDef {
                         name: "INDEX_NAME",
@@ -1432,7 +1432,7 @@ mod command_wrapper_integration {
                 error: None,
             },
             MockQueryStep {
-                query: mysql_client_lib::mysql::table_designer::load_foreign_keys_query(),
+                query: sqllumen_lib::mysql::table_designer::load_foreign_keys_query(),
                 columns: vec![
                     MockColumnDef {
                         name: "CONSTRAINT_NAME",
@@ -1557,11 +1557,11 @@ mod command_wrapper_integration {
 #[cfg(coverage)]
 mod coverage_stubs {
     use super::*;
-    use mysql_client_lib::commands::table_designer::{
+    use sqllumen_lib::commands::table_designer::{
         apply_table_ddl_impl, generate_table_ddl_impl, load_table_for_designer_impl,
     };
-    use mysql_client_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use mysql_client_lib::state::AppState;
+    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
+    use sqllumen_lib::state::AppState;
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 

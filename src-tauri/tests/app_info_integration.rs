@@ -1,6 +1,6 @@
 mod common;
 
-use mysql_client_lib::commands::app_info::{get_app_info_impl, AppInfo};
+use sqllumen_lib::commands::app_info::{get_app_info_impl, AppInfo};
 
 #[test]
 fn test_get_app_info_without_app_handle() {

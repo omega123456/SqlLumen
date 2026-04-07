@@ -3,11 +3,11 @@
 //! Tests exercise `sort_results_impl` and the `compare_json_values` helper
 //! against various data type scenarios, NULL handling, and pagination.
 
-use mysql_client_lib::mysql::query_executor::{
+use sqllumen_lib::mysql::query_executor::{
     compare_json_values, sort_results_impl, ColumnMeta, StoredResult,
 };
-use mysql_client_lib::mysql::registry::ConnectionRegistry;
-use mysql_client_lib::state::AppState;
+use sqllumen_lib::mysql::registry::ConnectionRegistry;
+use sqllumen_lib::state::AppState;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
@@ -16,7 +16,7 @@ mod common;
 fn test_state() -> AppState {
     common::ensure_fake_backend_once();
     let conn = Connection::open_in_memory().expect("should open in-memory db");
-    mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
+    sqllumen_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
     AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),

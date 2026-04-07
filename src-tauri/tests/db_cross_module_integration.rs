@@ -2,9 +2,9 @@
 
 mod common;
 
-use mysql_client_lib::db::connection_groups;
-use mysql_client_lib::db::connections::{self, NewConnectionData, UpdateConnectionData};
-use mysql_client_lib::db::settings;
+use sqllumen_lib::db::connection_groups;
+use sqllumen_lib::db::connections::{self, NewConnectionData, UpdateConnectionData};
+use sqllumen_lib::db::settings;
 
 #[test]
 fn test_get_setting_errors_on_malformed_json() {

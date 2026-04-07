@@ -1,4 +1,4 @@
-# MySQL Client
+# SqlLumen
 
 A desktop **MySQL / MariaDB client** built with [Tauri](https://tauri.app/) 2 and [React](https://react.dev/). The UI is a modern shell (sidebar, workspace, tabs, status bar) with light/dark theming. **Database connectivity is planned**; the current milestone focuses on app foundation, local settings, and tooling.
 
@@ -33,14 +33,14 @@ Follow these steps on a new machine before **Quick start** or **Contributing**.
 5. **Clone and install JS deps** — From the repo root:
    ```bash
    git clone <repository-url>
-   cd mysql-client
+   cd <your-clone-directory>
    pnpm install
    ```
 6. **Playwright (for E2E / `pnpm test:all`)** — Install browsers once (this project uses Chromium):
    ```bash
    pnpm exec playwright install chromium
    ```
-7. **cargo-nextest (for Rust integration tests)** — Not installed by `pnpm install`. The repo uses Nextest via Cargo aliases in `.cargo/config.toml` (`mysql-client-test-integration`, `mysql-client-llvm-cov`). From any directory:
+7. **cargo-nextest (for Rust integration tests)** — Not installed by `pnpm install`. The repo uses Nextest via Cargo aliases in `.cargo/config.toml` (`sqllumen-test-integration`, `sqllumen-llvm-cov`). From any directory:
 
    ```bash
    cargo install cargo-nextest
@@ -88,8 +88,8 @@ pnpm dev
 | `pnpm test`                   | Run Vitest once                                                                                                                                                      |
 | `pnpm test:watch`             | Vitest in watch mode                                                                                                                                                 |
 | `pnpm test:coverage`          | Vitest with coverage thresholds                                                                                                                                      |
-| `pnpm test:rust`              | Rust integration tests via [cargo-nextest](https://nexte.st/) (`cargo mysql-client-test-integration`; targets and flags in `.cargo/config.toml`)                     |
-| `pnpm test:rust:coverage`     | Same tests under [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo mysql-client-llvm-cov`; summary to stdout; artifacts under `src-tauri/target/`) |
+| `pnpm test:rust`              | Rust integration tests via [cargo-nextest](https://nexte.st/) (`cargo sqllumen-test-integration`; targets and flags in `.cargo/config.toml`)                     |
+| `pnpm test:rust:coverage`     | Same tests under [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo sqllumen-llvm-cov`; summary to stdout; artifacts under `src-tauri/target/`) |
 | `pnpm test:all`               | Vitest coverage + Rust llvm-cov + Playwright E2E (run after substantive changes)                                                                                     |
 | `pnpm test:e2e`               | Playwright E2E tests                                                                                                                                                 |
 | `pnpm lint` / `pnpm lint:fix` | ESLint                                                                                                                                                               |
@@ -109,7 +109,7 @@ Releases are created as **drafts** by default; publish them from the Releases pa
 ## Project layout
 
 ```
-mysql-client/
+<repo>/
 ├── src/                 # React application
 ├── src-tauri/           # Rust backend, Tauri config, SQLite migrations
 ├── e2e/                 # Playwright specs
@@ -128,4 +128,10 @@ Work is tracked in phases; see `CONTEXT.md` and `.agent/plans/` in this repo for
 
 ---
 
-_Product name in bundles: **MySQL Client** · Identifier: `io.mysqlclient.app`_
+### Upgrade note (rename from older builds)
+
+If you previously ran installs under **`io.mysqlclient.app`**, **`mysql-client.db`**, keychain service **`mysql-client`**, or log files **`mysql-client.*.log`**, those paths are **not** reused after this rename. The app now uses identifier **`app.sqllumen.desktop`**, local DB **`sqllumen.db`**, keychain service **`sqllumen`**, and log stem **`sqllumen`**. Re-enter saved passwords and migrate data manually if needed.
+
+---
+
+_Product name in bundles: **SqlLumen** · Identifier: `app.sqllumen.desktop`_

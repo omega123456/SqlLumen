@@ -6,13 +6,13 @@
 
 mod common;
 
-use mysql_client_lib::commands::object_editor::{
+use sqllumen_lib::commands::object_editor::{
     drop_object_impl, get_object_body_impl, get_routine_parameters_impl,
     get_routine_parameters_with_return_type_impl, parse_ddl_name,
     save_object_impl, validate_view_ddl_prefix, SaveObjectRequest,
 };
-use mysql_client_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-use mysql_client_lib::state::AppState;
+use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
+use sqllumen_lib::state::AppState;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use tokio_util::sync::CancellationToken;
 
@@ -954,7 +954,7 @@ mod mock_success_paths {
 mod ipc_paths {
     use super::*;
     use common::mock_mysql_server::MockMySqlServer;
-    use mysql_client_lib::mysql::pool::{create_pool, ConnectionParams};
+    use sqllumen_lib::mysql::pool::{create_pool, ConnectionParams};
     use serde::de::DeserializeOwned;
     use serde_json::json;
     use tauri::ipc::{CallbackFn, InvokeBody};
@@ -1021,7 +1021,7 @@ mod ipc_paths {
     async fn save_object(
         request: SaveObjectRequest,
         state: tauri::State<'_, AppState>,
-    ) -> Result<mysql_client_lib::commands::object_editor::SaveObjectResponse, String> {
+    ) -> Result<sqllumen_lib::commands::object_editor::SaveObjectResponse, String> {
         save_object_impl(request, &state).await
     }
 
