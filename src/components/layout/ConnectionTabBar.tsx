@@ -6,7 +6,11 @@ import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
 import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import styles from './ConnectionTabBar.module.css'
 
-export function ConnectionTabBar() {
+export interface ConnectionTabBarProps {
+  onOpenSettings?: () => void
+}
+
+export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const setTheme = useThemeStore((state) => state.setTheme)
 
@@ -116,7 +120,14 @@ export function ConnectionTabBar() {
             <Moon size={20} weight="regular" />
           )}
         </button>
-        <button className={styles.iconButton} type="button" aria-label="Settings" title="Settings">
+        <button
+          className={styles.iconButton}
+          type="button"
+          aria-label="Settings"
+          title="Settings"
+          onClick={onOpenSettings}
+          data-testid="settings-button"
+        >
           <GearSix size={20} weight="regular" />
         </button>
       </div>

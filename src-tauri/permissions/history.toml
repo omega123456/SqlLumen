@@ -1,0 +1,17 @@
+[[permission]]
+identifier = "allow-list-history"
+description = "Enables the list_history command without any pre-configured scope."
+commands.allow = ["list_history"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-delete-history-entry"
+description = "Enables the delete_history_entry command without any pre-configured scope."
+commands.allow = ["delete_history_entry"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-clear-history"
+description = "Enables the clear_history command without any pre-configured scope."
+commands.allow = ["clear_history"]
+commands.deny = []

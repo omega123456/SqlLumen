@@ -8,6 +8,7 @@ import {
   _resetTabIdCounter,
   _resetQueryTabCounter,
 } from '../../../stores/workspace-store'
+import { useConnectionStore } from '../../../stores/connection-store'
 
 // Mock tauri dialog
 vi.mock('@tauri-apps/plugin-dialog', () => ({
@@ -18,6 +19,7 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+  useConnectionStore.setState({ activeConnections: {} })
   _resetTabIdCounter()
   _resetQueryTabCounter()
 
@@ -92,13 +94,64 @@ describe('EditorToolbar', () => {
     expect(screen.getByTestId('toolbar-open')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-history')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-format')).toBeInTheDocument()
+    expect(screen.getByTestId('toolbar-import-sql')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-execute')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-execute-all')).toBeInTheDocument()
   })
 
-  it('history button is disabled', () => {
+  it('import SQL button is enabled for non-read-only connections', () => {
     renderToolbar()
-    expect(screen.getByTestId('toolbar-history')).toBeDisabled()
+    const importBtn = screen.getByTestId('toolbar-import-sql')
+    expect(importBtn).toBeInTheDocument()
+    expect(importBtn).not.toBeDisabled()
+  })
+
+  it('import SQL button is disabled for read-only connections', () => {
+    // Set up a read-only active connection in the store
+    useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: {
+            id: 'profile-1',
+            name: 'Test',
+            host: 'localhost',
+            port: 3306,
+            username: 'root',
+            hasPassword: false,
+            defaultDatabase: null,
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: true,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '',
+            updatedAt: '',
+          },
+          status: 'connected' as const,
+          serverVersion: '8.0.0',
+        },
+      },
+    })
+    renderToolbar()
+    const importBtn = screen.getByTestId('toolbar-import-sql')
+    expect(importBtn).toBeInTheDocument()
+    expect(importBtn).toBeDisabled()
+  })
+
+  it('history button is enabled and opens history tab', () => {
+    renderToolbar()
+    const historyBtn = screen.getByTestId('toolbar-history')
+    expect(historyBtn).not.toBeDisabled()
+    fireEvent.click(historyBtn)
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    expect(tabs).toBeDefined()
+    expect(tabs.some((t) => t.type === 'history-favorites')).toBe(true)
   })
 
   it('execute buttons are disabled when no content', () => {

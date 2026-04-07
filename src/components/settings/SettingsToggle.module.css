@@ -1,0 +1,31 @@
+/* SettingsToggle — label+description left, checkbox right */
+
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.labelGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--type-size-sm);
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--on-surface);
+  cursor: pointer;
+}
+
+.description {
+  font-size: var(--type-size-xs);
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  line-height: 1.4;
+}

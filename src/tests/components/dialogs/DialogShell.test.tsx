@@ -98,13 +98,13 @@ describe('DialogShell', () => {
     render(<DialogShell {...defaultProps} maxWidth={600} />)
     // The dialog content wrapper should have maxWidth style
     const dialogContent = screen.getByText('Dialog content').parentElement
-    expect(dialogContent).toHaveStyle({ maxWidth: '600px' })
+    expect(dialogContent).toHaveStyle({ maxWidth: 'min(600px, 90vw)' })
   })
 
   it('uses default maxWidth of 420 when not specified', () => {
     render(<DialogShell {...defaultProps} />)
     const dialogContent = screen.getByText('Dialog content').parentElement
-    expect(dialogContent).toHaveStyle({ maxWidth: '420px' })
+    expect(dialogContent).toHaveStyle({ maxWidth: 'min(420px, 90vw)' })
   })
 
   it('renders as a portal (content is in document.body)', () => {

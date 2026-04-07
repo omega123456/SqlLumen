@@ -4,6 +4,7 @@ use mysql_client_lib::mysql::table_data::{
     translate_filter_model, translate_filter_model_with_columns, ExportTableOptions,
     FilterCondition, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
 };
+use mysql_client_lib::commands::table_data::interpolate_sql_params;
 #[cfg(not(coverage))]
 use mysql_client_lib::mysql::table_data::parse_enum_values;
 
@@ -24,7 +25,7 @@ mod type_aware_filter_integration {
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
     use serde_json::json;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
     use tauri::webview::InvokeRequest;
@@ -34,12 +35,14 @@ mod type_aware_filter_integration {
         let conn = Connection::open_in_memory().expect("should open in-memory db");
         mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
         AppState {
-            db: Mutex::new(conn),
+            db: Arc::new(Mutex::new(conn)),
             registry: ConnectionRegistry::new(),
             app_handle: None,
             results: std::sync::RwLock::new(std::collections::HashMap::new()),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+            dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         }
     }
 
@@ -1033,6 +1036,328 @@ mod command_wrapper_coverage {
         .expect("export should succeed");
     }
 
+    // ── History logging verification tests ──────────────────────────────────
+
+    /// Helper: wait for fire-and-forget history logging spawned tasks to complete.
+    async fn wait_for_history_logging() {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    #[tokio::test]
+    async fn fetch_table_data_logs_history_on_success() {
+        let state = common::test_app_state();
+        let db = std::sync::Arc::clone(&state.db);
+        register_connection(&state, "hist-conn", false);
+        let webview = build_app(state);
+
+        let _response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+            &webview,
+            "fetch_table_data",
+            json!({
+                "connectionId": "hist-conn",
+                "database": "test_db",
+                "table": "users",
+                "page": 1,
+                "pageSize": 50,
+                "sortColumn": null,
+                "sortDirection": null,
+                "filterModel": null
+            }),
+        )
+        .expect("fetch should succeed");
+
+        wait_for_history_logging().await;
+
+        // Verify history was logged
+        let conn = db.lock().expect("db lock");
+        let page = mysql_client_lib::db::history::list_history(&conn, "hist-conn", 1, 50, None)
+            .expect("list history");
+        assert_eq!(page.total, 1, "one history entry should be logged");
+        let entry = &page.entries[0];
+        assert!(entry.success);
+        assert!(entry.sql_text.contains("SELECT * FROM"));
+        assert!(entry.sql_text.contains("test_db"));
+        assert!(entry.sql_text.contains("users"));
+        assert!(entry.sql_text.contains("LIMIT 50 OFFSET 0"));
+        assert_eq!(entry.database_name.as_deref(), Some("test_db"));
+    }
+
+    #[tokio::test]
+    async fn fetch_table_data_logs_history_with_sort_and_filter() {
+        let state = common::test_app_state();
+        let db = std::sync::Arc::clone(&state.db);
+        register_connection(&state, "hist-sf", false);
+        let webview = build_app(state);
+
+        let _response = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+            &webview,
+            "fetch_table_data",
+            json!({
+                "connectionId": "hist-sf",
+                "database": "mydb",
+                "table": "products",
+                "page": 2,
+                "pageSize": 25,
+                "sortColumn": "name",
+                "sortDirection": "desc",
+                "filterModel": [
+                    {
+                        "column": "name",
+                        "operator": "LIKE",
+                        "value": "%widget%"
+                    }
+                ]
+            }),
+        )
+        .expect("fetch should succeed");
+
+        wait_for_history_logging().await;
+
+        let conn = db.lock().expect("db lock");
+        let page = mysql_client_lib::db::history::list_history(&conn, "hist-sf", 1, 50, None)
+            .expect("list history");
+        assert_eq!(page.total, 1);
+        let entry = &page.entries[0];
+        assert!(entry.success);
+        // Verify SQL contains sort, filter, and pagination
+        assert!(entry.sql_text.contains("ORDER BY"));
+        assert!(entry.sql_text.contains("DESC"));
+        assert!(entry.sql_text.contains("LIMIT 25 OFFSET 25"));
+        assert!(entry.sql_text.contains("WHERE"));
+        // Verify filter value is interpolated (not raw ?)
+        assert!(!entry.sql_text.contains(" ? "), "History SQL should not contain raw ? placeholders, got: {}", entry.sql_text);
+        assert!(entry.sql_text.contains("'%widget%'"), "History SQL should contain interpolated filter value, got: {}", entry.sql_text);
+    }
+
+    #[tokio::test]
+    async fn fetch_table_data_logs_history_on_missing_connection() {
+        let state = common::test_app_state();
+        let db = std::sync::Arc::clone(&state.db);
+        // Don't register any connection
+        let webview = build_app(state);
+
+        let _err = invoke_tauri_command::<mysql_client_lib::mysql::table_data::TableDataResponse>(
+            &webview,
+            "fetch_table_data",
+            json!({
+                "connectionId": "missing-conn",
+                "database": "test_db",
+                "table": "users",
+                "page": 1,
+                "pageSize": 50,
+                "sortColumn": null,
+                "sortDirection": null,
+                "filterModel": null
+            }),
+        )
+        .expect_err("should fail for missing connection");
+
+        wait_for_history_logging().await;
+
+        // fetch_table_data returns early before logging when connection is not found
+        // (the pool lookup fails before the impl call), so we expect NO history entry
+        // since the error path logs with the session_id fallback
+        let conn = db.lock().expect("db lock");
+        let page = mysql_client_lib::db::history::list_history(&conn, "missing-conn", 1, 50, None)
+            .expect("list history");
+        // No history logged because the error happens before the impl call
+        // and the wrapper returns Err before reaching the history logging code
+        assert_eq!(page.total, 0, "no history entry when connection not found (early return)");
+    }
+
+    #[tokio::test]
+    async fn export_table_data_logs_history_on_success() {
+        let state = common::test_app_state();
+        let db = std::sync::Arc::clone(&state.db);
+        register_connection(&state, "hist-export", false);
+        let webview = build_app(state);
+
+        invoke_tauri_command::<()>(
+            &webview,
+            "export_table_data",
+            json!({
+                "connectionId": "hist-export",
+                "database": "test_db",
+                "table": "orders",
+                "format": "csv",
+                "filePath": "ignored.csv",
+                "includeHeaders": true,
+                "tableNameForSql": "orders",
+                "filterModel": null,
+                "sortColumn": null,
+                "sortDirection": null
+            }),
+        )
+        .expect("export should succeed");
+
+        wait_for_history_logging().await;
+
+        let conn = db.lock().expect("db lock");
+        let page = mysql_client_lib::db::history::list_history(&conn, "hist-export", 1, 50, None)
+            .expect("list history");
+        assert_eq!(page.total, 1, "one history entry should be logged for export");
+        let entry = &page.entries[0];
+        assert!(entry.success);
+        assert!(entry.sql_text.contains("SELECT * FROM"));
+        assert!(entry.sql_text.contains("orders"));
+        // Export has no LIMIT
+        assert!(!entry.sql_text.contains("LIMIT"));
+        assert_eq!(entry.database_name.as_deref(), Some("test_db"));
+    }
+
+    #[tokio::test]
+    async fn export_table_data_logs_history_with_sort_and_filter() {
+        let state = common::test_app_state();
+        let db = std::sync::Arc::clone(&state.db);
+        register_connection(&state, "hist-export-sf", false);
+        let webview = build_app(state);
+
+        invoke_tauri_command::<()>(
+            &webview,
+            "export_table_data",
+            json!({
+                "connectionId": "hist-export-sf",
+                "database": "test_db",
+                "table": "items",
+                "format": "json",
+                "filePath": "ignored.json",
+                "includeHeaders": false,
+                "tableNameForSql": "items",
+                "filterModel": [
+                    {
+                        "column": "price",
+                        "operator": ">",
+                        "value": "100"
+                    }
+                ],
+                "sortColumn": "price",
+                "sortDirection": "asc"
+            }),
+        )
+        .expect("export should succeed");
+
+        wait_for_history_logging().await;
+
+        let conn = db.lock().expect("db lock");
+        let page = mysql_client_lib::db::history::list_history(&conn, "hist-export-sf", 1, 50, None)
+            .expect("list history");
+        assert_eq!(page.total, 1);
+        let entry = &page.entries[0];
+        assert!(entry.success);
+        assert!(entry.sql_text.contains("WHERE"));
+        assert!(entry.sql_text.contains("ORDER BY"));
+        assert!(entry.sql_text.contains("ASC"));
+        // Verify filter value is interpolated
+        assert!(entry.sql_text.contains("'100'"), "Export history SQL should contain interpolated filter value, got: {}", entry.sql_text);
+        assert!(!entry.sql_text.contains("?"), "Export history SQL should not contain raw ? placeholders, got: {}", entry.sql_text);
+    }
+
+    #[tokio::test]
+    async fn update_table_row_logs_history_with_interpolated_values() {
+        let state = common::test_app_state();
+        let db = std::sync::Arc::clone(&state.db);
+        register_connection(&state, "hist-update", false);
+        let webview = build_app(state);
+
+        invoke_tauri_command::<()>(
+            &webview,
+            "update_table_row",
+            json!({
+                "connectionId": "hist-update",
+                "database": "test_db",
+                "table": "users",
+                "primaryKeyColumns": ["id"],
+                "originalPkValues": { "id": 1 },
+                "updatedValues": { "name": "Alice" }
+            }),
+        )
+        .expect("update should succeed");
+
+        wait_for_history_logging().await;
+
+        let conn = db.lock().expect("db lock");
+        let page = mysql_client_lib::db::history::list_history(&conn, "hist-update", 1, 50, None)
+            .expect("list history");
+        assert_eq!(page.total, 1);
+        let entry = &page.entries[0];
+        assert!(entry.success);
+        assert!(entry.sql_text.contains("UPDATE"));
+        assert!(entry.sql_text.contains("'Alice'"), "Update history SQL should contain interpolated value 'Alice', got: {}", entry.sql_text);
+        assert!(entry.sql_text.contains("1"), "Update history SQL should contain PK value 1, got: {}", entry.sql_text);
+        assert!(!entry.sql_text.contains("?"), "Update history SQL should not contain raw ? placeholders, got: {}", entry.sql_text);
+    }
+
+    #[tokio::test]
+    async fn insert_table_row_logs_history_with_interpolated_values() {
+        let state = common::test_app_state();
+        let db = std::sync::Arc::clone(&state.db);
+        register_connection(&state, "hist-insert", false);
+        let webview = build_app(state);
+
+        invoke_tauri_command::<Vec<(String, serde_json::Value)>>(
+            &webview,
+            "insert_table_row",
+            json!({
+                "connectionId": "hist-insert",
+                "database": "test_db",
+                "table": "users",
+                "values": { "name": "Bob", "age": 30 },
+                "pkInfo": {
+                    "keyColumns": ["id"],
+                    "hasAutoIncrement": true,
+                    "isUniqueKeyFallback": false
+                }
+            }),
+        )
+        .expect("insert should succeed");
+
+        wait_for_history_logging().await;
+
+        let conn = db.lock().expect("db lock");
+        let page = mysql_client_lib::db::history::list_history(&conn, "hist-insert", 1, 50, None)
+            .expect("list history");
+        assert_eq!(page.total, 1);
+        let entry = &page.entries[0];
+        assert!(entry.success);
+        assert!(entry.sql_text.contains("INSERT INTO"));
+        assert!(entry.sql_text.contains("30"), "Insert history SQL should contain interpolated value 30, got: {}", entry.sql_text);
+        assert!(entry.sql_text.contains("'Bob'"), "Insert history SQL should contain interpolated value 'Bob', got: {}", entry.sql_text);
+        assert!(!entry.sql_text.contains("?"), "Insert history SQL should not contain raw ? placeholders, got: {}", entry.sql_text);
+    }
+
+    #[tokio::test]
+    async fn delete_table_row_logs_history_with_interpolated_values() {
+        let state = common::test_app_state();
+        let db = std::sync::Arc::clone(&state.db);
+        register_connection(&state, "hist-delete", false);
+        let webview = build_app(state);
+
+        invoke_tauri_command::<()>(
+            &webview,
+            "delete_table_row",
+            json!({
+                "connectionId": "hist-delete",
+                "database": "test_db",
+                "table": "users",
+                "pkColumns": ["id"],
+                "pkValues": { "id": 42 }
+            }),
+        )
+        .expect("delete should succeed");
+
+        wait_for_history_logging().await;
+
+        let conn = db.lock().expect("db lock");
+        let page = mysql_client_lib::db::history::list_history(&conn, "hist-delete", 1, 50, None)
+            .expect("list history");
+        assert_eq!(page.total, 1);
+        let entry = &page.entries[0];
+        assert!(entry.success);
+        assert!(entry.sql_text.contains("DELETE FROM"));
+        assert!(entry.sql_text.contains("42"), "Delete history SQL should contain interpolated PK value 42, got: {}", entry.sql_text);
+        assert!(!entry.sql_text.contains("?"), "Delete history SQL should not contain raw ? placeholders, got: {}", entry.sql_text);
+    }
+
     #[tokio::test]
     async fn insert_delete_and_export_wrappers_surface_expected_errors() {
         let read_only_state = common::test_app_state();
@@ -1125,6 +1450,179 @@ mod command_wrapper_coverage {
         .expect_err("missing export connection should error");
         assert!(export_missing.to_string().contains("not found"));
     }
+}
+
+// ── build_select_sql tests (coverage mode only — pub(crate) visibility) ───────
+
+#[cfg(coverage)]
+mod build_select_sql_tests {
+    use mysql_client_lib::commands::table_data::build_select_sql;
+    use mysql_client_lib::mysql::table_data::{FilterCondition, SortInfo};
+
+    #[test]
+    fn build_select_sql_basic_no_filter_no_sort() {
+        let sql = build_select_sql("mydb", "users", &[], &None, Some((50, 0)));
+        assert!(sql.is_some());
+        let sql = sql.unwrap();
+        assert_eq!(sql, "SELECT * FROM `mydb`.`users` LIMIT 50 OFFSET 0");
+    }
+
+    #[test]
+    fn build_select_sql_with_sort() {
+        let sort = Some(SortInfo {
+            column: "name".to_string(),
+            direction: "asc".to_string(),
+        });
+        let sql = build_select_sql("mydb", "users", &[], &sort, Some((25, 50))).unwrap();
+        assert!(sql.contains("ORDER BY `name` ASC"));
+        assert!(sql.contains("LIMIT 25 OFFSET 50"));
+    }
+
+    #[test]
+    fn build_select_sql_with_desc_sort() {
+        let sort = Some(SortInfo {
+            column: "id".to_string(),
+            direction: "desc".to_string(),
+        });
+        let sql = build_select_sql("db", "tbl", &[], &sort, Some((10, 0))).unwrap();
+        assert!(sql.contains("ORDER BY `id` DESC"));
+    }
+
+    #[test]
+    fn build_select_sql_with_filter() {
+        let filter = vec![FilterCondition {
+            column: "status".to_string(),
+            operator: "==".to_string(),
+            value: "active".to_string(),
+        }];
+        let sql = build_select_sql("db", "tbl", &filter, &None, Some((50, 0))).unwrap();
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("`status` = ?"));
+    }
+
+    #[test]
+    fn build_select_sql_no_limit_for_export() {
+        let sql = build_select_sql("mydb", "orders", &[], &None, None).unwrap();
+        assert_eq!(sql, "SELECT * FROM `mydb`.`orders`");
+        assert!(!sql.contains("LIMIT"));
+    }
+
+    #[test]
+    fn build_select_sql_with_all_options() {
+        let filter = vec![
+            FilterCondition {
+                column: "name".to_string(),
+                operator: "LIKE".to_string(),
+                value: "%test%".to_string(),
+            },
+            FilterCondition {
+                column: "age".to_string(),
+                operator: ">".to_string(),
+                value: "18".to_string(),
+            },
+        ];
+        let sort = Some(SortInfo {
+            column: "name".to_string(),
+            direction: "asc".to_string(),
+        });
+        let sql = build_select_sql("shop", "products", &filter, &sort, Some((100, 200))).unwrap();
+        assert!(sql.starts_with("SELECT * FROM `shop`.`products`"));
+        assert!(sql.contains("WHERE"));
+        assert!(sql.contains("ORDER BY `name` ASC"));
+        assert!(sql.contains("LIMIT 100 OFFSET 200"));
+    }
+}
+
+// ── translate_filter_model (pure function) ────────────────────────────────────
+
+// ── interpolate_sql_params (pure function) ────────────────────────────────────
+
+#[test]
+fn interpolate_sql_params_no_placeholders() {
+    let sql = "SELECT * FROM `db`.`tbl` LIMIT 10";
+    let result = interpolate_sql_params(sql, &[]);
+    assert_eq!(result, sql);
+}
+
+#[test]
+fn interpolate_sql_params_string_values() {
+    let sql = "UPDATE `db`.`t` SET `name` = ? WHERE `id` = ?";
+    let params = vec![
+        serde_json::json!("Alice"),
+        serde_json::json!(1),
+    ];
+    let result = interpolate_sql_params(sql, &params);
+    assert_eq!(result, "UPDATE `db`.`t` SET `name` = 'Alice' WHERE `id` = 1");
+}
+
+#[test]
+fn interpolate_sql_params_null_value() {
+    let sql = "INSERT INTO `t` (`a`) VALUES (?)";
+    let params = vec![serde_json::Value::Null];
+    let result = interpolate_sql_params(sql, &params);
+    assert_eq!(result, "INSERT INTO `t` (`a`) VALUES (NULL)");
+}
+
+#[test]
+fn interpolate_sql_params_boolean_values() {
+    let sql = "INSERT INTO `t` (`a`, `b`) VALUES (?, ?)";
+    let params = vec![serde_json::json!(true), serde_json::json!(false)];
+    let result = interpolate_sql_params(sql, &params);
+    assert_eq!(result, "INSERT INTO `t` (`a`, `b`) VALUES (1, 0)");
+}
+
+#[test]
+fn interpolate_sql_params_number_values() {
+    let sql = "SELECT * FROM `t` WHERE `price` > ? AND `qty` < ?";
+    let params = vec![serde_json::json!(9.99), serde_json::json!(100)];
+    let result = interpolate_sql_params(sql, &params);
+    assert_eq!(result, "SELECT * FROM `t` WHERE `price` > 9.99 AND `qty` < 100");
+}
+
+#[test]
+fn interpolate_sql_params_escapes_single_quotes() {
+    let sql = "INSERT INTO `t` (`name`) VALUES (?)";
+    let params = vec![serde_json::json!("O'Brien")];
+    let result = interpolate_sql_params(sql, &params);
+    assert_eq!(result, "INSERT INTO `t` (`name`) VALUES ('O''Brien')");
+}
+
+#[test]
+fn interpolate_sql_params_mixed_types() {
+    let sql = "INSERT INTO `t` (`a`, `b`, `c`, `d`) VALUES (?, ?, ?, ?)";
+    let params = vec![
+        serde_json::json!("hello"),
+        serde_json::json!(42),
+        serde_json::Value::Null,
+        serde_json::json!(true),
+    ];
+    let result = interpolate_sql_params(sql, &params);
+    assert_eq!(result, "INSERT INTO `t` (`a`, `b`, `c`, `d`) VALUES ('hello', 42, NULL, 1)");
+}
+
+#[test]
+fn interpolate_sql_params_extra_placeholders_left_as_is() {
+    let sql = "SELECT ? AND ?";
+    let params = vec![serde_json::json!("only_one")];
+    let result = interpolate_sql_params(sql, &params);
+    assert_eq!(result, "SELECT 'only_one' AND ?");
+}
+
+#[test]
+fn interpolate_sql_params_array_value_formatted() {
+    let sql = "SELECT ?";
+    let params = vec![serde_json::json!([1, 2, 3])];
+    let result = interpolate_sql_params(sql, &params);
+    assert_eq!(result, "SELECT '[1,2,3]'");
+}
+
+#[test]
+fn interpolate_sql_params_object_value_formatted() {
+    let sql = "SELECT ?";
+    let params = vec![serde_json::json!({"key": "val"})];
+    let result = interpolate_sql_params(sql, &params);
+    assert!(result.starts_with("SELECT '"));
+    assert!(result.contains("key"));
 }
 
 // ── translate_filter_model (pure function) ────────────────────────────────────

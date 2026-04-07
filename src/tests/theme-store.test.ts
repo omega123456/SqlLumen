@@ -5,7 +5,7 @@ import { setupMatchMedia } from './helpers/mock-match-media'
 
 beforeEach(() => {
   // Reset store state between tests
-  useThemeStore.setState({ theme: 'system', resolvedTheme: 'light' })
+  useThemeStore.setState({ theme: 'system', resolvedTheme: 'light', _previewSnapshot: null })
   document.documentElement.removeAttribute('data-theme')
   setupMatchMedia(false) // default: system prefers light
 })
@@ -128,5 +128,90 @@ describe('useThemeStore — initialize', () => {
 
     await useThemeStore.getState().initialize()
     expect(useThemeStore.getState().theme).toBe('system')
+  })
+})
+
+describe('useThemeStore — previewTheme', () => {
+  it('applies the previewed theme to the DOM without persisting', () => {
+    // Start with light theme
+    useThemeStore.setState({ theme: 'light', resolvedTheme: 'light', _previewSnapshot: null })
+    document.documentElement.setAttribute('data-theme', 'light')
+
+    useThemeStore.getState().previewTheme('dark')
+
+    // DOM should reflect the preview
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(useThemeStore.getState().resolvedTheme).toBe('dark')
+    // The original theme is captured in the snapshot
+    expect(useThemeStore.getState()._previewSnapshot).toBe('light')
+    // But the store's `theme` is NOT changed (preview doesn't mutate theme)
+    expect(useThemeStore.getState().theme).toBe('light')
+  })
+
+  it('captures snapshot only on the first preview call', () => {
+    useThemeStore.setState({ theme: 'light', resolvedTheme: 'light', _previewSnapshot: null })
+
+    // First preview call — captures 'light' as the snapshot
+    useThemeStore.getState().previewTheme('dark')
+    expect(useThemeStore.getState()._previewSnapshot).toBe('light')
+
+    // Second preview call — snapshot stays 'light' (not 'dark')
+    useThemeStore.getState().previewTheme('system')
+    expect(useThemeStore.getState()._previewSnapshot).toBe('light')
+  })
+
+  it('resolves "system" theme during preview', () => {
+    setupMatchMedia(true) // system prefers dark
+    useThemeStore.setState({ theme: 'light', resolvedTheme: 'light', _previewSnapshot: null })
+
+    useThemeStore.getState().previewTheme('system')
+
+    expect(useThemeStore.getState().resolvedTheme).toBe('dark')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+  })
+})
+
+describe('useThemeStore — revertPreview', () => {
+  it('reverts to the snapshot theme and clears the snapshot', () => {
+    // Simulate: user was on 'light', then previewed 'dark'
+    useThemeStore.setState({ theme: 'light', resolvedTheme: 'dark', _previewSnapshot: 'light' })
+    document.documentElement.setAttribute('data-theme', 'dark')
+
+    useThemeStore.getState().revertPreview()
+
+    expect(useThemeStore.getState().theme).toBe('light')
+    expect(useThemeStore.getState().resolvedTheme).toBe('light')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    expect(useThemeStore.getState()._previewSnapshot).toBeNull()
+  })
+
+  it('does nothing when there is no snapshot', () => {
+    useThemeStore.setState({ theme: 'dark', resolvedTheme: 'dark', _previewSnapshot: null })
+    document.documentElement.setAttribute('data-theme', 'dark')
+
+    useThemeStore.getState().revertPreview()
+
+    // State and DOM remain unchanged
+    expect(useThemeStore.getState().theme).toBe('dark')
+    expect(useThemeStore.getState().resolvedTheme).toBe('dark')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(useThemeStore.getState()._previewSnapshot).toBeNull()
+  })
+})
+
+describe('useThemeStore — getSystemTheme fallback', () => {
+  it('returns "light" when matchMedia is unavailable', async () => {
+    // Remove matchMedia entirely to trigger line 11 fallback
+    const original = window.matchMedia
+    Object.defineProperty(window, 'matchMedia', { writable: true, value: undefined })
+
+    try {
+      await useThemeStore.getState().setTheme('system')
+      // Without matchMedia, system theme resolves to 'light'
+      expect(useThemeStore.getState().resolvedTheme).toBe('light')
+    } finally {
+      // Restore matchMedia so other tests aren't affected
+      Object.defineProperty(window, 'matchMedia', { writable: true, value: original })
+    }
   })
 })

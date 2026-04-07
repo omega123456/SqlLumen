@@ -164,6 +164,13 @@ impl ConnectionRegistry {
         let map = self.entries.read().expect("registry lock poisoned");
         map.get(id).map(|e| e.read_only).unwrap_or(false)
     }
+
+    /// Get the saved profile ID for a session (connection) ID.
+    /// Returns `None` if the connection is not in the registry.
+    pub fn get_profile_id(&self, session_id: &str) -> Option<String> {
+        let map = self.entries.read().expect("registry lock poisoned");
+        map.get(session_id).map(|e| e.profile_id.clone())
+    }
 }
 
 impl Default for ConnectionRegistry {

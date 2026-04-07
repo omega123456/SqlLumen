@@ -12,7 +12,7 @@ use mysql_client_lib::mysql::registry::ConnectionRegistry;
 use mysql_client_lib::state::AppState;
 use rusqlite::Connection;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Creates a fresh in-memory SQLite database with all migrations applied.
 pub fn test_db() -> Connection {
@@ -31,12 +31,14 @@ pub fn test_app_state() -> AppState {
     ensure_fake_backend_once();
     let conn = test_db();
     AppState {
-        db: Mutex::new(conn),
+        db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),
         app_handle: None,
         results: std::sync::RwLock::new(std::collections::HashMap::new()),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+        dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
     }
 }
 

@@ -7,12 +7,14 @@ import { SchemaInfoTab } from '../schema-info/SchemaInfoTab'
 import { QueryEditorTab } from '../query-editor/QueryEditorTab'
 import { TableDesignerTab as TableDesignerTabComponent } from '../table-designer/TableDesignerTab'
 import { ObjectEditorTab as ObjectEditorTabComponent } from '../object-editor/ObjectEditorTab'
+import { HistoryFavoritesTab as HistoryFavoritesTabComponent } from '../history-favorites/HistoryFavoritesTab'
 import type {
   WorkspaceTab,
   SchemaInfoTab as SchemaInfoTabType,
   QueryEditorTab as QueryEditorTabType,
   TableDesignerTab as TableDesignerTabType,
   ObjectEditorTab as ObjectEditorTabType,
+  HistoryFavoritesTab as HistoryFavoritesTabType,
 } from '../../types/schema'
 import styles from './WorkspaceArea.module.css'
 
@@ -77,6 +79,12 @@ export function WorkspaceArea() {
           )}
           {activeTab?.type === 'object-editor' && (
             <ObjectEditorTabComponent key={activeTab.id} tab={activeTab as ObjectEditorTabType} />
+          )}
+          {activeTab?.type === 'history-favorites' && (
+            <HistoryFavoritesTabComponent
+              key={activeTab.id}
+              tab={activeTab as HistoryFavoritesTabType}
+            />
           )}
           {/* Tabs exist but none active */}
           {tabs.length > 0 && !activeTab && (

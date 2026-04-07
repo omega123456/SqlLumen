@@ -1,0 +1,27 @@
+/* SettingsSection — heading + description + content wrapper */
+
+.section {
+  margin-bottom: 32px;
+}
+
+.heading {
+  font-size: var(--type-size-lg);
+  font-weight: 600;
+  font-family: var(--font-headline);
+  color: var(--on-surface);
+  margin: 0 0 4px;
+}
+
+.description {
+  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  color: var(--on-surface-variant);
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

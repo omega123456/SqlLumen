@@ -1,0 +1,23 @@
+[[permission]]
+identifier = "allow-create-favorite"
+description = "Enables the create_favorite command without any pre-configured scope."
+commands.allow = ["create_favorite"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-favorites"
+description = "Enables the list_favorites command without any pre-configured scope."
+commands.allow = ["list_favorites"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-update-favorite"
+description = "Enables the update_favorite command without any pre-configured scope."
+commands.allow = ["update_favorite"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-delete-favorite"
+description = "Enables the delete_favorite command without any pre-configured scope."
+commands.allow = ["delete_favorite"]
+commands.deny = []

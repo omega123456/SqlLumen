@@ -643,6 +643,487 @@ async fn assert_generate_table_ddl_validation_error(
     assert!(error.contains(expected_fragment), "unexpected error: {error}");
 }
 
+// ── CREATE TABLE: FULLTEXT index ──────────────────────────────────
+#[test]
+fn test_create_table_with_fulltext_index() {
+    let mut table = schema(vec![column("title")]);
+    table
+        .indexes
+        .push(index("ft_title", "FULLTEXT", &["title"]));
+
+    let ddl = generate_create_table_ddl(&table, "appdb");
+    assert!(
+        ddl.contains("FULLTEXT KEY `ft_title` (`title`)"),
+        "DDL should contain FULLTEXT KEY clause, got: {ddl}"
+    );
+}
+
+// ── CREATE TABLE: type_modifier (UNSIGNED) ───────────────────────
+#[test]
+fn test_create_table_with_type_modifier() {
+    let mut col = column("age");
+    col.r#type = "INT".to_string();
+    col.type_modifier = "UNSIGNED".to_string();
+
+    let ddl = generate_create_table_ddl(&schema(vec![col]), "appdb");
+    assert!(
+        ddl.contains("`age` INT UNSIGNED NOT NULL"),
+        "DDL should include UNSIGNED modifier, got: {ddl}"
+    );
+}
+
+// ── CREATE TABLE: type_modifier with length ──────────────────────
+#[test]
+fn test_create_table_with_type_modifier_and_length() {
+    let mut col = column("counter");
+    col.r#type = "INT".to_string();
+    col.length = "11".to_string();
+    col.type_modifier = "UNSIGNED".to_string();
+
+    let ddl = generate_create_table_ddl(&schema(vec![col]), "appdb");
+    assert!(
+        ddl.contains("`counter` INT(11) UNSIGNED NOT NULL"),
+        "DDL should include length and UNSIGNED, got: {ddl}"
+    );
+}
+
+// ── CREATE TABLE: all table properties ───────────────────────────
+#[test]
+fn test_create_table_with_all_properties() {
+    let mut table = schema(vec![column("id")]);
+    table.properties.engine = "InnoDB".to_string();
+    table.properties.charset = "utf8mb4".to_string();
+    table.properties.collation = "utf8mb4_unicode_ci".to_string();
+    table.properties.auto_increment = Some(100);
+    table.properties.row_format = "Dynamic".to_string();
+    table.properties.comment = "my table".to_string();
+
+    let ddl = generate_create_table_ddl(&table, "appdb");
+    assert!(ddl.contains("ENGINE=InnoDB"), "missing ENGINE, got: {ddl}");
+    assert!(
+        ddl.contains("DEFAULT CHARSET=utf8mb4"),
+        "missing CHARSET, got: {ddl}"
+    );
+    assert!(
+        ddl.contains("COLLATE=utf8mb4_unicode_ci"),
+        "missing COLLATE, got: {ddl}"
+    );
+    assert!(
+        ddl.contains("AUTO_INCREMENT=100"),
+        "missing AUTO_INCREMENT, got: {ddl}"
+    );
+    assert!(
+        ddl.contains("ROW_FORMAT=Dynamic"),
+        "missing ROW_FORMAT, got: {ddl}"
+    );
+    assert!(
+        ddl.contains("COMMENT='my table'"),
+        "missing COMMENT, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: charset change ──────────────────────────────────
+#[test]
+fn test_alter_table_charset_change() {
+    let original = schema(vec![column("id")]);
+    let mut current = schema(vec![column("id")]);
+    current.properties.charset = "utf8mb4".to_string();
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("DEFAULT CHARSET=utf8mb4"),
+        "missing charset change, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: collation change ────────────────────────────────
+#[test]
+fn test_alter_table_collation_change() {
+    let original = schema(vec![column("id")]);
+    let mut current = schema(vec![column("id")]);
+    current.properties.collation = "utf8mb4_unicode_ci".to_string();
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("COLLATE=utf8mb4_unicode_ci"),
+        "missing collation change, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: auto_increment change ───────────────────────────
+#[test]
+fn test_alter_table_auto_increment_change() {
+    let original = schema(vec![column("id")]);
+    let mut current = schema(vec![column("id")]);
+    current.properties.auto_increment = Some(500);
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("AUTO_INCREMENT=500"),
+        "missing AUTO_INCREMENT change, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: row_format change ───────────────────────────────
+#[test]
+fn test_alter_table_row_format_change() {
+    let original = schema(vec![column("id")]);
+    let mut current = schema(vec![column("id")]);
+    current.properties.row_format = "Compressed".to_string();
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("ROW_FORMAT=Compressed"),
+        "missing ROW_FORMAT change, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: comment change ──────────────────────────────────
+#[test]
+fn test_alter_table_comment_change() {
+    let original = schema(vec![column("id")]);
+    let mut current = schema(vec![column("id")]);
+    current.properties.comment = "updated comment".to_string();
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("COMMENT='updated comment'"),
+        "missing COMMENT change, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: comment cleared to empty ────────────────────────
+#[test]
+fn test_alter_table_comment_cleared() {
+    let mut original = schema(vec![column("id")]);
+    original.properties.comment = "old comment".to_string();
+    let current = schema(vec![column("id")]);
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("COMMENT=''"),
+        "clearing comment should produce empty COMMENT clause, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: primary key addition ────────────────────────────
+#[test]
+fn test_alter_table_add_primary_key() {
+    let original = schema(vec![column("id")]);
+    let mut pk_col = column("id");
+    pk_col.is_primary_key = true;
+    let current = schema(vec![pk_col]);
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("ADD PRIMARY KEY (`id`)"),
+        "missing ADD PRIMARY KEY, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: primary key removal ─────────────────────────────
+#[test]
+fn test_alter_table_drop_primary_key() {
+    let mut pk_col = column("id");
+    pk_col.is_primary_key = true;
+    let original = schema(vec![pk_col]);
+    let current = schema(vec![column("id")]);
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("DROP PRIMARY KEY"),
+        "missing DROP PRIMARY KEY, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: primary key swap ────────────────────────────────
+#[test]
+fn test_alter_table_change_primary_key_columns() {
+    let mut pk_id = column("id");
+    pk_id.is_primary_key = true;
+    let original = schema(vec![pk_id.clone(), column("email")]);
+
+    let mut pk_email = column("email");
+    pk_email.is_primary_key = true;
+    let current = schema(vec![column("id"), pk_email]);
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("DROP PRIMARY KEY"),
+        "should drop old PK, got: {ddl}"
+    );
+    assert!(
+        ddl.contains("ADD PRIMARY KEY (`email`)"),
+        "should add new PK, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: add FULLTEXT index ──────────────────────────────
+#[test]
+fn test_alter_table_add_fulltext_index() {
+    let original = schema(vec![column("body")]);
+    let mut current = schema(vec![column("body")]);
+    current
+        .indexes
+        .push(index("ft_body", "FULLTEXT", &["body"]));
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("ADD FULLTEXT KEY `ft_body` (`body`)"),
+        "missing FULLTEXT ADD, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: add regular INDEX (not UNIQUE/FULLTEXT) ─────────
+#[test]
+fn test_alter_table_add_regular_index() {
+    let original = schema(vec![column("email")]);
+    let mut current = schema(vec![column("email")]);
+    current
+        .indexes
+        .push(index("idx_email", "INDEX", &["email"]));
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("ADD INDEX `idx_email` (`email`)"),
+        "missing ADD INDEX, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: column type_modifier change triggers MODIFY ─────
+#[test]
+fn test_alter_table_modify_column_type_modifier_change() {
+    let original = schema(vec![column("age")]);
+    let mut changed = column("age");
+    changed.type_modifier = "UNSIGNED".to_string();
+    let current = schema(vec![changed]);
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("MODIFY COLUMN `age` INT UNSIGNED NOT NULL"),
+        "modifier change should trigger MODIFY, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: column auto_increment change triggers MODIFY ────
+#[test]
+fn test_alter_table_modify_column_auto_increment_change() {
+    let original = schema(vec![column("id")]);
+    let mut changed = column("id");
+    changed.is_auto_increment = true;
+    let current = schema(vec![changed]);
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("MODIFY COLUMN `id` INT NOT NULL AUTO_INCREMENT"),
+        "auto_increment change should trigger MODIFY, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: invalid original schema returns empty DDL ───────
+#[test]
+fn test_alter_table_invalid_original_schema_returns_empty() {
+    let original = schema(vec![column("")]);
+    let current = schema(vec![column("id")]);
+
+    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert_eq!(ddl, "");
+    assert!(warnings.is_empty());
+}
+
+// ── ALTER TABLE: invalid current schema returns empty DDL ────────
+#[test]
+fn test_alter_table_invalid_current_schema_returns_empty() {
+    let original = schema(vec![column("id")]);
+    let current = schema(vec![column("")]);
+
+    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert_eq!(ddl, "");
+    assert!(warnings.is_empty());
+}
+
+// ── ALTER TABLE: invalid database returns empty DDL ──────────────
+#[test]
+fn test_alter_table_invalid_database_returns_empty() {
+    let original = schema(vec![column("id")]);
+    let current = schema(vec![column("id"), column("email")]);
+
+    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, &"x".repeat(65));
+    assert_eq!(ddl, "");
+    assert!(warnings.is_empty());
+}
+
+// ── ALTER TABLE: blank table name returns empty DDL ──────────────
+#[test]
+fn test_alter_table_blank_table_name_returns_empty() {
+    let original = schema(vec![column("id")]);
+    let mut current = schema(vec![column("id"), column("email")]);
+    current.table_name = "   ".to_string();
+
+    let (ddl, warnings) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert_eq!(ddl, "");
+    assert!(warnings.is_empty());
+}
+
+// ── Serde: DefaultValueModel round-trips all variants ────────────
+#[test]
+fn test_default_value_model_serde_round_trips() {
+    let variants = vec![
+        DefaultValueModel::NoDefault,
+        DefaultValueModel::NullDefault,
+        DefaultValueModel::Literal {
+            value: "hello".to_string(),
+        },
+        DefaultValueModel::Expression {
+            value: "NOW()".to_string(),
+        },
+    ];
+
+    for variant in &variants {
+        let json = serde_json::to_string(variant).expect("should serialize");
+        let deserialized: DefaultValueModel =
+            serde_json::from_str(&json).expect("should deserialize");
+        assert_eq!(*variant, deserialized, "round-trip failed for: {json}");
+    }
+}
+
+// ── Serde: DesignerColumnDef round-trip ──────────────────────────
+#[test]
+fn test_designer_column_def_serde_round_trip() {
+    let col = DesignerColumnDef {
+        name: "age".to_string(),
+        r#type: "INT".to_string(),
+        type_modifier: "UNSIGNED".to_string(),
+        length: "11".to_string(),
+        nullable: true,
+        is_primary_key: false,
+        is_auto_increment: false,
+        default_value: DefaultValueModel::Literal {
+            value: "0".to_string(),
+        },
+        comment: "user's age".to_string(),
+        original_name: "age".to_string(),
+    };
+
+    let json = serde_json::to_string(&col).expect("should serialize");
+    let deserialized: DesignerColumnDef =
+        serde_json::from_str(&json).expect("should deserialize");
+    assert_eq!(col, deserialized);
+    assert!(json.contains("\"typeModifier\":\"UNSIGNED\""));
+}
+
+// ── Serde: DesignerIndexDef round-trip ───────────────────────────
+#[test]
+fn test_designer_index_def_serde_round_trip() {
+    let idx = index("idx_email", "UNIQUE", &["email"]);
+    let json = serde_json::to_string(&idx).expect("should serialize");
+    let deserialized: DesignerIndexDef =
+        serde_json::from_str(&json).expect("should deserialize");
+    assert_eq!(idx, deserialized);
+}
+
+// ── Serde: DesignerForeignKeyDef round-trip ──────────────────────
+#[test]
+fn test_designer_foreign_key_def_serde_round_trip() {
+    let fk = foreign_key("fk_test", "user_id");
+    let json = serde_json::to_string(&fk).expect("should serialize");
+    let deserialized: DesignerForeignKeyDef =
+        serde_json::from_str(&json).expect("should deserialize");
+    assert_eq!(fk, deserialized);
+}
+
+// ── Serde: DesignerTableProperties round-trip ────────────────────
+#[test]
+fn test_designer_table_properties_serde_round_trip() {
+    let props = DesignerTableProperties {
+        engine: "InnoDB".to_string(),
+        charset: "utf8mb4".to_string(),
+        collation: "utf8mb4_general_ci".to_string(),
+        auto_increment: Some(42),
+        row_format: "Compact".to_string(),
+        comment: "test comment".to_string(),
+    };
+    let json = serde_json::to_string(&props).expect("should serialize");
+    let deserialized: DesignerTableProperties =
+        serde_json::from_str(&json).expect("should deserialize");
+    assert_eq!(props, deserialized);
+}
+
+// ── Serde: DesignerTableSchema round-trip ────────────────────────
+#[test]
+fn test_designer_table_schema_serde_round_trip() {
+    let mut table = schema(vec![column("id"), column("email")]);
+    table.indexes.push(index("idx_email", "INDEX", &["email"]));
+    table.foreign_keys.push(foreign_key("fk_test", "email"));
+    table.properties.engine = "InnoDB".to_string();
+
+    let json = serde_json::to_string(&table).expect("should serialize");
+    let deserialized: DesignerTableSchema =
+        serde_json::from_str(&json).expect("should deserialize");
+    assert_eq!(table, deserialized);
+}
+
+// ── ALTER TABLE: multiple table option changes at once ───────────
+#[test]
+fn test_alter_table_multiple_option_changes() {
+    let original = schema(vec![column("id")]);
+    let mut current = schema(vec![column("id")]);
+    current.properties.engine = "MyISAM".to_string();
+    current.properties.charset = "latin1".to_string();
+    current.properties.collation = "latin1_swedish_ci".to_string();
+    current.properties.auto_increment = Some(1000);
+    current.properties.row_format = "Fixed".to_string();
+    current.properties.comment = "new comment".to_string();
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(ddl.contains("ENGINE=MyISAM"), "got: {ddl}");
+    assert!(ddl.contains("DEFAULT CHARSET=latin1"), "got: {ddl}");
+    assert!(ddl.contains("COLLATE=latin1_swedish_ci"), "got: {ddl}");
+    assert!(ddl.contains("AUTO_INCREMENT=1000"), "got: {ddl}");
+    assert!(ddl.contains("ROW_FORMAT=Fixed"), "got: {ddl}");
+    assert!(ddl.contains("COMMENT='new comment'"), "got: {ddl}");
+}
+
+// ── CREATE TABLE: comment with single quote escaping ─────────────
+#[test]
+fn test_create_table_comment_with_single_quote() {
+    let mut col = column("name");
+    col.comment = "user's name".to_string();
+
+    let ddl = generate_create_table_ddl(&schema(vec![col]), "appdb");
+    assert!(
+        ddl.contains("COMMENT 'user''s name'"),
+        "single quote should be escaped, got: {ddl}"
+    );
+}
+
+// ── CREATE TABLE: table-level comment with single quote ──────────
+#[test]
+fn test_create_table_table_comment_with_single_quote() {
+    let mut table = schema(vec![column("id")]);
+    table.properties.comment = "it's a table".to_string();
+
+    let ddl = generate_create_table_ddl(&table, "appdb");
+    assert!(
+        ddl.contains("COMMENT='it''s a table'"),
+        "table comment quote should be escaped, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: auto_increment removed (Some → None) ────────────
+#[test]
+fn test_alter_table_auto_increment_removed() {
+    let mut original = schema(vec![column("id")]);
+    original.properties.auto_increment = Some(100);
+    let current = schema(vec![column("id")]);
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    // When auto_increment becomes None, the diff_table_options does NOT emit a clause
+    // (since there's no "unset auto_increment" in MySQL ALTER TABLE).
+    // The DDL should be empty since nothing else changed.
+    assert_eq!(ddl, "", "removing auto_increment should not produce DDL");
+}
+
 #[cfg(not(coverage))]
 mod command_wrapper_integration {
     use super::*;
@@ -656,7 +1137,7 @@ mod command_wrapper_integration {
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
     use serde_json::json;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
     use tauri::webview::InvokeRequest;
@@ -666,12 +1147,14 @@ mod command_wrapper_integration {
         let conn = Connection::open_in_memory().expect("should open in-memory db");
         mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
         AppState {
-            db: Mutex::new(conn),
+            db: Arc::new(Mutex::new(conn)),
             registry: ConnectionRegistry::new(),
             app_handle: None,
             results: std::sync::RwLock::new(std::collections::HashMap::new()),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+            dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         }
     }
 

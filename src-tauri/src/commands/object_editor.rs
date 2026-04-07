@@ -7,6 +7,10 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(coverage))]
+use crate::commands::query_history_bridge::{log_single_entry, resolve_connection_context};
+#[cfg(not(coverage))]
+use crate::db::history::NewHistoryEntry;
+#[cfg(not(coverage))]
 use crate::mysql::query_log;
 use crate::mysql::schema_queries;
 use crate::state::AppState;
@@ -655,7 +659,30 @@ pub async fn get_object_body(
     object_type: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    get_object_body_impl(&state, &connection_id, &database, &object_name, &object_type).await
+    let start = std::time::Instant::now();
+    let result =
+        get_object_body_impl(&state, &connection_id, &database, &object_name, &object_type).await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let type_upper = object_type.to_uppercase();
+    let sql_text = format!("SHOW CREATE {type_upper} `{database}`.`{object_name}`");
+
+    log_single_entry(
+        &state.db,
+        NewHistoryEntry {
+            connection_id: conn_id,
+            database_name,
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(if result.is_ok() { 1 } else { 0 }),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        },
+    );
+
+    result
 }
 
 #[cfg(not(coverage))]
@@ -664,7 +691,49 @@ pub async fn save_object(
     request: SaveObjectRequest,
     state: State<'_, AppState>,
 ) -> Result<SaveObjectResponse, String> {
-    save_object_impl(request, &state).await
+    let start = std::time::Instant::now();
+    let connection_id_for_log = request.connection_id.clone();
+    let sql_text = request.body.clone();
+    let result = save_object_impl(request, &state).await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) =
+        resolve_connection_context(&state, &connection_id_for_log);
+
+    match &result {
+        Ok(response) => {
+            log_single_entry(
+                &state.db,
+                NewHistoryEntry {
+                    connection_id: conn_id,
+                    database_name,
+                    sql_text,
+                    duration_ms: Some(duration_ms),
+                    row_count: Some(0),
+                    affected_rows: Some(0),
+                    success: response.success,
+                    error_message: response.error_message.clone(),
+                },
+            );
+        }
+        Err(e) => {
+            log_single_entry(
+                &state.db,
+                NewHistoryEntry {
+                    connection_id: conn_id,
+                    database_name,
+                    sql_text,
+                    duration_ms: Some(duration_ms),
+                    row_count: Some(0),
+                    affected_rows: Some(0),
+                    success: false,
+                    error_message: Some(e.clone()),
+                },
+            );
+        }
+    }
+
+    result
 }
 
 #[cfg(not(coverage))]
@@ -676,7 +745,32 @@ pub async fn drop_object(
     object_type: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    drop_object_impl(&state, &connection_id, &database, &object_name, &object_type).await
+    let start = std::time::Instant::now();
+    let result =
+        drop_object_impl(&state, &connection_id, &database, &object_name, &object_type).await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let type_keyword = object_type_keyword(&object_type).unwrap_or("UNKNOWN");
+    let sql_text = format!(
+        "DROP {type_keyword} IF EXISTS `{database}`.`{object_name}`"
+    );
+
+    log_single_entry(
+        &state.db,
+        NewHistoryEntry {
+            connection_id: conn_id,
+            database_name,
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        },
+    );
+
+    result
 }
 
 #[cfg(not(coverage))]

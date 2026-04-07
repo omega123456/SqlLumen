@@ -22,7 +22,10 @@ export async function waitForApp(page: Page) {
     }
   }
 
-  const remainingTimeout = Math.max(1_000, APP_READY_TOTAL_TIMEOUT_MS - (Date.now() - startedAt))
+  const remainingTimeout = Math.max(
+    APP_READY_MS,
+    APP_READY_TOTAL_TIMEOUT_MS - (Date.now() - startedAt)
+  )
   await expect(page.getByTestId('app-layout')).toBeVisible({ timeout: remainingTimeout })
   await expect(page.getByTestId('status-bar')).toContainText('Ready', {
     timeout: remainingTimeout,

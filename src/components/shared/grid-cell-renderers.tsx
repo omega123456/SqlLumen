@@ -9,6 +9,7 @@
  */
 
 import type { RenderCellProps } from 'react-data-grid'
+import { useSettingsStore } from '../../stores/settings-store'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -25,13 +26,15 @@ function isNullish(value: unknown): value is null | undefined {
 /**
  * Renders a cell value as a React node with consistent NULL/BLOB handling.
  *
- * - null / undefined → `<span class="td-null-value">NULL</span>`
+ * - null / undefined → `<span class="td-null-value">{nullDisplay}</span>`
+ *   where nullDisplay is read from the settings store (`results.nullDisplay`).
  * - string starting with "[BLOB" → `<span class="td-blob-value">{value}</span>`
  * - anything else → `<span>{String(value)}</span>`
  */
 export function renderCellValue(value: unknown): React.ReactNode {
   if (isNullish(value)) {
-    return <span className="td-null-value">NULL</span>
+    const nullDisplay = useSettingsStore.getState().getSetting('results.nullDisplay')
+    return <span className="td-null-value">{nullDisplay}</span>
   }
 
   if (typeof value === 'string' && value.startsWith('[BLOB')) {

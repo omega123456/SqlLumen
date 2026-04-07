@@ -4,12 +4,12 @@
 //! server. It is intentionally separate from the `db/` module which is SQLite-only.
 
 use serde::{Deserialize, Serialize};
+use sqlx::mysql::MySqlRow;
+use sqlx::Row;
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
 #[cfg(not(coverage))]
-use sqlx::mysql::MySqlRow;
-#[cfg(not(coverage))]
-use sqlx::{MySqlPool, Row};
+use sqlx::MySqlPool;
 #[cfg(not(coverage))]
 use std::collections::HashMap;
 
@@ -140,8 +140,7 @@ pub fn safe_identifier(name: &str) -> Result<String, String> {
 /// Decode a text-like cell that may be reported as `VARCHAR` or `VARBINARY` depending on
 /// server (e.g. MariaDB / some MySQL builds expose `information_schema` identifier columns as
 /// binary). Avoids `unwrap()` panics from sqlx type mismatches.
-#[cfg(not(coverage))]
-fn decode_mysql_text_cell(row: &MySqlRow, index: usize) -> Result<String, String> {
+pub(crate) fn decode_mysql_text_cell(row: &MySqlRow, index: usize) -> Result<String, String> {
     match row.try_get::<String, _>(index) {
         Ok(value) => Ok(value),
         Err(_) => {
@@ -153,8 +152,7 @@ fn decode_mysql_text_cell(row: &MySqlRow, index: usize) -> Result<String, String
     }
 }
 
-#[cfg(not(coverage))]
-fn decode_mysql_text_cell_named(row: &MySqlRow, column: &str) -> Result<String, String> {
+pub(crate) fn decode_mysql_text_cell_named(row: &MySqlRow, column: &str) -> Result<String, String> {
     match row.try_get::<String, _>(column) {
         Ok(value) => Ok(value),
         Err(_) => {

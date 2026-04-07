@@ -13,7 +13,7 @@ use mysql_client_lib::mysql::query_executor::{
 use mysql_client_lib::mysql::registry::ConnectionRegistry;
 use mysql_client_lib::state::AppState;
 use rusqlite::Connection;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 mod common;
 
@@ -22,12 +22,14 @@ fn test_state() -> AppState {
     let conn = Connection::open_in_memory().expect("should open in-memory db");
     mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
     AppState {
-        db: Mutex::new(conn),
+        db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),
         app_handle: None,
         results: std::sync::RwLock::new(std::collections::HashMap::new()),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+        dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
     }
 }
 

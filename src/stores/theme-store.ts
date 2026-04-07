@@ -30,16 +30,24 @@ function applyThemeState(theme: Theme, set: (partial: Partial<ThemeState>) => vo
 interface ThemeState {
   theme: Theme
   resolvedTheme: ResolvedTheme
+  /** Snapshot of `theme` before a preview started (null when not previewing). */
+  _previewSnapshot: Theme | null
   setTheme: (theme: Theme) => Promise<void>
   initialize: () => Promise<void>
+  /** Temporarily apply a theme without persisting (used by settings dialog preview). */
+  previewTheme: (theme: Theme) => void
+  /** Revert to the theme captured before previewing started. */
+  revertPreview: () => void
 }
 
-export const useThemeStore = create<ThemeState>()((set) => ({
+export const useThemeStore = create<ThemeState>()((set, get) => ({
   theme: 'system',
   resolvedTheme: 'light',
+  _previewSnapshot: null,
 
   setTheme: async (theme: Theme) => {
     applyThemeState(theme, set)
+    set({ _previewSnapshot: null })
     // Fire-and-forget persistence — don't block theme switching on IPC
     try {
       await setThemeSetting(theme)
@@ -61,5 +69,22 @@ export const useThemeStore = create<ThemeState>()((set) => ({
     }
     // Fallback: use system preference
     applyThemeState('system', set)
+  },
+
+  previewTheme: (theme: Theme) => {
+    const state = get()
+    // Capture the current theme on the first preview call only
+    const snapshot = state._previewSnapshot ?? state.theme
+    const resolved = resolveTheme(theme)
+    applyTheme(resolved)
+    set({ resolvedTheme: resolved, _previewSnapshot: snapshot })
+  },
+
+  revertPreview: () => {
+    const state = get()
+    if (state._previewSnapshot !== null) {
+      applyThemeState(state._previewSnapshot, set)
+      set({ _previewSnapshot: null })
+    }
   },
 }))

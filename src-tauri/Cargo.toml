@@ -38,6 +38,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "regist
 tracing-appender = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 tauri-plugin-mcp-bridge = "0.10"
+tauri-plugin-updater = "2"
 
 # keyring v3 has no default features — without these, the mock backend is used (no OS persistence).
 [target.'cfg(target_os = "windows")'.dependencies]

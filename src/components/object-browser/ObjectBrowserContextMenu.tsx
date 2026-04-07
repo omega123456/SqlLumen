@@ -4,6 +4,8 @@ import {
   ArrowsClockwise,
   CopySimple,
   Database,
+  Export,
+  FileCode,
   Info,
   ListNumbers,
   PencilSimple,
@@ -54,6 +56,9 @@ export interface ObjectBrowserContextMenuProps {
     routineName: string,
     routineType: 'procedure' | 'function'
   ) => void
+  // SQL dump export callbacks (Phase 9.5a)
+  onExportDump?: (databaseName: string, tableName?: string) => void
+  onExportDdl?: (databaseName: string, tableName?: string) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +111,8 @@ export function ObjectBrowserContextMenu({
   onDropObject,
   onCreateObject,
   onExecuteRoutine,
+  onExportDump,
+  onExportDdl,
 }: ObjectBrowserContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
   const openTab = useWorkspaceStore((state) => state.openTab)
@@ -249,6 +256,8 @@ export function ObjectBrowserContextMenu({
     onDropObject,
     onCreateObject,
     onExecuteRoutine,
+    onExportDump,
+    onExportDdl,
     closeMenu,
   })
 
@@ -332,6 +341,8 @@ interface BuildMenuArgs {
     routineName: string,
     routineType: 'procedure' | 'function'
   ) => void
+  onExportDump?: (databaseName: string, tableName?: string) => void
+  onExportDdl?: (databaseName: string, tableName?: string) => void
   closeMenu: () => void
 }
 
@@ -359,6 +370,8 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
     onDropObject,
     onCreateObject,
     onExecuteRoutine,
+    onExportDump,
+    onExportDdl,
     closeMenu,
   } = args
 
@@ -374,6 +387,8 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         onRenameDatabase,
         onDropDatabase,
         onCreateObject,
+        onExportDump,
+        onExportDdl,
         closeMenu,
       })
     case 'table':
@@ -389,6 +404,8 @@ function buildMenuEntries(args: BuildMenuArgs): MenuEntry[] {
         onRenameTable,
         onDesignTable,
         onCreateTable,
+        onExportDump,
+        onExportDdl,
         closeMenu,
       })
     case 'view':
@@ -469,6 +486,8 @@ function buildDatabaseMenu(args: {
   onDropDatabase?: (databaseName: string) => void
   onCreateTable?: (databaseName: string) => void
   onCreateObject?: (databaseName: string, objectType: EditableObjectType) => void
+  onExportDump?: (databaseName: string, tableName?: string) => void
+  onExportDdl?: (databaseName: string, tableName?: string) => void
   closeMenu: () => void
 }): MenuEntry[] {
   const {
@@ -481,11 +500,36 @@ function buildDatabaseMenu(args: {
     onDropDatabase,
     onCreateTable,
     onCreateObject,
+    onExportDump,
+    onExportDdl,
     closeMenu,
   } = args
 
   if (isReadOnly) {
     return [
+      {
+        key: 'export-dump',
+        label: 'Export SQL Dump...',
+        icon: <Export size={18} weight="regular" />,
+        disabled: !onExportDump,
+        destructive: false,
+        action: () => {
+          onExportDump?.(databaseName)
+          closeMenu()
+        },
+      },
+      {
+        key: 'export-ddl',
+        label: 'Export Schema DDL...',
+        icon: <FileCode size={18} weight="regular" />,
+        disabled: !onExportDdl,
+        destructive: false,
+        action: () => {
+          onExportDdl?.(databaseName)
+          closeMenu()
+        },
+      },
+      { key: 'sep-ro-1', separator: true },
       {
         key: 'refresh',
         label: 'Refresh',
@@ -599,6 +643,29 @@ function buildDatabaseMenu(args: {
     },
     { key: 'sep-1', separator: true },
     {
+      key: 'export-dump',
+      label: 'Export SQL Dump...',
+      icon: <Export size={18} weight="regular" />,
+      disabled: !onExportDump,
+      destructive: false,
+      action: () => {
+        onExportDump?.(databaseName)
+        closeMenu()
+      },
+    },
+    {
+      key: 'export-ddl',
+      label: 'Export Schema DDL...',
+      icon: <FileCode size={18} weight="regular" />,
+      disabled: !onExportDdl,
+      destructive: false,
+      action: () => {
+        onExportDdl?.(databaseName)
+        closeMenu()
+      },
+    },
+    { key: 'sep-2', separator: true },
+    {
       key: 'drop-database',
       label: 'Drop Database...',
       icon: <Trash size={18} weight="regular" />,
@@ -609,7 +676,7 @@ function buildDatabaseMenu(args: {
         closeMenu()
       },
     },
-    { key: 'sep-2', separator: true },
+    { key: 'sep-3', separator: true },
     {
       key: 'refresh',
       label: 'Refresh',
@@ -633,6 +700,8 @@ function buildTableMenu(args: {
   onRenameTable?: (databaseName: string, tableName: string) => void
   onDesignTable?: (databaseName: string, tableName: string) => void
   onCreateTable?: (databaseName: string) => void
+  onExportDump?: (databaseName: string, tableName?: string) => void
+  onExportDdl?: (databaseName: string, tableName?: string) => void
   closeMenu: () => void
 }): MenuEntry[] {
   const {
@@ -647,6 +716,8 @@ function buildTableMenu(args: {
     onRenameTable,
     onDesignTable,
     onCreateTable,
+    onExportDump,
+    onExportDdl,
     closeMenu,
   } = args
 
@@ -660,6 +731,18 @@ function buildTableMenu(args: {
         destructive: false,
         action: openSchemaInfoTab,
       },
+      {
+        key: 'export-dump',
+        label: 'Export SQL Dump...',
+        icon: <Export size={18} weight="regular" />,
+        disabled: !onExportDump,
+        destructive: false,
+        action: () => {
+          onExportDump?.(databaseName, objectName)
+          closeMenu()
+        },
+      },
+      { key: 'sep-ro-1', separator: true },
       {
         key: 'copy-name',
         label: 'Copy Table Name',
@@ -722,6 +805,29 @@ function buildTableMenu(args: {
     },
     { key: 'sep-1', separator: true },
     {
+      key: 'export-dump',
+      label: 'Export SQL Dump...',
+      icon: <Export size={18} weight="regular" />,
+      disabled: !onExportDump,
+      destructive: false,
+      action: () => {
+        onExportDump?.(databaseName, objectName)
+        closeMenu()
+      },
+    },
+    {
+      key: 'export-ddl',
+      label: 'Export Schema DDL...',
+      icon: <FileCode size={18} weight="regular" />,
+      disabled: !onExportDdl,
+      destructive: false,
+      action: () => {
+        onExportDdl?.(databaseName, objectName)
+        closeMenu()
+      },
+    },
+    { key: 'sep-2', separator: true },
+    {
       key: 'truncate-table',
       label: 'Truncate Table...',
       icon: <Eraser size={18} weight="regular" />,
@@ -743,7 +849,7 @@ function buildTableMenu(args: {
         closeMenu()
       },
     },
-    { key: 'sep-2', separator: true },
+    { key: 'sep-3', separator: true },
     {
       key: 'rename-table',
       label: 'Rename Table...',

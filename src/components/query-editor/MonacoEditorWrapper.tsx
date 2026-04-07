@@ -8,6 +8,8 @@ import Editor, { useMonaco } from '@monaco-editor/react'
 import type * as MonacoType from 'monaco-editor'
 import { useThemeStore } from '../../stores/theme-store'
 import { useQueryStore } from '../../stores/query-store'
+import { useSettingsStore } from '../../stores/settings-store'
+import { useShortcutStore } from '../../stores/shortcut-store'
 import { registerMonacoThemes, getMonacoThemeName } from './monaco-theme'
 import { registerModelConnection, unregisterModelConnection } from './completion-service'
 import { loadCache } from './schema-metadata-cache'
@@ -56,6 +58,20 @@ export function MonacoEditorWrapper({
   const status = useQueryStore((state) => state.tabs[tabId]?.status ?? 'idle')
   const setContent = useQueryStore((state) => state.setContent)
   const setCursorPosition = useQueryStore((state) => state.setCursorPosition)
+
+  // Read editor settings from the settings store
+  const editorFontFamily = useSettingsStore((state) => state.getSetting('editor.fontFamily'))
+  const editorFontSize = useSettingsStore((state) =>
+    parseInt(state.getSetting('editor.fontSize'), 10)
+  )
+  const editorLineHeight = useSettingsStore((state) =>
+    parseFloat(state.getSetting('editor.lineHeight'))
+  )
+  const editorWordWrap = useSettingsStore((state) => state.getSetting('editor.wordWrap') === 'true')
+  const editorMinimap = useSettingsStore((state) => state.getSetting('editor.minimap') === 'true')
+  const editorLineNumbers = useSettingsStore(
+    (state) => state.getSetting('editor.lineNumbers') === 'true'
+  )
 
   // Determine whether we are using override props (object-editor mode) or query-store bindings
   const isOverrideMode = overrideValue !== undefined
@@ -149,8 +165,39 @@ export function MonacoEditorWrapper({
       if (modelUriRef.current) unregisterModelConnection(modelUriRef.current)
     })
 
+    // Register F9 (Execute Query) and F12 (Format Query) as Monaco keybindings
+    // so they are dispatched through the shortcut system even when the editor is
+    // focused and captures key events before the global listener.
+    editor.addCommand(monacoInstance.KeyCode.F9, () => {
+      useShortcutStore.getState().dispatchAction('execute-query')
+    })
+    editor.addCommand(monacoInstance.KeyCode.F12, () => {
+      useShortcutStore.getState().dispatchAction('format-query')
+    })
+
     if (onMount) onMount(editor)
   }
+
+  // Subscribe to settings changes and update the live editor instance
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.updateOptions({
+      fontFamily: `'${editorFontFamily}', 'Fira Code', ui-monospace, monospace`,
+      fontSize: editorFontSize || 14,
+      lineHeight: (editorFontSize || 14) * (editorLineHeight || 1.6),
+      wordWrap: editorWordWrap ? 'on' : 'off',
+      minimap: { enabled: editorMinimap },
+      lineNumbers: editorLineNumbers ? 'on' : 'off',
+    })
+  }, [
+    editorFontFamily,
+    editorFontSize,
+    editorLineHeight,
+    editorWordWrap,
+    editorMinimap,
+    editorLineNumbers,
+  ])
 
   function handleChange(value: string | undefined) {
     const v = value ?? ''
@@ -172,14 +219,15 @@ export function MonacoEditorWrapper({
         onMount={handleEditorMount}
         options={{
           readOnly: isReadOnly,
-          fontSize: 14,
-          lineHeight: 22.4, // 14 * 1.6
+          fontSize: editorFontSize || 14,
+          lineHeight: (editorFontSize || 14) * (editorLineHeight || 1.6),
           suggestFontSize: 14,
           suggestLineHeight: 36,
-          fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace",
-          minimap: { enabled: false },
+          fontFamily: `'${editorFontFamily}', 'Fira Code', ui-monospace, monospace`,
+          minimap: { enabled: editorMinimap },
+          lineNumbers: editorLineNumbers ? 'on' : 'off',
           scrollBeyondLastLine: false,
-          wordWrap: 'off',
+          wordWrap: editorWordWrap ? 'on' : 'off',
           tabSize: 2,
           insertSpaces: true,
           automaticLayout: true,
@@ -197,7 +245,6 @@ export function MonacoEditorWrapper({
             showIcons: true,
             showWords: false,
           },
-          fixedOverflowWidgets: true,
           parameterHints: { enabled: true },
           quickSuggestions: {
             other: true,

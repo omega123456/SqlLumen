@@ -1,0 +1,5 @@
+[[permission]]
+identifier = "allow-get-app-info"
+description = "Allows getting app info"
+[permission.commands]
+allow = ["get_app_info"]

@@ -1,0 +1,97 @@
+/* ShortcutsSettings — table of keyboard shortcuts */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: left;
+  font-size: var(--type-size-xs);
+  font-family: var(--font-body);
+  font-weight: 600;
+  color: var(--on-surface-variant);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--outline-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.table td {
+  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  color: var(--on-surface);
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.3);
+  vertical-align: middle;
+}
+
+.shortcutCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recordButton {
+  border: 1px dashed var(--outline-variant);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-xs);
+  font-family: var(--font-body);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.recordButton:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.recording {
+  border-color: var(--primary);
+  color: var(--primary);
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.conflict {
+  color: var(--error);
+  font-size: var(--type-size-xs);
+  font-family: var(--font-body);
+}
+
+.resetButton {
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-xs);
+  font-family: var(--font-body);
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.resetButton:hover {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+.actionDescription {
+  font-size: var(--type-size-xs);
+  color: var(--on-surface-variant);
+}

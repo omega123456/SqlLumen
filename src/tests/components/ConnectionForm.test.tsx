@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ConnectionForm } from '../../components/connection-dialog/ConnectionForm'
 import { useConnectionStore } from '../../stores/connection-store'
+import { useSettingsStore } from '../../stores/settings-store'
 import type { SavedConnection } from '../../types/connection'
 
 // Mock IPC
@@ -928,5 +929,23 @@ describe('ConnectionForm', () => {
 
     await user.clear(dbInput)
     expect(dbInput).toHaveValue('')
+  })
+
+  it('reads default timeout and keepalive from settings store', () => {
+    useSettingsStore.setState({
+      settings: {
+        'connection.defaultTimeout': '30',
+        'connection.defaultKeepalive': '120',
+      },
+      pendingChanges: {},
+    })
+
+    render(<ConnectionForm />)
+
+    const timeoutInput = screen.getByLabelText('Connect Timeout')
+    expect(timeoutInput).toHaveValue(30)
+
+    const keepaliveInput = screen.getByLabelText('Keepalive Interval')
+    expect(keepaliveInput).toHaveValue(120)
   })
 })

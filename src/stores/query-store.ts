@@ -32,9 +32,29 @@ import {
 import { mapSingleColumnForeignKeys } from '../lib/foreign-key-utils'
 import type { ForeignKeyColumnInfo } from '../types/schema'
 import { getFirstSqlKeyword } from '../lib/sql-utils'
+import { useSettingsStore } from './settings-store'
+import { useHistoryStore } from './history-store'
 
 // Re-export for backward compatibility (used by tests and other modules)
 export { stripLeadingSqlComments } from '../lib/sql-utils'
+
+/** Default page-size fallback used when settings have not been loaded (e.g. in tests). */
+const FALLBACK_PAGE_SIZE = 1000
+
+/**
+ * Read the default page size from the settings store.
+ * Returns the settings value if settings have been loaded; otherwise falls back
+ * to FALLBACK_PAGE_SIZE (1000) so that existing tests are not affected.
+ */
+export function getDefaultPageSize(): number {
+  const state = useSettingsStore.getState()
+  // Settings are loaded if the settings map has keys
+  if (Object.keys(state.settings).length > 0) {
+    const parsed = parseInt(state.getSetting('results.pageSize'), 10)
+    if (!isNaN(parsed) && parsed > 0) return parsed
+  }
+  return FALLBACK_PAGE_SIZE
+}
 
 /**
  * Returns true if the SQL is a pure SELECT or WITH statement that can
@@ -187,7 +207,7 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   queryId: null,
   currentPage: 1,
   totalPages: 1,
-  pageSize: 1000,
+  pageSize: FALLBACK_PAGE_SIZE,
   autoLimitApplied: false,
   errorMessage: null,
   viewMode: 'grid',
@@ -618,7 +638,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     if (currentState?.status === 'running') return
 
     const activeResult = getActiveResultState(tabId)
-    const currentPageSize = activeResult?.pageSize ?? DEFAULT_RESULT_STATE.pageSize
+    const currentPageSize = activeResult?.pageSize ?? getDefaultPageSize()
 
     // Clear edit state
     get().clearEditState(tabId)
@@ -645,6 +665,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         wasCancelled: false,
       })
       finalizeExecution(tabId)
+
+      // Notify history store so the panel auto-refreshes
+      useHistoryStore.getState().notifyNewQuery(connectionId)
 
       // Fire-and-forget analysis on the first result if it's a SELECT
       if (
@@ -682,6 +705,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         wasCancelled: false,
       })
       finalizeExecution(tabId)
+
+      // Notify history store so the panel auto-refreshes (error queries are logged too)
+      useHistoryStore.getState().notifyNewQuery(connectionId)
     }
   }
 
@@ -770,7 +796,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       // Grab the current page size from active result
       const activeResult = getActiveResultState(tabId)
-      const currentPageSize = activeResult?.pageSize ?? DEFAULT_RESULT_STATE.pageSize
+      const currentPageSize = activeResult?.pageSize ?? getDefaultPageSize()
 
       // Clear edit state before the new query
       get().clearEditState(tabId)
@@ -816,6 +842,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         })
         finalizeExecution(tabId)
 
+        // Notify history store so the panel auto-refreshes
+        useHistoryStore.getState().notifyNewQuery(connectionId)
+
         // Fire-and-forget background query analysis
         // Only for SELECT/WITH queries with columns
         if (result.columns.length > 0 && isEditableSelectSql(sql)) {
@@ -853,6 +882,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           wasCancelled: false,
         })
         finalizeExecution(tabId)
+
+        // Notify history store so the panel auto-refreshes (error queries are logged too)
+        useHistoryStore.getState().notifyNewQuery(connectionId)
       }
     },
 
@@ -865,7 +897,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             connectionId,
             tabId,
             statements,
-            getActiveResultState(tabId)?.pageSize ?? DEFAULT_RESULT_STATE.pageSize
+            getActiveResultState(tabId)?.pageSize ?? getDefaultPageSize()
           ),
         true
       )
@@ -880,7 +912,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             connectionId,
             tabId,
             sql,
-            getActiveResultState(tabId)?.pageSize ?? DEFAULT_RESULT_STATE.pageSize
+            getActiveResultState(tabId)?.pageSize ?? getDefaultPageSize()
           ),
         false
       )

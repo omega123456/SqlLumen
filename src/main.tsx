@@ -6,6 +6,7 @@ import { loader } from '@monaco-editor/react'
 import './lib/monaco-worker-setup'
 import './styles/global.css'
 import App from './App'
+import { useSettingsStore } from './stores/settings-store'
 
 // Use locally-installed monaco-editor instead of CDN.
 // This ensures our MonacoEnvironment.getWorker setup is used and the
@@ -61,6 +62,7 @@ async function init() {
     const { useTableDataStore } = await import('./stores/table-data-store')
     const { useTableDesignerStore } = await import('./stores/table-designer-store')
     const { useObjectEditorStore } = await import('./stores/object-editor-store')
+    const { useImportDialogStore } = await import('./stores/import-dialog-store')
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
     ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
     ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore
@@ -68,24 +70,32 @@ async function init() {
     ;(window as unknown as Record<string, unknown>).__tableDataStore__ = useTableDataStore
     ;(window as unknown as Record<string, unknown>).__tableDesignerStore__ = useTableDesignerStore
     ;(window as unknown as Record<string, unknown>).__objectEditorStore__ = useObjectEditorStore
+    ;(window as unknown as Record<string, unknown>).__importDialogStore__ = useImportDialogStore
   }
 
-  // Apply theme before React renders to prevent flash
+  // Load all settings before rendering so stores/components can read them
+  // synchronously. Theme is applied immediately to prevent flash.
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
-    const savedTheme = await invoke<string | null>('get_setting', { key: 'theme' })
+    await useSettingsStore.getState().loadSettings()
+    const theme = useSettingsStore.getState().getSetting('theme')
     const resolved =
-      savedTheme === 'dark' || savedTheme === 'light'
-        ? savedTheme
+      theme === 'dark' || theme === 'light'
+        ? theme
         : window.matchMedia('(prefers-color-scheme: dark)').matches
           ? 'dark'
           : 'light'
     document.documentElement.setAttribute('data-theme', resolved)
   } catch {
-    // Fallback: use system preference if IPC fails
+    // Fallback: use system preference if settings load fails
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light')
   }
+
+  // Register window close handler for session restore (fire-and-forget).
+  // Must be called after settings are loaded so isEnabled() reads the right value.
+  import('./stores/session-restore-store').then(({ registerCloseHandler }) => {
+    void registerCloseHandler()
+  })
 
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>

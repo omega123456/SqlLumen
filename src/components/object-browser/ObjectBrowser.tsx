@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { MagnifyingGlass } from '@phosphor-icons/react'
 import { useSchemaStore, parseNodeId, type ConnectionTreeState } from '../../stores/schema-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
@@ -12,6 +12,8 @@ import { ObjectBrowserContextMenu } from './ObjectBrowserContextMenu'
 import type { ObjectType } from '../../types/schema'
 import { computeScopedFilterMatchIds } from '../../lib/tree-filter'
 import styles from './ObjectBrowser.module.css'
+
+const SqlDumpDialog = lazy(() => import('../dialogs/SqlDumpDialog'))
 
 export interface ObjectBrowserProps {
   connectionId: string
@@ -29,6 +31,19 @@ interface ContextMenuState {
 }
 
 const CLOSED_MENU: ContextMenuState = { visible: false, x: 0, y: 0, nodeId: null }
+
+// ---------------------------------------------------------------------------
+// SQL dump dialog state
+// ---------------------------------------------------------------------------
+
+interface SqlDumpDialogState {
+  open: boolean
+  database?: string
+  table?: string
+  schemaOnly?: boolean
+}
+
+const CLOSED_DUMP_DIALOG: SqlDumpDialogState = { open: false }
 
 export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
   const setActiveDatabase = useConnectionStore((state) => state.setActiveDatabase)
@@ -58,6 +73,7 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
   const openTab = useWorkspaceStore((state) => state.openTab)
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(CLOSED_MENU)
+  const [dumpDialog, setDumpDialog] = useState<SqlDumpDialogState>(CLOSED_DUMP_DIALOG)
 
   const isReadOnly = activeConnection?.profile?.readOnly ?? false
 
@@ -149,6 +165,22 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
     },
     [connectionId, openTab]
   )
+
+  // ---------------------------------------------------------------------------
+  // SQL dump dialog handlers
+  // ---------------------------------------------------------------------------
+
+  const handleExportDump = useCallback((databaseName: string, tableName?: string) => {
+    setDumpDialog({ open: true, database: databaseName, table: tableName, schemaOnly: false })
+  }, [])
+
+  const handleExportDdl = useCallback((databaseName: string, tableName?: string) => {
+    setDumpDialog({ open: true, database: databaseName, table: tableName, schemaOnly: true })
+  }, [])
+
+  const handleCloseDumpDialog = useCallback(() => {
+    setDumpDialog(CLOSED_DUMP_DIALOG)
+  }, [])
 
   // ---------------------------------------------------------------------------
   // Double-click handler — uses node.databaseName (Simplification 5)
@@ -273,9 +305,23 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
         onDropObject={actions.onDropObject}
         onCreateObject={actions.onCreateObject}
         onExecuteRoutine={actions.onExecuteRoutine}
+        onExportDump={handleExportDump}
+        onExportDdl={handleExportDdl}
       />
 
       {actions.dialogs}
+
+      {dumpDialog.open && (
+        <Suspense fallback={null}>
+          <SqlDumpDialog
+            connectionId={connectionId}
+            initialDatabase={dumpDialog.database}
+            initialTable={dumpDialog.table}
+            schemaOnly={dumpDialog.schemaOnly}
+            onClose={handleCloseDumpDialog}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }

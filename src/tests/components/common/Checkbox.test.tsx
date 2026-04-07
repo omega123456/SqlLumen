@@ -6,13 +6,7 @@ import { Checkbox } from '../../../components/common/Checkbox'
 
 function ControlledToggle() {
   const [on, setOn] = useState(false)
-  return (
-    <Checkbox
-      checked={on}
-      onChange={(e) => setOn(e.target.checked)}
-      aria-label="Toggle me"
-    />
-  )
+  return <Checkbox checked={on} onChange={(e) => setOn(e.target.checked)} aria-label="Toggle me" />
 }
 
 describe('Checkbox', () => {

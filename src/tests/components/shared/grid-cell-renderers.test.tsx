@@ -4,9 +4,10 @@
  * Verifies NULL display (muted styling), BLOB display, and regular value display.
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 import { TableDataCellRenderer } from '../../../components/shared/grid-cell-renderers'
+import { useSettingsStore } from '../../../stores/settings-store'
 
 // ---------------------------------------------------------------------------
 // Helpers — minimal mock of RenderCellProps
@@ -37,6 +38,15 @@ function makeCellProps(key: string, value: unknown) {
     onRowChange: () => {},
   }
 }
+
+// ---------------------------------------------------------------------------
+// Setup
+// ---------------------------------------------------------------------------
+
+beforeEach(() => {
+  // Reset settings store to defaults (no loaded settings)
+  useSettingsStore.setState({ settings: {}, pendingChanges: {}, isDirty: false })
+})
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -100,5 +110,17 @@ describe('TableDataCellRenderer', () => {
 
     expect(container.querySelector('.td-blob-value')).toBeNull()
     expect(container.querySelector('span')?.textContent).toBe('[array value]')
+  })
+
+  it('displays custom null text from settings store', () => {
+    useSettingsStore.setState({
+      settings: { 'results.nullDisplay': '(empty)' },
+    })
+
+    const { container } = render(<TableDataCellRenderer {...makeCellProps('name', null)} />)
+
+    const span = container.querySelector('.td-null-value')
+    expect(span).not.toBeNull()
+    expect(span?.textContent).toBe('(empty)')
   })
 })

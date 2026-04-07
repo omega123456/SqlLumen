@@ -63,10 +63,12 @@ fn prevent_default_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 pub fn run() {
     use mysql::registry::ConnectionRegistry;
     use state::AppState;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use tauri::Manager;
 
     let mut builder = tauri::Builder::default();
+
+    builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(feature = "dialog")]
     {
@@ -109,20 +111,58 @@ pub fn run() {
             );
 
             let state = AppState {
-                db: Mutex::new(conn),
+                db: Arc::new(Mutex::new(conn)),
                 registry: ConnectionRegistry::new(),
                 app_handle: Some(app.handle().clone()),
                 results: std::sync::RwLock::new(std::collections::HashMap::new()),
                 log_filter_reload: Mutex::new(Some(logging_init.filter_reload)),
                 running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+                dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+                import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             };
             app.manage(state);
+
+            // Prune old history entries on startup (fire-and-forget).
+            let db_handle = {
+                let managed_state = app.state::<AppState>();
+                Arc::clone(&managed_state.db)
+            };
+            tauri::async_runtime::spawn(async move {
+                match db_handle.lock() {
+                    Ok(conn) => {
+                        match crate::db::history::prune_all_history(&conn) {
+                            Ok(pruned) if pruned > 0 => {
+                                tracing::info!(
+                                    target: "mysql_client_lib",
+                                    pruned,
+                                    "pruned old history entries on startup"
+                                );
+                            }
+                            Ok(_) => {} // nothing to prune
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    "failed to prune history on startup"
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "failed to acquire db lock for history pruning"
+                        );
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::settings::get_setting,
             commands::settings::set_setting,
             commands::settings::get_all_settings,
+            commands::app_info::get_app_info,
             commands::connections::save_connection,
             commands::connections::get_connection,
             commands::connections::list_connections,
@@ -180,6 +220,19 @@ pub fn run() {
             commands::object_editor::drop_object,
             commands::object_editor::get_routine_parameters,
             commands::object_editor::get_routine_parameters_with_return_type,
+            commands::history::list_history,
+            commands::history::delete_history_entry,
+            commands::history::clear_history,
+            commands::favorites::create_favorite,
+            commands::favorites::list_favorites,
+            commands::favorites::update_favorite,
+            commands::favorites::delete_favorite,
+            commands::sql_dump::list_exportable_objects,
+            commands::sql_dump::start_sql_dump,
+            commands::sql_dump::get_dump_progress,
+            commands::sql_dump::start_sql_import,
+            commands::sql_dump::get_import_progress,
+            commands::sql_dump::cancel_import,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

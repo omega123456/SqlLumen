@@ -17,11 +17,14 @@ import {
   FolderOpen,
   ClockCounterClockwise,
   MagicWand,
+  UploadSimple,
 } from '@phosphor-icons/react'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { format as formatSQL } from 'sql-formatter'
 import { useQueryStore, isCallSql } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { useConnectionStore } from '../../stores/connection-store'
+import { useImportDialogStore } from '../../stores/import-dialog-store'
 import { readFile, writeFile } from '../../lib/query-commands'
 import { splitStatements, findStatementAtCursor, cursorToOffset } from './sql-parser-utils'
 import { RunningIndicator } from './RunningIndicator'
@@ -53,6 +56,10 @@ export function EditorToolbar({
   const executeCallQuery = useQueryStore((state) => state.executeCallQuery)
   const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
+  const openHistoryFavoritesTab = useWorkspaceStore((state) => state.openHistoryFavoritesTab)
+
+  const isReadOnly =
+    useConnectionStore((state) => state.activeConnections[connectionId]?.profile?.readOnly) ?? false
 
   const isRunning = status === 'running'
 
@@ -148,6 +155,22 @@ export function EditorToolbar({
     }
   }
 
+  // Import SQL file via file picker → open SqlImportDialog
+  async function handleImportSql() {
+    try {
+      const result = await openDialog({
+        filters: [{ name: 'SQL Files', extensions: ['sql'] }],
+        multiple: false,
+      })
+      const path = Array.isArray(result) ? result[0] : result
+      if (path) {
+        useImportDialogStore.getState().openImportDialog(connectionId, path)
+      }
+    } catch (err) {
+      console.warn('[editor-toolbar] import SQL file picker failed:', err)
+    }
+  }
+
   return (
     <div className={styles.toolbar} data-testid="editor-toolbar">
       {/* Left: icon actions */}
@@ -175,9 +198,8 @@ export function EditorToolbar({
         <button
           type="button"
           className={styles.iconButton}
-          title="History (coming soon)"
-          disabled
-          aria-disabled="true"
+          title="History & Favorites"
+          onClick={() => openHistoryFavoritesTab(connectionId)}
           data-testid="toolbar-history"
         >
           <ClockCounterClockwise size={16} weight="regular" />
@@ -191,6 +213,16 @@ export function EditorToolbar({
           data-testid="toolbar-format"
         >
           <MagicWand size={16} weight="regular" />
+        </button>
+        <button
+          type="button"
+          className={styles.iconButton}
+          title={isReadOnly ? 'Import SQL (disabled for read-only connections)' : 'Import SQL'}
+          onClick={handleImportSql}
+          disabled={isRunning || isReadOnly}
+          data-testid="toolbar-import-sql"
+        >
+          <UploadSimple size={16} weight="regular" />
         </button>
       </div>
 

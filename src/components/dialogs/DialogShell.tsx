@@ -72,7 +72,7 @@ export function DialogShell({
       <div
         className={styles.dialog}
         ref={dialogRef}
-        style={{ maxWidth: `${maxWidth}px` }}
+        style={{ maxWidth: `min(${maxWidth}px, 90vw)` }}
         data-testid={testId !== undefined ? `${testId}-panel` : undefined}
       >
         {children}

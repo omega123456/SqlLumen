@@ -15,7 +15,9 @@
   border: 1px solid var(--outline-variant);
   border-radius: 16px;
   padding: 24px;
-  width: 90%;
+  width: fit-content;
+  min-width: min(90vw, 320px);
+  max-width: 90vw;
   box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.4);
 }
 

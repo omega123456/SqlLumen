@@ -48,10 +48,30 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'set_setting':
       return null
     case 'get_all_settings':
-      return {}
+      return {
+        theme: 'system',
+        'log.level': 'info',
+        'session.restore': 'true',
+        'editor.fontFamily': 'JetBrains Mono',
+        'editor.fontSize': '14',
+        'editor.lineHeight': '1.6',
+        'editor.wordWrap': 'false',
+        'editor.minimap': 'false',
+        'editor.lineNumbers': 'true',
+        'results.pageSize': '500',
+        'results.nullDisplay': 'NULL',
+        'connection.defaultTimeout': '10',
+        'connection.defaultKeepalive': '60',
+        shortcuts: '{}',
+        'session.state': 'null',
+      }
 
     case 'log_frontend':
       return null
+
+    // --- App info ---
+    case 'get_app_info':
+      return { rustLogOverride: false, logDirectory: '/mock/app/logs', appVersion: '0.1.0' }
 
     // --- Connection management ---
     case 'list_connections':
@@ -1226,6 +1246,141 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     case 'write_file':
       return null
+
+    // --- SQL Dump Export (Phase 9.5a) ---
+    case 'list_exportable_objects':
+      return [
+        {
+          name: 'ecommerce_db',
+          tables: [
+            { name: 'users', objectType: 'table', estimatedRows: 1000 },
+            { name: 'orders', objectType: 'table', estimatedRows: 5000 },
+            { name: 'products', objectType: 'table', estimatedRows: 200 },
+            { name: 'user_stats_view', objectType: 'view', estimatedRows: 0 },
+          ],
+        },
+        {
+          name: 'analytics_db',
+          tables: [{ name: 'events', objectType: 'table', estimatedRows: 50000 }],
+        },
+      ]
+
+    case 'start_sql_dump':
+      return 'mock-dump-job-1'
+
+    case 'get_dump_progress':
+      return {
+        jobId: String(args?.jobId ?? 'mock-dump-job-1'),
+        status: 'completed',
+        tablesTotal: 4,
+        tablesDone: 4,
+        currentTable: null,
+        bytesWritten: 102400,
+        errorMessage: null,
+      }
+
+    // --- SQL Import (Phase 9.5b) ---
+    case 'start_sql_import':
+      return 'mock-import-job-1'
+
+    case 'get_import_progress':
+      return {
+        jobId: String(args?.jobId ?? 'mock-import-job-1'),
+        status: 'running',
+        statementsTotal: 42,
+        statementsDone: 18,
+        errors: [],
+        stopOnError: true,
+        cancelRequested: false,
+      }
+
+    case 'cancel_import':
+      return null
+
+    // --- Query History & Favorites (Phase 9.3) ---
+    case 'list_history':
+      return {
+        entries: [
+          {
+            id: 1,
+            connectionId: 'conn-playwright-1',
+            databaseName: 'ecommerce_db',
+            sqlText: "SELECT * FROM users WHERE status = 'active'",
+            timestamp: '2025-01-01T12:00:00.000Z',
+            durationMs: 42,
+            rowCount: 5,
+            affectedRows: 0,
+            success: true,
+            errorMessage: null,
+          },
+          {
+            id: 2,
+            connectionId: 'conn-playwright-1',
+            databaseName: 'ecommerce_db',
+            sqlText: 'SELECT COUNT(*) FROM orders',
+            timestamp: '2025-01-01T11:30:00.000Z',
+            durationMs: 8,
+            rowCount: 1,
+            affectedRows: 0,
+            success: true,
+            errorMessage: null,
+          },
+          {
+            id: 3,
+            connectionId: 'conn-playwright-1',
+            databaseName: 'ecommerce_db',
+            sqlText: 'SELECT * FROM nonexistent_table',
+            timestamp: '2025-01-01T11:00:00.000Z',
+            durationMs: 0,
+            rowCount: 0,
+            affectedRows: 0,
+            success: false,
+            errorMessage: "Table 'ecommerce_db.nonexistent_table' doesn't exist",
+          },
+        ],
+        total: 3,
+        page: 1,
+        pageSize: 50,
+      }
+
+    case 'delete_history_entry':
+      return true
+
+    case 'clear_history':
+      return 3
+
+    case 'create_favorite':
+      return 1
+
+    case 'list_favorites':
+      return [
+        {
+          id: 1,
+          name: 'Active Users',
+          sqlText: "SELECT * FROM users WHERE status = 'active'",
+          description: 'Frequently used query for monitoring',
+          category: 'Monitoring',
+          connectionId: 'conn-playwright-1',
+          createdAt: '2025-01-01T10:00:00.000Z',
+          updatedAt: '2025-01-01T10:00:00.000Z',
+        },
+        {
+          id: 2,
+          name: 'Order Summary',
+          sqlText: 'SELECT status, COUNT(*) as cnt FROM orders GROUP BY status',
+          description: null,
+          category: null,
+          connectionId: 'conn-playwright-1',
+          createdAt: '2025-01-01T09:00:00.000Z',
+          updatedAt: '2025-01-01T09:00:00.000Z',
+        },
+      ]
+
+    case 'update_favorite':
+      return true
+
+    case 'delete_favorite':
+      return true
 
     default:
       return null

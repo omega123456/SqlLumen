@@ -376,9 +376,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                           ]}
                           value={foreignKey.referencedColumn}
                           data-testid={`fk-referenced-column-${fkIndex}`}
-                          onChange={(v) =>
-                            updateForeignKey(tabId, fkIndex, 'referencedColumn', v)
-                          }
+                          onChange={(v) => updateForeignKey(tabId, fkIndex, 'referencedColumn', v)}
                           triggerClassName={`${styles.cellSelect} ${
                             isSelected ? styles.activeInput : styles.inactiveInput
                           }`}

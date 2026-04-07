@@ -30,7 +30,7 @@ use sqlx::ConnectOptions;
 use std::time::Duration;
 #[cfg(coverage)]
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 #[cfg(coverage)]
 use tauri::AppHandle;
 use tauri::ipc::{CallbackFn, InvokeBody};
@@ -70,20 +70,25 @@ fn test_state() -> AppState {
     let conn = Connection::open_in_memory().expect("should open in-memory db");
     mysql_client_lib::db::migrations::run_migrations(&conn).expect("should run migrations");
     AppState {
-        db: Mutex::new(conn),
+        db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),
         app_handle: None,
         results: std::sync::RwLock::new(std::collections::HashMap::new()),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+        dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
     }
 }
 
 fn poisoned_state() -> AppState {
     common::ensure_fake_backend_once();
-    let mutex = Mutex::new(Connection::open_in_memory().expect("should open in-memory db"));
+    let mutex = Arc::new(Mutex::new(
+        Connection::open_in_memory().expect("should open in-memory db"),
+    ));
+    let mutex_clone = Arc::clone(&mutex);
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _guard = mutex.lock().expect("mutex lock should succeed");
+        let _guard = mutex_clone.lock().expect("mutex lock should succeed");
         panic!("poison db mutex");
     }));
 
@@ -94,6 +99,8 @@ fn poisoned_state() -> AppState {
         results: std::sync::RwLock::new(std::collections::HashMap::new()),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+        dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
     }
 }
 

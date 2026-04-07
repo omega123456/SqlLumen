@@ -5,6 +5,7 @@ import type {
   TableDataTab,
   TableDesignerTab,
   ObjectEditorTab,
+  HistoryFavoritesTab,
   EditableObjectType,
   DistributiveOmit,
 } from '../types/schema'
@@ -48,6 +49,7 @@ interface WorkspaceState {
   // Actions
   openTab: (tab: OpenableTab) => void
   openQueryTab: (connectionId: string, label?: string) => string
+  openHistoryFavoritesTab: (connectionId: string) => void
   closeTab: (connectionId: string, tabId: string) => void
   forceCloseTab: (connectionId: string, tabId: string) => void
   setActiveTab: (connectionId: string, tabId: string) => void
@@ -233,6 +235,41 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       },
     }))
     return newTab.id
+  },
+
+  // ------ openHistoryFavoritesTab (singleton per connection) ------
+
+  openHistoryFavoritesTab: (connectionId: string) => {
+    const tabs = get().tabsByConnection[connectionId] || []
+
+    // Reuse existing history-favorites tab if one exists
+    const existing = tabs.find((t) => t.type === 'history-favorites')
+    if (existing) {
+      set((state) => ({
+        activeTabByConnection: {
+          ...state.activeTabByConnection,
+          [connectionId]: existing.id,
+        },
+      }))
+      return
+    }
+
+    const newTab: HistoryFavoritesTab = {
+      id: generateTabId(),
+      type: 'history-favorites',
+      label: 'History & Favorites',
+      connectionId,
+    }
+    set((state) => ({
+      tabsByConnection: {
+        ...state.tabsByConnection,
+        [connectionId]: [...(state.tabsByConnection[connectionId] || []), newTab],
+      },
+      activeTabByConnection: {
+        ...state.activeTabByConnection,
+        [connectionId]: newTab.id,
+      },
+    }))
   },
 
   // ------ closeTab ------

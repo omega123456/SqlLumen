@@ -5,13 +5,7 @@ function mergeClassNames(...parts: (string | undefined | false)[]): string {
   return parts.filter(Boolean).join(' ')
 }
 
-export type TextInputVariant =
-  | 'default'
-  | 'mono'
-  | 'formField'
-  | 'tableCell'
-  | 'gridCell'
-  | 'bare'
+export type TextInputVariant = 'default' | 'mono' | 'formField' | 'tableCell' | 'gridCell' | 'bare'
 
 export type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> & {
   variant?: TextInputVariant

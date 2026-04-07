@@ -190,7 +190,10 @@ describe('ObjectEditorTab', () => {
     })
   })
 
-  it('Ctrl+S keyboard shortcut triggers saveBody', async () => {
+  it('Ctrl+S keyboard shortcut is handled by the global shortcut system (not local handler)', async () => {
+    // The Ctrl+S handler was removed from ObjectEditorTab — save is now wired
+    // via AppLayout's registerAction('save-file'). Dispatching Ctrl+S on the
+    // window should NOT trigger saveBody directly from ObjectEditorTab.
     useObjectEditorStore.setState({
       tabs: {
         'tab-1': {
@@ -216,9 +219,8 @@ describe('ObjectEditorTab', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }))
     })
 
-    await waitFor(() => {
-      expect(saveObject).toHaveBeenCalled()
-    })
+    // saveObject should NOT have been called — no local handler exists anymore
+    expect(saveObject).not.toHaveBeenCalled()
   })
 
   it('unsaved changes dialog appears when pendingNavigationAction is set', () => {

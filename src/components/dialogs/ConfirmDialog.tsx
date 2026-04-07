@@ -11,6 +11,8 @@ export interface ConfirmDialogProps {
   isDestructive?: boolean
   isLoading?: boolean
   error?: string | null
+  /** Warning text below the message. Defaults to "This action cannot be undone." Pass `null` to hide. */
+  warningText?: string | null
   onConfirm: () => void
   onCancel: () => void
 }
@@ -23,9 +25,11 @@ export function ConfirmDialog({
   isDestructive = false,
   isLoading = false,
   error,
+  warningText,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const resolvedWarning = warningText === undefined ? 'This action cannot be undone.' : warningText
   return (
     <DialogShell
       isOpen={isOpen}
@@ -41,7 +45,7 @@ export function ConfirmDialog({
         {title}
       </h2>
       <p className={styles.message}>{message}</p>
-      <p className={styles.warning}>This action cannot be undone.</p>
+      {resolvedWarning !== null && <p className={styles.warning}>{resolvedWarning}</p>}
       {error && (
         <div className={styles.error} data-testid="confirm-dialog-error">
           {error}

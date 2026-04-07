@@ -67,6 +67,8 @@ const mockEditorInstance = {
   getModel: vi.fn(() => ({ uri: { toString: () => 'inmemory://model/1' } })),
   setPosition: vi.fn(),
   revealPositionInCenter: vi.fn(),
+  addCommand: vi.fn(),
+  updateOptions: vi.fn(),
 }
 
 // Override @monaco-editor/react to call onMount with our mock editor
@@ -82,6 +84,7 @@ vi.mock('@monaco-editor/react', async () => {
           onMount?.(mockEditorInstance, {
             editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
             languages: {},
+            KeyCode: { F9: 78, F12: 81 },
           })
         }, [])
 

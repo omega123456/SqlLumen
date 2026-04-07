@@ -92,10 +92,7 @@ pub fn delete_group(conn: &Connection, id: &str) -> Result<()> {
     )?;
 
     // Delete the group
-    let rows_affected = tx.execute(
-        "DELETE FROM connection_groups WHERE id = ?1",
-        [id],
-    )?;
+    let rows_affected = tx.execute("DELETE FROM connection_groups WHERE id = ?1", [id])?;
 
     if rows_affected == 0 {
         tx.rollback().ok();

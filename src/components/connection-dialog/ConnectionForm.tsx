@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Database, Eye, EyeSlash, FolderOpen } from '@phosphor-icons/react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useConnectionStore } from '../../stores/connection-store'
+import { useSettingsStore } from '../../stores/settings-store'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import {
   testConnection,
@@ -26,22 +27,28 @@ interface ConnectionFormProps {
   editingConnection?: SavedConnection
 }
 
-const DEFAULT_FORM_DATA: ConnectionFormData = {
-  name: '',
-  host: '',
-  port: 3306,
-  username: '',
-  password: '',
-  defaultDatabase: null,
-  sslEnabled: false,
-  sslCaPath: null,
-  sslCertPath: null,
-  sslKeyPath: null,
-  color: null,
-  groupId: null,
-  readOnly: false,
-  connectTimeoutSecs: 10,
-  keepaliveIntervalSecs: 60,
+/** Build default form data, reading connection defaults from settings store. */
+function getDefaultFormData(): ConnectionFormData {
+  const settingsState = useSettingsStore.getState()
+  const timeout = parseInt(settingsState.getSetting('connection.defaultTimeout'), 10)
+  const keepalive = parseInt(settingsState.getSetting('connection.defaultKeepalive'), 10)
+  return {
+    name: '',
+    host: '',
+    port: 3306,
+    username: '',
+    password: '',
+    defaultDatabase: null,
+    sslEnabled: false,
+    sslCaPath: null,
+    sslCertPath: null,
+    sslKeyPath: null,
+    color: null,
+    groupId: null,
+    readOnly: false,
+    connectTimeoutSecs: isNaN(timeout) ? 10 : timeout,
+    keepaliveIntervalSecs: isNaN(keepalive) ? 60 : keepalive,
+  }
 }
 
 interface FormErrors {
@@ -136,7 +143,7 @@ function SslFileField({
 }
 
 export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
-  const [formData, setFormData] = useState<ConnectionFormData>(DEFAULT_FORM_DATA)
+  const [formData, setFormData] = useState<ConnectionFormData>(getDefaultFormData)
   const [errors, setErrors] = useState<FormErrors>({})
   const [showPassword, setShowPassword] = useState(false)
   const [hasSavedPassword, setHasSavedPassword] = useState(false)
@@ -181,7 +188,7 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
       setHasSavedPassword(editingConnection.hasPassword)
       setClearSavedPassword(false)
     } else {
-      setFormData(DEFAULT_FORM_DATA)
+      setFormData(getDefaultFormData())
       setSavedId(null)
       setHasSavedPassword(false)
       setClearSavedPassword(false)

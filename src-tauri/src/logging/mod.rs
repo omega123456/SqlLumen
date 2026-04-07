@@ -35,7 +35,7 @@ pub struct LoggingInit {
 }
 
 fn default_env_filter() -> EnvFilter {
-    EnvFilter::try_new("debug,sqlx=warn").unwrap_or_else(|_| EnvFilter::new("debug"))
+    EnvFilter::try_new("info,sqlx=warn").unwrap_or_else(|_| EnvFilter::new("info"))
 }
 
 fn env_filter_from_rust_log() -> Option<EnvFilter> {
@@ -167,11 +167,8 @@ pub fn prune_old_logs(log_dir: &Path, stem: &str, today: NaiveDate) -> io::Resul
         .checked_sub_signed(chrono::Duration::days(7))
         .unwrap_or(today);
 
-    let pre_today: Vec<(NaiveDate, PathBuf)> = files
-        .iter()
-        .filter(|(d, _)| *d < today)
-        .cloned()
-        .collect();
+    let pre_today: Vec<(NaiveDate, PathBuf)> =
+        files.iter().filter(|(d, _)| *d < today).cloned().collect();
 
     let mut stale_paths: Vec<PathBuf> = files
         .iter()

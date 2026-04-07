@@ -68,26 +68,6 @@ export function ObjectEditorTab({ tab }: ObjectEditorTabProps) {
     }
   }, [tabId, objectType, saveBody, updateObjectEditorTab])
 
-  // Ctrl+S / Cmd+S keyboard shortcut
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        const currentTab = useObjectEditorStore.getState().tabs[tabId]
-        if (
-          currentTab &&
-          currentTab.content !== currentTab.originalContent &&
-          !currentTab.isSaving
-        ) {
-          void performSave()
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [tabId, performSave])
-
   // Content change handler for Monaco
   const handleContentChange = useCallback(
     (value: string) => {

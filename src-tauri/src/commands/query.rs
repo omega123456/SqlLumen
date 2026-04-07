@@ -5,9 +5,15 @@
 //! the `*_impl` functions in `query_executor` directly.
 
 #[cfg(not(coverage))]
+use crate::commands::query_history_bridge::{
+    execute_call_query_bridge, execute_multi_query_bridge, execute_query_bridge,
+    log_single_entry, resolve_connection_context,
+};
+#[cfg(not(coverage))]
+use crate::db::history::NewHistoryEntry;
+#[cfg(not(coverage))]
 use crate::mysql::query_executor::{
     analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl,
-    execute_call_query_impl, execute_multi_query_impl, execute_query_impl,
     fetch_result_page_impl, fetch_schema_metadata_impl, read_file_impl,
     reexecute_single_result_impl, sort_results_impl, update_result_cell_impl, write_file_impl,
     ExecuteQueryResult, FetchPageResult, MultiQueryResult, MultiQueryResultItem,
@@ -29,7 +35,7 @@ pub async fn execute_query(
     page_size: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<ExecuteQueryResult, String> {
-    execute_query_impl(&state, &connection_id, &tab_id, &sql, page_size.unwrap_or(1000)).await
+    execute_query_bridge(&state, &connection_id, &tab_id, &sql, page_size.unwrap_or(1000)).await
 }
 
 // ── fetch_result_page ─────────────────────────────────────────────────────────
@@ -158,7 +164,7 @@ pub async fn reexecute_single_result(
     page_size: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<MultiQueryResultItem, String> {
-    reexecute_single_result_impl(
+    let result = reexecute_single_result_impl(
         &state,
         &connection_id,
         &tab_id,
@@ -166,7 +172,44 @@ pub async fn reexecute_single_result(
         &sql,
         page_size.unwrap_or(1000),
     )
-    .await
+    .await;
+
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+
+    match &result {
+        Ok(item) => {
+            log_single_entry(
+                &state.db,
+                NewHistoryEntry {
+                    connection_id: conn_id,
+                    database_name,
+                    sql_text: sql,
+                    duration_ms: Some(item.execution_time_ms),
+                    row_count: Some(item.total_rows),
+                    affected_rows: Some(item.affected_rows as i64),
+                    success: item.error.is_none(),
+                    error_message: item.error.clone(),
+                },
+            );
+        }
+        Err(e) => {
+            log_single_entry(
+                &state.db,
+                NewHistoryEntry {
+                    connection_id: conn_id,
+                    database_name,
+                    sql_text: sql,
+                    duration_ms: Some(0),
+                    row_count: Some(0),
+                    affected_rows: Some(0),
+                    success: false,
+                    error_message: Some(e.clone()),
+                },
+            );
+        }
+    }
+
+    result
 }
 
 // ── execute_multi_query ──────────────────────────────────────────────────────
@@ -180,7 +223,7 @@ pub async fn execute_multi_query(
     page_size: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<MultiQueryResult, String> {
-    execute_multi_query_impl(
+    execute_multi_query_bridge(
         &state,
         &connection_id,
         &tab_id,
@@ -201,7 +244,7 @@ pub async fn execute_call_query(
     page_size: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<MultiQueryResult, String> {
-    execute_call_query_impl(
+    execute_call_query_bridge(
         &state,
         &connection_id,
         &tab_id,

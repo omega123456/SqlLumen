@@ -17,6 +17,7 @@ import { getTemporalValidationResult } from '../lib/table-data-save-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../lib/date-utils'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { mapSingleColumnForeignKeys } from '../lib/foreign-key-utils'
+import { getDefaultPageSize } from './query-store'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -255,7 +256,7 @@ function createDefaultTabState(
     totalRows: 0,
     currentPage: 1,
     totalPages: 0,
-    pageSize: 1000,
+    pageSize: getDefaultPageSize(),
     primaryKey: null,
     executionTimeMs: 0,
     connectionId,

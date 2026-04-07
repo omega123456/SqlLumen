@@ -188,7 +188,9 @@ describe('FilterDialog', () => {
     await user.click(screen.getByTestId('filter-add-button'))
 
     await user.click(screen.getByTestId('filter-column-select-0'))
-    const options = screen.getAllByRole('option').map((o) => o.getAttribute('aria-label') ?? o.textContent ?? '')
+    const options = screen
+      .getAllByRole('option')
+      .map((o) => o.getAttribute('aria-label') ?? o.textContent ?? '')
     expect(options).toEqual(['id', 'name', 'email'])
   })
 

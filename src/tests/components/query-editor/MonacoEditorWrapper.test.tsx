@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MonacoEditorWrapper } from '../../../components/query-editor/MonacoEditorWrapper'
 import { useQueryStore } from '../../../stores/query-store'
+import { useSettingsStore } from '../../../stores/settings-store'
 
 // Mock the schema-metadata-cache (loadCache is called on mount)
 vi.mock('../../../components/query-editor/schema-metadata-cache', () => ({
@@ -66,6 +67,8 @@ const mockEditorInstance = {
     registeredDisposeHandlers.push(handler)
   }),
   getModel: vi.fn(() => ({ uri: mockModelUri })),
+  addCommand: vi.fn(),
+  updateOptions: vi.fn(),
 }
 // Track props passed to the mock Editor component
 const mockEditorComponent = vi.fn()
@@ -85,6 +88,7 @@ vi.mock('@monaco-editor/react', async () => {
               setTheme: mockSetTheme,
             },
             languages: {},
+            KeyCode: { F9: 78, F12: 81 },
           })
         }, [])
 
@@ -116,6 +120,8 @@ vi.mock('@monaco-editor/react', async () => {
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
+  // Reset settings store to defaults (no loaded settings)
+  useSettingsStore.setState({ settings: {}, pendingChanges: {}, isDirty: false })
   mockSetTheme.mockClear()
   mockDefineTheme.mockClear()
   mockCursorPositionDispose.mockClear()
@@ -125,6 +131,8 @@ beforeEach(() => {
   mockEditorInstance.onDidChangeCursorPosition.mockClear()
   mockEditorInstance.onDidDispose.mockClear()
   mockEditorInstance.getModel.mockClear()
+  mockEditorInstance.addCommand.mockClear()
+  mockEditorInstance.updateOptions.mockClear()
   mockRegisterModelConnection.mockClear()
   mockUnregisterModelConnection.mockClear()
   mockEditorComponent.mockClear()
@@ -341,6 +349,52 @@ describe('MonacoEditorWrapper', () => {
       const editor = screen.getByTestId('monaco-editor')
       fireEvent.change(editor, { target: { value: 'NEW CONTENT' } })
       expect(useQueryStore.getState().tabs['tab-1']?.content).toBe('NEW CONTENT')
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Settings integration tests
+  // -----------------------------------------------------------------------
+
+  describe('settings integration', () => {
+    it('registers F9 and F12 keybindings via addCommand on mount', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+      expect(mockEditorInstance.addCommand).toHaveBeenCalledTimes(2)
+      // F9 for execute-query
+      expect(mockEditorInstance.addCommand).toHaveBeenCalledWith(78, expect.any(Function))
+      // F12 for format-query
+      expect(mockEditorInstance.addCommand).toHaveBeenCalledWith(81, expect.any(Function))
+    })
+
+    it('applies default editor settings to Monaco options', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+      const lastCall = mockEditorComponent.mock.calls[mockEditorComponent.mock.calls.length - 1]
+      const props = lastCall[0]
+      // Default font family from SETTINGS_DEFAULTS is JetBrains Mono
+      expect(props.options.fontFamily).toContain('JetBrains Mono')
+      expect(props.options.fontSize).toBe(14)
+    })
+
+    it('applies custom editor settings from settings store', () => {
+      useSettingsStore.setState({
+        settings: {
+          'editor.fontFamily': 'Fira Code',
+          'editor.fontSize': '16',
+          'editor.lineHeight': '2.0',
+          'editor.wordWrap': 'true',
+          'editor.minimap': 'true',
+          'editor.lineNumbers': 'false',
+        },
+      })
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+      const lastCall = mockEditorComponent.mock.calls[mockEditorComponent.mock.calls.length - 1]
+      const props = lastCall[0]
+      expect(props.options.fontFamily).toContain('Fira Code')
+      expect(props.options.fontSize).toBe(16)
+      expect(props.options.wordWrap).toBe('on')
+      expect(props.options.minimap).toEqual({ enabled: true })
+      expect(props.options.lineNumbers).toBe('off')
     })
   })
 })

@@ -52,6 +52,7 @@ export type TabType =
   | 'query-editor'
   | 'table-designer'
   | 'object-editor'
+  | 'history-favorites'
 
 export type DesignerSubTab = 'columns' | 'indexes' | 'fks' | 'properties' | 'ddl'
 
@@ -109,6 +110,11 @@ export interface ObjectEditorTab extends WorkspaceTabBase {
   mode: 'create' | 'alter'
 }
 
+/** A history & favorites tab (shows query history and saved favorites). */
+export interface HistoryFavoritesTab extends WorkspaceTabBase {
+  type: 'history-favorites'
+}
+
 /** Union of all workspace tab variants. */
 export type WorkspaceTab =
   | SchemaInfoTab
@@ -116,6 +122,7 @@ export type WorkspaceTab =
   | QueryEditorTab
   | TableDesignerTab
   | ObjectEditorTab
+  | HistoryFavoritesTab
 
 /** Distributive Omit — works correctly on union types. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -529,4 +536,82 @@ export interface SaveObjectResponse {
   errorMessage: string | null
   dropSucceeded: boolean
   savedObjectName: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Settings types (Phase 9)
+// ---------------------------------------------------------------------------
+
+export type SettingsSection = 'general' | 'editor' | 'results' | 'logging' | 'shortcuts'
+
+export interface ShortcutBinding {
+  key: string
+  modifiers: string[]
+}
+
+export interface ShortcutActionDescriptor {
+  id: string
+  label: string
+  description: string
+}
+
+export interface AppInfo {
+  rustLogOverride: boolean
+  logDirectory: string
+  appVersion: string
+}
+
+// ---------------------------------------------------------------------------
+// Query History & Favorites types (Phase 9.3)
+// ---------------------------------------------------------------------------
+
+/** A single query history entry from the backend. */
+export interface HistoryEntry {
+  id: number
+  connectionId: string
+  databaseName: string | null
+  sqlText: string
+  timestamp: string
+  durationMs: number | null
+  rowCount: number | null
+  affectedRows: number | null
+  success: boolean
+  errorMessage: string | null
+}
+
+/** Paginated history response from the backend. */
+export interface HistoryPage {
+  entries: HistoryEntry[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+/** A saved favorite query from the backend. */
+export interface FavoriteEntry {
+  id: number
+  name: string
+  sqlText: string
+  description: string | null
+  category: string | null
+  connectionId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Input for creating a new favorite (sent to backend). */
+export interface CreateFavoriteInput {
+  name: string
+  sqlText: string
+  description?: string | null
+  category?: string | null
+  connectionId?: string | null
+}
+
+/** Input for updating an existing favorite (sent to backend). */
+export interface UpdateFavoriteInput {
+  name: string
+  sqlText: string
+  description?: string | null
+  category?: string | null
 }

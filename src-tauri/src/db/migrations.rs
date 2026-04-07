@@ -12,6 +12,14 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "002_connection_timeouts",
         include_str!("../../migrations/002_connection_timeouts.sql"),
     ),
+    (
+        "003_history_favorites",
+        include_str!("../../migrations/003_history_favorites.sql"),
+    ),
+    (
+        "004_fix_history_favorites_schema",
+        include_str!("../../migrations/004_fix_history_favorites_schema.sql"),
+    ),
 ];
 
 /// Run all pending migrations on the given connection.

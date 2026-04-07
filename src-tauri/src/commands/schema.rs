@@ -4,6 +4,12 @@
 //! `#[tauri::command]` wrappers are thin delegates.
 
 #[cfg(not(coverage))]
+use crate::commands::query_history_bridge::{
+    log_batch_entries, log_single_entry, resolve_connection_context,
+};
+#[cfg(not(coverage))]
+use crate::db::history::NewHistoryEntry;
+#[cfg(not(coverage))]
 use crate::mysql::query_log;
 use crate::mysql::schema_queries::{
     self, CharsetInfo, CollationInfo, ColumnInfo, DatabaseDetails, ForeignKeyInfo,
@@ -635,14 +641,38 @@ pub async fn get_schema_info(
     object_type: String,
     state: State<'_, AppState>,
 ) -> Result<SchemaInfoResponse, String> {
-    get_schema_info_impl(
+    let start = std::time::Instant::now();
+    let result = get_schema_info_impl(
         &state,
         &connection_id,
         &database,
         &object_name,
         &object_type,
     )
-    .await
+    .await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let type_upper = object_type.to_uppercase();
+    let sql_text = format!(
+        "/* schema info */ SELECT ... FROM INFORMATION_SCHEMA FOR {type_upper} `{database}`.`{object_name}`"
+    );
+
+    log_single_entry(
+        &state.db,
+        NewHistoryEntry {
+            connection_id: conn_id,
+            database_name,
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        },
+    );
+
+    result
 }
 
 #[cfg(not(coverage))]
@@ -682,14 +712,42 @@ pub async fn create_database(
     collation: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    create_database_impl(
+    let start = std::time::Instant::now();
+    let result = create_database_impl(
         &state,
         &connection_id,
         &name,
         charset.as_deref(),
         collation.as_deref(),
     )
-    .await
+    .await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+
+    let mut sql_text = format!("CREATE DATABASE `{name}`");
+    if let Some(ref cs) = charset {
+        sql_text.push_str(&format!(" CHARACTER SET `{cs}`"));
+    }
+    if let Some(ref coll) = collation {
+        sql_text.push_str(&format!(" COLLATE `{coll}`"));
+    }
+
+    log_single_entry(
+        &state.db,
+        NewHistoryEntry {
+            connection_id: conn_id,
+            database_name,
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        },
+    );
+
+    result
 }
 
 #[cfg(not(coverage))]
@@ -699,7 +757,28 @@ pub async fn drop_database(
     name: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    drop_database_impl(&state, &connection_id, &name).await
+    let start = std::time::Instant::now();
+    let result = drop_database_impl(&state, &connection_id, &name).await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let sql_text = format!("DROP DATABASE `{name}`");
+
+    log_single_entry(
+        &state.db,
+        NewHistoryEntry {
+            connection_id: conn_id,
+            database_name,
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        },
+    );
+
+    result
 }
 
 #[cfg(not(coverage))]
@@ -711,14 +790,42 @@ pub async fn alter_database(
     collation: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    alter_database_impl(
+    let start = std::time::Instant::now();
+    let result = alter_database_impl(
         &state,
         &connection_id,
         &name,
         charset.as_deref(),
         collation.as_deref(),
     )
-    .await
+    .await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+
+    let mut sql_text = format!("ALTER DATABASE `{name}`");
+    if let Some(ref cs) = charset {
+        sql_text.push_str(&format!(" CHARACTER SET `{cs}`"));
+    }
+    if let Some(ref coll) = collation {
+        sql_text.push_str(&format!(" COLLATE `{coll}`"));
+    }
+
+    log_single_entry(
+        &state.db,
+        NewHistoryEntry {
+            connection_id: conn_id,
+            database_name,
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        },
+    );
+
+    result
 }
 
 #[cfg(not(coverage))]
@@ -729,7 +836,35 @@ pub async fn rename_database(
     new_name: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    rename_database_impl(&state, &connection_id, &old_name, &new_name).await
+    let start = std::time::Instant::now();
+    let result = rename_database_impl(&state, &connection_id, &old_name, &new_name).await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+
+    // Rename database involves CREATE + RENAME TABLE(s) + DROP — log as a batch
+    let stmts = vec![
+        format!("CREATE DATABASE `{new_name}`"),
+        format!("RENAME TABLE ... (from `{old_name}` to `{new_name}`)"),
+        format!("DROP DATABASE `{old_name}`"),
+    ];
+    let entries: Vec<NewHistoryEntry> = stmts
+        .into_iter()
+        .map(|sql_text| NewHistoryEntry {
+            connection_id: conn_id.clone(),
+            database_name: database_name.clone(),
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        })
+        .collect();
+
+    log_batch_entries(&state.db, entries);
+
+    result
 }
 
 #[cfg(not(coverage))]
@@ -740,7 +875,28 @@ pub async fn drop_table(
     table: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    drop_table_impl(&state, &connection_id, &database, &table).await
+    let start = std::time::Instant::now();
+    let result = drop_table_impl(&state, &connection_id, &database, &table).await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let sql_text = format!("DROP TABLE `{database}`.`{table}`");
+
+    log_single_entry(
+        &state.db,
+        NewHistoryEntry {
+            connection_id: conn_id,
+            database_name,
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        },
+    );
+
+    result
 }
 
 #[cfg(not(coverage))]
@@ -751,7 +907,28 @@ pub async fn truncate_table(
     table: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    truncate_table_impl(&state, &connection_id, &database, &table).await
+    let start = std::time::Instant::now();
+    let result = truncate_table_impl(&state, &connection_id, &database, &table).await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let sql_text = format!("TRUNCATE TABLE `{database}`.`{table}`");
+
+    log_single_entry(
+        &state.db,
+        NewHistoryEntry {
+            connection_id: conn_id,
+            database_name,
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        },
+    );
+
+    result
 }
 
 #[cfg(not(coverage))]
@@ -763,5 +940,28 @@ pub async fn rename_table(
     new_name: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    rename_table_impl(&state, &connection_id, &database, &old_name, &new_name).await
+    let start = std::time::Instant::now();
+    let result = rename_table_impl(&state, &connection_id, &database, &old_name, &new_name).await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let sql_text = format!(
+        "RENAME TABLE `{database}`.`{old_name}` TO `{database}`.`{new_name}`"
+    );
+
+    log_single_entry(
+        &state.db,
+        NewHistoryEntry {
+            connection_id: conn_id,
+            database_name,
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        },
+    );
+
+    result
 }

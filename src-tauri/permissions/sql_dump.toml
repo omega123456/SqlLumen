@@ -1,0 +1,35 @@
+[[permission]]
+identifier = "allow-list-exportable-objects"
+description = "Enables the list_exportable_objects command without any pre-configured scope."
+commands.allow = ["list_exportable_objects"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-start-sql-dump"
+description = "Enables the start_sql_dump command without any pre-configured scope."
+commands.allow = ["start_sql_dump"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-get-dump-progress"
+description = "Enables the get_dump_progress command without any pre-configured scope."
+commands.allow = ["get_dump_progress"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-start-sql-import"
+description = "Enables the start_sql_import command without any pre-configured scope."
+commands.allow = ["start_sql_import"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-get-import-progress"
+description = "Enables the get_import_progress command without any pre-configured scope."
+commands.allow = ["get_import_progress"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-cancel-import"
+description = "Enables the cancel_import command without any pre-configured scope."
+commands.allow = ["cancel_import"]
+commands.deny = []

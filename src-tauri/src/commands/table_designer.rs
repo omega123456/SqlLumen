@@ -9,6 +9,10 @@ use crate::mysql::table_designer::{
 use crate::state::AppState;
 
 #[cfg(not(coverage))]
+use crate::commands::query_history_bridge::{log_single_entry, resolve_connection_context};
+#[cfg(not(coverage))]
+use crate::db::history::NewHistoryEntry;
+#[cfg(not(coverage))]
 use crate::mysql::table_designer::{
     DefaultValueModel, DesignerColumnDef, DesignerForeignKeyDef, DesignerIndexDef,
 };
@@ -500,7 +504,31 @@ pub async fn load_table_for_designer(
     table_name: String,
     state: State<'_, AppState>,
 ) -> Result<DesignerTableSchema, String> {
-    load_table_for_designer_impl(&state, &connection_id, &database, &table_name).await
+    let start = std::time::Instant::now();
+    let result =
+        load_table_for_designer_impl(&state, &connection_id, &database, &table_name).await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+    let sql_text = format!(
+        "/* table designer */ SELECT ... FROM INFORMATION_SCHEMA FOR TABLE `{database}`.`{table_name}`"
+    );
+
+    log_single_entry(
+        &state.db,
+        NewHistoryEntry {
+            connection_id: conn_id,
+            database_name,
+            sql_text,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        },
+    );
+
+    result
 }
 
 #[cfg(not(coverage))]
@@ -517,5 +545,25 @@ pub async fn apply_table_ddl(
     ddl: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    apply_table_ddl_impl(&state, &connection_id, &database, &ddl).await
+    let start = std::time::Instant::now();
+    let result = apply_table_ddl_impl(&state, &connection_id, &database, &ddl).await;
+
+    let duration_ms = start.elapsed().as_millis() as i64;
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
+
+    log_single_entry(
+        &state.db,
+        NewHistoryEntry {
+            connection_id: conn_id,
+            database_name,
+            sql_text: ddl,
+            duration_ms: Some(duration_ms),
+            row_count: Some(0),
+            affected_rows: Some(0),
+            success: result.is_ok(),
+            error_message: result.as_ref().err().cloned(),
+        },
+    );
+
+    result
 }
