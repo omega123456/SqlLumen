@@ -1,15 +1,29 @@
 # SqlLumen
 
-A desktop **MySQL / MariaDB client** built with [Tauri](https://tauri.app/) 2 and [React](https://react.dev/). The UI is a modern shell (sidebar, workspace, tabs, status bar) with light/dark theming. **Database connectivity is planned**; the current milestone focuses on app foundation, local settings, and tooling.
+A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://tauri.app/) 2 and [React](https://react.dev/) 19 (TypeScript). The UI is a native shell—sidebar object browser, tabbed workspace, resizable panels, and status bar—with light/dark theming. **MySQL and MariaDB** access runs in the Rust backend; the frontend talks to the database only through Tauri IPC (`invoke`), with local **SQLite** for app settings, history, and other persisted data.
 
 ## Features
 
-- **Native desktop app** — small footprint compared to Electron-style stacks
-- **React + TypeScript** frontend with Vite
-- **Resizable layout** — sidebar and main workspace via `react-resizable-panels`
-- **Theming** — light, dark, or follow the OS; persisted locally
-- **Local SQLite** (via Tauri/Rust) for settings and migrations
-- **Tests** — Vitest for unit/component tests, Playwright for smoke E2E
+- **Connections** — save and open connections; test connectivity from the connection dialog
+- **Object browser** — navigate databases, tables, views, and related objects
+- **Query editor** — Monaco-based SQL editing with formatting and completion-oriented tooling
+- **Result sets** — grid, form, and text views; execution feedback and toolbars
+- **Table data** — browse and edit rows with validation and related UI (foreign keys, unsaved changes)
+- **Table designer** — column, index, and foreign-key editing with DDL preview and apply flow
+- **Schema information** — columns, indexes, foreign keys, DDL, and stats-style panels where supported
+- **Import / export** — data and SQL-oriented workflows (e.g. CSV, JSON, XLSX, SQL dump paths—see in-app dialogs)
+- **History & favorites** — query history and saved snippets/favorites
+- **Settings** — general, editor, and results preferences; theme (light / dark / system) persisted locally
+- **Native desktop app** — smaller footprint than typical Electron stacks; bundles via Tauri
+
+## Stack
+
+| Layer        | Technologies                                                                 |
+| ------------ | ---------------------------------------------------------------------------- |
+| Desktop shell | Tauri 2, Rust (async MySQL pool, migrations, export writers)                |
+| UI           | React 19, TypeScript, Vite 8, Zustand, `react-resizable-panels`, Monaco     |
+| Data grid    | `react-data-grid` (via a shared app wrapper)                                |
+| Tests        | Vitest (coverage gates), Rust integration tests (nextest / llvm-cov), Playwright E2E + screenshot baselines |
 
 ## Requirements
 
@@ -66,11 +80,11 @@ pnpm install
 pnpm tauri dev
 ```
 
-The dev server prefers port **1420**. `pnpm tauri dev` picks that port automatically (or the next free one) and wires it into Tauri. `pnpm dev` (frontend-only) does the same via Vite's built-in fallback — check Vite's startup banner for the actual URL.
+The dev server prefers port **1420**. `pnpm tauri dev` uses `http://127.0.0.1:1420` from Tauri config. `pnpm dev` (frontend-only) runs Vite on the same port when free—check Vite’s startup banner for the actual URL.
 
 ### Web-only UI (no native shell)
 
-Useful for quick frontend iteration without the Rust toolchain:
+Useful for quick frontend iteration without the Rust toolchain (IPC must be mocked or features that call the backend will not work end-to-end):
 
 ```bash
 pnpm dev
@@ -78,29 +92,30 @@ pnpm dev
 
 ## Scripts
 
-| Command                       | Purpose                                                                                                                                                              |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm dev`                    | Vite dev server                                                                                                                                                      |
-| `pnpm build`                  | Typecheck + production frontend build                                                                                                                                |
-| `pnpm preview`                | Preview the built frontend                                                                                                                                           |
-| `pnpm tauri dev`              | Run the full Tauri app in development                                                                                                                                |
-| `pnpm tauri build`            | Build installable bundles for your OS                                                                                                                                |
-| `pnpm test`                   | Run Vitest once                                                                                                                                                      |
-| `pnpm test:watch`             | Vitest in watch mode                                                                                                                                                 |
-| `pnpm test:coverage`          | Vitest with coverage thresholds                                                                                                                                      |
-| `pnpm test:rust`              | Rust integration tests via [cargo-nextest](https://nexte.st/) (`cargo sqllumen-test-integration`; targets and flags in `.cargo/config.toml`)                     |
-| `pnpm test:rust:coverage`     | Same tests under [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo sqllumen-llvm-cov`; summary to stdout; artifacts under `src-tauri/target/`) |
-| `pnpm test:all`               | Vitest coverage + Rust llvm-cov + Playwright E2E (run after substantive changes)                                                                                     |
-| `pnpm test:e2e`               | Playwright E2E tests                                                                                                                                                 |
-| `pnpm lint` / `pnpm lint:fix` | ESLint                                                                                                                                                               |
-| `pnpm format`                 | Prettier on `src/`                                                                                                                                                   |
-| `pnpm typecheck`              | `tsc --noEmit`                                                                                                                                                       |
+| Command                         | Purpose                                                                                                                                                              |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                      | Vite dev server                                                                                                                                                      |
+| `pnpm build`                    | Typecheck + production frontend build                                                                                                                                |
+| `pnpm preview`                  | Preview the built frontend                                                                                                                                           |
+| `pnpm tauri dev`                | Run the full Tauri app in development                                                                                                                                |
+| `pnpm tauri build`              | Build installable bundles for your OS                                                                                                                                |
+| `pnpm test`                     | Run Vitest once                                                                                                                                                      |
+| `pnpm test:watch`               | Vitest in watch mode                                                                                                                                                 |
+| `pnpm test:coverage`            | Vitest with coverage thresholds                                                                                                                                      |
+| `pnpm test:rust`                | Rust integration tests via [cargo-nextest](https://nexte.st/) (`cargo sqllumen-test-integration`; targets and flags in `.cargo/config.toml`)                         |
+| `pnpm test:rust:coverage`       | Same tests under [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo sqllumen-llvm-cov`; summary to stdout; artifacts under `src-tauri/target/`)      |
+| `pnpm test:all`                 | Vitest coverage + Rust llvm-cov + Playwright E2E (run after substantive changes)                                                                                     |
+| `pnpm test:e2e`                 | Playwright E2E tests                                                                                                                                                 |
+| `pnpm test:screenshots`         | Playwright visual regression (`e2e/screenshots.spec.ts`) only                                                                                                        |
+| `pnpm lint` / `pnpm lint:fix`   | ESLint                                                                                                                                                               |
+| `pnpm format`                   | Prettier on `src/`                                                                                                                                                   |
+| `pnpm typecheck`                | `tsc --noEmit`                                                                                                                                                       |
 
 ## GitHub releases (CI)
 
 The workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) builds **Windows** (x64) and **macOS** (Apple Silicon and Intel) bundles and uploads them to a **GitHub Release**. It runs on **`workflow_dispatch`** (Actions tab → Release → Run workflow) or when you push a version tag matching `v*` (e.g. `v0.1.0`).
 
-1. Bump **`version`** in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) (and keep [`package.json`](package.json) in sync if you use it elsewhere).
+1. Bump **`version`** in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) and keep [`package.json`](package.json) / [`src-tauri/Cargo.toml`](src-tauri/Cargo.toml) in sync.
 2. Commit and push, then create and push the tag: `git tag v0.1.0 && git push origin v0.1.0`, or run the workflow manually after tagging.
 3. If asset upload fails with a permissions error, set the repository’s **Settings → Actions → General → Workflow permissions** to **Read and write**.
 
@@ -110,21 +125,18 @@ Releases are created as **drafts** by default; publish them from the Releases pa
 
 ```
 <repo>/
-├── src/                 # React application
-├── src-tauri/           # Rust backend, Tauri config, SQLite migrations
-├── e2e/                 # Playwright specs
-└── package.json         # Frontend scripts and dependencies
+├── src/                 # React app: components, lib (IPC wrappers), stores, styles, types
+├── src-tauri/           # Rust backend, Tauri config, permissions, SQLite migrations, icons
+├── e2e/                 # Playwright specs (including visual regression)
+├── package.json         # Frontend scripts and dependencies
+└── AGENTS.md            # Maintainer/agent notes: architecture, commands, testing gates
 ```
-
-## Roadmap
-
-Work is tracked in phases; see `CONTEXT.md` and `.agent/plans/` in this repo for detail. **MySQL/MariaDB connectivity** is the next major milestone after the foundation.
 
 ## Contributing
 
 1. Complete **[Setup](#setup)** (including Playwright, cargo-nextest, and Rust coverage tools if you run the full suite), then stay on the latest dependencies with `pnpm install` as needed.
 2. Run `pnpm lint`, `pnpm typecheck`, and `pnpm test:all` (Vitest coverage, Rust with llvm-cov, Playwright) before opening a PR.
-3. For UI changes that affect the desktop shell, verify with `pnpm tauri dev` when possible.
+3. For behavior that depends on the native shell, verify with `pnpm tauri dev` when possible. See **[AGENTS.md](AGENTS.md)** for IPC conventions, directory map, and screenshot baseline workflow.
 
 ---
 
@@ -134,4 +146,4 @@ If you previously ran installs under **`io.mysqlclient.app`**, **`mysql-client.d
 
 ---
 
-_Product name in bundles: **SqlLumen** · Identifier: `app.sqllumen.desktop`_
+**Product name:** SqlLumen · **Version:** 0.1.0 (see `package.json` / `src-tauri/tauri.conf.json`) · **Identifier:** `app.sqllumen.desktop` · **Bundle short description:** cross-platform desktop MySQL/MariaDB client
