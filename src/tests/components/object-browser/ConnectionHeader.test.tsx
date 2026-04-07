@@ -59,7 +59,13 @@ describe('ConnectionHeader', () => {
       activeConnections: { 'conn-1': makeActiveConnection() },
     })
 
-    render(<ConnectionHeader connectionId="conn-1" />)
+    render(
+      <ConnectionHeader
+        connectionId="conn-1"
+        favouritesOpen={false}
+        onToggleFavourites={() => {}}
+      />
+    )
     expect(screen.getByTestId('connection-header')).toBeInTheDocument()
   })
 
@@ -68,7 +74,13 @@ describe('ConnectionHeader', () => {
       activeConnections: { 'conn-1': makeActiveConnection() },
     })
 
-    render(<ConnectionHeader connectionId="conn-1" />)
+    render(
+      <ConnectionHeader
+        connectionId="conn-1"
+        favouritesOpen={false}
+        onToggleFavourites={() => {}}
+      />
+    )
     expect(screen.getByText('Production DB')).toBeInTheDocument()
   })
 
@@ -77,7 +89,13 @@ describe('ConnectionHeader', () => {
       activeConnections: { 'conn-1': makeActiveConnection({ serverVersion: '8.0.35' }) },
     })
 
-    render(<ConnectionHeader connectionId="conn-1" />)
+    render(
+      <ConnectionHeader
+        connectionId="conn-1"
+        favouritesOpen={false}
+        onToggleFavourites={() => {}}
+      />
+    )
     expect(screen.getByText('8.0.35')).toBeInTheDocument()
   })
 
@@ -86,12 +104,24 @@ describe('ConnectionHeader', () => {
       activeConnections: { 'conn-1': makeActiveConnection({ serverVersion: '' }) },
     })
 
-    render(<ConnectionHeader connectionId="conn-1" />)
+    render(
+      <ConnectionHeader
+        connectionId="conn-1"
+        favouritesOpen={false}
+        onToggleFavourites={() => {}}
+      />
+    )
     expect(screen.getByText('MySQL Server')).toBeInTheDocument()
   })
 
   it('renders nothing when connection not found', () => {
-    const { container } = render(<ConnectionHeader connectionId="nonexistent" />)
+    const { container } = render(
+      <ConnectionHeader
+        connectionId="nonexistent"
+        favouritesOpen={false}
+        onToggleFavourites={() => {}}
+      />
+    )
     expect(container.innerHTML).toBe('')
   })
 
@@ -103,7 +133,13 @@ describe('ConnectionHeader', () => {
       activeConnections: { 'conn-1': makeActiveConnection() },
     })
 
-    render(<ConnectionHeader connectionId="conn-1" />)
+    render(
+      <ConnectionHeader
+        connectionId="conn-1"
+        favouritesOpen={false}
+        onToggleFavourites={() => {}}
+      />
+    )
     const refreshBtn = screen.getByRole('button', { name: /refresh/i })
     await user.click(refreshBtn)
     expect(refreshAll).toHaveBeenCalledWith('conn-1')
@@ -114,7 +150,13 @@ describe('ConnectionHeader', () => {
       activeConnections: { 'conn-1': makeActiveConnection({ status: 'connected' }) },
     })
 
-    render(<ConnectionHeader connectionId="conn-1" />)
+    render(
+      <ConnectionHeader
+        connectionId="conn-1"
+        favouritesOpen={false}
+        onToggleFavourites={() => {}}
+      />
+    )
     const indicator = screen.getByTestId('connection-status-indicator')
     expect(indicator).toBeInTheDocument()
     expect(indicator).toHaveAttribute('title', 'Connected')
@@ -125,7 +167,13 @@ describe('ConnectionHeader', () => {
       activeConnections: { 'conn-1': makeActiveConnection({ status: 'reconnecting' }) },
     })
 
-    render(<ConnectionHeader connectionId="conn-1" />)
+    render(
+      <ConnectionHeader
+        connectionId="conn-1"
+        favouritesOpen={false}
+        onToggleFavourites={() => {}}
+      />
+    )
     const indicator = screen.getByTestId('connection-status-indicator')
     expect(indicator).toHaveAttribute('title', 'Reconnecting')
   })
@@ -135,7 +183,13 @@ describe('ConnectionHeader', () => {
       activeConnections: { 'conn-1': makeActiveConnection({ status: 'disconnected' }) },
     })
 
-    render(<ConnectionHeader connectionId="conn-1" />)
+    render(
+      <ConnectionHeader
+        connectionId="conn-1"
+        favouritesOpen={false}
+        onToggleFavourites={() => {}}
+      />
+    )
     const indicator = screen.getByTestId('connection-status-indicator')
     expect(indicator).toHaveAttribute('title', 'Disconnected')
   })

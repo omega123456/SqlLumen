@@ -55,18 +55,20 @@ export function WorkspaceTabs({ connectionId }: WorkspaceTabsProps) {
             data-testid={`workspace-tab-${tab.id}`}
             onSelect={() => setActiveTab(connectionId, tab.id)}
             suffix={
-              <button
-                type="button"
-                className={styles.tabClose}
-                aria-label={`Close ${tab.label}`}
-                tabIndex={-1}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  closeTab(connectionId, tab.id)
-                }}
-              >
-                ×
-              </button>
+              tab.type !== 'history' ? (
+                <button
+                  type="button"
+                  className={styles.tabClose}
+                  aria-label={`Close ${tab.label}`}
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    closeTab(connectionId, tab.id)
+                  }}
+                >
+                  ×
+                </button>
+              ) : undefined
             }
           >
             <WorkspaceTabLabel tab={tab} />

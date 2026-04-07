@@ -190,9 +190,9 @@ function serializeTab(
         objectName: tab.objectName,
         objectType: tab.objectType,
       }
-    case 'history-favorites':
+    case 'history':
       return {
-        type: 'history-favorites',
+        type: 'history',
         tabId: tab.id,
       }
     // table-designer and object-editor are NOT serialized
@@ -319,10 +319,10 @@ async function restoreConnectionTabs(
         restoredTabId = created?.id ?? null
         break
       }
-      case 'history-favorites': {
-        workspaceStore.openHistoryFavoritesTab(sessionId)
+      case 'history': {
+        workspaceStore.openHistoryTab(sessionId)
         const allTabs = useWorkspaceStore.getState().tabsByConnection[sessionId] ?? []
-        const created = allTabs.find((t) => t.type === 'history-favorites')
+        const created = allTabs.find((t) => t.type === 'history')
         restoredTabId = created?.id ?? null
         break
       }

@@ -69,8 +69,15 @@ pub fn list_favorites(
 pub fn update_favorite_impl(
     state: &AppState,
     id: i64,
-    input: UpdateFavoriteInput,
+    mut input: UpdateFavoriteInput,
 ) -> Result<bool, String> {
+    if let Some(ref cid) = input.connection_id {
+        let resolved = state
+            .registry
+            .get_profile_id(cid)
+            .unwrap_or_else(|| cid.clone());
+        input.connection_id = Some(resolved);
+    }
     let conn = lock_db(state)?;
     favorites::update_favorite(&conn, id, &input).map_err(|e| e.to_string())
 }

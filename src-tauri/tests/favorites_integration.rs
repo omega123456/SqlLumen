@@ -77,6 +77,7 @@ fn test_update_favorite() {
             sql_text: "SELECT 42".to_string(),
             description: Some("Updated description".to_string()),
             category: Some("queries".to_string()),
+            connection_id: None,
         },
     )
     .expect("update");
@@ -101,6 +102,7 @@ fn test_update_nonexistent_favorite() {
             sql_text: "SELECT 1".to_string(),
             description: None,
             category: None,
+            connection_id: None,
         },
     )
     .expect("should not error");
@@ -288,6 +290,7 @@ fn test_update_favorite_impl_error_when_table_missing() {
             sql_text: "SELECT 1".to_string(),
             description: None,
             category: None,
+            connection_id: None,
         },
     );
     assert!(result.is_err(), "should error when favorites table is missing");
@@ -347,7 +350,8 @@ fn test_update_favorite_input_deserialize_from_json() {
         "name": "Updated",
         "sqlText": "SELECT 42",
         "description": "Updated desc",
-        "category": "misc"
+        "category": "misc",
+        "connectionId": "conn-1"
     });
 
     let input: UpdateFavoriteInput =
@@ -356,6 +360,7 @@ fn test_update_favorite_input_deserialize_from_json() {
     assert_eq!(input.sql_text, "SELECT 42");
     assert_eq!(input.description.as_deref(), Some("Updated desc"));
     assert_eq!(input.category.as_deref(), Some("misc"));
+    assert_eq!(input.connection_id.as_deref(), Some("conn-1"));
 }
 
 #[test]
@@ -383,4 +388,64 @@ fn test_favorite_entry_deserialize_from_json() {
     assert_eq!(entry.connection_id.as_deref(), Some("conn-x"));
     assert_eq!(entry.created_at, "2025-01-15T10:30:00Z");
     assert_eq!(entry.updated_at, "2025-01-15T11:00:00Z");
+}
+
+// ── Re-scoping (connection_id change on update) ─────────────────────────
+
+#[test]
+fn test_update_favorite_rescope_to_global() {
+    let state = common::test_app_state();
+    // Create a connection-specific favourite
+    let id = create_favorite_impl(&state, sample_create_input(Some("p1"), "scoped")).expect("create");
+
+    // Re-scope to global
+    let updated = update_favorite_impl(
+        &state,
+        id,
+        UpdateFavoriteInput {
+            name: "scoped".to_string(),
+            sql_text: "SELECT * FROM scoped".to_string(),
+            description: None,
+            category: None,
+            connection_id: None, // None = global
+        },
+    )
+    .expect("update");
+    assert!(updated);
+
+    // Should now appear when listing for any connection (as it's global)
+    let list = list_favorites_impl(&state, "p2").expect("list p2");
+    assert_eq!(list.len(), 1);
+    assert!(list[0].connection_id.is_none());
+}
+
+#[test]
+fn test_update_favorite_rescope_to_connection() {
+    let state = common::test_app_state();
+    // Create a global favourite
+    let id = create_favorite_impl(&state, sample_create_input(None, "global_q")).expect("create");
+
+    // Re-scope to p1
+    let updated = update_favorite_impl(
+        &state,
+        id,
+        UpdateFavoriteInput {
+            name: "global_q".to_string(),
+            sql_text: "SELECT * FROM global_q".to_string(),
+            description: None,
+            category: None,
+            connection_id: Some("p1".to_string()),
+        },
+    )
+    .expect("update");
+    assert!(updated);
+
+    // Should no longer appear for p2 (connection-specific to p1 now)
+    let list_p2 = list_favorites_impl(&state, "p2").expect("list p2");
+    assert!(list_p2.is_empty());
+
+    // Should appear for p1
+    let list_p1 = list_favorites_impl(&state, "p1").expect("list p1");
+    assert_eq!(list_p1.len(), 1);
+    assert_eq!(list_p1[0].connection_id.as_deref(), Some("p1"));
 }

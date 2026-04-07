@@ -1,0 +1,130 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--surface-container);
+  padding: var(--space-lg);
+  gap: var(--space-lg);
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--space-md);
+  color: var(--on-surface-variant);
+  opacity: 0.5;
+}
+
+.emptyIcon {
+  color: var(--on-surface-variant);
+  opacity: 0.4;
+}
+
+.emptyText {
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+}
+
+.sectionHeading {
+  font-family: var(--font-mono);
+  font-size: var(--type-label-caps);
+  font-weight: var(--type-label-caps-weight);
+  letter-spacing: var(--type-label-caps-tracking);
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin: 0;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-xs) var(--space-md);
+  font-size: var(--type-size-sm);
+}
+
+.metaLabel {
+  color: var(--on-surface-variant);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.metaValue {
+  color: var(--on-surface);
+  word-break: break-word;
+}
+
+.statusSuccess {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--tertiary);
+  font-weight: 500;
+}
+
+.statusError {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--error);
+  font-weight: 500;
+}
+
+.errorMessage {
+  display: inline;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.codeBlock {
+  margin: 0;
+}
+
+.openButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  transition: background 0.12s;
+  align-self: flex-start;
+}
+
+.openButton:hover {
+  background: rgba(var(--primary-rgb), 0.08);
+}
+
+.copyButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-size-2xs);
+  font-weight: 500;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.copyButton:hover {
+  background: rgba(var(--on-surface-rgb), 0.06);
+  color: var(--on-surface);
+}

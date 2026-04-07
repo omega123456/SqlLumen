@@ -11,12 +11,15 @@ import { TreeNode } from './TreeNode'
 import { ObjectBrowserContextMenu } from './ObjectBrowserContextMenu'
 import type { ObjectType } from '../../types/schema'
 import { computeScopedFilterMatchIds } from '../../lib/tree-filter'
+import { FavouritesView } from '../favourites/FavouritesView'
 import styles from './ObjectBrowser.module.css'
 
 const SqlDumpDialog = lazy(() => import('../dialogs/SqlDumpDialog'))
 
 export interface ObjectBrowserProps {
   connectionId: string
+  favouritesOpen: boolean
+  onToggleFavourites: () => void
 }
 
 // ---------------------------------------------------------------------------
@@ -45,7 +48,11 @@ interface SqlDumpDialogState {
 
 const CLOSED_DUMP_DIALOG: SqlDumpDialogState = { open: false }
 
-export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
+export function ObjectBrowser({
+  connectionId,
+  favouritesOpen,
+  onToggleFavourites,
+}: ObjectBrowserProps) {
   const setActiveDatabase = useConnectionStore((state) => state.setActiveDatabase)
   const activeConnection = useConnectionStore(
     (state) => state.activeConnections[connectionId] ?? null
@@ -241,48 +248,60 @@ export function ObjectBrowser({ connectionId }: ObjectBrowserProps) {
 
   return (
     <div className={styles.container} data-testid="object-browser">
-      <ConnectionHeader connectionId={connectionId} />
+      <ConnectionHeader
+        connectionId={connectionId}
+        favouritesOpen={favouritesOpen}
+        onToggleFavourites={onToggleFavourites}
+      />
 
-      <div className={styles.searchWrapper}>
-        <span className={styles.searchIcon}>
-          <MagnifyingGlass size={14} weight="regular" />
-        </span>
-        <TextInput
-          variant="bare"
-          type="text"
-          className={styles.searchInput}
-          placeholder="Filter objects..."
-          value={filterText}
-          onChange={handleFilterChange}
-          data-testid="filter-input"
-          aria-label="Filter objects"
-        />
-      </div>
-
-      <div className={styles.treeContainer} data-testid="object-browser-scroll">
-        {!isConnected && <div className={styles.emptyState}>Not connected</div>}
-
-        {isConnected && !hasNodes && <div className={styles.emptyState}>No databases loaded</div>}
-
-        {isConnected && hasNodes && (
-          <div role="tree" aria-label="Database objects">
-            {topLevelIds.map((nodeId, index) => (
-              <TreeNode
-                key={nodeId}
-                nodeId={nodeId}
-                connectionId={connectionId}
-                level={0}
-                onContextMenu={handleContextMenu}
-                onDoubleClick={handleDoubleClick}
-                onSelect={handleNodeSelect}
-                filterMatchIds={filterMatchIds}
-                filterScopeRootId={effectiveScopeRoot}
-                isFirstVisible={index === 0}
-              />
-            ))}
+      {favouritesOpen ? (
+        <FavouritesView connectionId={connectionId} />
+      ) : (
+        <>
+          <div className={styles.searchWrapper}>
+            <span className={styles.searchIcon}>
+              <MagnifyingGlass size={14} weight="regular" />
+            </span>
+            <TextInput
+              variant="bare"
+              type="text"
+              className={styles.searchInput}
+              placeholder="Filter objects..."
+              value={filterText}
+              onChange={handleFilterChange}
+              data-testid="filter-input"
+              aria-label="Filter objects"
+            />
           </div>
-        )}
-      </div>
+
+          <div className={styles.treeContainer} data-testid="object-browser-scroll">
+            {!isConnected && <div className={styles.emptyState}>Not connected</div>}
+
+            {isConnected && !hasNodes && (
+              <div className={styles.emptyState}>No databases loaded</div>
+            )}
+
+            {isConnected && hasNodes && (
+              <div role="tree" aria-label="Database objects">
+                {topLevelIds.map((nodeId, index) => (
+                  <TreeNode
+                    key={nodeId}
+                    nodeId={nodeId}
+                    connectionId={connectionId}
+                    level={0}
+                    onContextMenu={handleContextMenu}
+                    onDoubleClick={handleDoubleClick}
+                    onSelect={handleNodeSelect}
+                    filterMatchIds={filterMatchIds}
+                    filterScopeRootId={effectiveScopeRoot}
+                    isFirstVisible={index === 0}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       <ObjectBrowserContextMenu
         visible={contextMenu.visible}

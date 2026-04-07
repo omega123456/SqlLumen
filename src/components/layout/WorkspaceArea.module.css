@@ -63,8 +63,8 @@
   min-height: 0;
 }
 
-/* HistoryFavoritesTab needs to fill available width for the split panel layout */
-.tabContent > :global([data-testid='history-favorites-tab']) {
+/* HistoryTab needs to fill available width for the split panel layout */
+.tabContent > :global([data-testid='history-tab']) {
   flex: 1 1 auto;
   align-self: stretch;
   width: 100%;

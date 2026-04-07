@@ -1,13 +1,19 @@
-import { Database, ArrowClockwise } from '@phosphor-icons/react'
+import { Database, ArrowClockwise, Star } from '@phosphor-icons/react'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useSchemaStore } from '../../stores/schema-store'
 import styles from './ConnectionHeader.module.css'
 
 export interface ConnectionHeaderProps {
   connectionId: string
+  favouritesOpen: boolean
+  onToggleFavourites: () => void
 }
 
-export function ConnectionHeader({ connectionId }: ConnectionHeaderProps) {
+export function ConnectionHeader({
+  connectionId,
+  favouritesOpen,
+  onToggleFavourites,
+}: ConnectionHeaderProps) {
   const activeConnection = useConnectionStore(
     (state) => state.activeConnections[connectionId] ?? null
   )
@@ -53,6 +59,20 @@ export function ConnectionHeader({ connectionId }: ConnectionHeaderProps) {
           <span className={styles.serverVersion}>{serverVersion}</span>
         </span>
       </div>
+      <button
+        type="button"
+        className={styles.refreshButton}
+        onClick={onToggleFavourites}
+        aria-label={favouritesOpen ? 'Show Object Browser' : 'Show Favourites'}
+        title={favouritesOpen ? 'Show Object Browser' : 'Show Favourites'}
+        data-testid="favourites-toggle"
+      >
+        {favouritesOpen ? (
+          <Database size={16} weight="regular" />
+        ) : (
+          <Star size={16} weight="regular" />
+        )}
+      </button>
       <button
         type="button"
         className={styles.refreshButton}

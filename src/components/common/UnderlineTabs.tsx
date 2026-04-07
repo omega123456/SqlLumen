@@ -102,7 +102,7 @@ export function UnderlineTab({
       data-testid={testId}
       style={indicatorStyle}
       title={title}
-      onClick={onClick}
+      onClick={handleSelect}
     >
       {children}
     </button>

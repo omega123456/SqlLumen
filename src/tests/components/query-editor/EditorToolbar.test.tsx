@@ -92,7 +92,6 @@ describe('EditorToolbar', () => {
     expect(screen.getByTestId('editor-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-save')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-open')).toBeInTheDocument()
-    expect(screen.getByTestId('toolbar-history')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-format')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-import-sql')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-execute')).toBeInTheDocument()
@@ -142,16 +141,6 @@ describe('EditorToolbar', () => {
     const importBtn = screen.getByTestId('toolbar-import-sql')
     expect(importBtn).toBeInTheDocument()
     expect(importBtn).toBeDisabled()
-  })
-
-  it('history button is enabled and opens history tab', () => {
-    renderToolbar()
-    const historyBtn = screen.getByTestId('toolbar-history')
-    expect(historyBtn).not.toBeDisabled()
-    fireEvent.click(historyBtn)
-    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
-    expect(tabs).toBeDefined()
-    expect(tabs.some((t) => t.type === 'history-favorites')).toBe(true)
   })
 
   it('execute buttons are disabled when no content', () => {

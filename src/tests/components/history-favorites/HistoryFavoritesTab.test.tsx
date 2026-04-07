@@ -6,7 +6,7 @@ import { useConnectionStore } from '../../../stores/connection-store'
 import { useHistoryStore } from '../../../stores/history-store'
 import { useFavoritesStore } from '../../../stores/favorites-store'
 import type { ActiveConnection, SavedConnection } from '../../../types/connection'
-import type { HistoryFavoritesTab as HistoryFavoritesTabType } from '../../../types/schema'
+import type { HistoryTab as HistoryFavoritesTabType } from '../../../types/schema'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -45,7 +45,7 @@ function makeActiveConnection(overrides: Partial<ActiveConnection> = {}): Active
 
 const TAB: HistoryFavoritesTabType = {
   id: 'tab-1',
-  type: 'history-favorites',
+  type: 'history',
   label: 'History & Favorites',
   connectionId: 'conn-1',
 }

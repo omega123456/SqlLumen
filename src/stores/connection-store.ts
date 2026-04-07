@@ -114,6 +114,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         activeTabId: result.sessionId,
         error: null,
       }))
+      useWorkspaceStore.getState().openHistoryTab(result.sessionId, false)
       showSuccessToast('Connected', profile.name)
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)

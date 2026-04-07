@@ -15,7 +15,6 @@ import {
   FastForward,
   FloppyDisk,
   FolderOpen,
-  ClockCounterClockwise,
   MagicWand,
   UploadSimple,
 } from '@phosphor-icons/react'
@@ -56,7 +55,6 @@ export function EditorToolbar({
   const executeCallQuery = useQueryStore((state) => state.executeCallQuery)
   const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
-  const openHistoryFavoritesTab = useWorkspaceStore((state) => state.openHistoryFavoritesTab)
 
   const isReadOnly =
     useConnectionStore((state) => state.activeConnections[connectionId]?.profile?.readOnly) ?? false
@@ -194,15 +192,6 @@ export function EditorToolbar({
           data-testid="toolbar-open"
         >
           <FolderOpen size={16} weight="regular" />
-        </button>
-        <button
-          type="button"
-          className={styles.iconButton}
-          title="History & Favorites"
-          onClick={() => openHistoryFavoritesTab(connectionId)}
-          data-testid="toolbar-history"
-        >
-          <ClockCounterClockwise size={16} weight="regular" />
         </button>
         <button
           type="button"

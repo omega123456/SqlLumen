@@ -5,7 +5,7 @@ import type {
   TableDataTab,
   TableDesignerTab,
   ObjectEditorTab,
-  HistoryFavoritesTab,
+  HistoryTab,
   EditableObjectType,
   DistributiveOmit,
 } from '../types/schema'
@@ -49,7 +49,7 @@ interface WorkspaceState {
   // Actions
   openTab: (tab: OpenableTab) => void
   openQueryTab: (connectionId: string, label?: string) => string
-  openHistoryFavoritesTab: (connectionId: string) => void
+  openHistoryTab: (connectionId: string, activate?: boolean) => void
   closeTab: (connectionId: string, tabId: string) => void
   forceCloseTab: (connectionId: string, tabId: string) => void
   setActiveTab: (connectionId: string, tabId: string) => void
@@ -237,38 +237,44 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     return newTab.id
   },
 
-  // ------ openHistoryFavoritesTab (singleton per connection) ------
+  // ------ openHistoryTab (singleton per connection) ------
 
-  openHistoryFavoritesTab: (connectionId: string) => {
+  openHistoryTab: (connectionId: string, activate: boolean = true) => {
     const tabs = get().tabsByConnection[connectionId] || []
 
-    // Reuse existing history-favorites tab if one exists
-    const existing = tabs.find((t) => t.type === 'history-favorites')
+    // Reuse existing history tab if one exists
+    const existing = tabs.find((t) => t.type === 'history')
     if (existing) {
-      set((state) => ({
-        activeTabByConnection: {
-          ...state.activeTabByConnection,
-          [connectionId]: existing.id,
-        },
-      }))
+      if (activate) {
+        set((state) => ({
+          activeTabByConnection: {
+            ...state.activeTabByConnection,
+            [connectionId]: existing.id,
+          },
+        }))
+      }
       return
     }
 
-    const newTab: HistoryFavoritesTab = {
+    const newTab: HistoryTab = {
       id: generateTabId(),
-      type: 'history-favorites',
-      label: 'History & Favorites',
+      type: 'history',
+      label: 'History',
       connectionId,
     }
     set((state) => ({
       tabsByConnection: {
         ...state.tabsByConnection,
-        [connectionId]: [...(state.tabsByConnection[connectionId] || []), newTab],
+        [connectionId]: [newTab, ...(state.tabsByConnection[connectionId] || [])],
       },
-      activeTabByConnection: {
-        ...state.activeTabByConnection,
-        [connectionId]: newTab.id,
-      },
+      ...(activate
+        ? {
+            activeTabByConnection: {
+              ...state.activeTabByConnection,
+              [connectionId]: newTab.id,
+            },
+          }
+        : {}),
     }))
   },
 
@@ -281,6 +287,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     if (idx === -1) return
 
     const closingTab = tabs[idx]
+
+    // History tabs are not closable
+    if (closingTab.type === 'history') return
 
     if (closingTab.type === 'table-data') {
       const tableDataState = useTableDataStore.getState().tabs[tabId]
@@ -451,6 +460,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     if (idx === -1) return
 
     const closingTab = tabs[idx]
+
+    // History tabs are not closable
+    if (closingTab.type === 'history') return
 
     if (closingTab.type === 'table-data') {
       useTableDataStore.getState().cleanupTab(tabId)

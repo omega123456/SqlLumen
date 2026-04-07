@@ -46,7 +46,7 @@ export type SessionTabState =
       objectType: string
     }
   | {
-      type: 'history-favorites'
+      type: 'history'
       tabId: string
     }
 

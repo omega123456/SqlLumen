@@ -1,0 +1,98 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--surface-container-low);
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.15);
+}
+
+.title {
+  font-family: var(--font-headline);
+  font-size: var(--type-body-lg);
+  font-weight: 700;
+  color: var(--on-surface);
+  margin: 0;
+}
+
+.description {
+  font-size: var(--type-size-xs);
+  color: var(--on-surface-variant);
+  line-height: 1.5;
+}
+
+.categoryRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.categoryLabel {
+  font-size: var(--type-size-2xs);
+  font-weight: 600;
+  color: var(--on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.categoryValue {
+  font-size: var(--type-size-xs);
+  color: var(--on-surface);
+}
+
+.codePanel {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.insertCta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: 8px var(--space-md);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: var(--type-size-sm);
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition:
+    background 150ms,
+    filter 150ms;
+}
+
+.insertCta:hover {
+  filter: brightness(1.1);
+}
+
+.deleteButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: 6px var(--space-md);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--error);
+  font-size: var(--type-size-sm);
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background 150ms;
+}
+
+.deleteButton:hover {
+  background: rgba(var(--error-rgb), 0.08);
+}

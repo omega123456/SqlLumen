@@ -45,7 +45,7 @@ async function connectToSample(page: Page) {
     .click()
   await expect(page.getByTestId('connection-dialog')).toBeHidden()
   await expect(page.getByTestId('object-browser')).toBeVisible()
-  await expect(page.getByText('ecommerce_db')).toBeVisible()
+  await expect(page.getByTestId('object-browser').getByText('ecommerce_db')).toBeVisible()
   await dismissAllToasts(page)
 }
 
@@ -56,10 +56,12 @@ async function connectToSample(page: Page) {
 async function expandCategory(page: Page, categoryLabel: string) {
   // Expand database
   await page.getByText('ecommerce_db').first().click()
-  await expect(page.getByText('Tables')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('object-browser').getByText('Tables')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
 
   // Expand category
-  await page.getByText(categoryLabel, { exact: true }).click()
+  await page.getByTestId('object-browser').getByText(categoryLabel, { exact: true }).click()
   await page.waitForTimeout(300) // Let tree expand settle
 }
 

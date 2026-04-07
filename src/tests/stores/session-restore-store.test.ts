@@ -350,7 +350,7 @@ describe('useSessionRestoreStore — saveSession', () => {
     expect(parsed.connections[0].tabs[0].tableName).toBe('users')
   })
 
-  it('serializes history-favorites tabs', async () => {
+  it('serializes history tabs', async () => {
     let savedValue: string | null = null
 
     mockIPC((cmd, args) => {
@@ -395,13 +395,13 @@ describe('useSessionRestoreStore — saveSession', () => {
       },
     })
 
-    useWorkspaceStore.getState().openHistoryFavoritesTab('session-1')
+    useWorkspaceStore.getState().openHistoryTab('session-1')
 
     await useSessionRestoreStore.getState().saveSession()
 
     const parsed = JSON.parse(savedValue!)
     expect(parsed.connections[0].tabs).toHaveLength(1)
-    expect(parsed.connections[0].tabs[0].type).toBe('history-favorites')
+    expect(parsed.connections[0].tabs[0].type).toBe('history')
   })
 })
 
@@ -751,12 +751,14 @@ describe('useSessionRestoreStore — restoreSession', () => {
 
     await useSessionRestoreStore.getState().restoreSession()
 
-    // The second tab (index 1) should be active
+    // The second query-editor tab (index 1) should be active.
+    // openConnection now auto-creates a history tab, so there are 3 tabs total.
     const workspaceTabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
-    expect(workspaceTabs).toHaveLength(2)
+    const queryTabs = workspaceTabs.filter((t) => t.type === 'query-editor')
+    expect(queryTabs).toHaveLength(2)
     const activeTabId =
       useWorkspaceStore.getState().activeTabByConnection['session-profile-1'] ?? null
-    expect(activeTabId).toBe(workspaceTabs[1].id)
+    expect(activeTabId).toBe(queryTabs[1].id)
   })
 })
 
@@ -862,7 +864,7 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
     expect(schemaTab!.objectName).toBe('orders')
   })
 
-  it('restores history-favorites tabs', async () => {
+  it('restores history tabs', async () => {
     restoreIpc({
       version: 1,
       connections: [
@@ -871,7 +873,7 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
           activeTabIndex: 0,
           tabs: [
             {
-              type: 'history-favorites',
+              type: 'history',
               tabId: 'old-hf-1',
             },
           ],
@@ -882,7 +884,7 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
     await useSessionRestoreStore.getState().restoreSession()
 
     const tabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
-    const hfTab = tabs.find((t) => t.type === 'history-favorites')
+    const hfTab = tabs.find((t) => t.type === 'history')
     expect(hfTab).toBeDefined()
   })
 
@@ -914,7 +916,7 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
               objectType: 'view',
             },
             {
-              type: 'history-favorites',
+              type: 'history',
               tabId: 'old-hf-1',
             },
           ],
@@ -929,7 +931,7 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
     const queryTabs = tabs.filter((t) => t.type === 'query-editor')
     const tableDataTabs = tabs.filter((t) => t.type === 'table-data')
     const schemaInfoTabs = tabs.filter((t) => t.type === 'schema-info')
-    const historyTabs = tabs.filter((t) => t.type === 'history-favorites')
+    const historyTabs = tabs.filter((t) => t.type === 'history')
     expect(queryTabs.length).toBeGreaterThanOrEqual(1)
     expect(tableDataTabs).toHaveLength(1)
     expect(schemaInfoTabs).toHaveLength(1)

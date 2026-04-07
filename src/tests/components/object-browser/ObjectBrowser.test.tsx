@@ -233,20 +233,26 @@ beforeEach(() => {
 describe('ObjectBrowser', () => {
   it('renders with data-testid="object-browser"', () => {
     setupConnectedState()
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
     expect(screen.getByTestId('object-browser')).toBeInTheDocument()
   })
 
   it('exposes data-testid="object-browser-scroll" on tree scroller', () => {
     setupConnectedState()
     setupDatabaseNodes()
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
     expect(screen.getByTestId('object-browser-scroll')).toBeInTheDocument()
   })
 
   it('renders ConnectionHeader', () => {
     setupConnectedState()
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
     expect(screen.getByTestId('connection-header')).toBeInTheDocument()
   })
 
@@ -266,7 +272,9 @@ describe('ObjectBrowser', () => {
         },
       },
     })
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
     expect(screen.getByText('No databases loaded')).toBeInTheDocument()
   })
 
@@ -274,7 +282,9 @@ describe('ObjectBrowser', () => {
     setupConnectedState()
     setupDatabaseNodes()
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
     expect(screen.getByText('ecommerce_db')).toBeInTheDocument()
     expect(screen.getByText('analytics_db')).toBeInTheDocument()
   })
@@ -284,7 +294,9 @@ describe('ObjectBrowser', () => {
     setupConnectedState()
     setupDatabaseNodes()
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
     const input = screen.getByTestId('filter-input')
     await user.type(input, 'ecommerce')
 
@@ -296,7 +308,9 @@ describe('ObjectBrowser', () => {
     useSchemaStore.setState({ loadDatabases })
     setupConnectedState()
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
     expect(loadDatabases).toHaveBeenCalledWith(CONN_ID)
   })
 
@@ -309,7 +323,9 @@ describe('ObjectBrowser', () => {
       useSchemaStore.getState().setFilter('users', CONN_ID)
     })
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     // "users" table matches
     expect(screen.getByText('users')).toBeInTheDocument()
@@ -330,7 +346,9 @@ describe('ObjectBrowser', () => {
       useSchemaStore.getState().setFilter('users', CONN_ID)
     })
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     expect(screen.getByText('users')).toBeInTheDocument()
     expect(screen.getByText('ecommerce_db')).toBeInTheDocument()
@@ -357,7 +375,9 @@ describe('ObjectBrowser', () => {
       })
     })
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     expect(screen.getByText('analytics_db')).toBeInTheDocument()
     expect(screen.getByText('Views')).toBeInTheDocument()
@@ -384,7 +404,9 @@ describe('ObjectBrowser', () => {
       })
     })
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     expect(screen.getByText('Tables')).toBeInTheDocument()
     expect(screen.queryByText('users')).not.toBeInTheDocument()
@@ -398,13 +420,17 @@ describe('ObjectBrowser', () => {
       },
     })
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
     expect(screen.getByText('Not connected')).toBeInTheDocument()
   })
 
   it('renders filter input with placeholder', () => {
     setupConnectedState()
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
     expect(screen.getByPlaceholderText('Filter objects...')).toBeInTheDocument()
   })
 
@@ -413,7 +439,9 @@ describe('ObjectBrowser', () => {
     setupConnectedState()
     setupDatabaseNodes()
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     const dbNode = screen.getByText('ecommerce_db')
     await user.pointer({ target: dbNode, keys: '[MouseRight]' })
@@ -432,7 +460,9 @@ describe('ObjectBrowser', () => {
     setupDatabaseNodes()
     expandToTable()
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
     const tableNode = screen.getByText('users')
     await user.dblClick(tableNode)
 
@@ -452,7 +482,9 @@ describe('ObjectBrowser', () => {
     setupDatabaseNodes()
     expandToTable()
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     await openContextMenu(user, 'users')
     await user.click(screen.getByText('Design Table...'))
@@ -475,7 +507,9 @@ describe('ObjectBrowser', () => {
     setupDatabaseNodes()
     expandToTable()
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     await openContextMenu(user, 'users')
     await user.click(screen.getByText('Create Table...'))
@@ -497,7 +531,9 @@ describe('ObjectBrowser', () => {
     setupConnectedState()
     setupDatabaseNodes()
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     await openContextMenu(user, 'ecommerce_db')
     await user.click(screen.getByTestId('ctx-create-table'))
@@ -520,7 +556,9 @@ describe('ObjectBrowser', () => {
     setupDatabaseNodes()
     expandToTable()
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     await openContextMenu(user, 'users')
 
@@ -533,7 +571,9 @@ describe('ObjectBrowser', () => {
     setupDatabaseNodes()
     expandToTable()
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     await openContextMenu(user, 'users')
 
@@ -592,7 +632,9 @@ describe('ObjectBrowser', () => {
       },
     })
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
     const viewNode = screen.getByText('user_stats')
     await user.dblClick(viewNode)
 
@@ -614,7 +656,9 @@ describe('ObjectBrowser', () => {
     const setActiveDatabase = vi.fn().mockResolvedValue(undefined)
     useConnectionStore.setState({ setActiveDatabase })
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     await user.click(screen.getByText('analytics_db'))
 
@@ -631,7 +675,9 @@ describe('ObjectBrowser', () => {
     const setActiveDatabase = vi.fn().mockResolvedValue(undefined)
     useConnectionStore.setState({ setActiveDatabase })
 
-    render(<ObjectBrowser connectionId={CONN_ID} />)
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
 
     await user.click(screen.getByText('users'))
 
@@ -650,7 +696,13 @@ describe('ObjectBrowser', () => {
       setupConnectedState()
       setupDatabaseNodes()
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'ecommerce_db')
 
       await user.click(screen.getByText('Drop Database...'))
@@ -667,7 +719,13 @@ describe('ObjectBrowser', () => {
       const refreshAll = vi.fn().mockResolvedValue(undefined)
       useSchemaStore.setState({ refreshAll })
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'ecommerce_db')
       await user.click(screen.getByText('Drop Database...'))
       await user.click(screen.getByTestId('confirm-confirm-button'))
@@ -686,7 +744,13 @@ describe('ObjectBrowser', () => {
       setupConnectedState()
       setupDatabaseNodes()
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'ecommerce_db')
       await user.click(screen.getByText('Drop Database...'))
       await user.click(screen.getByTestId('confirm-confirm-button'))
@@ -706,7 +770,13 @@ describe('ObjectBrowser', () => {
       setupDatabaseNodes()
       expandToTable()
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'users')
       await user.click(screen.getByText('Drop Table...'))
 
@@ -723,7 +793,13 @@ describe('ObjectBrowser', () => {
       const refreshCategory = vi.fn().mockResolvedValue(undefined)
       useSchemaStore.setState({ refreshCategory })
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'users')
       await user.click(screen.getByText('Drop Table...'))
       await user.click(screen.getByTestId('confirm-confirm-button'))
@@ -744,7 +820,13 @@ describe('ObjectBrowser', () => {
       setupDatabaseNodes()
       expandToTable()
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'users')
       await user.click(screen.getByText('Truncate Table...'))
 
@@ -758,7 +840,13 @@ describe('ObjectBrowser', () => {
       setupDatabaseNodes()
       expandToTable()
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'users')
       await user.click(screen.getByText('Truncate Table...'))
       await user.click(screen.getByTestId('confirm-confirm-button'))
@@ -776,7 +864,13 @@ describe('ObjectBrowser', () => {
       setupDatabaseNodes()
       expandToTable()
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'users')
       await user.click(screen.getByText('Rename Table...'))
 
@@ -792,7 +886,13 @@ describe('ObjectBrowser', () => {
       const refreshCategory = vi.fn().mockResolvedValue(undefined)
       useSchemaStore.setState({ refreshCategory })
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'users')
       await user.click(screen.getByText('Rename Table...'))
 
@@ -816,7 +916,13 @@ describe('ObjectBrowser', () => {
       setupDatabaseNodes()
       expandToTable()
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'users')
       await user.click(screen.getByText('Rename Table...'))
 
@@ -838,7 +944,13 @@ describe('ObjectBrowser', () => {
       setupConnectedState()
       setupDatabaseNodes()
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'ecommerce_db')
       await user.click(screen.getByText('Create Database...'))
 
@@ -852,7 +964,13 @@ describe('ObjectBrowser', () => {
       const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       try {
-        render(<ObjectBrowser connectionId={CONN_ID} />)
+        render(
+          <ObjectBrowser
+            connectionId={CONN_ID}
+            favouritesOpen={false}
+            onToggleFavourites={() => {}}
+          />
+        )
         await openContextMenu(user, 'ecommerce_db')
         await user.click(screen.getByText('Create Database...'))
 
@@ -881,7 +999,13 @@ describe('ObjectBrowser', () => {
       setupConnectedState()
       setupDatabaseNodes()
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'ecommerce_db')
       await user.click(screen.getByText('Alter Database...'))
 
@@ -897,7 +1021,13 @@ describe('ObjectBrowser', () => {
       setupConnectedState()
       setupDatabaseNodes()
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'ecommerce_db')
       await user.click(screen.getByText('Rename Database...'))
 
@@ -913,7 +1043,13 @@ describe('ObjectBrowser', () => {
       const refreshAll = vi.fn().mockResolvedValue(undefined)
       useSchemaStore.setState({ refreshAll })
 
-      render(<ObjectBrowser connectionId={CONN_ID} />)
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
       await openContextMenu(user, 'ecommerce_db')
       await user.click(screen.getByText('Rename Database...'))
 

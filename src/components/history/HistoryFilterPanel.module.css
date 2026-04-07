@@ -1,0 +1,56 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background: var(--surface-container-low);
+  height: 100%;
+  overflow-y: auto;
+}
+
+.heading {
+  font-family: var(--font-mono);
+  font-size: var(--type-label-caps);
+  font-weight: var(--type-label-caps-weight);
+  letter-spacing: var(--type-label-caps-tracking);
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin: 0 0 var(--space-xs);
+}
+
+.buttonList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.filterButton {
+  display: block;
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.filterButton:hover {
+  background: var(--surface-container);
+}
+
+.filterButtonActive {
+  color: var(--primary);
+  background: var(--surface-container-highest);
+}
+
+.filterButtonActive:hover {
+  background: var(--surface-container-highest);
+}

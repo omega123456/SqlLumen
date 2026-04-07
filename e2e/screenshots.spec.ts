@@ -110,7 +110,7 @@ async function connectToSample(page: Page) {
   await expect(page.getByTestId('connection-dialog')).toBeHidden()
   // Wait for the object browser to load databases
   await expect(page.getByTestId('object-browser')).toBeVisible()
-  await expect(page.getByText('ecommerce_db')).toBeVisible()
+  await expect(page.getByTestId('object-browser').getByText('ecommerce_db')).toBeVisible()
   /* Dismiss success toasts so visual baselines stay stable */
   await dismissAllToasts(page)
 }
@@ -649,7 +649,9 @@ for (const theme of themes) {
 
     test('connected — workspace, tab bar, status bar', async ({ page }) => {
       await connectToSample(page)
-      await expect(page.getByTestId('workspace-area')).toContainText('Connected to')
+      // After connecting, the History tab is auto-created (but not activated).
+      // The workspace shows the placeholder when tabs exist but none is active.
+      await expect(page.getByTestId('workspace-area')).toContainText('Select a tab to view content')
       await expect(page.getByTestId('workspace-area')).toHaveScreenshot(
         `workspace-area-connected-${theme}.png`
       )
@@ -775,9 +777,9 @@ for (const theme of themes) {
 
       // Expand database and Tables category to reach table nodes
       await page.getByText('ecommerce_db').first().click()
-      await expect(page.getByText('Tables')).toBeVisible()
-      await page.getByText('Tables').click()
-      await expect(page.getByText('users')).toBeVisible()
+      await expect(page.getByTestId('object-browser').getByText('Tables')).toBeVisible()
+      await page.getByTestId('object-browser').getByText('Tables').click()
+      await expect(page.getByTestId('object-browser').getByText('users')).toBeVisible()
 
       // Right-click on a table node
       await page.getByText('users').click({ button: 'right' })
@@ -1171,9 +1173,11 @@ for (const theme of themes) {
     test('SqlDumpDialog — open via context menu', async ({ page }) => {
       await connectToSample(page)
       // Wait for the object browser to be fully loaded
-      await expect(page.getByText('ecommerce_db')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('object-browser').getByText('ecommerce_db')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
       // Right-click on the ecommerce_db database node to open context menu
-      await page.getByText('ecommerce_db').click({ button: 'right' })
+      await page.getByTestId('object-browser').getByText('ecommerce_db').click({ button: 'right' })
       await expect(page.getByTestId('object-browser-context-menu')).toBeVisible({
         timeout: APP_READY_MS,
       })
@@ -1879,39 +1883,30 @@ for (const theme of themes) {
 
     test('HistoryFavoritesTab — split-panel layout', async ({ page }) => {
       await connectToSample(page)
-      // Open a history-favorites tab via the workspace store
-      await page.evaluate(() => {
-        const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
-          getState: () => { openHistoryFavoritesTab: (connectionId: string) => void }
-        }
-        store.getState().openHistoryFavoritesTab('session-playwright-1')
-      })
-      await expect(page.getByTestId('history-favorites-tab')).toBeVisible({ timeout: APP_READY_MS })
-      // Wait for both panels to render with data
-      await expect(page.getByTestId('favorites-panel')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('history-panel')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('history-list')).toBeVisible({ timeout: APP_READY_MS })
+      // The history tab is now auto-created when a connection opens.
+      // Click the History tab in the workspace tab bar to make it active.
+      const workspaceTabs = page.getByTestId('workspace-tabs')
+      const historyTab = workspaceTabs.getByText('History')
+      await expect(historyTab).toBeVisible({ timeout: APP_READY_MS })
+      await historyTab.click()
+      await expect(page.getByTestId('history-tab')).toBeVisible({ timeout: APP_READY_MS })
+      // Wait for the filter panel and history table to render
+      await expect(page.getByTestId('history-filter-panel')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('history-table')).toBeVisible({ timeout: APP_READY_MS })
       await dismissAllToasts(page)
       await resetChromeScrollPositions(page)
-      await expect(page.getByTestId('history-favorites-tab')).toHaveScreenshot(
-        `history-favorites-tab-${theme}.png`,
-        { animations: 'disabled' }
-      )
+      await expect(page.getByTestId('history-tab')).toHaveScreenshot(`history-tab-${theme}.png`, {
+        animations: 'disabled',
+      })
     })
 
     test('FavoriteDialog — create new', async ({ page }) => {
       await connectToSample(page)
-      // Open a history-favorites tab
-      await page.evaluate(() => {
-        const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
-          getState: () => { openHistoryFavoritesTab: (connectionId: string) => void }
-        }
-        store.getState().openHistoryFavoritesTab('session-playwright-1')
-      })
-      await expect(page.getByTestId('history-favorites-tab')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('favorites-panel')).toBeVisible({ timeout: APP_READY_MS })
-      // Click the "New Favorite" button to open the create dialog
-      await page.getByTestId('favorites-add').click()
+      // Open favourites panel in the sidebar
+      await page.getByTestId('favourites-toggle').click()
+      await expect(page.getByTestId('favourites-view')).toBeVisible({ timeout: APP_READY_MS })
+      // Click the "New Snippet" button to open the create dialog
+      await page.getByTestId('favourites-new-snippet').click()
       await expect(page.getByTestId('favorite-dialog')).toBeVisible({ timeout: APP_READY_MS })
       // Blur any focused element for stable screenshot
       await page.evaluate(() => {
@@ -1919,7 +1914,10 @@ for (const theme of themes) {
         if (el && el instanceof HTMLElement) el.blur()
       })
       await dismissAllToasts(page)
-      await resetChromeScrollPositions(page)
+      // resetChromeScrollPositions targets object-browser-scroll which is
+      // hidden when the favourites panel replaces the object browser.
+      // Reset the window scroll only since this test uses structural assertions.
+      await page.evaluate(() => window.scrollTo(0, 0))
       // Structural assertions instead of screenshot comparison.
       // This dialog's pixel rendering is non-deterministic under parallel
       // worker load (sub-pixel anti-aliasing, border compositing, portal

@@ -65,6 +65,7 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
           sqlText: sqlText.trim(),
           description: description.trim() || null,
           category: category.trim() || null,
+          connectionId: resolvedConnectionId,
         })
       } else {
         await createFavorite({
@@ -128,21 +129,19 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
             data-testid="favorite-sql-input"
           />
         </div>
-        {!isEditing && (
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="favorite-scope">
-              Scope
-            </label>
-            <Dropdown
-              id="favorite-scope"
-              ariaLabel="Favorite scope"
-              options={SCOPE_OPTIONS}
-              value={scope}
-              onChange={(val) => setScope(val as 'connection' | 'global')}
-              data-testid="favorite-scope-dropdown"
-            />
-          </div>
-        )}
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="favorite-scope">
+            Scope
+          </label>
+          <Dropdown
+            id="favorite-scope"
+            ariaLabel="Favorite scope"
+            options={SCOPE_OPTIONS}
+            value={scope}
+            onChange={(val) => setScope(val as 'connection' | 'global')}
+            data-testid="favorite-scope-dropdown"
+          />
+        </div>
         <div className={styles.field}>
           <label className={styles.label} htmlFor="favorite-category">
             Category (optional)

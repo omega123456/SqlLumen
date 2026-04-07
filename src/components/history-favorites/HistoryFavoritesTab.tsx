@@ -5,7 +5,7 @@ import { useHistoryStore } from '../../stores/history-store'
 import { useFavoritesStore } from '../../stores/favorites-store'
 import { HistoryPanel } from './HistoryPanel'
 import { FavoritesPanel } from './FavoritesPanel'
-import type { HistoryFavoritesTab as HistoryFavoritesTabType } from '../../types/schema'
+import type { HistoryTab as HistoryFavoritesTabType } from '../../types/schema'
 import styles from './HistoryFavoritesTab.module.css'
 
 export interface HistoryFavoritesTabProps {

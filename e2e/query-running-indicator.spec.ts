@@ -41,7 +41,7 @@ async function connectToSample(page: Page) {
     .click()
   await expect(page.getByTestId('connection-dialog')).toBeHidden()
   await expect(page.getByTestId('object-browser')).toBeVisible()
-  await expect(page.getByText('ecommerce_db')).toBeVisible()
+  await expect(page.getByTestId('object-browser').getByText('ecommerce_db')).toBeVisible()
   await dismissAllToasts(page)
 }
 

@@ -52,7 +52,7 @@ export type TabType =
   | 'query-editor'
   | 'table-designer'
   | 'object-editor'
-  | 'history-favorites'
+  | 'history'
 
 export type DesignerSubTab = 'columns' | 'indexes' | 'fks' | 'properties' | 'ddl'
 
@@ -110,9 +110,9 @@ export interface ObjectEditorTab extends WorkspaceTabBase {
   mode: 'create' | 'alter'
 }
 
-/** A history & favorites tab (shows query history and saved favorites). */
-export interface HistoryFavoritesTab extends WorkspaceTabBase {
-  type: 'history-favorites'
+/** A history tab (shows query history). */
+export interface HistoryTab extends WorkspaceTabBase {
+  type: 'history'
 }
 
 /** Union of all workspace tab variants. */
@@ -122,7 +122,7 @@ export type WorkspaceTab =
   | QueryEditorTab
   | TableDesignerTab
   | ObjectEditorTab
-  | HistoryFavoritesTab
+  | HistoryTab
 
 /** Distributive Omit — works correctly on union types. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -614,4 +614,5 @@ export interface UpdateFavoriteInput {
   sqlText: string
   description?: string | null
   category?: string | null
+  connectionId?: string | null
 }

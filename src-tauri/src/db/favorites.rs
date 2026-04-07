@@ -34,6 +34,7 @@ pub struct UpdateFavoriteInput {
     pub sql_text: String,
     pub description: Option<String>,
     pub category: Option<String>,
+    pub connection_id: Option<String>,
 }
 
 /// Insert a new favorite. Returns the new row id.
@@ -83,9 +84,9 @@ pub fn list_favorites(conn: &Connection, connection_id: &str) -> Result<Vec<Favo
 pub fn update_favorite(conn: &Connection, id: i64, input: &UpdateFavoriteInput) -> Result<bool> {
     let now = timestamp_now();
     let rows = conn.execute(
-        "UPDATE favorites SET name = ?2, sql_text = ?3, description = ?4, category = ?5, updated_at = ?6
+        "UPDATE favorites SET name = ?2, sql_text = ?3, description = ?4, category = ?5, connection_id = ?6, updated_at = ?7
          WHERE id = ?1",
-        params![id, input.name, input.sql_text, input.description, input.category, now],
+        params![id, input.name, input.sql_text, input.description, input.category, input.connection_id, now],
     )?;
     Ok(rows > 0)
 }

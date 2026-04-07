@@ -173,6 +173,7 @@ describe('FavoriteDialog', () => {
         sqlText: 'SELECT * FROM orders',
         category: 'shopdb',
         description: 'Gets all orders',
+        connectionId: 'conn-1',
       })
     })
   })
@@ -270,11 +271,50 @@ describe('FavoriteDialog', () => {
     expect(screen.getByTestId('favorite-scope-dropdown')).toHaveTextContent('This connection only')
   })
 
-  it('does not show scope dropdown when editing', () => {
+  it('shows scope dropdown when editing', () => {
     useFavoritesStore.setState({ editingFavorite: makeFavoriteEntry() })
     render(<FavoriteDialog connectionId="conn-1" />)
 
-    expect(screen.queryByTestId('favorite-scope-dropdown')).not.toBeInTheDocument()
+    expect(screen.getByTestId('favorite-scope-dropdown')).toBeInTheDocument()
+    // Should show "This connection only" since the favorite has a connectionId
+    expect(screen.getByTestId('favorite-scope-dropdown')).toHaveTextContent('This connection only')
+  })
+
+  it('passes changed scope (connectionId) when editing a favorite', async () => {
+    const updateFavoriteSpy = vi.fn().mockResolvedValue(true)
+    useFavoritesStore.setState({
+      editingFavorite: makeFavoriteEntry({ connectionId: 'conn-1' }),
+      updateFavorite: updateFavoriteSpy,
+    })
+
+    render(<FavoriteDialog connectionId="conn-1" />)
+
+    // Change scope to global
+    fireEvent.click(screen.getByTestId('favorite-scope-dropdown'))
+    fireEvent.click(screen.getByTestId('favorite-scope-dropdown-option-global'))
+
+    fireEvent.click(screen.getByTestId('favorite-dialog-save'))
+
+    await waitFor(() => {
+      expect(updateFavoriteSpy).toHaveBeenCalledWith(1, {
+        name: 'My Query',
+        sqlText: 'SELECT * FROM orders',
+        category: 'shopdb',
+        description: 'Gets all orders',
+        connectionId: null,
+      })
+    })
+  })
+
+  it('shows scope as global when editing a global favorite', () => {
+    useFavoritesStore.setState({
+      editingFavorite: makeFavoriteEntry({ connectionId: null }),
+    })
+    render(<FavoriteDialog connectionId="conn-1" />)
+
+    expect(screen.getByTestId('favorite-scope-dropdown')).toHaveTextContent(
+      'Global (all connections)'
+    )
   })
 
   it('sends connectionId as null when global scope is selected', async () => {
