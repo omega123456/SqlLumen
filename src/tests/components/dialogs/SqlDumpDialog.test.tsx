@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import SqlDumpDialog from '../../../components/dialogs/SqlDumpDialog'
@@ -69,16 +69,16 @@ function setFilePath(path: string) {
   fireEvent.change(input, { target: { value: path } })
 }
 
+/** Wait until async object list load completes so subsequent updates run inside RTL act boundaries. */
+async function waitForDumpDialogLoaded() {
+  await screen.findByTestId('dump-object-tree')
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.useFakeTimers({ shouldAdvanceTime: true })
   mockListExportableObjects.mockResolvedValue(MOCK_DATABASES)
   mockStartSqlDump.mockResolvedValue('job-1')
   mockGetDumpProgress.mockResolvedValue(MOCK_PROGRESS_COMPLETED)
-})
-
-afterEach(() => {
-  vi.useRealTimers()
 })
 
 // ---------------------------------------------------------------------------
@@ -93,14 +93,13 @@ describe('SqlDumpDialog', () => {
 
   it('renders dialog with title, options, object tree, file path, and buttons', async () => {
     render(<SqlDumpDialog {...defaultProps} />)
+    await waitForDumpDialogLoaded()
 
     // Title
     expect(screen.getByRole('heading', { name: /Export SQL Dump/ })).toBeInTheDocument()
 
     // Option checkboxes
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-include-structure')).toBeInTheDocument()
-    })
+    expect(screen.getByTestId('dump-include-structure')).toBeInTheDocument()
     expect(screen.getByTestId('dump-include-data')).toBeInTheDocument()
     expect(screen.getByTestId('dump-include-drop')).toBeInTheDocument()
     expect(screen.getByTestId('dump-use-transaction')).toBeInTheDocument()
@@ -135,10 +134,7 @@ describe('SqlDumpDialog', () => {
 
   it('renders object tree with databases and tables after loading', async () => {
     render(<SqlDumpDialog {...defaultProps} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
 
     // Database checkboxes
     expect(screen.getByTestId('dump-db-test_db')).toBeInTheDocument()
@@ -153,22 +149,20 @@ describe('SqlDumpDialog', () => {
 
   it('options checkboxes default correctly', async () => {
     render(<SqlDumpDialog {...defaultProps} />)
+    await waitForDumpDialogLoaded()
 
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-include-structure')).toBeChecked()
-    })
+    expect(screen.getByTestId('dump-include-structure')).toBeChecked()
     expect(screen.getByTestId('dump-include-data')).toBeChecked()
     expect(screen.getByTestId('dump-include-drop')).toBeChecked()
     expect(screen.getByTestId('dump-use-transaction')).toBeChecked()
   })
 
   it('option checkboxes toggle correctly', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     render(<SqlDumpDialog {...defaultProps} />)
+    await waitForDumpDialogLoaded()
 
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-include-structure')).toBeChecked()
-    })
+    expect(screen.getByTestId('dump-include-structure')).toBeChecked()
 
     await user.click(screen.getByTestId('dump-include-structure'))
     expect(screen.getByTestId('dump-include-structure')).not.toBeChecked()
@@ -179,26 +173,23 @@ describe('SqlDumpDialog', () => {
 
   it('schemaOnly prop unchecks data and changes title', async () => {
     render(<SqlDumpDialog {...defaultProps} schemaOnly />)
+    await waitForDumpDialogLoaded()
 
     // Title should be "Export Schema DDL"
     expect(screen.getByRole('heading', { name: /Export Schema DDL/ })).toBeInTheDocument()
 
     // Data checkbox should be unchecked
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-include-data')).not.toBeChecked()
-    })
+    expect(screen.getByTestId('dump-include-data')).not.toBeChecked()
 
     // Structure should still be checked
     expect(screen.getByTestId('dump-include-structure')).toBeChecked()
   })
 
   it('database checkbox selects/deselects all tables', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     render(<SqlDumpDialog {...defaultProps} />)
 
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
 
     // Initially no tables selected
     expect(screen.getByTestId('dump-table-test_db-users')).not.toBeChecked()
@@ -219,12 +210,9 @@ describe('SqlDumpDialog', () => {
   })
 
   it('individual table checkbox toggles correctly', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     render(<SqlDumpDialog {...defaultProps} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
 
     // Toggle individual table
     await user.click(screen.getByTestId('dump-table-test_db-users'))
@@ -237,13 +225,10 @@ describe('SqlDumpDialog', () => {
   })
 
   it('export button is disabled when no file path', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     render(<SqlDumpDialog {...defaultProps} />)
 
-    // Wait for objects to load and select a table
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
     await user.click(screen.getByTestId('dump-db-test_db'))
 
     // No file path set
@@ -252,10 +237,7 @@ describe('SqlDumpDialog', () => {
 
   it('export button is disabled when no selection', async () => {
     render(<SqlDumpDialog {...defaultProps} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
 
     // Set file path but no selection
     setFilePath('/tmp/dump.sql')
@@ -263,13 +245,10 @@ describe('SqlDumpDialog', () => {
   })
 
   it('export button calls startSqlDump with correct params', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     const onClose = vi.fn()
     render(<SqlDumpDialog {...defaultProps} onClose={onClose} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
 
     // Select test_db
     await user.click(screen.getByTestId('dump-db-test_db'))
@@ -299,13 +278,10 @@ describe('SqlDumpDialog', () => {
   })
 
   it('shows error when export fails', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     mockStartSqlDump.mockRejectedValue(new Error('Permission denied'))
     render(<SqlDumpDialog {...defaultProps} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
 
     await user.click(screen.getByTestId('dump-db-test_db'))
     setFilePath('/tmp/dump.sql')
@@ -317,18 +293,20 @@ describe('SqlDumpDialog', () => {
   })
 
   it('cancel button calls onClose', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     const onClose = vi.fn()
     render(<SqlDumpDialog {...defaultProps} onClose={onClose} />)
+    await waitForDumpDialogLoaded()
 
     await user.click(screen.getByTestId('dump-cancel-button'))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('close X button calls onClose', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     const onClose = vi.fn()
     render(<SqlDumpDialog {...defaultProps} onClose={onClose} />)
+    await waitForDumpDialogLoaded()
 
     const closeBtn = screen.getByRole('button', { name: /close/i })
     await user.click(closeBtn)
@@ -337,10 +315,7 @@ describe('SqlDumpDialog', () => {
 
   it('initialDatabase pre-selects all tables in that database', async () => {
     render(<SqlDumpDialog {...defaultProps} initialDatabase="test_db" />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
 
     // All tables in test_db should be selected
     expect(screen.getByTestId('dump-table-test_db-users')).toBeChecked()
@@ -353,10 +328,7 @@ describe('SqlDumpDialog', () => {
 
   it('initialTable pre-selects only that specific table', async () => {
     render(<SqlDumpDialog {...defaultProps} initialDatabase="test_db" initialTable="users" />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
 
     // Only users should be selected
     expect(screen.getByTestId('dump-table-test_db-users')).toBeChecked()
@@ -365,8 +337,9 @@ describe('SqlDumpDialog', () => {
   })
 
   it('browse button calls Tauri save dialog', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     render(<SqlDumpDialog {...defaultProps} />)
+    await waitForDumpDialogLoaded()
 
     await user.click(screen.getByTestId('dump-browse-button'))
 
@@ -377,12 +350,9 @@ describe('SqlDumpDialog', () => {
   })
 
   it('shows selected count in objects label', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     render(<SqlDumpDialog {...defaultProps} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
 
     // Select one table
     await user.click(screen.getByTestId('dump-table-test_db-users'))
@@ -391,26 +361,25 @@ describe('SqlDumpDialog', () => {
     expect(screen.getByText(/Objects to Export.*\(1\)/)).toBeInTheDocument()
   })
 
-  it('footer text changes for schemaOnly mode', () => {
+  it('footer text changes for schemaOnly mode', async () => {
     render(<SqlDumpDialog {...defaultProps} schemaOnly />)
+    await waitForDumpDialogLoaded()
 
     expect(screen.getByTestId('dump-footer-text')).toHaveTextContent('DDL statements')
   })
 
-  it('footer text shows background info for normal mode', () => {
+  it('footer text shows background info for normal mode', async () => {
     render(<SqlDumpDialog {...defaultProps} />)
+    await waitForDumpDialogLoaded()
 
     expect(screen.getByTestId('dump-footer-text')).toHaveTextContent('Large tables')
   })
 
   it('shows non-Error thrown value as error message', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     mockStartSqlDump.mockRejectedValue('string error')
     render(<SqlDumpDialog {...defaultProps} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
 
     await user.click(screen.getByTestId('dump-db-test_db'))
     setFilePath('/tmp/dump.sql')
@@ -422,14 +391,11 @@ describe('SqlDumpDialog', () => {
   })
 
   it('export button shows Exporting... while export is in progress', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     // Make startSqlDump resolve but getDumpProgress never completes
     mockGetDumpProgress.mockReturnValue(new Promise(() => {}))
     render(<SqlDumpDialog {...defaultProps} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument()
-    })
+    await waitForDumpDialogLoaded()
 
     await user.click(screen.getByTestId('dump-db-test_db'))
     setFilePath('/tmp/dump.sql')
@@ -451,11 +417,10 @@ describe('SqlDumpDialog', () => {
   })
 
   it('shows success toast when dump completes', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     mockGetDumpProgress.mockResolvedValue(MOCK_PROGRESS_COMPLETED)
     render(<SqlDumpDialog {...defaultProps} />)
-
-    await waitFor(() => expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument())
+    await waitForDumpDialogLoaded()
     await user.click(screen.getByTestId('dump-db-test_db'))
     setFilePath('/tmp/dump.sql')
     await user.click(screen.getByTestId('dump-submit-button'))
@@ -469,7 +434,7 @@ describe('SqlDumpDialog', () => {
   })
 
   it('shows error toast when dump fails', async () => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const user = userEvent.setup()
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockGetDumpProgress.mockResolvedValue({
       jobId: 'job-1',
@@ -481,8 +446,7 @@ describe('SqlDumpDialog', () => {
       errorMessage: 'Disk full',
     })
     render(<SqlDumpDialog {...defaultProps} />)
-
-    await waitFor(() => expect(screen.getByTestId('dump-object-tree')).toBeInTheDocument())
+    await waitForDumpDialogLoaded()
     await user.click(screen.getByTestId('dump-db-test_db'))
     setFilePath('/tmp/dump.sql')
     await user.click(screen.getByTestId('dump-submit-button'))

@@ -50,6 +50,16 @@ beforeEach(() => {
     if (cmd === 'plugin:event|unlisten') {
       return undefined
     }
+    // App / stores call these on mount (theme, shortcuts, session restore, etc.)
+    if (cmd === 'get_setting') {
+      return null
+    }
+    if (cmd === 'set_setting') {
+      return undefined
+    }
+    if (cmd === 'get_all_settings') {
+      return {}
+    }
     throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
   })
 })

@@ -1,11 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { SettingsDialog } from '../../../components/settings/SettingsDialog'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import { useShortcutStore } from '../../../stores/shortcut-store'
 import { useThemeStore } from '../../../stores/theme-store'
+
+/** `settings-general` mounts before `loadSettings()` finishes; wait for IPC-backed store hydration. */
+async function waitForSettingsHydrated() {
+  await waitFor(() => {
+    const s = useSettingsStore.getState()
+    expect(Object.keys(s.settings).length).toBeGreaterThan(0)
+    expect(s.isLoading).toBe(false)
+  })
+}
 
 function setupMockIPC() {
   mockIPC((cmd, args) => {
@@ -44,6 +53,7 @@ describe('SettingsDialog', () => {
 
   it('renders the dialog with sidebar and content when open', async () => {
     render(<SettingsDialog isOpen={true} onClose={vi.fn()} />)
+    await waitForSettingsHydrated()
     await waitFor(() => {
       expect(screen.getByTestId('settings-dialog')).toBeInTheDocument()
     })
@@ -56,18 +66,14 @@ describe('SettingsDialog', () => {
 
   it('shows General section by default', async () => {
     render(<SettingsDialog isOpen={true} onClose={vi.fn()} />)
-    await waitFor(() => {
-      expect(screen.getByTestId('settings-general')).toBeInTheDocument()
-    })
+    await waitForSettingsHydrated()
+    expect(screen.getByTestId('settings-general')).toBeInTheDocument()
   })
 
   it('navigates between sections via sidebar', async () => {
     const user = userEvent.setup()
     render(<SettingsDialog isOpen={true} onClose={vi.fn()} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('settings-general')).toBeInTheDocument()
-    })
+    await waitForSettingsHydrated()
 
     // Switch to Editor
     await user.click(screen.getByTestId('settings-nav-editor'))
@@ -91,6 +97,7 @@ describe('SettingsDialog', () => {
 
   it('Save button is disabled when not dirty', async () => {
     render(<SettingsDialog isOpen={true} onClose={vi.fn()} />)
+    await waitForSettingsHydrated()
     await waitFor(() => {
       expect(screen.getByTestId('settings-save')).toBeInTheDocument()
     })
@@ -101,7 +108,7 @@ describe('SettingsDialog', () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     render(<SettingsDialog isOpen={true} onClose={onClose} />)
-
+    await waitForSettingsHydrated()
     await waitFor(() => {
       expect(screen.getByTestId('settings-cancel')).toBeInTheDocument()
     })
@@ -115,12 +122,12 @@ describe('SettingsDialog', () => {
     const onClose = vi.fn()
 
     render(<SettingsDialog isOpen={true} onClose={onClose} />)
-    await waitFor(() => {
-      expect(screen.getByTestId('settings-general')).toBeInTheDocument()
-    })
+    await waitForSettingsHydrated()
 
     // Make dirty by changing a setting
-    useSettingsStore.setState({ isDirty: true, pendingChanges: { theme: 'dark' } })
+    await act(() => {
+      useSettingsStore.setState({ isDirty: true, pendingChanges: { theme: 'dark' } })
+    })
 
     await user.click(screen.getByTestId('settings-cancel'))
     // Should show confirm dialog instead of closing
@@ -136,12 +143,12 @@ describe('SettingsDialog', () => {
     const onClose = vi.fn()
 
     render(<SettingsDialog isOpen={true} onClose={onClose} />)
-    await waitFor(() => {
-      expect(screen.getByTestId('settings-general')).toBeInTheDocument()
-    })
+    await waitForSettingsHydrated()
 
     // Make dirty
-    useSettingsStore.setState({ isDirty: true, pendingChanges: { theme: 'dark' } })
+    await act(() => {
+      useSettingsStore.setState({ isDirty: true, pendingChanges: { theme: 'dark' } })
+    })
 
     await user.click(screen.getByTestId('settings-cancel'))
     await waitFor(() => {
@@ -157,10 +164,7 @@ describe('SettingsDialog', () => {
   it('Reset Section resets the active section to defaults', async () => {
     const user = userEvent.setup()
     render(<SettingsDialog isOpen={true} onClose={vi.fn()} />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('settings-general')).toBeInTheDocument()
-    })
+    await waitForSettingsHydrated()
 
     await user.click(screen.getByTestId('settings-reset-section'))
     // After reset, pending changes should have default values for general keys
@@ -171,10 +175,7 @@ describe('SettingsDialog', () => {
 
   it('loads settings on open', async () => {
     render(<SettingsDialog isOpen={true} onClose={vi.fn()} />)
-    await waitFor(() => {
-      const state = useSettingsStore.getState()
-      expect(Object.keys(state.settings).length).toBeGreaterThan(0)
-    })
+    await waitForSettingsHydrated()
   })
 
   it('checkbox can be toggled on then off without losing reactivity', async () => {
@@ -183,11 +184,7 @@ describe('SettingsDialog', () => {
     // function reference (s.getSetting) instead of the computed value.
     const user = userEvent.setup()
     render(<SettingsDialog isOpen={true} onClose={vi.fn()} />)
-
-    // Wait for settings to load
-    await waitFor(() => {
-      expect(screen.getByTestId('settings-general')).toBeInTheDocument()
-    })
+    await waitForSettingsHydrated()
 
     // Navigate to Editor section which has boolean toggles defaulting to false
     await user.click(screen.getByTestId('settings-nav-editor'))

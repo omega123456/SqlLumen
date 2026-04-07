@@ -96,6 +96,16 @@ pnpm dev
 | `pnpm format`                 | Prettier on `src/`                                                                                                                                                   |
 | `pnpm typecheck`              | `tsc --noEmit`                                                                                                                                                       |
 
+## GitHub releases (CI)
+
+The workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) builds **Windows** (x64) and **macOS** (Apple Silicon and Intel) bundles and uploads them to a **GitHub Release**. It runs on **`workflow_dispatch`** (Actions tab → Release → Run workflow) or when you push a version tag matching `v*` (e.g. `v0.1.0`).
+
+1. Bump **`version`** in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) (and keep [`package.json`](package.json) in sync if you use it elsewhere).
+2. Commit and push, then create and push the tag: `git tag v0.1.0 && git push origin v0.1.0`, or run the workflow manually after tagging.
+3. If asset upload fails with a permissions error, set the repository’s **Settings → Actions → General → Workflow permissions** to **Read and write**.
+
+Releases are created as **drafts** by default; publish them from the Releases page when ready. macOS artifacts from CI are **unsigned** unless you add Apple code signing secrets to the workflow—users may see Gatekeeper warnings until signing/notarization is configured ([Tauri macOS signing](https://v2.tauri.app/distribute/sign-macos/)).
+
 ## Project layout
 
 ```
