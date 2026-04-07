@@ -9,7 +9,25 @@ pub mod state;
 use db::connection::open_database;
 use db::migrations::run_migrations;
 use rusqlite::Connection;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Directory for SQLite, logs, and other app data.
+///
+/// In debug builds (`pnpm tauri dev`, `cargo build`), uses a sibling folder `{identifier}-dev`
+/// so development does not read or write the same files as release installs.
+pub fn resolved_app_data_dir(base: &Path) -> PathBuf {
+    #[cfg(debug_assertions)]
+    {
+        match base.file_name().and_then(|n| n.to_str()) {
+            Some(name) => base.with_file_name(format!("{name}-dev")),
+            None => base.to_path_buf(),
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        base.to_path_buf()
+    }
+}
 
 /// Initialize the SQLite database for the application.
 /// Opens the database at the given app data directory and runs all pending migrations.
@@ -91,7 +109,8 @@ pub fn run() {
 
     builder
         .setup(|app| {
-            let dir = app.path().app_data_dir()?;
+            let base = app.path().app_data_dir()?;
+            let dir = resolved_app_data_dir(&base);
             let log_dir = dir.join("logs");
             let logging_init = crate::logging::init_logging(&log_dir)
                 .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;

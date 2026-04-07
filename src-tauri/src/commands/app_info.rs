@@ -18,7 +18,10 @@ pub fn get_app_info_impl(app_handle: &Option<tauri::AppHandle>) -> AppInfo {
         handle
             .path()
             .app_data_dir()
-            .map(|p| p.join("logs").to_string_lossy().to_string())
+            .map(|p| {
+                let dir = crate::resolved_app_data_dir(&p);
+                dir.join("logs").to_string_lossy().to_string()
+            })
             .unwrap_or_default()
     } else {
         String::new() // fallback for tests
