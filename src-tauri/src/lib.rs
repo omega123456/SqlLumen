@@ -61,7 +61,17 @@ fn prevent_default_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
                     .general_autofill(false)
                     .password_autosave(false)
                     // WebView2 disables F12/Ctrl+Shift+I when false; keep true in debug so DevTools work with `tauri dev`.
-                    .browser_accelerator_keys(cfg!(debug_assertions)),
+                    .browser_accelerator_keys(cfg!(debug_assertions))
+                    // Always enable at the WebView2 level to prevent a black screen
+                    // in production builds.  WRY sets `AreDevToolsEnabled(false)` when
+                    // the Tauri `devtools` feature is off, and some WebView2 runtime
+                    // versions fail to render the page in that state.  Re-enabling it
+                    // here is safe because all shortcuts that open DevTools are already
+                    // blocked: `Flags::DEV_TOOLS` prevents Ctrl+Shift+I via the
+                    // injected JS, `browser_accelerator_keys(false)` disables F12 and
+                    // other browser shortcuts, and `Flags::CONTEXT_MENU` removes the
+                    // right-click menu.
+                    .dev_tools(true),
             )
             .build()
     }
