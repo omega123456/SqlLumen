@@ -10,19 +10,11 @@
   z-index: 1000;
 }
 
+/* Layout only; chrome comes from global `.ui-elevated-surface`. */
 .dialog {
-  background: var(--surface-container);
-  border: 1px solid var(--outline-variant);
-  border-radius: 16px;
   padding: 24px;
   width: fit-content;
   min-width: min(90vw, 320px);
   max-width: 90vw;
-  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.4);
-}
-
-[data-theme='dark'] .dialog {
-  background: color-mix(in srgb, var(--surface-container) 80%, transparent);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  box-sizing: border-box;
 }

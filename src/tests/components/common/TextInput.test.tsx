@@ -43,4 +43,16 @@ describe('TextInput', () => {
     render(<TextInput passwordToggleGutter data-testid="inp" />)
     expect(screen.getByTestId('inp')).toHaveClass(styles.passwordToggleGutter)
   })
+
+  it('disables WebKit auto-capitalization and correction by default', () => {
+    render(<TextInput data-testid="inp" />)
+    const el = screen.getByTestId('inp')
+    expect(el).toHaveAttribute('autocapitalize', 'none')
+    expect(el).toHaveAttribute('autocorrect', 'off')
+  })
+
+  it('allows overriding autoCapitalize', () => {
+    render(<TextInput autoCapitalize="sentences" data-testid="inp" />)
+    expect(screen.getByTestId('inp')).toHaveAttribute('autocapitalize', 'sentences')
+  })
 })

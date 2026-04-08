@@ -50,6 +50,8 @@ export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function T
         passwordToggleGutter && styles.passwordToggleGutter,
         className
       )}
+      autoCapitalize="none"
+      autoCorrect="off"
       {...rest}
     />
   )

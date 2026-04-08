@@ -101,6 +101,20 @@ describe('DialogShell', () => {
     expect(dialogContent).toHaveStyle({ maxWidth: 'min(600px, 90vw)' })
   })
 
+  it('applies width when fillMaxWidth is true', () => {
+    render(<DialogShell {...defaultProps} maxWidth={600} fillMaxWidth />)
+    const dialogContent = screen.getByText('Dialog content').parentElement
+    expect(dialogContent).toHaveStyle({
+      width: 'min(600px, 90vw)',
+      maxWidth: 'min(600px, 90vw)',
+    })
+  })
+
+  it('uses elevated surface chrome on the panel', () => {
+    render(<DialogShell {...defaultProps} />)
+    expect(screen.getByTestId('test-dialog-panel')).toHaveClass('ui-elevated-surface')
+  })
+
   it('uses default maxWidth of 420 when not specified', () => {
     render(<DialogShell {...defaultProps} />)
     const dialogContent = screen.getByText('Dialog content').parentElement

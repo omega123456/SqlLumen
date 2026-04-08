@@ -97,7 +97,8 @@ export function FavoriteDialog({ connectionId }: FavoriteDialogProps) {
     <DialogShell
       isOpen={dialogOpen}
       onClose={closeDialog}
-      maxWidth={520}
+      maxWidth={1040}
+      fillMaxWidth
       testId="favorite-dialog"
       ariaLabel={isEditing ? 'Edit Favorite' : 'New Favorite'}
     >

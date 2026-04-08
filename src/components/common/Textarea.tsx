@@ -37,6 +37,8 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
     <textarea
       ref={ref}
       className={mergeClassNames(variantClasses(variant), invalid && styles.invalid, className)}
+      autoCapitalize="none"
+      autoCorrect="off"
       {...rest}
     />
   )

@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { PencilSimple, Play } from '@phosphor-icons/react'
+import { ElevatedSurface } from '../common/ElevatedSurface'
 import { formatShortDate } from '../../lib/format-utils'
 import type { FavoriteEntry } from '../../types/schema'
 import styles from './FavouritesSnippetCard.module.css'
@@ -46,7 +47,7 @@ export function FavouritesSnippetCard({
   )
 
   return (
-    <div
+    <ElevatedSurface
       className={`${styles.card} ${isSelected ? styles.cardSelected : ''}`}
       onClick={onSelect}
       onKeyDown={handleKeyDown}
@@ -98,6 +99,6 @@ export function FavouritesSnippetCard({
       <div className={styles.meta}>
         <span>{formatShortDate(favourite.updatedAt)}</span>
       </div>
-    </div>
+    </ElevatedSurface>
   )
 }

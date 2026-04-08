@@ -20,4 +20,11 @@ describe('Textarea', () => {
     expect(ref.current).toBeInstanceOf(HTMLTextAreaElement)
     expect(ref.current?.value).toBe('hi')
   })
+
+  it('disables WebKit auto-capitalization and correction by default', () => {
+    render(<Textarea data-testid="ta" aria-label="Body" />)
+    const el = screen.getByTestId('ta')
+    expect(el).toHaveAttribute('autocapitalize', 'none')
+    expect(el).toHaveAttribute('autocorrect', 'off')
+  })
 })

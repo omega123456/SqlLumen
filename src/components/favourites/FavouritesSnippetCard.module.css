@@ -3,21 +3,21 @@
   flex-direction: column;
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
-  background: var(--surface-container-high);
-  border-radius: var(--radius-lg);
   cursor: pointer;
+  box-sizing: border-box;
   transition:
     background 150ms,
-    border-color 150ms;
+    border-color 150ms,
+    box-shadow 150ms;
   border-left: 2px solid transparent;
 }
 
 .card:hover {
-  background: var(--surface-container-highest);
+  background: color-mix(in srgb, var(--ui-elevated-surface-bg) 92%, var(--on-surface));
 }
 
 .cardSelected {
-  background: var(--surface-container-highest);
+  background: color-mix(in srgb, var(--ui-elevated-surface-bg) 88%, var(--primary));
   border-left: 2px solid var(--primary);
 }
 

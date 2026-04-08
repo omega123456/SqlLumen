@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react'
+import { useEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import styles from './DialogShell.module.css'
@@ -7,6 +7,8 @@ export interface DialogShellProps {
   isOpen: boolean
   onClose: () => void
   maxWidth?: number
+  /** When true, the panel uses the full width up to maxWidth (vs shrinking to content with fit-content). */
+  fillMaxWidth?: boolean
   /** data-testid applied to the backdrop wrapper; inner surface gets `${testId}-panel` for scoped screenshots */
   testId?: string
   /** aria-label for the dialog */
@@ -26,6 +28,7 @@ export function DialogShell({
   isOpen,
   onClose,
   maxWidth = 420,
+  fillMaxWidth = false,
   testId,
   ariaLabel,
   disableFocusManagement = false,
@@ -54,6 +57,11 @@ export function DialogShell({
 
   if (!isOpen) return null
 
+  const widthCap = `min(${maxWidth}px, 90vw)`
+  const dialogStyle: CSSProperties = fillMaxWidth
+    ? { width: widthCap, maxWidth: widthCap }
+    : { maxWidth: widthCap }
+
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget && !nonDismissible) {
       onClose()
@@ -70,9 +78,9 @@ export function DialogShell({
       aria-label={ariaLabel}
     >
       <div
-        className={styles.dialog}
+        className={`ui-elevated-surface ${styles.dialog}`}
         ref={dialogRef}
-        style={{ maxWidth: `min(${maxWidth}px, 90vw)` }}
+        style={dialogStyle}
         data-testid={testId !== undefined ? `${testId}-panel` : undefined}
       >
         {children}
