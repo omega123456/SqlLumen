@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, act, waitFor } from '@testing-library/react'
+import { render, screen, act, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ObjectBrowser } from '../../../components/object-browser/ObjectBrowser'
 import { useConnectionStore } from '../../../stores/connection-store'
@@ -185,6 +185,86 @@ function setupDatabaseNodes() {
   })
 }
 
+function setupFilteredTableNodes() {
+  const dbId = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+  const tablesId = makeNodeId('category', 'ecommerce_db', 'table')
+  const usersId = makeNodeId('table', 'ecommerce_db', 'users')
+  const ordersId = makeNodeId('table', 'ecommerce_db', 'orders')
+  const userIdColumnId = makeNodeId('column', 'ecommerce_db', 'users.id')
+
+  const nodes: Record<string, TreeNodeType> = {
+    [dbId]: {
+      id: dbId,
+      label: 'ecommerce_db',
+      type: 'database',
+      parentId: null,
+      hasChildren: true,
+      isLoaded: true,
+      databaseName: 'ecommerce_db',
+      objectName: 'ecommerce_db',
+    },
+    [tablesId]: {
+      id: tablesId,
+      label: 'Tables',
+      type: 'category',
+      parentId: dbId,
+      hasChildren: true,
+      isLoaded: true,
+      databaseName: 'ecommerce_db',
+      metadata: { categoryType: 'table', databaseName: 'ecommerce_db' },
+    },
+    [usersId]: {
+      id: usersId,
+      label: 'users',
+      type: 'table',
+      parentId: tablesId,
+      hasChildren: true,
+      isLoaded: true,
+      databaseName: 'ecommerce_db',
+      objectName: 'users',
+      metadata: { databaseName: 'ecommerce_db' },
+    },
+    [ordersId]: {
+      id: ordersId,
+      label: 'orders',
+      type: 'table',
+      parentId: tablesId,
+      hasChildren: true,
+      isLoaded: false,
+      databaseName: 'ecommerce_db',
+      objectName: 'orders',
+      metadata: { databaseName: 'ecommerce_db' },
+    },
+    [userIdColumnId]: {
+      id: userIdColumnId,
+      label: 'id',
+      type: 'column',
+      parentId: usersId,
+      hasChildren: false,
+      isLoaded: true,
+      databaseName: 'ecommerce_db',
+      objectName: 'id',
+      metadata: { columnType: 'bigint', databaseName: 'ecommerce_db' },
+    },
+  }
+
+  useSchemaStore.setState({
+    connectionStates: {
+      [CONN_ID]: {
+        nodes,
+        childIdsByParentId: buildChildIndex(nodes),
+        expandedNodes: new Set([dbId, tablesId]),
+        loadingNodes: new Set(),
+        selectedNodeId: tablesId,
+        filterText: 'user',
+        loadGeneration: 0,
+      },
+    },
+  })
+
+  return { dbId, tablesId, usersId, ordersId, userIdColumnId }
+}
+
 /** Expand tree nodes so table "users" is visible */
 function expandToTable() {
   const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
@@ -303,6 +383,35 @@ describe('ObjectBrowser', () => {
     expect(useSchemaStore.getState().connectionStates[CONN_ID].filterText).toBe('ecommerce')
   })
 
+  it('starts filtering when typing from the tree without focusing the filter input first', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+
+    useSchemaStore.setState({
+      connectionStates: {
+        [CONN_ID]: {
+          ...useSchemaStore.getState().connectionStates[CONN_ID],
+          expandedNodes: new Set([db1Id]),
+        },
+      },
+    })
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    const tablesNode = screen.getByText('Tables').closest('[role="treeitem"]')
+    expect(tablesNode).not.toBeNull()
+
+    await user.click(tablesNode!)
+    await user.keyboard('user')
+
+    expect(screen.getByTestId('filter-input')).toHaveValue('user')
+    expect(useSchemaStore.getState().connectionStates[CONN_ID].filterText).toBe('user')
+  })
+
   it('calls loadDatabases on mount when connected', () => {
     const loadDatabases = vi.fn().mockResolvedValue(undefined)
     useSchemaStore.setState({ loadDatabases })
@@ -354,6 +463,24 @@ describe('ObjectBrowser', () => {
     expect(screen.getByText('ecommerce_db')).toBeInTheDocument()
     expect(screen.getByText('Tables')).toBeInTheDocument()
     expect(screen.getByText('analytics_db')).toBeInTheDocument()
+  })
+
+  it('when the first root is filtered out, the first visible remaining row stays tabbable', () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+
+    act(() => {
+      useSchemaStore.getState().setFilter('commerce', CONN_ID)
+    })
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    const treeItems = screen.getAllByRole('treeitem')
+    expect(treeItems[0]).toHaveTextContent('ecommerce_db')
+    expect(treeItems[0]).toHaveAttribute('tabindex', '0')
+    expect(screen.queryByText('analytics_db')).not.toBeInTheDocument()
   })
 
   it('with Tables selected, filter only affects table list; sibling Views stays visible', () => {
@@ -411,6 +538,152 @@ describe('ObjectBrowser', () => {
     expect(screen.getByText('Tables')).toBeInTheDocument()
     expect(screen.queryByText('users')).not.toBeInTheDocument()
     expect(screen.getByText('Views')).toBeInTheDocument()
+  })
+
+  it('clicking a filtered table keeps sibling tables filtered out', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupFilteredTableNodes()
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.queryByText('orders')).not.toBeInTheDocument()
+
+    await user.click(screen.getByText('users'))
+
+    expect(screen.getByTestId('filter-input')).toHaveValue('user')
+    expect(screen.queryByText('orders')).not.toBeInTheDocument()
+  })
+
+  it('expanded columns stay visible even when the filter only matches the table name', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupFilteredTableNodes()
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    const usersRow = screen.getByText('users').closest('[role="treeitem"]')
+    expect(usersRow).not.toBeNull()
+
+    await user.click(within(usersRow!).getByTestId('tree-node-chevron'))
+
+    expect(screen.getByText('id')).toBeInTheDocument()
+    expect(screen.queryByText('orders')).not.toBeInTheDocument()
+    expect(screen.getByTestId('filter-input')).toHaveValue('user')
+  })
+
+  it('with Tables selected, filtering by a column name does not surface tables or columns', () => {
+    setupConnectedState()
+    const { tablesId } = setupFilteredTableNodes()
+
+    useSchemaStore.setState({
+      connectionStates: {
+        [CONN_ID]: {
+          ...useSchemaStore.getState().connectionStates[CONN_ID],
+          selectedNodeId: tablesId,
+          filterText: 'id',
+        },
+      },
+    })
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    expect(screen.getByText('Tables')).toBeInTheDocument()
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
+    expect(screen.queryByText('orders')).not.toBeInTheDocument()
+    expect(screen.queryByText('id')).not.toBeInTheDocument()
+  })
+
+  it('with a filtered column selected, sibling tables stay filtered out and the selected column stays focusable', () => {
+    setupConnectedState()
+    const { usersId, userIdColumnId } = setupFilteredTableNodes()
+
+    useSchemaStore.setState({
+      connectionStates: {
+        [CONN_ID]: {
+          ...useSchemaStore.getState().connectionStates[CONN_ID],
+          expandedNodes: new Set([
+            makeNodeId('database', 'ecommerce_db', 'ecommerce_db'),
+            makeNodeId('category', 'ecommerce_db', 'table'),
+            usersId,
+          ]),
+          selectedNodeId: userIdColumnId,
+        },
+      },
+    })
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    expect(screen.getByText('users')).toBeInTheDocument()
+    expect(screen.queryByText('orders')).not.toBeInTheDocument()
+
+    const selectedColumnRow = screen.getByText('id').closest('[role="treeitem"]')
+    expect(selectedColumnRow).not.toBeNull()
+    expect(selectedColumnRow).toHaveAttribute('tabindex', '0')
+    expect(screen.getAllByRole('treeitem')[0]).toHaveAttribute('tabindex', '-1')
+  })
+
+  it('backspace from the tree updates the filter without focusing the input first', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupFilteredTableNodes()
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    const tablesNode = screen.getByText('Tables').closest('[role="treeitem"]')
+    expect(tablesNode).not.toBeNull()
+
+    await user.click(tablesNode!)
+    await user.keyboard('{Backspace}')
+
+    expect(screen.getByTestId('filter-input')).toHaveValue('use')
+    expect(useSchemaStore.getState().connectionStates[CONN_ID].filterText).toBe('use')
+  })
+
+  it('single-clicking a table opens the table view without expanding its columns', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupFilteredTableNodes()
+
+    useSchemaStore.setState({
+      connectionStates: {
+        [CONN_ID]: {
+          ...useSchemaStore.getState().connectionStates[CONN_ID],
+          filterText: '',
+        },
+      },
+    })
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    expect(screen.queryByText('id')).not.toBeInTheDocument()
+
+    await user.click(screen.getByText('users'))
+
+    expect(screen.queryByText('id')).not.toBeInTheDocument()
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0]).toMatchObject({
+      type: 'table-data',
+      label: 'users',
+      objectType: 'table',
+      objectName: 'users',
+      databaseName: 'ecommerce_db',
+    })
   })
 
   it('shows "Not connected" when connection is disconnected', () => {
@@ -473,6 +746,41 @@ describe('ObjectBrowser', () => {
       type: 'table-data',
       label: 'users',
       objectType: 'table',
+    })
+  })
+
+  it('double-clicking a table row does not expand its columns', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupFilteredTableNodes()
+
+    useSchemaStore.setState({
+      connectionStates: {
+        [CONN_ID]: {
+          ...useSchemaStore.getState().connectionStates[CONN_ID],
+          filterText: '',
+        },
+      },
+    })
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    expect(screen.queryByText('id')).not.toBeInTheDocument()
+
+    await user.dblClick(screen.getByText('users'))
+
+    expect(screen.queryByText('id')).not.toBeInTheDocument()
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0]).toMatchObject({
+      type: 'table-data',
+      label: 'users',
+      objectType: 'table',
+      objectName: 'users',
+      databaseName: 'ecommerce_db',
     })
   })
 

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MagnifyingGlass } from '@phosphor-icons/react'
 import { useSchemaStore, parseNodeId, type ConnectionTreeState } from '../../stores/schema-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
@@ -10,7 +10,7 @@ import { ConnectionHeader } from './ConnectionHeader'
 import { TreeNode } from './TreeNode'
 import { ObjectBrowserContextMenu } from './ObjectBrowserContextMenu'
 import type { ObjectType } from '../../types/schema'
-import { computeScopedFilterMatchIds } from '../../lib/tree-filter'
+import { computeScopedFilterMatchIds, isNodeUnderFilterScope } from '../../lib/tree-filter'
 import { FavouritesView } from '../favourites/FavouritesView'
 import styles from './ObjectBrowser.module.css'
 
@@ -53,6 +53,7 @@ export function ObjectBrowser({
   favouritesOpen,
   onToggleFavourites,
 }: ObjectBrowserProps) {
+  const filterInputRef = useRef<HTMLInputElement>(null)
   const setActiveDatabase = useConnectionStore((state) => state.setActiveDatabase)
   const activeConnection = useConnectionStore(
     (state) => state.activeConnections[connectionId] ?? null
@@ -71,6 +72,10 @@ export function ObjectBrowser({
     (state) =>
       (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.selectedNodeId ??
       null
+  )
+  const selectedNode = useMemo(
+    () => (selectedNodeId && nodes?.[selectedNodeId] ? nodes[selectedNodeId] : null),
+    [nodes, selectedNodeId]
   )
   const childIdsByParentId = useSchemaStore(
     (state) =>
@@ -115,7 +120,21 @@ export function ObjectBrowser({
     return childIdsByParentId['__root__'] ?? []
   }, [childIdsByParentId])
 
-  const effectiveScopeRoot = selectedNodeId && nodes?.[selectedNodeId] ? selectedNodeId : null
+  const effectiveScopeRoot = useMemo(() => {
+    if (!selectedNode) {
+      return null
+    }
+
+    if (selectedNode.type === 'table' || selectedNode.type === 'view') {
+      return selectedNode.parentId ?? null
+    }
+
+    if (selectedNode.type === 'column') {
+      return nodes?.[selectedNode.parentId ?? '']?.parentId ?? null
+    }
+
+    return selectedNode.id
+  }, [nodes, selectedNode])
 
   const filterMatchIds = useMemo(() => {
     const trimmed = filterText.trim()
@@ -125,9 +144,57 @@ export function ObjectBrowser({
     return computeScopedFilterMatchIds(nodes, trimmed, effectiveScopeRoot)
   }, [filterText, nodes, effectiveScopeRoot])
 
+  const visibleTopLevelIds = useMemo(() => {
+    if (!nodes || !filterMatchIds) {
+      return topLevelIds
+    }
+
+    return topLevelIds.filter((nodeId) => {
+      const node = nodes[nodeId]
+      if (!node) {
+        return false
+      }
+
+      if (effectiveScopeRoot == null) {
+        return filterMatchIds.has(nodeId)
+      }
+
+      return (
+        !isNodeUnderFilterScope(nodeId, effectiveScopeRoot, nodes) || filterMatchIds.has(nodeId)
+      )
+    })
+  }, [nodes, filterMatchIds, topLevelIds, effectiveScopeRoot])
+
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilter(e.target.value, connectionId)
   }
+
+  const handleTreeKeyDownCapture = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.defaultPrevented || e.ctrlKey || e.altKey || e.metaKey) {
+        return
+      }
+
+      const target = e.target as HTMLElement | null
+      if (!target || target.closest('input, textarea, [contenteditable="true"]')) {
+        return
+      }
+
+      const isPrintableCharacter = e.key.length === 1 && !/\s/.test(e.key)
+      const isBackspace = e.key === 'Backspace'
+
+      if (!isPrintableCharacter && !isBackspace) {
+        return
+      }
+
+      e.preventDefault()
+
+      const nextValue = isBackspace ? filterText.slice(0, -1) : `${filterText}${e.key}`
+      setFilter(nextValue, connectionId)
+      filterInputRef.current?.focus()
+    },
+    [connectionId, filterText, setFilter]
+  )
 
   // ---------------------------------------------------------------------------
   // Context menu handlers
@@ -193,7 +260,7 @@ export function ObjectBrowser({
   // Double-click handler — uses node.databaseName (Simplification 5)
   // ---------------------------------------------------------------------------
 
-  const handleDoubleClick = useCallback(
+  const handleActivateNode = useCallback(
     (nodeId: string) => {
       if (!nodes) return
       const node = nodes[nodeId]
@@ -263,6 +330,7 @@ export function ObjectBrowser({
               <MagnifyingGlass size={14} weight="regular" />
             </span>
             <TextInput
+              ref={filterInputRef}
               variant="bare"
               type="text"
               className={styles.searchInput}
@@ -274,7 +342,11 @@ export function ObjectBrowser({
             />
           </div>
 
-          <div className={styles.treeContainer} data-testid="object-browser-scroll">
+          <div
+            className={styles.treeContainer}
+            data-testid="object-browser-scroll"
+            onKeyDownCapture={handleTreeKeyDownCapture}
+          >
             {!isConnected && <div className={styles.emptyState}>Not connected</div>}
 
             {isConnected && !hasNodes && (
@@ -283,14 +355,14 @@ export function ObjectBrowser({
 
             {isConnected && hasNodes && (
               <div role="tree" aria-label="Database objects">
-                {topLevelIds.map((nodeId, index) => (
+                {visibleTopLevelIds.map((nodeId, index) => (
                   <TreeNode
                     key={nodeId}
                     nodeId={nodeId}
                     connectionId={connectionId}
                     level={0}
                     onContextMenu={handleContextMenu}
-                    onDoubleClick={handleDoubleClick}
+                    onActivate={handleActivateNode}
                     onSelect={handleNodeSelect}
                     filterMatchIds={filterMatchIds}
                     filterScopeRootId={effectiveScopeRoot}

@@ -31,11 +31,13 @@ const baseURL = `http://${DEV_SERVER_HOST}:${port}`
 
 // One shared Vite dev server cannot serve unbounded parallel Chromium + Monaco; uncapped workers
 // overload it (flaky autocomplete + net::ERR_CONNECTION_REFUSED mid-run after test:coverage + rust).
+// Keep the default e2e worker cap conservative to avoid the dev server falling over during the
+// full `pnpm test:all` gate after the coverage-heavy TypeScript + Rust suites have already run.
 // Screenshot-only runs (scripts/playwright-screenshots.mjs) may use more workers; still capped at 10.
 const availableCpus = Math.max(1, os.availableParallelism?.() ?? os.cpus().length)
 const isCI = !!process.env.CI
 const isScreenshotRun = process.env.PLAYWRIGHT_SCREENSHOT_RUN === '1'
-const workers = isCI ? 1 : Math.min(isScreenshotRun ? 10 : 4, availableCpus)
+const workers = isCI ? 1 : Math.min(isScreenshotRun ? 10 : 2, availableCpus)
 
 export default defineConfig({
   testDir: './e2e',

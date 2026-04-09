@@ -228,6 +228,54 @@ describe('tree-filter', () => {
       expect(ids.size).toBe(1)
       expect(ids.has(catId)).toBe(true)
     })
+
+    it('ignores column labels when matching within scope', () => {
+      const dbId = makeNodeId('database', 'a', 'a')
+      const catId = makeNodeId('category', 'a', 'table')
+      const tableId = makeNodeId('table', 'a', 'users')
+      const columnId = makeNodeId('column', 'a', 'users.id')
+      const nodes: Record<string, TreeNode> = {
+        [dbId]: n({
+          id: dbId,
+          label: 'a',
+          type: 'database',
+          parentId: null,
+          hasChildren: true,
+          isLoaded: true,
+        }),
+        [catId]: n({
+          id: catId,
+          label: 'Tables',
+          type: 'category',
+          parentId: dbId,
+          hasChildren: true,
+          isLoaded: true,
+        }),
+        [tableId]: n({
+          id: tableId,
+          label: 'users',
+          type: 'table',
+          parentId: catId,
+          hasChildren: true,
+          isLoaded: true,
+        }),
+        [columnId]: n({
+          id: columnId,
+          label: 'id',
+          type: 'column',
+          parentId: tableId,
+          hasChildren: false,
+          isLoaded: true,
+        }),
+      }
+
+      const ids = computeScopedFilterMatchIds(nodes, 'id', catId)
+
+      expect(ids.size).toBe(1)
+      expect(ids.has(catId)).toBe(true)
+      expect(ids.has(tableId)).toBe(false)
+      expect(ids.has(columnId)).toBe(false)
+    })
   })
 
   describe('hasMatchingDescendantInFilter', () => {
@@ -326,6 +374,51 @@ describe('tree-filter', () => {
       expect(ids.has(tableId)).toBe(true)
       expect(ids.has(catId)).toBe(true)
       expect(ids.has(dbId)).toBe(true)
+    })
+
+    it('ignores column labels for global filtering', () => {
+      const dbId = makeNodeId('database', 'a', 'a')
+      const catId = makeNodeId('category', 'a', 'table')
+      const tableId = makeNodeId('table', 'a', 'users')
+      const columnId = makeNodeId('column', 'a', 'users.id')
+      const nodes: Record<string, TreeNode> = {
+        [dbId]: n({
+          id: dbId,
+          label: 'a',
+          type: 'database',
+          parentId: null,
+          hasChildren: true,
+          isLoaded: true,
+        }),
+        [catId]: n({
+          id: catId,
+          label: 'Tables',
+          type: 'category',
+          parentId: dbId,
+          hasChildren: true,
+          isLoaded: true,
+        }),
+        [tableId]: n({
+          id: tableId,
+          label: 'users',
+          type: 'table',
+          parentId: catId,
+          hasChildren: true,
+          isLoaded: true,
+        }),
+        [columnId]: n({
+          id: columnId,
+          label: 'id',
+          type: 'column',
+          parentId: tableId,
+          hasChildren: false,
+          isLoaded: true,
+        }),
+      }
+
+      const ids = computeFilterMatchIds(nodes, 'id')
+
+      expect(ids.size).toBe(0)
     })
   })
 })

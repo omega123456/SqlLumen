@@ -142,6 +142,55 @@ describe('TreeNode', () => {
     expect(onSelect).toHaveBeenCalledWith(node.id)
   })
 
+  it('clicking a database row expands it', async () => {
+    const user = userEvent.setup()
+    const node: TreeNodeType = {
+      id: makeNodeId('database', 'testdb', 'testdb'),
+      label: 'testdb',
+      type: 'database',
+      parentId: null,
+      hasChildren: true,
+      isLoaded: false,
+    }
+    setNodes({ [node.id]: node })
+
+    const toggleExpand = vi.fn()
+    const selectNode = vi.fn()
+    useSchemaStore.setState({ toggleExpand, selectNode })
+
+    render(
+      <div role="tree">
+        <TreeNode nodeId={node.id} connectionId={CONN_ID} level={0} />
+      </div>
+    )
+
+    await user.click(screen.getByRole('treeitem'))
+
+    expect(selectNode).toHaveBeenCalledWith(node.id, CONN_ID)
+    expect(toggleExpand).toHaveBeenCalledWith(node.id, CONN_ID)
+  })
+
+  it('clicking a table row opens it without toggling expansion', async () => {
+    const user = userEvent.setup()
+    const node = makeTreeNode({ hasChildren: true })
+    setNodes({ [node.id]: node })
+
+    const toggleExpand = vi.fn()
+    const onActivate = vi.fn()
+    useSchemaStore.setState({ toggleExpand })
+
+    render(
+      <div role="tree">
+        <TreeNode nodeId={node.id} connectionId={CONN_ID} level={0} onActivate={onActivate} />
+      </div>
+    )
+
+    await user.click(screen.getByRole('treeitem'))
+
+    expect(onActivate).toHaveBeenCalledWith(node.id)
+    expect(toggleExpand).not.toHaveBeenCalled()
+  })
+
   it('shows loading spinner when node is in loadingNodes', () => {
     const node = makeTreeNode({ hasChildren: true })
     setNodes({ [node.id]: node }, { loading: new Set([node.id]) })
@@ -214,7 +263,14 @@ describe('TreeNode', () => {
 
   it('keyboard Enter calls toggleExpand for nodes with children', async () => {
     const user = userEvent.setup()
-    const node = makeTreeNode({ hasChildren: true })
+    const node: TreeNodeType = {
+      id: makeNodeId('database', 'testdb', 'testdb'),
+      label: 'testdb',
+      type: 'database',
+      parentId: null,
+      hasChildren: true,
+      isLoaded: false,
+    }
     setNodes({ [node.id]: node })
 
     const toggleExpand = vi.fn()
@@ -232,6 +288,32 @@ describe('TreeNode', () => {
     await user.keyboard('{Enter}')
     expect(toggleExpand).toHaveBeenCalledWith(node.id, CONN_ID)
     expect(selectNode).toHaveBeenCalledWith(node.id, CONN_ID)
+  })
+
+  it('keyboard Enter opens a table without toggling expansion', async () => {
+    const user = userEvent.setup()
+    const node = makeTreeNode({ hasChildren: true })
+    setNodes({ [node.id]: node })
+
+    const toggleExpand = vi.fn()
+    const selectNode = vi.fn()
+    const onActivate = vi.fn()
+    useSchemaStore.setState({ toggleExpand, selectNode })
+
+    render(
+      <div role="tree">
+        <TreeNode nodeId={node.id} connectionId={CONN_ID} level={0} onActivate={onActivate} />
+      </div>
+    )
+
+    const treeItem = screen.getByRole('treeitem')
+    treeItem.focus()
+    await user.keyboard('{Enter}')
+
+    expect(selectNode).toHaveBeenCalledWith(node.id, CONN_ID)
+    expect(onActivate).toHaveBeenCalledTimes(1)
+    expect(onActivate).toHaveBeenCalledWith(node.id)
+    expect(toggleExpand).not.toHaveBeenCalled()
   })
 
   it('keyboard ArrowRight expands a collapsed node', async () => {
@@ -324,20 +406,45 @@ describe('TreeNode', () => {
     expect(onContextMenu).toHaveBeenCalledWith(expect.any(Object), node.id)
   })
 
-  it('double-click calls onDoubleClick with node ID', async () => {
+  it('double-click calls onActivate with node ID for non-table nodes', async () => {
     const user = userEvent.setup()
-    const node = makeTreeNode()
+    const node = makeTreeNode({
+      id: makeNodeId('view', 'testdb', 'active_users'),
+      label: 'active_users',
+      type: 'view',
+      hasChildren: false,
+      isLoaded: true,
+    })
     setNodes({ [node.id]: node })
-    const onDoubleClick = vi.fn()
+    const onActivate = vi.fn()
 
     render(
       <div role="tree">
-        <TreeNode nodeId={node.id} connectionId={CONN_ID} level={0} onDoubleClick={onDoubleClick} />
+        <TreeNode nodeId={node.id} connectionId={CONN_ID} level={0} onActivate={onActivate} />
       </div>
     )
 
     const treeItem = screen.getByRole('treeitem')
     await user.dblClick(treeItem)
-    expect(onDoubleClick).toHaveBeenCalledWith(node.id)
+    expect(onActivate).toHaveBeenCalledWith(node.id)
+  })
+
+  it('double-clicking a table row triggers open only once', async () => {
+    const user = userEvent.setup()
+    const node = makeTreeNode()
+    setNodes({ [node.id]: node })
+    const onActivate = vi.fn()
+
+    render(
+      <div role="tree">
+        <TreeNode nodeId={node.id} connectionId={CONN_ID} level={0} onActivate={onActivate} />
+      </div>
+    )
+
+    const treeItem = screen.getByRole('treeitem')
+    await user.dblClick(treeItem)
+
+    expect(onActivate).toHaveBeenCalledTimes(1)
+    expect(onActivate).toHaveBeenCalledWith(node.id)
   })
 })

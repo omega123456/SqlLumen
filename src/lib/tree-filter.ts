@@ -41,6 +41,8 @@ export function hasMatchingDescendantInFilter(
 /**
  * Collect all node IDs that match the filter text (case-insensitive substring),
  * plus all their ancestor node IDs (so the tree context is preserved).
+ * Column labels are intentionally excluded from direct matching: the filter chooses
+ * which objects are visible, and expanded table columns remain browseable separately.
  */
 export function computeFilterMatchIds(
   nodes: Record<string, TreeNode>,
@@ -50,6 +52,10 @@ export function computeFilterMatchIds(
   const lowerFilter = filterText.toLowerCase()
 
   for (const [id, node] of Object.entries(nodes)) {
+    if (node.type === 'column') {
+      continue
+    }
+
     if (node.label.toLowerCase().includes(lowerFilter)) {
       matchIds.add(id)
       let parentId = node.parentId
@@ -82,6 +88,9 @@ export function computeScopedFilterMatchIds(
 
   for (const [id, node] of Object.entries(nodes)) {
     if (!isNodeUnderFilterScope(id, scopeRootId, nodes)) {
+      continue
+    }
+    if (node.type === 'column') {
       continue
     }
     if (!node.label.toLowerCase().includes(lowerFilter)) {

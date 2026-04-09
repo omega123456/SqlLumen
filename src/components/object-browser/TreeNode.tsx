@@ -24,13 +24,107 @@ const EMPTY_CHILDREN: string[] = []
 /** Stable empty nodes map when connection state is absent. */
 const EMPTY_NODES: Record<string, TreeNodeData> = {}
 
+/** Stable empty expanded-nodes set when connection state is absent. */
+const EMPTY_EXPANDED_NODES = new Set<string>()
+
+function getEffectiveFilterMatchIds(
+  nodeId: string,
+  filterMatchIds: Set<string> | undefined,
+  filterScopeRootId: string | null,
+  nodes: Record<string, TreeNodeData>
+): Set<string> | undefined {
+  if (!filterMatchIds) {
+    return undefined
+  }
+
+  if (filterScopeRootId == null) {
+    return filterMatchIds
+  }
+
+  return isNodeUnderFilterScope(nodeId, filterScopeRootId, nodes) ? filterMatchIds : undefined
+}
+
+function shouldRenderNodeInFilter(
+  nodeId: string,
+  node: TreeNodeData,
+  filterMatchIds: Set<string> | undefined,
+  filterScopeRootId: string | null,
+  nodes: Record<string, TreeNodeData>
+): boolean {
+  const effectiveFilterMatchIds = getEffectiveFilterMatchIds(
+    nodeId,
+    filterMatchIds,
+    filterScopeRootId,
+    nodes
+  )
+
+  const shouldRenderColumnDespiteFilter =
+    node.type === 'column' && node.parentId != null && nodes[node.parentId] != null
+
+  return !(
+    effectiveFilterMatchIds &&
+    !effectiveFilterMatchIds.has(nodeId) &&
+    !shouldRenderColumnDespiteFilter
+  )
+}
+
+function isNodeVisibleInTree(
+  nodeId: string | null,
+  filterMatchIds: Set<string> | undefined,
+  filterScopeRootId: string | null,
+  nodes: Record<string, TreeNodeData>,
+  expandedNodes: Set<string>
+): boolean {
+  if (!nodeId) {
+    return false
+  }
+
+  let currentId: string | null = nodeId
+
+  while (currentId) {
+    const currentNode = nodes[currentId]
+    if (!currentNode) {
+      return false
+    }
+
+    if (
+      !shouldRenderNodeInFilter(currentId, currentNode, filterMatchIds, filterScopeRootId, nodes)
+    ) {
+      return false
+    }
+
+    const parentId = currentNode.parentId
+    if (!parentId) {
+      return true
+    }
+
+    const parentEffectiveFilterMatchIds = getEffectiveFilterMatchIds(
+      parentId,
+      filterMatchIds,
+      filterScopeRootId,
+      nodes
+    )
+    const parentFilterDrivesExpand =
+      parentEffectiveFilterMatchIds != null &&
+      hasMatchingDescendantInFilter(parentId, parentEffectiveFilterMatchIds, nodes)
+
+    if (!expandedNodes.has(parentId) && !parentFilterDrivesExpand) {
+      return false
+    }
+
+    currentId = parentId
+  }
+
+  return true
+}
+
 export interface TreeNodeProps {
   nodeId: string
   connectionId: string
   level: number
   onSelect?: (nodeId: string) => void
   onContextMenu?: (e: React.MouseEvent, nodeId: string) => void
-  onDoubleClick?: (nodeId: string) => void
+  onActivate?: (nodeId: string) => void
   /** Set of node IDs that match the current filter (undefined = no filter active) */
   filterMatchIds?: Set<string>
   /**
@@ -90,7 +184,7 @@ export function TreeNode({
   level,
   onSelect,
   onContextMenu,
-  onDoubleClick,
+  onActivate,
   filterMatchIds,
   filterScopeRootId = null,
   isFirstVisible,
@@ -112,6 +206,11 @@ export function TreeNode({
         nodeId
       ) ?? false
   )
+  const expandedNodes = useSchemaStore(
+    (state) =>
+      (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.expandedNodes ??
+      EMPTY_EXPANDED_NODES
+  )
   const selectedNodeId = useSchemaStore(
     (state) =>
       (state.connectionStates[connectionId] as ConnectionTreeState | undefined)?.selectedNodeId ??
@@ -127,27 +226,16 @@ export function TreeNode({
   )
 
   const effectiveFilterMatchIds = useMemo(() => {
-    if (!filterMatchIds) {
-      return undefined
-    }
-    if (filterScopeRootId == null) {
-      return filterMatchIds
-    }
-    return isNodeUnderFilterScope(nodeId, filterScopeRootId, nodesMap) ? filterMatchIds : undefined
+    return getEffectiveFilterMatchIds(nodeId, filterMatchIds, filterScopeRootId, nodesMap)
   }, [filterMatchIds, filterScopeRootId, nodeId, nodesMap])
 
-  /**
-   * Scoped subtree root (e.g. selected "Tables"): only force-expand when a descendant
-   * matches; otherwise the section row stays visible but collapsed.
-   */
+  /** Force-expand only the ancestor path to matches; matched nodes themselves stay collapsed
+   * unless the user explicitly expands them. */
   const filterDrivesExpand = useMemo(() => {
     if (effectiveFilterMatchIds == null) {
       return false
     }
-    if (filterScopeRootId != null && nodeId === filterScopeRootId) {
-      return hasMatchingDescendantInFilter(nodeId, effectiveFilterMatchIds, nodesMap)
-    }
-    return true
+    return hasMatchingDescendantInFilter(nodeId, effectiveFilterMatchIds, nodesMap)
   }, [effectiveFilterMatchIds, filterScopeRootId, nodeId, nodesMap])
 
   // Use childIdsByParentId index instead of scanning the full nodes map (Simplification 4)
@@ -165,10 +253,24 @@ export function TreeNode({
     return indexedChildIds
   }, [isExpanded, node, indexedChildIds, filterDrivesExpand])
 
+  const selectedNodeIsVisible = useMemo(
+    () =>
+      isNodeVisibleInTree(
+        selectedNodeId,
+        filterMatchIds,
+        filterScopeRootId,
+        nodesMap,
+        expandedNodes
+      ),
+    [expandedNodes, filterMatchIds, filterScopeRootId, nodesMap, selectedNodeId]
+  )
+
   if (!node) return null
 
-  // If filter is active, skip nodes that don't match and have no matching descendants
-  if (effectiveFilterMatchIds && !effectiveFilterMatchIds.has(nodeId)) {
+  // If filter is active, skip nodes that don't match and have no matching descendants.
+  // Expanded table columns are intentionally exempt: the filter chooses which tables are
+  // visible, but once a visible table is expanded its columns should remain browseable.
+  if (!shouldRenderNodeInFilter(nodeId, node, filterMatchIds, filterScopeRootId, nodesMap)) {
     return null
   }
 
@@ -177,9 +279,25 @@ export function TreeNode({
   const showExpandedChrome = isExpanded || filterDrivesExpand
   const { icon, className: iconClassName } = getNodeIcon(node.type, showExpandedChrome)
 
-  const handleRowClick = () => {
+  const activateNode = () => {
+    onActivate?.(nodeId)
+  }
+
+  const selectCurrentNode = () => {
     selectNode(nodeId, connectionId)
     onSelect?.(nodeId)
+  }
+
+  const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    selectCurrentNode()
+
+    if (node.type === 'table') {
+      if (e.detail === 1) {
+        activateNode()
+      }
+      return
+    }
+
     if (hasChildren) {
       toggleExpand(nodeId, connectionId)
     }
@@ -187,8 +305,7 @@ export function TreeNode({
 
   const handleChevronClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    selectNode(nodeId, connectionId)
-    onSelect?.(nodeId)
+    selectCurrentNode()
     toggleExpand(nodeId, connectionId)
   }
 
@@ -197,17 +314,20 @@ export function TreeNode({
   }
 
   const handleDoubleClick = () => {
-    onDoubleClick?.(nodeId)
+    if (node.type !== 'table') {
+      activateNode()
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'Enter':
-        if (hasChildren) {
+        selectCurrentNode()
+        if (node.type === 'table') {
+          activateNode()
+        } else if (hasChildren) {
           toggleExpand(nodeId, connectionId)
         }
-        selectNode(nodeId, connectionId)
-        onSelect?.(nodeId)
         e.preventDefault()
         break
       case 'ArrowRight':
@@ -273,7 +393,7 @@ export function TreeNode({
         }
         aria-level={level + 1}
         aria-selected={isSelected}
-        tabIndex={isSelected || (selectedNodeId === null && isFirstVisible) ? 0 : -1}
+        tabIndex={isSelected || (isFirstVisible && !selectedNodeIsVisible) ? 0 : -1}
         style={{ paddingLeft: `${indentPx}px` }}
         onClick={handleRowClick}
         onContextMenu={handleContextMenu}
@@ -325,7 +445,7 @@ export function TreeNode({
               level={level + 1}
               onSelect={onSelect}
               onContextMenu={onContextMenu}
-              onDoubleClick={onDoubleClick}
+              onActivate={onActivate}
               filterMatchIds={filterMatchIds}
               filterScopeRootId={filterScopeRootId}
             />
