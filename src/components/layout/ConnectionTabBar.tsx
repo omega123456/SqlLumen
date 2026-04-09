@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Sun, Moon, GearSix, Plus, X } from '@phosphor-icons/react'
 import { useThemeStore } from '../../stores/theme-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import type { Theme } from '../../stores/theme-store'
+import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
 import { UnderlineTabBar, UnderlineTab } from '../common/UnderlineTabs'
 import styles from './ConnectionTabBar.module.css'
@@ -11,6 +13,13 @@ export interface ConnectionTabBarProps {
 }
 
 export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
+  const [pendingConnectionClose, setPendingConnectionClose] = useState<{
+    id: string
+    displayName: string
+    hostPort: string
+  } | null>(null)
+  const [isClosingConnection, setIsClosingConnection] = useState(false)
+
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
   const setTheme = useThemeStore((state) => state.setTheme)
 
@@ -46,6 +55,20 @@ export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
     return `${baseName} (${idx})`
   }
 
+  const handleConfirmCloseConnection = async () => {
+    if (!pendingConnectionClose) {
+      return
+    }
+    const { id } = pendingConnectionClose
+    setIsClosingConnection(true)
+    try {
+      await closeConnection(id)
+    } finally {
+      setIsClosingConnection(false)
+      setPendingConnectionClose(null)
+    }
+  }
+
   return (
     <div className={styles.tabBar} data-testid="connection-tab-bar">
       <div className={styles.leftSection}>
@@ -72,6 +95,14 @@ export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
                   active={isActive}
                   indicatorColor={isActive && conn.profile.color ? conn.profile.color : undefined}
                   onSelect={() => switchTab(conn.id)}
+                  onAuxClick={(e) => {
+                    e.preventDefault()
+                    setPendingConnectionClose({
+                      id: conn.id,
+                      displayName,
+                      hostPort: `${conn.profile.host}:${conn.profile.port}`,
+                    })
+                  }}
                   title={`${displayName} (${conn.profile.host}:${conn.profile.port})`}
                   prefix={
                     <div className={styles.tabPrefix}>
@@ -131,6 +162,32 @@ export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
           <GearSix size={20} weight="regular" />
         </button>
       </div>
+      <ConfirmDialog
+        isOpen={pendingConnectionClose != null}
+        title="Close connection?"
+        message={
+          pendingConnectionClose ? (
+            <>
+              Disconnect <strong>{pendingConnectionClose.displayName}</strong> (
+              {pendingConnectionClose.hostPort})? Open workspace tabs for this connection will be
+              closed.
+            </>
+          ) : (
+            ''
+          )
+        }
+        confirmLabel="Close connection"
+        isDestructive
+        isLoading={isClosingConnection}
+        onConfirm={() => {
+          void handleConfirmCloseConnection()
+        }}
+        onCancel={() => {
+          if (!isClosingConnection) {
+            setPendingConnectionClose(null)
+          }
+        }}
+      />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import styles from './UnderlineTabs.module.css'
 
 export interface UnderlineTabBarProps {
@@ -32,6 +32,8 @@ export interface UnderlineTabProps {
   onClick?: () => void
   /** Split tab: main label action. */
   onSelect?: () => void
+  /** Middle-click (auxiliary button); use e.preventDefault() in the handler to suppress browser autoscroll. */
+  onAuxClick?: (e: MouseEvent<HTMLElement>) => void
   prefix?: ReactNode
   suffix?: ReactNode
 }
@@ -45,6 +47,7 @@ export function UnderlineTab({
   title,
   onClick,
   onSelect,
+  onAuxClick,
   prefix,
   suffix,
 }: UnderlineTabProps) {
@@ -74,6 +77,7 @@ export function UnderlineTab({
         data-testid={testId}
         style={indicatorStyle}
         title={title}
+        onAuxClick={onAuxClick}
       >
         <div
           role="button"
@@ -103,6 +107,7 @@ export function UnderlineTab({
       style={indicatorStyle}
       title={title}
       onClick={handleSelect}
+      onAuxClick={onAuxClick}
     >
       {children}
     </button>

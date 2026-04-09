@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { dispatchAuxClick } from '../../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
 import { UnderlineTabBar, UnderlineTab } from '../../../components/common/UnderlineTabs'
 
@@ -84,5 +85,32 @@ describe('UnderlineTabs', () => {
 
     await user.click(screen.getByRole('button', { name: 'B' }))
     expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it('invokes onAuxClick for simple and split tab cell', () => {
+    const onAuxSimple = vi.fn()
+    const onAuxSplit = vi.fn()
+
+    render(
+      <UnderlineTabBar>
+        <UnderlineTab data-testid="simple" onClick={() => {}} onAuxClick={onAuxSimple}>
+          A
+        </UnderlineTab>
+        <UnderlineTab
+          data-testid="split-cell"
+          onSelect={() => {}}
+          onAuxClick={onAuxSplit}
+          suffix={<span />}
+        >
+          B
+        </UnderlineTab>
+      </UnderlineTabBar>
+    )
+
+    dispatchAuxClick(screen.getByTestId('simple'))
+    expect(onAuxSimple).toHaveBeenCalledTimes(1)
+
+    dispatchAuxClick(screen.getByTestId('split-cell'))
+    expect(onAuxSplit).toHaveBeenCalledTimes(1)
   })
 })

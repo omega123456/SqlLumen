@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { act, render, screen } from '@testing-library/react'
+import { dispatchAuxClick } from '../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
 import { ConnectionTabBar } from '../../components/layout/ConnectionTabBar'
 import { useThemeStore } from '../../stores/theme-store'
@@ -164,6 +165,68 @@ describe('ConnectionTabBar', () => {
     // but the click handler was invoked (which is what we're testing)
     // The tab should still be present since the IPC mock will reject
     expect(closeBtn).toBeInTheDocument()
+  })
+
+  it('middle-click on a connection tab opens close confirmation', async () => {
+    const conn1 = makeActiveConnection({ id: 'sess-1' })
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1 },
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+
+    await act(async () => {
+      dispatchAuxClick(screen.getByTestId('connection-session-tab-sess-1'))
+    })
+
+    expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Close connection\?/ })).toBeInTheDocument()
+  })
+
+  it('middle-click confirm dialog Cancel does not call closeConnection', async () => {
+    const user = userEvent.setup()
+    const conn1 = makeActiveConnection({ id: 'sess-1' })
+    const closeSpy = vi.spyOn(useConnectionStore.getState(), 'closeConnection').mockResolvedValue()
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1 },
+      activeTabId: 'sess-1',
+    })
+
+    try {
+      render(<ConnectionTabBar />)
+      await act(async () => {
+        dispatchAuxClick(screen.getByTestId('connection-session-tab-sess-1'))
+      })
+      await user.click(screen.getByTestId('confirm-cancel-button'))
+      expect(closeSpy).not.toHaveBeenCalled()
+      expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
+    } finally {
+      closeSpy.mockRestore()
+    }
+  })
+
+  it('middle-click confirm dialog Close connection calls closeConnection(id)', async () => {
+    const user = userEvent.setup()
+    const conn1 = makeActiveConnection({ id: 'sess-1' })
+    const closeSpy = vi.spyOn(useConnectionStore.getState(), 'closeConnection').mockResolvedValue()
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1 },
+      activeTabId: 'sess-1',
+    })
+
+    try {
+      render(<ConnectionTabBar />)
+      await act(async () => {
+        dispatchAuxClick(screen.getByTestId('connection-session-tab-sess-1'))
+      })
+      await user.click(screen.getByTestId('confirm-confirm-button'))
+      expect(closeSpy).toHaveBeenCalledWith('sess-1')
+    } finally {
+      closeSpy.mockRestore()
+    }
   })
 
   it('"+" button calls openDialog()', async () => {

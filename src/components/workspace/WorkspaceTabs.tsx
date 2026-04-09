@@ -54,6 +54,14 @@ export function WorkspaceTabs({ connectionId }: WorkspaceTabsProps) {
             className={styles.workspaceTab}
             data-testid={`workspace-tab-${tab.id}`}
             onSelect={() => setActiveTab(connectionId, tab.id)}
+            onAuxClick={
+              tab.type !== 'history'
+                ? (e) => {
+                    e.preventDefault()
+                    closeTab(connectionId, tab.id)
+                  }
+                : undefined
+            }
             suffix={
               tab.type !== 'history' ? (
                 <button

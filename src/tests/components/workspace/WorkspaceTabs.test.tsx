@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import { dispatchAuxClick } from '../../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
 import { WorkspaceTabs } from '../../../components/workspace/WorkspaceTabs'
 import {
@@ -101,6 +102,52 @@ describe('WorkspaceTabs', () => {
     await user.click(closeBtn)
 
     expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(0)
+  })
+
+  it('middle-click (aux click) on a tab closes it', async () => {
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    await act(async () => {
+      dispatchAuxClick(screen.getByTestId(`workspace-tab-${tabId}`))
+    })
+
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(0)
+  })
+
+  it('middle-click on History tab does not close it', async () => {
+    useWorkspaceStore.getState().openHistoryTab('conn-1', true)
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const historyTab = tabs.find((t) => t.type === 'history')
+    expect(historyTab).toBeDefined()
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    await act(async () => {
+      dispatchAuxClick(screen.getByTestId(`workspace-tab-${historyTab!.id}`))
+    })
+
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(2)
+    expect(
+      useWorkspaceStore.getState().tabsByConnection['conn-1'].some((t) => t.type === 'history')
+    ).toBe(true)
   })
 
   it('shows correct tab labels', () => {
