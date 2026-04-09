@@ -567,7 +567,7 @@ describe('ObjectBrowser', () => {
       <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
     )
 
-    const usersRow = screen.getByText('users').closest('[role="treeitem"]')
+    const usersRow = screen.getByText('users').closest<HTMLElement>('[role="treeitem"]')
     expect(usersRow).not.toBeNull()
 
     await user.click(within(usersRow!).getByTestId('tree-node-chevron'))

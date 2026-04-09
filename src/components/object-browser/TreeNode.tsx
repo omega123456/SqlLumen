@@ -82,7 +82,7 @@ function isNodeVisibleInTree(
   let currentId: string | null = nodeId
 
   while (currentId) {
-    const currentNode = nodes[currentId]
+    const currentNode: TreeNodeData | undefined = nodes[currentId]
     if (!currentNode) {
       return false
     }
@@ -93,7 +93,7 @@ function isNodeVisibleInTree(
       return false
     }
 
-    const parentId = currentNode.parentId
+    const parentId: string | null = currentNode.parentId
     if (!parentId) {
       return true
     }
