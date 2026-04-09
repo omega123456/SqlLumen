@@ -209,6 +209,32 @@ function isInTableReferenceClause(statementPrefix: string): boolean {
   )
 }
 
+function isSelectListContext(statementPrefix: string): boolean {
+  const trimmedPrefix = statementPrefix.trimStart()
+  return /^SELECT\b/i.test(trimmedPrefix) && !/\bFROM\b/i.test(trimmedPrefix)
+}
+
+function isCallStatementContext(statementPrefix: string): boolean {
+  return /^CALL\b/i.test(statementPrefix.trimStart())
+}
+
+function isAfterSelectWildcard(statementPrefix: string): boolean {
+  return /^\s*SELECT(?:\s+(?:ALL|DISTINCT(?:ROW)?))?\s+(?:(?:[\w`"']+\.){0,2}\*)\s*$/i.test(
+    statementPrefix
+  )
+}
+
+function getScopedSchemaDatabases(
+  databases: readonly string[],
+  scopedDatabase: string | null
+): readonly string[] {
+  if (scopedDatabase && databases.includes(scopedDatabase)) {
+    return [scopedDatabase]
+  }
+
+  return databases
+}
+
 function getParseFallbackMode(
   statementPrefix: string,
   databases: readonly string[],
@@ -332,6 +358,95 @@ function pushStoredProgramBodyKeywords(
   }
 }
 
+function pushDatabases(
+  databases: readonly string[],
+  items: ICompletionItem[],
+  seenLabels: Set<string>,
+  sortPrefix = SORT_PREFIX_NEUTRAL
+): void {
+  for (const db of databases) {
+    if (seenLabels.has(`db:${db}`)) {
+      continue
+    }
+
+    seenLabels.add(`db:${db}`)
+    items.push(dbItem(db, sortPrefix))
+  }
+}
+
+function pushScopedTables(
+  cache: ReturnType<typeof getCache>,
+  databases: readonly string[],
+  items: ICompletionItem[],
+  seenLabels: Set<string>,
+  sortPrefix = SORT_PREFIX_NEUTRAL
+): void {
+  for (const db of databases) {
+    const tables = cache.tables[db] ?? []
+    for (const table of tables) {
+      if (seenLabels.has(`tbl:${db}:${table.name}`)) {
+        continue
+      }
+
+      seenLabels.add(`tbl:${db}:${table.name}`)
+      items.push(tableItem(table.name, sortPrefix))
+    }
+  }
+}
+
+function pushScopedColumns(
+  cache: ReturnType<typeof getCache>,
+  databases: readonly string[],
+  items: ICompletionItem[],
+  seenLabels: Set<string>,
+  sortPrefix = SORT_PREFIX_NEUTRAL
+): void {
+  for (const db of databases) {
+    const tables = cache.tables[db] ?? []
+    for (const table of tables) {
+      const cols = cache.columns[`${db}.${table.name}`] ?? []
+      for (const col of cols) {
+        if (seenLabels.has(`col:${col.name}`)) {
+          continue
+        }
+
+        seenLabels.add(`col:${col.name}`)
+        items.push(columnItem(col.name, sortPrefix))
+      }
+    }
+  }
+}
+
+function pushScopedRoutines(
+  cache: ReturnType<typeof getCache>,
+  databases: readonly string[],
+  items: ICompletionItem[],
+  seenLabels: Set<string>,
+  sortPrefix = SORT_PREFIX_NEUTRAL,
+  routineType: 'FUNCTION' | 'PROCEDURE' | null = null
+): void {
+  for (const db of databases) {
+    const routines = cache.routines[db] ?? []
+    for (const routine of routines) {
+      if (routineType && routine.routineType !== routineType) {
+        continue
+      }
+
+      const routineKey =
+        routine.routineType === 'FUNCTION' ? `fn:${routine.name}` : `proc:${routine.name}`
+
+      if (seenLabels.has(routineKey)) {
+        continue
+      }
+
+      seenLabels.add(routineKey)
+      items.push(
+        routineItem(routine.name, routine.routineType as 'FUNCTION' | 'PROCEDURE', sortPrefix)
+      )
+    }
+  }
+}
+
 function dbItem(db: string, sortPrefix = SORT_PREFIX_NEUTRAL): ICompletionItem {
   return {
     label: db,
@@ -441,14 +556,15 @@ export const completionService: CompletionService = async (
       null)
     : null
   const selectedDatabase = getSelectedDatabase(connectionId)
-  const scopedResolutionDatabase = activeDatabase ?? selectedDatabase
+  const resolutionDatabase = activeDatabase ?? selectedDatabase
+  const broadSuggestionDatabase = selectedDatabase ?? activeDatabase
   const currentStatementPrefix = getCurrentStatementPrefix(model, position)
   const currentStatementText = getCurrentStatementText(model, position)
   const cursorPrefix = getCursorPrefix(model, position)
   const currentWordPrefix = getCurrentWordPrefix(model, position)
 
   // Build alias map from entities (pure function — no side effects)
-  const aliasMap = buildAliasMap(entities, scopedResolutionDatabase)
+  const aliasMap = buildAliasMap(entities, resolutionDatabase)
 
   // -------------------------------------------------------------------
   // Await pending cache loads (must happen BEFORE parse-failure check
@@ -542,11 +658,11 @@ export const completionService: CompletionService = async (
       position,
       connectionId,
       aliasMap,
-      scopedResolutionDatabase,
+      resolutionDatabase,
       currentStatementPrefix,
       currentStatementText
     )
-    if (dotResult.length > 0) return dotResult
+    if (dotResult !== null) return dotResult
     if (isInTableReferenceClause(currentStatementPrefix)) {
       return []
     }
@@ -558,7 +674,13 @@ export const completionService: CompletionService = async (
   // schema items.
   // -------------------------------------------------------------------
   if (suggestions === null) {
-    return buildParseFallback(connectionId, currentStatementPrefix, selectedDatabase, snippets)
+    return buildParseFallback(
+      connectionId,
+      currentStatementPrefix,
+      selectedDatabase,
+      broadSuggestionDatabase,
+      snippets
+    )
   }
 
   // -------------------------------------------------------------------
@@ -571,57 +693,57 @@ export const completionService: CompletionService = async (
   const seenLabels = new Set<string>()
   const isColumnContext = hasColumnContext(suggestions)
   const isTableContext = hasTableContext(suggestions)
+  const inSelectListContext = isSelectListContext(currentStatementPrefix)
+  const inCallStatementContext = isCallStatementContext(currentStatementPrefix)
+  const afterSelectWildcard = isAfterSelectWildcard(currentStatementPrefix)
 
   // In column context: columns='0_', other schema='1_', keywords/snippets='2_'
   // Otherwise: everything='1_' (neutral)
   const columnSortPrefix = isColumnContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
   const schemaSortPrefix = isTableContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
-  const kwSortPrefix = isColumnContext || isTableContext ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
+  const callSchemaSortPrefix = inCallStatementContext ? SORT_PREFIX_HIGH : schemaSortPrefix
+  const kwSortPrefix =
+    isColumnContext || isTableContext || inCallStatementContext
+      ? SORT_PREFIX_LOW
+      : SORT_PREFIX_NEUTRAL
   const snippetSortPrefix =
-    isColumnContext || isTableContext ? SORT_PREFIX_LOW : SORT_PREFIX_NEUTRAL
+    isColumnContext || isTableContext || inCallStatementContext
+      ? SORT_PREFIX_LOW
+      : SORT_PREFIX_NEUTRAL
+
+  if (isColumnContext && afterSelectWildcard) {
+    const keywordLabels = suggestions.keywords.length > 0 ? suggestions.keywords : ['FROM']
+
+    for (const kw of keywordLabels) {
+      items.push(keywordItem(kw, kwSortPrefix))
+    }
+
+    items.push(...mapSnippetsToItems(snippets, snippetSortPrefix))
+    return items
+  }
 
   for (const syntaxSuggestion of suggestions.syntax) {
     const ctxType = syntaxSuggestion.syntaxContextType
 
     if (ctxType === EntityContextType.DATABASE) {
-      for (const db of cache.databases) {
-        if (!seenLabels.has(`db:${db}`)) {
-          seenLabels.add(`db:${db}`)
-          items.push(dbItem(db, schemaSortPrefix))
-        }
-      }
+      pushDatabases(
+        cache.databases,
+        items,
+        seenLabels,
+        inCallStatementContext ? callSchemaSortPrefix : schemaSortPrefix
+      )
     } else if (ctxType === EntityContextType.TABLE) {
-      if (selectedDatabase) {
-        for (const db of cache.databases) {
-          if (!seenLabels.has(`db:${db}`)) {
-            seenLabels.add(`db:${db}`)
-            items.push(dbItem(db, schemaSortPrefix))
-          }
-        }
-      }
+      pushDatabases(cache.databases, items, seenLabels, schemaSortPrefix)
 
       if (selectedDatabase) {
-        const tables = cache.tables[selectedDatabase] ?? []
-        for (const table of tables) {
-          if (!seenLabels.has(`tbl:${selectedDatabase}:${table.name}`)) {
-            seenLabels.add(`tbl:${selectedDatabase}:${table.name}`)
-            items.push(tableItem(table.name, schemaSortPrefix))
-          }
-        }
-      } else {
-        for (const db of cache.databases) {
-          if (!seenLabels.has(`db:${db}`)) {
-            seenLabels.add(`db:${db}`)
-            items.push(dbItem(db, schemaSortPrefix))
-          }
-        }
+        pushScopedTables(cache, [selectedDatabase], items, seenLabels, schemaSortPrefix)
       }
     } else if (ctxType === EntityContextType.COLUMN) {
       // Try to scope columns by tables in the current caret statement
       const scopedTables = findTablesInCaretStatement(
         entities,
         currentStatementText,
-        scopedResolutionDatabase
+        resolutionDatabase
       )
       if (scopedTables.length > 0) {
         for (const tableRef of scopedTables) {
@@ -631,52 +753,59 @@ export const completionService: CompletionService = async (
             items,
             seenLabels,
             columnSortPrefix,
-            scopedResolutionDatabase
+            resolutionDatabase
           )
         }
       } else {
         // Broad fallback: prefer the current database context, otherwise all databases.
-        const fallbackDatabases =
-          scopedResolutionDatabase && cache.databases.includes(scopedResolutionDatabase)
-            ? [scopedResolutionDatabase]
-            : cache.databases
+        const fallbackDatabases = getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
 
-        for (const db of fallbackDatabases) {
-          const tables = cache.tables[db] ?? []
-          for (const table of tables) {
-            const cols = cache.columns[`${db}.${table.name}`] ?? []
-            for (const col of cols) {
-              if (!seenLabels.has(`col:${col.name}`)) {
-                seenLabels.add(`col:${col.name}`)
-                items.push(columnItem(col.name, columnSortPrefix))
-              }
-            }
-          }
+        pushScopedColumns(cache, fallbackDatabases, items, seenLabels, columnSortPrefix)
+
+        if (inSelectListContext) {
+          pushDatabases(cache.databases, items, seenLabels, schemaSortPrefix)
+          pushScopedTables(cache, fallbackDatabases, items, seenLabels, schemaSortPrefix)
+          pushScopedRoutines(
+            cache,
+            fallbackDatabases,
+            items,
+            seenLabels,
+            schemaSortPrefix,
+            'FUNCTION'
+          )
         }
       }
     } else if (ctxType === EntityContextType.FUNCTION) {
       pushBuiltinFunctions(items, seenLabels, schemaSortPrefix)
-
-      for (const db of cache.databases) {
-        const routines = cache.routines[db] ?? []
-        for (const routine of routines) {
-          if (routine.routineType === 'FUNCTION' && !seenLabels.has(`fn:${routine.name}`)) {
-            seenLabels.add(`fn:${routine.name}`)
-            items.push(routineItem(routine.name, 'FUNCTION', schemaSortPrefix))
-          }
-        }
-      }
+      pushScopedRoutines(cache, cache.databases, items, seenLabels, schemaSortPrefix, 'FUNCTION')
     } else if (ctxType === EntityContextType.PROCEDURE) {
-      for (const db of cache.databases) {
-        const routines = cache.routines[db] ?? []
-        for (const routine of routines) {
-          if (routine.routineType === 'PROCEDURE' && !seenLabels.has(`proc:${routine.name}`)) {
-            seenLabels.add(`proc:${routine.name}`)
-            items.push(routineItem(routine.name, 'PROCEDURE', schemaSortPrefix))
-          }
-        }
+      if (!inCallStatementContext) {
+        const fallbackDatabases = getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
+
+        pushScopedRoutines(
+          cache,
+          fallbackDatabases,
+          items,
+          seenLabels,
+          schemaSortPrefix,
+          'PROCEDURE'
+        )
       }
     }
+  }
+
+  if (inCallStatementContext) {
+    const fallbackDatabases = getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
+
+    pushDatabases(cache.databases, items, seenLabels, callSchemaSortPrefix)
+    pushScopedRoutines(
+      cache,
+      fallbackDatabases,
+      items,
+      seenLabels,
+      callSchemaSortPrefix,
+      'PROCEDURE'
+    )
   }
 
   // Keywords (ranked lower in column context, neutral otherwise)
@@ -708,12 +837,12 @@ function handleDotNotation(
   position: Position,
   connectionId: string,
   aliasMap: AliasMap,
-  activeDatabase: string | null,
+  resolutionDatabase: string | null,
   currentStatementPrefix: string,
   currentStatementText: string
-): ICompletionItem[] {
+): ICompletionItem[] | null {
   const cache = getCache(connectionId)
-  if (cache.status !== 'ready') return []
+  if (cache.status !== 'ready') return null
 
   // Get text before the cursor on the current line
   const lineContent = model.getLineContent(position.lineNumber)
@@ -732,7 +861,7 @@ function handleDotNotation(
     dotMatch = textBeforeWord.match(/(?:([\w`"']+)\.)?([\w`"']+)\.\s*$/)
   }
 
-  if (!dotMatch) return []
+  if (!dotMatch) return null
 
   // Extract parts — qualifiedDb is set only for "db.table." syntax
   const qualifiedDb = dotMatch[1] ? dotMatch[1].replace(/[`"']/g, '') : null
@@ -749,7 +878,7 @@ function handleDotNotation(
   // 1b. Text-based alias fallback: when the parser doesn't provide entities,
   //     extract aliases from the current statement so aliases declared later
   //     in the same statement still resolve while avoiding cross-statement bleed.
-  const textAliasMap = buildAliasMapFromText(currentStatementText, activeDatabase)
+  const textAliasMap = buildAliasMapFromText(currentStatementText, resolutionDatabase)
   const textAliasResolution = textAliasMap.get(prefixLower)
   if (textAliasResolution && !isInTableReferenceClause(currentStatementPrefix)) {
     const cols = cache.columns[`${textAliasResolution.database}.${textAliasResolution.table}`] ?? []
@@ -759,25 +888,57 @@ function handleDotNotation(
   // 2. Check if it's a database name → suggest that db's tables
   const matchedDb = cache.databases.find((db) => db.toLowerCase() === prefixLower)
   if (matchedDb) {
+    const items: ICompletionItem[] = []
+
+    if (isCallStatementContext(currentStatementPrefix)) {
+      const routines = cache.routines[matchedDb] ?? []
+      items.push(
+        ...routines
+          .filter((routine) => routine.routineType === 'PROCEDURE')
+          .map((routine) => routineItem(routine.name, 'PROCEDURE'))
+      )
+
+      return items
+    }
+
     const tables = cache.tables[matchedDb] ?? []
-    return tables.map((table) => tableItem(table.name))
+    items.push(...tables.map((table) => tableItem(table.name)))
+
+    if (isInTableReferenceClause(currentStatementPrefix)) {
+      return items
+    }
+
+    const routines = cache.routines[matchedDb] ?? []
+    items.push(
+      ...routines
+        .filter((routine) => routine.routineType === 'FUNCTION')
+        .map((routine) =>
+          routineItem(routine.name, routine.routineType as 'FUNCTION' | 'PROCEDURE')
+        )
+    )
+
+    return items
   }
 
   if (isInTableReferenceClause(currentStatementPrefix)) {
-    return []
+    return null
   }
 
   // 3. Check if it's a table name → suggest that table's columns.
   //    When qualifiedDb is set (db.table. syntax), do an exact lookup
   //    to avoid ambiguity with duplicate table names across databases.
-  //    When unqualified, prefer activeDatabase to avoid picking a
+  //    When unqualified, prefer resolutionDatabase to avoid picking a
   //    same-named table from the wrong database.
   if (qualifiedDb) {
     const cols = cache.columns[`${qualifiedDb}.${tablePart}`] ?? []
-    return cols.map((col) => columnItem(col.name))
+    if (cols.length > 0) {
+      return cols.map((col) => columnItem(col.name))
+    }
+
+    return null
   }
-  const searchOrder = activeDatabase
-    ? [activeDatabase, ...cache.databases.filter((db) => db !== activeDatabase)]
+  const searchOrder = resolutionDatabase
+    ? [resolutionDatabase, ...cache.databases.filter((db) => db !== resolutionDatabase)]
     : cache.databases
 
   for (const db of searchOrder) {
@@ -789,7 +950,7 @@ function handleDotNotation(
     }
   }
 
-  return []
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -799,7 +960,7 @@ function handleDotNotation(
 function findTablesInCaretStatement(
   entities: EntityContext[] | null,
   currentStatementText: string,
-  activeDatabase: string | null
+  resolutionDatabase: string | null
 ): TableRef[] {
   const tableRefs: TableRef[] = []
 
@@ -820,7 +981,7 @@ function findTablesInCaretStatement(
 
   if (tableRefs.length > 0) return tableRefs
 
-  return findTablesInStatementText(currentStatementText, activeDatabase)
+  return findTablesInStatementText(currentStatementText, resolutionDatabase)
 }
 
 function parseTableRefText(text: string): TableRef | null {
@@ -839,7 +1000,7 @@ function parseTableRefText(text: string): TableRef | null {
 
 function findTablesInStatementText(
   currentStatementText: string,
-  activeDatabase: string | null
+  resolutionDatabase: string | null
 ): TableRef[] {
   const tableRefs: TableRef[] = []
   const seen = new Set<string>()
@@ -850,7 +1011,8 @@ function findTablesInStatementText(
     const tableRef = parseTableRefText(match[1])
     if (!tableRef) continue
 
-    const dedupeKey = `${tableRef.database ?? activeDatabase ?? ''}.${tableRef.table}`.toLowerCase()
+    const dedupeKey =
+      `${tableRef.database ?? resolutionDatabase ?? ''}.${tableRef.table}`.toLowerCase()
     if (seen.has(dedupeKey)) continue
 
     seen.add(dedupeKey)
@@ -871,7 +1033,7 @@ function addColumnsForTable(
   items: ICompletionItem[],
   seenLabels: Set<string>,
   sortPrefix = SORT_PREFIX_NEUTRAL,
-  activeDatabase: string | null = null
+  resolutionDatabase: string | null = null
 ): void {
   if (tableRef.database) {
     // Exact lookup: database is known
@@ -884,10 +1046,10 @@ function addColumnsForTable(
     }
   } else {
     // Fallback: search all databases for matching table name,
-    // preferring activeDatabase to avoid picking a same-named table
+    // preferring resolutionDatabase to avoid picking a same-named table
     // from the wrong database.
-    const searchOrder = activeDatabase
-      ? [activeDatabase, ...cache.databases.filter((db) => db !== activeDatabase)]
+    const searchOrder = resolutionDatabase
+      ? [resolutionDatabase, ...cache.databases.filter((db) => db !== resolutionDatabase)]
       : cache.databases
 
     for (const db of searchOrder) {
@@ -913,7 +1075,8 @@ function addColumnsForTable(
 function buildParseFallback(
   connectionId: string | undefined,
   currentStatementPrefix: string,
-  scopedDatabase: string | null,
+  selectedDatabase: string | null,
+  broadSuggestionDatabase: string | null,
   snippets?: CompletionSnippet[]
 ): ICompletionItem[] {
   const items: ICompletionItem[] = []
@@ -922,19 +1085,33 @@ function buildParseFallback(
   if (connectionId) {
     const cache = getCache(connectionId)
     if (cache.status === 'ready') {
-      const mode = getParseFallbackMode(currentStatementPrefix, cache.databases, scopedDatabase)
+      const mode = getParseFallbackMode(currentStatementPrefix, cache.databases, selectedDatabase)
+      const inSelectListContext = isSelectListContext(currentStatementPrefix)
+      const inCallStatementContext = isCallStatementContext(currentStatementPrefix)
+      const fallbackDatabases =
+        inSelectListContext || inCallStatementContext
+          ? getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
+          : cache.databases
+      const seenLabels = new Set<string>()
 
       if (mode.type === 'none') {
         return []
       }
 
-      const keywordSortPrefix =
-        mode.type === 'databases' || mode.type === 'databasesAndTables'
+      const keywordSortPrefix = inCallStatementContext
+        ? SORT_PREFIX_LOW
+        : mode.type === 'databases' || mode.type === 'databasesAndTables'
           ? SORT_PREFIX_LOW
           : SORT_PREFIX_NEUTRAL
 
-      // Basic keywords and built-in functions (ranked lower when database/table context detected)
-      pushFallbackKeywordsAndFunctions(items, keywordSortPrefix)
+      if (inCallStatementContext) {
+        for (const kw of SQL_KEYWORDS) {
+          items.push(keywordItem(kw, keywordSortPrefix))
+        }
+      } else {
+        // Basic keywords and built-in functions (ranked lower when database/table context detected)
+        pushFallbackKeywordsAndFunctions(items, keywordSortPrefix)
+      }
 
       if (mode.type === 'databases') {
         for (const db of cache.databases) {
@@ -955,35 +1132,37 @@ function buildParseFallback(
           items.push(tableItem(table.name))
         }
       } else if (mode.type === 'all') {
-        // Databases
-        for (const db of cache.databases) {
-          items.push(dbItem(db))
-        }
+        pushDatabases(
+          cache.databases,
+          items,
+          seenLabels,
+          inCallStatementContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
+        )
 
-        // Tables from all databases
-        for (const db of cache.databases) {
-          const tables = cache.tables[db] ?? []
-          for (const table of tables) {
-            items.push(tableItem(table.name))
-          }
-        }
+        if (inCallStatementContext) {
+          pushScopedRoutines(
+            cache,
+            fallbackDatabases,
+            items,
+            seenLabels,
+            SORT_PREFIX_HIGH,
+            'PROCEDURE'
+          )
+        } else {
+          pushScopedTables(cache, fallbackDatabases, items, seenLabels)
+          pushScopedColumns(cache, fallbackDatabases, items, seenLabels)
 
-        // Columns from all tables
-        for (const db of cache.databases) {
-          const tables = cache.tables[db] ?? []
-          for (const table of tables) {
-            const cols = cache.columns[`${db}.${table.name}`] ?? []
-            for (const col of cols) {
-              items.push(columnItem(col.name))
-            }
-          }
-        }
-
-        // Routines (functions + procedures)
-        for (const db of cache.databases) {
-          const routines = cache.routines[db] ?? []
-          for (const routine of routines) {
-            items.push(routineItem(routine.name, routine.routineType as 'FUNCTION' | 'PROCEDURE'))
+          if (inSelectListContext) {
+            pushScopedRoutines(
+              cache,
+              fallbackDatabases,
+              items,
+              seenLabels,
+              SORT_PREFIX_NEUTRAL,
+              'FUNCTION'
+            )
+          } else {
+            pushScopedRoutines(cache, fallbackDatabases, items, seenLabels)
           }
         }
       }

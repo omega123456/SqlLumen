@@ -1791,6 +1791,7 @@ for (const theme of themes) {
 
     test('Multi-result tabs — stored procedure read-only state', async ({ page }) => {
       await openQueryEditorWithCallResults(page)
+      await expect(page.getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
       // Verify no edit mode dropdown is visible (reExecutable: false hides it)
       await expect(page.getByTestId('edit-mode-dropdown')).toBeHidden()
       // ResultToolbar does not render page-size control (see ResultToolbar.tsx)

@@ -247,6 +247,86 @@ const READY_CACHE = {
   },
 }
 
+const READY_CACHE_WITH_SCOPED_OBJECTS = {
+  status: 'ready' as const,
+  databases: ['app_db', 'analytics_db'],
+  tables: {
+    app_db: [
+      { name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 1000, dataSize: 1048576 },
+      { name: 'products', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 500, dataSize: 524288 },
+      {
+        name: 'user_activity_view',
+        engine: '',
+        charset: 'utf8mb4',
+        rowCount: 0,
+        dataSize: 0,
+      },
+    ],
+    analytics_db: [
+      {
+        name: 'events',
+        engine: 'InnoDB',
+        charset: 'utf8mb4',
+        rowCount: 50000,
+        dataSize: 10485760,
+      },
+      {
+        name: 'event_rollup_view',
+        engine: '',
+        charset: 'utf8mb4',
+        rowCount: 0,
+        dataSize: 0,
+      },
+    ],
+  },
+  columns: {
+    'app_db.users': [
+      { name: 'id', dataType: 'int' },
+      { name: 'email', dataType: 'varchar(255)' },
+      { name: 'name', dataType: 'varchar(100)' },
+    ],
+    'app_db.products': [
+      { name: 'id', dataType: 'int' },
+      { name: 'title', dataType: 'varchar(200)' },
+    ],
+    'app_db.user_activity_view': [
+      { name: 'user_id', dataType: 'int' },
+      { name: 'last_seen_at', dataType: 'datetime' },
+    ],
+    'analytics_db.events': [
+      { name: 'event_id', dataType: 'int' },
+      { name: 'event_type', dataType: 'varchar(50)' },
+    ],
+    'analytics_db.event_rollup_view': [
+      { name: 'event_total', dataType: 'bigint' },
+      { name: 'event_day', dataType: 'date' },
+    ],
+  },
+  routines: {
+    app_db: [
+      { name: 'get_user_count', routineType: 'FUNCTION' },
+      { name: 'sp_cleanup', routineType: 'PROCEDURE' },
+    ],
+    analytics_db: [
+      { name: 'get_event_total', routineType: 'FUNCTION' },
+      { name: 'sp_archive_events', routineType: 'PROCEDURE' },
+    ],
+  },
+}
+
+const READY_CACHE_WITH_EMPTY_DB = {
+  ...READY_CACHE_WITH_SCOPED_OBJECTS,
+  databases: [...READY_CACHE_WITH_SCOPED_OBJECTS.databases, 'empty_db'],
+  tables: {
+    ...READY_CACHE_WITH_SCOPED_OBJECTS.tables,
+    empty_db: [],
+  },
+  routines: {
+    ...READY_CACHE_WITH_SCOPED_OBJECTS.routines,
+    empty_db: [],
+  },
+}
+
 const EMPTY_CACHE = {
   status: 'empty' as const,
   databases: [],
@@ -359,7 +439,7 @@ describe('completionService — parse-failure fallback', () => {
 
     // Routines
     expect(labels).toContain('get_user_count')
-    expect(labels).toContain('sp_cleanup')
+    expect(labels).not.toContain('sp_cleanup')
   })
 
   it('returns only basic keywords when suggestions is null and no connectionId', async () => {
@@ -693,6 +773,69 @@ describe('completionService — column suggestions broad fallback', () => {
     expect(labels).toContain('event_id')
   })
 
+  it('after SELECT * space, keeps FROM keyword suggestions instead of broad column suggestions', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'SELECT * ',
+      pos(1, 10),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: ['FROM'],
+      }),
+      null
+    )
+
+    const labels = items.map(getLabel)
+    const colItems = items.filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Field)
+
+    expect(labels).toContain('FROM')
+    expect(colItems).toHaveLength(0)
+  })
+
+  it('after SELECT table.* space, keeps FROM keyword suggestions instead of broad column suggestions', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'SELECT users.* ',
+      pos(1, 16),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: ['FROM'],
+      }),
+      null
+    )
+
+    const labels = items.map(getLabel)
+    const colItems = items.filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Field)
+
+    expect(labels).toContain('FROM')
+    expect(colItems).toHaveLength(0)
+  })
+
+  it('after SELECT db.table.* space, keeps FROM keyword suggestions instead of broad column suggestions', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'SELECT app_db.users.* ',
+      pos(1, 23),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: ['FROM'],
+      }),
+      null
+    )
+
+    const labels = items.map(getLabel)
+    const colItems = items.filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Field)
+
+    expect(labels).toContain('FROM')
+    expect(colItems).toHaveLength(0)
+  })
+
   it('scopes broad SELECT-list column suggestions to the active database', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
     mockGetCache.mockReturnValue(READY_CACHE)
@@ -724,6 +867,104 @@ describe('completionService — column suggestions broad fallback', () => {
     expect(labels).toContain('title')
     expect(labels).not.toContain('event_id')
     expect(labels).not.toContain('event_type')
+  })
+
+  it('supplements broad SELECT-list suggestions with databases, functions, and views from all databases when no scope is selected', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+
+    const items = await callService(
+      'SELECT ',
+      pos(1, 8),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: [],
+      }),
+      null
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('id')
+    expect(labels).toContain('email')
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).toContain('user_activity_view')
+    expect(labels).toContain('event_rollup_view')
+    expect(labels).toContain('get_user_count')
+    expect(labels).toContain('get_event_total')
+    expect(labels).not.toContain('sp_cleanup')
+    expect(labels).not.toContain('sp_archive_events')
+  })
+
+  it('scopes broad SELECT-list functions and views to the selected database while still listing databases', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:analytics_db:analytics_db',
+        },
+      },
+    } as never)
+
+    const items = await callService(
+      'SELECT ',
+      pos(1, 8),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: [],
+      }),
+      null
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).toContain('event_rollup_view')
+    expect(labels).toContain('get_event_total')
+    expect(labels).not.toContain('user_activity_view')
+    expect(labels).not.toContain('get_user_count')
+    expect(labels).not.toContain('sp_cleanup')
+    expect(labels).not.toContain('sp_archive_events')
+  })
+
+  it('prefers the selected database over the active database for broad SELECT-list suggestions', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
+        status: 'connected',
+      },
+    }
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:analytics_db:analytics_db',
+        },
+      },
+    } as never)
+
+    const items = await callService(
+      'SELECT ',
+      pos(1, 8),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: [],
+      })
+    )
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('event_id')
+    expect(labels).toContain('event_rollup_view')
+    expect(labels).toContain('get_event_total')
+    expect(labels).not.toContain('email')
+    expect(labels).not.toContain('user_activity_view')
+    expect(labels).not.toContain('get_user_count')
   })
 
   it('falls back to the selected schema database when no active database is set', async () => {
@@ -886,6 +1127,114 @@ describe('completionService — procedure suggestions', () => {
         i.kind === languages.CompletionItemKind.Function && getLabel(i) === 'get_user_count'
     )
     expect(fnItems).toHaveLength(0)
+  })
+
+  it('supplements CALL suggestions with database names and procedures in the current scope', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+
+    const items = await callService(
+      'CALL ',
+      pos(1, 6),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.PROCEDURE, wordRanges: [] }],
+        keywords: [],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).toContain('sp_cleanup')
+    expect(labels).toContain('sp_archive_events')
+    expect(labels).not.toContain('get_user_count')
+    expect(labels).not.toContain('get_event_total')
+  })
+
+  it('scopes CALL suggestions to the selected database while still listing databases', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:analytics_db:analytics_db',
+        },
+      },
+    } as never)
+
+    const items = await callService(
+      'CALL ',
+      pos(1, 6),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.PROCEDURE, wordRanges: [] }],
+        keywords: [],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).toContain('sp_archive_events')
+    expect(labels).not.toContain('sp_cleanup')
+    expect(labels).not.toContain('get_user_count')
+    expect(labels).not.toContain('get_event_total')
+  })
+
+  it('prefers the selected database over the active database for CALL suggestions', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
+        status: 'connected',
+      },
+    }
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:analytics_db:analytics_db',
+        },
+      },
+    } as never)
+
+    const items = await callService(
+      'CALL ',
+      pos(1, 6),
+      buildSuggestions({
+        syntax: [],
+        keywords: [],
+      })
+    )
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('sp_archive_events')
+    expect(labels).not.toContain('sp_cleanup')
+    expect(labels).not.toContain('get_event_total')
+  })
+
+  it('supplements CALL suggestions even when the parser provides no procedure syntax context', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+
+    const items = await callService(
+      'CALL ',
+      pos(1, 6),
+      buildSuggestions({
+        syntax: [],
+        keywords: [],
+      })
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).toContain('sp_cleanup')
+    expect(labels).not.toContain('get_user_count')
   })
 
   it('supplements stored routine body keywords that the parser omits inside BEGIN END blocks', async () => {
@@ -1109,6 +1458,209 @@ describe('completionService — dot notation (db.)', () => {
     expect(labels).toContain('users')
     expect(labels).toContain('products')
     // Should NOT include tables from other databases
+    expect(labels).not.toContain('events')
+  })
+
+  it('returns tables and functions for a database when db. is typed in the SELECT list', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'SELECT app_db.',
+      pos(1, 15),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+        keywords: [],
+      }),
+      null,
+      '.'
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('users')
+    expect(labels).toContain('products')
+    expect(labels).toContain('get_user_count')
+    expect(labels).not.toContain('sp_cleanup')
+  })
+
+  it('returns procedures only for a database when db. is typed after CALL', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'CALL app_db.',
+      pos(1, 13),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.PROCEDURE, wordRanges: [] }],
+        keywords: [],
+      }),
+      null,
+      '.'
+    )
+
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('sp_cleanup')
+    expect(labels).not.toContain('get_user_count')
+    expect(labels).not.toContain('users')
+    expect(labels).not.toContain('products')
+  })
+
+  it('does not fall back to broad CALL suggestions when a matched database has no procedures', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_EMPTY_DB)
+
+    const items = await callService(
+      'CALL empty_db.',
+      pos(1, 15),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.PROCEDURE, wordRanges: [] }],
+        keywords: [],
+      }),
+      null,
+      '.'
+    )
+
+    expect(items).toEqual([])
+  })
+})
+
+describe('completionService — parse fallback statement-aware routine filtering', () => {
+  it('SELECT parse fallback excludes procedures from broad SELECT-list suggestions', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+
+    const items = await callService('SELECT ', pos(1, 8), null)
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('get_user_count')
+    expect(labels).toContain('get_event_total')
+    expect(labels).not.toContain('sp_cleanup')
+    expect(labels).not.toContain('sp_archive_events')
+  })
+
+  it('CALL parse fallback returns database names and scoped procedures only', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:analytics_db:analytics_db',
+        },
+      },
+    } as never)
+
+    const items = await callService('CALL ', pos(1, 6), null)
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).toContain('sp_archive_events')
+    expect(labels).not.toContain('sp_cleanup')
+    expect(labels).not.toContain('get_event_total')
+    expect(labels).not.toContain('users')
+    expect(labels).not.toContain('event_rollup_view')
+    expect(labels).not.toContain('event_id')
+  })
+
+  it('CALL parse fallback prefers the selected database over the active database', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'app_db' },
+        sessionDatabase: 'app_db',
+        status: 'connected',
+      },
+    }
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': {
+          selectedNodeId: 'database:analytics_db:analytics_db',
+        },
+      },
+    } as never)
+
+    const items = await callService('CALL ', pos(1, 6), null)
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('sp_archive_events')
+    expect(labels).not.toContain('sp_cleanup')
+    expect(labels).not.toContain('ABS')
+  })
+
+  it('CALL parse fallback ranks databases and procedures above keywords', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService('CALL ', pos(1, 6), null)
+    const schemaLabels = ['app_db', 'analytics_db', 'sp_cleanup']
+    const keywordLabels = ['ASCII']
+
+    const schemaItems = items.filter((item: AnyItem) => schemaLabels.includes(getLabel(item)))
+    const keywordItems = items.filter((item: AnyItem) => keywordLabels.includes(getLabel(item)))
+
+    expect(schemaItems.map(getLabel)).toEqual(expect.arrayContaining(schemaLabels))
+    expect(keywordItems.map(getLabel)).toEqual(expect.arrayContaining(keywordLabels))
+    expect(items.map(getLabel)).not.toContain('ABS')
+
+    for (const item of schemaItems) {
+      expect(item.sortText).toMatch(/^0_/)
+    }
+
+    for (const item of keywordItems) {
+      expect(item.sortText).toMatch(/^2_/)
+    }
+  })
+
+  it('SELECT parse fallback uses the active database as the current scope when no tree node is selected', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'analytics_db' },
+        sessionDatabase: 'analytics_db',
+        status: 'connected',
+      },
+    }
+
+    const items = await callService('SELECT ', pos(1, 8), null)
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).toContain('event_rollup_view')
+    expect(labels).toContain('get_event_total')
+    expect(labels).toContain('event_id')
+    expect(labels).not.toContain('user_activity_view')
+    expect(labels).not.toContain('get_user_count')
+    expect(labels).not.toContain('email')
+    expect(labels).not.toContain('sp_archive_events')
+  })
+
+  it('CALL parse fallback uses the active database as the current scope when no tree node is selected', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockConnectionState.activeConnections = {
+      'conn-1': {
+        id: 'conn-1',
+        profile: { defaultDatabase: 'analytics_db' },
+        sessionDatabase: 'analytics_db',
+        status: 'connected',
+      },
+    }
+
+    const items = await callService('CALL ', pos(1, 6), null)
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('app_db')
+    expect(labels).toContain('analytics_db')
+    expect(labels).toContain('sp_archive_events')
+    expect(labels).not.toContain('sp_cleanup')
+    expect(labels).not.toContain('get_event_total')
     expect(labels).not.toContain('events')
   })
 })
@@ -1579,6 +2131,37 @@ describe('completionService — context-aware ranking', () => {
     expect(kwItems.length).toBeGreaterThan(0)
     for (const kw of kwItems) {
       expect(kw.sortText).toMatch(/^2_/)
+    }
+  })
+
+  it('CALL context ranks databases and procedures above keywords', async () => {
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue(READY_CACHE)
+
+    const items = await callService(
+      'CALL ',
+      pos(1, 6),
+      buildSuggestions({
+        syntax: [],
+        keywords: ['ARCHIVE', 'CONNECT', 'COUNT'],
+      })
+    )
+
+    const schemaLabels = ['app_db', 'analytics_db', 'sp_cleanup']
+    const keywordLabels = ['ARCHIVE', 'CONNECT', 'COUNT']
+
+    const schemaItems = items.filter((item: AnyItem) => schemaLabels.includes(getLabel(item)))
+    const kwItems = items.filter((item: AnyItem) => keywordLabels.includes(getLabel(item)))
+
+    expect(schemaItems.map(getLabel)).toEqual(expect.arrayContaining(schemaLabels))
+    expect(kwItems.map(getLabel)).toEqual(expect.arrayContaining(keywordLabels))
+
+    for (const item of schemaItems) {
+      expect(item.sortText).toMatch(/^0_/)
+    }
+
+    for (const item of kwItems) {
+      expect(item.sortText).toMatch(/^2_/)
     }
   })
 

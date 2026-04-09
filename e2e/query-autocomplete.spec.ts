@@ -177,8 +177,12 @@ async function openAutocomplete(
 
   // Let Monaco parse the typed trigger (e.g. `valid_db.`) before requesting suggestions.
   await page.waitForTimeout(300)
-  await focusMonacoEditor(page)
-  await page.keyboard.press('Control+Space').catch(() => undefined)
+  const widgetAlreadyVisible = await suggestWidget.isVisible().catch(() => false)
+
+  if (!widgetAlreadyVisible) {
+    await focusMonacoEditor(page)
+    await page.keyboard.press('Control+Space').catch(() => undefined)
+  }
 
   for (let attempt = 0; attempt < AUTOCOMPLETE_OPEN_RETRIES; attempt++) {
     if (page.isClosed()) {
@@ -539,6 +543,21 @@ test.describe('Monaco SQL autocomplete', () => {
     const suggestWidget = await openAutocomplete(page, 'SLEEP')
     expectAutocomplete(suggestWidget)
     await expect(suggestWidget).toContainText('SLEEP')
+  })
+
+  test('CALL suggests database names and scoped procedures', async ({ page }) => {
+    await waitForApp(page)
+    await openQueryEditorTab(page)
+
+    await typeQuery(page, 'CALL ')
+
+    const suggestWidget = await openAutocomplete(page, 'sp_get_orders')
+    expectAutocomplete(suggestWidget)
+    await expect(suggestWidget).toContainText('ecommerce_db')
+    await expect(suggestWidget).toContainText('analytics_db')
+    await expect(suggestWidget).toContainText('staging_db')
+    await expect(suggestWidget).toContainText('sp_get_orders')
+    await expect(suggestWidget).not.toContainText('fn_calculate_total')
   })
 
   // This test runs last: it injects malformed metadata + attaches a console listener,
