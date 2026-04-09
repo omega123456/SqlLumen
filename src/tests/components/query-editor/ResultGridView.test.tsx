@@ -65,8 +65,6 @@ describe('ResultGridView', () => {
     onSortChanged: vi.fn(),
     onRowSelected: vi.fn(),
     selectedRowIndex: null as number | null,
-    currentPage: 1,
-    pageSize: 1000,
     tabId: 'tab-test',
     editMode: null as string | null,
     editableColumnMap: new Map<number, boolean>(),
@@ -215,30 +213,6 @@ describe('ResultGridView', () => {
     expect(onSortChanged).toHaveBeenCalledWith('name', null)
   })
 
-  it('sort-clear on cache-only result calls onSortChanged so the store can show a toast', () => {
-    const onSortChanged = vi.fn()
-    render(
-      <ResultGridView
-        {...defaultProps}
-        onSortChanged={onSortChanged}
-        sortColumn="name"
-        sortDirection="asc"
-        reExecutable={false}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const onSortChange = props.onSortChange as (
-      colKey: string | null,
-      direction: 'ASC' | 'DESC' | null
-    ) => void
-
-    // Clear sort on a non-reExecutable result
-    onSortChange(null, null)
-
-    // Should still call onSortChanged — the store's sortResults handles the warning toast
-    expect(onSortChanged).toHaveBeenCalledWith('name', null)
-  })
-
   it('onSortChange does nothing when sort cleared and no previous sortColumn', () => {
     const onSortChanged = vi.fn()
     render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} sortColumn={null} />)
@@ -316,45 +290,8 @@ describe('ResultGridView', () => {
     expect(colDefs).toHaveLength(0)
   })
 
-  it('calls onRowSelected with page-local row index (parent converts to absolute)', async () => {
-    const onRowSelected = vi.fn()
-    render(
-      <ResultGridView
-        {...defaultProps}
-        onRowSelected={onRowSelected}
-        currentPage={2}
-        pageSize={10}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (args: {
-      rowIdx: number
-      columnKey: string
-      rowData: Record<string, unknown>
-    }) => Promise<{ proceed: boolean }>
-
-    await act(async () => {
-      await onCellClickGuard({
-        rowIdx: 0,
-        columnKey: 'col_0',
-        rowData: { __rowIdx: 0, col_0: 1 },
-      })
-    })
-
-    // The grid itself reports local index 0 to onRowSelected
-    // (The parent ResultPanel converts to absolute: (2-1)*10 + 0 = 10)
-    expect(onRowSelected).toHaveBeenCalledWith(0)
-  })
-
-  it('passes currentPage and pageSize props to the component', () => {
-    render(<ResultGridView {...defaultProps} currentPage={3} pageSize={50} />)
-    expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
-  })
-
   it('getRowClass returns selected class in read-only mode (editMode=null)', () => {
-    render(
-      <ResultGridView {...defaultProps} selectedRowIndex={1} currentPage={1} pageSize={1000} />
-    )
+    render(<ResultGridView {...defaultProps} selectedRowIndex={1} />)
     const props = getLatestBaseGridProps()
     const getRowClass = props.getRowClass as (row: Record<string, unknown>) => string | undefined
 
@@ -364,15 +301,7 @@ describe('ResultGridView', () => {
   })
 
   it('getRowClass returns selected class when editMode is active', () => {
-    render(
-      <ResultGridView
-        {...defaultProps}
-        editMode="users"
-        selectedRowIndex={1}
-        currentPage={1}
-        pageSize={1000}
-      />
-    )
+    render(<ResultGridView {...defaultProps} editMode="users" selectedRowIndex={1} />)
     const props = getLatestBaseGridProps()
     const getRowClass = props.getRowClass as (row: Record<string, unknown>) => string | undefined
 
@@ -383,20 +312,12 @@ describe('ResultGridView', () => {
     expect(getRowClass({ __rowIdx: 2 })).toBeUndefined()
   })
 
-  it('getRowClass handles page-offset conversion for selection in edit mode', () => {
-    render(
-      <ResultGridView
-        {...defaultProps}
-        editMode="users"
-        selectedRowIndex={15}
-        currentPage={2}
-        pageSize={10}
-      />
-    )
+  it('getRowClass highlights the selected row directly (no page-offset conversion)', () => {
+    render(<ResultGridView {...defaultProps} editMode="users" selectedRowIndex={5} />)
     const props = getLatestBaseGridProps()
     const getRowClass = props.getRowClass as (row: Record<string, unknown>) => string | undefined
 
-    // Absolute index 15 on page 2 (size 10) → local = 15 - (2-1)*10 = 5
+    // selectedRowIndex=5 maps directly to local row index 5
     expect(getRowClass({ __rowIdx: 5 })).toBe('rdg-row-precision-selected')
     expect(getRowClass({ __rowIdx: 4 })).toBeUndefined()
   })

@@ -42,6 +42,14 @@ export { stripLeadingSqlComments } from '../lib/sql-utils'
 const FALLBACK_PAGE_SIZE = 1000
 
 /**
+ * Page size used for query result execution.
+ * Set large enough to ensure ALL rows come back in a single page — the
+ * backend's 1000-row auto-LIMIT caps the actual row count, so this just
+ * disables client-side pagination for query results.
+ */
+const QUERY_RESULT_PAGE_SIZE = 1_000_000
+
+/**
  * Read the default page size from the settings store.
  * Returns the settings value if settings have been loaded; otherwise falls back
  * to FALLBACK_PAGE_SIZE (1000) so that existing tests are not affected.
@@ -525,14 +533,6 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     return Math.min(tab.activeResultIndex, tab.results.length - 1)
   }
 
-  /** Get the active result for a tab. */
-  const getActiveResultState = (tabId: string): SingleResultState | null => {
-    const tab = get().tabs[tabId]
-    if (!tab || tab.results.length === 0) return null
-    const idx = getActiveIndex(tabId)
-    return tab.results[idx] ?? null
-  }
-
   /** Mark a tab as executing: set running status, record start time, clear stale flags. */
   const beginExecution = (tabId: string) => {
     patchTab(tabId, {
@@ -637,9 +637,6 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     const currentState = get().tabs[tabId]
     if (currentState?.status === 'running') return
 
-    const activeResult = getActiveResultState(tabId)
-    const currentPageSize = activeResult?.pageSize ?? getDefaultPageSize()
-
     // Clear edit state
     get().clearEditState(tabId)
 
@@ -652,7 +649,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       if (!get().tabs[tabId]) return
 
       const results = multiResult.results.map((item) =>
-        buildSingleResultFromItem(item, currentPageSize)
+        buildSingleResultFromItem(item, QUERY_RESULT_PAGE_SIZE)
       )
 
       // Tab-level status: 'success' if at least one result exists
@@ -794,10 +791,6 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         return // already running, ignore
       }
 
-      // Grab the current page size from active result
-      const activeResult = getActiveResultState(tabId)
-      const currentPageSize = activeResult?.pageSize ?? getDefaultPageSize()
-
       // Clear edit state before the new query
       get().clearEditState(tabId)
 
@@ -808,7 +801,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       beginExecution(tabId)
 
       try {
-        const result = await executeQueryCmd(connectionId, tabId, sql, currentPageSize)
+        const result = await executeQueryCmd(connectionId, tabId, sql, QUERY_RESULT_PAGE_SIZE)
 
         // Guard: if the tab was closed while query was running, skip the update
         if (!get().tabs[tabId]) return
@@ -826,7 +819,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           queryId: result.queryId,
           currentPage: 1,
           totalPages: result.totalPages,
-          pageSize: currentPageSize,
+          pageSize: QUERY_RESULT_PAGE_SIZE,
           autoLimitApplied: result.autoLimitApplied,
           lastExecutedSql: sql,
           reExecutable: true,
@@ -892,13 +885,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       await runMultiResultExecution(
         connectionId,
         tabId,
-        () =>
-          executeMultiQueryCmd(
-            connectionId,
-            tabId,
-            statements,
-            getActiveResultState(tabId)?.pageSize ?? getDefaultPageSize()
-          ),
+        () => executeMultiQueryCmd(connectionId, tabId, statements, QUERY_RESULT_PAGE_SIZE),
         true
       )
     },
@@ -907,13 +894,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       await runMultiResultExecution(
         connectionId,
         tabId,
-        () =>
-          executeCallQueryCmd(
-            connectionId,
-            tabId,
-            sql,
-            getActiveResultState(tabId)?.pageSize ?? getDefaultPageSize()
-          ),
+        () => executeCallQueryCmd(connectionId, tabId, sql, QUERY_RESULT_PAGE_SIZE),
         false
       )
     },
@@ -1135,8 +1116,6 @@ export const useQueryStore = create<QueryState>()((set, get) => {
               return
             }
 
-            const currentPageSize = result.pageSize
-
             // Capture queryId before the await so we can detect stale responses
             const capturedQueryId = result.queryId
 
@@ -1159,7 +1138,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 tabId,
                 resultIndex,
                 lastSql,
-                currentPageSize,
+                QUERY_RESULT_PAGE_SIZE,
                 capturedQueryId,
                 { sortColumn: null, sortDirection: null }
               )
@@ -1169,7 +1148,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 connectionId,
                 tabId,
                 lastSql,
-                currentPageSize
+                QUERY_RESULT_PAGE_SIZE
               )
               const normalizedRows = normalizeQueryRows(execResult.columns, execResult.firstPage)
 
@@ -1689,8 +1668,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         }
         newRows[result.editingRowIndex] = updatedRow
 
-        // Sync backend result cache
-        const absoluteRowIndex = (result.currentPage - 1) * result.pageSize + result.editingRowIndex
+        // Sync backend result cache — row index is the editing row index
+        // (all rows are on page 1 for query results)
+        const absoluteRowIndex = result.editingRowIndex
         const columnUpdates: Record<number, unknown> = {}
         for (const colName of result.editState.modifiedColumns) {
           const colIdx = result.editBoundColumnIndexMap.get(colName.toLowerCase()) ?? -1

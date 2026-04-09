@@ -248,29 +248,37 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   // rows → autoColumnWidths → rdgColumns recomputation chain that would
   // destabilise renderEditCell references during editing.
   //
-  // Precomputed: column lookup map and array-format rows are built once in the
-  // surrounding useMemo so computeWidth is a thin per-column lookup.
+  // Precomputed: column lookup map is built once in the surrounding useMemo.
+  // computeWidth builds a lightweight single-column proxy array (N×1) instead
+  // of the full N×M row-to-array transformation, matching the optimisation
+  // applied to ResultGridView. getAutoSizedColumnWidth then samples only the
+  // first AUTO_SIZE_SAMPLE_LIMIT rows, keeping the total work O(100) per col.
   // ---------------------------------------------------------------------------
   const autoSizeConfig: AutoSizeConfig | undefined = useMemo(() => {
     // Precompute: name → column meta lookup
-    const colMetaByName = new Map<string, { meta: TableDataColumnMeta; index: number }>()
+    const colMetaByName = new Map<string, TableDataColumnMeta>()
     for (let i = 0; i < columns.length; i++) {
-      colMetaByName.set(columns[i].name, { meta: columns[i], index: i })
+      colMetaByName.set(columns[i].name, columns[i])
     }
 
     return {
       enabled: true,
       computeWidth: (col: GridColumnDescriptor, gridRows: Record<string, unknown>[]) => {
-        const entry = colMetaByName.get(col.key)
-        if (!entry) return 150
-        // Convert Record rows to array format for the sizing function
-        const arrayRows = gridRows.map((r) => columns.map((c) => r[c.name]))
+        const meta = colMetaByName.get(col.key)
+        if (!meta) return 150
+        // Build a lightweight proxy array that extracts only the target column
+        // from each row, avoiding the full row-to-array transformation that
+        // would create N×M temporary entries per column sizing call.
+        const columnRows: unknown[][] = new Array(gridRows.length)
+        for (let i = 0; i < gridRows.length; i++) {
+          columnRows[i] = [gridRows[i][col.key]]
+        }
         // FK icon (Link, 10px) or read-only lock icon (Lock, 10px) + 4px gap
         const headerIconWidthPx = col.foreignKey || !col.editable ? 14 : 0
         return getAutoSizedColumnWidth(
-          entry.meta,
-          entry.index,
-          arrayRows,
+          meta,
+          0, // column is at index 0 in our single-column proxy array
+          columnRows,
           col.key,
           headerIconWidthPx
         )

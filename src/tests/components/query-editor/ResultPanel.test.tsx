@@ -4,7 +4,7 @@ import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore } from '../../../stores/query-store'
 import { getFlatTabState } from '../../../stores/query-store'
-import { fetchResultPage } from '../../../lib/query-commands'
+
 import { fetchTableData } from '../../../lib/table-data-commands'
 import { makeTabState } from '../../helpers/query-test-utils'
 
@@ -813,12 +813,15 @@ describe('ResultPanel', () => {
     expect(screen.getByText('Query executed successfully')).toBeInTheDocument()
   })
 
-  it('does not show pagination in error state', () => {
+  it('does not show pagination controls (removed from query results)', () => {
     useQueryStore.setState({
       tabs: {
         'tab-1': makeTabState({
-          status: 'error',
-          errorMessage: 'Some error',
+          status: 'success',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          rows: [['1']],
+          totalRows: 1,
+          queryId: 'q1',
         }),
       },
     })
@@ -885,7 +888,7 @@ describe('ResultPanel', () => {
     expect(screen.queryByTestId('result-text-view')).not.toBeInTheDocument()
   })
 
-  it('handleRowSelected converts local row index to absolute', () => {
+  it('handleRowSelected sets selected row index directly', () => {
     useQueryStore.setState({
       tabs: {
         'tab-1': makeTabState({
@@ -893,10 +896,8 @@ describe('ResultPanel', () => {
           viewMode: 'grid',
           columns: [{ name: 'id', dataType: 'INT' }],
           rows: [['11'], ['12'], ['13']],
-          totalRows: 13,
+          totalRows: 3,
           queryId: 'q1',
-          currentPage: 2,
-          pageSize: 10,
         }),
       },
     })
@@ -904,11 +905,11 @@ describe('ResultPanel', () => {
 
     // Our react-data-grid mock calls onCellClick({ rowIdx: 0 }) on click.
     // In ResultGridView, handleCellClick calls onRowSelected(0).
-    // In the ResultPanel, handleRowSelected converts local 0 → absolute (2-1)*10+0 = 10
+    // ResultPanel sets selectedRowIndex directly (no page offset conversion).
     const gridInner = screen.getByTestId('result-grid-view-inner')
     fireEvent.click(gridInner)
 
-    expect(flat('tab-1').selectedRowIndex).toBe(10)
+    expect(flat('tab-1').selectedRowIndex).toBe(0)
   })
 
   it('handleFormNavigate moves to next row', () => {
@@ -1063,66 +1064,6 @@ describe('ResultPanel', () => {
     // passes it to the DataGrid wrapper. We verify the sort mechanism works end-to-end
     // via the DataGrid mock's onSortColumnsChange prop
     sortResultsSpy.mockRestore()
-  })
-
-  it('handleFormNavigate triggers page fetch when crossing page boundary forward', async () => {
-    useQueryStore.setState({
-      tabs: {
-        'tab-1': makeTabState({
-          status: 'success',
-          viewMode: 'form',
-          columns: [{ name: 'id', dataType: 'INT' }],
-          rows: [['1'], ['2']],
-          totalRows: 4,
-          queryId: 'q1',
-          selectedRowIndex: 1,
-          currentPage: 1,
-          totalPages: 2,
-          pageSize: 2,
-        }),
-      },
-    })
-    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
-
-    // Navigating next from row index 1 on page 1 (pageSize=2) → index 2
-    // That's beyond page end (0-1), so should trigger page fetch
-    const nextBtn = screen.getByTestId('btn-form-next')
-    fireEvent.click(nextBtn)
-
-    expect(flat('tab-1').selectedRowIndex).toBe(2)
-    await waitFor(() => {
-      expect(vi.mocked(fetchResultPage)).toHaveBeenCalledWith('conn-1', 'tab-1', 'q1', 2, 0)
-    })
-  })
-
-  it('handleFormNavigate triggers page fetch when crossing page boundary backward', async () => {
-    useQueryStore.setState({
-      tabs: {
-        'tab-1': makeTabState({
-          status: 'success',
-          viewMode: 'form',
-          columns: [{ name: 'id', dataType: 'INT' }],
-          rows: [['3'], ['4']],
-          totalRows: 4,
-          queryId: 'q1',
-          selectedRowIndex: 2,
-          currentPage: 2,
-          totalPages: 2,
-          pageSize: 2,
-        }),
-      },
-    })
-    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
-
-    // Navigating previous from row index 2 on page 2 (pageSize=2) → index 1
-    // That's below page start (2), so should trigger page fetch
-    const prevBtn = screen.getByTestId('btn-form-previous')
-    fireEvent.click(prevBtn)
-
-    expect(flat('tab-1').selectedRowIndex).toBe(1)
-    await waitFor(() => {
-      expect(vi.mocked(fetchResultPage)).toHaveBeenCalledWith('conn-1', 'tab-1', 'q1', 1, 0)
-    })
   })
 
   // --- Edit mode / UnsavedChangesDialog tests ---

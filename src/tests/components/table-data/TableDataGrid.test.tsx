@@ -378,6 +378,34 @@ describe('TableDataGrid', () => {
     expect(emailCol!.width).toBeGreaterThan(nameCol!.width)
   })
 
+  it('auto-size uses only the target column values — other columns do not inflate width', () => {
+    // name has short values; a third column has very long values.
+    // With the single-column proxy, sizing 'name' uses only name values,
+    // so name stays narrow even though the same rows contain long values elsewhere.
+    setupConnection()
+    setupTabState({
+      columns: [testColumns[0], testColumns[1], makeColumnMeta('notes', 'varchar')],
+      rows: [
+        [1, 'Hi', 'a'.repeat(300)],
+        [2, 'Ok', 'b'.repeat(300)],
+      ],
+    })
+
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{ key: string; width: number }>
+    const nameCol = colDefs.find((d) => d.key === 'name')
+    const notesCol = colDefs.find((d) => d.key === 'notes')
+
+    expect(nameCol).toBeDefined()
+    expect(notesCol).toBeDefined()
+    // notes column is capped at AUTO_WIDTH_MAX (560px); name column is narrow
+    expect(notesCol!.width).toBeGreaterThan(nameCol!.width)
+    // Verify name is sized to its own short values, not to the long notes values
+    expect(nameCol!.width).toBeLessThan(200)
+  })
+
   it('keeps FK icon width in auto-sizing when the grid mounts with an active edit state', () => {
     setupConnection()
     setupTabState({

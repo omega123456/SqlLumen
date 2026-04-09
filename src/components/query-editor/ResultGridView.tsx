@@ -46,14 +46,8 @@ interface ResultGridViewProps {
   onSortChanged: (column: string, direction: 'asc' | 'desc' | null) => void
   onRowSelected: (rowIndex: number) => void
   selectedRowIndex: number | null
-  /** Current page (1-indexed) — used to convert absolute selectedRowIndex to local. */
-  currentPage: number
-  /** Page size — used to convert absolute selectedRowIndex to local. */
-  pageSize: number
   /** Tab identifier — passed through to cell editor context for store syncing. */
   tabId: string
-  /** Whether the result can be re-executed (false for stored procedure cache-only results). */
-  reExecutable?: boolean
   /** Active edit table name, or null for read-only mode. */
   editMode: string | null
   /** Column index → editable boolean for the selected edit table. */
@@ -91,10 +85,7 @@ export function ResultGridView({
   onSortChanged,
   onRowSelected,
   selectedRowIndex,
-  currentPage,
-  pageSize,
   tabId: _tabId,
-  reExecutable: _reExecutable = true,
   editMode = null,
   editableColumnMap = EMPTY_EDITABLE_MAP,
   editState = null,
@@ -109,7 +100,6 @@ export function ResultGridView({
 }: ResultGridViewProps) {
   void _tabId
   void _onUpdateCellValue
-  void _reExecutable
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -384,16 +374,20 @@ export function ResultGridView({
         const index = colIndexFromKey(col.key)
         const tableMeta = resolvedColumns[index]?.effectiveTableMeta
         if (!tableMeta) return 150
-        const arrayRows = gridRows.map((row) =>
-          columns.map((_, columnIndex) => row[colKey(columnIndex)])
-        )
+        // Build a lightweight proxy array that extracts only the target column
+        // from each row, avoiding the full row-to-array transformation that
+        // previously created N temporary arrays per column.
+        const columnRows: unknown[][] = new Array(gridRows.length)
+        for (let i = 0; i < gridRows.length; i++) {
+          columnRows[i] = [gridRows[i][colKey(index)]]
+        }
         // Lock icon shown for non-editable columns in edit mode: 10px icon + 4px gap
         const isEditable = editableColumnMap.get(index) ?? false
         const headerIconWidthPx = !isEditable ? 14 : 0
         return getAutoSizedColumnWidth(
           tableMeta,
-          index,
-          arrayRows,
+          0, // column is at index 0 in our single-column proxy array
+          columnRows,
           col.displayName,
           headerIconWidthPx
         )
@@ -460,16 +454,13 @@ export function ResultGridView({
       }
 
       // Selected row highlight
-      if (selectedRowIndex != null) {
-        const localSelectedRow = selectedRowIndex - (currentPage - 1) * pageSize
-        if (rowIdx === localSelectedRow) {
-          classes.push('rdg-row-precision-selected')
-        }
+      if (selectedRowIndex != null && rowIdx === selectedRowIndex) {
+        classes.push('rdg-row-precision-selected')
       }
 
       return classes.length > 0 ? classes.join(' ') : undefined
     },
-    [selectedRowIndex, currentPage, pageSize, editingRowIndex]
+    [selectedRowIndex, editingRowIndex]
   )
 
   return (

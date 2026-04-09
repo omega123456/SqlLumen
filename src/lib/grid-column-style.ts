@@ -71,6 +71,14 @@ export function getGridCellClass(
 
 const AUTO_WIDTH_MAX = 560
 
+/**
+ * Maximum number of rows to sample when computing auto-sized column widths.
+ * Scanning all rows is O(rows × columns) and creates a performance bottleneck
+ * for large result sets. 100 rows provides a good approximation of the longest
+ * value while keeping computation fast.
+ */
+const AUTO_SIZE_SAMPLE_LIMIT = 100
+
 interface ColumnWidthSizing {
   defaultWidth: number
   autoMinWidth: number
@@ -195,10 +203,12 @@ export function getAutoSizedColumnWidth(
     headerText.length * HEADER_CHAR_PX + HEADER_PADDING_PX + headerIconWidthPx
   )
 
-  // Data width — scan all rows for the longest value
+  // Data width — scan a sample of rows for the longest value
   let maxTextLength = 0
+  const sampleCount = Math.min(rows.length, AUTO_SIZE_SAMPLE_LIMIT)
 
-  for (const row of rows) {
+  for (let i = 0; i < sampleCount; i++) {
+    const row = rows[i]
     const value = row[columnIndex]
     const textLength = stringifyGridValue(value).length
     if (textLength > maxTextLength) {

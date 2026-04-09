@@ -32,14 +32,10 @@ export interface ResultFormViewProps {
   columns: ColumnMeta[]
   /** Current page rows — array of arrays, indexed by column position. */
   rows: Array<Array<unknown>>
-  /** Absolute index within the full result set (0-based), or null for first row. */
+  /** Index within the result set (0-based), or null for first row. */
   selectedRowIndex: number | null
   totalRows: number
-  currentPage: number
-  totalPages: number
-  /** Page size for computing local row offset. */
-  pageSize: number
-  /** Called with 'prev' or 'next' — parent handles page fetching + setSelectedRow. */
+  /** Called with 'prev' or 'next' — parent handles setSelectedRow. */
   onNavigate: (direction: 'prev' | 'next') => void
   tabId: string
 
@@ -83,9 +79,6 @@ export function ResultFormView({
   rows,
   selectedRowIndex,
   totalRows,
-  currentPage,
-  totalPages: _totalPages,
-  pageSize,
   onNavigate,
   tabId,
   editMode = null,
@@ -100,22 +93,18 @@ export function ResultFormView({
   onSaveRow,
   onDiscardRow,
 }: ResultFormViewProps) {
-  const absoluteIndex = selectedRowIndex ?? 0
-
-  // Map absolute index → page-local index
-  const pageStartOffset = (currentPage - 1) * pageSize
-  const localIndex = absoluteIndex - pageStartOffset
-  const clampedLocal = Math.max(0, Math.min(localIndex, rows.length - 1))
-  const currentRow = rows.length > 0 ? ((rows[clampedLocal] as unknown[]) ?? null) : null
+  const currentIndex = selectedRowIndex ?? 0
+  const clampedIndex = Math.max(0, Math.min(currentIndex, rows.length - 1))
+  const currentRow = rows.length > 0 ? ((rows[clampedIndex] as unknown[]) ?? null) : null
   const currentRowData = useMemo(() => {
     if (currentRow === null) return null
 
-    const rowData: Record<string, unknown> = { __rowIdx: clampedLocal }
+    const rowData: Record<string, unknown> = { __rowIdx: clampedIndex }
     for (let i = 0; i < columns.length; i++) {
       rowData[colKey(i)] = currentRow[i] ?? null
     }
 
-    if (editingRowIndex === clampedLocal && editState) {
+    if (editingRowIndex === clampedIndex && editState) {
       for (let i = 0; i < columns.length; i++) {
         const boundName = editColumnBindings.get(i)
         if (boundName && boundName in editState.currentValues) {
@@ -125,12 +114,11 @@ export function ResultFormView({
     }
 
     return rowData
-  }, [columns, currentRow, editState, editingRowIndex, clampedLocal, editColumnBindings])
+  }, [columns, currentRow, editState, editingRowIndex, clampedIndex, editColumnBindings])
 
   const isInEditMode = editMode !== null
-  const isEditingCurrentRow = editState !== null && editingRowIndex === clampedLocal
+  const isEditingCurrentRow = editState !== null && editingRowIndex === clampedIndex
 
-  void _totalPages
   void tabId
 
   const resolvedColumns = useMemo(
@@ -207,10 +195,10 @@ export function ResultFormView({
 
   const handleEnsureEditing = useCallback(() => {
     if (!isInEditMode || !onStartEdit) return
-    if (editingRowIndex !== clampedLocal) {
-      onStartEdit(clampedLocal)
+    if (editingRowIndex !== clampedIndex) {
+      onStartEdit(clampedIndex)
     }
-  }, [isInEditMode, onStartEdit, editingRowIndex, clampedLocal])
+  }, [isInEditMode, onStartEdit, editingRowIndex, clampedIndex])
 
   const handleSave = useCallback(async () => {
     if (onSaveRow) {
@@ -251,9 +239,9 @@ export function ResultFormView({
       currentRow={currentRow}
       currentRowData={currentRowData}
       totalRows={totalRows}
-      currentAbsoluteIndex={absoluteIndex}
-      isFirstRecord={absoluteIndex <= 0}
-      isLastRecord={absoluteIndex >= totalRows - 1}
+      currentAbsoluteIndex={currentIndex}
+      isFirstRecord={currentIndex <= 0}
+      isLastRecord={currentIndex >= totalRows - 1}
       onNavigatePrev={handleNavigatePrev}
       onNavigateNext={handleNavigateNext}
       editState={sharedEditState}

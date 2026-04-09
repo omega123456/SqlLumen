@@ -204,4 +204,18 @@ describe('getAutoSizedColumnWidth', () => {
     const implicit = getAutoSizedColumnWidth(col, 0, rows, 'USER_ID')
     expect(implicit).toBe(explicit)
   })
+
+  it('samples only the first 100 rows and ignores rows beyond that limit', () => {
+    const col = makeColumnMeta('title', 'VARCHAR')
+    // 100 rows with a short value
+    const shortRows: unknown[][] = Array.from({ length: 100 }, () => ['hi'])
+    // Same 100 rows plus one extra row with a very long value (row index 100)
+    const rowsWithLongTail: unknown[][] = [...shortRows, ['a'.repeat(500)]]
+
+    const widthShortOnly = getAutoSizedColumnWidth(col, 0, shortRows, 'title')
+    const widthWithTail = getAutoSizedColumnWidth(col, 0, rowsWithLongTail, 'title')
+
+    // Row 101 is beyond AUTO_SIZE_SAMPLE_LIMIT (100), so the widths must be equal
+    expect(widthWithTail).toBe(widthShortOnly)
+  })
 })

@@ -1,7 +1,11 @@
 /**
  * Toolbar above the result grid — shows view mode toggle, edit mode dropdown,
- * Save/Discard buttons, query status, export action, page size selector,
- * and pagination controls.
+ * Save/Discard buttons, query status, and export action.
+ *
+ * Query results display all rows at once (up to the backend's 1000-row
+ * auto-limit) without client-side pagination. The page-size dropdown and
+ * prev/next page buttons are intentionally omitted here — pagination
+ * controls remain available in the table-data toolbar where they make sense.
  *
  * Reads per-result state from the active result via getActiveResult.
  */
@@ -11,7 +15,6 @@ import { FloppyDisk } from '@phosphor-icons/react'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { EditModeDropdown } from './EditModeDropdown'
 import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
-import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
 import { ExportButton } from '../shared/toolbar/ExportButton'
 import { StatusArea } from '../shared/toolbar/StatusArea'
 import type { ViewMode, StatusType } from '../../types/shared-data-view'
@@ -26,11 +29,8 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
   const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
   const setViewMode = useQueryStore((state) => state.setViewMode)
   const openExportDialog = useQueryStore((state) => state.openExportDialog)
-  const changePageSize = useQueryStore((state) => state.changePageSize)
-  const fetchPage = useQueryStore((state) => state.fetchPage)
   const saveCurrentRow = useQueryStore((state) => state.saveCurrentRow)
   const discardCurrentRow = useQueryStore((state) => state.discardCurrentRow)
-  const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
 
   const status = activeResult.status
   const totalRows = activeResult.totalRows
@@ -39,12 +39,7 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
   const executionTimeMs = activeResult.executionTimeMs
   const errorMessage = activeResult.errorMessage
   const autoLimitApplied = activeResult.autoLimitApplied
-  const currentPage = activeResult.currentPage
-  const totalPages = activeResult.totalPages
-  const pageSize = activeResult.pageSize
   const viewMode = activeResult.viewMode
-  const queryId = activeResult.queryId
-  const reExecutable = activeResult.reExecutable
 
   // Edit state for Save/Discard buttons
   const editState = activeResult.editState
@@ -53,8 +48,6 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
   const truncatedError =
     errorMessage && errorMessage.length > 200 ? errorMessage.slice(0, 200) + '\u2026' : errorMessage
 
-  // Show pagination only on success with actual result columns (not DML/DDL)
-  const showPagination = status === 'success' && columnsCount > 0
   const hasResults = status === 'success'
 
   // Map query status to StatusArea status type
@@ -86,31 +79,6 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
   const handleExport = useCallback(() => {
     openExportDialog(tabId)
   }, [openExportDialog, tabId])
-
-  const handlePageSizeChange = useCallback(
-    (size: number) => {
-      requestNavigationAction(tabId, () => {
-        changePageSize(connectionId, tabId, size)
-      })
-    },
-    [requestNavigationAction, changePageSize, connectionId, tabId]
-  )
-
-  const handlePrevPage = useCallback(() => {
-    if (queryId && connectionId && currentPage > 1) {
-      requestNavigationAction(tabId, () => {
-        fetchPage(connectionId, tabId, currentPage - 1)
-      })
-    }
-  }, [queryId, connectionId, currentPage, requestNavigationAction, fetchPage, tabId])
-
-  const handleNextPage = useCallback(() => {
-    if (queryId && connectionId && currentPage < totalPages) {
-      requestNavigationAction(tabId, () => {
-        fetchPage(connectionId, tabId, currentPage + 1)
-      })
-    }
-  }, [queryId, connectionId, currentPage, totalPages, requestNavigationAction, fetchPage, tabId])
 
   const handleSave = useCallback(() => {
     saveCurrentRow(tabId)
@@ -175,19 +143,6 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
 
       {/* Center-right: Export — shared component */}
       <ExportButton disabled={!hasResults} onClick={handleExport} testId="export-button" />
-
-      {/* Right: Page size + pagination — shared component */}
-      {showPagination && (
-        <PaginationGroup
-          currentPage={currentPage}
-          totalPages={totalPages}
-          pageSize={pageSize}
-          pageSizeDisabled={!reExecutable}
-          onPageSizeChange={handlePageSizeChange}
-          onPrevPage={handlePrevPage}
-          onNextPage={handleNextPage}
-        />
-      )}
     </div>
   )
 }

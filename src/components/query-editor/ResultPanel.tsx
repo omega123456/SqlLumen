@@ -46,7 +46,6 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const requestNavigationAction = useQueryStore((s) => s.requestNavigationAction)
   const sortResults = useQueryStore((s) => s.sortResults)
   const setSelectedRow = useQueryStore((s) => s.setSelectedRow)
-  const fetchPage = useQueryStore((s) => s.fetchPage)
   const startEditingRow = useQueryStore((s) => s.startEditingRow)
   const updateCellValue = useQueryStore((s) => s.updateCellValue)
   const syncCellValue = useQueryStore((s) => s.syncCellValue)
@@ -71,10 +70,6 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const selectedRowIndex = activeResult.selectedRowIndex ?? null
   const exportDialogOpen = activeResult.exportDialogOpen ?? false
   const totalRows = activeResult.totalRows ?? 0
-  const currentPage = activeResult.currentPage ?? 1
-  const totalPages = activeResult.totalPages ?? 1
-  const pageSize = activeResult.pageSize ?? 1000
-  const reExecutable = activeResult.reExecutable ?? true
 
   // Edit mode state from active result
   const editMode = activeResult.editMode ?? null
@@ -103,16 +98,15 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   )
 
   const handleRowSelected = useCallback(
-    (localRowIndex: number) => {
-      // Convert page-local index to absolute index across the full result set
-      const absoluteIndex = (currentPage - 1) * pageSize + localRowIndex
-      setSelectedRow(tabId, absoluteIndex)
+    (rowIndex: number) => {
+      setSelectedRow(tabId, rowIndex)
     },
-    [setSelectedRow, tabId, currentPage, pageSize]
+    [setSelectedRow, tabId]
   )
 
   /**
    * Handle form-view record navigation (Previous / Next).
+   * All rows are in a single page, so no page boundary logic needed.
    */
   const handleFormNavigate = useCallback(
     (direction: 'prev' | 'next') => {
@@ -122,29 +116,9 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
       // Bounds check
       if (newIndex < 0 || newIndex >= totalRows) return
 
-      // Determine if we need a page change
-      const pageStart = (currentPage - 1) * pageSize
-      const pageEnd = pageStart + pageSize - 1
-
-      if (newIndex < pageStart && currentPage > 1) {
-        fetchPage(connectionId, tabId, currentPage - 1)
-      } else if (newIndex > pageEnd && currentPage < totalPages) {
-        fetchPage(connectionId, tabId, currentPage + 1)
-      }
-
       setSelectedRow(tabId, newIndex)
     },
-    [
-      fetchPage,
-      setSelectedRow,
-      connectionId,
-      tabId,
-      selectedRowIndex,
-      totalRows,
-      currentPage,
-      totalPages,
-      pageSize,
-    ]
+    [setSelectedRow, tabId, selectedRowIndex, totalRows]
   )
 
   // --- Edit mode callbacks ---
@@ -357,10 +331,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
                     onSortChanged={handleSortChanged}
                     onRowSelected={handleRowSelected}
                     selectedRowIndex={selectedRowIndex}
-                    currentPage={currentPage}
-                    pageSize={pageSize}
                     tabId={tabId}
-                    reExecutable={reExecutable}
                     editMode={editMode}
                     editableColumnMap={editableColumnMap}
                     editColumnBindings={editColumnBindings}
@@ -380,9 +351,6 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
                     rows={rows}
                     selectedRowIndex={selectedRowIndex}
                     totalRows={totalRows}
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    pageSize={pageSize}
                     onNavigate={handleFormNavigate}
                     tabId={tabId}
                     editMode={editMode}
