@@ -47,30 +47,14 @@
   animation: table-properties-spin 0.85s linear infinite;
 }
 
+/* Layout only; borders/fill/shadow from global .ui-field-chrome or .ui-dropdown__trigger */
 .control {
   width: 100%;
   min-height: 40px;
   padding: 10px 12px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  border-radius: var(--radius-sm);
-  background: transparent;
   color: var(--on-surface);
   font-family: var(--font-body);
   font-size: var(--type-size-sm);
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.control:hover:not(:disabled) {
-  border-color: rgba(var(--outline-variant-rgb), 0.35);
-}
-
-.control:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: var(--control-focus-ring-tight);
 }
 
 .control:disabled {

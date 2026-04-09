@@ -76,31 +76,13 @@
   gap: 8px;
 }
 
-/* Shared select / input base styling */
+/* Dropdown triggers: chrome comes from global .ui-dropdown__trigger */
 .columnSelect,
-.operatorSelect,
-.valueInput {
-  box-sizing: border-box;
+.operatorSelect {
   height: 34px;
   padding: 0 var(--ui-input-padding-x);
-  border: var(--control-border);
-  border-radius: var(--ui-input-radius);
-  background: var(--ui-input-bg);
-  color: var(--ui-input-fg);
-  font-family: var(--font-body);
   font-size: var(--type-size-sm);
   line-height: var(--ui-input-line-height);
-  outline: none;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.columnSelect:focus,
-.operatorSelect:focus,
-.valueInput:focus {
-  border-color: var(--primary);
-  box-shadow: var(--ui-input-focus-shadow);
 }
 
 /* Wrapper for Dropdown components — ensures the flex layout applies to
@@ -128,10 +110,11 @@
 .valueInput {
   flex: 1 1 0;
   min-width: 0;
-}
-
-.valueInput::placeholder {
-  color: rgba(var(--on-surface-rgb), var(--ui-input-placeholder-opacity));
+  height: 34px;
+  padding: 0 var(--ui-input-padding-x);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  line-height: var(--ui-input-line-height);
 }
 
 .valueInputDisabled {

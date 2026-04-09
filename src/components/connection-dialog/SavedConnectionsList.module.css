@@ -95,18 +95,9 @@
   font-weight: 600;
   text-transform: uppercase;
   color: var(--on-surface);
-  background: var(--ui-input-bg);
-  border: var(--control-border);
-  border-radius: var(--radius-sm);
   padding: 2px var(--space-xs);
-  outline: none;
   width: 100%;
   font-family: inherit;
-}
-
-.renameInput:focus {
-  border: var(--control-border-focus);
-  box-shadow: var(--ui-input-focus-shadow);
 }
 
 .connectionItem {

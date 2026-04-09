@@ -229,7 +229,7 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
                     type="text"
                     value={tableName}
                     placeholder="table_name"
-                    className={styles.tableNameInput}
+                    className={`ui-field-chrome ${styles.tableNameInput}`}
                     data-testid="table-designer-name-input"
                     onChange={(event) => updateTableName(tabId, event.target.value)}
                   />

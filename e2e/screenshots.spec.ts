@@ -1793,8 +1793,8 @@ for (const theme of themes) {
       await openQueryEditorWithCallResults(page)
       // Verify no edit mode dropdown is visible (reExecutable: false hides it)
       await expect(page.getByTestId('edit-mode-dropdown')).toBeHidden()
-      // Verify page-size selector is disabled
-      await expect(page.getByTestId('page-size-select')).toBeDisabled()
+      // ResultToolbar does not render page-size control (see ResultToolbar.tsx)
+      await expect(page.getByTestId('page-size-select')).toBeHidden()
       // Screenshot the result panel showing stored procedure read-only state
       await expect(page.getByTestId('result-panel')).toHaveScreenshot(
         `multi-result-stored-proc-readonly-${theme}.png`,

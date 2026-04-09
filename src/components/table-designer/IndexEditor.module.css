@@ -151,17 +151,12 @@
 }
 
 .cellSelect {
-  appearance: none;
   width: 100%;
   padding: 7px 8px;
-  border: none;
-  border-radius: var(--radius-sm);
   color: var(--on-surface);
   font: inherit;
-  outline: none;
   transition:
     background-color 0.15s ease,
-    box-shadow 0.15s ease,
     color 0.15s ease;
 }
 
@@ -173,13 +168,8 @@
   background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
 }
 
-.cellSelect:focus {
-  box-shadow: var(--control-focus-ring-tight);
-  background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);
-}
-
 .inputError {
-  box-shadow: inset 0 0 0 1px var(--error);
+  box-shadow: inset 0 0 0 1px var(--error), var(--ui-input-rest-shadow);
 }
 
 .inputError:global(.ui-button-ghost) {
@@ -200,21 +190,16 @@
   width: 100%;
   min-width: 0;
   padding: 7px 8px;
-  border: none;
-  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--on-surface);
   font: inherit;
   font-weight: inherit;
-  outline: none;
   transition:
     background-color 0.15s ease,
-    box-shadow 0.15s ease,
     color 0.15s ease;
 }
 
 .columnButton:focus-visible {
-  box-shadow: var(--control-focus-ring-tight);
   background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);
 }
 

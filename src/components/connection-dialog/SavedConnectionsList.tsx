@@ -111,7 +111,7 @@ function GroupInlineInput({
       ref={inputRef}
       variant="bare"
       type="text"
-      className={styles.renameInput}
+      className={`ui-field-chrome ${styles.renameInput}`}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       onBlur={onCommit}

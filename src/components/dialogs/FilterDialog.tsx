@@ -183,7 +183,7 @@ export function FilterDialog({
                       <TextInput
                         variant="bare"
                         type="text"
-                        className={`${styles.valueInput} ${isNullary ? styles.valueInputDisabled : ''}`}
+                        className={`ui-field-chrome ${styles.valueInput} ${isNullary ? styles.valueInputDisabled : ''}`}
                         value={cond.value}
                         onChange={(e) => handleChange(idx, 'value', e.target.value)}
                         disabled={isNullary}

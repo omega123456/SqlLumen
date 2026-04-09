@@ -114,6 +114,7 @@ async function openQueryEditorTab(page: Page) {
   await connectToSample(page)
   await page.getByTestId('new-query-tab-button').click()
   await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
 }
 
 async function focusMonacoEditor(page: Page, timeout = APP_READY_MS) {

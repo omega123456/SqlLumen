@@ -21,7 +21,7 @@ function variantClasses(variant: TextareaVariant): string {
       return mergeClassNames('ui-textarea', styles.mono)
     }
     case 'formField': {
-      return styles.formField
+      return mergeClassNames('ui-field-chrome', styles.formField)
     }
     case 'bare': {
       return ''

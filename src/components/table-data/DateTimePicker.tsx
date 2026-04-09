@@ -339,7 +339,7 @@ export function DateTimePicker({
             <TextInput
               variant="bare"
               type="text"
-              className={styles.timeInput}
+              className={`ui-field-chrome ${styles.timeInput}`}
               value={timeInput}
               onChange={handleTimeInputChange}
               placeholder="HH:MM:SS"

@@ -141,17 +141,14 @@
   border-left: 8px solid transparent;
 }
 
+/* Padding/layout only; border/shadow from global .ui-dropdown__trigger */
 .cellInput {
   width: 100%;
   padding: 7px 8px;
-  border: none;
-  border-radius: var(--radius-sm);
   color: var(--on-surface);
   font: inherit;
-  outline: none;
   transition:
     background-color 0.15s ease,
-    box-shadow 0.15s ease,
     color 0.15s ease;
 }
 
@@ -161,11 +158,6 @@
 
 .activeInput {
   background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
-}
-
-.cellInput:focus {
-  box-shadow: var(--control-focus-ring-tight);
-  background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);
 }
 
 .lengthInput {
@@ -180,8 +172,6 @@
 .typeSelectInput {
   min-height: 40px;
   padding: 10px 42px 10px 14px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  border-radius: var(--radius-lg);
 }
 
 .checkboxCell {

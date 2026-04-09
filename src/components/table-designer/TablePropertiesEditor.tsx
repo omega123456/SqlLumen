@@ -291,7 +291,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
               variant="bare"
               type="number"
               min="1"
-              className={styles.control}
+              className={`ui-field-chrome ${styles.control}`}
               value={String(properties.autoIncrement ?? 1)}
               data-testid="table-properties-auto-increment"
               onChange={(event) =>
@@ -325,7 +325,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
           <Textarea
             id={`table-properties-comment-${tabId}`}
             variant="bare"
-            className={`${styles.control} ${styles.textarea}`}
+            className={`ui-field-chrome ${styles.control} ${styles.textarea}`}
             value={properties.comment}
             data-testid="table-properties-comment"
             onChange={(event) => handlePropertyChange('comment', event.target.value)}

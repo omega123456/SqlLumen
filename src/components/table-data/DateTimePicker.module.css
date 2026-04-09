@@ -230,27 +230,17 @@
 
 .timeInput {
   flex: 1;
-  background: var(--ui-input-bg);
-  border: var(--control-border);
-  border-radius: var(--ui-input-radius);
   padding: 6px 10px;
   font-family: var(--font-mono);
   font-size: var(--type-size-md);
-  color: var(--on-surface);
-  outline: none;
   transition:
-    border 120ms ease,
+    border-color 120ms ease,
     box-shadow 120ms ease;
 }
 
 .timeInput::placeholder {
   color: var(--on-surface-variant);
   opacity: var(--ui-input-placeholder-opacity);
-}
-
-.timeInput:focus {
-  border: var(--control-border-focus);
-  box-shadow: var(--ui-input-focus-shadow);
 }
 
 /* =========================================================================

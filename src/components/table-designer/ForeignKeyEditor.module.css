@@ -119,19 +119,11 @@
 .cellSelect {
   width: 100%;
   padding: 7px 8px;
-  border: none;
-  border-radius: var(--radius-sm);
   color: var(--on-surface);
   font: inherit;
-  outline: none;
   transition:
     background-color 0.15s ease,
-    box-shadow 0.15s ease,
     color 0.15s ease;
-}
-
-.cellSelect {
-  appearance: none;
 }
 
 .inactiveInput {
@@ -140,11 +132,6 @@
 
 .activeInput {
   background: color-mix(in srgb, var(--surface-container-highest) 50%, transparent);
-}
-
-.cellSelect:focus {
-  box-shadow: var(--control-focus-ring-tight);
-  background: color-mix(in srgb, var(--surface-container-highest) 60%, transparent);
 }
 
 .readonlyText {

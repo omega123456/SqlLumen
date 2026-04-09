@@ -59,23 +59,9 @@
 
 .hexInput {
   padding: var(--space-xs) var(--space-sm);
-  border: var(--control-border);
-  border-radius: var(--ui-input-radius);
-  background: var(--ui-input-bg);
-  color: var(--ui-input-fg);
   font-size: var(--ui-input-font-size);
   font-family: var(--font-mono);
   width: 100%;
-  box-sizing: border-box;
-  outline: none;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.hexInput:focus {
-  border: var(--control-border-focus);
-  box-shadow: var(--ui-input-focus-shadow);
 }
 
 .clearButton {

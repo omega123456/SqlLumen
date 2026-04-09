@@ -23,10 +23,10 @@ function variantClasses(variant: TextInputVariant): string {
       return mergeClassNames('ui-input', styles.mono)
     }
     case 'formField': {
-      return styles.formField
+      return mergeClassNames('ui-field-chrome', styles.formField)
     }
     case 'tableCell': {
-      return styles.tableCell
+      return mergeClassNames('ui-field-chrome', styles.tableCell)
     }
     case 'gridCell': {
       return 'td-cell-editor-input'

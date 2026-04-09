@@ -122,7 +122,7 @@
   --letter-spacing-label-md: 0.05rem;
   /* Utility tokens */
   --elevation-overlay: 0 12px 32px rgba(var(--on-surface-rgb), 0.06);
-  --control-border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  --control-border: 1px solid rgba(var(--outline-variant-rgb), 0.42);
   --control-border-focus: 1px solid var(--primary);
   --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
   --control-focus-ring-tight: 0 0 0 1px var(--primary);
@@ -183,11 +183,15 @@
   --ui-input-fg: var(--on-surface);
   --ui-input-font-size: var(--type-body);
   --ui-input-line-height: 1.25;
-  --ui-input-radius: var(--radius-sm);
+  /* Slight rounding for text fields, dropdowns, textareas (matches connection form mockup) */
+  --ui-input-radius: var(--radius-md);
   --ui-input-padding-y: 10px;
   --ui-input-padding-x: 16px;
   --ui-input-focus-shadow: var(--control-focus-ring);
   --ui-input-placeholder-opacity: 0.35;
+  /* Contrast border on --ui-input-bg; alpha tuned per theme below */
+  --ui-input-border: 1px solid rgba(var(--on-surface-rgb), 0.26);
+  --ui-input-rest-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
 
   --ui-label-caps-fg: var(--on-surface-variant);
   --ui-subtitle-size: var(--type-subtitle);
@@ -228,7 +232,7 @@
 
   --ui-browse-button-bg: var(--surface-container-high);
   --ui-browse-button-fg: var(--on-surface-variant);
-  --ui-browse-button-border: var(--control-border);
+  --ui-browse-button-border: var(--ui-input-border);
   --ui-browse-button-hover-bg: var(--surface-container-highest);
   --ui-browse-button-hover-fg: var(--on-surface);
 
@@ -253,7 +257,7 @@
 
   /* ---------- Dropdown (trigger matches .input / .ui-input geometry & fill) ---------- */
   --ui-dropdown-trigger-bg: var(--ui-input-bg);
-  --ui-dropdown-trigger-border: var(--control-border);
+  --ui-dropdown-trigger-border: var(--ui-input-border);
   --ui-dropdown-trigger-hover-border-color: rgba(var(--primary-rgb), 0.5);
   --ui-dropdown-trigger-radius: var(--ui-input-radius);
   --ui-dropdown-trigger-padding-y: var(--ui-input-padding-y);
@@ -459,9 +463,10 @@
 
   /* Utility tokens */
   --elevation-overlay: 0 20px 40px -12px rgba(var(--on-surface-rgb), 0.08);
-  --control-border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  /* Softer chrome for chips, browse, etc.; text fields use --ui-input-border */
+  --control-border: 1px solid #cbd5e1;
   --control-border-focus: 1px solid var(--primary);
-  --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
+  --control-focus-ring: 0 0 0 3px rgba(var(--primary-rgb), 0.14);
   --control-focus-ring-tight: 0 0 0 1px var(--primary);
   --glass-blur: blur(20px);
   /* Typography — light theme (query_slate_light) */
@@ -511,10 +516,12 @@
   --ui-elevated-surface-shadow: var(--ui-subsection-elevation-shadow);
   --ui-elevated-surface-radius: 12px;
 
-  /* Slight grey fill so fields read as inputs on white forms (between lowest + low) */
-  --ui-input-bg: #f1f5f97a;
+  /* Filled field surface on white forms (mockup: gray-50) */
+  --ui-input-bg: #f9fafb;
   --ui-input-fg: var(--on-surface);
   --ui-input-font-size: var(--type-size-lg);
+  --ui-input-border: 1px solid rgba(var(--on-surface-rgb), 0.22);
+  --ui-input-rest-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 
   --ui-label-caps-fg: var(--on-surface-variant);
   --ui-subtitle-size: var(--type-subtitle);
@@ -551,7 +558,7 @@
 
   --ui-browse-button-bg: var(--surface-container-high);
   --ui-browse-button-fg: var(--on-surface-variant);
-  --ui-browse-button-border: var(--control-border);
+  --ui-browse-button-border: var(--ui-input-border);
   --ui-browse-button-hover-bg: var(--surface-container);
   --ui-browse-button-hover-fg: var(--on-surface);
 
@@ -573,12 +580,12 @@
 
   --ui-ssl-hint-fg: var(--on-surface-variant);
 
-  --ui-input-focus-shadow: var(--control-focus-ring-tight);
+  --ui-input-focus-shadow: var(--control-focus-ring);
   --ui-collapsible-trigger-hover-bg: var(--surface-container-high);
 
   /* ---------- Dropdown + context menu — dropdowns_light_mode / context menu light ---------- */
   --ui-dropdown-trigger-bg: var(--ui-input-bg);
-  --ui-dropdown-trigger-border: var(--control-border);
+  --ui-dropdown-trigger-border: var(--ui-input-border);
   --ui-dropdown-trigger-hover-border-color: rgba(var(--primary-rgb), 0.5);
   --ui-dropdown-trigger-open-shadow: 0 1px 2px rgba(var(--on-surface-rgb), 0.06);
   --ui-dropdown-trigger-open-border: var(--control-border-focus);

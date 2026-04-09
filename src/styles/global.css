@@ -116,43 +116,56 @@ button {
   gap: 8px;
 }
 
+/* Text-field shell: border, fill, focus (shared with .ui-field-chrome for bare inputs) */
+.ui-field-chrome,
 .ui-input,
-.ui-select,
-.ui-textarea {
-  width: 100%;
+.ui-textarea,
+.ui-select {
   box-sizing: border-box;
-  padding: var(--ui-input-padding-y) var(--ui-input-padding-x);
-  border: var(--control-border);
+  border: var(--ui-input-border);
   border-radius: var(--ui-input-radius);
   background: var(--ui-input-bg);
   color: var(--ui-input-fg);
-  font-family: var(--font-body);
-  font-size: var(--ui-input-font-size);
-  line-height: var(--ui-input-line-height);
   outline: none;
+  box-shadow: var(--ui-input-rest-shadow);
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease;
 }
 
+/* Native text field chrome can hide custom borders (esp. WebKit / embedded hosts) */
+.ui-field-chrome,
+.ui-input,
+.ui-textarea {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ui-input,
+.ui-textarea,
+.ui-select {
+  width: 100%;
+  padding: var(--ui-input-padding-y) var(--ui-input-padding-x);
+  font-family: var(--font-body);
+  font-size: var(--ui-input-font-size);
+  line-height: var(--ui-input-line-height);
+}
+
+.ui-field-chrome::placeholder,
 .ui-input::placeholder,
 .ui-textarea::placeholder {
   color: rgba(var(--on-surface-rgb), var(--ui-input-placeholder-opacity));
 }
 
+.ui-field-chrome:focus,
 .ui-input:focus,
 .ui-select:focus,
 .ui-textarea:focus {
   border: var(--control-border-focus);
-  box-shadow: var(--control-focus-ring);
+  box-shadow: var(--control-focus-ring), var(--ui-input-rest-shadow);
 }
 
-[data-theme='light'] .ui-input:focus,
-[data-theme='light'] .ui-select:focus,
-[data-theme='light'] .ui-textarea:focus {
-  box-shadow: var(--control-focus-ring-tight);
-}
-
+.ui-field-chrome:disabled,
 .ui-input:disabled,
 .ui-select:disabled,
 .ui-textarea:disabled {
@@ -456,6 +469,7 @@ button {
     border-color 0.15s ease,
     box-shadow 0.15s ease,
     color 0.15s ease;
+  box-shadow: var(--ui-input-rest-shadow);
 }
 
 .ui-dropdown__trigger:hover:not(:disabled):not([aria-expanded='true']) {
@@ -464,7 +478,8 @@ button {
 
 .ui-dropdown__trigger[aria-expanded='true'] {
   border: var(--ui-dropdown-trigger-open-border);
-  box-shadow: var(--ui-dropdown-trigger-open-shadow), var(--ui-input-focus-shadow);
+  box-shadow:
+    var(--ui-dropdown-trigger-open-shadow), var(--ui-input-focus-shadow), var(--ui-input-rest-shadow);
   color: var(--primary);
   font-weight: 600;
 }

@@ -76,18 +76,10 @@
 .tableNameInput {
   width: min(420px, 100%);
   padding: 10px 12px;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-container-high) 65%, transparent);
   color: var(--primary);
   font-family: var(--font-body);
   font-size: var(--type-body-lg);
   font-weight: 600;
-}
-
-.tableNameInput:focus {
-  outline: none;
-  box-shadow: var(--control-focus-ring-tight);
 }
 
 .unsavedSubtitle {

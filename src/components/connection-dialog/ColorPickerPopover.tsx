@@ -54,7 +54,7 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
           <TextInput
             variant="bare"
             type="text"
-            className={styles.hexInput}
+            className={`ui-field-chrome ${styles.hexInput}`}
             value={hexInput}
             onChange={handleHexInputChange}
             placeholder="#000000"
