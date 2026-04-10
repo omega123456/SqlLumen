@@ -253,7 +253,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
               title="Add row"
               data-testid="btn-add-row"
             >
-              <Plus size={14} weight="bold" />
+              <Plus size={16} weight="bold" />
               <span>Add</span>
             </button>
 
@@ -265,7 +265,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
               title="Delete row"
               data-testid="btn-delete-row"
             >
-              <Trash size={14} weight="regular" />
+              <Trash size={16} weight="regular" />
               <span>Delete</span>
             </button>
 
@@ -277,7 +277,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
               title="Save changes"
               data-testid="btn-save"
             >
-              <FloppyDisk size={14} weight="regular" />
+              <FloppyDisk size={16} weight="regular" />
               <span>Save</span>
             </button>
 
@@ -302,7 +302,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
           title="Refresh data"
           data-testid="btn-refresh"
         >
-          <ArrowCounterClockwise size={14} weight="bold" />
+          <ArrowCounterClockwise size={16} weight="bold" />
         </button>
       </div>
 
@@ -320,7 +320,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             title="Filter"
             data-testid="btn-filter"
           >
-            <Funnel size={14} weight={filterModel.length > 0 ? 'fill' : 'regular'} />
+            <Funnel size={16} weight={filterModel.length > 0 ? 'fill' : 'regular'} />
             <span>Filter</span>
           </button>
           {filterModel.length > 0 && (

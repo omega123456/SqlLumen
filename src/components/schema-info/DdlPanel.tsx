@@ -3,6 +3,8 @@ import type { TableMetadata, ObjectType } from '../../types/schema'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { tokenizeSql } from '../../lib/sql-tokenizer'
 import type { TokenType } from '../../lib/sql-tokenizer'
+import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
+import { Button } from '../common/Button'
 import { ElevatedCodePanel } from '../common/ElevatedCodePanel'
 import { MetadataCard } from './MetadataCard'
 import styles from './DdlPanel.module.css'
@@ -26,8 +28,14 @@ export function DdlPanel({ ddl, metadata, objectType }: DdlPanelProps) {
   const tokens = tokenizeSql(ddl)
   const isTable = objectType === 'table'
 
-  const handleCopy = useCallback(() => {
-    void writeClipboardText(ddl)
+  const handleCopy = useCallback(async () => {
+    try {
+      await writeClipboardText(ddl)
+      showSuccessToast('Copied to clipboard')
+    } catch (error) {
+      console.error('[ddl-panel] Failed to copy SQL', error)
+      showErrorToast('Copy failed', error instanceof Error ? error.message : String(error))
+    }
   }, [ddl])
 
   return (
@@ -39,9 +47,9 @@ export function DdlPanel({ ddl, metadata, objectType }: DdlPanelProps) {
               <ElevatedCodePanel
                 label="&lt;&gt; SHOW CREATE TABLE"
                 headerActions={
-                  <button type="button" className={styles.copyButton} onClick={handleCopy}>
+                  <Button type="button" variant="secondary" onClick={() => void handleCopy()}>
                     Copy SQL
-                  </button>
+                  </Button>
                 }
               >
                 {tokens.map((token, idx) => {
@@ -66,9 +74,9 @@ export function DdlPanel({ ddl, metadata, objectType }: DdlPanelProps) {
           <ElevatedCodePanel
             label="&lt;&gt; DDL"
             headerActions={
-              <button type="button" className={styles.copyButton} onClick={handleCopy}>
+              <Button type="button" variant="secondary" onClick={() => void handleCopy()}>
                 Copy SQL
-              </button>
+              </Button>
             }
           >
             {tokens.map((token, idx) => {

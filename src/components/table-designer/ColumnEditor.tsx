@@ -527,7 +527,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
       <div className={styles.toolbar}>
         <Button
           type="button"
-          variant="toolbar"
+          variant="secondary"
           onClick={handleAddColumn}
           data-testid="column-editor-add"
         >
@@ -536,7 +536,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
         </Button>
         <Button
           type="button"
-          variant="toolbar"
+          variant="secondary"
           onClick={() => handleMoveSelected(-1)}
           disabled={!canMoveUp}
           data-testid="column-editor-move-up"
@@ -546,7 +546,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
         </Button>
         <Button
           type="button"
-          variant="toolbar"
+          variant="secondary"
           onClick={() => handleMoveSelected(1)}
           disabled={!canMoveDown}
           data-testid="column-editor-move-down"
@@ -556,7 +556,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
         </Button>
         <Button
           type="button"
-          variant="toolbarDanger"
+          variant="danger"
           onClick={() => {
             if (effectiveSelectedIndex !== null) {
               handleDeleteAtIndex(effectiveSelectedIndex)
@@ -957,7 +957,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
                               }}
                             />
                             <Button
-                              variant="ghost"
+                              variant="secondary"
                               tabIndex={-1}
                               aria-label="Change default mode"
                               data-testid={`column-default-mode-${columnIndex}`}

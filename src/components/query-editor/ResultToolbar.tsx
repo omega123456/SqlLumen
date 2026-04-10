@@ -112,7 +112,7 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
               title="Save changes"
               data-testid="query-save-button"
             >
-              <FloppyDisk size={14} weight="regular" />
+              <FloppyDisk size={16} weight="regular" />
               <span>Save</span>
             </button>
           )}

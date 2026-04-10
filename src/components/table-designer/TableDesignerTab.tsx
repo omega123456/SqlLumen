@@ -240,7 +240,7 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
               ) : (
                 <div className={styles.headingStack}>
                   <h1 className={styles.heading}>
-                    Design Table:{' '}
+                    Alter Table:{' '}
                     <span className={styles.tableName}>{tableName || objectName}</span>
                   </h1>
                   {resolvedTheme === 'light' && isDirty && (
@@ -255,6 +255,7 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
                 variant="secondary"
                 className={styles.discardButton}
                 onClick={() => discardChanges(tabId)}
+                disabled={!isDirty}
                 data-testid="table-designer-discard"
               >
                 Discard

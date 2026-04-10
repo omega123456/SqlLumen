@@ -15,10 +15,8 @@
   scrollbar-color: rgba(var(--outline-variant-rgb), 0.4) transparent;
 }
 
-.formCard {
-  /* Visual card — ElevatedSurface supplies bg, shadow, border-radius */
-  /* overflow: visible so fixed-position dropdowns and popovers escape the card */
-}
+/* Visual card — ElevatedSurface supplies bg, shadow, border-radius */
+/* overflow: visible so fixed-position dropdowns and popovers escape the card */
 .formMain::-webkit-scrollbar {
   width: 8px;
 }
@@ -317,6 +315,10 @@
   gap: 12px;
 }
 
+.resultCard {
+  margin-bottom: clamp(12px, 1.8vh, 24px);
+}
+
 .testResultSlot {
-  margin-top: clamp(12px, 1.8vh, 24px);
+  margin: 0;
 }

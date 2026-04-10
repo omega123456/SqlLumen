@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import { X, CheckCircle, Warning, XCircle } from '@phosphor-icons/react'
 import { useToastStore, type ToastItem } from '../../stores/toast-store'
@@ -96,7 +97,10 @@ export function ToastViewport() {
     return null
   }
 
-  return (
+  const openDialogs = Array.from(document.querySelectorAll('dialog[open]'))
+  const portalTarget = openDialogs.length > 0 ? openDialogs[openDialogs.length - 1] : document.body
+
+  const content = (
     <div
       className={styles.viewport}
       data-testid="toast-stack"
@@ -110,4 +114,6 @@ export function ToastViewport() {
       </div>
     </div>
   )
+
+  return createPortal(content, portalTarget)
 }

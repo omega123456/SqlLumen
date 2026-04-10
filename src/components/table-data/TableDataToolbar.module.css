@@ -102,15 +102,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  height: 26px;
-  padding: 0 8px;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
   background: transparent;
   color: var(--on-surface-variant);
   cursor: pointer;
   border-radius: var(--radius-sm);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   transition:
     color 0.15s ease,
@@ -136,8 +136,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   border: none;
   background: transparent;
   color: var(--on-surface-variant);

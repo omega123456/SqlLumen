@@ -795,7 +795,7 @@ describe('ObjectBrowser', () => {
     )
 
     await openContextMenu(user, 'users')
-    await user.click(screen.getByText('Design Table...'))
+    await user.click(screen.getByText('Alter Table...'))
 
     const tabs = useWorkspaceStore.getState().tabsByConnection[CONN_ID]
     expect(tabs).toHaveLength(1)
@@ -870,7 +870,7 @@ describe('ObjectBrowser', () => {
 
     await openContextMenu(user, 'users')
 
-    expect(screen.queryByText('Design Table...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Alter Table...')).not.toBeInTheDocument()
   })
 
   it('create table item disabled when connection is read-only', async () => {

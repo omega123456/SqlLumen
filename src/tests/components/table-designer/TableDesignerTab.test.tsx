@@ -158,7 +158,7 @@ describe('TableDesignerTab', () => {
     }))
 
     render(<TableDesignerTab tab={makeTab()} />)
-    expect(screen.getByText('Design Table:')).toBeInTheDocument()
+    expect(screen.getByText('Alter Table:')).toBeInTheDocument()
     expect(screen.getByText('users')).toBeInTheDocument()
     expect(screen.queryByTestId('table-designer-name-input')).not.toBeInTheDocument()
   })

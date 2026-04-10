@@ -235,7 +235,7 @@ describe('ConnectionForm', () => {
     expect(screen.getByText('Save')).toBeInTheDocument()
     expect(screen.getByText('Connect')).toBeInTheDocument()
 
-    expect(screen.getByRole('button', { name: 'Test Connection' })).toHaveClass('ui-button-test')
+    expect(screen.getByRole('button', { name: 'Test Connection' })).toHaveClass('ui-button-secondary')
     expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('ui-button-secondary')
     expect(screen.getByRole('button', { name: 'Connect' })).toHaveClass('ui-button-primary')
   })

@@ -132,7 +132,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
       <div className={styles.toolbar}>
         <Button
           type="button"
-          variant="toolbar"
+          variant="secondary"
           onClick={() => {
             addIndex(tabId)
             const nextStoreIndex = tabState.currentSchema.indexes.length
@@ -145,7 +145,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
         </Button>
         <Button
           type="button"
-          variant="toolbarDanger"
+          variant="danger"
           onClick={() => {
             if (typeof selectedRow === 'number') {
               handleDelete(selectedRow)
@@ -310,7 +310,7 @@ export function IndexEditor({ tabId }: IndexEditorProps) {
                       ) : (
                         <Button
                           type="button"
-                          variant="ghost"
+                          variant="secondary"
                           className={`${styles.columnButton} ${
                             isSelected ? styles.activeColumnButton : styles.inactiveColumnButton
                           } ${columnsError ? styles.inputError : ''}`}

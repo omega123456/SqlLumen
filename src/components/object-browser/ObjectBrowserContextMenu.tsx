@@ -786,7 +786,7 @@ function buildTableMenu(args: {
     },
     {
       key: 'design-table',
-      label: 'Design Table...',
+      label: 'Alter Table...',
       icon: <Wrench size={18} weight="regular" />,
       disabled: !onDesignTable,
       destructive: false,

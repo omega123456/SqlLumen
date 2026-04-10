@@ -327,7 +327,12 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
   return (
     <div className={styles.formGridRoot}>
       <div className={styles.formMain} data-testid="connection-form-main">
-        <ElevatedSurface className={styles.formCard}>
+        <ElevatedSurface className={styles.resultCard}>
+          <div className={styles.testResultSlot}>
+            <TestConnectionResult result={testResult} />
+          </div>
+        </ElevatedSurface>
+        <ElevatedSurface>
           <form
             className={styles.formInner}
             autoComplete="off"
@@ -614,15 +619,12 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
               </div>
             </div>
 
-            <div className={styles.testResultSlot}>
-              <TestConnectionResult result={testResult} />
-            </div>
           </form>
         </ElevatedSurface>
       </div>
 
       <footer className={styles.formFooter}>
-        <Button variant="test" onClick={() => void handleTestConnection()} disabled={isAnyPending}>
+        <Button variant="secondary" onClick={() => void handleTestConnection()} disabled={isAnyPending}>
           <Database size={20} weight="duotone" aria-hidden />
           {pendingAction === 'test' ? 'Testing…' : 'Test Connection'}
         </Button>

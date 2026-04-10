@@ -7,8 +7,14 @@ import type { TableMetadata } from '../../../types/schema'
 
 // Mock writeClipboardText
 const mockWriteClipboard = vi.fn().mockResolvedValue(undefined)
+const mockShowSuccessToast = vi.fn()
+const mockShowErrorToast = vi.fn()
 vi.mock('../../../lib/context-menu-utils', () => ({
   writeClipboardText: (...args: unknown[]) => mockWriteClipboard(...args),
+}))
+vi.mock('../../../stores/toast-store', () => ({
+  showSuccessToast: (...args: unknown[]) => mockShowSuccessToast(...args),
+  showErrorToast: (...args: unknown[]) => mockShowErrorToast(...args),
 }))
 
 function makeMetadata(overrides: Partial<TableMetadata> = {}): TableMetadata {
@@ -51,6 +57,30 @@ describe('DdlPanel', () => {
 
     await user.click(copyBtn)
     expect(mockWriteClipboard).toHaveBeenCalledWith(ddl)
+    expect(mockShowSuccessToast).toHaveBeenCalledWith('Copied to clipboard')
+  })
+
+  it('Copy SQL works in ddl-only mode and shows success toast', async () => {
+    const user = userEvent.setup()
+    const ddl = 'CREATE VIEW `v` AS SELECT 1'
+
+    render(<DdlPanel ddl={ddl} objectType="view" />)
+
+    await user.click(screen.getByText('Copy SQL'))
+    expect(mockWriteClipboard).toHaveBeenCalledWith(ddl)
+    expect(mockShowSuccessToast).toHaveBeenCalledWith('Copied to clipboard')
+  })
+
+  it('shows error toast when clipboard copy fails', async () => {
+    const user = userEvent.setup()
+    mockWriteClipboard.mockRejectedValueOnce(new Error('clipboard denied'))
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(<DdlPanel ddl="CREATE VIEW `v` AS SELECT 1" objectType="view" />)
+
+    await user.click(screen.getByText('Copy SQL'))
+    expect(mockShowErrorToast).toHaveBeenCalledWith('Copy failed', 'clipboard denied')
+    consoleErrorSpy.mockRestore()
   })
 
   it('shows MetadataCard for tables', () => {

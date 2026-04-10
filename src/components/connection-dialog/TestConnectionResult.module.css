@@ -3,7 +3,6 @@
   border-left: 4px solid var(--result-accent);
   border-radius: var(--radius-sm);
   padding: var(--space-sm) var(--space-md);
-  background: var(--surface-container-low);
 }
 
 .resultSuccess {

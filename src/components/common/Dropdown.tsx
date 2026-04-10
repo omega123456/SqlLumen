@@ -224,6 +224,8 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       bottom: null,
     })
     const [dropdownInstanceStyle, setDropdownInstanceStyle] = useState<DropdownInstanceStyle>({})
+    const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null)
+    const [isPortalInDialog, setIsPortalInDialog] = useState(false)
     const typeaheadRef = useRef('')
     const typeaheadResetTimeoutRef = useRef<number | null>(null)
 
@@ -393,6 +395,16 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
         return
       }
 
+      // When used inside a native <dialog>, render into that dialog's top-layer subtree.
+      const closestDialog = trigger.closest('dialog')
+      if (closestDialog instanceof HTMLElement) {
+        setPortalContainer(closestDialog)
+        setIsPortalInDialog(true)
+      } else {
+        setPortalContainer(document.body)
+        setIsPortalInDialog(false)
+      }
+
       const updatePlacement = () => {
         const triggerRect = trigger.getBoundingClientRect()
         const vw = window.innerWidth
@@ -436,19 +448,24 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
           '--ui-dropdown-instance-option-min-height': `${Math.round(measuredTriggerHeight)}px`,
         })
 
+        const dialogRect = closestDialog instanceof HTMLElement ? closestDialog.getBoundingClientRect() : null
+        const leftValue = dialogRect ? left - dialogRect.left : left
+        const topValue = dialogRect ? triggerRect.bottom - 1 - dialogRect.top : triggerRect.bottom - 1
+        const bottomValue = dialogRect ? dialogRect.bottom - triggerRect.top + 1 : vh - triggerRect.top + 1
+
         if (nextPlacement === 'bottom') {
           setDropdownLayout({
-            left,
+            left: leftValue,
             width,
-            top: triggerRect.bottom - 1,
+            top: topValue,
             bottom: null,
           })
         } else {
           setDropdownLayout({
-            left,
+            left: leftValue,
             width,
             top: null,
-            bottom: vh - triggerRect.top + 1,
+            bottom: bottomValue,
           })
         }
       }
@@ -747,6 +764,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                 id={listboxId}
                 className={[
                   'ui-dropdown__panel',
+                  isPortalInDialog ? 'ui-dropdown__panel--in-dialog' : '',
                   placement === 'top' ? 'ui-dropdown__panel--top' : '',
                 ]
                   .filter(Boolean)
@@ -858,7 +876,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                   )
                 })}
               </ul>,
-              document.body
+              portalContainer ?? document.body
             )
           : null}
       </div>

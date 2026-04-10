@@ -8,6 +8,10 @@
   overflow: hidden;
 }
 
+.panelNoPadding {
+  padding: 0;
+}
+
 .content {
   flex: 1;
   min-width: 0;

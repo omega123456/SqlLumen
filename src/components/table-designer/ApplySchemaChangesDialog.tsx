@@ -1,5 +1,6 @@
 import { WarningCircle } from '@phosphor-icons/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { SqlSyntaxHighlighter } from '../../lib/sql-syntax-highlighter'
 import { applyTableDdl } from '../../lib/table-designer-commands'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { Button } from '../common/Button'
@@ -35,6 +36,16 @@ export function ApplySchemaChangesDialog({
 }: ApplySchemaChangesDialogProps) {
   const [isExecuting, setIsExecuting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const highlightedDdl = useMemo(
+    () =>
+      SqlSyntaxHighlighter.highlightSql(ddl, {
+        keyword: styles.keyword,
+        identifier: styles.identifier,
+        type: styles.type,
+        string: styles.string,
+      }),
+    [ddl]
+  )
 
   useEffect(() => {
     if (!isOpen) {
@@ -81,7 +92,7 @@ export function ApplySchemaChangesDialog({
         </div>
 
         <pre className={styles.codeBlock} data-testid="apply-schema-ddl">
-          <code>{ddl}</code>
+          <code>{highlightedDdl}</code>
         </pre>
 
         {warnings.length > 0 && (

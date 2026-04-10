@@ -18,7 +18,7 @@ export function ExportButton({ disabled, onClick, testId }: ExportButtonProps) {
       onClick={onClick}
       data-testid={testId || 'btn-export'}
     >
-      <Export size={14} weight="regular" />
+      <Export size={16} weight="regular" />
       <span>Export</span>
     </button>
   )

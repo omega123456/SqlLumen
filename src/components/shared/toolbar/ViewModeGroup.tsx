@@ -43,7 +43,7 @@ export function ViewModeGroup({
             title={MODE_LABELS[mode]}
             data-testid={`${prefix}-${mode}`}
           >
-            <Icon size={14} weight={isActive ? 'fill' : 'regular'} />
+            <Icon size={16} weight={isActive ? 'fill' : 'regular'} />
           </button>
         )
       })}

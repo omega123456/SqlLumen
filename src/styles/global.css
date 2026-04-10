@@ -546,6 +546,10 @@ button {
   overflow-y: auto;
 }
 
+.ui-dropdown__panel--in-dialog {
+  position: absolute;
+}
+
 .ui-dropdown__panel--top {
   border-top: var(--ui-dropdown-trigger-open-border);
   border-bottom: none;

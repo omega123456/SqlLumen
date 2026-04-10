@@ -17,6 +17,8 @@ export interface DialogShellProps {
   disableFocusManagement?: boolean
   /** When true, ignore backdrop clicks and Escape key dismissal. */
   nonDismissible?: boolean
+  /** Optional class name for the dialog panel element. */
+  panelClassName?: string
   children: React.ReactNode
 }
 
@@ -33,6 +35,7 @@ export function DialogShell({
   ariaLabel,
   disableFocusManagement = false,
   nonDismissible = false,
+  panelClassName,
   children,
 }: DialogShellProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -78,7 +81,7 @@ export function DialogShell({
       aria-label={ariaLabel}
     >
       <div
-        className={`ui-elevated-surface ${styles.dialog}`}
+        className={`ui-elevated-surface ${styles.dialog}${panelClassName !== undefined ? ` ${panelClassName}` : ''}`}
         ref={dialogRef}
         style={dialogStyle}
         data-testid={testId !== undefined ? `${testId}-panel` : undefined}

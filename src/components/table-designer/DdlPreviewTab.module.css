@@ -22,6 +22,12 @@
   padding: 12px 16px 16px;
 }
 
+.codeSurface {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
 .codeBlock,
 .state {
   width: 100%;

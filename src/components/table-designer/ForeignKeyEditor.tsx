@@ -198,7 +198,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
       <div className={styles.toolbar}>
         <Button
           type="button"
-          variant="toolbar"
+          variant="secondary"
           onClick={() => {
             addForeignKey(tabId)
             setSelectedRow(foreignKeys.length)
@@ -210,7 +210,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
         </Button>
         <Button
           type="button"
-          variant="toolbarDanger"
+          variant="danger"
           onClick={() => {
             if (effectiveSelectedRow !== null) {
               handleDelete(effectiveSelectedRow)

@@ -252,7 +252,7 @@ describe('ObjectBrowserContextMenu', () => {
     const selectRows = screen.getByText('Select Top 100 Rows')
     expect(selectRows.closest('button')).toBeDisabled()
     expect(screen.getByText('Create Table...').closest('button')).toBeEnabled()
-    const designTable = screen.getByText('Design Table...')
+    const designTable = screen.getByText('Alter Table...')
     expect(designTable.closest('button')).toBeEnabled()
 
     // Enabled items
@@ -334,7 +334,7 @@ describe('ObjectBrowserContextMenu', () => {
     expect(screen.getByText('Copy Table Name')).toBeInTheDocument()
     expect(screen.getByText('Refresh')).toBeInTheDocument()
     expect(screen.queryByText('Create Table...')).not.toBeInTheDocument()
-    expect(screen.queryByText('Design Table...')).not.toBeInTheDocument()
+    expect(screen.queryByText('Alter Table...')).not.toBeInTheDocument()
     expect(screen.queryByText('Select Top 100 Rows')).not.toBeInTheDocument()
     expect(screen.queryByText('Truncate Table...')).not.toBeInTheDocument()
     expect(screen.queryByText('Drop Table...')).not.toBeInTheDocument()

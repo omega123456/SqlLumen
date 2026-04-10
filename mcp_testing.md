@@ -176,7 +176,7 @@ Repeat per column (e.g. **name** → **key** → **controller** → **method**),
 ## 11. Table schema designer — MCP inspection
 
 1. Complete **§2** (`driver_session` **start**) with the Tauri app running (`pnpm tauri dev`).
-2. **Connect** (§3) and open a **table designer** tab (object browser → table → **Design Table**, or your usual workflow). Until this tab exists, a snapshot scoped to the designer will fail.
+2. **Connect** (§3) and open a **table designer** tab (object browser → table → **Alter Table**, or your usual workflow). Until this tab exists, a snapshot scoped to the designer will fail.
 3. Use **`webview_dom_snapshot`** with `type: "structure"`:
    - **Whole designer:** `selector: "[data-testid=\"table-designer-tab\"]"`, `strategy: "css"`.
    - **Columns grid only:** `selector: "[data-testid=\"column-editor\"]"`, `strategy: "css"`. The tree shows the editor `container`, `toolbar`, `tableHead` / `headerCell`, and body rows (`evenRow` / `oddRow`). Use this to confirm which layout nodes correspond to the grey header band, zebra rows, or outer border before changing CSS.

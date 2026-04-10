@@ -105,6 +105,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
         maxWidth={1400}
         testId="settings-dialog"
         ariaLabel="Settings"
+        panelClassName={styles.panelNoPadding}
       >
         <div className={styles.layout}>
           <SettingsSidebar activeSection={activeSection} onSelect={handleSectionSelect} />
@@ -114,7 +115,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
             </div>
             <div className={styles.footer}>
               <Button
-                variant="ghost"
+                variant="secondary"
                 onClick={handleResetSection}
                 data-testid="settings-reset-section"
               >

@@ -23,28 +23,6 @@
   width: 100%;
 }
 
-.copyButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 12px;
-  border-radius: 6px;
-  background: var(--surface-container-high);
-  color: var(--on-surface-variant);
-  font-size: var(--type-size-xs);
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
-}
-
-.copyButton:hover {
-  background: var(--surface-container-highest);
-  color: var(--primary);
-}
-
 /* Syntax highlighting classes */
 .keyword {
   color: var(--secondary);
