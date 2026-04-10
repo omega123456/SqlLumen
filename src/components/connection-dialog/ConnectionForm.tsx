@@ -13,6 +13,7 @@ import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
 import { Checkbox } from '../common/Checkbox'
 import { Dropdown } from '../common/Dropdown'
+import { ElevatedSurface } from '../common/ElevatedSurface'
 import { CollapsibleSection } from './CollapsibleSection'
 import { ColorPickerPopover } from './ColorPickerPopover'
 import { TestConnectionResult } from './TestConnectionResult'
@@ -326,296 +327,298 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
   return (
     <div className={styles.formGridRoot}>
       <div className={styles.formMain} data-testid="connection-form-main">
-        <form
-          className={styles.formInner}
-          autoComplete="off"
-          onSubmit={(e) => {
-            e.preventDefault()
-          }}
-        >
-          <p className={styles.formIntro}>Configure the parameters for your MySQL instance.</p>
+        <ElevatedSurface className={styles.formCard}>
+          <form
+            className={styles.formInner}
+            autoComplete="off"
+            onSubmit={(e) => {
+              e.preventDefault()
+            }}
+          >
+            <p className={styles.formIntro}>Configure the parameters for your MySQL instance.</p>
 
-          <div className={styles.fieldGrid}>
-            <div className={styles.fieldGroup}>
-              <label htmlFor="conn-name" className={styles.labelCaps}>
-                Connection name
-              </label>
-              <TextInput
-                id="conn-name"
-                type="text"
-                variant="mono"
-                invalid={!!errors.name}
-                value={formData.name}
-                onChange={(e) => updateField('name', e.target.value)}
-                placeholder="My production server"
-                autoFocus
-              />
-              {errors.name && <span className={styles.errorText}>{errors.name}</span>}
-            </div>
-
-            <div className={styles.row2}>
+            <div className={styles.fieldGrid}>
               <div className={styles.fieldGroup}>
-                <label htmlFor="conn-host" className={styles.labelCaps}>
-                  Host address
+                <label htmlFor="conn-name" className={styles.labelCaps}>
+                  Connection name
                 </label>
                 <TextInput
-                  id="conn-host"
+                  id="conn-name"
                   type="text"
                   variant="mono"
-                  invalid={!!errors.host}
-                  value={formData.host}
-                  onChange={(e) => updateField('host', e.target.value)}
-                  placeholder="localhost"
+                  invalid={!!errors.name}
+                  value={formData.name}
+                  onChange={(e) => updateField('name', e.target.value)}
+                  placeholder="My production server"
+                  autoFocus
                 />
-                {errors.host && <span className={styles.errorText}>{errors.host}</span>}
+                {errors.name && <span className={styles.errorText}>{errors.name}</span>}
               </div>
-              <div className={styles.fieldGroup}>
-                <label htmlFor="conn-port" className={styles.labelCaps}>
-                  Port
-                </label>
-                <TextInput
-                  id="conn-port"
-                  type="number"
-                  variant="mono"
-                  invalid={!!errors.port}
-                  value={formData.port}
-                  onChange={(e) => updateField('port', parseInt(e.target.value, 10) || 0)}
-                  min={1}
-                  max={65535}
-                  placeholder="3306"
-                />
-                {errors.port && <span className={styles.errorText}>{errors.port}</span>}
-              </div>
-            </div>
 
-            <div className={styles.rowUserPass}>
-              <div className={styles.fieldGroup}>
-                <label htmlFor="conn-username" className={styles.labelCaps}>
-                  Username
-                </label>
-                <TextInput
-                  id="conn-username"
-                  type="text"
-                  variant="mono"
-                  invalid={!!errors.username}
-                  value={formData.username}
-                  onChange={(e) => updateField('username', e.target.value)}
-                  placeholder="root"
-                />
-                {errors.username && <span className={styles.errorText}>{errors.username}</span>}
-              </div>
-              <div className={styles.fieldGroup}>
-                <label htmlFor="conn-password" className={styles.labelCaps}>
-                  Password
-                </label>
-                <div className={styles.passwordWrapper}>
-                  <TextInput
-                    id="conn-password"
-                    type={showPassword ? 'text' : 'password'}
-                    variant="mono"
-                    passwordToggleGutter
-                    value={formData.password}
-                    onChange={(e) => {
-                      updateField('password', e.target.value)
-                      if (clearSavedPassword) {
-                        setClearSavedPassword(false)
-                      }
-                    }}
-                    placeholder={hasSavedPassword && !clearSavedPassword ? '••••••••' : ''}
-                    disabled={clearSavedPassword}
-                  />
-                  <button
-                    type="button"
-                    className={styles.passwordToggle}
-                    onClick={() => setShowPassword((prev) => !prev)}
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-                {hasSavedPassword && (
-                  <label className={styles.label}>
-                    <Checkbox
-                      checked={clearSavedPassword}
-                      onChange={(e) => {
-                        const checked = e.target.checked
-                        setClearSavedPassword(checked)
-                        if (checked && formData.password) {
-                          updateField('password', '')
-                        }
-                      }}
-                    />{' '}
-                    Use no password (remove saved password)
-                  </label>
-                )}
-              </div>
-            </div>
-
-            <div className={styles.detailsAdvancedBlock}>
               <div className={styles.row2}>
                 <div className={styles.fieldGroup}>
-                  <label htmlFor="conn-database" className={styles.label}>
-                    Default Database
+                  <label htmlFor="conn-host" className={styles.labelCaps}>
+                    Host address
                   </label>
                   <TextInput
-                    id="conn-database"
+                    id="conn-host"
                     type="text"
                     variant="mono"
-                    value={formData.defaultDatabase ?? ''}
-                    onChange={(e) => updateField('defaultDatabase', e.target.value || null)}
-                    placeholder="mydb"
+                    invalid={!!errors.host}
+                    value={formData.host}
+                    onChange={(e) => updateField('host', e.target.value)}
+                    placeholder="localhost"
                   />
+                  {errors.host && <span className={styles.errorText}>{errors.host}</span>}
                 </div>
                 <div className={styles.fieldGroup}>
-                  <label id="conn-group-label" htmlFor="conn-group" className={styles.label}>
-                    Group
+                  <label htmlFor="conn-port" className={styles.labelCaps}>
+                    Port
                   </label>
-                  <Dropdown
-                    id="conn-group"
-                    labelledBy="conn-group-label"
-                    options={groupDropdownOptions}
-                    value={formData.groupId ?? ''}
-                    onChange={(v) => updateField('groupId', v || null)}
+                  <TextInput
+                    id="conn-port"
+                    type="number"
+                    variant="mono"
+                    invalid={!!errors.port}
+                    value={formData.port}
+                    onChange={(e) => updateField('port', parseInt(e.target.value, 10) || 0)}
+                    min={1}
+                    max={65535}
+                    placeholder="3306"
                   />
+                  {errors.port && <span className={styles.errorText}>{errors.port}</span>}
                 </div>
               </div>
 
-              <div className={styles.toggleRow}>
-                <label htmlFor="read-only" className={styles.label}>
-                  Read Only
-                </label>
-                <Checkbox
-                  id="read-only"
-                  checked={formData.readOnly}
-                  onChange={(e) => updateField('readOnly', e.target.checked)}
-                />
-              </div>
-
-              <div className={styles.rowTimeouts}>
+              <div className={styles.rowUserPass}>
                 <div className={styles.fieldGroup}>
-                  <label htmlFor="connect-timeout" className={styles.label}>
-                    Connect Timeout
+                  <label htmlFor="conn-username" className={styles.labelCaps}>
+                    Username
                   </label>
-                  <div className={styles.numberInputRow}>
+                  <TextInput
+                    id="conn-username"
+                    type="text"
+                    variant="mono"
+                    invalid={!!errors.username}
+                    value={formData.username}
+                    onChange={(e) => updateField('username', e.target.value)}
+                    placeholder="root"
+                  />
+                  {errors.username && <span className={styles.errorText}>{errors.username}</span>}
+                </div>
+                <div className={styles.fieldGroup}>
+                  <label htmlFor="conn-password" className={styles.labelCaps}>
+                    Password
+                  </label>
+                  <div className={styles.passwordWrapper}>
                     <TextInput
-                      id="connect-timeout"
-                      type="number"
+                      id="conn-password"
+                      type={showPassword ? 'text' : 'password'}
                       variant="mono"
-                      className={styles.numberField}
-                      invalid={!!errors.connectTimeoutSecs}
-                      value={formData.connectTimeoutSecs}
-                      onChange={(e) =>
-                        updateField('connectTimeoutSecs', parseInt(e.target.value, 10) || 10)
-                      }
-                      min={1}
-                      max={300}
+                      passwordToggleGutter
+                      value={formData.password}
+                      onChange={(e) => {
+                        updateField('password', e.target.value)
+                        if (clearSavedPassword) {
+                          setClearSavedPassword(false)
+                        }
+                      }}
+                      placeholder={hasSavedPassword && !clearSavedPassword ? '••••••••' : ''}
+                      disabled={clearSavedPassword}
                     />
-                    <span className={styles.unitLabel}>seconds</span>
+                    <button
+                      type="button"
+                      className={styles.passwordToggle}
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
+                    </button>
                   </div>
-                  {errors.connectTimeoutSecs && (
-                    <span className={styles.errorText}>{errors.connectTimeoutSecs}</span>
+                  {hasSavedPassword && (
+                    <label className={styles.label}>
+                      <Checkbox
+                        checked={clearSavedPassword}
+                        onChange={(e) => {
+                          const checked = e.target.checked
+                          setClearSavedPassword(checked)
+                          if (checked && formData.password) {
+                            updateField('password', '')
+                          }
+                        }}
+                      />{' '}
+                      Use no password (remove saved password)
+                    </label>
                   )}
                 </div>
-                <div className={styles.fieldGroup}>
-                  <label htmlFor="keepalive" className={styles.label}>
-                    Keepalive Interval
-                  </label>
-                  <div className={styles.numberInputRow}>
-                    <TextInput
-                      id="keepalive"
-                      type="number"
-                      variant="mono"
-                      className={styles.numberField}
-                      invalid={!!errors.keepaliveIntervalSecs}
-                      value={formData.keepaliveIntervalSecs}
-                      onChange={(e) =>
-                        updateField('keepaliveIntervalSecs', parseInt(e.target.value, 10) || 60)
-                      }
-                      min={0}
-                      max={3600}
-                    />
-                    <span className={styles.unitLabel}>seconds</span>
-                  </div>
-                  {errors.keepaliveIntervalSecs && (
-                    <span className={styles.errorText}>{errors.keepaliveIntervalSecs}</span>
-                  )}
-                </div>
               </div>
-            </div>
 
-            <div className={styles.sslTabRow}>
-              <div className={styles.sslBlock}>
-                <div className={styles.sslCheckboxWrap}>
+              <div className={styles.detailsAdvancedBlock}>
+                <div className={styles.row2}>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="conn-database" className={styles.label}>
+                      Default Database
+                    </label>
+                    <TextInput
+                      id="conn-database"
+                      type="text"
+                      variant="mono"
+                      value={formData.defaultDatabase ?? ''}
+                      onChange={(e) => updateField('defaultDatabase', e.target.value || null)}
+                      placeholder="mydb"
+                    />
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label id="conn-group-label" htmlFor="conn-group" className={styles.label}>
+                      Group
+                    </label>
+                    <Dropdown
+                      id="conn-group"
+                      labelledBy="conn-group-label"
+                      options={groupDropdownOptions}
+                      value={formData.groupId ?? ''}
+                      onChange={(v) => updateField('groupId', v || null)}
+                    />
+                  </div>
+                </div>
+
+                <div className={styles.toggleRow}>
+                  <label htmlFor="read-only" className={styles.label}>
+                    Read Only
+                  </label>
                   <Checkbox
-                    id="ssl-enabled"
-                    checked={formData.sslEnabled}
-                    onChange={(e) => updateField('sslEnabled', e.target.checked)}
-                    aria-label="Use SSL / TLS"
+                    id="read-only"
+                    checked={formData.readOnly}
+                    onChange={(e) => updateField('readOnly', e.target.checked)}
                   />
                 </div>
-                <div className={styles.sslCopy}>
-                  <span className={styles.sslTitle}>Use SSL / TLS</span>
-                  <span className={styles.sslHint}>
-                    Required for AWS RDS and many managed clusters.
-                  </span>
+
+                <div className={styles.rowTimeouts}>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="connect-timeout" className={styles.label}>
+                      Connect Timeout
+                    </label>
+                    <div className={styles.numberInputRow}>
+                      <TextInput
+                        id="connect-timeout"
+                        type="number"
+                        variant="mono"
+                        className={styles.numberField}
+                        invalid={!!errors.connectTimeoutSecs}
+                        value={formData.connectTimeoutSecs}
+                        onChange={(e) =>
+                          updateField('connectTimeoutSecs', parseInt(e.target.value, 10) || 10)
+                        }
+                        min={1}
+                        max={300}
+                      />
+                      <span className={styles.unitLabel}>seconds</span>
+                    </div>
+                    {errors.connectTimeoutSecs && (
+                      <span className={styles.errorText}>{errors.connectTimeoutSecs}</span>
+                    )}
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <label htmlFor="keepalive" className={styles.label}>
+                      Keepalive Interval
+                    </label>
+                    <div className={styles.numberInputRow}>
+                      <TextInput
+                        id="keepalive"
+                        type="number"
+                        variant="mono"
+                        className={styles.numberField}
+                        invalid={!!errors.keepaliveIntervalSecs}
+                        value={formData.keepaliveIntervalSecs}
+                        onChange={(e) =>
+                          updateField('keepaliveIntervalSecs', parseInt(e.target.value, 10) || 60)
+                        }
+                        min={0}
+                        max={3600}
+                      />
+                      <span className={styles.unitLabel}>seconds</span>
+                    </div>
+                    {errors.keepaliveIntervalSecs && (
+                      <span className={styles.errorText}>{errors.keepaliveIntervalSecs}</span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className={styles.tabColorBlock}>
-                <span className={styles.labelCaps}>Tab color</span>
-                <div className={styles.tabColorPickerShell}>
-                  <ColorPickerPopover
-                    color={formData.color}
-                    onChange={(color) => updateField('color', color)}
-                  />
+
+              <div className={styles.sslTabRow}>
+                <div className={styles.sslBlock}>
+                  <div className={styles.sslCheckboxWrap}>
+                    <Checkbox
+                      id="ssl-enabled"
+                      checked={formData.sslEnabled}
+                      onChange={(e) => updateField('sslEnabled', e.target.checked)}
+                      aria-label="Use SSL / TLS"
+                    />
+                  </div>
+                  <div className={styles.sslCopy}>
+                    <span className={styles.sslTitle}>Use SSL / TLS</span>
+                    <span className={styles.sslHint}>
+                      Required for AWS RDS and many managed clusters.
+                    </span>
+                  </div>
                 </div>
+                <div className={styles.tabColorBlock}>
+                  <span className={styles.labelCaps}>Tab color</span>
+                  <div className={styles.tabColorPickerShell}>
+                    <ColorPickerPopover
+                      color={formData.color}
+                      onChange={(color) => updateField('color', color)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className={styles.moreSections}>
+                <CollapsibleSection
+                  title="SSL certificate files"
+                  sectionTestId="ssl-certificate-section"
+                >
+                  <div className={styles.sectionContent}>
+                    <SslFileField
+                      id="ssl-ca"
+                      label="CA Certificate"
+                      value={formData.sslCaPath ?? ''}
+                      onChange={(val) => updateField('sslCaPath', val || null)}
+                      onBrowse={() => void handleBrowseFile('sslCaPath')}
+                      disabled={!formData.sslEnabled}
+                      browseLabel="Browse CA certificate"
+                      placeholder="/path/to/ca.pem"
+                    />
+                    <SslFileField
+                      id="ssl-cert"
+                      label="Client Certificate"
+                      value={formData.sslCertPath ?? ''}
+                      onChange={(val) => updateField('sslCertPath', val || null)}
+                      onBrowse={() => void handleBrowseFile('sslCertPath')}
+                      disabled={!formData.sslEnabled}
+                      browseLabel="Browse client certificate"
+                      placeholder="/path/to/client-cert.pem"
+                    />
+                    <SslFileField
+                      id="ssl-key"
+                      label="Client Key"
+                      value={formData.sslKeyPath ?? ''}
+                      onChange={(val) => updateField('sslKeyPath', val || null)}
+                      onBrowse={() => void handleBrowseFile('sslKeyPath')}
+                      disabled={!formData.sslEnabled}
+                      browseLabel="Browse client key"
+                      placeholder="/path/to/client-key.pem"
+                    />
+                  </div>
+                </CollapsibleSection>
               </div>
             </div>
 
-            <div className={styles.moreSections}>
-              <CollapsibleSection
-                title="SSL certificate files"
-                sectionTestId="ssl-certificate-section"
-              >
-                <div className={styles.sectionContent}>
-                  <SslFileField
-                    id="ssl-ca"
-                    label="CA Certificate"
-                    value={formData.sslCaPath ?? ''}
-                    onChange={(val) => updateField('sslCaPath', val || null)}
-                    onBrowse={() => void handleBrowseFile('sslCaPath')}
-                    disabled={!formData.sslEnabled}
-                    browseLabel="Browse CA certificate"
-                    placeholder="/path/to/ca.pem"
-                  />
-                  <SslFileField
-                    id="ssl-cert"
-                    label="Client Certificate"
-                    value={formData.sslCertPath ?? ''}
-                    onChange={(val) => updateField('sslCertPath', val || null)}
-                    onBrowse={() => void handleBrowseFile('sslCertPath')}
-                    disabled={!formData.sslEnabled}
-                    browseLabel="Browse client certificate"
-                    placeholder="/path/to/client-cert.pem"
-                  />
-                  <SslFileField
-                    id="ssl-key"
-                    label="Client Key"
-                    value={formData.sslKeyPath ?? ''}
-                    onChange={(val) => updateField('sslKeyPath', val || null)}
-                    onBrowse={() => void handleBrowseFile('sslKeyPath')}
-                    disabled={!formData.sslEnabled}
-                    browseLabel="Browse client key"
-                    placeholder="/path/to/client-key.pem"
-                  />
-                </div>
-              </CollapsibleSection>
+            <div className={styles.testResultSlot}>
+              <TestConnectionResult result={testResult} />
             </div>
-          </div>
-
-          <div className={styles.testResultSlot}>
-            <TestConnectionResult result={testResult} />
-          </div>
-        </form>
+          </form>
+        </ElevatedSurface>
       </div>
 
       <footer className={styles.formFooter}>

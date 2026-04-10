@@ -151,7 +151,7 @@
   --ui-dialog-title-size: var(--type-dialog-title);
   --ui-dialog-title-weight: 600;
 
-  --ui-dialog-sidebar-bg: var(--surface-container-low);
+  --ui-dialog-sidebar-bg: var(--status-bar-surface);
   --ui-dialog-sidebar-border-right: 1px solid rgba(var(--outline-variant-rgb), 0.22);
 
   --ui-close-button-border: 1px solid rgba(var(--outline-variant-rgb), 0.35);
@@ -160,8 +160,8 @@
   --ui-close-button-hover-bg: rgba(var(--primary-rgb), 0.08);
   --ui-close-button-hover-border-color: rgba(var(--primary-rgb), 0.55);
 
-  --ui-form-main-bg: var(--surface-container);
-  --ui-form-footer-bg: var(--surface-container-low);
+  --ui-form-main-bg: var(--surface-container-lowest);
+  --ui-form-footer-bg: var(--status-bar-surface);
   --ui-form-footer-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.22);
 
   --ui-section-divider-border: 1px solid rgba(var(--outline-variant-rgb), 0.15);
@@ -491,7 +491,7 @@
   --ui-dialog-title-size: var(--type-dialog-title);
   --ui-dialog-title-weight: 700;
 
-  --ui-dialog-sidebar-bg: var(--surface-container-low);
+  --ui-dialog-sidebar-bg: var(--status-bar-surface);
   --ui-dialog-sidebar-border-right: 1px solid rgba(var(--outline-variant-rgb), 0.25);
 
   --ui-close-button-border: 1px solid transparent;
@@ -500,8 +500,8 @@
   --ui-close-button-hover-bg: transparent;
   --ui-close-button-hover-border-color: transparent;
 
-  --ui-form-main-bg: var(--surface-container-lowest);
-  --ui-form-footer-bg: var(--surface-container-low);
+  --ui-form-main-bg: var(--surface-container-low);
+  --ui-form-footer-bg: var(--status-bar-surface);
   --ui-form-footer-border-top: 1px solid rgba(var(--outline-variant-rgb), 0.22);
 
   --ui-section-divider-border: 1px solid rgba(var(--outline-variant-rgb), 0.12);

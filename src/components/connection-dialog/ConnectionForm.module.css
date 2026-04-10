@@ -9,12 +9,16 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: clamp(12px, 2.8vmin, 44px) clamp(14px, min(5vw, 5vh), 56px);
+  padding: 40px;
   background: var(--ui-form-main-bg);
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--outline-variant-rgb), 0.4) transparent;
 }
 
+.formCard {
+  /* Visual card — ElevatedSurface supplies bg, shadow, border-radius */
+  /* overflow: visible so fixed-position dropdowns and popovers escape the card */
+}
 .formMain::-webkit-scrollbar {
   width: 8px;
 }
@@ -37,6 +41,7 @@
   max-width: min(60rem, 96%);
   margin-left: auto;
   margin-right: auto;
+  padding: clamp(12px, 2.8vmin, 44px) clamp(14px, min(5vw, 5vh), 56px);
   box-sizing: border-box;
 }
 
