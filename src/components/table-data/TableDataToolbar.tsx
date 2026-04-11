@@ -10,17 +10,19 @@
  */
 
 import { useCallback, useMemo, useState } from 'react'
-import { Plus, Trash, FloppyDisk, ArrowCounterClockwise, Funnel } from '@phosphor-icons/react'
+import { Plus, Trash, FloppyDisk, ArrowCounterClockwise } from '@phosphor-icons/react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
+import { buildInitialConditionsFromCell } from '../../lib/filter-utils'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { FilterDialog } from '../dialogs/FilterDialog'
 import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
 import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
 import { ExportButton } from '../shared/toolbar/ExportButton'
 import { StatusArea } from '../shared/toolbar/StatusArea'
+import { FilterToolbarButton } from '../shared/FilterToolbarButton'
 import type { ViewMode } from '../../types/shared-data-view'
 import type { FilterCondition } from '../../types/schema'
 import styles from './TableDataToolbar.module.css'
@@ -62,6 +64,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const selectedRowKey = tabState?.selectedRowKey ?? null
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
   const filterModel: FilterCondition[] = tabState?.filterModel ?? []
+  const selectedCell = tabState?.selectedCell ?? null
 
   const showError = useToastStore((s) => s.showError)
   const showSuccess = useToastStore((s) => s.showSuccess)
@@ -90,6 +93,8 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   // --- Delete confirmation state ---
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  // --- Clear filter confirmation state ---
 
   // --- Handlers ---
 
@@ -195,6 +200,11 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
     }
   }, [currentPage, totalPages, withNavigationGuard, fetchPage, tabId])
 
+  const filterDialogInitialConditions: FilterCondition[] = useMemo(
+    () => buildInitialConditionsFromCell(selectedCell, filterModel),
+    [filterModel, selectedCell]
+  )
+
   const handleFilterApply = useCallback(
     (conditions: FilterCondition[]) => {
       withNavigationGuard(() => {
@@ -204,6 +214,13 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
     },
     [withNavigationGuard, applyFilters, tabId]
   )
+
+  const handleClearFilter = useCallback(() => {
+    withNavigationGuard(() => {
+      applyFilters(tabId, [])
+      showSuccess('Filters cleared')
+    })
+  }, [withNavigationGuard, applyFilters, tabId, showSuccess])
 
   const canDelete = !isMutationDisabled && selectedRowKey !== null && !selectedIsNewRow
 
@@ -309,26 +326,13 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
       {/* Right section: Filter + View mode + Export + Pagination */}
       <div className={styles.rightSection}>
         {/* Filter button */}
-        <div
-          className={`${styles.filterButtonWrapper} ${filterModel.length > 0 ? styles.filterButtonActive : ''}`}
-        >
-          <button
-            type="button"
-            className={styles.toolbarButton}
-            onClick={() => setIsFilterDialogOpen(true)}
-            disabled={columns.length === 0}
-            title="Filter"
-            data-testid="btn-filter"
-          >
-            <Funnel size={16} weight={filterModel.length > 0 ? 'fill' : 'regular'} />
-            <span>Filter</span>
-          </button>
-          {filterModel.length > 0 && (
-            <span className={styles.filterBadge} data-testid="filter-badge">
-              {filterModel.length}
-            </span>
-          )}
-        </div>
+        <FilterToolbarButton
+          isActive={filterModel.length > 0}
+          activeCount={filterModel.length}
+          onFilterClick={() => setIsFilterDialogOpen(true)}
+          onClearClick={handleClearFilter}
+          isDisabled={columns.length === 0}
+        />
 
         {/* Divider */}
         <div className={styles.divider} />
@@ -370,7 +374,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
       {/* Filter Dialog */}
       <FilterDialog
         isOpen={isFilterDialogOpen}
-        initialConditions={filterModel}
+        initialConditions={filterDialogInitialConditions}
         columns={columns.map((c) => c.name)}
         onApply={handleFilterApply}
         onCancel={() => setIsFilterDialogOpen(false)}

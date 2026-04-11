@@ -158,6 +158,7 @@ function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabS
     editState: null,
     viewMode: 'form',
     selectedRowKey: { id: 1 },
+    selectedCell: null,
     filterModel: [],
     sort: null,
     isLoading: false,

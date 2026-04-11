@@ -16,6 +16,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Play, CheckCircle } from '@phosphor-icons/react'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
+import { useToastStore } from '../../stores/toast-store'
 import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
 import { FkLookupDialog } from '../table-data/FkLookupDialog'
 import { ResultSubTabs } from './ResultSubTabs'
@@ -25,9 +26,16 @@ import { ResultFormView } from './ResultFormView'
 import { ResultTextView } from './ResultTextView'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
 import ExportDialog from '../dialogs/ExportDialog'
-import type { ColumnMeta, ForeignKeyColumnInfo, TableDataColumnMeta } from '../../types/schema'
+import { FilterDialog } from '../dialogs/FilterDialog'
+import type {
+  ColumnMeta,
+  FilterCondition,
+  ForeignKeyColumnInfo,
+  TableDataColumnMeta,
+} from '../../types/schema'
 import { colIndexFromKey } from '../../lib/col-key-utils'
 import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
+import { buildInitialConditionsFromCell } from '../../lib/filter-utils'
 import styles from './ResultPanel.module.css'
 
 interface ResultPanelProps {
@@ -54,6 +62,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const cancelNavigation = useQueryStore((s) => s.cancelNavigation)
   const discardCurrentRow = useQueryStore((s) => s.discardCurrentRow)
   const closeExportDialog = useQueryStore((s) => s.closeExportDialog)
+  const applyQueryFilters = useQueryStore((s) => s.applyQueryFilters)
 
   const tabStatus = tabState?.status ?? 'idle'
   const results = tabState?.results ?? []
@@ -86,6 +95,14 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
 
   // Tab-level pending navigation
   const pendingNavigationAction = tabState?.pendingNavigationAction ?? null
+
+  // Filter state
+  const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
+  const filterModel: FilterCondition[] = activeResult.filterModel ?? []
+  const filterColumns = useMemo(() => columns.map((c) => c.name), [columns])
+  const selectedCell = activeResult?.selectedCell ?? null
+
+  const showSuccess = useToastStore((s) => s.showSuccess)
 
   // Wrap sort handler with navigation action guard (handles pending edits)
   const handleSortChanged = useCallback(
@@ -172,6 +189,27 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const handleFormDiscard = useCallback(() => {
     discardCurrentRow(tabId)
   }, [discardCurrentRow, tabId])
+
+  const filterDialogInitialConditions: FilterCondition[] = useMemo(
+    () => buildInitialConditionsFromCell(selectedCell, filterModel),
+    [filterModel, selectedCell]
+  )
+
+  const handleFilterApply = useCallback(
+    (conditions: FilterCondition[]) => {
+      setIsFilterDialogOpen(false)
+      applyQueryFilters(tabId, activeResultIndex, conditions)
+    },
+    [tabId, activeResultIndex, applyQueryFilters]
+  )
+
+  const handleClearFilter = useCallback(() => {
+    applyQueryFilters(tabId, activeResultIndex, [])
+    showSuccess('Filters cleared')
+  }, [tabId, activeResultIndex, applyQueryFilters, showSuccess])
+
+  // Determine if editing is active (used to disable filter buttons)
+  const isEditingActive = activeResult?.editState !== null && activeResult?.editState !== undefined
 
   const [fkLookupOpen, setFkLookupOpen] = useState(false)
   const [fkLookupContext, setFkLookupContext] = useState<{
@@ -319,7 +357,14 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
             }
             className={styles.tabPanel}
           >
-            <ResultToolbar tabId={tabId} connectionId={connectionId} />
+            <ResultToolbar
+              tabId={tabId}
+              connectionId={connectionId}
+              filterModel={filterModel}
+              onFilterClick={() => setIsFilterDialogOpen(true)}
+              onClearFilterClick={handleClearFilter}
+              isEditingActive={isEditingActive}
+            />
             {columns.length > 0 ? (
               <FkLookupProvider onFkLookup={handleFkLookup}>
                 {viewMode === 'grid' && (
@@ -393,7 +438,14 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
             }
             className={styles.tabPanel}
           >
-            <ResultToolbar tabId={tabId} connectionId={connectionId} />
+            <ResultToolbar
+              tabId={tabId}
+              connectionId={connectionId}
+              filterModel={filterModel}
+              onFilterClick={() => setIsFilterDialogOpen(true)}
+              onClearFilterClick={handleClearFilter}
+              isEditingActive={isEditingActive}
+            />
             <div className={styles.errorBody}>
               <span className={styles.errorMessage}>{activeResult.errorMessage}</span>
             </div>
@@ -411,6 +463,14 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
           onClose={() => closeExportDialog(tabId)}
         />
       )}
+
+      <FilterDialog
+        isOpen={isFilterDialogOpen}
+        initialConditions={filterDialogInitialConditions}
+        columns={filterColumns}
+        onApply={handleFilterApply}
+        onCancel={() => setIsFilterDialogOpen(false)}
+      />
 
       {pendingNavigationAction !== null && (
         <UnsavedChangesDialog

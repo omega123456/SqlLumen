@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { UnsavedChangesDialog } from '../../../components/shared/UnsavedChangesDialog'
+import { UnsavedChangesDialog as ReExportedDialog } from '../../../components/table-data/UnsavedChangesDialog'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -92,5 +93,11 @@ describe('UnsavedChangesDialog', () => {
     expect(screen.getByTestId('btn-cancel-changes')).toBeInTheDocument()
     // The dialog-panel testid is set by DialogShell as `${testId}-panel`
     expect(screen.getByTestId('unsaved-changes-dialog-panel')).toBeInTheDocument()
+  })
+
+  it('re-export from table-data path renders identically', () => {
+    render(<ReExportedDialog {...defaultProps} />)
+    expect(screen.getByTestId('unsaved-changes-dialog')).toBeInTheDocument()
+    expect(screen.getByText('Unsaved Changes')).toBeInTheDocument()
   })
 })

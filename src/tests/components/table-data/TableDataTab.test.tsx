@@ -169,6 +169,7 @@ function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabS
     editState: null,
     viewMode: 'grid',
     selectedRowKey: null,
+    selectedCell: null,
     filterModel: [],
     sort: null,
     isLoading: false,

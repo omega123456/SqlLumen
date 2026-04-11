@@ -35,7 +35,15 @@ describe('ResultToolbar', () => {
       totalRows: 10,
       columns: [{ name: 'id', dataType: 'INT' }],
     })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
   })
 
@@ -49,7 +57,15 @@ describe('ResultToolbar', () => {
         { name: 'email', dataType: 'VARCHAR' },
       ],
     })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.getByText('42 Rows')).toBeInTheDocument()
   })
 
@@ -58,7 +74,15 @@ describe('ResultToolbar', () => {
       status: 'error',
       errorMessage: "Table 'users' doesn't exist",
     })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.getByText("Table 'users' doesn't exist")).toBeInTheDocument()
   })
 
@@ -69,7 +93,15 @@ describe('ResultToolbar', () => {
       autoLimitApplied: true,
       columns: [{ name: 'id', dataType: 'INT' }],
     })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.getByText('(1000 row limit applied)')).toBeInTheDocument()
   })
 
@@ -80,7 +112,15 @@ describe('ResultToolbar', () => {
       autoLimitApplied: false,
       columns: [{ name: 'id', dataType: 'INT' }],
     })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.queryByText('(1000 row limit applied)')).not.toBeInTheDocument()
   })
 
@@ -89,7 +129,15 @@ describe('ResultToolbar', () => {
       status: 'success',
       columns: [{ name: 'id', dataType: 'INT' }],
     })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.queryByLabelText('Previous page')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Next page')).not.toBeInTheDocument()
     expect(screen.queryByTestId('page-size-select')).not.toBeInTheDocument()
@@ -101,7 +149,15 @@ describe('ResultToolbar', () => {
       executionTimeMs: 42,
       columns: [{ name: 'id', dataType: 'INT' }],
     })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.getByText('(42ms)')).toBeInTheDocument()
   })
 
@@ -111,7 +167,15 @@ describe('ResultToolbar', () => {
       status: 'error',
       errorMessage: longError,
     })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     const displayed = screen.getByText(/^A+/)
     expect(displayed.textContent!.length).toBeLessThanOrEqual(201) // 200 + ellipsis char
   })
@@ -123,7 +187,15 @@ describe('ResultToolbar', () => {
       affectedRows: 5,
       columns: [],
     })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     // Shared StatusArea shows "{N} Rows" when totalRows is provided
     expect(screen.getByText('5 Rows')).toBeInTheDocument()
   })
@@ -135,7 +207,15 @@ describe('ResultToolbar', () => {
       affectedRows: 0,
       columns: [],
     })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     // Shared StatusArea shows "Success" when no totalRows
     expect(screen.getByText('Success')).toBeInTheDocument()
   })
@@ -144,7 +224,15 @@ describe('ResultToolbar', () => {
 
   it('renders view mode toggle buttons', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.getByTestId('view-mode-grid')).toBeInTheDocument()
     expect(screen.getByTestId('view-mode-form')).toBeInTheDocument()
     expect(screen.getByTestId('view-mode-text')).toBeInTheDocument()
@@ -152,14 +240,30 @@ describe('ResultToolbar', () => {
 
   it('sets view mode to form when form button clicked', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     fireEvent.click(screen.getByTestId('view-mode-form'))
     expect(flat(tabId).viewMode).toBe('form')
   })
 
   it('sets view mode to text when text button clicked', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     fireEvent.click(screen.getByTestId('view-mode-text'))
     expect(flat(tabId).viewMode).toBe('text')
   })
@@ -168,26 +272,58 @@ describe('ResultToolbar', () => {
 
   it('renders export button', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.getByTestId('export-button')).toBeInTheDocument()
     expect(screen.getByText('Export')).toBeInTheDocument()
   })
 
   it('export button is enabled when results exist', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.getByTestId('export-button')).not.toBeDisabled()
   })
 
   it('export button is disabled when no results (idle)', () => {
     setupTabState(tabId, { status: 'idle' })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.getByTestId('export-button')).toBeDisabled()
   })
 
   it('opens export dialog when export button clicked', () => {
     setupTabState(tabId, { status: 'success', columns: [{ name: 'id', dataType: 'INT' }] })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     fireEvent.click(screen.getByTestId('export-button'))
     expect(flat(tabId).exportDialogOpen).toBe(true)
   })
@@ -199,7 +335,15 @@ describe('ResultToolbar', () => {
       status: 'success',
       columns: [{ name: 'id', dataType: 'INT' }],
     })
-    render(<ResultToolbar tabId={tabId} connectionId={connectionId} />)
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+      />
+    )
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('view-mode-grid')).toBeInTheDocument()
     expect(screen.getByTestId('view-mode-form')).toBeInTheDocument()

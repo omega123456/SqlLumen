@@ -98,4 +98,23 @@ describe('HistoryDetailPanel', () => {
 
     expect(screen.getByText('2.5s')).toBeInTheDocument()
   })
+
+  it('Copy SQL button copies the SQL text to clipboard', async () => {
+    const user = userEvent.setup()
+    const writeTextMock = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText: writeTextMock } })
+
+    const entry = makeHistoryEntry({ sqlText: 'SELECT 1' })
+    render(<HistoryDetailPanel entry={entry} onOpenInEditor={vi.fn()} />)
+
+    await user.click(screen.getByTestId('history-copy-sql'))
+    expect(writeTextMock).toHaveBeenCalledWith('SELECT 1')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('Copy SQL button does nothing when entry is null', () => {
+    render(<HistoryDetailPanel entry={null} onOpenInEditor={vi.fn()} />)
+    expect(screen.queryByTestId('history-copy-sql')).not.toBeInTheDocument()
+  })
 })

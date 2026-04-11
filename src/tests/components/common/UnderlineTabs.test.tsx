@@ -87,6 +87,47 @@ describe('UnderlineTabs', () => {
     expect(onSelect).toHaveBeenCalledTimes(1)
   })
 
+  it('invokes onSelect via Enter and Space key on split tab label', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+
+    render(
+      <UnderlineTabBar>
+        <UnderlineTab onSelect={onSelect} suffix={<span />}>
+          Label
+        </UnderlineTab>
+      </UnderlineTabBar>
+    )
+
+    const labelBtn = screen.getByRole('button', { name: 'Label' })
+    labelBtn.focus()
+
+    await user.keyboard('{Enter}')
+    expect(onSelect).toHaveBeenCalledTimes(1)
+
+    await user.keyboard('{ }')
+    expect(onSelect).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not invoke onSelect for non-Enter/Space keys on split tab', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+
+    render(
+      <UnderlineTabBar>
+        <UnderlineTab onSelect={onSelect} suffix={<span />}>
+          Label
+        </UnderlineTab>
+      </UnderlineTabBar>
+    )
+
+    const labelBtn = screen.getByRole('button', { name: 'Label' })
+    labelBtn.focus()
+
+    await user.keyboard('{Tab}')
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
   it('invokes onAuxClick for simple and split tab cell', () => {
     const onAuxSimple = vi.fn()
     const onAuxSplit = vi.fn()

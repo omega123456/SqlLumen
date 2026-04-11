@@ -82,6 +82,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const sortByColumn = useTableDataStore((state) => state.sortByColumn)
   const clearEditStateIfUnmodified = useTableDataStore((state) => state.clearEditStateIfUnmodified)
   const storeUpdateCellValue = useTableDataStore((state) => state.updateCellValue)
+  const setSelectedCell = useTableDataStore((state) => state.setSelectedCell)
   const showError = useToastStore((state) => state.showError)
   const showSuccess = useToastStore((state) => state.showSuccess)
 
@@ -445,8 +446,9 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         return guardResult.result!
       }
 
-      // Guard passed — NOW update selectedRowKey
+      // Guard passed — NOW update selectedRowKey and selectedCell
       setSelectedRow(tabId, targetRowKey)
+      setSelectedCell(tabId, { columnKey: args.columnKey, value: args.rowData[args.columnKey] })
 
       // Non-editable columns: stop here (selection updated, no editing needed)
       if (!editable) {
@@ -487,6 +489,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       findCurrentRowIndex,
       startEditing,
       setSelectedRow,
+      setSelectedCell,
     ]
   )
 

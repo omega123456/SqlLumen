@@ -106,6 +106,7 @@ function makeDefaultTabState(overrides: Partial<TableDataTabState> = {}): TableD
     editState: null,
     viewMode: 'grid',
     selectedRowKey: null,
+    selectedCell: null,
     filterModel: [],
     sort: null,
     isLoading: false,

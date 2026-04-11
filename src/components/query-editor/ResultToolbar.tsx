@@ -17,15 +17,28 @@ import { EditModeDropdown } from './EditModeDropdown'
 import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
 import { ExportButton } from '../shared/toolbar/ExportButton'
 import { StatusArea } from '../shared/toolbar/StatusArea'
+import { FilterToolbarButton } from '../shared/FilterToolbarButton'
 import type { ViewMode, StatusType } from '../../types/shared-data-view'
+import type { FilterCondition } from '../../types/schema'
 import styles from './ResultToolbar.module.css'
 
 interface ResultToolbarProps {
   tabId: string
   connectionId: string
+  filterModel: FilterCondition[]
+  onFilterClick: () => void
+  onClearFilterClick: () => void
+  isEditingActive?: boolean
 }
 
-export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
+export function ResultToolbar({
+  tabId,
+  connectionId,
+  filterModel,
+  onFilterClick,
+  onClearFilterClick,
+  isEditingActive = false,
+}: ResultToolbarProps) {
   const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
   const setViewMode = useQueryStore((state) => state.setViewMode)
   const openExportDialog = useQueryStore((state) => state.openExportDialog)
@@ -141,7 +154,15 @@ export function ResultToolbar({ tabId, connectionId }: ResultToolbarProps) {
         />
       </div>
 
-      {/* Center-right: Export — shared component */}
+      {/* Center-right: Filter + Export — shared component */}
+      <FilterToolbarButton
+        isActive={filterModel.length > 0}
+        activeCount={filterModel.length}
+        onFilterClick={onFilterClick}
+        onClearClick={onClearFilterClick}
+        isDisabled={columnsCount === 0 || isEditingActive}
+      />
+
       <ExportButton disabled={!hasResults} onClick={handleExport} testId="export-button" />
     </div>
   )

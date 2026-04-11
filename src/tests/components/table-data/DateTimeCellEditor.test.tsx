@@ -105,6 +105,7 @@ function setupStore() {
         },
         viewMode: 'grid',
         selectedRowKey: null,
+        selectedCell: null,
         filterModel: [],
         sort: null,
         isLoading: false,

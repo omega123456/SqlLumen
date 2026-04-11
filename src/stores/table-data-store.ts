@@ -4,6 +4,7 @@ import type {
   TableDataTabState,
   FilterCondition,
   RowEditState,
+  SelectedCellInfo,
 } from '../types/schema'
 import {
   fetchTableData as fetchTableDataCmd,
@@ -265,6 +266,7 @@ function createDefaultTabState(
     editState: null,
     viewMode: 'grid',
     selectedRowKey: null,
+    selectedCell: null,
     filterModel: [],
     sort: null,
     foreignKeys: [],
@@ -316,6 +318,7 @@ export interface TableDataStore {
 
   setViewMode: (tabId: string, mode: 'grid' | 'form') => void
   setSelectedRow: (tabId: string, rowKey: Record<string, unknown> | null) => void
+  setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => void
   setPageSize: (tabId: string, newPageSize: number) => Promise<void>
   openExportDialog: (tabId: string) => void
   closeExportDialog: (tabId: string) => void
@@ -804,6 +807,12 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     setSelectedRow: (tabId, rowKey) => {
       patchTab(tabId, { selectedRowKey: rowKey })
+    },
+
+    // ------ setSelectedCell ------
+
+    setSelectedCell: (tabId, cell) => {
+      patchTab(tabId, { selectedCell: cell })
     },
 
     // ------ setPageSize ------

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { formatTableTimestamp, formatShortDate } from '../../lib/format-utils'
 
 describe('formatTableTimestamp', () => {
@@ -20,6 +20,18 @@ describe('formatTableTimestamp', () => {
     const result = formatTableTimestamp('1970-01-01T00:00:00Z')
     expect(result).toBeTruthy()
   })
+
+  it('returns original string when Date constructor throws', () => {
+    const OrigDate = globalThis.Date
+    vi.spyOn(globalThis, 'Date').mockImplementation(() => {
+      throw new RangeError('Invalid time value')
+    })
+    try {
+      expect(formatTableTimestamp('2025-01-01T00:00:00Z')).toBe('2025-01-01T00:00:00Z')
+    } finally {
+      vi.mocked(globalThis.Date).mockRestore()
+    }
+  })
 })
 
 describe('formatShortDate', () => {
@@ -39,5 +51,16 @@ describe('formatShortDate', () => {
   it('handles ISO dates without time component', () => {
     const result = formatShortDate('2025-01-01')
     expect(result).toBeTruthy()
+  })
+
+  it('returns original string when Date constructor throws', () => {
+    vi.spyOn(globalThis, 'Date').mockImplementation(() => {
+      throw new RangeError('Invalid time value')
+    })
+    try {
+      expect(formatShortDate('bad-input')).toBe('bad-input')
+    } finally {
+      vi.mocked(globalThis.Date).mockRestore()
+    }
   })
 })

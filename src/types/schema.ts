@@ -393,6 +393,16 @@ export interface GenerateDdlResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Selected cell info (used by filter dialog auto-population)
+// ---------------------------------------------------------------------------
+
+/** Tracks which cell the user last clicked in a grid. */
+export interface SelectedCellInfo {
+  columnKey: string
+  value: unknown
+}
+
+// ---------------------------------------------------------------------------
 // Filter types
 // ---------------------------------------------------------------------------
 
@@ -460,6 +470,9 @@ export interface TableDataTabState {
   // View state
   viewMode: 'grid' | 'form'
   selectedRowKey: Record<string, unknown> | null
+
+  // Selection
+  selectedCell: SelectedCellInfo | null
 
   // Filter/sort
   filterModel: FilterCondition[]

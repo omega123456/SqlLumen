@@ -17,6 +17,7 @@ import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
 import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
 import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
+import { useQueryStore } from '../../stores/query-store'
 import type {
   GridColumnDescriptor,
   RowEditState as SharedRowEditState,
@@ -85,7 +86,7 @@ export function ResultGridView({
   onSortChanged,
   onRowSelected,
   selectedRowIndex,
-  tabId: _tabId,
+  tabId,
   editMode = null,
   editableColumnMap = EMPTY_EDITABLE_MAP,
   editState = null,
@@ -98,8 +99,9 @@ export function ResultGridView({
   onSyncCellValue,
   onAutoSave,
 }: ResultGridViewProps) {
-  void _tabId
   void _onUpdateCellValue
+
+  const storeSetSelectedCell = useQueryStore((state) => state.setSelectedCell)
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -307,6 +309,18 @@ export function ResultGridView({
       // Update selection
       onRowSelected(rowIdx)
 
+      // Track selected cell for filter auto-population
+      {
+        const ci = colIndexFromKey(columnKey)
+        const colMeta = columns[ci]
+        if (colMeta) {
+          storeSetSelectedCell(tabId, {
+            columnKey: colMeta.name,
+            value: args.rowData[columnKey],
+          })
+        }
+      }
+
       // Only start editing and enter editor for editable columns
       if (isEditable) {
         if (currentEditingRow !== rowIdx) {
@@ -318,7 +332,16 @@ export function ResultGridView({
       // Non-editable column: select but don't edit
       return { proceed: true, targetRowIdx: rowIdx, targetColIdx, enableEditor: false }
     }
-  }, [editMode, editableColumnMap, onAutoSave, onRowSelected, onStartEditing])
+  }, [
+    editMode,
+    editableColumnMap,
+    onAutoSave,
+    onRowSelected,
+    onStartEditing,
+    columns,
+    tabId,
+    storeSetSelectedCell,
+  ])
 
   // In read-only mode, we still need a simple cell click handler for row selection.
   // BaseGridView only calls onCellClickGuard; when it's undefined, RDG default behavior
@@ -326,6 +349,17 @@ export function ResultGridView({
   const readOnlyCellClickGuard = useCallback(
     async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
       onRowSelected(args.rowIdx)
+
+      // Track selected cell for filter auto-population
+      const ci = colIndexFromKey(args.columnKey)
+      const colMeta = columns[ci]
+      if (colMeta) {
+        storeSetSelectedCell(tabId, {
+          columnKey: colMeta.name,
+          value: args.rowData[args.columnKey],
+        })
+      }
+
       // Allow selectCell so the cell gets focus/selection, but don't open an editor
       const targetColIdx = colIndexFromKey(args.columnKey)
       return {
@@ -335,7 +369,7 @@ export function ResultGridView({
         enableEditor: false,
       }
     },
-    [onRowSelected]
+    [onRowSelected, columns, tabId, storeSetSelectedCell]
   )
 
   // ---------------------------------------------------------------------------

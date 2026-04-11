@@ -219,6 +219,7 @@ function setupTabState(overrides: Partial<TableDataTabState> = {}) {
     editState: null,
     viewMode: 'grid',
     selectedRowKey: null,
+    selectedCell: null,
     filterModel: [],
     sort: null,
     isLoading: false,

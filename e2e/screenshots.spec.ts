@@ -1535,6 +1535,130 @@ for (const theme of themes) {
       })
     })
 
+    // --- Filter Active / Clear Filter screenshots ---
+
+    test('result-toolbar-filter-active — query result toolbar with active filter', async ({
+      page,
+    }) => {
+      await openQueryEditorWithResults(page)
+
+      // Inject a filterModel into the active query result via the query store
+      await page.evaluate(() => {
+        const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            activeTabByConnection: Record<string, string | null>
+          }
+        }
+        const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+          getState: () => {
+            applyQueryFilters: (
+              tabId: string,
+              resultIndex: number,
+              conditions: Array<{ column: string; operator: string; value: string }>
+            ) => void
+          }
+        }
+        const activeTabId = wsStore.getState().activeTabByConnection['session-playwright-1']
+        if (!activeTabId) throw new Error('No active query tab found')
+        queryStore
+          .getState()
+          .applyQueryFilters(activeTabId, 0, [{ column: 'name', operator: '==', value: 'Alice' }])
+      })
+
+      // Wait for filter badge to appear
+      await expect(page.getByTestId('filter-badge')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('btn-clear-filter')).toBeVisible({ timeout: APP_READY_MS })
+
+      await expect(page.getByTestId('result-toolbar')).toHaveScreenshot(
+        `result-toolbar-filter-active-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('table-toolbar-filter-active — table data toolbar with active filter', async ({
+      page,
+    }) => {
+      await openTableDataTab(page)
+
+      // Apply a filter via the table data store
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
+          getState: () => {
+            applyFilters: (
+              tabId: string,
+              conditions: Array<{ column: string; operator: string; value: string }>
+            ) => Promise<void>
+          }
+        }
+        const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            activeTabByConnection: Record<string, string | null>
+            tabsByConnection: Record<string, { id: string; type: string }[]>
+          }
+        }
+        const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+        const tableTab = activeTabs.find((t) => t.type === 'table-data')
+        if (!tableTab) throw new Error('No table data tab found')
+        store
+          .getState()
+          .applyFilters(tableTab.id, [{ column: 'name', operator: '==', value: 'Alice' }])
+      })
+
+      // Wait for filter badge to appear
+      await expect(page.getByTestId('filter-badge')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('btn-clear-filter')).toBeVisible({ timeout: APP_READY_MS })
+
+      await expect(page.getByTestId('table-data-toolbar')).toHaveScreenshot(
+        `table-toolbar-filter-active-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('clear-filter-button — clears filters immediately without confirmation', async ({
+      page,
+    }) => {
+      await openQueryEditorWithResults(page)
+
+      // Inject a filterModel into the active query result
+      await page.evaluate(() => {
+        const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            activeTabByConnection: Record<string, string | null>
+          }
+        }
+        const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+          getState: () => {
+            applyQueryFilters: (
+              tabId: string,
+              resultIndex: number,
+              conditions: Array<{ column: string; operator: string; value: string }>
+            ) => void
+          }
+        }
+        const activeTabId = wsStore.getState().activeTabByConnection['session-playwright-1']
+        if (!activeTabId) throw new Error('No active query tab found')
+        queryStore
+          .getState()
+          .applyQueryFilters(activeTabId, 0, [{ column: 'name', operator: '==', value: 'Alice' }])
+      })
+
+      // Wait for clear filter button and click it — filters clear immediately
+      await expect(page.getByTestId('btn-clear-filter')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('btn-clear-filter').click()
+
+      // After clearing, the clear-filter button disappears (only shown when filters are active)
+      await expect(page.getByTestId('btn-clear-filter')).not.toBeVisible()
+
+      // Reset scroll positions for stable screenshots
+      await resetChromeScrollPositions(page)
+
+      // Screenshot of toolbar after filters have been cleared
+      await expect(page.getByTestId('result-toolbar')).toHaveScreenshot(
+        `clear-filter-result-toolbar-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     // --- Object Editor screenshots (Phase 8.6) ---
 
     test('ObjectEditorTab — alter mode (procedure DDL)', async ({ page }) => {

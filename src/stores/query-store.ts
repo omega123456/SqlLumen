@@ -1,9 +1,11 @@
 import { create } from 'zustand'
 import type {
   ColumnMeta,
+  FilterCondition,
   MultiQueryResultItem,
   QueryTableEditInfo,
   RowEditState,
+  SelectedCellInfo,
   ViewMode,
 } from '../types/schema'
 import {
@@ -149,6 +151,13 @@ export interface SingleResultState {
   reExecutable: boolean
   /** Whether edit analysis has been performed for this result. */
   isAnalyzed: boolean
+  /** Last clicked cell info (column + value) for filter dialog auto-population. */
+  selectedCell: SelectedCellInfo | null
+
+  /** Active client-side filter conditions. */
+  filterModel: FilterCondition[]
+  /** Original unfiltered rows (non-null while a filter is active). */
+  unfilteredRows: unknown[][] | null
 
   // --- Edit mode fields ---
 
@@ -226,6 +235,9 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   lastExecutedSql: null,
   reExecutable: true,
   isAnalyzed: false,
+  selectedCell: null,
+  filterModel: [],
+  unfilteredRows: null,
 
   // Edit mode defaults
   editMode: null,
@@ -311,6 +323,108 @@ export function getFlatTabState(tab: TabQueryState | undefined): FlatTabView {
 /** Build a stable composite key for edit table metadata: `database.table`. */
 function compositeTableKey(database: string, table: string): string {
   return `${database}.${table}`
+}
+
+/**
+ * Test whether a single row matches a FilterCondition.
+ *
+ * - IS NULL / IS NOT NULL: null/undefined checks
+ * - ==: string equality
+ * - >, >=, <, <=: numeric if both sides parse as numbers, otherwise string comparison
+ * - LIKE / NOT LIKE: SQL LIKE → regex (% → .*, _ → ., case-insensitive)
+ */
+function matchesFilter(row: unknown[], columns: ColumnMeta[], condition: FilterCondition): boolean {
+  const colIndex = columns.findIndex((c) => c.name === condition.column)
+  if (colIndex < 0) return true // column not found — skip condition
+  const value = row[colIndex]
+
+  switch (condition.operator) {
+    case 'IS NULL':
+      return value === null || value === undefined
+    case 'IS NOT NULL':
+      return value !== null && value !== undefined
+    case '==':
+      return String(value) === condition.value
+    case '>':
+    case '>=':
+    case '<':
+    case '<=': {
+      // Null/undefined cell values never satisfy comparison operators
+      if (value === null || value === undefined) return false
+
+      // Only use numeric comparison when both values are non-empty
+      // and parse to finite numbers. Otherwise fall back to string comparison.
+      const condNonEmpty = condition.value !== ''
+      const numVal = Number(value)
+      const numCond = condNonEmpty ? Number(condition.value) : NaN
+      if (condNonEmpty && Number.isFinite(numVal) && Number.isFinite(numCond)) {
+        switch (condition.operator) {
+          case '>':
+            return numVal > numCond
+          case '>=':
+            return numVal >= numCond
+          case '<':
+            return numVal < numCond
+          case '<=':
+            return numVal <= numCond
+        }
+      }
+      // Fall back to string comparison
+      const strVal = String(value)
+      const strCond = condition.value
+      switch (condition.operator) {
+        case '>':
+          return strVal > strCond
+        case '>=':
+          return strVal >= strCond
+        case '<':
+          return strVal < strCond
+        case '<=':
+          return strVal <= strCond
+      }
+      return false
+    }
+    case 'LIKE':
+    case 'NOT LIKE': {
+      const likePattern = condition.value
+        .split('')
+        .map((ch) => {
+          if (ch === '%') return '.*'
+          if (ch === '_') return '.'
+          // Escape regex-special characters
+          return ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        })
+        .join('')
+      const regex = new RegExp(`^${likePattern}$`, 'i')
+      const matches = regex.test(String(value))
+      return condition.operator === 'LIKE' ? matches : !matches
+    }
+  }
+}
+
+/**
+ * If the given result has an active filter, re-apply it to `newRows` and return
+ * a patch object that sets rows/unfilteredRows/currentPage/totalPages correctly.
+ * If no filter is active, returns a minimal patch with the new rows as-is.
+ */
+function reapplyFilterIfActive(
+  result: SingleResultState,
+  newRows: unknown[][],
+  columns: ColumnMeta[]
+): Partial<SingleResultState> {
+  if (result.filterModel.length === 0) {
+    return { rows: newRows, unfilteredRows: null }
+  }
+  const filteredRows = newRows.filter((row) =>
+    result.filterModel.every((cond) => matchesFilter(row, columns, cond))
+  )
+  const pageSize = result.pageSize
+  return {
+    rows: filteredRows,
+    unfilteredRows: newRows,
+    currentPage: 1,
+    totalPages: Math.max(1, Math.ceil(filteredRows.length / pageSize)),
+  }
 }
 
 function buildEditBindingContext(
@@ -441,6 +555,12 @@ interface QueryState {
 
   /** Set the selected row index. */
   setSelectedRow: (tabId: string, index: number | null) => void
+
+  /** Set the selected cell info (column + value) for filter dialog auto-population. */
+  setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => void
+
+  /** Apply client-side filter conditions to a query result. */
+  applyQueryFilters: (tabId: string, resultIndex: number, conditions: FilterCondition[]) => void
 
   /** Open the export dialog. */
   openExportDialog: (tabId: string) => void
@@ -742,11 +862,17 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     }
 
     const normalizedRows = normalizeQueryRows(reResult.columns, reResult.firstPage)
+    // Re-apply active filter if one exists on this result
+    const filterPatch = reapplyFilterIfActive(
+      postResult ?? { ...DEFAULT_RESULT_STATE },
+      normalizedRows,
+      reResult.columns
+    )
     patchResultByIndex(tabId, resultIndex, {
-      rows: normalizedRows,
+      ...filterPatch,
       columns: reResult.columns,
-      currentPage: 1,
-      totalPages: reResult.totalPages,
+      currentPage: filterPatch.currentPage ?? 1,
+      totalPages: filterPatch.totalPages ?? reResult.totalPages,
       totalRows: reResult.totalRows,
       queryId: reResult.queryId,
       executionTimeMs: reResult.executionTimeMs,
@@ -995,10 +1121,18 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         // Guard: if the tab was closed while fetching, skip the update
         if (!get().tabs[tabId]) return
 
+        // Re-apply active filter if one exists
+        const currentResultForFilter = get().tabs[tabId]?.results[resultIndex]
+        const filterPatch = reapplyFilterIfActive(
+          currentResultForFilter ?? result,
+          normalizedRows,
+          result.columns
+        )
+
         patchResultByIndex(tabId, resultIndex, {
-          rows: normalizedRows,
-          currentPage: parsed.page,
-          totalPages: parsed.totalPages,
+          ...filterPatch,
+          currentPage: filterPatch.currentPage ?? parsed.page,
+          totalPages: filterPatch.totalPages ?? parsed.totalPages,
         })
       } catch (err) {
         console.error('[query-store] fetchPage failed:', err)
@@ -1081,6 +1215,48 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       patchResultByIndex(tabId, resultIndex, { selectedRowIndex: index })
     },
 
+    setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => {
+      const resultIndex = getActiveIndex(tabId)
+      patchResultByIndex(tabId, resultIndex, { selectedCell: cell })
+    },
+
+    applyQueryFilters: (tabId: string, resultIndex: number, conditions: FilterCondition[]) => {
+      const tab = get().tabs[tabId]
+      if (!tab || resultIndex < 0 || resultIndex >= tab.results.length) return
+      const result = tab.results[resultIndex]
+
+      if (conditions.length === 0) {
+        // Clear filter — restore original rows if we have them
+        const restoredRows = result.unfilteredRows ?? result.rows
+        const pageSize = result.pageSize
+        patchResultByIndex(tabId, resultIndex, {
+          rows: restoredRows,
+          unfilteredRows: null,
+          filterModel: [],
+          currentPage: 1,
+          totalPages: Math.max(1, Math.ceil(restoredRows.length / pageSize)),
+        })
+        return
+      }
+
+      // Source rows: use unfiltered originals if available, else current rows
+      const sourceRows = result.unfilteredRows ?? result.rows
+      const columns = result.columns
+
+      const filteredRows = sourceRows.filter((row) =>
+        conditions.every((cond) => matchesFilter(row, columns, cond))
+      )
+
+      const pageSize = result.pageSize
+      patchResultByIndex(tabId, resultIndex, {
+        rows: filteredRows,
+        unfilteredRows: sourceRows,
+        filterModel: conditions,
+        currentPage: 1,
+        totalPages: Math.max(1, Math.ceil(filteredRows.length / pageSize)),
+      })
+    },
+
     openExportDialog: (tabId: string) => {
       const resultIndex = getActiveIndex(tabId)
       patchResultByIndex(tabId, resultIndex, { exportDialogOpen: true })
@@ -1154,13 +1330,21 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
               if (!get().tabs[tabId]) return
 
+              // Re-apply active filter if one exists
+              const currentResultForFilter = get().tabs[tabId]?.results[resultIndex]
+              const filterPatch = reapplyFilterIfActive(
+                currentResultForFilter ?? { ...DEFAULT_RESULT_STATE },
+                normalizedRows,
+                execResult.columns
+              )
+
               patchResultByIndex(tabId, resultIndex, {
                 sortColumn: null,
                 sortDirection: null,
-                rows: normalizedRows,
+                ...filterPatch,
                 columns: execResult.columns,
-                currentPage: 1,
-                totalPages: execResult.totalPages,
+                currentPage: filterPatch.currentPage ?? 1,
+                totalPages: filterPatch.totalPages ?? execResult.totalPages,
                 totalRows: execResult.totalRows,
                 queryId: execResult.queryId,
                 executionTimeMs: execResult.executionTimeMs,
@@ -1205,12 +1389,20 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         // Guard: if the tab was closed while sorting, skip the update
         if (!get().tabs[tabId]) return
 
+        // Re-apply active filter if one exists
+        const sortResult = get().tabs[tabId]?.results[resultIndex]
+        const filterPatch = reapplyFilterIfActive(
+          sortResult ?? { ...DEFAULT_RESULT_STATE },
+          normalizedRows,
+          currentColumns
+        )
+
         patchResultByIndex(tabId, resultIndex, {
           sortColumn: column,
           sortDirection: direction,
-          rows: normalizedRows,
-          currentPage: parsed.page,
-          totalPages: parsed.totalPages,
+          ...filterPatch,
+          currentPage: filterPatch.currentPage ?? parsed.page,
+          totalPages: filterPatch.totalPages ?? parsed.totalPages,
         })
       } catch (error) {
         console.error('[query-store] sortResults failed:', error)
