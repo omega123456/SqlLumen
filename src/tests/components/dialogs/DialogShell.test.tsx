@@ -110,6 +110,33 @@ describe('DialogShell', () => {
     })
   })
 
+  it('applies panelWidth for width and maxWidth when set', () => {
+    render(<DialogShell {...defaultProps} panelWidth="80vw" maxWidth={600} />)
+    const dialogContent = screen.getByText('Dialog content').parentElement
+    expect(dialogContent).toHaveStyle({
+      width: '80vw',
+      maxWidth: '80vw',
+    })
+  })
+
+  it('removes panel padding when panelPadding is false', () => {
+    render(<DialogShell {...defaultProps} panelPadding={false} />)
+    const panel = screen.getByTestId('test-dialog-panel')
+    expect(panel).toHaveStyle({ padding: '0px' })
+  })
+
+  it('applies panelHeight and flex layout when set', () => {
+    render(<DialogShell {...defaultProps} panelHeight="min(50vh, 560px)" />)
+    const panel = screen.getByTestId('test-dialog-panel')
+    expect(panel).toHaveStyle({
+      height: 'min(50vh, 560px)',
+      maxHeight: 'min(50vh, 560px)',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+    })
+  })
+
   it('uses elevated surface chrome on the panel', () => {
     render(<DialogShell {...defaultProps} />)
     expect(screen.getByTestId('test-dialog-panel')).toHaveClass('ui-elevated-surface')

@@ -6,6 +6,8 @@
   margin: -24px;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   border-radius: 16px;
 }
@@ -57,9 +59,10 @@
   padding: 24px;
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
   gap: 16px;
   overflow-y: auto;
-  max-height: 60vh;
 }
 
 /* ── Condition rows ─────────────────────────────────────────────────────── */
@@ -226,26 +229,4 @@
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.clearAllButton {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 12px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--on-surface-variant);
-  font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background 0.15s ease;
-}
-
-.clearAllButton:hover {
-  color: var(--error);
-  background: rgba(var(--error-rgb), 0.06);
 }

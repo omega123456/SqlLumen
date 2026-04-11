@@ -43,6 +43,10 @@ const OPERATOR_DROPDOWN_OPTIONS: DropdownOption[] = OPERATORS.map((op) => ({
   label: op,
 }))
 
+/** Viewport fraction with a hard cap so the modal stays usable on large monitors. */
+const PANEL_WIDTH = 'min(50vw, 720px)'
+const PANEL_HEIGHT = 'min(50vh, 560px)'
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -126,7 +130,8 @@ export function FilterDialog({
     <DialogShell
       isOpen={isOpen}
       onClose={onCancel}
-      maxWidth={640}
+      panelWidth={PANEL_WIDTH}
+      panelHeight={PANEL_HEIGHT}
       testId="filter-dialog"
       ariaLabel="Filter Conditions"
     >
@@ -243,14 +248,9 @@ export function FilterDialog({
         <div className={styles.footer}>
           <div className={styles.footerLeft}>
             {hasConditions && (
-              <button
-                type="button"
-                className={styles.clearAllButton}
-                onClick={handleClearAll}
-                data-testid="filter-clear-all-button"
-              >
+              <Button variant="secondary" onClick={handleClearAll} data-testid="filter-clear-all-button">
                 Clear All
-              </button>
+              </Button>
             )}
           </div>
           <div className={styles.footerRight}>

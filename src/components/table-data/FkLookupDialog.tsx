@@ -407,7 +407,8 @@ export function FkLookupDialog({
       <DialogShell
         isOpen={isOpen}
         onClose={onClose}
-        maxWidth={900}
+        panelWidth="80vw"
+        panelPadding={false}
         testId="fk-lookup-dialog"
         ariaLabel="Foreign key lookup"
         nonDismissible={isFilterDialogOpen}

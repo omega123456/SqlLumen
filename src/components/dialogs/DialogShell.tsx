@@ -7,6 +7,16 @@ export interface DialogShellProps {
   isOpen: boolean
   onClose: () => void
   maxWidth?: number
+  /**
+   * Panel width as a CSS length (e.g. `80vw` or `min(50vw, 720px)`). When set, the panel uses this
+   * width and max-width, ignoring `maxWidth` / `fillMaxWidth` for sizing.
+   */
+  panelWidth?: string
+  /**
+   * Panel height as a CSS length (e.g. `min(50vh, 560px)`). When set, the panel uses this height and
+   * max-height and lays out as a flex column so children can scroll inside.
+   */
+  panelHeight?: string
   /** When true, the panel uses the full width up to maxWidth (vs shrinking to content with fit-content). */
   fillMaxWidth?: boolean
   /** data-testid applied to the backdrop wrapper; inner surface gets `${testId}-panel` for scoped screenshots */
@@ -17,6 +27,8 @@ export interface DialogShellProps {
   disableFocusManagement?: boolean
   /** When true, ignore backdrop clicks and Escape key dismissal. */
   nonDismissible?: boolean
+  /** When false, removes the panel’s outer padding (default 24px). Other dialogs keep default padding. */
+  panelPadding?: boolean
   /** Optional class name for the dialog panel element. */
   panelClassName?: string
   children: React.ReactNode
@@ -30,11 +42,14 @@ export function DialogShell({
   isOpen,
   onClose,
   maxWidth = 420,
+  panelWidth,
+  panelHeight,
   fillMaxWidth = false,
   testId,
   ariaLabel,
   disableFocusManagement = false,
   nonDismissible = false,
+  panelPadding = true,
   panelClassName,
   children,
 }: DialogShellProps) {
@@ -61,9 +76,26 @@ export function DialogShell({
   if (!isOpen) return null
 
   const widthCap = `min(${maxWidth}px, 90vw)`
-  const dialogStyle: CSSProperties = fillMaxWidth
-    ? { width: widthCap, maxWidth: widthCap }
-    : { maxWidth: widthCap }
+  let dialogStyle: CSSProperties = panelWidth
+    ? { width: panelWidth, maxWidth: panelWidth }
+    : fillMaxWidth
+      ? { width: widthCap, maxWidth: widthCap }
+      : { maxWidth: widthCap }
+
+  if (panelHeight) {
+    dialogStyle = {
+      ...dialogStyle,
+      height: panelHeight,
+      maxHeight: panelHeight,
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+    }
+  }
+
+  if (!panelPadding) {
+    dialogStyle = { ...dialogStyle, padding: 0 }
+  }
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget && !nonDismissible) {
