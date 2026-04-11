@@ -121,7 +121,7 @@ src-tauri/
 - **Naming:** Components/types `PascalCase`; hooks `useCamelCase`; files/utilities `kebab-case`; constants `UPPER_SNAKE_CASE`.
 - **CSS:** CSS Modules (`*.module.css`). Design tokens are CSS custom properties in `src/styles/tokens.css` scoped under `[data-theme="light|dark"]`. Never hard-code colors or spacing values.
 - **State:** Zustand stores in `src/stores/`. Local state via `useState`/`useReducer`. Layout via `react-resizable-panels` v4 — sizes as strings (`"20%"`).
-- **Reuse first:** Check `src/components/common/` and `src/components/shared/` before writing new UI primitives. Introduce a new shared component only when nothing existing fits or the user explicitly requests an abstraction.
+- **Shared UI primitives over native HTML:** Reuse existing components from `src/components/common/` and `src/components/shared/` (for example `Button`, `TextInput`, `Checkbox`, `Dropdown`, `Textarea`) for fields, actions, and controls. Do **not** drop in raw `<button>`, `<input>`, `<select>`, `<textarea>`, or other native equivalents when the codebase already has a component for that role. Add a new shared primitive only when nothing existing fits or the user explicitly asks for one.
 - **react-data-grid:** Always use the shared `DataGrid` wrapper (`src/components/shared/DataGrid.tsx`). Do not reorder rows client-side when the backend owns sort order.
 
 ### Error Handling (TypeScript)
