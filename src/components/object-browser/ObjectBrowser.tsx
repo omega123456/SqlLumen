@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MagnifyingGlass } from '@phosphor-icons/react'
+import { MagnifyingGlass, X } from '@phosphor-icons/react'
 import { useSchemaStore, parseNodeId, type ConnectionTreeState } from '../../stores/schema-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -136,6 +136,19 @@ export function ObjectBrowser({
     return selectedNode.id
   }, [nodes, selectedNode])
 
+  // Clear filter when scope (selected database) changes
+  const prevScopeRootRef = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (prevScopeRootRef.current === undefined) {
+      prevScopeRootRef.current = effectiveScopeRoot
+      return
+    }
+    if (prevScopeRootRef.current !== effectiveScopeRoot) {
+      prevScopeRootRef.current = effectiveScopeRoot
+      setFilter('', connectionId)
+    }
+  }, [effectiveScopeRoot, connectionId, setFilter])
+
   const filterMatchIds = useMemo(() => {
     const trimmed = filterText.trim()
     if (!trimmed || !nodes) {
@@ -168,6 +181,11 @@ export function ObjectBrowser({
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilter(e.target.value, connectionId)
   }
+
+  const handleClearFilter = useCallback(() => {
+    setFilter('', connectionId)
+    filterInputRef.current?.focus()
+  }, [connectionId, setFilter])
 
   const handleTreeKeyDownCapture = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -340,6 +358,17 @@ export function ObjectBrowser({
               data-testid="filter-input"
               aria-label="Filter objects"
             />
+            {filterText && (
+              <button
+                className={styles.clearButton}
+                onClick={handleClearFilter}
+                tabIndex={-1}
+                aria-label="Clear filter"
+                data-testid="filter-clear-button"
+              >
+                <X size={12} weight="bold" />
+              </button>
+            )}
           </div>
 
           <div

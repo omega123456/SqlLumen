@@ -1437,4 +1437,76 @@ describe('ObjectBrowser', () => {
       expect(tabs[0].id).toBe('tab-table-1')
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // Bug regression: filter text should clear on scope change
+  // ---------------------------------------------------------------------------
+
+  it('clears filter text when clicking a different database node (scope change)', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+
+    // Set initial state: ecommerce_db selected with filterText 'users'
+    act(() => {
+      useSchemaStore.setState({
+        connectionStates: {
+          [CONN_ID]: {
+            ...useSchemaStore.getState().connectionStates[CONN_ID],
+            selectedNodeId: db1Id,
+            filterText: 'users',
+            expandedNodes: new Set([db1Id]),
+          },
+        },
+      })
+    })
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    // Verify filter input shows 'users'
+    expect(screen.getByTestId('filter-input')).toHaveValue('users')
+
+    // Click analytics_db to change scope
+    await user.click(screen.getByText('analytics_db'))
+
+    // After clicking a different database, the filter should be cleared
+    await waitFor(() => {
+      expect(useSchemaStore.getState().connectionStates[CONN_ID].filterText).toBe('')
+    })
+    expect(screen.getByTestId('filter-input')).toHaveValue('')
+  })
+
+  // ---------------------------------------------------------------------------
+  // Bug regression: filter input should have a clear (×) button
+  // ---------------------------------------------------------------------------
+
+  it('shows a clear button when filter has text, and clears filter on click', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    // No clear button when filter is empty
+    expect(screen.queryByTestId('filter-clear-button')).not.toBeInTheDocument()
+
+    // Type into the filter input
+    const input = screen.getByTestId('filter-input')
+    await user.type(input, 'users')
+
+    // Clear button should now be visible
+    expect(screen.getByTestId('filter-clear-button')).toBeInTheDocument()
+
+    // Click the clear button
+    await user.click(screen.getByTestId('filter-clear-button'))
+
+    // Filter should be cleared
+    expect(screen.getByTestId('filter-input')).toHaveValue('')
+    expect(useSchemaStore.getState().connectionStates[CONN_ID].filterText).toBe('')
+  })
 })

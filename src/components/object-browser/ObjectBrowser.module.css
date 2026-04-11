@@ -30,7 +30,7 @@
   opacity: 0.3;
   border: 1px solid var(--outline-variant);
   border-radius: 6px;
-  padding: 6px 10px 6px 32px;
+  padding: 6px 28px 6px 32px;
   font-size: var(--type-size-sm);
   color: var(--on-surface);
   outline: none;
@@ -56,6 +56,28 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 8px;
+}
+
+.clearButton {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 3px;
+  line-height: 0;
+}
+
+.clearButton:hover {
+  opacity: 1;
+  background: var(--surface-container-highest);
 }
 
 .emptyState {
