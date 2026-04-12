@@ -22,7 +22,6 @@ describe('formatTableTimestamp', () => {
   })
 
   it('returns original string when Date constructor throws', () => {
-    const OrigDate = globalThis.Date
     vi.spyOn(globalThis, 'Date').mockImplementation(() => {
       throw new RangeError('Invalid time value')
     })

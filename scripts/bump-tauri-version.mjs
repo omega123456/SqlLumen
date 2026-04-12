@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -54,6 +54,15 @@ function runGit(args, inheritIo = true) {
     cwd: repoRoot,
     stdio: inheritIo ? 'inherit' : 'pipe',
     encoding: 'utf8',
+  })
+}
+
+/** Runs `pnpm build` (tsc + vite). Throws if the build fails. */
+function runProductionBuild() {
+  execSync('pnpm build', {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    shell: true,
   })
 }
 
@@ -120,6 +129,18 @@ async function main() {
     writeFileSync(tauriConfPath, `${JSON.stringify(conf, null, 2)}\n`, 'utf8')
     console.log('')
     console.log(`Updated ${path.relative(repoRoot, tauriConfPath)} to ${next}.`)
+
+    console.log('')
+    console.log('Running pnpm build (tsc + vite build) before commit/tag…')
+    try {
+      runProductionBuild()
+    } catch {
+      writeFileSync(tauriConfPath, raw, 'utf8')
+      console.error(
+        '[bump-tauri-version] Build failed; restored previous tauri.conf.json. No commit, tag, or push.'
+      )
+      process.exit(1)
+    }
 
     runGit(['add', 'src-tauri/tauri.conf.json'])
     runGit(['commit', '-m', `chore: bump version to ${next}`])

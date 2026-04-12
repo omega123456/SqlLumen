@@ -19,7 +19,7 @@ vi.mock('../../../stores/schema-store', () => ({
   parseNodeId: vi.fn((nodeId: string) => {
     const [type, database, name] = nodeId.split(':')
     return {
-      type,
+      type: type as NodeType,
       database: database ?? '',
       name: name ?? '',
     }
@@ -50,6 +50,7 @@ import {
 import { EntityContextType } from 'monaco-sql-languages'
 import { parseNodeId, useSchemaStore } from '../../../stores/schema-store'
 import { useSettingsStore } from '../../../stores/settings-store'
+import type { NodeType } from '../../../types/schema'
 
 const mockGetCache = vi.mocked(getCache)
 const mockGetPendingLoad = vi.mocked(getPendingLoad)
@@ -2907,7 +2908,7 @@ describe('backtick quoting (editor.autocompleteBackticks)', () => {
     } as AnyItem)
     mockParseNodeId.mockImplementation((nodeId: string) => {
       const [type, database, name] = nodeId.split(':')
-      return { type, database: database ?? '', name: name ?? '' }
+      return { type: type as NodeType, database: database ?? '', name: name ?? '' }
     })
     // Enable backtick quoting
     useSettingsStore.setState({

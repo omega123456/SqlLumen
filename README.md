@@ -99,6 +99,7 @@ pnpm dev
 | `pnpm preview`                  | Preview the built frontend                                                                                                                                           |
 | `pnpm tauri dev`                | Run the full Tauri app in development                                                                                                                                |
 | `pnpm tauri build`              | Build installable bundles for your OS                                                                                                                                |
+| `pnpm release:tauri-version`    | Interactive release helper: bumps `version` in `src-tauri/tauri.conf.json`, runs `pnpm build` (no commit, tag, or push if that fails), then commits, tags `v*`, and pushes branch + tag |
 | `pnpm test`                     | Run Vitest once                                                                                                                                                      |
 | `pnpm test:watch`               | Vitest in watch mode                                                                                                                                                 |
 | `pnpm test:coverage`            | Vitest with coverage thresholds                                                                                                                                      |
@@ -115,8 +116,8 @@ pnpm dev
 
 The workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) builds **Windows** (x64) and **macOS** (Apple Silicon and Intel) bundles and uploads them to a **GitHub Release**. It runs on **`workflow_dispatch`** (Actions tab → Release → Run workflow) or when you push a version tag matching `v*` (e.g. `v0.1.0`).
 
-1. Bump **`version`** in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) and keep [`package.json`](package.json) / [`src-tauri/Cargo.toml`](src-tauri/Cargo.toml) in sync.
-2. Commit and push, then create and push the tag: `git tag v0.1.0 && git push origin v0.1.0`, or run the workflow manually after tagging.
+1. From the repo root, run **`pnpm release:tauri-version`** (see [`scripts/bump-tauri-version.mjs`](scripts/bump-tauri-version.mjs)). It interactively bumps **`version`** in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json), runs **`pnpm build`** first; if the build fails it restores `tauri.conf.json` and does **not** commit, tag, or push. On success it commits, creates the `v*` tag, and pushes the branch and tag. Keep [`package.json`](package.json) / [`src-tauri/Cargo.toml`](src-tauri/Cargo.toml) aligned with the shipped version if your process requires it—the script only edits `tauri.conf.json`.
+2. Or bump `tauri.conf.json` yourself, commit and push, then create and push the tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`), or run the workflow manually after tagging.
 3. If asset upload fails with a permissions error, set the repository’s **Settings → Actions → General → Workflow permissions** to **Read and write**.
 
 Releases are created as **drafts** by default; publish them from the Releases page when ready. macOS artifacts from CI are **unsigned** unless you add Apple code signing secrets to the workflow—users may see Gatekeeper warnings until signing/notarization is configured ([Tauri macOS signing](https://v2.tauri.app/distribute/sign-macos/)).

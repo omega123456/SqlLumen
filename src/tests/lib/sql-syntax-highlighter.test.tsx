@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { isValidElement } from 'react'
 import { SqlSyntaxHighlighter } from '../../lib/sql-syntax-highlighter'
 
 describe('SqlSyntaxHighlighter', () => {
@@ -8,7 +9,15 @@ describe('SqlSyntaxHighlighter', () => {
     )
 
     const html = nodes
-      .map((node) => (typeof node === 'string' ? node : (node.props.className as string)))
+      .map((node) => {
+        if (typeof node === 'string') {
+          return node
+        }
+        if (isValidElement(node)) {
+          return (node.props as { className?: string }).className ?? ''
+        }
+        return ''
+      })
       .join(' ')
 
     expect(html).toContain('keyword')
@@ -29,8 +38,8 @@ describe('SqlSyntaxHighlighter', () => {
     )
 
     const classNames = nodes
-      .filter((node) => typeof node !== 'string')
-      .map((node) => node.props.className as string)
+      .filter((node) => isValidElement(node))
+      .map((node) => (node.props as { className?: string }).className ?? '')
       .join(' ')
 
     expect(classNames).toContain('kwLocal keyword')
