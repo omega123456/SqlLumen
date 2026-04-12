@@ -22,6 +22,7 @@ export function EditorSettings() {
   const wordWrap = useSettingValue('editor.wordWrap') === 'true'
   const minimap = useSettingValue('editor.minimap') === 'true'
   const lineNumbers = useSettingValue('editor.lineNumbers') === 'true'
+  const autocompleteBackticks = useSettingValue('editor.autocompleteBackticks') === 'true'
 
   return (
     <div data-testid="settings-editor">
@@ -91,6 +92,13 @@ export function EditorSettings() {
           checked={lineNumbers}
           onChange={(checked) => setPendingChange('editor.lineNumbers', String(checked))}
           data-testid="settings-line-numbers"
+        />
+        <SettingsToggle
+          label="Quote identifiers from autocomplete"
+          description="Wrap schema suggestions (tables, columns, etc.) in MySQL backticks when inserting."
+          checked={autocompleteBackticks}
+          onChange={(checked) => setPendingChange('editor.autocompleteBackticks', String(checked))}
+          data-testid="settings-autocomplete-backticks"
         />
       </SettingsSection>
     </div>

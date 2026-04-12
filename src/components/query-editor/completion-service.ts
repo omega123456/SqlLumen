@@ -28,6 +28,7 @@ import { useConnectionStore } from '../../stores/connection-store'
 import { parseNodeId, useSchemaStore } from '../../stores/schema-store'
 import { SQL_KEYWORDS, SQL_BUILTIN_FUNCTIONS, STORED_PROGRAM_BODY_KEYWORDS } from './sql-keywords'
 import { findStatementAtCursor, splitStatements } from './sql-parser-utils'
+import { useSettingsStore } from '../../stores/settings-store'
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -81,6 +82,33 @@ const SORT_PREFIX_HIGH = '0_'
 const SORT_PREFIX_NEUTRAL = '1_'
 /** Lower priority — still shown but ranked below high/neutral (e.g. keywords in column context). */
 const SORT_PREFIX_LOW = '2_'
+
+// ---------------------------------------------------------------------------
+// Backtick quoting
+// ---------------------------------------------------------------------------
+
+type QuotedItem = ICompletionItem & { filterText?: string }
+
+/**
+ * Wraps a MySQL identifier in backtick quotes, escaping any internal
+ * backtick characters per MySQL rules (` → ``).
+ */
+function mysqlBacktickQuote(raw: string): string {
+  return '`' + raw.replace(/`/g, '``') + '`'
+}
+
+/**
+ * If `quoteIdentifiers` is true, sets `insertText` to the backtick-quoted
+ * form of `raw` and `filterText` to the raw identifier. Returns the item
+ * for convenient chaining.
+ */
+function applyQuoting(item: QuotedItem, raw: string, quoteIdentifiers: boolean): QuotedItem {
+  if (quoteIdentifiers) {
+    item.insertText = mysqlBacktickQuote(raw)
+    item.filterText = raw
+  }
+  return item
+}
 
 /**
  * Detect whether the parser-provided syntax suggestions indicate a column
@@ -362,7 +390,8 @@ function pushDatabases(
   databases: readonly string[],
   items: ICompletionItem[],
   seenLabels: Set<string>,
-  sortPrefix = SORT_PREFIX_NEUTRAL
+  sortPrefix = SORT_PREFIX_NEUTRAL,
+  quoteIdentifiers = false
 ): void {
   for (const db of databases) {
     if (seenLabels.has(`db:${db}`)) {
@@ -370,7 +399,7 @@ function pushDatabases(
     }
 
     seenLabels.add(`db:${db}`)
-    items.push(dbItem(db, sortPrefix))
+    items.push(dbItem(db, sortPrefix, quoteIdentifiers))
   }
 }
 
@@ -379,7 +408,8 @@ function pushScopedTables(
   databases: readonly string[],
   items: ICompletionItem[],
   seenLabels: Set<string>,
-  sortPrefix = SORT_PREFIX_NEUTRAL
+  sortPrefix = SORT_PREFIX_NEUTRAL,
+  quoteIdentifiers = false
 ): void {
   for (const db of databases) {
     const tables = cache.tables[db] ?? []
@@ -389,7 +419,7 @@ function pushScopedTables(
       }
 
       seenLabels.add(`tbl:${db}:${table.name}`)
-      items.push(tableItem(table.name, sortPrefix))
+      items.push(tableItem(table.name, sortPrefix, quoteIdentifiers))
     }
   }
 }
@@ -399,7 +429,8 @@ function pushScopedColumns(
   databases: readonly string[],
   items: ICompletionItem[],
   seenLabels: Set<string>,
-  sortPrefix = SORT_PREFIX_NEUTRAL
+  sortPrefix = SORT_PREFIX_NEUTRAL,
+  quoteIdentifiers = false
 ): void {
   for (const db of databases) {
     const tables = cache.tables[db] ?? []
@@ -411,7 +442,7 @@ function pushScopedColumns(
         }
 
         seenLabels.add(`col:${col.name}`)
-        items.push(columnItem(col.name, sortPrefix))
+        items.push(columnItem(col.name, sortPrefix, quoteIdentifiers))
       }
     }
   }
@@ -423,7 +454,8 @@ function pushScopedRoutines(
   items: ICompletionItem[],
   seenLabels: Set<string>,
   sortPrefix = SORT_PREFIX_NEUTRAL,
-  routineType: 'FUNCTION' | 'PROCEDURE' | null = null
+  routineType: 'FUNCTION' | 'PROCEDURE' | null = null,
+  quoteIdentifiers = false
 ): void {
   for (const db of databases) {
     const routines = cache.routines[db] ?? []
@@ -441,49 +473,83 @@ function pushScopedRoutines(
 
       seenLabels.add(routineKey)
       items.push(
-        routineItem(routine.name, routine.routineType as 'FUNCTION' | 'PROCEDURE', sortPrefix)
+        routineItem(
+          routine.name,
+          routine.routineType as 'FUNCTION' | 'PROCEDURE',
+          sortPrefix,
+          quoteIdentifiers
+        )
       )
     }
   }
 }
 
-function dbItem(db: string, sortPrefix = SORT_PREFIX_NEUTRAL): ICompletionItem {
-  return {
-    label: db,
-    kind: languages.CompletionItemKind.Module,
-    sortText: `${sortPrefix}${db}`,
-  }
+function dbItem(
+  db: string,
+  sortPrefix = SORT_PREFIX_NEUTRAL,
+  quoteIdentifiers = false
+): QuotedItem {
+  return applyQuoting(
+    {
+      label: db,
+      kind: languages.CompletionItemKind.Module,
+      sortText: `${sortPrefix}${db}`,
+    },
+    db,
+    quoteIdentifiers
+  )
 }
 
-function tableItem(tableName: string, sortPrefix = SORT_PREFIX_NEUTRAL): ICompletionItem {
-  return {
-    label: tableName,
-    kind: languages.CompletionItemKind.Class,
-    sortText: `${sortPrefix}${tableName}`,
-  }
+function tableItem(
+  tableName: string,
+  sortPrefix = SORT_PREFIX_NEUTRAL,
+  quoteIdentifiers = false
+): QuotedItem {
+  return applyQuoting(
+    {
+      label: tableName,
+      kind: languages.CompletionItemKind.Class,
+      sortText: `${sortPrefix}${tableName}`,
+    },
+    tableName,
+    quoteIdentifiers
+  )
 }
 
-function columnItem(colName: string, sortPrefix = SORT_PREFIX_NEUTRAL): ICompletionItem {
-  return {
-    label: colName,
-    kind: languages.CompletionItemKind.Field,
-    sortText: `${sortPrefix}${colName}`,
-  }
+function columnItem(
+  colName: string,
+  sortPrefix = SORT_PREFIX_NEUTRAL,
+  quoteIdentifiers = false
+): QuotedItem {
+  return applyQuoting(
+    {
+      label: colName,
+      kind: languages.CompletionItemKind.Field,
+      sortText: `${sortPrefix}${colName}`,
+    },
+    colName,
+    quoteIdentifiers
+  )
 }
 
 function routineItem(
   name: string,
   type: 'FUNCTION' | 'PROCEDURE',
-  sortPrefix = SORT_PREFIX_NEUTRAL
-): ICompletionItem {
-  return {
-    label: name,
-    kind:
-      type === 'FUNCTION'
-        ? languages.CompletionItemKind.Function
-        : languages.CompletionItemKind.Module,
-    sortText: `${sortPrefix}${name}`,
-  }
+  sortPrefix = SORT_PREFIX_NEUTRAL,
+  quoteIdentifiers = false
+): QuotedItem {
+  return applyQuoting(
+    {
+      label: name,
+      kind:
+        type === 'FUNCTION'
+          ? languages.CompletionItemKind.Function
+          : languages.CompletionItemKind.Module,
+      sortText: `${sortPrefix}${name}`,
+    },
+    name,
+    quoteIdentifiers
+  )
 }
 
 function snippetToItem(
@@ -545,6 +611,9 @@ export const completionService: CompletionService = async (
   entities: EntityContext[] | null,
   snippets?: CompletionSnippet[]
 ): Promise<ICompletionItem[]> => {
+  const quoteIdentifiers =
+    useSettingsStore.getState().getSetting('editor.autocompleteBackticks') === 'true'
+
   const connectionId = modelConnections.get(model.uri.toString())
 
   // -------------------------------------------------------------------
@@ -660,7 +729,8 @@ export const completionService: CompletionService = async (
       aliasMap,
       resolutionDatabase,
       currentStatementPrefix,
-      currentStatementText
+      currentStatementText,
+      quoteIdentifiers
     )
     if (dotResult !== null) return dotResult
     if (isInTableReferenceClause(currentStatementPrefix)) {
@@ -679,7 +749,8 @@ export const completionService: CompletionService = async (
       currentStatementPrefix,
       selectedDatabase,
       broadSuggestionDatabase,
-      snippets
+      snippets,
+      quoteIdentifiers
     )
   }
 
@@ -730,13 +801,21 @@ export const completionService: CompletionService = async (
         cache.databases,
         items,
         seenLabels,
-        inCallStatementContext ? callSchemaSortPrefix : schemaSortPrefix
+        inCallStatementContext ? callSchemaSortPrefix : schemaSortPrefix,
+        quoteIdentifiers
       )
     } else if (ctxType === EntityContextType.TABLE) {
-      pushDatabases(cache.databases, items, seenLabels, schemaSortPrefix)
+      pushDatabases(cache.databases, items, seenLabels, schemaSortPrefix, quoteIdentifiers)
 
       if (selectedDatabase) {
-        pushScopedTables(cache, [selectedDatabase], items, seenLabels, schemaSortPrefix)
+        pushScopedTables(
+          cache,
+          [selectedDatabase],
+          items,
+          seenLabels,
+          schemaSortPrefix,
+          quoteIdentifiers
+        )
       }
     } else if (ctxType === EntityContextType.COLUMN) {
       // Try to scope columns by tables in the current caret statement
@@ -753,31 +832,55 @@ export const completionService: CompletionService = async (
             items,
             seenLabels,
             columnSortPrefix,
-            resolutionDatabase
+            resolutionDatabase,
+            quoteIdentifiers
           )
         }
       } else {
         // Broad fallback: prefer the current database context, otherwise all databases.
         const fallbackDatabases = getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
 
-        pushScopedColumns(cache, fallbackDatabases, items, seenLabels, columnSortPrefix)
+        pushScopedColumns(
+          cache,
+          fallbackDatabases,
+          items,
+          seenLabels,
+          columnSortPrefix,
+          quoteIdentifiers
+        )
 
         if (inSelectListContext) {
-          pushDatabases(cache.databases, items, seenLabels, schemaSortPrefix)
-          pushScopedTables(cache, fallbackDatabases, items, seenLabels, schemaSortPrefix)
+          pushDatabases(cache.databases, items, seenLabels, schemaSortPrefix, quoteIdentifiers)
+          pushScopedTables(
+            cache,
+            fallbackDatabases,
+            items,
+            seenLabels,
+            schemaSortPrefix,
+            quoteIdentifiers
+          )
           pushScopedRoutines(
             cache,
             fallbackDatabases,
             items,
             seenLabels,
             schemaSortPrefix,
-            'FUNCTION'
+            'FUNCTION',
+            quoteIdentifiers
           )
         }
       }
     } else if (ctxType === EntityContextType.FUNCTION) {
       pushBuiltinFunctions(items, seenLabels, schemaSortPrefix)
-      pushScopedRoutines(cache, cache.databases, items, seenLabels, schemaSortPrefix, 'FUNCTION')
+      pushScopedRoutines(
+        cache,
+        cache.databases,
+        items,
+        seenLabels,
+        schemaSortPrefix,
+        'FUNCTION',
+        quoteIdentifiers
+      )
     } else if (ctxType === EntityContextType.PROCEDURE) {
       if (!inCallStatementContext) {
         const fallbackDatabases = getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
@@ -788,7 +891,8 @@ export const completionService: CompletionService = async (
           items,
           seenLabels,
           schemaSortPrefix,
-          'PROCEDURE'
+          'PROCEDURE',
+          quoteIdentifiers
         )
       }
     }
@@ -797,14 +901,15 @@ export const completionService: CompletionService = async (
   if (inCallStatementContext) {
     const fallbackDatabases = getScopedSchemaDatabases(cache.databases, broadSuggestionDatabase)
 
-    pushDatabases(cache.databases, items, seenLabels, callSchemaSortPrefix)
+    pushDatabases(cache.databases, items, seenLabels, callSchemaSortPrefix, quoteIdentifiers)
     pushScopedRoutines(
       cache,
       fallbackDatabases,
       items,
       seenLabels,
       callSchemaSortPrefix,
-      'PROCEDURE'
+      'PROCEDURE',
+      quoteIdentifiers
     )
   }
 
@@ -839,7 +944,8 @@ function handleDotNotation(
   aliasMap: AliasMap,
   resolutionDatabase: string | null,
   currentStatementPrefix: string,
-  currentStatementText: string
+  currentStatementText: string,
+  quoteIdentifiers = false
 ): ICompletionItem[] | null {
   const cache = getCache(connectionId)
   if (cache.status !== 'ready') return null
@@ -872,7 +978,7 @@ function handleDotNotation(
   const aliasResolution = aliasMap.get(prefixLower)
   if (aliasResolution && !isInTableReferenceClause(currentStatementPrefix)) {
     const cols = cache.columns[`${aliasResolution.database}.${aliasResolution.table}`] ?? []
-    return cols.map((col) => columnItem(col.name))
+    return cols.map((col) => columnItem(col.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
   }
 
   // 1b. Text-based alias fallback: when the parser doesn't provide entities,
@@ -882,7 +988,7 @@ function handleDotNotation(
   const textAliasResolution = textAliasMap.get(prefixLower)
   if (textAliasResolution && !isInTableReferenceClause(currentStatementPrefix)) {
     const cols = cache.columns[`${textAliasResolution.database}.${textAliasResolution.table}`] ?? []
-    return cols.map((col) => columnItem(col.name))
+    return cols.map((col) => columnItem(col.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
   }
 
   // 2. Check if it's a database name → suggest that db's tables
@@ -895,14 +1001,18 @@ function handleDotNotation(
       items.push(
         ...routines
           .filter((routine) => routine.routineType === 'PROCEDURE')
-          .map((routine) => routineItem(routine.name, 'PROCEDURE'))
+          .map((routine) =>
+            routineItem(routine.name, 'PROCEDURE', SORT_PREFIX_NEUTRAL, quoteIdentifiers)
+          )
       )
 
       return items
     }
 
     const tables = cache.tables[matchedDb] ?? []
-    items.push(...tables.map((table) => tableItem(table.name)))
+    items.push(
+      ...tables.map((table) => tableItem(table.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
+    )
 
     if (isInTableReferenceClause(currentStatementPrefix)) {
       return items
@@ -913,7 +1023,12 @@ function handleDotNotation(
       ...routines
         .filter((routine) => routine.routineType === 'FUNCTION')
         .map((routine) =>
-          routineItem(routine.name, routine.routineType as 'FUNCTION' | 'PROCEDURE')
+          routineItem(
+            routine.name,
+            routine.routineType as 'FUNCTION' | 'PROCEDURE',
+            SORT_PREFIX_NEUTRAL,
+            quoteIdentifiers
+          )
         )
     )
 
@@ -932,7 +1047,7 @@ function handleDotNotation(
   if (qualifiedDb) {
     const cols = cache.columns[`${qualifiedDb}.${tablePart}`] ?? []
     if (cols.length > 0) {
-      return cols.map((col) => columnItem(col.name))
+      return cols.map((col) => columnItem(col.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
     }
 
     return null
@@ -946,7 +1061,7 @@ function handleDotNotation(
     const matchedTable = tables.find((t) => t.name.toLowerCase() === prefixLower)
     if (matchedTable) {
       const cols = cache.columns[`${db}.${matchedTable.name}`] ?? []
-      return cols.map((col) => columnItem(col.name))
+      return cols.map((col) => columnItem(col.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
     }
   }
 
@@ -1033,7 +1148,8 @@ function addColumnsForTable(
   items: ICompletionItem[],
   seenLabels: Set<string>,
   sortPrefix = SORT_PREFIX_NEUTRAL,
-  resolutionDatabase: string | null = null
+  resolutionDatabase: string | null = null,
+  quoteIdentifiers = false
 ): void {
   if (tableRef.database) {
     // Exact lookup: database is known
@@ -1041,7 +1157,7 @@ function addColumnsForTable(
     for (const col of cols) {
       if (!seenLabels.has(`col:${col.name}`)) {
         seenLabels.add(`col:${col.name}`)
-        items.push(columnItem(col.name, sortPrefix))
+        items.push(columnItem(col.name, sortPrefix, quoteIdentifiers))
       }
     }
   } else {
@@ -1060,7 +1176,7 @@ function addColumnsForTable(
         for (const col of cols) {
           if (!seenLabels.has(`col:${col.name}`)) {
             seenLabels.add(`col:${col.name}`)
-            items.push(columnItem(col.name, sortPrefix))
+            items.push(columnItem(col.name, sortPrefix, quoteIdentifiers))
           }
         }
       }
@@ -1077,7 +1193,8 @@ function buildParseFallback(
   currentStatementPrefix: string,
   selectedDatabase: string | null,
   broadSuggestionDatabase: string | null,
-  snippets?: CompletionSnippet[]
+  snippets?: CompletionSnippet[],
+  quoteIdentifiers = false
 ): ICompletionItem[] {
   const items: ICompletionItem[] = []
 
@@ -1115,28 +1232,29 @@ function buildParseFallback(
 
       if (mode.type === 'databases') {
         for (const db of cache.databases) {
-          items.push(dbItem(db, SORT_PREFIX_HIGH))
+          items.push(dbItem(db, SORT_PREFIX_HIGH, quoteIdentifiers))
         }
       } else if (mode.type === 'databasesAndTables') {
         for (const db of cache.databases) {
-          items.push(dbItem(db, SORT_PREFIX_HIGH))
+          items.push(dbItem(db, SORT_PREFIX_HIGH, quoteIdentifiers))
         }
 
         const tables = cache.tables[mode.database] ?? []
         for (const table of tables) {
-          items.push(tableItem(table.name, SORT_PREFIX_HIGH))
+          items.push(tableItem(table.name, SORT_PREFIX_HIGH, quoteIdentifiers))
         }
       } else if (mode.type === 'tables') {
         const tables = cache.tables[mode.database] ?? []
         for (const table of tables) {
-          items.push(tableItem(table.name))
+          items.push(tableItem(table.name, SORT_PREFIX_NEUTRAL, quoteIdentifiers))
         }
       } else if (mode.type === 'all') {
         pushDatabases(
           cache.databases,
           items,
           seenLabels,
-          inCallStatementContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL
+          inCallStatementContext ? SORT_PREFIX_HIGH : SORT_PREFIX_NEUTRAL,
+          quoteIdentifiers
         )
 
         if (inCallStatementContext) {
@@ -1146,11 +1264,26 @@ function buildParseFallback(
             items,
             seenLabels,
             SORT_PREFIX_HIGH,
-            'PROCEDURE'
+            'PROCEDURE',
+            quoteIdentifiers
           )
         } else {
-          pushScopedTables(cache, fallbackDatabases, items, seenLabels)
-          pushScopedColumns(cache, fallbackDatabases, items, seenLabels)
+          pushScopedTables(
+            cache,
+            fallbackDatabases,
+            items,
+            seenLabels,
+            SORT_PREFIX_NEUTRAL,
+            quoteIdentifiers
+          )
+          pushScopedColumns(
+            cache,
+            fallbackDatabases,
+            items,
+            seenLabels,
+            SORT_PREFIX_NEUTRAL,
+            quoteIdentifiers
+          )
 
           if (inSelectListContext) {
             pushScopedRoutines(
@@ -1159,10 +1292,19 @@ function buildParseFallback(
               items,
               seenLabels,
               SORT_PREFIX_NEUTRAL,
-              'FUNCTION'
+              'FUNCTION',
+              quoteIdentifiers
             )
           } else {
-            pushScopedRoutines(cache, fallbackDatabases, items, seenLabels)
+            pushScopedRoutines(
+              cache,
+              fallbackDatabases,
+              items,
+              seenLabels,
+              SORT_PREFIX_NEUTRAL,
+              null,
+              quoteIdentifiers
+            )
           }
         }
       }

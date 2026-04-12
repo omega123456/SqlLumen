@@ -28,7 +28,6 @@
   background: var(--ui-input-bg);
 }
 
-
 .invalid {
   border-color: var(--error);
 }

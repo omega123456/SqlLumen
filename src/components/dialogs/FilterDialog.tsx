@@ -248,7 +248,11 @@ export function FilterDialog({
         <div className={styles.footer}>
           <div className={styles.footerLeft}>
             {hasConditions && (
-              <Button variant="secondary" onClick={handleClearAll} data-testid="filter-clear-all-button">
+              <Button
+                variant="secondary"
+                onClick={handleClearAll}
+                data-testid="filter-clear-all-button"
+              >
                 Clear All
               </Button>
             )}

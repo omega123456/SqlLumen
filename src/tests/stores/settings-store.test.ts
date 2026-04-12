@@ -215,6 +215,9 @@ describe('useSettingsStore', () => {
       expect(state.pendingChanges['editor.lineNumbers']).toBe(
         SETTINGS_DEFAULTS['editor.lineNumbers']
       )
+      expect(state.pendingChanges['editor.autocompleteBackticks']).toBe(
+        SETTINGS_DEFAULTS['editor.autocompleteBackticks']
+      )
     })
 
     it('resets general section keys to defaults', () => {

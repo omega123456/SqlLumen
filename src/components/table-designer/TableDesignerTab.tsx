@@ -240,8 +240,7 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
               ) : (
                 <div className={styles.headingStack}>
                   <h1 className={styles.heading}>
-                    Alter Table:{' '}
-                    <span className={styles.tableName}>{tableName || objectName}</span>
+                    Alter Table: <span className={styles.tableName}>{tableName || objectName}</span>
                   </h1>
                   {resolvedTheme === 'light' && isDirty && (
                     <div className={styles.unsavedSubtitle}>Unsaved Changes</div>

@@ -108,10 +108,7 @@ export class SqlSyntaxHighlighter {
 
     if (SqlSyntaxHighlighter.KEYWORDS.has(normalizedToken)) {
       return (
-        <span
-          key={key}
-          className={SqlSyntaxHighlighter.joinClasses(classNames.keyword, 'keyword')}
-        >
+        <span key={key} className={SqlSyntaxHighlighter.joinClasses(classNames.keyword, 'keyword')}>
           {token}
         </span>
       )

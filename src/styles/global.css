@@ -479,7 +479,8 @@ button {
 .ui-dropdown__trigger[aria-expanded='true'] {
   border: var(--ui-dropdown-trigger-open-border);
   box-shadow:
-    var(--ui-dropdown-trigger-open-shadow), var(--ui-input-focus-shadow), var(--ui-input-rest-shadow);
+    var(--ui-dropdown-trigger-open-shadow), var(--ui-input-focus-shadow),
+    var(--ui-input-rest-shadow);
   color: var(--primary);
   font-weight: 600;
 }

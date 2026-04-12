@@ -58,6 +58,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'editor.wordWrap': 'false',
         'editor.minimap': 'false',
         'editor.lineNumbers': 'true',
+        'editor.autocompleteBackticks': 'false',
         'results.pageSize': '500',
         'results.nullDisplay': 'NULL',
         'connection.defaultTimeout': '10',

@@ -16,6 +16,7 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'editor.wordWrap': 'false',
   'editor.minimap': 'false',
   'editor.lineNumbers': 'true',
+  'editor.autocompleteBackticks': 'false',
   'results.pageSize': '500',
   'results.nullDisplay': 'NULL',
   'connection.defaultTimeout': '10',

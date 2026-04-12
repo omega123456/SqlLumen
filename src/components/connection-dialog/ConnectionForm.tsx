@@ -618,13 +618,16 @@ export function ConnectionForm({ editingConnection }: ConnectionFormProps) {
                 </CollapsibleSection>
               </div>
             </div>
-
           </form>
         </ElevatedSurface>
       </div>
 
       <footer className={styles.formFooter}>
-        <Button variant="secondary" onClick={() => void handleTestConnection()} disabled={isAnyPending}>
+        <Button
+          variant="secondary"
+          onClick={() => void handleTestConnection()}
+          disabled={isAnyPending}
+        >
           <Database size={20} weight="duotone" aria-hidden />
           {pendingAction === 'test' ? 'Testing…' : 'Test Connection'}
         </Button>

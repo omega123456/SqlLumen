@@ -49,6 +49,7 @@ import {
 } from '../../../components/query-editor/completion-service'
 import { EntityContextType } from 'monaco-sql-languages'
 import { parseNodeId, useSchemaStore } from '../../../stores/schema-store'
+import { useSettingsStore } from '../../../stores/settings-store'
 
 const mockGetCache = vi.mocked(getCache)
 const mockGetPendingLoad = vi.mocked(getPendingLoad)
@@ -2875,5 +2876,168 @@ describe('completionService — dot-notation on manual invoke (Ctrl+Space)', () 
     expect(labels).toContain('products')
     expect(labels).not.toContain('events')
     expect(labels).toContain('FROM')
+  })
+})
+
+describe('backtick quoting (editor.autocompleteBackticks)', () => {
+  function assertQuotedItem(item: AnyItem, rawName: string): void {
+    expect(item).toBeDefined()
+    expect(item.insertText).toBe('`' + rawName + '`')
+    expect((item as AnyItem).filterText).toBe(rawName)
+  }
+
+  beforeEach(() => {
+    resetModelConnections()
+    mockGetPendingLoad.mockReturnValue(null)
+    mockLoadCache.mockResolvedValue(undefined)
+    mockGetCache.mockReturnValue(READY_CACHE)
+    registerModelConnection('inmemory://model/1', 'conn-1')
+    mockUseSchemaStoreGetState.mockReturnValue({
+      connectionStates: {
+        'conn-1': { selectedNodeId: 'database:app_db:' },
+      },
+    } as AnyItem)
+    mockParseNodeId.mockImplementation((nodeId: string) => {
+      const [type, database, name] = nodeId.split(':')
+      return { type, database: database ?? '', name: name ?? '' }
+    })
+    // Enable backtick quoting
+    useSettingsStore.setState({
+      settings: { 'editor.autocompleteBackticks': 'true' },
+      pendingChanges: {},
+    })
+  })
+
+  afterEach(() => {
+    // Reset store so other tests are unaffected
+    useSettingsStore.setState({
+      settings: {},
+      pendingChanges: {},
+    })
+    resetModelConnections()
+  })
+
+  it('wraps table name in backticks when quoteIdentifiers is true (TABLE context)', async () => {
+    const items = await callService(
+      'SELECT * FROM ',
+      pos(1, 15),
+      buildSuggestions({ syntax: [{ syntaxContextType: EntityContextType.TABLE, wordRanges: [] }] })
+    )
+    assertQuotedItem(
+      items.find((i) => getLabel(i) === 'users'),
+      'users'
+    )
+  })
+
+  it('wraps column name in backticks when quoteIdentifiers is true (COLUMN context)', async () => {
+    const items = await callService(
+      'SELECT  FROM users',
+      pos(1, 8),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.COLUMN, wordRanges: [] }],
+      }),
+      [buildEntity(EntityContextType.TABLE, 'users', true)]
+    )
+    assertQuotedItem(
+      items.find((i) => getLabel(i) === 'id'),
+      'id'
+    )
+  })
+
+  it('wraps database name in backticks (DATABASE context)', async () => {
+    const items = await callService(
+      'USE ',
+      pos(1, 5),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.DATABASE, wordRanges: [] }],
+      })
+    )
+    assertQuotedItem(
+      items.find((i) => getLabel(i) === 'app_db'),
+      'app_db'
+    )
+  })
+
+  it('wraps routine name in backticks (FUNCTION context)', async () => {
+    const items = await callService(
+      'SELECT ',
+      pos(1, 8),
+      buildSuggestions({
+        syntax: [{ syntaxContextType: EntityContextType.FUNCTION, wordRanges: [] }],
+      })
+    )
+    assertQuotedItem(
+      items.find((i) => getLabel(i) === 'get_user_count'),
+      'get_user_count'
+    )
+  })
+
+  it('does NOT wrap SQL keywords', async () => {
+    const items = await callService(
+      'SELECT ',
+      pos(1, 8),
+      buildSuggestions({ keywords: ['SELECT', 'FROM', 'WHERE'] })
+    )
+    const kwItem = items.find((i) => getLabel(i) === 'SELECT')
+    expect(kwItem).toBeDefined()
+    expect(kwItem!.insertText).toBe('SELECT')
+    expect((kwItem as AnyItem).filterText).toBeUndefined()
+  })
+
+  it('wraps column names via dot notation (handleDotNotation path)', async () => {
+    const items = await callService('SELECT users.', pos(1, 14), buildSuggestions(), null, '.')
+    assertQuotedItem(
+      items.find((i) => getLabel(i) === 'id'),
+      'id'
+    )
+  })
+
+  it('escapes internal backticks in identifier names', async () => {
+    // Simulate a cache with a table name containing a backtick
+    const cacheWithBacktick = {
+      ...READY_CACHE,
+      tables: {
+        ...READY_CACHE.tables,
+        app_db: [
+          ...READY_CACHE.tables.app_db,
+          {
+            name: 'weird`table',
+            engine: 'InnoDB',
+            charset: 'utf8mb4',
+            rowCount: 0,
+            dataSize: 0,
+          },
+        ],
+      },
+    }
+    mockGetCache.mockReturnValue(cacheWithBacktick)
+
+    const items = await callService(
+      'SELECT * FROM ',
+      pos(1, 15),
+      buildSuggestions({ syntax: [{ syntaxContextType: EntityContextType.TABLE, wordRanges: [] }] })
+    )
+    const tblItem = items.find((i) => getLabel(i) === 'weird`table')
+    expect(tblItem).toBeDefined()
+    expect(tblItem!.insertText).toBe('`weird``table`')
+    expect((tblItem as AnyItem).filterText).toBe('weird`table')
+  })
+
+  it('does NOT wrap items when quoteIdentifiers is false (default)', async () => {
+    // Override store back to false
+    useSettingsStore.setState({
+      settings: { 'editor.autocompleteBackticks': 'false' },
+      pendingChanges: {},
+    })
+
+    const items = await callService(
+      'SELECT * FROM ',
+      pos(1, 15),
+      buildSuggestions({ syntax: [{ syntaxContextType: EntityContextType.TABLE, wordRanges: [] }] })
+    )
+    const tableItem = items.find((i) => getLabel(i) === 'users')
+    expect(tableItem).toBeDefined()
+    expect(tableItem!.insertText).toBeUndefined()
+    expect((tableItem as AnyItem).filterText).toBeUndefined()
   })
 })

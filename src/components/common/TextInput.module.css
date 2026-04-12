@@ -29,7 +29,6 @@
   background: var(--ui-input-bg);
 }
 
-
 /* Table designer column row cells — border/fill/focus from .ui-field-chrome (global.css) */
 .tableCell {
   width: 100%;
@@ -50,7 +49,9 @@
 }
 
 .tableCell.invalid {
-  box-shadow: inset 0 0 0 1px var(--error), var(--ui-input-rest-shadow);
+  box-shadow:
+    inset 0 0 0 1px var(--error),
+    var(--ui-input-rest-shadow);
 }
 
 .passwordToggleGutter {

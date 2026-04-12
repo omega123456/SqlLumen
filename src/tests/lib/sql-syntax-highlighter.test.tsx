@@ -18,12 +18,15 @@ describe('SqlSyntaxHighlighter', () => {
   })
 
   it('applies provided css module class names together with global token classes', () => {
-    const nodes = SqlSyntaxHighlighter.highlightSql("ALTER TABLE `users` ADD COLUMN age INT DEFAULT '1'", {
-      keyword: 'kwLocal',
-      identifier: 'idLocal',
-      type: 'typeLocal',
-      string: 'strLocal',
-    })
+    const nodes = SqlSyntaxHighlighter.highlightSql(
+      "ALTER TABLE `users` ADD COLUMN age INT DEFAULT '1'",
+      {
+        keyword: 'kwLocal',
+        identifier: 'idLocal',
+        type: 'typeLocal',
+        string: 'strLocal',
+      }
+    )
 
     const classNames = nodes
       .filter((node) => typeof node !== 'string')

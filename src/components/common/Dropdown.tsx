@@ -448,10 +448,15 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
           '--ui-dropdown-instance-option-min-height': `${Math.round(measuredTriggerHeight)}px`,
         })
 
-        const dialogRect = closestDialog instanceof HTMLElement ? closestDialog.getBoundingClientRect() : null
+        const dialogRect =
+          closestDialog instanceof HTMLElement ? closestDialog.getBoundingClientRect() : null
         const leftValue = dialogRect ? left - dialogRect.left : left
-        const topValue = dialogRect ? triggerRect.bottom - 1 - dialogRect.top : triggerRect.bottom - 1
-        const bottomValue = dialogRect ? dialogRect.bottom - triggerRect.top + 1 : vh - triggerRect.top + 1
+        const topValue = dialogRect
+          ? triggerRect.bottom - 1 - dialogRect.top
+          : triggerRect.bottom - 1
+        const bottomValue = dialogRect
+          ? dialogRect.bottom - triggerRect.top + 1
+          : vh - triggerRect.top + 1
 
         if (nextPlacement === 'bottom') {
           setDropdownLayout({
