@@ -189,16 +189,76 @@ vi.mock('@monaco-editor/react', async () => {
     DiffEditor: (props: Record<string, unknown>) => {
       // Call onMount with a mock diff editor if provided
       const onMount = props.onMount as ((editor: unknown) => void) | undefined
+      const hostRef = React.useRef<HTMLDivElement | null>(null)
       type MockModel = {
         original: { getValue: () => string }
         modified: { getValue: () => string }
       } | null
 
-      // Mock modified editor for per-hunk acceptance features
+      type ViewZoneSpec = {
+        domNode: HTMLElement
+      }
+      type ViewZoneAccessor = {
+        addZone: (zone: ViewZoneSpec) => string
+        removeZone: (id: string) => void
+        layoutZone: ReturnType<typeof vi.fn>
+      }
+      type ViewZoneCallback = (accessor: ViewZoneAccessor) => void
+
+      const createViewZoneRunner = () => {
+        const zoneDomById = new Map<string, HTMLElement>()
+        return (cb: ViewZoneCallback) => {
+          const accessor: ViewZoneAccessor = {
+            addZone: (zone: ViewZoneSpec) => {
+              const id = `mock-view-zone-${Math.random().toString(36).slice(2, 9)}`
+              zoneDomById.set(id, zone.domNode)
+              const host = hostRef.current
+              if (host) {
+                host.appendChild(zone.domNode)
+              }
+              return id
+            },
+            removeZone: (id: string) => {
+              const node = zoneDomById.get(id)
+              node?.remove()
+              zoneDomById.delete(id)
+            },
+            layoutZone: vi.fn(),
+          }
+          cb(accessor)
+        }
+      }
+
+      const runOriginalViewZones = createViewZoneRunner()
+      const runModifiedViewZones = createViewZoneRunner()
+
+      const mockOriginalEditor = {
+        onDidScrollChange: vi.fn(() => ({ dispose: vi.fn() })),
+        getTopForLineNumber: vi.fn((line: number) => line * 20),
+        getScrollTop: vi.fn(() => 0),
+        changeViewZones: vi.fn((cb: ViewZoneCallback) => {
+          runOriginalViewZones(cb)
+        }),
+      }
+
       const mockModifiedEditor = {
         onDidScrollChange: vi.fn(() => ({ dispose: vi.fn() })),
         getTopForLineNumber: vi.fn((line: number) => line * 20),
         getScrollTop: vi.fn(() => 0),
+        addContentWidget: vi.fn((widget: { getDomNode: () => HTMLElement }) => {
+          const node = widget.getDomNode()
+          const host = hostRef.current
+          if (host) {
+            host.appendChild(node)
+          }
+        }),
+        removeContentWidget: vi.fn((widget: { getDomNode: () => HTMLElement }) => {
+          widget.getDomNode().remove()
+        }),
+        layoutContentWidget: vi.fn(),
+        changeViewZones: vi.fn((cb: ViewZoneCallback) => {
+          runModifiedViewZones(cb)
+        }),
       }
 
       const editorRef: {
@@ -206,6 +266,7 @@ vi.mock('@monaco-editor/react', async () => {
         setModel: (model: MockModel) => void
         onDidUpdateDiff: (cb: () => void) => { dispose: () => void }
         getLineChanges: () => null
+        getOriginalEditor: () => typeof mockOriginalEditor
         getModifiedEditor: () => typeof mockModifiedEditor
       } = {
         _model: null,
@@ -214,6 +275,7 @@ vi.mock('@monaco-editor/react', async () => {
         },
         onDidUpdateDiff: vi.fn(() => ({ dispose: vi.fn() })),
         getLineChanges: vi.fn(() => null),
+        getOriginalEditor: vi.fn(() => mockOriginalEditor),
         getModifiedEditor: vi.fn(() => mockModifiedEditor),
       }
 
@@ -223,6 +285,9 @@ vi.mock('@monaco-editor/react', async () => {
       }
 
       return React.createElement('div', {
+        ref: (el: HTMLDivElement | null) => {
+          hostRef.current = el
+        },
         'data-testid': 'mock-diff-editor',
         'data-original': (props.original as string) ?? '',
         'data-modified': (props.modified as string) ?? '',

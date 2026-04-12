@@ -5,8 +5,10 @@
  * (from the editor) with the AI-proposed replacement.
  *
  * Supports per-hunk acceptance (VS Code merge-conflict style): each changed
- * hunk in the diff editor has an inline "Accept" button that applies just
- * that hunk to the original model, leaving remaining changes visible.
+ * hunk gets a dedicated empty row above it on both panes (Monaco view zones)
+ * so text does not overlap. The "Accept" action is a content widget on the
+ * modified editor (Monaco paints content widgets above viewLines), so it stays
+ * clickable; view zones alone would sit under the text layer.
  *
  * Models are managed manually to prevent "TextModel got disposed before
  * DiffEditorWidget model got reset" crashes.  The `<DiffEditor>` receives
@@ -15,6 +17,7 @@
  */
 
 import { useRef, useEffect, useCallback, useState } from 'react'
+import type { MutableRefObject } from 'react'
 import { DiffEditor } from '@monaco-editor/react'
 import type { DiffOnMount } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
@@ -138,6 +141,93 @@ export function applyHunkToOriginal(
   origModel.pushEditOperations([], [{ range: targetRange, text: newText }], () => null)
 }
 
+/** `afterLineNumber` for a view zone directly above the modified hunk’s first line. */
+function modifiedViewZoneAfterLine(change: LineChange): number {
+  const start = change.modifiedStartLineNumber
+  if (start < 1) {
+    return 0
+  }
+  return start - 1
+}
+
+/**
+ * `afterLineNumber` on the original model so the spacer row aligns with the
+ * modified-side Accept row in the side-by-side diff.
+ */
+function originalViewZoneAfterLine(change: LineChange): number {
+  if (change.originalEndLineNumber === 0) {
+    return Math.max(0, change.originalStartLineNumber)
+  }
+  return Math.max(0, change.originalStartLineNumber - 1)
+}
+
+function removeAllHunkViewZones(
+  diffEditor: monaco.editor.IStandaloneDiffEditor | null,
+  zoneIdsRef: MutableRefObject<{ orig: string[]; mod: string[] }>
+): void {
+  if (!diffEditor) {
+    return
+  }
+
+  const origEd = diffEditor.getOriginalEditor?.()
+  if (origEd && typeof origEd.changeViewZones === 'function') {
+    origEd.changeViewZones((accessor) => {
+      for (const id of zoneIdsRef.current.orig) {
+        accessor.removeZone(id)
+      }
+    })
+  }
+
+  const modEd = diffEditor.getModifiedEditor?.()
+  if (modEd && typeof modEd.changeViewZones === 'function') {
+    modEd.changeViewZones((accessor) => {
+      for (const id of zoneIdsRef.current.mod) {
+        accessor.removeZone(id)
+      }
+    })
+  }
+
+  zoneIdsRef.current = { orig: [], mod: [] }
+}
+
+function createAcceptHunkContentWidget(options: {
+  id: string
+  testId: string
+  change: LineChange
+  modifiedModel: monaco.editor.ITextModel
+  inlineClassName: string
+  onAccept: () => void
+}): monaco.editor.IContentWidget {
+  const { id, testId, change, modifiedModel, inlineClassName, onAccept } = options
+
+  const dom = document.createElement('button')
+  dom.type = 'button'
+  dom.className = inlineClassName
+  dom.textContent = 'Accept'
+  dom.setAttribute('data-testid', testId)
+  dom.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onAccept()
+  })
+
+  return {
+    allowEditorOverflow: true,
+    getId: () => id,
+    getDomNode: () => dom,
+    getPosition: (): monaco.editor.IContentWidgetPosition | null => {
+      const lineNumber = change.modifiedStartLineNumber
+      if (lineNumber < 1 || lineNumber > modifiedModel.getLineCount()) {
+        return null
+      }
+      return {
+        position: { lineNumber, column: 1 },
+        preference: [monaco.editor.ContentWidgetPositionPreference.ABOVE],
+      }
+    },
+  }
+}
+
 export function DiffOverlay({
   originalSql,
   proposedSql,
@@ -151,9 +241,10 @@ export function DiffOverlay({
   const diffEditorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
   const originalModelRef = useRef<monaco.editor.ITextModel | null>(null)
   const modifiedModelRef = useRef<monaco.editor.ITextModel | null>(null)
+  const hunkZoneIdsRef = useRef<{ orig: string[]; mod: string[] }>({ orig: [], mod: [] })
+  const acceptWidgetsRef = useRef<monaco.editor.IContentWidget[]>([])
 
   const [lineChanges, setLineChanges] = useState<LineChange[]>([])
-  const [scrollTop, setScrollTop] = useState(0)
   const [hunksAccepted, setHunksAccepted] = useState(false)
 
   /** Create models and wire them into the diff editor on mount. */
@@ -179,16 +270,6 @@ export function DiffOverlay({
       if (typeof editor.getLineChanges === 'function') {
         setLineChanges((editor.getLineChanges() as LineChange[] | null) ?? [])
       }
-
-      // Listen for scroll changes on the modified (right) editor
-      if (typeof editor.getModifiedEditor === 'function') {
-        const modEditor = editor.getModifiedEditor()
-        if (typeof modEditor.onDidScrollChange === 'function') {
-          modEditor.onDidScrollChange((e: { scrollTop: number }) => {
-            setScrollTop(e.scrollTop)
-          })
-        }
-      }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [] // Intentionally empty — content is set once at mount, not re-synced.
@@ -210,6 +291,19 @@ export function DiffOverlay({
    */
   useEffect(() => {
     return () => {
+      const diffEditor = diffEditorRef.current
+      if (diffEditor && typeof diffEditor.getModifiedEditor === 'function') {
+        const modEditor = diffEditor.getModifiedEditor()
+        if (typeof modEditor.removeContentWidget === 'function') {
+          for (const w of acceptWidgetsRef.current) {
+            modEditor.removeContentWidget(w)
+          }
+        }
+      }
+      acceptWidgetsRef.current = []
+
+      removeAllHunkViewZones(diffEditor, hunkZoneIdsRef)
+
       diffEditorRef.current?.setModel(null)
       originalModelRef.current?.dispose()
       modifiedModelRef.current?.dispose()
@@ -223,7 +317,9 @@ export function DiffOverlay({
   const handleAcceptHunk = useCallback((change: LineChange) => {
     const origModel = originalModelRef.current
     const modModel = modifiedModelRef.current
-    if (!origModel || !modModel) return
+    if (!origModel || !modModel) {
+      return
+    }
 
     applyHunkToOriginal(change, origModel, modModel)
     setHunksAccepted(true)
@@ -237,6 +333,114 @@ export function DiffOverlay({
       setLineChanges((editor.getLineChanges() as LineChange[] | null) ?? [])
     }
   }, [])
+
+  /**
+   * Per-hunk: matching spacer view zones on both sides, then Accept as a
+   * content widget on the modified editor (above viewLines so it receives clicks).
+   */
+  useEffect(() => {
+    const diffEditor = diffEditorRef.current
+    const modModel = modifiedModelRef.current
+    if (!diffEditor || !modModel) {
+      return
+    }
+
+    const origEd = diffEditor.getOriginalEditor?.()
+    const modEd = diffEditor.getModifiedEditor?.()
+    if (!origEd || typeof origEd.changeViewZones !== 'function') {
+      return
+    }
+    if (!modEd || typeof modEd.changeViewZones !== 'function') {
+      return
+    }
+
+    for (const w of acceptWidgetsRef.current) {
+      if (typeof modEd.removeContentWidget === 'function') {
+        modEd.removeContentWidget(w)
+      }
+    }
+    acceptWidgetsRef.current = []
+
+    removeAllHunkViewZones(diffEditor, hunkZoneIdsRef)
+
+    type EligibleHunk = { index: number; change: LineChange }
+    const eligible: EligibleHunk[] = []
+    for (let i = 0; i < lineChanges.length; i++) {
+      const change = lineChanges[i]
+      const modLine = change.modifiedStartLineNumber
+      if (modLine < 1 || modLine > modModel.getLineCount()) {
+        continue
+      }
+      eligible.push({ index: i, change })
+    }
+
+    const nextOrig: string[] = []
+    origEd.changeViewZones((origAccessor) => {
+      for (const { index, change } of eligible) {
+        const origWrap = document.createElement('div')
+        origWrap.className = styles.hunkSpacerRow
+        origWrap.setAttribute('aria-hidden', 'true')
+
+        nextOrig.push(
+          origAccessor.addZone({
+            afterLineNumber: originalViewZoneAfterLine(change),
+            heightInLines: 1,
+            domNode: origWrap,
+            suppressMouseDown: true,
+            ordinal: 500_000 + index,
+          })
+        )
+      }
+    })
+
+    const nextMod: string[] = []
+    modEd.changeViewZones((modAccessor) => {
+      for (const { index, change } of eligible) {
+        const modWrap = document.createElement('div')
+        modWrap.className = styles.hunkSpacerRow
+        modWrap.setAttribute('aria-hidden', 'true')
+
+        nextMod.push(
+          modAccessor.addZone({
+            afterLineNumber: modifiedViewZoneAfterLine(change),
+            heightInLines: 1,
+            domNode: modWrap,
+            suppressMouseDown: true,
+            ordinal: 500_000 + index,
+          })
+        )
+      }
+    })
+
+    hunkZoneIdsRef.current = { orig: nextOrig, mod: nextMod }
+
+    if (typeof modEd.addContentWidget === 'function') {
+      for (const { index, change } of eligible) {
+        const widget = createAcceptHunkContentWidget({
+          id: `ai-diff-accept-hunk-${index}`,
+          testId: `hunk-accept-inline-${index}`,
+          change,
+          modifiedModel: modModel,
+          inlineClassName: styles.inlineAccept,
+          onAccept: () => {
+            handleAcceptHunk(change)
+          },
+        })
+        modEd.addContentWidget(widget)
+        acceptWidgetsRef.current.push(widget)
+      }
+    }
+
+    return () => {
+      for (const w of acceptWidgetsRef.current) {
+        if (typeof modEd.removeContentWidget === 'function') {
+          modEd.removeContentWidget(w)
+        }
+      }
+      acceptWidgetsRef.current = []
+      removeAllHunkViewZones(diffEditor, hunkZoneIdsRef)
+    }
+  }, [lineChanges, handleAcceptHunk])
 
   /**
    * Accept All — apply the final SQL to the main editor.
@@ -254,18 +458,6 @@ export function DiffOverlay({
       onAccept(proposedSql)
     }
   }, [onAccept, proposedSql, hunksAccepted])
-
-  /** Compute pixel top for a hunk button based on line number. */
-  const getHunkButtonTop = useCallback(
-    (lineNumber: number): number => {
-      const editor = diffEditorRef.current
-      if (!editor || typeof editor.getModifiedEditor !== 'function') return 0
-      const modEditor = editor.getModifiedEditor()
-      if (typeof modEditor.getTopForLineNumber !== 'function') return 0
-      return modEditor.getTopForLineNumber(lineNumber) - scrollTop
-    },
-    [scrollTop]
-  )
 
   return (
     <div className={styles.overlay} data-testid="diff-overlay">
@@ -294,26 +486,6 @@ export function DiffOverlay({
             overviewRulerLanes: 0,
           }}
         />
-        {lineChanges.length > 0 && (
-          <div className={styles.hunkButtonsPane} data-testid="hunk-buttons-pane">
-            {lineChanges.map((change, i) => {
-              const lineNumber = change.modifiedStartLineNumber
-              const top = getHunkButtonTop(lineNumber)
-
-              return (
-                <button
-                  key={`hunk-${i}-${change.modifiedStartLineNumber}-${change.originalStartLineNumber}`}
-                  className={styles.hunkAcceptButton}
-                  style={{ top }}
-                  onClick={() => handleAcceptHunk(change)}
-                  data-testid={`hunk-accept-button-${i}`}
-                >
-                  Accept
-                </button>
-              )
-            })}
-          </div>
-        )}
       </div>
     </div>
   )

@@ -42,33 +42,38 @@
   position: relative;
 }
 
-.hunkButtonsPane {
-  position: absolute;
-  right: 0;
-  width: 50%;
-  top: 0;
-  bottom: 0;
+/* One-line view zone on the original pane — keeps rows aligned with modified Accept rows. */
+.hunkSpacerRow {
+  box-sizing: border-box;
+  height: 100%;
   pointer-events: none;
-  overflow: hidden;
 }
 
-.hunkAcceptButton {
-  position: absolute;
-  right: var(--space-sm);
-  pointer-events: auto;
-  background: var(--primary);
-  color: var(--on-primary);
+/* Code-lens style Accept control (content widget, above viewLines). */
+.inlineAccept {
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
   border: none;
-  border-radius: var(--radius-sm);
-  padding: 1px var(--space-xs);
+  background: transparent;
+  font-family: inherit;
   font-size: var(--type-size-xs);
+  font-weight: 400;
+  line-height: inherit;
+  color: var(--on-surface-variant);
   cursor: pointer;
   white-space: nowrap;
-  z-index: 10;
-  opacity: 0.9;
-  transform: translateY(-50%);
+  pointer-events: auto;
 }
 
-.hunkAcceptButton:hover {
-  opacity: 1;
+.inlineAccept:hover {
+  color: var(--on-surface);
+  text-decoration: underline;
+}
+
+.inlineAccept:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
 }

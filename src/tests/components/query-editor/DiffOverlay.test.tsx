@@ -2,8 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
-import { DiffOverlay } from '../../../components/query-editor/DiffOverlay'
-import { applyHunkToOriginal } from '../../../components/query-editor/DiffOverlay'
+import { DiffOverlay, applyHunkToOriginal } from '../../../components/query-editor/DiffOverlay'
 import type { LineChange } from '../../../components/query-editor/DiffOverlay'
 import type * as monaco from 'monaco-editor'
 
@@ -164,9 +163,9 @@ describe('DiffOverlay', () => {
     createModelMock.mockRestore()
   })
 
-  it('does not render hunk buttons when no line changes exist', () => {
+  it('does not render per-hunk Accept controls when no line changes exist', () => {
     render(<DiffOverlay {...DEFAULT_PROPS} />)
-    expect(screen.queryByTestId('hunk-buttons-pane')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('hunk-accept-inline-0')).not.toBeInTheDocument()
   })
 
   it('renders hunk buttons when line changes exist and calls handleAcceptHunk on click', async () => {
@@ -223,11 +222,11 @@ describe('DiffOverlay', () => {
 
     // Wait for mount callback (setTimeout(0) in mock)
     await waitFor(() => {
-      expect(screen.getByTestId('hunk-buttons-pane')).toBeInTheDocument()
+      expect(screen.getByTestId('hunk-accept-inline-0')).toBeInTheDocument()
     })
 
-    // Click the hunk accept button
-    const hunkBtn = screen.getByTestId('hunk-accept-button-0')
+    // Click the per-hunk Accept control (Monaco content widget)
+    const hunkBtn = screen.getByTestId('hunk-accept-inline-0')
     expect(hunkBtn).toBeInTheDocument()
     await user.click(hunkBtn)
 
@@ -242,7 +241,7 @@ describe('DiffOverlay', () => {
     createModelMock.mockRestore()
   })
 
-  it('getHunkButtonTop computes pixel position from modified editor', async () => {
+  it('renders per-hunk Accept for a modified line within model line count', async () => {
     const monacoMod = await import('monaco-editor')
     const createModelMock = vi.mocked(monacoMod.editor.createModel)
 
@@ -252,8 +251,8 @@ describe('DiffOverlay', () => {
           dispose: vi.fn(),
           getValue: vi.fn(() => ''),
           setValue: vi.fn(),
-          getLineCount: vi.fn(() => 1),
-          getLineMaxColumn: vi.fn(() => 10),
+          getLineCount: vi.fn(() => 5),
+          getLineMaxColumn: vi.fn((line: number) => (line === 3 ? 10 : 20)),
           getValueInRange: vi.fn(() => ''),
           pushEditOperations: vi.fn(),
         }) as unknown as ReturnType<typeof monacoMod.editor.createModel>
@@ -288,15 +287,10 @@ describe('DiffOverlay', () => {
 
     render(<DiffOverlay {...DEFAULT_PROPS} />)
 
-    // Wait for mount callback and hunk buttons to appear
     await waitFor(() => {
-      expect(screen.getByTestId('hunk-buttons-pane')).toBeInTheDocument()
+      expect(screen.getByTestId('hunk-accept-inline-0')).toBeInTheDocument()
     })
-
-    // The mock getTopForLineNumber returns line * 20, scrollTop is 0
-    // So for modifiedStartLineNumber=3, top = 3*20 - 0 = 60
-    const hunkBtn = screen.getByTestId('hunk-accept-button-0')
-    expect(hunkBtn.style.top).toBe('60px')
+    expect(screen.getByTestId('hunk-accept-inline-0')).toHaveTextContent('Accept')
 
     mod.DiffEditor = OrigDiffEditor
     createModelMock.mockRestore()
