@@ -16,6 +16,10 @@ function parseSemver(s) {
   return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]) }
 }
 
+function versionToGitTag(version) {
+  return `v${version}`
+}
+
 function bumpSemver(current, kind) {
   const v = parseSemver(current)
   if (!v) {
@@ -106,8 +110,9 @@ async function main() {
       process.exit(1)
     }
 
-    if (gitTagExists(next)) {
-      console.error(`[bump-tauri-version] Git tag "${next}" already exists.`)
+    const gitTag = versionToGitTag(next)
+    if (gitTagExists(gitTag)) {
+      console.error(`[bump-tauri-version] Git tag "${gitTag}" already exists.`)
       process.exit(1)
     }
 
@@ -118,11 +123,11 @@ async function main() {
 
     runGit(['add', 'src-tauri/tauri.conf.json'])
     runGit(['commit', '-m', `chore: bump version to ${next}`])
-    runGit(['tag', next])
-    console.log(`Created tag ${next}.`)
+    runGit(['tag', gitTag])
+    console.log(`Created tag ${gitTag}.`)
 
     runGit(['push'])
-    runGit(['push', 'origin', next])
+    runGit(['push', 'origin', gitTag])
     console.log('Pushed branch and tag.')
   } finally {
     rl.close()
