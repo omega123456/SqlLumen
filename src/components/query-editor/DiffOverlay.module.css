@@ -10,15 +10,25 @@
   overflow: hidden;
 }
 
-.header {
+/* Top and bottom chrome — same height, padding, and surface as each other */
+.header,
+.footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   height: 44px;
   padding: 0 var(--space-lg);
   background: var(--surface-container-high);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.25);
   flex-shrink: 0;
+}
+
+.header {
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+}
+
+.footer {
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.25);
+  justify-content: flex-end;
 }
 
 .title {
@@ -40,6 +50,22 @@
   min-height: 0;
   overflow: hidden;
   position: relative;
+}
+
+/* Slightly compact overlay toolbar buttons (still a touch smaller than global defaults) */
+.compactToolbar :global(.ui-button-primary),
+.compactToolbar :global(.ui-button-danger),
+.compactToolbar :global(.ui-button-secondary) {
+  padding: 6px var(--space-md);
+  font-size: var(--type-size-md);
+  font-weight: 600;
+  line-height: 1.25;
+  box-shadow: none;
+}
+
+.compactToolbar :global(.ui-button-primary:hover:not(:disabled)),
+.compactToolbar :global(.ui-button-danger:hover:not(:disabled)) {
+  box-shadow: none;
 }
 
 /* One-line view zone on the original pane — keeps rows aligned with modified Accept rows. */

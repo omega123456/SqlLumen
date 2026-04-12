@@ -2331,8 +2331,8 @@ for (const theme of themes) {
         animations: 'disabled',
       })
 
-      // Reject to close the overlay
-      await page.getByTestId('diff-reject-button').click()
+      // Close dismisses the overlay when no per-hunk accepts were made
+      await page.getByTestId('diff-close-button').click()
     })
 
     // NOTE: Monaco CodeLens screenshot is intentionally skipped.

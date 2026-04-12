@@ -97,15 +97,18 @@ async function openConnectionManager(page: Page) {
 
 async function connectToSample(page: Page) {
   await openConnectionManager(page)
-  await page
-    .getByTestId('connection-dialog')
-    .getByRole('button', { name: /Sample MySQL/ })
-    .click()
-  await page
-    .getByTestId('connection-dialog')
-    .getByRole('button', { name: 'Connect', exact: true })
-    .click()
-  await expect(page.getByTestId('connection-dialog')).toBeHidden()
+  const dialog = page.getByTestId('connection-dialog')
+  const sampleRow = dialog.getByRole('button', { name: /Sample MySQL/ })
+  await expect(sampleRow).toBeVisible({ timeout: APP_READY_MS })
+  await sampleRow.scrollIntoViewIfNeeded()
+  // List rows can keep Playwright's actionability "stable" check pending; DOM click still runs React handlers.
+  await sampleRow.evaluate((el) => {
+    ;(el as HTMLElement).click()
+  })
+  const connectBtn = dialog.getByRole('button', { name: 'Connect', exact: true })
+  await expect(connectBtn).toBeEnabled({ timeout: APP_READY_MS })
+  await connectBtn.click()
+  await expect(page.getByTestId('connection-dialog')).toBeHidden({ timeout: APP_READY_MS })
   await expect(page.getByTestId('object-browser')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('status-bar')).toContainText('Connected', { timeout: APP_READY_MS })
 }

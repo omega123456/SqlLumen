@@ -89,16 +89,27 @@ describe('DiffOverlay', () => {
     expect(acceptBtn).toHaveTextContent('Accept All')
   })
 
-  it('renders Reject All button with secondary variant', () => {
+  it('renders Reject All button with danger variant', () => {
     render(<DiffOverlay {...DEFAULT_PROPS} />)
     const rejectBtn = screen.getByTestId('diff-reject-button')
     expect(rejectBtn).toHaveTextContent('Reject All')
+    expect(rejectBtn).toHaveClass('ui-button-danger')
   })
 
-  it('renders both Accept All and Reject All buttons', () => {
+  it('renders Accept All, Reject All, and Close buttons', () => {
     render(<DiffOverlay {...DEFAULT_PROPS} />)
     expect(screen.getByTestId('diff-accept-all-button')).toBeInTheDocument()
     expect(screen.getByTestId('diff-reject-button')).toBeInTheDocument()
+    expect(screen.getByTestId('diff-close-button')).toBeInTheDocument()
+  })
+
+  it('calls onReject when Close is clicked and no hunks were accepted', async () => {
+    const user = userEvent.setup()
+    render(<DiffOverlay {...DEFAULT_PROPS} />)
+
+    await user.click(screen.getByTestId('diff-close-button'))
+    expect(DEFAULT_PROPS.onReject).toHaveBeenCalledTimes(1)
+    expect(DEFAULT_PROPS.onAccept).not.toHaveBeenCalled()
   })
 
   it('unmounts cleanly without TextModel disposal crash', async () => {
@@ -168,78 +179,79 @@ describe('DiffOverlay', () => {
     expect(screen.queryByTestId('hunk-accept-inline-0')).not.toBeInTheDocument()
   })
 
-  it('renders hunk buttons when line changes exist and calls handleAcceptHunk on click', async () => {
-    const monacoMod = await import('monaco-editor')
-    const createModelMock = vi.mocked(monacoMod.editor.createModel)
-    const mockGetValue = vi.fn(() => 'MERGED SQL')
-    const mockPushEditOperations = vi.fn()
+  it.each(['diff-close-button', 'diff-accept-all-button'])(
+    'after per-hunk accept, %s applies merged orig model to onAccept',
+    async (finishButtonTestId) => {
+      const monacoMod = await import('monaco-editor')
+      const createModelMock = vi.mocked(monacoMod.editor.createModel)
+      const mockGetValue = vi.fn(() => 'MERGED SQL')
+      const mockPushEditOperations = vi.fn()
 
-    createModelMock.mockImplementation(
-      () =>
-        ({
-          dispose: vi.fn(),
-          getValue: mockGetValue,
-          setValue: vi.fn(),
-          getLineCount: vi.fn(() => 1),
-          getLineMaxColumn: vi.fn(() => 20),
-          getValueInRange: vi.fn(() => 'some text'),
-          pushEditOperations: mockPushEditOperations,
-        }) as unknown as ReturnType<typeof monacoMod.editor.createModel>
-    )
-
-    // Patch the DiffEditor mock to return line changes via getLineChanges.
-    // The global mock (setup.ts) returns null from getLineChanges, so we
-    // intercept the onMount callback to patch it before DiffOverlay sees it.
-    const reactEditorMod = await import('@monaco-editor/react')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = reactEditorMod as any
-    const OrigDiffEditor = mod.DiffEditor
-    const React = await import('react')
-
-    const lineChanges = [
-      {
-        originalStartLineNumber: 1,
-        originalEndLineNumber: 1,
-        modifiedStartLineNumber: 1,
-        modifiedEndLineNumber: 1,
-      },
-    ]
-
-    mod.DiffEditor = function PatchedDiffEditor(props: Record<string, unknown>) {
-      const origOnMount = props.onMount as ((editor: unknown) => void) | undefined
-      const patchedOnMount = React.useCallback(
-        (editor: Record<string, unknown>) => {
-          editor.getLineChanges = vi.fn(() => lineChanges)
-          origOnMount?.(editor)
-        },
-        [origOnMount]
+      createModelMock.mockImplementation(
+        () =>
+          ({
+            dispose: vi.fn(),
+            getValue: mockGetValue,
+            setValue: vi.fn(),
+            getLineCount: vi.fn(() => 1),
+            getLineMaxColumn: vi.fn(() => 20),
+            getValueInRange: vi.fn(() => 'some text'),
+            pushEditOperations: mockPushEditOperations,
+          }) as unknown as ReturnType<typeof monacoMod.editor.createModel>
       )
-      return React.createElement(OrigDiffEditor, { ...props, onMount: patchedOnMount })
+
+      // Patch the DiffEditor mock to return line changes via getLineChanges.
+      // The global mock (setup.ts) returns null from getLineChanges, so we
+      // intercept the onMount callback to patch it before DiffOverlay sees it.
+      const reactEditorMod = await import('@monaco-editor/react')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mod = reactEditorMod as any
+      const OrigDiffEditor = mod.DiffEditor
+      const React = await import('react')
+
+      const lineChanges = [
+        {
+          originalStartLineNumber: 1,
+          originalEndLineNumber: 1,
+          modifiedStartLineNumber: 1,
+          modifiedEndLineNumber: 1,
+        },
+      ]
+
+      mod.DiffEditor = function PatchedDiffEditor(props: Record<string, unknown>) {
+        const origOnMount = props.onMount as ((editor: unknown) => void) | undefined
+        const patchedOnMount = React.useCallback(
+          (editor: Record<string, unknown>) => {
+            editor.getLineChanges = vi.fn(() => lineChanges)
+            origOnMount?.(editor)
+          },
+          [origOnMount]
+        )
+        return React.createElement(OrigDiffEditor, { ...props, onMount: patchedOnMount })
+      }
+
+      const user = userEvent.setup()
+      render(<DiffOverlay {...DEFAULT_PROPS} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('hunk-accept-inline-0')).toBeInTheDocument()
+      })
+
+      const hunkBtn = screen.getByTestId('hunk-accept-inline-0')
+      expect(hunkBtn).toBeInTheDocument()
+      await user.click(hunkBtn)
+
+      expect(mockPushEditOperations).toHaveBeenCalled()
+
+      await user.click(screen.getByTestId(finishButtonTestId))
+      expect(DEFAULT_PROPS.onAccept).toHaveBeenCalledTimes(1)
+      expect(DEFAULT_PROPS.onAccept).toHaveBeenCalledWith('MERGED SQL')
+      expect(DEFAULT_PROPS.onReject).not.toHaveBeenCalled()
+
+      mod.DiffEditor = OrigDiffEditor
+      createModelMock.mockRestore()
     }
-
-    const user = userEvent.setup()
-    render(<DiffOverlay {...DEFAULT_PROPS} />)
-
-    // Wait for mount callback (setTimeout(0) in mock)
-    await waitFor(() => {
-      expect(screen.getByTestId('hunk-accept-inline-0')).toBeInTheDocument()
-    })
-
-    // Click the per-hunk Accept control (Monaco content widget)
-    const hunkBtn = screen.getByTestId('hunk-accept-inline-0')
-    expect(hunkBtn).toBeInTheDocument()
-    await user.click(hunkBtn)
-
-    // After hunk accept, pushEditOperations should have been called on origModel
-    expect(mockPushEditOperations).toHaveBeenCalled()
-
-    // Now click Accept All — should use origModel.getValue() since hunks were accepted
-    await user.click(screen.getByTestId('diff-accept-all-button'))
-    expect(DEFAULT_PROPS.onAccept).toHaveBeenCalledWith('MERGED SQL')
-
-    mod.DiffEditor = OrigDiffEditor
-    createModelMock.mockRestore()
-  })
+  )
 
   it('renders per-hunk Accept for a modified line within model line count', async () => {
     const monacoMod = await import('monaco-editor')

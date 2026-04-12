@@ -459,12 +459,29 @@ export function DiffOverlay({
     }
   }, [onAccept, proposedSql, hunksAccepted])
 
+  /**
+   * Close — if any per-hunk accepts were applied in the overlay, persist the
+   * merged left-pane SQL to the main editor (same payload as Accept All in
+   * that state). Otherwise dismiss without changing the query tab.
+   */
+  const handleClose = useCallback(() => {
+    if (hunksAccepted && originalModelRef.current) {
+      onAccept(originalModelRef.current.getValue())
+    } else {
+      onReject()
+    }
+  }, [onAccept, onReject, hunksAccepted])
+
+  const closeLabel = hunksAccepted
+    ? 'Apply accepted changes and close review'
+    : 'Close review without updating the query'
+
   return (
     <div className={styles.overlay} data-testid="diff-overlay">
       <div className={styles.header}>
         <span className={styles.title}>Review Changes</span>
-        <div className={styles.actions}>
-          <Button variant="secondary" onClick={onReject} data-testid="diff-reject-button">
+        <div className={`${styles.actions} ${styles.compactToolbar}`}>
+          <Button variant="danger" onClick={onReject} data-testid="diff-reject-button">
             Reject All
           </Button>
           <Button variant="primary" onClick={handleAcceptAll} data-testid="diff-accept-all-button">
@@ -486,6 +503,19 @@ export function DiffOverlay({
             overviewRulerLanes: 0,
           }}
         />
+      </div>
+      <div className={styles.footer}>
+        <div className={`${styles.actions} ${styles.compactToolbar}`}>
+          <Button
+            variant="secondary"
+            onClick={handleClose}
+            title={closeLabel}
+            aria-label={closeLabel}
+            data-testid="diff-close-button"
+          >
+            Close
+          </Button>
+        </div>
       </div>
     </div>
   )
