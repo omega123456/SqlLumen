@@ -18,7 +18,7 @@ interface ResultSubTabsProps {
 }
 
 function getTabIcon(result: SingleResultState) {
-  if (result.status === 'error') {
+  if (result.resultStatus === 'error') {
     return <Warning size={12} weight="fill" className={styles.errorIcon} />
   }
   if (result.columns.length === 0) {

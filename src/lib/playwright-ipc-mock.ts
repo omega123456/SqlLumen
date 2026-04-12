@@ -1,5 +1,5 @@
 import type { SavedConnection } from '../types/connection'
-import type { SchemaMetadataResponse } from '../types/schema'
+import type { SchemaMetadataResponse, SchemaMetadataFull } from '../types/schema'
 
 const MOCK_TS = '2025-01-01T00:00:00.000Z'
 
@@ -28,6 +28,42 @@ export const PLAYWRIGHT_MOCK_CONNECTION: SavedConnection = {
 
 let activeMockDatabase: string | null = PLAYWRIGHT_MOCK_CONNECTION.defaultDatabase
 
+// ---------------------------------------------------------------------------
+// AI stream mock infrastructure
+// ---------------------------------------------------------------------------
+
+/**
+ * Registry of event listener callback IDs registered via `plugin:event|listen`.
+ * Maps event name → array of callback IDs (registered via transformCallback).
+ * Used by the `ai_chat` mock to simulate streaming events.
+ */
+const eventListenerCallbackIds = new Map<string, number[]>()
+
+/**
+ * Emit a mock event to all registered listeners for the given event name.
+ * Uses Tauri's internal `runCallback` to invoke the callbacks registered
+ * by `listen()` via `transformCallback`.
+ */
+function emitMockEvent(eventName: string, payload: unknown): void {
+  const ids = eventListenerCallbackIds.get(eventName) ?? []
+  const internals = (
+    window as unknown as {
+      __TAURI_INTERNALS__?: { runCallback?: (id: number, data: unknown) => void }
+    }
+  ).__TAURI_INTERNALS__
+  if (!internals?.runCallback) return
+
+  for (const id of ids) {
+    internals.runCallback(id, { event: eventName, payload })
+  }
+}
+
+/** The pre-defined AI mock response containing a SQL code block. */
+const AI_MOCK_RESPONSE =
+  "Here's a query to help you:\n\n```sql\nSELECT * FROM users WHERE active = 1;\n```\n\nThis query filters for active users."
+
+// ---------------------------------------------------------------------------
+
 function getSchemaMetadataOverride(): SchemaMetadataResponse | undefined {
   const w = globalThis as typeof globalThis & {
     __PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__?: SchemaMetadataResponse
@@ -42,9 +78,45 @@ function getSchemaMetadataOverride(): SchemaMetadataResponse | undefined {
  */
 export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unknown>): unknown {
   switch (cmd) {
-    // --- Settings ---
-    case 'get_setting':
+    // --- Tauri event system (captures listener callback IDs for AI streaming) ---
+    case 'plugin:event|listen': {
+      const eventName = args?.event as string | undefined
+      const handlerId = args?.handler as number | undefined
+      if (eventName && typeof handlerId === 'number') {
+        const ids = eventListenerCallbackIds.get(eventName) ?? []
+        ids.push(handlerId)
+        eventListenerCallbackIds.set(eventName, ids)
+      }
+      // Return the handler ID as the event ID (used by unlisten)
+      return handlerId ?? null
+    }
+    case 'plugin:event|unlisten': {
+      const eventName = args?.event as string | undefined
+      const eventId = args?.eventId as number | undefined
+      if (eventName && typeof eventId === 'number') {
+        const ids = eventListenerCallbackIds.get(eventName)
+        if (ids) {
+          const idx = ids.indexOf(eventId)
+          if (idx !== -1) ids.splice(idx, 1)
+        }
+      }
       return null
+    }
+
+    // --- Settings ---
+    case 'get_setting': {
+      const key = args?.key as string
+      // Return AI defaults for AI-related keys
+      const AI_DEFAULTS: Record<string, string> = {
+        'ai.enabled': 'false',
+        'ai.endpoint': '',
+        'ai.model': '',
+        'ai.temperature': '0.3',
+        'ai.maxTokens': '2048',
+      }
+      if (key in AI_DEFAULTS) return AI_DEFAULTS[key]
+      return null
+    }
     case 'set_setting':
       return null
     case 'get_all_settings':
@@ -65,6 +137,11 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'connection.defaultKeepalive': '60',
         shortcuts: '{}',
         'session.state': 'null',
+        'ai.enabled': 'false',
+        'ai.endpoint': '',
+        'ai.model': '',
+        'ai.temperature': '0.3',
+        'ai.maxTokens': '2048',
       }
 
     case 'log_frontend':
@@ -828,6 +905,77 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         }
       )
 
+    case 'fetch_schema_metadata_full': {
+      const baseMetadata = getSchemaMetadataOverride()
+      const fullMetadata: SchemaMetadataFull = {
+        databases: baseMetadata?.databases ?? ['ecommerce_db', 'analytics_db', 'staging_db'],
+        tables: baseMetadata?.tables ?? {
+          ecommerce_db: [
+            {
+              name: 'users',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 1000,
+              dataSize: 1048576,
+            },
+            {
+              name: 'orders',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 5000,
+              dataSize: 2097152,
+            },
+            {
+              name: 'products',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 200,
+              dataSize: 524288,
+            },
+          ],
+          analytics_db: [
+            {
+              name: 'events',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 50000,
+              dataSize: 8388608,
+            },
+          ],
+        },
+        columns: baseMetadata?.columns ?? {
+          'ecommerce_db.users': [
+            { name: 'id', dataType: 'BIGINT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+            { name: 'status', dataType: 'VARCHAR' },
+            { name: 'created_at', dataType: 'DATETIME' },
+          ],
+          'ecommerce_db.orders': [
+            { name: 'id', dataType: 'BIGINT' },
+            { name: 'user_id', dataType: 'BIGINT' },
+            { name: 'status', dataType: 'VARCHAR' },
+            { name: 'total', dataType: 'DECIMAL' },
+          ],
+          'analytics_db.events': [
+            { name: 'id', dataType: 'BIGINT' },
+            { name: 'event_name', dataType: 'VARCHAR' },
+            { name: 'user_id', dataType: 'BIGINT' },
+            { name: 'created_at', dataType: 'DATETIME' },
+          ],
+        },
+        routines: baseMetadata?.routines ?? {
+          ecommerce_db: [
+            { name: 'sp_get_orders', routineType: 'PROCEDURE' },
+            { name: 'fn_calculate_total', routineType: 'FUNCTION' },
+          ],
+        },
+        foreignKeys: {},
+        indexes: {},
+      }
+      return fullMetadata
+    }
+
     // --- Table data browser/editor ---
     case 'fetch_table_data': {
       const table = (args as Record<string, unknown>)?.table
@@ -1382,6 +1530,58 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
 
     case 'delete_favorite':
       return true
+
+    // --- AI commands ---
+    case 'ai_chat': {
+      // Simulate streaming by emitting mock events after a short delay
+      const request = args?.request as { streamId?: string } | undefined
+      const streamId = request?.streamId ?? 'mock-stream-id'
+
+      // Support AI error simulation for Playwright tests
+      if (
+        typeof window !== 'undefined' &&
+        (window as unknown as Record<string, unknown>).__mockAiError__
+      ) {
+        setTimeout(() => {
+          emitMockEvent('ai-stream-error', {
+            streamId,
+            error: 'Connection refused: unable to reach AI endpoint',
+          })
+        }, 20)
+        return null
+      }
+
+      // Break the response into chunks and emit them asynchronously.
+      // Use [\s\S] instead of . so newlines are preserved in chunks —
+      // . does not match \n by default, which would strip the newlines
+      // that markdown fenced code blocks require.
+      const chunks = AI_MOCK_RESPONSE.match(/[\s\S]{1,20}/g) ?? [AI_MOCK_RESPONSE]
+      let delay = 10
+      for (const chunk of chunks) {
+        setTimeout(() => {
+          emitMockEvent('ai-stream-chunk', { streamId, content: chunk })
+        }, delay)
+        delay += 10
+      }
+      // Emit done after all chunks
+      setTimeout(() => {
+        emitMockEvent('ai-stream-done', { streamId })
+      }, delay)
+
+      return null
+    }
+
+    case 'ai_cancel':
+      return null
+
+    case 'list_ai_models':
+      return {
+        models: [
+          { id: 'codellama', name: null },
+          { id: 'deepseek-coder', name: null },
+          { id: 'llama3.2', name: null },
+        ],
+      }
 
     default:
       return null

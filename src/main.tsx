@@ -63,6 +63,7 @@ async function init() {
     const { useTableDesignerStore } = await import('./stores/table-designer-store')
     const { useObjectEditorStore } = await import('./stores/object-editor-store')
     const { useImportDialogStore } = await import('./stores/import-dialog-store')
+    const { useAiStore } = await import('./stores/ai-store')
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
     ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
     ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore
@@ -71,6 +72,8 @@ async function init() {
     ;(window as unknown as Record<string, unknown>).__tableDesignerStore__ = useTableDesignerStore
     ;(window as unknown as Record<string, unknown>).__objectEditorStore__ = useObjectEditorStore
     ;(window as unknown as Record<string, unknown>).__importDialogStore__ = useImportDialogStore
+    ;(window as unknown as Record<string, unknown>).__aiStore__ = useAiStore
+    ;(window as unknown as Record<string, unknown>).__settingsStore__ = useSettingsStore
   }
 
   // Load all settings before rendering so stores/components can read them

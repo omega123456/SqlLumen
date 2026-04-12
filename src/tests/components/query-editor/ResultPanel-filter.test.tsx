@@ -96,7 +96,7 @@ vi.mock('../../../stores/toast-store', () => ({
 function setupQueryTab(resultOverrides: Partial<SingleResultState> = {}) {
   const result: SingleResultState = {
     ...DEFAULT_RESULT_STATE,
-    status: 'success',
+    resultStatus: 'success',
     columns: [
       { name: 'id', dataType: 'INT' },
       { name: 'name', dataType: 'VARCHAR' },
@@ -113,7 +113,8 @@ function setupQueryTab(resultOverrides: Partial<SingleResultState> = {}) {
   const tab: TabQueryState = {
     content: '',
     filePath: null,
-    status: 'success',
+    tabStatus: 'success',
+    prevTabStatus: 'idle',
     cursorPosition: null,
     connectionId: 'conn-1',
     results: [result],

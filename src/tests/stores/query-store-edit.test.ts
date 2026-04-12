@@ -1538,7 +1538,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
     expect(tab.isAnalyzingQuery).toBe(false)
     expect(Object.keys(tab.editTableMetadata)).toEqual([])
     // Query should still be successful
-    expect(tab.status).toBe('success')
+    expect(tab.resultStatus).toBe('success')
   })
 
   it('does not analyze for SHOW/DESCRIBE/EXPLAIN even when columns are returned', async () => {
@@ -1568,7 +1568,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
     const tab = flat('tab-1')
     expect(Object.keys(tab.editTableMetadata)).toEqual([])
     expect(tab.isAnalyzingQuery).toBe(false)
-    expect(tab.status).toBe('success')
+    expect(tab.resultStatus).toBe('success')
   })
 
   it('discards stale analysis when queryId has changed', async () => {
@@ -1754,7 +1754,7 @@ describe('useQueryStore — changePageSize clears edit state', () => {
     // editTableMetadata is cleared then repopulated by background analysis
     // After flushMicrotasks it should be repopulated
     expect(after.editingRowIndex).toBeNull()
-    expect(after.status).toBe('success')
+    expect(after.resultStatus).toBe('success')
   })
 })
 
@@ -1784,7 +1784,7 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
     expect(after.editColumnBindings.size).toBe(0)
     expect(after.editBoundColumnIndexMap.size).toBe(0)
     expect(after.editingRowIndex).toBeNull()
-    expect(after.status).toBe('success')
+    expect(after.resultStatus).toBe('success')
   })
 
   it('does not clear edit state for normal sort (asc/desc)', async () => {

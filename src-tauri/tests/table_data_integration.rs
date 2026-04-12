@@ -43,6 +43,7 @@ mod type_aware_filter_integration {
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
             dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
             import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 

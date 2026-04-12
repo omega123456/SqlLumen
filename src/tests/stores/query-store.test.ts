@@ -64,7 +64,7 @@ const BOOLEAN_ALIAS_COLUMNS = [
 describe('useQueryStore — getTabState', () => {
   it('returns default state for unknown tab', () => {
     const state = useQueryStore.getState().getTabState('unknown')
-    expect(state.status).toBe('idle')
+    expect(state.tabStatus).toBe('idle')
     expect(state.content).toBe('')
     expect(flat('unknown').columns).toHaveLength(0)
   })
@@ -100,7 +100,7 @@ describe('useQueryStore — executeQuery', () => {
   it('sets running status then success', async () => {
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT 1')
     const state = useQueryStore.getState().getTabState('tab-1')
-    expect(state.status).toBe('success')
+    expect(state.tabStatus).toBe('success')
     const f = flat('tab-1')
     expect(f.queryId).toBe('q-mock')
     expect(f.totalRows).toBe(3)
@@ -114,7 +114,7 @@ describe('useQueryStore — executeQuery', () => {
     })
     await useQueryStore.getState().executeQuery('conn-1', 'tab-error', 'SELECT * FROM bad_table')
     const state = useQueryStore.getState().getTabState('tab-error')
-    expect(state.status).toBe('error')
+    expect(state.tabStatus).toBe('error')
     expect(flat('tab-error').errorMessage).toContain('table not found')
   })
 
@@ -130,7 +130,7 @@ describe('useQueryStore — executeQuery', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-ps', 'SELECT 1')
     const state = useQueryStore.getState().getTabState('tab-ps')
-    expect(state.status).toBe('success')
+    expect(state.tabStatus).toBe('success')
     // The query still succeeds (the mock doesn't validate pageSize,
     // but the code path passes it)
     expect(flat('tab-ps').rows).toEqual([[1], [2], [3]])
@@ -240,7 +240,7 @@ describe('useQueryStore — executeQuery', () => {
         ...prev.tabs,
         'tab-guard': {
           ...prev.tabs['tab-guard']!,
-          status: 'running' as const,
+          tabStatus: 'running' as const,
           executionStartedAt: Date.now(),
         },
       },
@@ -251,7 +251,7 @@ describe('useQueryStore — executeQuery', () => {
     // Should not have called the IPC
     expect(executeCallCount).toBe(0)
     // Status should still be running
-    expect(useQueryStore.getState().getTabState('tab-guard').status).toBe('running')
+    expect(useQueryStore.getState().getTabState('tab-guard').tabStatus).toBe('running')
   })
 })
 
@@ -387,7 +387,7 @@ describe('useQueryStore — stale query guard', () => {
     const promise = useQueryStore.getState().executeQuery('conn-1', 'tab-stale', 'SELECT 1')
 
     // Tab is in running state
-    expect(useQueryStore.getState().tabs['tab-stale']?.status).toBe('running')
+    expect(useQueryStore.getState().tabs['tab-stale']?.tabStatus).toBe('running')
 
     // Simulate tab close
     useQueryStore.getState().cleanupTab('conn-1', 'tab-stale')
@@ -560,14 +560,14 @@ describe('useQueryStore — sortResults', () => {
       sortDirection: 'asc' as const,
       lastExecutedSql: 'SELECT id FROM t',
       queryId: 'q-old',
-      status: 'success' as const,
+      resultStatus: 'success' as const,
     })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-1': {
           ...prev.tabs['tab-1']!,
-          status: 'success' as const,
+          tabStatus: 'success' as const,
         },
       },
     }))
@@ -608,14 +608,14 @@ describe('useQueryStore — sortResults', () => {
       sortDirection: 'asc' as const,
       lastExecutedSql: 'SELECT is_active FROM t',
       queryId: 'q-old',
-      status: 'success' as const,
+      resultStatus: 'success' as const,
     })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-bool-reexec': {
           ...prev.tabs['tab-bool-reexec']!,
-          status: 'success' as const,
+          tabStatus: 'success' as const,
         },
       },
     }))
@@ -765,7 +765,7 @@ describe('useQueryStore — changePageSize', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT id FROM t')
     patchResult('tab-1', {
       lastExecutedSql: 'SELECT id FROM t',
-      status: 'success' as const,
+      resultStatus: 'success' as const,
       queryId: 'q-old',
       selectedRowIndex: 3,
     })
@@ -774,14 +774,14 @@ describe('useQueryStore — changePageSize', () => {
         ...prev.tabs,
         'tab-1': {
           ...prev.tabs['tab-1']!,
-          status: 'success' as const,
+          tabStatus: 'success' as const,
         },
       },
     }))
 
     await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
     const f = flat('tab-1')
-    expect(f.status).toBe('success')
+    expect(f.resultStatus).toBe('success')
     expect(f.pageSize).toBe(500)
     expect(f.queryId).toBe('q-new')
     expect(f.totalRows).toBe(100)
@@ -813,7 +813,7 @@ describe('useQueryStore — changePageSize', () => {
     useQueryStore.getState().setContent('tab-bool-size', 'SELECT is_active FROM t')
     patchResult('tab-bool-size', {
       lastExecutedSql: 'SELECT is_active FROM t',
-      status: 'success' as const,
+      resultStatus: 'success' as const,
       queryId: 'q-old',
     })
     useQueryStore.setState((prev) => ({
@@ -821,7 +821,7 @@ describe('useQueryStore — changePageSize', () => {
         ...prev.tabs,
         'tab-bool-size': {
           ...prev.tabs['tab-bool-size']!,
-          status: 'success' as const,
+          tabStatus: 'success' as const,
         },
       },
     }))
@@ -837,7 +837,7 @@ describe('useQueryStore — changePageSize', () => {
     useQueryStore.getState().setContent('tab-1', '')
     await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
     // Should not throw; status should remain unchanged
-    expect(useQueryStore.getState().getTabState('tab-1').status).toBe('idle')
+    expect(useQueryStore.getState().getTabState('tab-1').tabStatus).toBe('idle')
   })
 
   it('sets error status on IPC failure', async () => {
@@ -850,21 +850,21 @@ describe('useQueryStore — changePageSize', () => {
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     patchResult('tab-1', {
       lastExecutedSql: 'SELECT 1',
-      status: 'success' as const,
+      resultStatus: 'success' as const,
     })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-1': {
           ...prev.tabs['tab-1']!,
-          status: 'success' as const,
+          tabStatus: 'success' as const,
         },
       },
     }))
 
     await useQueryStore.getState().changePageSize('conn-1', 'tab-1', 500)
     const f = flat('tab-1')
-    expect(f.status).toBe('error')
+    expect(f.resultStatus).toBe('error')
     expect(f.errorMessage).toContain('Query failed')
   })
 
@@ -883,14 +883,14 @@ describe('useQueryStore — changePageSize', () => {
     useQueryStore.getState().setContent('tab-stale-ps', 'SELECT id FROM t')
     patchResult('tab-stale-ps', {
       lastExecutedSql: 'SELECT id FROM t',
-      status: 'success' as const,
+      resultStatus: 'success' as const,
     })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-stale-ps': {
           ...prev.tabs['tab-stale-ps']!,
-          status: 'success' as const,
+          tabStatus: 'success' as const,
         },
       },
     }))
@@ -933,14 +933,14 @@ describe('useQueryStore — changePageSize', () => {
     useQueryStore.getState().setContent('tab-stale-ps2', 'SELECT 1')
     patchResult('tab-stale-ps2', {
       lastExecutedSql: 'SELECT 1',
-      status: 'success' as const,
+      resultStatus: 'success' as const,
     })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-stale-ps2': {
           ...prev.tabs['tab-stale-ps2']!,
-          status: 'success' as const,
+          tabStatus: 'success' as const,
         },
       },
     }))
@@ -978,7 +978,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
 
     // While running, executionStartedAt should be set
     const runningState = useQueryStore.getState().getTabState('tab-timing')
-    expect(runningState.status).toBe('running')
+    expect(runningState.tabStatus).toBe('running')
     expect(runningState.executionStartedAt).not.toBeNull()
     expect(runningState.executionStartedAt!).toBeGreaterThanOrEqual(beforeMs)
     expect(runningState.executionStartedAt!).toBeLessThanOrEqual(Date.now())
@@ -998,7 +998,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
 
     // After success, executionStartedAt should be cleared
     const successState = useQueryStore.getState().getTabState('tab-timing')
-    expect(successState.status).toBe('success')
+    expect(successState.tabStatus).toBe('success')
     expect(successState.executionStartedAt).toBeNull()
   })
 
@@ -1009,7 +1009,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-err-timing', 'SELECT bad')
     const state = useQueryStore.getState().getTabState('tab-err-timing')
-    expect(state.status).toBe('error')
+    expect(state.tabStatus).toBe('error')
     expect(state.executionStartedAt).toBeNull()
   })
 
@@ -1066,7 +1066,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
     await promise
 
     const state = useQueryStore.getState().getTabState('tab-cancelled')
-    expect(state.status).toBe('error')
+    expect(state.tabStatus).toBe('error')
     expect(flat('tab-cancelled').errorMessage).toBe('Query cancelled by user')
     // isCancelling and wasCancelled should be cleared after completion
     expect(state.isCancelling).toBe(false)
@@ -1090,14 +1090,14 @@ describe('useQueryStore — changePageSize execution timing', () => {
     useQueryStore.getState().setContent('tab-ps-timing', 'SELECT 1')
     patchResult('tab-ps-timing', {
       lastExecutedSql: 'SELECT 1',
-      status: 'success' as const,
+      resultStatus: 'success' as const,
     })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-ps-timing': {
           ...prev.tabs['tab-ps-timing']!,
-          status: 'success' as const,
+          tabStatus: 'success' as const,
         },
       },
     }))
@@ -1107,7 +1107,7 @@ describe('useQueryStore — changePageSize execution timing', () => {
 
     // While running, executionStartedAt should be set
     const runningState = useQueryStore.getState().getTabState('tab-ps-timing')
-    expect(runningState.status).toBe('running')
+    expect(runningState.tabStatus).toBe('running')
     expect(runningState.executionStartedAt).not.toBeNull()
     expect(runningState.executionStartedAt!).toBeGreaterThanOrEqual(beforeMs)
 
@@ -1126,7 +1126,7 @@ describe('useQueryStore — changePageSize execution timing', () => {
 
     // After success, executionStartedAt should be cleared
     const successState = useQueryStore.getState().getTabState('tab-ps-timing')
-    expect(successState.status).toBe('success')
+    expect(successState.tabStatus).toBe('success')
     expect(successState.executionStartedAt).toBeNull()
   })
 
@@ -1140,14 +1140,14 @@ describe('useQueryStore — changePageSize execution timing', () => {
     useQueryStore.getState().setContent('tab-ps-err-timing', 'SELECT 1')
     patchResult('tab-ps-err-timing', {
       lastExecutedSql: 'SELECT 1',
-      status: 'success' as const,
+      resultStatus: 'success' as const,
     })
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
         'tab-ps-err-timing': {
           ...prev.tabs['tab-ps-err-timing']!,
-          status: 'success' as const,
+          tabStatus: 'success' as const,
         },
       },
     }))
@@ -1155,7 +1155,7 @@ describe('useQueryStore — changePageSize execution timing', () => {
     await useQueryStore.getState().changePageSize('conn-1', 'tab-ps-err-timing', 500)
 
     const state = useQueryStore.getState().getTabState('tab-ps-err-timing')
-    expect(state.status).toBe('error')
+    expect(state.tabStatus).toBe('error')
     expect(state.executionStartedAt).toBeNull()
   })
 })
@@ -1192,7 +1192,7 @@ describe('useQueryStore — cancelQuery', () => {
         ...prev.tabs,
         'tab-cancel': {
           ...prev.tabs['tab-cancel']!,
-          status: 'running' as const,
+          tabStatus: 'running' as const,
         },
       },
     }))
@@ -1222,7 +1222,7 @@ describe('useQueryStore — cancelQuery', () => {
         ...prev.tabs,
         'tab-noop': {
           ...prev.tabs['tab-noop']!,
-          status: 'running' as const,
+          tabStatus: 'running' as const,
         },
       },
     }))
@@ -1251,7 +1251,7 @@ describe('useQueryStore — cancelQuery', () => {
         ...prev.tabs,
         'tab-cancel-err': {
           ...prev.tabs['tab-cancel-err']!,
-          status: 'running' as const,
+          tabStatus: 'running' as const,
         },
       },
     }))
@@ -1283,7 +1283,7 @@ describe('useQueryStore — cancelQuery', () => {
         ...prev.tabs,
         'tab-dbl': {
           ...prev.tabs['tab-dbl']!,
-          status: 'running' as const,
+          tabStatus: 'running' as const,
           isCancelling: true,
         },
       },
@@ -1313,7 +1313,7 @@ describe('useQueryStore — cancelQuery', () => {
         ...prev.tabs,
         'tab-ghost': {
           ...prev.tabs['tab-ghost']!,
-          status: 'running' as const,
+          tabStatus: 'running' as const,
         },
       },
     }))
@@ -1339,5 +1339,65 @@ describe('useQueryStore — default tab state new fields', () => {
     expect(state.executionStartedAt).toBeNull()
     expect(state.isCancelling).toBe(false)
     expect(state.wasCancelled).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// setTabStatus
+// ---------------------------------------------------------------------------
+
+describe('useQueryStore — setTabStatus', () => {
+  beforeEach(() => {
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+  })
+
+  it('sets tabStatus to a standard ExecutionStatus', () => {
+    useQueryStore.getState().setTabStatus('tab-1', 'success')
+    const state = useQueryStore.getState().getTabState('tab-1')
+    expect(state.tabStatus).toBe('success')
+  })
+
+  it('sets tabStatus to ai-pending and saves prevTabStatus', () => {
+    // Start from idle (default)
+    expect(useQueryStore.getState().getTabState('tab-1').tabStatus).toBe('idle')
+    useQueryStore.getState().setTabStatus('tab-1', 'ai-pending')
+    const state = useQueryStore.getState().getTabState('tab-1')
+    expect(state.tabStatus).toBe('ai-pending')
+    expect(state.prevTabStatus).toBe('idle')
+  })
+
+  it('preserves prevTabStatus when transitioning from success to ai-pending', () => {
+    useQueryStore.getState().setTabStatus('tab-1', 'success')
+    useQueryStore.getState().setTabStatus('tab-1', 'ai-pending')
+    const state = useQueryStore.getState().getTabState('tab-1')
+    expect(state.tabStatus).toBe('ai-pending')
+    expect(state.prevTabStatus).toBe('success')
+  })
+
+  it('does not overwrite prevTabStatus when moving between AI states', () => {
+    useQueryStore.getState().setTabStatus('tab-1', 'success')
+    useQueryStore.getState().setTabStatus('tab-1', 'ai-pending')
+    // prevTabStatus should be 'success'
+    useQueryStore.getState().setTabStatus('tab-1', 'ai-reviewing')
+    const state = useQueryStore.getState().getTabState('tab-1')
+    expect(state.tabStatus).toBe('ai-reviewing')
+    // prevTabStatus should still be 'success' — not 'ai-pending'
+    expect(state.prevTabStatus).toBe('success')
+  })
+
+  it('restores from ai-pending to prevTabStatus', () => {
+    useQueryStore.getState().setTabStatus('tab-1', 'success')
+    useQueryStore.getState().setTabStatus('tab-1', 'ai-pending')
+    // Now restore
+    const prev = useQueryStore.getState().getTabState('tab-1').prevTabStatus
+    useQueryStore.getState().setTabStatus('tab-1', prev)
+    const state = useQueryStore.getState().getTabState('tab-1')
+    expect(state.tabStatus).toBe('success')
+  })
+
+  it('no-ops for non-existent tab', () => {
+    // Should not throw
+    useQueryStore.getState().setTabStatus('nonexistent', 'ai-pending')
+    expect(useQueryStore.getState().tabs['nonexistent']).toBeUndefined()
   })
 })

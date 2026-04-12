@@ -6,12 +6,11 @@
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlRow;
 use sqlx::Row;
+use std::collections::HashMap;
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
 #[cfg(not(coverage))]
 use sqlx::MySqlPool;
-#[cfg(not(coverage))]
-use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 // Data models
@@ -912,4 +911,146 @@ pub async fn query_routine_exists(
     Ok(count > 0)
 }
 
+// ---------------------------------------------------------------------------
+// Bulk foreign key / index queries (all tables in a database at once)
+// ---------------------------------------------------------------------------
+
+/// Query all foreign keys for every table in a database at once via INFORMATION_SCHEMA.
+/// Returns a `HashMap<String, Vec<ForeignKeyInfo>>` keyed by table name.
+#[cfg(not(coverage))]
+pub async fn query_all_foreign_keys(
+    pool: &MySqlPool,
+    database: &str,
+) -> Result<HashMap<String, Vec<ForeignKeyInfo>>, String> {
+    let sql = "SELECT \
+             kcu.TABLE_NAME, \
+             kcu.CONSTRAINT_NAME, \
+             kcu.COLUMN_NAME, \
+             kcu.REFERENCED_TABLE_SCHEMA, \
+             kcu.REFERENCED_TABLE_NAME, \
+             kcu.REFERENCED_COLUMN_NAME, \
+             rc.DELETE_RULE, \
+             rc.UPDATE_RULE \
+         FROM information_schema.KEY_COLUMN_USAGE kcu \
+         JOIN information_schema.REFERENTIAL_CONSTRAINTS rc \
+             ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME \
+             AND kcu.TABLE_SCHEMA = rc.CONSTRAINT_SCHEMA \
+         WHERE kcu.TABLE_SCHEMA = ? \
+             AND kcu.REFERENCED_TABLE_NAME IS NOT NULL \
+         ORDER BY kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION";
+    query_log::log_outgoing_sql_bound(sql, &[database.to_string()]);
+    let rows = sqlx::query(sql)
+        .bind(database)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to get all foreign keys: {e}"))?;
+    query_log::log_mysql_rows(&rows);
+
+    let mut result: HashMap<String, Vec<ForeignKeyInfo>> = HashMap::new();
+    for row in &rows {
+        let table_name = decode_mysql_text_cell(row, 0).unwrap_or_default();
+        let fk = ForeignKeyInfo {
+            name: decode_mysql_text_cell(row, 1).unwrap_or_default(),
+            column_name: decode_mysql_text_cell(row, 2).unwrap_or_default(),
+            referenced_database: decode_mysql_text_cell(row, 3).unwrap_or_default(),
+            referenced_table: decode_mysql_text_cell(row, 4).unwrap_or_default(),
+            referenced_column: decode_mysql_text_cell(row, 5).unwrap_or_default(),
+            on_delete: decode_mysql_text_cell(row, 6).unwrap_or_default(),
+            on_update: decode_mysql_text_cell(row, 7).unwrap_or_default(),
+        };
+        result.entry(table_name).or_default().push(fk);
+    }
+    Ok(result)
+}
+
+/// Coverage stub for `query_all_foreign_keys`.
+#[cfg(coverage)]
+pub async fn query_all_foreign_keys(
+    _pool: &(),
+    _database: &str,
+) -> Result<HashMap<String, Vec<ForeignKeyInfo>>, String> {
+    Ok(HashMap::new())
+}
+
+/// Query all indexes for every table in a database at once via INFORMATION_SCHEMA.STATISTICS.
+/// Returns a `HashMap<String, Vec<IndexInfo>>` keyed by table name.
+#[cfg(not(coverage))]
+pub async fn query_all_indexes(
+    pool: &MySqlPool,
+    database: &str,
+) -> Result<HashMap<String, Vec<IndexInfo>>, String> {
+    let sql = "SELECT \
+             TABLE_NAME, \
+             INDEX_NAME, \
+             NON_UNIQUE, \
+             INDEX_TYPE, \
+             COLUMN_NAME, \
+             CARDINALITY \
+         FROM information_schema.STATISTICS \
+         WHERE TABLE_SCHEMA = ? \
+         ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX";
+    query_log::log_outgoing_sql_bound(sql, &[database.to_string()]);
+    let rows = sqlx::query(sql)
+        .bind(database)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to get all indexes: {e}"))?;
+    query_log::log_mysql_rows(&rows);
+
+    // Use a two-level map: table_name -> index_name -> IndexInfo
+    let mut table_index_map: HashMap<String, HashMap<String, IndexInfo>> = HashMap::new();
+    let mut table_index_order: HashMap<String, Vec<String>> = HashMap::new();
+
+    for row in &rows {
+        let table_name = decode_mysql_text_cell(row, 0).unwrap_or_default();
+        let index_name = decode_mysql_text_cell(row, 1).unwrap_or_default();
+        let non_unique: i64 = row.try_get(2).unwrap_or(0);
+        let index_type = decode_mysql_text_cell(row, 3).unwrap_or_default();
+        let column_name = decode_mysql_text_cell(row, 4).unwrap_or_default();
+        let cardinality: Option<i64> = row.try_get(5).ok();
+
+        let index_map = table_index_map.entry(table_name.clone()).or_default();
+        let order = table_index_order.entry(table_name).or_default();
+
+        if !index_map.contains_key(&index_name) {
+            order.push(index_name.clone());
+            index_map.insert(
+                index_name.clone(),
+                IndexInfo {
+                    name: index_name.clone(),
+                    index_type,
+                    cardinality,
+                    columns: vec![],
+                    is_visible: true, // INFORMATION_SCHEMA.STATISTICS doesn't have Visible
+                    is_unique: non_unique == 0,
+                },
+            );
+        }
+
+        if let Some(info) = index_map.get_mut(&index_name) {
+            info.columns.push(column_name);
+        }
+    }
+
+    let mut result: HashMap<String, Vec<IndexInfo>> = HashMap::new();
+    for (table_name, mut index_map) in table_index_map {
+        let order = table_index_order.remove(&table_name).unwrap_or_default();
+        let indexes: Vec<IndexInfo> = order
+            .into_iter()
+            .filter_map(|name| index_map.remove(&name))
+            .collect();
+        result.insert(table_name, indexes);
+    }
+
+    Ok(result)
+}
+
+/// Coverage stub for `query_all_indexes`.
+#[cfg(coverage)]
+pub async fn query_all_indexes(
+    _pool: &(),
+    _database: &str,
+) -> Result<HashMap<String, Vec<IndexInfo>>, String> {
+    Ok(HashMap::new())
+}
 

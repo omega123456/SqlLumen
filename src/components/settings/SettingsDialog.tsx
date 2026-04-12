@@ -8,6 +8,7 @@ import { EditorSettings } from './EditorSettings'
 import { ResultsSettings } from './ResultsSettings'
 import { LoggingSettings } from './LoggingSettings'
 import { ShortcutsSettings } from './ShortcutsSettings'
+import { AiSettings } from './AiSettings'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import { useThemeStore } from '../../stores/theme-store'
@@ -94,6 +95,8 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
         return <LoggingSettings />
       case 'shortcuts':
         return <ShortcutsSettings />
+      case 'ai':
+        return <AiSettings />
     }
   }
 

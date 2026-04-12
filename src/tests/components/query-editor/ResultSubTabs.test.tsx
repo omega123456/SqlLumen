@@ -43,13 +43,13 @@ describe('ResultSubTabs', () => {
           ...makeTabState({ status: 'success' }),
           results: [
             makeResult({
-              status: 'success',
+              resultStatus: 'success',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[1]],
               totalRows: 1,
             }),
             makeResult({
-              status: 'success',
+              resultStatus: 'success',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
               rows: [['Alice']],
               totalRows: 1,
@@ -70,9 +70,9 @@ describe('ResultSubTabs', () => {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
           results: [
-            makeResult({ status: 'success' }),
-            makeResult({ status: 'success' }),
-            makeResult({ status: 'error', errorMessage: 'fail' }),
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'error', errorMessage: 'fail' }),
           ],
           activeResultIndex: 0,
         },
@@ -92,7 +92,10 @@ describe('ResultSubTabs', () => {
       tabs: {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
-          results: [makeResult({ status: 'success' }), makeResult({ status: 'success' })],
+          results: [
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+          ],
           activeResultIndex: 1,
         },
       },
@@ -107,7 +110,10 @@ describe('ResultSubTabs', () => {
       tabs: {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
-          results: [makeResult({ status: 'success' }), makeResult({ status: 'success' })],
+          results: [
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+          ],
           activeResultIndex: 0,
         },
       },
@@ -123,7 +129,10 @@ describe('ResultSubTabs', () => {
       tabs: {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
-          results: [makeResult({ status: 'success' }), makeResult({ status: 'success' })],
+          results: [
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+          ],
           activeResultIndex: 0,
         },
       },
@@ -141,9 +150,9 @@ describe('ResultSubTabs', () => {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
           results: [
-            makeResult({ status: 'success' }),
-            makeResult({ status: 'success' }),
-            makeResult({ status: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
           ],
           activeResultIndex: 0,
         },
@@ -162,9 +171,9 @@ describe('ResultSubTabs', () => {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
           results: [
-            makeResult({ status: 'success' }),
-            makeResult({ status: 'success' }),
-            makeResult({ status: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
           ],
           activeResultIndex: 2,
         },
@@ -183,9 +192,9 @@ describe('ResultSubTabs', () => {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
           results: [
-            makeResult({ status: 'success' }),
-            makeResult({ status: 'success' }),
-            makeResult({ status: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
           ],
           activeResultIndex: 2,
         },
@@ -204,9 +213,9 @@ describe('ResultSubTabs', () => {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
           results: [
-            makeResult({ status: 'success' }),
-            makeResult({ status: 'success' }),
-            makeResult({ status: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
           ],
           activeResultIndex: 0,
         },
@@ -224,7 +233,10 @@ describe('ResultSubTabs', () => {
       tabs: {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
-          results: [makeResult({ status: 'success' }), makeResult({ status: 'success' })],
+          results: [
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+          ],
           activeResultIndex: 1,
         },
       },
@@ -241,7 +253,10 @@ describe('ResultSubTabs', () => {
       tabs: {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
-          results: [makeResult({ status: 'success' }), makeResult({ status: 'success' })],
+          results: [
+            makeResult({ resultStatus: 'success' }),
+            makeResult({ resultStatus: 'success' }),
+          ],
           activeResultIndex: 0,
         },
       },
@@ -258,8 +273,8 @@ describe('ResultSubTabs', () => {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
           results: [
-            makeResult({ status: 'success', columns: [{ name: 'id', dataType: 'INT' }] }),
-            makeResult({ status: 'error', errorMessage: 'bad SQL' }),
+            makeResult({ resultStatus: 'success', columns: [{ name: 'id', dataType: 'INT' }] }),
+            makeResult({ resultStatus: 'error', errorMessage: 'bad SQL' }),
           ],
           activeResultIndex: 0,
         },
@@ -277,8 +292,8 @@ describe('ResultSubTabs', () => {
         'tab-1': {
           ...makeTabState({ status: 'success' }),
           results: [
-            makeResult({ status: 'success', columns: [], affectedRows: 5 }),
-            makeResult({ status: 'success', columns: [{ name: 'id', dataType: 'INT' }] }),
+            makeResult({ resultStatus: 'success', columns: [], affectedRows: 5 }),
+            makeResult({ resultStatus: 'success', columns: [{ name: 'id', dataType: 'INT' }] }),
           ],
           activeResultIndex: 0,
         },

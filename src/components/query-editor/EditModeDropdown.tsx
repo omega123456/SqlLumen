@@ -27,7 +27,7 @@ export function EditModeDropdown({ tabId, connectionId }: EditModeDropdownProps)
   const activeConnection = useConnectionStore((state) => state.activeConnections[connectionId])
   const isConnectionReadOnly = activeConnection?.profile?.readOnly ?? false
 
-  const status = activeResult.status
+  const status = activeResult.resultStatus
   const columnsCount = activeResult.columns.length
   const editTableMetadata = activeResult.editTableMetadata ?? {}
   const detectedTables = Object.values(editTableMetadata) as QueryTableEditInfo[]

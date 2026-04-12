@@ -1,0 +1,137 @@
+.container {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--ai-panel-border);
+  background: var(--ai-panel-bg);
+  flex-shrink: 0;
+}
+
+.textareaWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--space-xs);
+}
+
+.contextChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px 8px;
+  background: var(--ai-context-chip-bg);
+  border: 1px solid var(--ai-context-chip-border);
+  border-radius: var(--radius-sm);
+}
+
+.contextChipText {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--on-surface-variant);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.contextChipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.contextChipRemove:hover {
+  color: var(--on-surface);
+  background: rgba(var(--on-surface-rgb), 0.1);
+}
+
+.textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--ai-panel-border);
+  border-radius: var(--radius-md);
+  background: var(--ai-code-block-bg);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--type-size-md);
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+  min-height: 36px;
+  max-height: 140px;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.textarea::placeholder {
+  color: rgba(var(--on-surface-rgb), var(--ui-input-placeholder-opacity));
+}
+
+.textarea:focus {
+  border-color: var(--primary);
+  box-shadow: var(--control-focus-ring);
+}
+
+.textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sendButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--on-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.sendButton:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.sendButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.stopButton {
+  composes: sendButton;
+  background: var(--error);
+  color: var(--on-error);
+}
+
+.stopButton:hover:not(:disabled) {
+  filter: brightness(0.9);
+}

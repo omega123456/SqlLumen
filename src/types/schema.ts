@@ -269,6 +269,15 @@ export interface SchemaMetadataResponse {
   routines: Record<string, RoutineMeta[]>
 }
 
+export interface SchemaMetadataFull {
+  databases: string[]
+  tables: Record<string, TableInfo[]>
+  columns: Record<string, ColumnMeta[]>
+  routines: Record<string, RoutineMeta[]>
+  foreignKeys: Record<string, ForeignKeyInfo[]>
+  indexes: Record<string, IndexInfo[]>
+}
+
 // ---------------------------------------------------------------------------
 // Result view / export types (Phase 5)
 // ---------------------------------------------------------------------------
@@ -555,7 +564,7 @@ export interface SaveObjectResponse {
 // Settings types (Phase 9)
 // ---------------------------------------------------------------------------
 
-export type SettingsSection = 'general' | 'editor' | 'results' | 'logging' | 'shortcuts'
+export type SettingsSection = 'general' | 'editor' | 'results' | 'logging' | 'shortcuts' | 'ai'
 
 export interface ShortcutBinding {
   key: string

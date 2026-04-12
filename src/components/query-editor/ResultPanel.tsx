@@ -64,12 +64,12 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const closeExportDialog = useQueryStore((s) => s.closeExportDialog)
   const applyQueryFilters = useQueryStore((s) => s.applyQueryFilters)
 
-  const tabStatus = tabState?.status ?? 'idle'
+  const tabStatus = tabState?.tabStatus ?? 'idle'
   const results = tabState?.results ?? []
   const activeResultIndex = tabState?.activeResultIndex ?? 0
 
   // Read from active result
-  const resultStatus = activeResult.status
+  const resultStatus = activeResult.resultStatus
   const columns = (activeResult.columns ?? []) as ColumnMeta[]
   const rows = (activeResult.rows ?? []) as unknown[][]
   const affectedRows = activeResult.affectedRows ?? 0

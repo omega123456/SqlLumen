@@ -42,10 +42,10 @@ export function StatusBar() {
 
   // Show query info only for query-editor tabs when the active result is successful
   // (not the tab-level status, which may be 'success' even for partial-error multi-results)
-  const showQueryInfo = isQueryEditorTab && activeResultState?.status === 'success'
+  const showQueryInfo = isQueryEditorTab && activeResultState?.resultStatus === 'success'
 
-  // Show running indicator for query-editor tabs with status === 'running'
-  const showRunningInfo = isQueryEditorTab && queryState?.status === 'running'
+  // Show running indicator for query-editor tabs with tabStatus === 'running'
+  const showRunningInfo = isQueryEditorTab && queryState?.tabStatus === 'running'
 
   if (!activeConnection) {
     return (

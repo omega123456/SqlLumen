@@ -104,23 +104,22 @@ test.describe('Query running indicator', () => {
     await setMockQueryDelay(page, 2_000)
 
     try {
-      // Click Execute Query
-      await page.getByTestId('toolbar-execute').click()
+      // Execute via F9 shortcut (Execute Query button was removed — run is via CodeLens/F9)
+      await page.keyboard.press('F9')
 
       // Assert running indicator components are visible
       await expect(page.getByTestId('running-indicator')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('running-timer')).toBeVisible()
       await expect(page.getByTestId('cancel-query-button')).toBeVisible()
 
-      // Assert execute buttons are NOT visible while running
-      await expect(page.getByTestId('toolbar-execute')).not.toBeVisible()
+      // Assert Execute All is NOT visible while running (replaced by RunningIndicator)
       await expect(page.getByTestId('toolbar-execute-all')).not.toBeVisible()
 
       // Wait for the query to complete (the 2s delay will resolve)
       await expect(page.getByTestId('running-indicator')).not.toBeVisible({ timeout: 5_000 })
 
-      // Execute buttons should reappear after completion
-      await expect(page.getByTestId('toolbar-execute')).toBeVisible({ timeout: APP_READY_MS })
+      // Execute All should reappear after completion
+      await expect(page.getByTestId('toolbar-execute-all')).toBeVisible({ timeout: APP_READY_MS })
     } finally {
       await clearMockQueryDelay(page)
     }
@@ -135,8 +134,8 @@ test.describe('Query running indicator', () => {
     await setMockQueryDelay(page, 10_000)
 
     try {
-      // Click Execute Query
-      await page.getByTestId('toolbar-execute').click()
+      // Execute via F9 shortcut
+      await page.keyboard.press('F9')
 
       // Wait for running indicator to appear
       await expect(page.getByTestId('running-indicator')).toBeVisible({ timeout: APP_READY_MS })
@@ -147,8 +146,8 @@ test.describe('Query running indicator', () => {
       // Running indicator should disappear after cancellation
       await expect(page.getByTestId('running-indicator')).not.toBeVisible({ timeout: 5_000 })
 
-      // Execute buttons should reappear
-      await expect(page.getByTestId('toolbar-execute')).toBeVisible({ timeout: APP_READY_MS })
+      // Execute All should reappear
+      await expect(page.getByTestId('toolbar-execute-all')).toBeVisible({ timeout: APP_READY_MS })
     } finally {
       await clearMockQueryDelay(page)
     }
@@ -163,8 +162,8 @@ test.describe('Query running indicator', () => {
     await setMockQueryDelay(page, 3_000)
 
     try {
-      // Click Execute Query
-      await page.getByTestId('toolbar-execute').click()
+      // Execute via F9 shortcut
+      await page.keyboard.press('F9')
 
       // Wait for running state
       await expect(page.getByTestId('running-indicator')).toBeVisible({ timeout: APP_READY_MS })

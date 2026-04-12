@@ -87,7 +87,7 @@ describe('useQueryStore — executeMultiQuery', () => {
       ])
 
     const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.status).toBe('success')
+    expect(tab.tabStatus).toBe('success')
     expect(tab.results).toHaveLength(3)
     expect(tab.activeResultIndex).toBe(0)
   })
@@ -105,7 +105,7 @@ describe('useQueryStore — executeMultiQuery', () => {
 
     const tab = useQueryStore.getState().tabs['tab-1']!
     const r0 = tab.results[0]
-    expect(r0.status).toBe('success')
+    expect(r0.resultStatus).toBe('success')
     expect(r0.columns).toEqual([{ name: 'id', dataType: 'INT' }])
     expect(r0.rows).toEqual([[1]])
     expect(r0.queryId).toBe('mq1')
@@ -126,7 +126,7 @@ describe('useQueryStore — executeMultiQuery', () => {
 
     const tab = useQueryStore.getState().tabs['tab-1']!
     const r1 = tab.results[1]
-    expect(r1.status).toBe('success')
+    expect(r1.resultStatus).toBe('success')
     expect(r1.columns).toEqual([])
     expect(r1.rows).toEqual([])
     expect(r1.affectedRows).toBe(1)
@@ -145,7 +145,7 @@ describe('useQueryStore — executeMultiQuery', () => {
 
     const tab = useQueryStore.getState().tabs['tab-1']!
     const r2 = tab.results[2]
-    expect(r2.status).toBe('success')
+    expect(r2.resultStatus).toBe('success')
     expect(r2.columns).toEqual([{ name: 'name', dataType: 'VARCHAR' }])
     expect(r2.rows).toEqual([['Alice'], ['Bob']])
     expect(r2.totalRows).toBe(2)
@@ -162,9 +162,9 @@ describe('useQueryStore — executeMultiQuery', () => {
     await useQueryStore.getState().executeMultiQuery('conn-1', 'tab-1', ['SELECT 1', 'SELECT 2'])
 
     const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.status).toBe('error')
+    expect(tab.tabStatus).toBe('error')
     expect(tab.results).toHaveLength(1)
-    expect(tab.results[0].status).toBe('error')
+    expect(tab.results[0].resultStatus).toBe('error')
     expect(tab.results[0].errorMessage).toBe('Connection lost')
   })
 
@@ -174,7 +174,7 @@ describe('useQueryStore — executeMultiQuery', () => {
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
-        'tab-1': { ...prev.tabs['tab-1']!, status: 'running' },
+        'tab-1': { ...prev.tabs['tab-1']!, tabStatus: 'running' },
       },
     }))
 
@@ -197,7 +197,7 @@ describe('useQueryStore — executeCallQuery', () => {
     await useQueryStore.getState().executeCallQuery('conn-1', 'tab-1', 'CALL my_proc()')
 
     const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.status).toBe('success')
+    expect(tab.tabStatus).toBe('success')
     expect(tab.results).toHaveLength(3)
     expect(tab.activeResultIndex).toBe(0)
   })
@@ -213,7 +213,7 @@ describe('useQueryStore — executeCallQuery', () => {
     await useQueryStore.getState().executeCallQuery('conn-1', 'tab-1', 'CALL my_proc()')
 
     const tab = useQueryStore.getState().tabs['tab-1']!
-    expect(tab.status).toBe('error')
+    expect(tab.tabStatus).toBe('error')
     expect(tab.results[0].errorMessage).toBe('Proc not found')
   })
 })
@@ -225,13 +225,14 @@ describe('useQueryStore — setActiveResultIndex', () => {
         'tab-1': {
           content: 'SELECT 1; SELECT 2',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[1]],
@@ -239,7 +240,7 @@ describe('useQueryStore — setActiveResultIndex', () => {
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
               rows: [['Alice']],
@@ -302,13 +303,14 @@ describe('useQueryStore — per-result isolation', () => {
         'tab-1': {
           content: '',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[1], [2]],
@@ -317,7 +319,7 @@ describe('useQueryStore — per-result isolation', () => {
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
               rows: [['Alice']],
@@ -350,13 +352,14 @@ describe('useQueryStore — per-result isolation', () => {
         'tab-1': {
           content: '',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[1]],
@@ -365,7 +368,7 @@ describe('useQueryStore — per-result isolation', () => {
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
               rows: [['Alice']],
@@ -410,12 +413,13 @@ describe('useQueryStore — hasAnyUnsavedEdits', () => {
         'tab-1': {
           content: '',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            { ...DEFAULT_RESULT_STATE, status: 'success' },
-            { ...DEFAULT_RESULT_STATE, status: 'success' },
+            { ...DEFAULT_RESULT_STATE, resultStatus: 'success' },
+            { ...DEFAULT_RESULT_STATE, resultStatus: 'success' },
           ],
           activeResultIndex: 0,
           pendingNavigationAction: null,
@@ -437,14 +441,15 @@ describe('useQueryStore — hasAnyUnsavedEdits', () => {
         'tab-1': {
           content: '',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            { ...DEFAULT_RESULT_STATE, status: 'success' },
+            { ...DEFAULT_RESULT_STATE, resultStatus: 'success' },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               editState: {
                 rowKey: { id: 1 },
                 originalValues: { name: 'Alice' },
@@ -484,13 +489,14 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
         'tab-1': {
           content: 'SELECT 1; SELECT name FROM users',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[1]],
@@ -501,7 +507,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
               rows: [['Alice']],
@@ -545,13 +551,14 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
         'tab-1': {
           content: 'SELECT 1; SELECT 2',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[1]],
@@ -568,7 +575,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
               rows: [['Alice']],
@@ -608,7 +615,7 @@ describe('useQueryStore — cancelQuery', () => {
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
-        'tab-1': { ...prev.tabs['tab-1']!, status: 'running' },
+        'tab-1': { ...prev.tabs['tab-1']!, tabStatus: 'running' },
       },
     }))
 
@@ -642,7 +649,7 @@ describe('useQueryStore — cancelQuery', () => {
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
-        'tab-1': { ...prev.tabs['tab-1']!, status: 'running', isCancelling: true },
+        'tab-1': { ...prev.tabs['tab-1']!, tabStatus: 'running', isCancelling: true },
       },
     }))
 
@@ -661,7 +668,7 @@ describe('useQueryStore — cancelQuery', () => {
     useQueryStore.setState((prev) => ({
       tabs: {
         ...prev.tabs,
-        'tab-1': { ...prev.tabs['tab-1']!, status: 'running' },
+        'tab-1': { ...prev.tabs['tab-1']!, tabStatus: 'running' },
       },
     }))
 
@@ -686,13 +693,14 @@ describe('useQueryStore — fetchPage', () => {
         'tab-1': {
           content: 'SELECT id FROM users',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[1], [2], [3]],
@@ -750,7 +758,8 @@ describe('useQueryStore — fetchPage', () => {
         'tab-1': {
           content: '',
           filePath: null,
-          status: 'idle',
+          tabStatus: 'idle',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [{ ...DEFAULT_RESULT_STATE }],
@@ -818,13 +827,14 @@ describe('useQueryStore — changePageSize', () => {
         'tab-1': {
           content: 'CALL proc()',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[1]],
@@ -899,13 +909,14 @@ describe('useQueryStore — setViewMode edge cases', () => {
         'tab-1': {
           content: 'SELECT 1',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[1]],
@@ -939,13 +950,14 @@ describe('useQueryStore — sortResults', () => {
         'tab-1': {
           content: 'CALL proc()',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[3], [1], [2]],
@@ -1028,13 +1040,14 @@ describe('useQueryStore — sortResults stale re-execution discard', () => {
         'tab-1': {
           content: 'SELECT 1; SELECT 2',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[1]],
@@ -1046,7 +1059,7 @@ describe('useQueryStore — sortResults stale re-execution discard', () => {
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
               rows: [['Alice']],
@@ -1129,13 +1142,14 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
         'tab-1': {
           content: 'SELECT 1; SELECT 2',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               columns: [{ name: 'id', dataType: 'INT' }],
               rows: [[1]],
@@ -1145,7 +1159,7 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
               columns: [{ name: 'name', dataType: 'VARCHAR' }],
               rows: [['Alice']],

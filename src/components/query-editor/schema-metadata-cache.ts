@@ -4,8 +4,15 @@
  * Manages fetching, caching, and filtering of schema metadata for autocomplete.
  */
 
-import type { TableInfo, ColumnMeta, RoutineMeta, SchemaMetadataResponse } from '../../types/schema'
-import { fetchSchemaMetadata } from '../../lib/query-commands'
+import type {
+  TableInfo,
+  ColumnMeta,
+  RoutineMeta,
+  ForeignKeyInfo,
+  IndexInfo,
+  SchemaMetadataFull,
+} from '../../types/schema'
+import { fetchSchemaMetadataFull } from '../../lib/query-commands'
 
 export type CacheStatus = 'empty' | 'loading' | 'ready' | 'error'
 
@@ -15,6 +22,8 @@ export interface SchemaCache {
   tables: Record<string, TableInfo[]>
   columns: Record<string, ColumnMeta[]>
   routines: Record<string, RoutineMeta[]>
+  foreignKeys: Record<string, ForeignKeyInfo[]>
+  indexes: Record<string, IndexInfo[]>
   error?: string
   lastRefreshAt?: number
 }
@@ -43,6 +52,8 @@ function emptyCache(): SchemaCache {
     tables: {},
     columns: {},
     routines: {},
+    foreignKeys: {},
+    indexes: {},
   }
 }
 
@@ -54,10 +65,12 @@ function isNamedEntry<T extends { name?: string | null }>(entry: T | null | unde
   return !!entry && hasNonEmptyName(entry.name)
 }
 
-function sanitizeSchemaMetadata(data: SchemaMetadataResponse): SchemaMetadataResponse {
+function sanitizeSchemaMetadata(data: SchemaMetadataFull): SchemaMetadataFull {
   const tables: Record<string, TableInfo[]> = {}
   const columns: Record<string, ColumnMeta[]> = {}
   const routines: Record<string, RoutineMeta[]> = {}
+  const foreignKeys: Record<string, ForeignKeyInfo[]> = {}
+  const indexes: Record<string, IndexInfo[]> = {}
   const databases = new Set<string>()
 
   for (const db of data.databases) {
@@ -124,11 +137,63 @@ function sanitizeSchemaMetadata(data: SchemaMetadataResponse): SchemaMetadataRes
     databases.add(database)
   }
 
+  // Sanitize foreignKeys (keyed by "db.table")
+  for (const [key, fkList] of Object.entries(data.foreignKeys)) {
+    const separatorIndex = key.indexOf('.')
+    if (separatorIndex <= 0 || separatorIndex >= key.length - 1) {
+      continue
+    }
+    if (!Array.isArray(fkList)) {
+      continue
+    }
+
+    const database = key.slice(0, separatorIndex)
+    const table = key.slice(separatorIndex + 1)
+    if (!hasNonEmptyName(database) || !hasNonEmptyName(table)) {
+      continue
+    }
+
+    const validFks = fkList.filter(isNamedEntry)
+    if (validFks.length === 0) {
+      continue
+    }
+
+    foreignKeys[`${database}.${table}`] = validFks
+    databases.add(database)
+  }
+
+  // Sanitize indexes (keyed by "db.table")
+  for (const [key, idxList] of Object.entries(data.indexes)) {
+    const separatorIndex = key.indexOf('.')
+    if (separatorIndex <= 0 || separatorIndex >= key.length - 1) {
+      continue
+    }
+    if (!Array.isArray(idxList)) {
+      continue
+    }
+
+    const database = key.slice(0, separatorIndex)
+    const table = key.slice(separatorIndex + 1)
+    if (!hasNonEmptyName(database) || !hasNonEmptyName(table)) {
+      continue
+    }
+
+    const validIndexes = idxList.filter(isNamedEntry)
+    if (validIndexes.length === 0) {
+      continue
+    }
+
+    indexes[`${database}.${table}`] = validIndexes
+    databases.add(database)
+  }
+
   return {
     databases: Array.from(databases),
     tables,
     columns,
     routines,
+    foreignKeys,
+    indexes,
   }
 }
 
@@ -164,7 +229,7 @@ export async function loadCache(connectionId: string): Promise<void> {
 
   const loadPromise = (async () => {
     try {
-      const data = sanitizeSchemaMetadata(await fetchSchemaMetadata(connectionId))
+      const data = sanitizeSchemaMetadata(await fetchSchemaMetadataFull(connectionId))
 
       // Check if cache was invalidated during the fetch (per-connection generation)
       if (getGeneration(connectionId) !== capturedGeneration) {
@@ -177,6 +242,8 @@ export async function loadCache(connectionId: string): Promise<void> {
         tables: data.tables,
         columns: data.columns,
         routines: data.routines,
+        foreignKeys: data.foreignKeys,
+        indexes: data.indexes,
         lastRefreshAt: Date.now(),
       }
       cacheMap.set(connectionId, readyCache)

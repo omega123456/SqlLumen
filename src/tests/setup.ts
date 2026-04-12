@@ -91,12 +91,15 @@ vi.mock('monaco-editor', () => ({
     })),
     setModelLanguage: vi.fn(),
     EditorOption: {},
+    onDidCreateEditor: vi.fn(() => ({ dispose: vi.fn() })),
+    registerCommand: vi.fn(),
   },
   languages: {
     register: vi.fn(),
     setMonarchTokensProvider: vi.fn(),
     registerCompletionItemProvider: vi.fn(() => ({ dispose: vi.fn() })),
     registerSignatureHelpProvider: vi.fn(() => ({ dispose: vi.fn() })),
+    registerCodeLensProvider: vi.fn(() => ({ dispose: vi.fn() })),
     CompletionItemKind: {
       Keyword: 14,
       Class: 5,
@@ -110,6 +113,11 @@ vi.mock('monaco-editor', () => ({
       InsertAsSnippet: 4,
     },
   },
+  Emitter: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+    this.event = vi.fn()
+    this.fire = vi.fn()
+    this.dispose = vi.fn()
+  }),
   Range: vi.fn(),
   KeyMod: { CtrlCmd: 2048 },
   KeyCode: { F5: 63 },
@@ -142,6 +150,29 @@ vi.mock('monaco-sql-languages', () => ({
   },
 }))
 
+// ---------------------------------------------------------------------------
+// react-markdown + rehype/remark mocks (ESM-only packages)
+// ---------------------------------------------------------------------------
+
+vi.mock('react-markdown', async () => {
+  const React = await import('react')
+  return {
+    default: ({
+      children,
+    }: {
+      children: string
+      remarkPlugins?: unknown[]
+      rehypePlugins?: unknown[]
+      components?: Record<string, unknown>
+    }) => {
+      return React.createElement('div', { 'data-testid': 'markdown' }, children)
+    },
+  }
+})
+
+vi.mock('remark-gfm', () => ({ default: () => {} }))
+vi.mock('rehype-highlight', () => ({ default: () => {} }))
+
 vi.mock('@monaco-editor/react', async () => {
   const React = await import('react')
   return {
@@ -153,6 +184,48 @@ vi.mock('@monaco-editor/react', async () => {
           const fn = props.onChange as ((v: string | undefined) => void) | undefined
           fn?.(e.target.value)
         },
+      })
+    },
+    DiffEditor: (props: Record<string, unknown>) => {
+      // Call onMount with a mock diff editor if provided
+      const onMount = props.onMount as ((editor: unknown) => void) | undefined
+      type MockModel = {
+        original: { getValue: () => string }
+        modified: { getValue: () => string }
+      } | null
+
+      // Mock modified editor for per-hunk acceptance features
+      const mockModifiedEditor = {
+        onDidScrollChange: vi.fn(() => ({ dispose: vi.fn() })),
+        getTopForLineNumber: vi.fn((line: number) => line * 20),
+        getScrollTop: vi.fn(() => 0),
+      }
+
+      const editorRef: {
+        _model: MockModel
+        setModel: (model: MockModel) => void
+        onDidUpdateDiff: (cb: () => void) => { dispose: () => void }
+        getLineChanges: () => null
+        getModifiedEditor: () => typeof mockModifiedEditor
+      } = {
+        _model: null,
+        setModel(model: MockModel) {
+          editorRef._model = model
+        },
+        onDidUpdateDiff: vi.fn(() => ({ dispose: vi.fn() })),
+        getLineChanges: vi.fn(() => null),
+        getModifiedEditor: vi.fn(() => mockModifiedEditor),
+      }
+
+      // Schedule so the component has mounted when onMount fires
+      if (onMount) {
+        setTimeout(() => onMount(editorRef), 0)
+      }
+
+      return React.createElement('div', {
+        'data-testid': 'mock-diff-editor',
+        'data-original': (props.original as string) ?? '',
+        'data-modified': (props.modified as string) ?? '',
       })
     },
     useMonaco: () => null,
@@ -205,6 +278,11 @@ if (typeof HTMLDialogElement !== 'undefined') {
       this.removeAttribute('open')
     }
   }
+}
+
+// Polyfill Element.scrollIntoView for jsdom (needed by auto-scroll in AI panel)
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function () {}
 }
 
 afterEach(() => {

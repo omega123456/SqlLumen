@@ -19,7 +19,25 @@
   min-height: 0;
 }
 
+/* Outer editor panel in the vertical split (contains either the
+   horizontal Group when AI is enabled, or the raw editor).
+   position: relative is needed so the DiffOverlay can cover it. */
+.editorPanelOuter {
+  position: relative;
+  overflow: hidden;
+}
+
 .editorPanel {
+  overflow: hidden;
+  height: 100%;
+}
+
+/* Horizontal panel group for editor + AI panel */
+.horizontalGroup {
+  height: 100%;
+}
+
+.aiPanel {
   overflow: hidden;
 }
 
@@ -30,6 +48,7 @@
   flex-direction: column;
 }
 
+/* Vertical resize handle (editor/results split) */
 .resizeHandle {
   height: 6px;
   background-color: var(--surface-container-low);
@@ -59,4 +78,32 @@
   background-color: var(--primary);
 }
 
-/* Result panel area fills remaining space */
+/* Horizontal resize handle (editor/AI panel split) */
+.horizontalResizeHandle {
+  width: 6px;
+  background-color: var(--surface-container-low);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.horizontalResizeHandle:hover,
+.horizontalResizeHandle[data-resize-handle-state='drag'] {
+  background-color: rgba(var(--primary-rgb), 0.1);
+}
+
+.horizontalResizePill {
+  width: 3px;
+  height: 32px;
+  border-radius: 2px;
+  background-color: var(--outline-variant);
+  transition: background-color 0.15s ease;
+}
+
+.horizontalResizeHandle:hover .horizontalResizePill,
+.horizontalResizeHandle[data-resize-handle-state='drag'] .horizontalResizePill {
+  background-color: var(--primary);
+}

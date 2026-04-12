@@ -106,13 +106,16 @@ function parseResultPagePayload(value: unknown): {
 
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
 
+/** Tab-level status extends ExecutionStatus with AI-specific states. */
+export type TabStatus = ExecutionStatus | 'ai-pending' | 'ai-reviewing'
+
 // ---------------------------------------------------------------------------
 // SingleResultState — per-result fields
 // ---------------------------------------------------------------------------
 
 export interface SingleResultState {
   /** Per-result execution status. */
-  status: ExecutionStatus
+  resultStatus: ExecutionStatus
   /** Column metadata from the query. */
   columns: ColumnMeta[]
   /** Current page rows. */
@@ -195,7 +198,9 @@ export interface TabQueryState {
   /** File path if tab was opened from a file (for Save). */
   filePath: string | null
   /** Tab-level execution status. */
-  status: ExecutionStatus
+  tabStatus: TabStatus
+  /** Previous tab status saved before AI lock, for restoration. */
+  prevTabStatus: ExecutionStatus
   /** Cursor position (persisted so it can be restored on tab switch). */
   cursorPosition: { lineNumber: number; column: number } | null
   /** Connection ID for this tab (used for deferred analysis). */
@@ -215,7 +220,7 @@ export interface TabQueryState {
 }
 
 export const DEFAULT_RESULT_STATE: SingleResultState = {
-  status: 'idle',
+  resultStatus: 'idle',
   columns: [],
   rows: [],
   totalRows: 0,
@@ -256,7 +261,8 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
 const DEFAULT_TAB_STATE: TabQueryState = {
   content: '',
   filePath: null,
-  status: 'idle',
+  tabStatus: 'idle',
+  prevTabStatus: 'idle',
   cursorPosition: null,
   connectionId: '',
   results: [],
@@ -492,10 +498,10 @@ function buildSingleResultFromItem(
   defaultPageSize: number
 ): SingleResultState {
   const normalizedRows = normalizeQueryRows(item.columns, item.firstPage)
-  const status: ExecutionStatus = item.error ? 'error' : 'success'
+  const resultStatus: ExecutionStatus = item.error ? 'error' : 'success'
   return {
     ...DEFAULT_RESULT_STATE,
-    status,
+    resultStatus,
     columns: item.columns,
     rows: normalizedRows,
     totalRows: item.totalRows,
@@ -613,6 +619,13 @@ interface QueryState {
 
   /** Reset all edit-related fields to defaults on the active result. */
   clearEditState: (tabId: string) => void
+
+  /**
+   * Set the tab-level status. Used by the AI store to lock/unlock the editor.
+   * When setting an AI lock state ('ai-pending' | 'ai-reviewing'), the current
+   * tabStatus is saved into prevTabStatus for later restoration.
+   */
+  setTabStatus: (tabId: string, status: TabStatus) => void
 }
 
 export const useQueryStore = create<QueryState>()((set, get) => {
@@ -656,7 +669,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
   /** Mark a tab as executing: set running status, record start time, clear stale flags. */
   const beginExecution = (tabId: string) => {
     patchTab(tabId, {
-      status: 'running',
+      tabStatus: 'running',
       executionStartedAt: Date.now(),
       isCancelling: false,
       wasCancelled: false,
@@ -753,9 +766,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     ipcCall: () => Promise<{ results: MultiQueryResultItem[] }>,
     runPostAnalysis: boolean
   ) => {
-    // Guard against double execution
+    // Guard against double execution and AI lock
     const currentState = get().tabs[tabId]
-    if (currentState?.status === 'running') return
+    if (
+      currentState?.tabStatus === 'running' ||
+      currentState?.tabStatus === 'ai-pending' ||
+      currentState?.tabStatus === 'ai-reviewing'
+    )
+      return
 
     // Clear edit state
     get().clearEditState(tabId)
@@ -773,10 +791,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       )
 
       // Tab-level status: 'success' if at least one result exists
-      const tabStatus: ExecutionStatus = results.length > 0 ? 'success' : 'idle'
+      const tabLevelStatus: ExecutionStatus = results.length > 0 ? 'success' : 'idle'
 
       patchTab(tabId, {
-        status: tabStatus,
+        tabStatus: tabLevelStatus,
         results,
         activeResultIndex: 0,
         wasCancelled: false,
@@ -811,12 +829,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       const errorResult: SingleResultState = {
         ...DEFAULT_RESULT_STATE,
-        status: 'error',
+        resultStatus: 'error',
         errorMessage,
       }
 
       patchTab(tabId, {
-        status: 'error',
+        tabStatus: 'error',
         results: [errorResult],
         activeResultIndex: 0,
         wasCancelled: false,
@@ -878,7 +896,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       executionTimeMs: reResult.executionTimeMs,
       affectedRows: reResult.affectedRows,
       autoLimitApplied: reResult.autoLimitApplied,
-      status: 'success',
+      resultStatus: 'success',
       errorMessage: reResult.error ?? null,
       selectedRowIndex: null,
       ...extraPatch,
@@ -911,10 +929,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     },
 
     executeQuery: async (connectionId: string, tabId: string, sql: string) => {
-      // Guard against double execution for the same tab
+      // Guard against double execution and AI lock for the same tab
       const currentState = get().tabs[tabId]
-      if (currentState?.status === 'running') {
-        return // already running, ignore
+      if (
+        currentState?.tabStatus === 'running' ||
+        currentState?.tabStatus === 'ai-pending' ||
+        currentState?.tabStatus === 'ai-reviewing'
+      ) {
+        return // already running or AI-locked, ignore
       }
 
       // Clear edit state before the new query
@@ -936,7 +958,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
         const singleResult: SingleResultState = {
           ...DEFAULT_RESULT_STATE,
-          status: 'success',
+          resultStatus: 'success',
           columns: result.columns,
           rows: normalizedRows,
           totalRows: result.totalRows,
@@ -953,7 +975,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         }
 
         patchTab(tabId, {
-          status: 'success',
+          tabStatus: 'success',
           results: [singleResult],
           activeResultIndex: 0,
           // Clear cancel flags on completion
@@ -989,12 +1011,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
         const errorResult: SingleResultState = {
           ...DEFAULT_RESULT_STATE,
-          status: 'error',
+          resultStatus: 'error',
           errorMessage,
         }
 
         patchTab(tabId, {
-          status: 'error',
+          tabStatus: 'error',
           results: [errorResult],
           activeResultIndex: 0,
           // Clear cancel flags on completion
@@ -1350,7 +1372,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 executionTimeMs: execResult.executionTimeMs,
                 affectedRows: execResult.affectedRows,
                 autoLimitApplied: execResult.autoLimitApplied,
-                status: 'success',
+                resultStatus: 'success',
                 errorMessage: null,
                 selectedRowIndex: null,
               })
@@ -1464,7 +1486,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           }
           const errorMessage = error instanceof Error ? error.message : String(error)
           patchResultByIndex(tabId, resultIndex, {
-            status: 'error',
+            resultStatus: 'error',
             errorMessage,
           })
         }
@@ -1485,7 +1507,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
           const updatedResult: SingleResultState = {
             ...DEFAULT_RESULT_STATE,
-            status: 'success',
+            resultStatus: 'success',
             rows: normalizedRows,
             columns: execResult.columns,
             currentPage: 1,
@@ -1501,7 +1523,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           }
 
           patchTab(tabId, {
-            status: 'success',
+            tabStatus: 'success',
             results: [updatedResult],
             activeResultIndex: 0,
             wasCancelled: false,
@@ -1526,11 +1548,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
               : String(error)
 
           patchResultByIndex(tabId, 0, {
-            status: 'error',
+            resultStatus: 'error',
             errorMessage,
           })
           patchTab(tabId, {
-            status: 'error',
+            tabStatus: 'error',
             wasCancelled: false,
           })
           finalizeExecution(tabId)
@@ -1996,6 +2018,30 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const resultIndex = getActiveIndex(tabId)
       if (resultIndex < tab.results.length) {
         patchResultByIndex(tabId, resultIndex, { ...EDIT_STATE_DEFAULTS })
+      }
+    },
+
+    setTabStatus: (tabId: string, newStatus: TabStatus) => {
+      const tab = get().tabs[tabId]
+      if (!tab) return
+
+      // When entering an AI lock state, save the current execution status
+      // so it can be restored later. Only save if the current status is an
+      // ExecutionStatus (not already an AI state).
+      const isAiLock = newStatus === 'ai-pending' || newStatus === 'ai-reviewing'
+      const currentIsExecution =
+        tab.tabStatus === 'idle' ||
+        tab.tabStatus === 'running' ||
+        tab.tabStatus === 'success' ||
+        tab.tabStatus === 'error'
+
+      if (isAiLock && currentIsExecution) {
+        patchTab(tabId, {
+          tabStatus: newStatus,
+          prevTabStatus: tab.tabStatus as ExecutionStatus,
+        })
+      } else {
+        patchTab(tabId, { tabStatus: newStatus })
       }
     },
   }

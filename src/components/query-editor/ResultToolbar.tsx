@@ -45,7 +45,7 @@ export function ResultToolbar({
   const saveCurrentRow = useQueryStore((state) => state.saveCurrentRow)
   const discardCurrentRow = useQueryStore((state) => state.discardCurrentRow)
 
-  const status = activeResult.status
+  const status = activeResult.resultStatus
   const totalRows = activeResult.totalRows
   const affectedRows = activeResult.affectedRows
   const columnsCount = activeResult.columns.length

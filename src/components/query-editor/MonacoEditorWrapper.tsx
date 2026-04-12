@@ -8,11 +8,13 @@ import Editor, { useMonaco } from '@monaco-editor/react'
 import type * as MonacoType from 'monaco-editor'
 import { useThemeStore } from '../../stores/theme-store'
 import { useQueryStore } from '../../stores/query-store'
+import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import { registerMonacoThemes, getMonacoThemeName } from './monaco-theme'
 import { registerModelConnection, unregisterModelConnection } from './completion-service'
 import { loadCache } from './schema-metadata-cache'
+import type { TabType } from '../../types/schema'
 import styles from './MonacoEditorWrapper.module.css'
 
 // Register the 'mysql' language with Monaco (side-effect import)
@@ -24,10 +26,16 @@ import './mysql-language-setup'
 // Register signature help provider for function parameter hints (side-effect import)
 import './signature-help-provider'
 
+// Register CodeLens provider for Run + Ask AI per statement (side-effect import)
+import './codelens-provider'
+import { triggerCodeLensRefresh } from './codelens-provider'
+
 interface MonacoEditorWrapperProps {
   tabId: string
   /** Connection ID for schema-aware autocomplete */
   connectionId?: string
+  /** Tab type for CodeLens gating (defaults to 'query-editor') */
+  tabType?: TabType
   /** Called with the Monaco editor instance after mount */
   onMount?: (editor: MonacoType.editor.IStandaloneCodeEditor) => void
   /** Override value — when provided, bypasses query-store content binding */
@@ -41,6 +49,7 @@ interface MonacoEditorWrapperProps {
 export function MonacoEditorWrapper({
   tabId,
   connectionId,
+  tabType = 'query-editor',
   onMount,
   value: overrideValue,
   onChange: overrideOnChange,
@@ -55,7 +64,7 @@ export function MonacoEditorWrapper({
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
 
   const content = useQueryStore((state) => state.tabs[tabId]?.content ?? '')
-  const status = useQueryStore((state) => state.tabs[tabId]?.status ?? 'idle')
+  const status = useQueryStore((state) => state.tabs[tabId]?.tabStatus ?? 'idle')
   const setContent = useQueryStore((state) => state.setContent)
   const setCursorPosition = useQueryStore((state) => state.setCursorPosition)
 
@@ -76,7 +85,12 @@ export function MonacoEditorWrapper({
   // Determine whether we are using override props (object-editor mode) or query-store bindings
   const isOverrideMode = overrideValue !== undefined
   const effectiveContent = isOverrideMode ? overrideValue : content
-  const isReadOnly = overrideReadOnly !== undefined ? overrideReadOnly : status === 'running'
+  const isReadOnly =
+    overrideReadOnly !== undefined
+      ? overrideReadOnly
+      : status === 'running' || status === 'ai-pending' || status === 'ai-reviewing'
+  const isAiLocked =
+    overrideReadOnly === undefined && (status === 'ai-pending' || status === 'ai-reviewing')
 
   // Register themes once Monaco is loaded
   useEffect(() => {
@@ -99,14 +113,14 @@ export function MonacoEditorWrapper({
   // Monaco has already disposed the model (getModel() returns null).
   useEffect(() => {
     if (editorRef.current && connectionId && modelUriRef.current) {
-      registerModelConnection(modelUriRef.current, connectionId)
+      registerModelConnection(modelUriRef.current, connectionId, tabId, tabType)
     }
     return () => {
       if (modelUriRef.current) {
         unregisterModelConnection(modelUriRef.current)
       }
     }
-  }, [connectionId])
+  }, [connectionId, tabId, tabType])
 
   // Trigger schema cache load on mount / connection change
   useEffect(() => {
@@ -129,7 +143,7 @@ export function MonacoEditorWrapper({
 
     // Register model-connection mapping on mount
     if (connectionId && modelUriRef.current) {
-      registerModelConnection(modelUriRef.current, connectionId)
+      registerModelConnection(modelUriRef.current, connectionId, tabId, tabType)
     }
 
     // Register themes if not already done
@@ -159,8 +173,38 @@ export function MonacoEditorWrapper({
       })
     }
 
+    // Subscribe to content changes so CodeLens positions refresh as the user types.
+    // Also keep the AI attached context in sync when the user edits inline.
+    const contentChangeDisposable = editor.onDidChangeModelContent(() => {
+      triggerCodeLensRefresh()
+
+      // If there is an attached AI context for this tab, update its SQL to
+      // reflect the current editor content so that followup AI prompts
+      // reference the latest text, not a stale snapshot.
+      const aiTab = useAiStore.getState().tabs[tabId]
+      const ctx = aiTab?.attachedContext
+      if (ctx) {
+        const editorModel = editor.getModel()
+        if (editorModel) {
+          const fullContent = editorModel.getValue()
+          const lineCount = editorModel.getLineCount()
+          const lastLineLength = editorModel.getLineLength(lineCount)
+          useAiStore.getState().setAttachedContext(tabId, {
+            sql: fullContent,
+            range: {
+              startLineNumber: 1,
+              startColumn: 1,
+              endLineNumber: lineCount,
+              endColumn: lastLineLength + 1,
+            },
+          })
+        }
+      }
+    })
+
     editor.onDidDispose(() => {
       cursorDisposable?.dispose()
+      contentChangeDisposable.dispose()
       // Unregister using the captured URI — model may already be disposed
       if (modelUriRef.current) unregisterModelConnection(modelUriRef.current)
     })
@@ -253,6 +297,19 @@ export function MonacoEditorWrapper({
           },
         }}
       />
+      {isAiLocked && (
+        <div
+          className={styles.aiPendingOverlay}
+          data-testid="ai-pending-overlay"
+          role="status"
+          aria-label="Waiting for AI"
+        >
+          <div className={styles.aiPendingCard}>
+            <span className={styles.aiSpinner} aria-hidden="true" />
+            <span className={styles.aiPendingLabel}>Waiting for AI…</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

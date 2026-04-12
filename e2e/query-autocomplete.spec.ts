@@ -444,7 +444,7 @@ test.describe('Monaco SQL autocomplete', () => {
     await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
 
     await typeQuery(page, 'SELECT DATABASE();')
-    await page.getByTestId('toolbar-execute').click()
+    await page.keyboard.press('F9')
 
     await expect(page.getByTestId('result-grid-view')).toContainText('analytics_db', {
       timeout: APP_READY_MS,

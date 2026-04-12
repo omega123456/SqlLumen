@@ -48,13 +48,30 @@ type ParseFallbackMode =
   | { type: 'none' }
 
 // ---------------------------------------------------------------------------
-// Model-URI → connectionId registry
+// Model-URI → connection/tab context registry
 // ---------------------------------------------------------------------------
 
-const modelConnections = new Map<string, string>()
+import type { TabType } from '../../types/schema'
 
-export function registerModelConnection(uri: string, connectionId: string): void {
-  modelConnections.set(uri, connectionId)
+interface ModelContext {
+  connectionId: string
+  tabId: string
+  tabType: TabType
+}
+
+const modelConnections = new Map<string, ModelContext>()
+
+export function registerModelConnection(
+  uri: string,
+  connectionId: string,
+  tabId?: string,
+  tabType?: TabType
+): void {
+  modelConnections.set(uri, {
+    connectionId,
+    tabId: tabId ?? '',
+    tabType: tabType ?? 'query-editor',
+  })
 }
 
 export function unregisterModelConnection(uri: string): void {
@@ -62,6 +79,13 @@ export function unregisterModelConnection(uri: string): void {
 }
 
 export function getModelConnectionId(uri: string): string | undefined {
+  return modelConnections.get(uri)?.connectionId
+}
+
+/** Returns the full model context (connectionId, tabId, tabType) for a given model URI. */
+export function getModelContext(
+  uri: string
+): { connectionId: string; tabId: string; tabType: TabType } | undefined {
   return modelConnections.get(uri)
 }
 
@@ -614,7 +638,7 @@ export const completionService: CompletionService = async (
   const quoteIdentifiers =
     useSettingsStore.getState().getSetting('editor.autocompleteBackticks') === 'true'
 
-  const connectionId = modelConnections.get(model.uri.toString())
+  const connectionId = modelConnections.get(model.uri.toString())?.connectionId
 
   // -------------------------------------------------------------------
   // Resolve the active database for alias resolution

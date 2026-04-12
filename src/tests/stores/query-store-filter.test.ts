@@ -19,7 +19,8 @@ function setupTab(
       [tabId]: {
         content: '',
         filePath: null,
-        status: 'idle' as const,
+        tabStatus: 'idle' as const,
+        prevTabStatus: 'idle' as const,
         cursorPosition: null,
         connectionId: '',
         results: [{ ...DEFAULT_RESULT_STATE, ...resultOverrides }],

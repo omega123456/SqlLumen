@@ -8,6 +8,7 @@ import { useTableDataStore } from '../../stores/table-data-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
+import { useAiStore } from '../../stores/ai-store'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import type {
   TableDataTab,
@@ -24,6 +25,7 @@ beforeEach(() => {
   useTableDataStore.setState({ tabs: {} })
   useTableDesignerStore.setState({ tabs: {} })
   useObjectEditorStore.setState({ tabs: {} })
+  useAiStore.setState({ tabs: {} })
   _resetTabIdCounter()
   _resetQueryTabCounter()
 })
@@ -630,18 +632,19 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
               editState: {
                 rowKey: { id: 1 },
@@ -688,13 +691,14 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               editState: {
                 rowKey: { id: 1 },
@@ -707,7 +711,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
             },
           ],
@@ -741,13 +745,14 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
         [tabId]: {
           content: 'SELECT 1; SELECT 2; SELECT 3',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               editState: {
                 rowKey: { id: 1 },
@@ -760,12 +765,12 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q3',
               editState: {
                 rowKey: { id: 2 },
@@ -841,12 +846,13 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'conn-1',
           results: [
-            { ...DEFAULT_RESULT_STATE, status: 'success', queryId: 'q1' },
-            { ...DEFAULT_RESULT_STATE, status: 'success', queryId: 'q2' },
+            { ...DEFAULT_RESULT_STATE, resultStatus: 'success', queryId: 'q1' },
+            { ...DEFAULT_RESULT_STATE, resultStatus: 'success', queryId: 'q2' },
           ],
           activeResultIndex: 0,
           pendingNavigationAction: null,
@@ -862,5 +868,169 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
     // Tab should have been closed
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1'] ?? []
     expect(tabs).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AI store cleanup integration
+// ---------------------------------------------------------------------------
+
+describe('useWorkspaceStore — AI store cleanup', () => {
+  beforeEach(() => {
+    mockIPC((cmd) => {
+      if (cmd === 'evict_results') return null
+      return null
+    })
+  })
+
+  it('closeTab on query-editor tab cleans up AI store state', () => {
+    const tabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    // Set up AI state for the tab
+    useAiStore.setState({
+      tabs: {
+        [tabId]: {
+          messages: [{ id: '1', role: 'user', content: 'hello', timestamp: 1 }],
+          isGenerating: false,
+          activeStreamId: null,
+          attachedContext: null,
+          isPanelOpen: true,
+          error: null,
+          schemaDdl: null,
+          schemaTokenCount: 0,
+          schemaWarning: false,
+          connectionId: null,
+          _unlisten: null,
+        },
+      },
+    })
+
+    useWorkspaceStore.getState().closeTab('conn-1', tabId)
+
+    // AI state should be cleaned up
+    expect(useAiStore.getState().tabs[tabId]).toBeUndefined()
+  })
+
+  it('forceCloseTab cleans up AI store state', () => {
+    const tabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    useAiStore.setState({
+      tabs: {
+        [tabId]: {
+          messages: [],
+          isGenerating: false,
+          activeStreamId: null,
+          attachedContext: null,
+          isPanelOpen: false,
+          error: null,
+          schemaDdl: null,
+          schemaTokenCount: 0,
+          schemaWarning: false,
+          connectionId: null,
+          _unlisten: null,
+        },
+      },
+    })
+
+    useWorkspaceStore.getState().forceCloseTab('conn-1', tabId)
+
+    expect(useAiStore.getState().tabs[tabId]).toBeUndefined()
+  })
+
+  it('clearConnectionTabs cleans up AI store state for all tabs', () => {
+    const tabId1 = useWorkspaceStore.getState().openQueryTab('conn-1')
+    const tabId2 = useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    useAiStore.setState({
+      tabs: {
+        [tabId1]: {
+          messages: [],
+          isGenerating: false,
+          activeStreamId: null,
+          attachedContext: null,
+          isPanelOpen: true,
+          error: null,
+          schemaDdl: null,
+          schemaTokenCount: 0,
+          schemaWarning: false,
+          connectionId: null,
+          _unlisten: null,
+        },
+        [tabId2]: {
+          messages: [],
+          isGenerating: false,
+          activeStreamId: null,
+          attachedContext: null,
+          isPanelOpen: false,
+          error: null,
+          schemaDdl: null,
+          schemaTokenCount: 0,
+          schemaWarning: false,
+          connectionId: null,
+          _unlisten: null,
+        },
+      },
+    })
+
+    useWorkspaceStore.getState().clearConnectionTabs('conn-1')
+
+    expect(useAiStore.getState().tabs[tabId1]).toBeUndefined()
+    expect(useAiStore.getState().tabs[tabId2]).toBeUndefined()
+  })
+
+  it('closeTabsByDatabase cleans up AI store state for affected tabs', () => {
+    useWorkspaceStore
+      .getState()
+      .openTab(makeTab({ databaseName: 'db1', objectName: 'a', label: 'a' }))
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    useAiStore.setState({
+      tabs: {
+        [tabId]: {
+          messages: [],
+          isGenerating: false,
+          activeStreamId: null,
+          attachedContext: null,
+          isPanelOpen: false,
+          error: null,
+          schemaDdl: null,
+          schemaTokenCount: 0,
+          schemaWarning: false,
+          connectionId: null,
+          _unlisten: null,
+        },
+      },
+    })
+
+    useWorkspaceStore.getState().closeTabsByDatabase('conn-1', 'db1')
+
+    expect(useAiStore.getState().tabs[tabId]).toBeUndefined()
+  })
+
+  it('closeTabsByObject cleans up AI store state for affected tabs', () => {
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users data' }))
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    useAiStore.setState({
+      tabs: {
+        [tabId]: {
+          messages: [],
+          isGenerating: false,
+          activeStreamId: null,
+          attachedContext: null,
+          isPanelOpen: false,
+          error: null,
+          schemaDdl: null,
+          schemaTokenCount: 0,
+          schemaWarning: false,
+          connectionId: null,
+          _unlisten: null,
+        },
+      },
+    })
+
+    useWorkspaceStore.getState().closeTabsByObject('conn-1', 'mydb', 'users')
+
+    expect(useAiStore.getState().tabs[tabId]).toBeUndefined()
   })
 })

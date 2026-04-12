@@ -31,6 +31,7 @@ tokio = { version = "1", features = ["sync", "time", "macros", "rt"] }
 rust_xlsxwriter = "0.80"
 base64 = "0.22"
 futures = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 mysql_async = { version = "0.36", default-features = false, features = ["minimal-rust", "rustls-tls", "ring", "tls12"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
@@ -61,6 +62,7 @@ tauri = { version = "2", features = ["test"] }
 tempfile = "3"
 async-trait = "0.1.89"
 opensrv-mysql = "0.7.0"
+wiremock = "0.6"
 
 [profile.release]
 codegen-units = 1

@@ -14,10 +14,11 @@ use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
 use crate::mysql::query_executor::{
     analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl,
-    fetch_result_page_impl, fetch_schema_metadata_impl, read_file_impl,
+    fetch_result_page_impl, fetch_schema_metadata_impl, fetch_schema_metadata_full_impl,
+    read_file_impl,
     reexecute_single_result_impl, sort_results_impl, update_result_cell_impl, write_file_impl,
     ExecuteQueryResult, FetchPageResult, MultiQueryResult, MultiQueryResultItem,
-    QueryTableEditInfo, SchemaMetadata,
+    QueryTableEditInfo, SchemaMetadata, SchemaMetadataFull,
 };
 #[cfg(not(coverage))]
 use crate::state::AppState;
@@ -74,6 +75,17 @@ pub async fn fetch_schema_metadata(
     state: tauri::State<'_, AppState>,
 ) -> Result<SchemaMetadata, String> {
     fetch_schema_metadata_impl(&state, &connection_id).await
+}
+
+// ── fetch_schema_metadata_full ────────────────────────────────────────────────
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn fetch_schema_metadata_full(
+    connection_id: String,
+    state: tauri::State<'_, AppState>,
+) -> Result<SchemaMetadataFull, String> {
+    fetch_schema_metadata_full_impl(&state, &connection_id).await
 }
 
 // ── read_file ─────────────────────────────────────────────────────────────────

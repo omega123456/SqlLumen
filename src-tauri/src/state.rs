@@ -8,6 +8,7 @@ use tokio::sync::RwLock as TokioRwLock;
 use crate::logging::LogFilterReloadHandle;
 use crate::mysql::query_executor::StoredResult;
 use crate::mysql::registry::ConnectionRegistry;
+use tokio_util::sync::CancellationToken;
 
 /// Status of a SQL dump export job.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -94,4 +95,6 @@ pub struct AppState {
     pub dump_jobs: Arc<RwLock<HashMap<String, DumpJobProgress>>>,
     /// Progress tracking for SQL import jobs.
     pub import_jobs: Arc<RwLock<HashMap<String, ImportJobProgress>>>,
+    /// Cancellation tokens for in-progress AI chat streams, keyed by stream_id.
+    pub ai_requests: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }

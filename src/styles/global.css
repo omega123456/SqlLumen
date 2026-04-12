@@ -1,6 +1,7 @@
 @import './reset.css';
 @import './tokens.css';
 @import './fonts.css';
+@import './hljs-theme.css';
 @import './monaco-suggest-widget.css';
 @import './monaco-parameter-hints.css';
 

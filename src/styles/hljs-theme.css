@@ -1,0 +1,75 @@
+/* ============================================================
+   Custom highlight.js theme — maps hljs-* classes to CSS
+   custom properties so syntax highlighting adapts to light/dark
+   theme automatically via tokens.css
+   ============================================================ */
+
+.hljs {
+  color: var(--on-surface);
+  background: var(--ai-code-block-bg);
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-literal {
+  color: var(--token-keyword);
+}
+
+.hljs-string,
+.hljs-doctag,
+.hljs-regexp,
+.hljs-addition {
+  color: var(--token-string);
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-meta,
+.hljs-deletion {
+  color: var(--token-comment);
+  font-style: italic;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-title.function_ {
+  color: var(--token-function);
+}
+
+.hljs-number,
+.hljs-symbol {
+  color: var(--token-number);
+}
+
+.hljs-operator,
+.hljs-punctuation,
+.hljs-tag {
+  color: var(--token-operator);
+}
+
+.hljs-type,
+.hljs-class,
+.hljs-name,
+.hljs-attr,
+.hljs-attribute {
+  color: var(--token-type);
+}
+
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params {
+  color: var(--on-surface);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
+
+.hljs-link {
+  text-decoration: underline;
+}

@@ -87,8 +87,8 @@ async function openQueryEditorWithResults(page: Page) {
     qStore.getState().setContent(queryTab.id, 'SELECT * FROM users;')
   })
 
-  await expect(page.getByTestId('toolbar-execute')).toBeEnabled({ timeout: APP_READY_MS })
-  await page.getByTestId('toolbar-execute').click()
+  await expect(page.getByTestId('toolbar-execute-all')).toBeEnabled({ timeout: APP_READY_MS })
+  await page.keyboard.press('F9')
   await expect(page.getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
   const editModeDropdown = page.getByTestId('edit-mode-dropdown')

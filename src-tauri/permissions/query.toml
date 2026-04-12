@@ -23,6 +23,12 @@ commands.allow = ["fetch_schema_metadata"]
 commands.deny = []
 
 [[permission]]
+identifier = "allow-fetch-schema-metadata-full"
+description = "Enables the fetch_schema_metadata_full command without any pre-configured scope."
+commands.allow = ["fetch_schema_metadata_full"]
+commands.deny = []
+
+[[permission]]
 identifier = "allow-read-file"
 description = "Enables the read_file command without any pre-configured scope."
 commands.allow = ["read_file"]

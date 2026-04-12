@@ -260,4 +260,46 @@ describe('playwrightIpcMockHandler', () => {
 
     expect(result.sourceSql).toBe('SELECT product_id FROM products')
   })
+
+  // --- AI mock handler tests ---
+
+  it('returns null for ai_chat (async streaming happens via events)', () => {
+    const result = playwrightIpcMockHandler('ai_chat', {
+      request: {
+        messages: [{ role: 'user', content: 'Show me all users' }],
+        endpoint: 'http://localhost:11434/v1/chat/completions',
+        model: 'llama3',
+        temperature: 0.3,
+        maxTokens: 2048,
+        streamId: 'mock-stream-1',
+      },
+    })
+    expect(result).toBeNull()
+  })
+
+  it('returns null for ai_cancel', () => {
+    const result = playwrightIpcMockHandler('ai_cancel', {
+      streamId: 'mock-stream-1',
+    })
+    expect(result).toBeNull()
+  })
+
+  it('captures event listener callback IDs via plugin:event|listen', () => {
+    // Simulate what Tauri listen() does internally
+    const result = playwrightIpcMockHandler('plugin:event|listen', {
+      event: 'ai-stream-chunk',
+      handler: 42,
+      target: { kind: 'Any' },
+    })
+    // Should return the handler ID as the event ID
+    expect(result).toBe(42)
+  })
+
+  it('returns null for plugin:event|unlisten', () => {
+    const result = playwrightIpcMockHandler('plugin:event|unlisten', {
+      event: 'ai-stream-chunk',
+      eventId: 42,
+    })
+    expect(result).toBeNull()
+  })
 })

@@ -1,0 +1,26 @@
+.container {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-container-high);
+  font-size: 10px;
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.warning {
+  color: var(--warning);
+}
+
+.warningIcon {
+  color: var(--warning);
+  flex-shrink: 0;
+}
+
+.text {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}

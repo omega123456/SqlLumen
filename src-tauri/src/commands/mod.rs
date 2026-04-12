@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod app_info;
 pub mod connection_groups;
 pub mod connections;

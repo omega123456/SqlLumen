@@ -13,6 +13,7 @@ import { useQueryStore } from './query-store'
 import { useTableDataStore } from './table-data-store'
 import { useTableDesignerStore } from './table-designer-store'
 import { useObjectEditorStore } from './object-editor-store'
+import { useAiStore } from './ai-store'
 
 // ---------------------------------------------------------------------------
 // Tab ID generation
@@ -309,6 +310,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       }
 
       useTableDataStore.getState().cleanupTab(tabId)
+      useAiStore.getState().cleanupTab(tabId)
     }
 
     if (closingTab.type === 'table-designer') {
@@ -329,6 +331,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       }
 
       useTableDesignerStore.getState().cleanupTab(tabId)
+      useAiStore.getState().cleanupTab(tabId)
     }
 
     if (closingTab.type === 'object-editor') {
@@ -348,6 +351,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       }
 
       useObjectEditorStore.getState().cleanupTab(tabId)
+      useAiStore.getState().cleanupTab(tabId)
     }
 
     if (closingTab.type === 'query-editor') {
@@ -395,7 +399,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
                   ...(prev.tabs[tabId] ?? {
                     content: '',
                     filePath: null,
-                    status: 'idle' as const,
+                    tabStatus: 'idle' as const,
+                    prevTabStatus: 'idle' as const,
                     cursorPosition: null,
                     connectionId: '',
                     results: [],
@@ -437,6 +442,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
     if (closingTab.type === 'query-editor') {
       useQueryStore.getState().cleanupTab(connectionId, tabId)
+      useAiStore.getState().cleanupTab(tabId)
     }
 
     set((s) => ({
@@ -473,6 +479,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     } else if (closingTab.type === 'object-editor') {
       useObjectEditorStore.getState().cleanupTab(tabId)
     }
+    // Always clean up AI state regardless of tab type
+    useAiStore.getState().cleanupTab(tabId)
 
     const remaining = tabs.filter((t) => t.id !== tabId)
     let newActive = state.activeTabByConnection[connectionId]
@@ -526,6 +534,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     tabs
       .filter((t) => t.type === 'object-editor' && t.databaseName === databaseName)
       .forEach((t) => useObjectEditorStore.getState().cleanupTab(t.id))
+
+    // Clean up AI state for all tabs being closed
+    tabs
+      .filter((t) => isObjectScopedTab(t) && t.databaseName === databaseName)
+      .forEach((t) => useAiStore.getState().cleanupTab(t.id))
 
     set((state) =>
       updateConnectionTabs(state, connectionId, (allTabs) =>
@@ -591,6 +604,23 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         return true
       })
       .forEach((t) => useObjectEditorStore.getState().cleanupTab(t.id))
+
+    // Clean up AI state for all tabs that will be removed.
+    // Use the same filter logic as the set() call below to identify removed tabs.
+    tabs
+      .filter((t) => {
+        if (!isObjectScopedTab(t)) return false
+        if (t.databaseName !== databaseName || t.objectName !== objectName) return false
+        if (objectType && (t.type === 'table-data' || t.type === 'table-designer')) {
+          if (objectType === 'view' && t.type === 'table-data' && t.objectType === 'view')
+            return true
+          return false
+        }
+        if (objectType && t.type === 'object-editor' && t.objectType !== objectType) return false
+        if (objectType && t.type === 'schema-info' && t.objectType !== objectType) return false
+        return true
+      })
+      .forEach((t) => useAiStore.getState().cleanupTab(t.id))
 
     set((state) =>
       updateConnectionTabs(state, connectionId, (allTabs) =>
@@ -767,6 +797,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     tabs
       .filter((t) => t.type === 'object-editor')
       .forEach((t) => useObjectEditorStore.getState().cleanupTab(t.id))
+
+    // Clean up AI state for all tabs being removed
+    tabs.forEach((t) => useAiStore.getState().cleanupTab(t.id))
 
     set((s) => {
       const newTabs = { ...s.tabsByConnection }

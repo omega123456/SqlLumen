@@ -246,6 +246,8 @@ const READY_CACHE = {
       { name: 'sp_cleanup', routineType: 'PROCEDURE' },
     ],
   },
+  foreignKeys: {},
+  indexes: {},
 }
 
 const READY_CACHE_WITH_SCOPED_OBJECTS = {
@@ -313,6 +315,8 @@ const READY_CACHE_WITH_SCOPED_OBJECTS = {
       { name: 'sp_archive_events', routineType: 'PROCEDURE' },
     ],
   },
+  foreignKeys: {},
+  indexes: {},
 }
 
 const READY_CACHE_WITH_EMPTY_DB = {
@@ -334,6 +338,8 @@ const EMPTY_CACHE = {
   tables: {},
   columns: {},
   routines: {},
+  foreignKeys: {},
+  indexes: {},
 }
 
 // ---------------------------------------------------------------------------
@@ -2708,6 +2714,8 @@ describe('completionService — dot notation prefers activeDatabase for unqualif
       ],
     },
     routines: {},
+    foreignKeys: {},
+    indexes: {},
   }
 
   it('unqualified table dot-notation prefers activeDatabase over other databases', async () => {

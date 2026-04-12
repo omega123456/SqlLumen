@@ -101,6 +101,18 @@ pub struct SchemaMetadata {
     pub routines: std::collections::HashMap<String, Vec<RoutineMeta>>,
 }
 
+/// Full schema metadata response including foreign keys and indexes (for AI assistant context).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaMetadataFull {
+    pub databases: Vec<String>,
+    pub tables: std::collections::HashMap<String, Vec<TableInfo>>,
+    pub columns: std::collections::HashMap<String, Vec<ColumnMeta>>,
+    pub routines: std::collections::HashMap<String, Vec<RoutineMeta>>,
+    pub foreign_keys: std::collections::HashMap<String, Vec<crate::mysql::schema_queries::ForeignKeyInfo>>,
+    pub indexes: std::collections::HashMap<String, Vec<crate::mysql::schema_queries::IndexInfo>>,
+}
+
 /// Metadata for a table detected in a SQL query, used for inline editing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1393,6 +1405,84 @@ pub async fn fetch_schema_metadata_impl(
         tables,
         columns,
         routines,
+    })
+}
+
+/// Full schema metadata including foreign keys and indexes — real implementation.
+#[cfg(not(coverage))]
+pub async fn fetch_schema_metadata_full_impl(
+    state: &AppState,
+    connection_id: &str,
+) -> Result<SchemaMetadataFull, String> {
+    use crate::mysql::schema_queries::{query_all_foreign_keys, query_all_indexes};
+
+    // First get the base metadata (databases, tables, columns, routines)
+    let base = fetch_schema_metadata_impl(state, connection_id).await?;
+
+    let pool = state
+        .registry
+        .get_pool(connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+
+    let mut foreign_keys: HashMap<String, Vec<crate::mysql::schema_queries::ForeignKeyInfo>> =
+        HashMap::new();
+    let mut indexes: HashMap<String, Vec<crate::mysql::schema_queries::IndexInfo>> =
+        HashMap::new();
+
+    // For each database, fetch all FKs and indexes
+    for db_name in &base.databases {
+        let db_fks = query_all_foreign_keys(&pool, db_name).await.unwrap_or_else(|e| {
+            tracing::warn!(
+                database = db_name,
+                error = %e,
+                "failed to fetch foreign keys for database"
+            );
+            HashMap::new()
+        });
+        for (table_name, fk_list) in db_fks {
+            let key = format!("{db_name}.{table_name}");
+            foreign_keys.entry(key).or_default().extend(fk_list);
+        }
+
+        let db_indexes = query_all_indexes(&pool, db_name).await.unwrap_or_else(|e| {
+            tracing::warn!(
+                database = db_name,
+                error = %e,
+                "failed to fetch indexes for database"
+            );
+            HashMap::new()
+        });
+        for (table_name, idx_list) in db_indexes {
+            let key = format!("{db_name}.{table_name}");
+            indexes.entry(key).or_default().extend(idx_list);
+        }
+    }
+
+    Ok(SchemaMetadataFull {
+        databases: base.databases,
+        tables: base.tables,
+        columns: base.columns,
+        routines: base.routines,
+        foreign_keys,
+        indexes,
+    })
+}
+
+/// Coverage stub for `fetch_schema_metadata_full_impl`.
+#[cfg(coverage)]
+pub async fn fetch_schema_metadata_full_impl(
+    state: &AppState,
+    connection_id: &str,
+) -> Result<SchemaMetadataFull, String> {
+    let base = fetch_schema_metadata_impl(state, connection_id).await?;
+
+    Ok(SchemaMetadataFull {
+        databases: base.databases,
+        tables: base.tables,
+        columns: base.columns,
+        routines: base.routines,
+        foreign_keys: HashMap::new(),
+        indexes: HashMap::new(),
     })
 }
 

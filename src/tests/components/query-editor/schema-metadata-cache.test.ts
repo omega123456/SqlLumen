@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { SchemaMetadataFull } from '../../../types/schema'
 
-// Mock fetchSchemaMetadata from query-commands
+// Mock fetchSchemaMetadataFull from query-commands
 vi.mock('../../../lib/query-commands', () => ({
-  fetchSchemaMetadata: vi.fn(),
+  fetchSchemaMetadataFull: vi.fn(),
 }))
 
-import { fetchSchemaMetadata } from '../../../lib/query-commands'
+import { fetchSchemaMetadataFull } from '../../../lib/query-commands'
 import {
   getCache,
   loadCache,
@@ -17,7 +18,20 @@ import {
   _clearAllCaches,
 } from '../../../components/query-editor/schema-metadata-cache'
 
-const mockFetchSchema = vi.mocked(fetchSchemaMetadata)
+const mockFetchSchema = vi.mocked(fetchSchemaMetadataFull)
+
+/** Helper to build a full mock response with defaults for foreignKeys and indexes. */
+function mockMetadata(partial: Partial<SchemaMetadataFull>): SchemaMetadataFull {
+  return {
+    databases: [],
+    tables: {},
+    columns: {},
+    routines: {},
+    foreignKeys: {},
+    indexes: {},
+    ...partial,
+  }
+}
 
 beforeEach(() => {
   _clearAllCaches()
@@ -32,19 +46,28 @@ describe('schema-metadata-cache', () => {
     expect(cache.tables).toEqual({})
     expect(cache.columns).toEqual({})
     expect(cache.routines).toEqual({})
+    expect(cache.foreignKeys).toEqual({})
+    expect(cache.indexes).toEqual({})
   })
 
   it('loadCache transitions to loading then ready', async () => {
-    mockFetchSchema.mockResolvedValue({
-      databases: ['test_db'],
-      tables: {
-        test_db: [
-          { name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 100, dataSize: 1024 },
-        ],
-      },
-      columns: { 'test_db.users': [{ name: 'id', dataType: 'int' }] },
-      routines: {},
-    })
+    mockFetchSchema.mockResolvedValue(
+      mockMetadata({
+        databases: ['test_db'],
+        tables: {
+          test_db: [
+            {
+              name: 'users',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 100,
+              dataSize: 1024,
+            },
+          ],
+        },
+        columns: { 'test_db.users': [{ name: 'id', dataType: 'int' }] },
+      })
+    )
 
     const promise = loadCache('conn-1')
     expect(getCache('conn-1').status).toBe('loading')
@@ -60,22 +83,19 @@ describe('schema-metadata-cache', () => {
     let resolvePromise: (() => void) | null = null
     mockFetchSchema.mockReturnValue(
       new Promise((resolve) => {
-        resolvePromise = () => resolve({ databases: ['db'], tables: {}, columns: {}, routines: {} })
+        resolvePromise = () => resolve(mockMetadata({ databases: ['db'] }))
       })
     )
 
     const p1 = loadCache('conn-1')
-    // Second call while first is still loading — should return same promise
     const p2 = loadCache('conn-1')
 
-    // Should only have been called once
     expect(mockFetchSchema).toHaveBeenCalledTimes(1)
 
     resolvePromise!()
     await p1
     await p2
 
-    // Both callers should see the ready cache
     expect(getCache('conn-1').status).toBe('ready')
   })
 
@@ -83,8 +103,7 @@ describe('schema-metadata-cache', () => {
     let resolvePromise: (() => void) | null = null
     mockFetchSchema.mockReturnValue(
       new Promise((resolve) => {
-        resolvePromise = () =>
-          resolve({ databases: ['shared_db'], tables: {}, columns: {}, routines: {} })
+        resolvePromise = () => resolve(mockMetadata({ databases: ['shared_db'] }))
       })
     )
 
@@ -92,24 +111,17 @@ describe('schema-metadata-cache', () => {
     const p2 = loadCache('conn-concurrent')
     const p3 = loadCache('conn-concurrent')
 
-    // Should only call fetch once
     expect(mockFetchSchema).toHaveBeenCalledTimes(1)
 
     resolvePromise!()
     await Promise.all([p1, p2, p3])
 
-    // All callers should see the ready cache
     expect(getCache('conn-concurrent').status).toBe('ready')
     expect(getCache('conn-concurrent').databases).toEqual(['shared_db'])
   })
 
   it('loadCache is a no-op if already ready', async () => {
-    mockFetchSchema.mockResolvedValue({
-      databases: [],
-      tables: {},
-      columns: {},
-      routines: {},
-    })
+    mockFetchSchema.mockResolvedValue(mockMetadata({}))
 
     await loadCache('conn-1')
     expect(getCache('conn-1').status).toBe('ready')
@@ -123,12 +135,7 @@ describe('schema-metadata-cache', () => {
     await loadCache('conn-1')
     expect(getCache('conn-1').status).toBe('error')
 
-    mockFetchSchema.mockResolvedValueOnce({
-      databases: ['db1'],
-      tables: {},
-      columns: {},
-      routines: {},
-    })
+    mockFetchSchema.mockResolvedValueOnce(mockMetadata({ databases: ['db1'] }))
     await loadCache('conn-1')
     expect(getCache('conn-1').status).toBe('ready')
     expect(mockFetchSchema).toHaveBeenCalledTimes(2)
@@ -155,12 +162,9 @@ describe('schema-metadata-cache', () => {
   })
 
   it('filterDatabases returns prefix matches (case-insensitive)', async () => {
-    mockFetchSchema.mockResolvedValue({
-      databases: ['app_db', 'analytics_db', 'test_db'],
-      tables: {},
-      columns: {},
-      routines: {},
-    })
+    mockFetchSchema.mockResolvedValue(
+      mockMetadata({ databases: ['app_db', 'analytics_db', 'test_db'] })
+    )
 
     await loadCache('conn-1')
 
@@ -176,17 +180,29 @@ describe('schema-metadata-cache', () => {
   })
 
   it('filterTables returns tables for a given database with prefix', async () => {
-    mockFetchSchema.mockResolvedValue({
-      databases: ['db1'],
-      tables: {
-        db1: [
-          { name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 100, dataSize: 1024 },
-          { name: 'orders', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 200, dataSize: 2048 },
-        ],
-      },
-      columns: {},
-      routines: {},
-    })
+    mockFetchSchema.mockResolvedValue(
+      mockMetadata({
+        databases: ['db1'],
+        tables: {
+          db1: [
+            {
+              name: 'users',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 100,
+              dataSize: 1024,
+            },
+            {
+              name: 'orders',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 200,
+              dataSize: 2048,
+            },
+          ],
+        },
+      })
+    )
 
     await loadCache('conn-1')
 
@@ -201,22 +217,29 @@ describe('schema-metadata-cache', () => {
   })
 
   it('filterColumns returns columns for database.table', async () => {
-    mockFetchSchema.mockResolvedValue({
-      databases: ['db1'],
-      tables: {
-        db1: [
-          { name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 100, dataSize: 1024 },
-        ],
-      },
-      columns: {
-        'db1.users': [
-          { name: 'id', dataType: 'int' },
-          { name: 'email', dataType: 'varchar' },
-          { name: 'name', dataType: 'varchar' },
-        ],
-      },
-      routines: {},
-    })
+    mockFetchSchema.mockResolvedValue(
+      mockMetadata({
+        databases: ['db1'],
+        tables: {
+          db1: [
+            {
+              name: 'users',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 100,
+              dataSize: 1024,
+            },
+          ],
+        },
+        columns: {
+          'db1.users': [
+            { name: 'id', dataType: 'int' },
+            { name: 'email', dataType: 'varchar' },
+            { name: 'name', dataType: 'varchar' },
+          ],
+        },
+      })
+    )
 
     await loadCache('conn-1')
 
@@ -228,17 +251,17 @@ describe('schema-metadata-cache', () => {
   })
 
   it('filterRoutines returns routines for a database', async () => {
-    mockFetchSchema.mockResolvedValue({
-      databases: ['db1'],
-      tables: {},
-      columns: {},
-      routines: {
-        db1: [
-          { name: 'get_user_count', routineType: 'FUNCTION' },
-          { name: 'process_orders', routineType: 'PROCEDURE' },
-        ],
-      },
-    })
+    mockFetchSchema.mockResolvedValue(
+      mockMetadata({
+        databases: ['db1'],
+        routines: {
+          db1: [
+            { name: 'get_user_count', routineType: 'FUNCTION' },
+            { name: 'process_orders', routineType: 'PROCEDURE' },
+          ],
+        },
+      })
+    )
 
     await loadCache('conn-1')
 
@@ -250,12 +273,7 @@ describe('schema-metadata-cache', () => {
   })
 
   it('invalidateCache removes the entry', async () => {
-    mockFetchSchema.mockResolvedValue({
-      databases: ['db1'],
-      tables: {},
-      columns: {},
-      routines: {},
-    })
+    mockFetchSchema.mockResolvedValue(mockMetadata({ databases: ['db1'] }))
 
     await loadCache('conn-1')
     expect(getCache('conn-1').status).toBe('ready')
@@ -269,28 +287,24 @@ describe('schema-metadata-cache', () => {
     mockFetchSchema.mockReturnValueOnce(
       new Promise((resolve) => {
         resolveStale = () =>
-          resolve({
-            databases: ['stale_db'],
-            tables: {},
-            columns: {},
-            routines: { stale_db: [{ name: 'old_routine', routineType: 'FUNCTION' }] },
-          })
+          resolve(
+            mockMetadata({
+              databases: ['stale_db'],
+              routines: { stale_db: [{ name: 'old_routine', routineType: 'FUNCTION' }] },
+            })
+          )
       })
     )
 
-    // Start loading — fetch is now in-flight
     const stalePromise = loadCache('conn-race')
     expect(getCache('conn-race').status).toBe('loading')
 
-    // Invalidate while the fetch is still pending
     invalidateCache('conn-race')
     expect(getCache('conn-race').status).toBe('empty')
 
-    // Now the stale fetch resolves — it must NOT repopulate the cache
     resolveStale!()
     await stalePromise
 
-    // Cache should still be empty (stale data discarded)
     expect(getCache('conn-race').status).toBe('empty')
     expect(getCache('conn-race').routines).toEqual({})
   })
@@ -303,19 +317,15 @@ describe('schema-metadata-cache', () => {
       })
     )
 
-    // Start loading — fetch is now in-flight
     const stalePromise = loadCache('conn-err-race')
     expect(getCache('conn-err-race').status).toBe('loading')
 
-    // Invalidate while the fetch is still pending
     invalidateCache('conn-err-race')
     expect(getCache('conn-err-race').status).toBe('empty')
 
-    // Now the stale fetch rejects — it must NOT set error status in the cache
     rejectStale!(new Error('Stale error'))
     await stalePromise
 
-    // Cache should still be empty (stale error discarded)
     expect(getCache('conn-err-race').status).toBe('empty')
   })
 
@@ -323,30 +333,25 @@ describe('schema-metadata-cache', () => {
     let resolveStale: (() => void) | null = null
     mockFetchSchema.mockReturnValueOnce(
       new Promise((resolve) => {
-        resolveStale = () =>
-          resolve({ databases: ['stale_db'], tables: {}, columns: {}, routines: {} })
+        resolveStale = () => resolve(mockMetadata({ databases: ['stale_db'] }))
       })
     )
 
-    // Start first load
     const stalePromise = loadCache('conn-fresh')
     expect(getCache('conn-fresh').status).toBe('loading')
 
-    // Invalidate
     invalidateCache('conn-fresh')
 
-    // Resolve the stale load
     resolveStale!()
     await stalePromise
     expect(getCache('conn-fresh').status).toBe('empty')
 
-    // Now a fresh load should work normally
-    mockFetchSchema.mockResolvedValueOnce({
-      databases: ['fresh_db'],
-      tables: {},
-      columns: {},
-      routines: { fresh_db: [{ name: 'new_routine', routineType: 'PROCEDURE' }] },
-    })
+    mockFetchSchema.mockResolvedValueOnce(
+      mockMetadata({
+        databases: ['fresh_db'],
+        routines: { fresh_db: [{ name: 'new_routine', routineType: 'PROCEDURE' }] },
+      })
+    )
 
     await loadCache('conn-fresh')
     expect(getCache('conn-fresh').status).toBe('ready')
@@ -358,8 +363,8 @@ describe('schema-metadata-cache', () => {
 
   it('maintains separate caches per connection', async () => {
     mockFetchSchema
-      .mockResolvedValueOnce({ databases: ['db_a'], tables: {}, columns: {}, routines: {} })
-      .mockResolvedValueOnce({ databases: ['db_b'], tables: {}, columns: {}, routines: {} })
+      .mockResolvedValueOnce(mockMetadata({ databases: ['db_a'] }))
+      .mockResolvedValueOnce(mockMetadata({ databases: ['db_b'] }))
 
     await loadCache('conn-1')
     await loadCache('conn-2')
@@ -417,6 +422,8 @@ describe('schema-metadata-cache', () => {
         '': [{ name: 'ghost_routine', routineType: 'PROCEDURE' }],
         invalid_container: null,
       },
+      foreignKeys: {},
+      indexes: {},
     } as never)
 
     await loadCache('conn-malformed')
@@ -448,5 +455,60 @@ describe('schema-metadata-cache', () => {
         { name: ' leading_space_routine', routineType: 'FUNCTION' },
       ],
     })
+  })
+
+  it('populates foreignKeys and indexes in the cache after loading', async () => {
+    mockFetchSchema.mockResolvedValue(
+      mockMetadata({
+        databases: ['mydb'],
+        tables: {
+          mydb: [
+            { name: 'orders', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 10, dataSize: 512 },
+          ],
+        },
+        columns: {
+          'mydb.orders': [
+            { name: 'id', dataType: 'INT' },
+            { name: 'user_id', dataType: 'INT' },
+          ],
+        },
+        foreignKeys: {
+          'mydb.orders': [
+            {
+              name: 'fk_user',
+              columnName: 'user_id',
+              referencedDatabase: 'mydb',
+              referencedTable: 'users',
+              referencedColumn: 'id',
+              onDelete: 'CASCADE',
+              onUpdate: 'NO ACTION',
+            },
+          ],
+        },
+        indexes: {
+          'mydb.orders': [
+            {
+              name: 'idx_user_id',
+              indexType: 'BTREE',
+              cardinality: null,
+              columns: ['user_id'],
+              isVisible: true,
+              isUnique: false,
+            },
+          ],
+        },
+      })
+    )
+
+    await loadCache('conn-fk-idx')
+    const cache = getCache('conn-fk-idx')
+
+    expect(cache.status).toBe('ready')
+    expect(cache.foreignKeys).toHaveProperty('mydb.orders')
+    expect(cache.foreignKeys['mydb.orders']).toHaveLength(1)
+    expect(cache.foreignKeys['mydb.orders'][0].name).toBe('fk_user')
+    expect(cache.indexes).toHaveProperty('mydb.orders')
+    expect(cache.indexes['mydb.orders']).toHaveLength(1)
+    expect(cache.indexes['mydb.orders'][0].name).toBe('idx_user_id')
   })
 })

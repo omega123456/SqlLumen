@@ -3,6 +3,8 @@ import { render, screen } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { QueryEditorTab } from '../../../components/query-editor/QueryEditorTab'
 import { useQueryStore } from '../../../stores/query-store'
+import { useSettingsStore } from '../../../stores/settings-store'
+import { useAiStore } from '../../../stores/ai-store'
 import {
   useWorkspaceStore,
   _resetTabIdCounter,
@@ -16,6 +18,23 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn(() => Promise.resolve(null)),
 }))
 
+function emptyAiTabState(overrides: Partial<import('../../../stores/ai-store').TabAiState> = {}) {
+  return {
+    messages: [],
+    isGenerating: false,
+    activeStreamId: null,
+    attachedContext: null,
+    isPanelOpen: false,
+    error: null,
+    schemaDdl: null,
+    schemaTokenCount: 0,
+    schemaWarning: false,
+    connectionId: null,
+    _unlisten: null,
+    ...overrides,
+  }
+}
+
 const mockTab: QueryEditorTabType = {
   id: 'tab-1',
   type: 'query-editor',
@@ -26,9 +45,14 @@ const mockTab: QueryEditorTabType = {
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+  useAiStore.setState({ tabs: {} })
   _resetTabIdCounter()
   _resetQueryTabCounter()
   mockIPC(() => null)
+  // Default AI to disabled
+  useSettingsStore.setState({
+    settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'false' },
+  })
 })
 
 describe('QueryEditorTab', () => {
@@ -56,7 +80,8 @@ describe('QueryEditorTab', () => {
   it('passes tab connectionId to toolbar', () => {
     render(<QueryEditorTab tab={mockTab} />)
     // The toolbar receives connectionId prop — verify it renders with the correct buttons
-    expect(screen.getByTestId('toolbar-execute')).toBeInTheDocument()
+    // Execute Query button was removed — execution is via CodeLens
+    expect(screen.queryByTestId('toolbar-execute')).not.toBeInTheDocument()
     expect(screen.getByTestId('toolbar-execute-all')).toBeInTheDocument()
   })
 
@@ -71,9 +96,61 @@ describe('QueryEditorTab', () => {
     expect(screen.getByTestId('query-editor-tab')).toBeInTheDocument()
   })
 
-  it('shows execute buttons disabled when no content', () => {
+  it('shows execute-all button disabled when no content', () => {
     render(<QueryEditorTab tab={mockTab} />)
-    expect(screen.getByTestId('toolbar-execute')).toBeDisabled()
     expect(screen.getByTestId('toolbar-execute-all')).toBeDisabled()
+  })
+
+  it('does not render AI panel when ai.enabled is false', () => {
+    render(<QueryEditorTab tab={mockTab} />)
+    expect(screen.queryByTestId('ai-panel')).not.toBeInTheDocument()
+  })
+
+  it('renders AI panel when ai.enabled is true and panel is open', () => {
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
+    })
+    useAiStore.setState({
+      tabs: { 'tab-1': emptyAiTabState({ isPanelOpen: true }) },
+    })
+    render(<QueryEditorTab tab={mockTab} />)
+    expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
+  })
+
+  it('does not show AI toggle button when ai.enabled is false', () => {
+    render(<QueryEditorTab tab={mockTab} />)
+    expect(screen.queryByTestId('toolbar-ai-toggle')).not.toBeInTheDocument()
+  })
+
+  it('renders AI panel component even when panel is collapsed (ai enabled)', () => {
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
+    })
+    useAiStore.setState({
+      tabs: { 'tab-1': emptyAiTabState({ isPanelOpen: false }) },
+    })
+    render(<QueryEditorTab tab={mockTab} />)
+    // The AiPanel component is still in the DOM (collapsible, not removed)
+    expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
+  })
+
+  it('shows AI toggle button when ai.enabled is true', () => {
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
+    })
+    render(<QueryEditorTab tab={mockTab} />)
+    expect(screen.getByTestId('toolbar-ai-toggle')).toBeInTheDocument()
+  })
+
+  it('still renders editor and result panel when AI is enabled', () => {
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
+    })
+    useAiStore.setState({
+      tabs: { 'tab-1': emptyAiTabState({ isPanelOpen: true }) },
+    })
+    render(<QueryEditorTab tab={mockTab} />)
+    expect(screen.getByTestId('monaco-editor-wrapper')).toBeInTheDocument()
+    expect(screen.getByTestId('result-panel')).toBeInTheDocument()
   })
 })

@@ -9,6 +9,8 @@ import {
   _resetQueryTabCounter,
 } from '../../../stores/workspace-store'
 import { useConnectionStore } from '../../../stores/connection-store'
+import { useSettingsStore } from '../../../stores/settings-store'
+import { useAiStore } from '../../../stores/ai-store'
 
 // Mock tauri dialog
 vi.mock('@tauri-apps/plugin-dialog', () => ({
@@ -20,6 +22,11 @@ beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
   useConnectionStore.setState({ activeConnections: {} })
+  useAiStore.setState({ tabs: {} })
+  // Default AI to disabled
+  useSettingsStore.setState({
+    settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'false' },
+  })
   _resetTabIdCounter()
   _resetQueryTabCounter()
 
@@ -82,9 +89,7 @@ describe('EditorToolbar', () => {
     if (content) {
       useQueryStore.getState().setContent('tab-1', content)
     }
-    return render(
-      <EditorToolbar connectionId="conn-1" tabId="tab-1" cursorLine={1} cursorColumn={1} />
-    )
+    return render(<EditorToolbar connectionId="conn-1" tabId="tab-1" />)
   }
 
   it('renders all toolbar buttons', () => {
@@ -94,8 +99,9 @@ describe('EditorToolbar', () => {
     expect(screen.getByTestId('toolbar-open')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-format')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-import-sql')).toBeInTheDocument()
-    expect(screen.getByTestId('toolbar-execute')).toBeInTheDocument()
     expect(screen.getByTestId('toolbar-execute-all')).toBeInTheDocument()
+    // Execute Query button was removed — execution is via CodeLens
+    expect(screen.queryByTestId('toolbar-execute')).not.toBeInTheDocument()
   })
 
   it('import SQL button is enabled for non-read-only connections', () => {
@@ -143,15 +149,13 @@ describe('EditorToolbar', () => {
     expect(importBtn).toBeDisabled()
   })
 
-  it('execute buttons are disabled when no content', () => {
+  it('execute-all button is disabled when no content', () => {
     renderToolbar('') // empty content
-    expect(screen.getByTestId('toolbar-execute')).toBeDisabled()
     expect(screen.getByTestId('toolbar-execute-all')).toBeDisabled()
   })
 
-  it('execute buttons are enabled when content present', () => {
+  it('execute-all button is enabled when content present', () => {
     renderToolbar('SELECT 1')
-    expect(screen.getByTestId('toolbar-execute')).not.toBeDisabled()
     expect(screen.getByTestId('toolbar-execute-all')).not.toBeDisabled()
   })
 
@@ -174,11 +178,11 @@ describe('EditorToolbar', () => {
   it('execute button calls executeQuery', async () => {
     renderToolbar('SELECT 1')
     await act(async () => {
-      fireEvent.click(screen.getByTestId('toolbar-execute'))
+      fireEvent.click(screen.getByTestId('toolbar-execute-all'))
     })
     // After execution, query store should have result status
     const tabState = useQueryStore.getState().tabs['tab-1']
-    expect(tabState?.status).toBe('success')
+    expect(tabState?.tabStatus).toBe('success')
   })
 
   it('execute all button calls executeQuery for each statement', async () => {
@@ -187,13 +191,14 @@ describe('EditorToolbar', () => {
       fireEvent.click(screen.getByTestId('toolbar-execute-all'))
     })
     const tabState = useQueryStore.getState().tabs['tab-1']
-    expect(tabState?.status).toBe('success')
+    expect(tabState?.tabStatus).toBe('success')
   })
 
   it('execute does nothing when content is empty', async () => {
     renderToolbar('')
+    // Execute All is disabled when content is empty, so clicking it does nothing
     await act(async () => {
-      fireEvent.click(screen.getByTestId('toolbar-execute'))
+      fireEvent.click(screen.getByTestId('toolbar-execute-all'))
     })
     // Tab state should not have been created (no execute happened)
     const tabState = useQueryStore.getState().tabs['tab-1']
@@ -293,6 +298,40 @@ describe('EditorToolbar', () => {
     })
     // Should have stopped after the error on second statement
     const tabState = useQueryStore.getState().tabs['tab-1']
-    expect(tabState?.status).toBe('error')
+    expect(tabState?.tabStatus).toBe('error')
+  })
+
+  it('does not show AI toggle button when ai.enabled is false', () => {
+    renderToolbar()
+    expect(screen.queryByTestId('toolbar-ai-toggle')).not.toBeInTheDocument()
+  })
+
+  it('shows AI toggle button when ai.enabled is true', () => {
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
+    })
+    renderToolbar()
+    expect(screen.getByTestId('toolbar-ai-toggle')).toBeInTheDocument()
+  })
+
+  it('AI toggle button calls togglePanel on click', () => {
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
+    })
+    renderToolbar()
+    const toggleBtn = screen.getByTestId('toolbar-ai-toggle')
+    fireEvent.click(toggleBtn)
+    // Panel should now be open in the AI store
+    const aiTab = useAiStore.getState().tabs['tab-1']
+    expect(aiTab?.isPanelOpen).toBe(true)
+  })
+
+  it('AI toggle button has title attribute', () => {
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
+    })
+    renderToolbar()
+    const toggleBtn = screen.getByTestId('toolbar-ai-toggle')
+    expect(toggleBtn).toHaveAttribute('title', 'AI Assistant')
   })
 })

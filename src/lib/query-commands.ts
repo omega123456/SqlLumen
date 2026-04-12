@@ -6,6 +6,7 @@ import type {
   QueryTableEditInfo,
   ResultPage,
   SchemaMetadataResponse,
+  SchemaMetadataFull,
 } from '../types/schema'
 
 export interface ExecuteQueryResult extends QueryResultMeta {
@@ -107,6 +108,10 @@ export async function selectDatabase(connectionId: string, databaseName: string)
 
 export async function fetchSchemaMetadata(connectionId: string): Promise<SchemaMetadataResponse> {
   return invoke<SchemaMetadataResponse>('fetch_schema_metadata', { connectionId })
+}
+
+export async function fetchSchemaMetadataFull(connectionId: string): Promise<SchemaMetadataFull> {
+  return invoke<SchemaMetadataFull>('fetch_schema_metadata_full', { connectionId })
 }
 
 export async function readFile(path: string): Promise<string> {

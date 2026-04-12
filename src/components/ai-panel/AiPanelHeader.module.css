@@ -1,0 +1,61 @@
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  height: 44px;
+  padding: 0 var(--space-md);
+  background: var(--ai-panel-header-bg);
+  border-bottom: 1px solid var(--ai-panel-border);
+  flex-shrink: 0;
+}
+
+.title {
+  flex: 1;
+  font-family: var(--font-headline);
+  font-size: var(--type-size-sm);
+  font-weight: 700;
+  color: var(--on-surface);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schemaSlot {
+  flex: 1;
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.iconButton:hover {
+  color: var(--on-surface);
+  background: rgba(var(--on-surface-rgb), 0.06);
+}
+
+.iconButton:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}

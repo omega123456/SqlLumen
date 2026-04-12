@@ -57,7 +57,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: SqlLumen v__VERSION__
           releaseBody: 'See the release assets to download installers for Windows and macOS.'
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           uploadUpdaterJson: false
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).

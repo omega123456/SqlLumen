@@ -11,78 +11,56 @@
 
 import { useState } from 'react'
 import {
-  Play,
   FastForward,
   FloppyDisk,
   FolderOpen,
   MagicWand,
   UploadSimple,
+  Sparkle,
 } from '@phosphor-icons/react'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { format as formatSQL } from 'sql-formatter'
-import { useQueryStore, isCallSql } from '../../stores/query-store'
+import { useQueryStore } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useImportDialogStore } from '../../stores/import-dialog-store'
+import { useAiStore } from '../../stores/ai-store'
+import { useSettingsStore } from '../../stores/settings-store'
 import { readFile, writeFile } from '../../lib/query-commands'
-import { splitStatements, findStatementAtCursor, cursorToOffset } from './sql-parser-utils'
+import { splitStatements } from './sql-parser-utils'
 import { RunningIndicator } from './RunningIndicator'
 import styles from './EditorToolbar.module.css'
 
 interface EditorToolbarProps {
   connectionId: string
   tabId: string
-  /** Current cursor position from Monaco (line + column, 1-indexed) */
-  cursorLine: number
-  cursorColumn: number
 }
 
-export function EditorToolbar({
-  connectionId,
-  tabId,
-  cursorLine,
-  cursorColumn,
-}: EditorToolbarProps) {
+export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [isOpening, setIsOpening] = useState(false)
 
   const content = useQueryStore((state) => state.tabs[tabId]?.content ?? '')
-  const status = useQueryStore((state) => state.tabs[tabId]?.status ?? 'idle')
+  const status = useQueryStore((state) => state.tabs[tabId]?.tabStatus ?? 'idle')
   const setContent = useQueryStore((state) => state.setContent)
   const setFilePath = useQueryStore((state) => state.setFilePath)
-  const executeQuery = useQueryStore((state) => state.executeQuery)
   const executeMultiQuery = useQueryStore((state) => state.executeMultiQuery)
-  const executeCallQuery = useQueryStore((state) => state.executeCallQuery)
   const requestNavigationAction = useQueryStore((state) => state.requestNavigationAction)
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
 
   const isReadOnly =
     useConnectionStore((state) => state.activeConnections[connectionId]?.profile?.readOnly) ?? false
 
-  const isRunning = status === 'running'
+  const aiEnabled = useSettingsStore((s) => s.getSetting('ai.enabled') === 'true')
+  const toggleAiPanel = useAiStore((s) => s.togglePanel)
 
-  // Execute the statement at the current cursor position
-  async function handleExecute() {
-    if (isRunning || !content.trim()) return
-    const offset = cursorToOffset(content, cursorLine, cursorColumn)
-    const statements = splitStatements(content)
-    const stmt = findStatementAtCursor(statements, offset)
-    const sql = stmt?.sql ?? content.trim()
-    if (sql) {
-      requestNavigationAction(tabId, () => {
-        // Detect CALL statements and route to executeCallQuery
-        if (isCallSql(sql)) {
-          executeCallQuery(connectionId, tabId, sql)
-        } else {
-          executeQuery(connectionId, tabId, sql)
-        }
-      })
-    }
-  }
+  const isRunning = status === 'running'
+  const isAiLocked = status === 'ai-pending' || status === 'ai-reviewing'
+  const isDisabled = isRunning || isAiLocked
 
   // Execute all statements in the editor via batch execution
   async function handleExecuteAll() {
-    if (isRunning || !content.trim()) return
+    if (isDisabled || !content.trim()) return
     requestNavigationAction(tabId, () => {
       const statements = splitStatements(content)
       const filteredStatements = statements
@@ -178,7 +156,7 @@ export function EditorToolbar({
           className={styles.iconButton}
           title="Save (Ctrl+S)"
           onClick={handleSave}
-          disabled={isSaving || isRunning}
+          disabled={isSaving || isDisabled}
           data-testid="toolbar-save"
         >
           <FloppyDisk size={16} weight="regular" />
@@ -188,7 +166,7 @@ export function EditorToolbar({
           className={styles.iconButton}
           title="Open SQL file"
           onClick={handleOpen}
-          disabled={isOpening || isRunning}
+          disabled={isOpening || isDisabled}
           data-testid="toolbar-open"
         >
           <FolderOpen size={16} weight="regular" />
@@ -198,7 +176,7 @@ export function EditorToolbar({
           className={styles.iconButton}
           title="Format SQL"
           onClick={handleFormat}
-          disabled={isRunning}
+          disabled={isDisabled}
           data-testid="toolbar-format"
         >
           <MagicWand size={16} weight="regular" />
@@ -208,40 +186,40 @@ export function EditorToolbar({
           className={styles.iconButton}
           title={isReadOnly ? 'Import SQL (disabled for read-only connections)' : 'Import SQL'}
           onClick={handleImportSql}
-          disabled={isRunning || isReadOnly}
+          disabled={isDisabled || isReadOnly}
           data-testid="toolbar-import-sql"
         >
           <UploadSimple size={16} weight="regular" />
         </button>
       </div>
 
-      {/* Right: execute buttons or running indicator */}
+      {/* Right: AI toggle + execute buttons or running indicator */}
       <div className={styles.rightActions}>
+        {aiEnabled && (
+          <button
+            type="button"
+            className={styles.iconButton}
+            title="AI Assistant"
+            onClick={() => toggleAiPanel(tabId)}
+            disabled={isDisabled}
+            data-testid="toolbar-ai-toggle"
+          >
+            <Sparkle size={16} weight="regular" />
+          </button>
+        )}
         {isRunning ? (
           <RunningIndicator connectionId={connectionId} tabId={tabId} />
         ) : (
-          <>
-            <button
-              type="button"
-              className={`${styles.executeButton} ${styles.executeAll}`}
-              onClick={handleExecuteAll}
-              disabled={!content.trim()}
-              data-testid="toolbar-execute-all"
-            >
-              <FastForward size={14} weight="fill" />
-              <span>Execute All</span>
-            </button>
-            <button
-              type="button"
-              className={`${styles.executeButton} ${styles.executePrimary}`}
-              onClick={handleExecute}
-              disabled={!content.trim()}
-              data-testid="toolbar-execute"
-            >
-              <Play size={14} weight="fill" />
-              <span>Execute Query</span>
-            </button>
-          </>
+          <button
+            type="button"
+            className={`${styles.executeButton} ${styles.executeAll}`}
+            onClick={handleExecuteAll}
+            disabled={!content.trim()}
+            data-testid="toolbar-execute-all"
+          >
+            <FastForward size={14} weight="fill" />
+            <span>Execute All</span>
+          </button>
         )}
       </div>
     </div>

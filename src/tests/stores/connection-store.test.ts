@@ -95,18 +95,19 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
               editState: {
                 rowKey: { id: 1 },
@@ -151,18 +152,19 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
               editState: {
                 rowKey: { id: 1 },
@@ -207,13 +209,14 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
         [tabId]: {
           content: 'SELECT 1',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               editState: {
                 rowKey: { id: 1 },
@@ -259,13 +262,14 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
           filePath: null,
-          status: 'success',
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'session-1',
           results: [
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q1',
               editMode: 'users',
               editConnectionId: 'session-1',
@@ -280,7 +284,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
             },
             {
               ...DEFAULT_RESULT_STATE,
-              status: 'success',
+              resultStatus: 'success',
               queryId: 'q2',
               editState: {
                 rowKey: { id: 2 },

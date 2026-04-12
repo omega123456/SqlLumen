@@ -1,0 +1,17 @@
+[[permission]]
+identifier = "allow-ai-chat"
+description = "Allow invoking the ai_chat command"
+commands.allow = ["ai_chat"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-ai-cancel"
+description = "Allow invoking the ai_cancel command"
+commands.allow = ["ai_cancel"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-ai-models"
+description = "Allow invoking the list_ai_models command"
+commands.allow = ["list_ai_models"]
+commands.deny = []

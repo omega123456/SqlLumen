@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FilterDialog } from '../../../components/dialogs/FilterDialog'
 import type { FilterCondition } from '../../../types/schema'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Ensure stale portalled elements (e.g. dropdown listboxes) from other test
+  // files sharing the same jsdom document are cleaned up before each test.
+  cleanup()
+  document.body.innerHTML = ''
 })
 
 const defaultColumns = ['id', 'name', 'email']
@@ -104,7 +108,7 @@ describe('FilterDialog', () => {
 
     const opCombo = screen.getByTestId('filter-operator-select-0')
     await user.click(opCombo)
-    await user.click(screen.getByRole('option', { name: 'IS NULL' }))
+    await user.click(await screen.findByRole('option', { name: 'IS NULL' }))
 
     const valueInput = screen.getByTestId('filter-value-input') as HTMLInputElement
     expect(valueInput).toBeDisabled()
@@ -123,7 +127,7 @@ describe('FilterDialog', () => {
 
     const opCombo = screen.getByTestId('filter-operator-select-0')
     await user.click(opCombo)
-    await user.click(screen.getByRole('option', { name: 'IS NOT NULL' }))
+    await user.click(await screen.findByRole('option', { name: 'IS NOT NULL' }))
 
     const valueInput = screen.getByTestId('filter-value-input') as HTMLInputElement
     expect(valueInput).toBeDisabled()

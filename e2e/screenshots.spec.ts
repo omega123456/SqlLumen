@@ -213,6 +213,29 @@ async function openQueryEditorTab(page: Page) {
   await expect(page.getByTestId('editor-toolbar')).toBeVisible()
 }
 
+/** Enable AI via the settings store so the toolbar toggle appears. */
+async function enableAiViaStore(page: Page) {
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__settingsStore__ as {
+      setState: (
+        updater: (state: {
+          settings: Record<string, string>
+          pendingChanges: Record<string, string>
+        }) => Record<string, unknown>
+      ) => void
+    }
+    store.setState((state) => ({
+      settings: {
+        ...state.settings,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434/v1',
+        'ai.model': 'llama3',
+      },
+      pendingChanges: {},
+    }))
+  })
+}
+
 async function waitForAutocomplete(page: Page, expectedText?: string) {
   const suggestWidget = page.locator('.suggest-widget.visible')
   await page.waitForTimeout(300)
@@ -301,8 +324,8 @@ async function openQueryEditorWithCallResults(page: Page) {
 
   await page.waitForTimeout(300)
 
-  // Click the Execute Query button (not Execute All — CALL is detected and routed)
-  await page.getByTestId('toolbar-execute').click()
+  // Execute via F9 shortcut (Execute Query button was removed — run is via CodeLens/F9)
+  await page.keyboard.press('F9')
 
   // Wait for multi-result tab strip to appear (2 results → tabs visible)
   await expect(page.getByTestId('result-sub-tabs')).toBeVisible({ timeout: APP_READY_MS })
@@ -314,7 +337,7 @@ async function openQueryEditorWithCallResults(page: Page) {
 async function openQueryEditorWithResults(page: Page) {
   await openQueryEditorTab(page)
 
-  // Set content in the query store so the Execute button becomes enabled
+  // Set content in the query store so that F9 can execute a statement
   await page.evaluate(() => {
     const store = (window as unknown as Record<string, unknown>).__queryStore__ as {
       getState: () => { tabs: Record<string, { content: string }> }
@@ -349,8 +372,8 @@ async function openQueryEditorWithResults(page: Page) {
   // Wait a tick for React to re-render with the content
   await page.waitForTimeout(300)
 
-  // Click the Execute Query button
-  await page.getByTestId('toolbar-execute').click()
+  // Execute via F9 shortcut (Execute Query button was removed — run is via CodeLens/F9)
+  await page.keyboard.press('F9')
 
   // Wait for results to appear
   await expect(page.getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
@@ -877,8 +900,8 @@ for (const theme of themes) {
         ;(window as unknown as Record<string, unknown>).__mockQueryDelay__ = 60000
       })
 
-      // Execute the query
-      await page.getByTestId('toolbar-execute').click()
+      // Execute the query via F9 shortcut
+      await page.keyboard.press('F9')
 
       // Wait for running indicator to be visible
       await expect(page.getByTestId('running-indicator')).toBeVisible({ timeout: APP_READY_MS })
@@ -1055,7 +1078,7 @@ for (const theme of themes) {
       })
 
       await page.waitForTimeout(300)
-      await page.getByTestId('toolbar-execute').click()
+      await page.keyboard.press('F9')
 
       // Wait for error state to appear in the result panel
       await expect(page.getByTestId('result-panel')).toContainText("doesn't exist", {
@@ -1816,12 +1839,13 @@ for (const theme of themes) {
             ...state.tabs,
             [queryTab.id]: {
               ...state.tabs[queryTab.id],
-              status: 'success',
+              tabStatus: 'success',
+              prevTabStatus: 'idle',
               connectionId: 'session-playwright-1',
               activeResultIndex: 1,
               results: [
                 {
-                  status: 'success',
+                  resultStatus: 'success',
                   columns: [
                     { name: 'id', dataType: 'BIGINT' },
                     { name: 'name', dataType: 'VARCHAR' },
@@ -1860,7 +1884,7 @@ for (const theme of themes) {
                   editingRowIndex: null,
                 },
                 {
-                  status: 'error',
+                  resultStatus: 'error',
                   columns: [],
                   rows: [],
                   totalRows: 0,
@@ -2065,6 +2089,266 @@ for (const theme of themes) {
       await expect(panel.getByTestId('favorite-dialog-save')).toHaveText('Save')
       await expect(panel.getByTestId('favorite-dialog-save')).toBeDisabled()
     })
+
+    // --- AI Assistant screenshots ---
+
+    test('SettingsDialog — AI section', async ({ page }) => {
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-ai').click()
+      await expect(page.getByTestId('settings-ai')).toBeVisible({ timeout: APP_READY_MS })
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
+        `settings-dialog-ai-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('AI panel — welcome state', async ({ page }) => {
+      await openQueryEditorTab(page)
+      await enableAiViaStore(page)
+      await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('toolbar-ai-toggle').click()
+      await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('ai-welcome-state')).toBeVisible({ timeout: APP_READY_MS })
+      // Blur any focused element for stable screenshot
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('ai-panel')).toHaveScreenshot(`ai-panel-welcome-${theme}.png`, {
+        animations: 'disabled',
+      })
+    })
+
+    test('AI panel — with messages', async ({ page }) => {
+      await openQueryEditorTab(page)
+      await enableAiViaStore(page)
+      await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('toolbar-ai-toggle').click()
+      await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Send a message and wait for streaming to finish
+      const textarea = page.getByTestId('ai-chat-textarea')
+      await textarea.fill('How do I select active users?')
+      await page.getByTestId('ai-send-button').click()
+
+      // Wait for the assistant message to finish streaming
+      await expect(page.getByTestId('ai-message-assistant')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('ai-message-assistant')).toContainText(
+        'This query filters for active users',
+        { timeout: APP_READY_MS }
+      )
+
+      // Blur any focused element for stable screenshot
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('ai-panel')).toHaveScreenshot(
+        `ai-panel-with-messages-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('AI panel — error state', async ({ page }) => {
+      await openQueryEditorTab(page)
+      await enableAiViaStore(page)
+      await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('toolbar-ai-toggle').click()
+      await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Enable AI error simulation
+      await page.evaluate(() => {
+        ;(window as unknown as Record<string, unknown>).__mockAiError__ = true
+      })
+
+      // Send a message — should trigger error path
+      const textarea = page.getByTestId('ai-chat-textarea')
+      await textarea.fill('This will fail')
+      await page.getByTestId('ai-send-button').click()
+
+      // Wait for error banner to appear
+      await expect(page.getByTestId('ai-error-banner')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Blur any focused element for stable screenshot
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('ai-panel')).toHaveScreenshot(`ai-panel-error-${theme}.png`, {
+        animations: 'disabled',
+      })
+
+      // Clean up
+      await page.evaluate(() => {
+        delete (window as unknown as Record<string, unknown>).__mockAiError__
+      })
+    })
+
+    test('EditorToolbar — AI toggle button visible', async ({ page }) => {
+      await openQueryEditorTab(page)
+      await enableAiViaStore(page)
+      await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
+      // Blur any focused element for stable screenshot
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(page.getByTestId('editor-toolbar')).toHaveScreenshot(
+        `editor-toolbar-ai-toggle-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('DiffOverlay — AI-proposed SQL change review', async ({ page }) => {
+      await openQueryEditorTab(page)
+      await enableAiViaStore(page)
+
+      // Set SQL content in the editor
+      await page.evaluate(() => {
+        const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            tabsByConnection: Record<string, { id: string; type: string }[]>
+          }
+        }
+        const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+        const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+        if (queryTab) {
+          const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+            getState: () => { setContent: (id: string, c: string) => void }
+          }
+          qStore.getState().setContent(queryTab.id, 'SELECT * FROM users;')
+
+          // Set attached context on the AI store so the Diff button appears
+          const aiStore = (window as unknown as Record<string, unknown>).__aiStore__ as {
+            getState: () => {
+              setAttachedContext: (
+                tabId: string,
+                context: {
+                  sql: string
+                  range: {
+                    startLineNumber: number
+                    endLineNumber: number
+                    startColumn: number
+                    endColumn: number
+                  }
+                }
+              ) => void
+            }
+          }
+          aiStore.getState().setAttachedContext(queryTab.id, {
+            sql: 'SELECT * FROM users',
+            range: {
+              startLineNumber: 1,
+              endLineNumber: 1,
+              startColumn: 1,
+              endColumn: 21,
+            },
+          })
+        }
+      })
+
+      await page.waitForTimeout(300)
+
+      // Open AI panel
+      await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('toolbar-ai-toggle').click()
+      await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Send a message and wait for the response with SQL
+      const textarea = page.getByTestId('ai-chat-textarea')
+      await textarea.fill('How do I select active users?')
+      await page.getByTestId('ai-send-button').click()
+
+      // Wait for the assistant message to finish streaming (contains SQL code block)
+      await expect(page.getByTestId('ai-message-assistant')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('ai-message-assistant')).toContainText(
+        'This query filters for active users',
+        { timeout: APP_READY_MS }
+      )
+
+      // The sendMessage flow clears attachedContext after capturing it. Re-set it
+      // so the Diff button becomes visible on the assistant's code block.
+      await page.evaluate(() => {
+        const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            tabsByConnection: Record<string, { id: string; type: string }[]>
+          }
+        }
+        const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+        const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+        if (queryTab) {
+          const aiStore = (window as unknown as Record<string, unknown>).__aiStore__ as {
+            getState: () => {
+              setAttachedContext: (
+                tabId: string,
+                context: {
+                  sql: string
+                  range: {
+                    startLineNumber: number
+                    endLineNumber: number
+                    startColumn: number
+                    endColumn: number
+                  }
+                }
+              ) => void
+            }
+          }
+          aiStore.getState().setAttachedContext(queryTab.id, {
+            sql: 'SELECT * FROM users',
+            range: {
+              startLineNumber: 1,
+              endLineNumber: 1,
+              startColumn: 1,
+              endColumn: 21,
+            },
+          })
+        }
+      })
+
+      // Click the Diff button on the code block
+      const diffButton = page.getByTestId('ai-code-diff-button')
+      await expect(diffButton).toBeVisible({ timeout: APP_READY_MS })
+      await diffButton.click()
+
+      // Wait for the diff overlay to appear
+      await expect(page.getByTestId('diff-overlay')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Blur any focused element for stable screenshot
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('diff-overlay')).toHaveScreenshot(`diff-overlay-${theme}.png`, {
+        animations: 'disabled',
+      })
+
+      // Reject to close the overlay
+      await page.getByTestId('diff-reject-button').click()
+    })
+
+    // NOTE: Monaco CodeLens screenshot is intentionally skipped.
+    // CodeLens items are registered via Monaco's internal ICodeLensProvider API
+    // and render as inline widgets within the editor viewport. In Playwright's
+    // web build (VITE_PLAYWRIGHT), Monaco loads but CodeLens decorations are
+    // not reliably visible because:
+    // 1. The CodeLens provider fires asynchronously and requires a fully
+    //    mounted editor with parsed content.
+    // 2. In the headless Playwright environment, Monaco's viewport height
+    //    may be too small or the CodeLens rendering cycle may not complete
+    //    before screenshot capture.
+    // 3. CodeLens items are dynamically positioned by Monaco's internal
+    //    layout engine and are not exposed via data-testid attributes.
+    // Visual verification of CodeLens should be done via the Tauri desktop
+    // build using the MCP testing workflow described in mcp_testing.md.
   })
 }
 

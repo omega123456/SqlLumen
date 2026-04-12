@@ -16,7 +16,7 @@ import type {
 
 /** Fields that belong on a SingleResultState (per-result). */
 interface ResultOverrides {
-  status?: 'idle' | 'running' | 'success' | 'error'
+  resultStatus?: 'idle' | 'running' | 'success' | 'error'
   columns?: ColumnMeta[]
   rows?: unknown[][]
   totalRows?: number
@@ -64,6 +64,7 @@ interface TabOverrides {
 
 // All keys that belong to SingleResultState
 const RESULT_KEYS = new Set<string>([
+  'resultStatus',
   'columns',
   'rows',
   'totalRows',
@@ -101,20 +102,30 @@ const RESULT_KEYS = new Set<string>([
  * Splits the overrides into tab-level and result-level fields,
  * creating a single-element results array.
  *
- * The `status` field is applied to BOTH tab-level and result-level.
+ * The `tabStatus` field is applied to the tab level; `resultStatus` to the result level.
+ * The legacy `status` shorthand sets both `tabStatus` and `resultStatus` at once.
+ * For convenience, if none are provided, both default to 'idle'.
  */
 export function makeTabState(
   overrides: ResultOverrides &
-    TabOverrides & { status?: 'idle' | 'running' | 'success' | 'error' } = {}
+    TabOverrides & {
+      tabStatus?: 'idle' | 'running' | 'success' | 'error'
+      /** Legacy shorthand: sets both tabStatus and resultStatus. */
+      status?: 'idle' | 'running' | 'success' | 'error'
+    } = {}
 ): TabQueryState {
   const resultOverrides: Partial<SingleResultState> = {}
   const tabOverrides: Partial<TabQueryState> = {}
 
   for (const [key, value] of Object.entries(overrides)) {
     if (key === 'status') {
-      // status applies to both
-      tabOverrides.status = value as TabQueryState['status']
-      resultOverrides.status = value as SingleResultState['status']
+      // Legacy shorthand: apply to both tab and result level
+      tabOverrides.tabStatus = value as TabQueryState['tabStatus']
+      resultOverrides.resultStatus = value as SingleResultState['resultStatus']
+    } else if (key === 'tabStatus') {
+      tabOverrides.tabStatus = value as TabQueryState['tabStatus']
+    } else if (key === 'resultStatus') {
+      resultOverrides.resultStatus = value as SingleResultState['resultStatus']
     } else if (RESULT_KEYS.has(key)) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(resultOverrides as any)[key] = value
@@ -132,7 +143,8 @@ export function makeTabState(
   return {
     content: '',
     filePath: null,
-    status: 'idle',
+    tabStatus: 'idle',
+    prevTabStatus: 'idle',
     cursorPosition: null,
     connectionId: '',
     results: [singleResult],

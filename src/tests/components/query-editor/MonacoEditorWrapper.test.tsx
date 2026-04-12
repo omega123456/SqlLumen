@@ -3,6 +3,8 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { MonacoEditorWrapper } from '../../../components/query-editor/MonacoEditorWrapper'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
+import { useAiStore } from '../../../stores/ai-store'
+import { useShortcutStore } from '../../../stores/shortcut-store'
 
 // Mock the schema-metadata-cache (loadCache is called on mount)
 vi.mock('../../../components/query-editor/schema-metadata-cache', () => ({
@@ -40,6 +42,12 @@ vi.mock('../../../components/query-editor/mysql-language-setup', () => ({}))
 // Mock the signature-help-provider side-effect import (no-op in tests)
 vi.mock('../../../components/query-editor/signature-help-provider', () => ({}))
 
+// Mock the codelens-provider side-effect import
+const mockTriggerCodeLensRefresh = vi.fn()
+vi.mock('../../../components/query-editor/codelens-provider', () => ({
+  triggerCodeLensRefresh: (...args: unknown[]) => mockTriggerCodeLensRefresh(...args),
+}))
+
 // Mock the completion-service model registry
 const mockRegisterModelConnection = vi.fn()
 const mockUnregisterModelConnection = vi.fn()
@@ -58,16 +66,30 @@ const mockCursorPositionDispose = vi.fn()
 const mockOnDidDispose = vi.fn()
 const registeredDisposeHandlers: Array<() => void> = []
 const mockModelUri = { toString: () => 'inmemory://model/1' }
+const mockContentChangeDispose = vi.fn()
+let capturedContentChangeHandler: (() => void) | null = null
+const capturedAddCommandHandlers: Record<number, () => void> = {}
 const mockEditorInstance = {
   setPosition: vi.fn(),
   revealPositionInCenter: vi.fn(),
   onDidChangeCursorPosition: vi.fn(() => ({ dispose: mockCursorPositionDispose })),
+  onDidChangeModelContent: vi.fn((handler: () => void) => {
+    capturedContentChangeHandler = handler
+    return { dispose: mockContentChangeDispose }
+  }),
   onDidDispose: vi.fn((handler: () => void) => {
     mockOnDidDispose(handler)
     registeredDisposeHandlers.push(handler)
   }),
-  getModel: vi.fn(() => ({ uri: mockModelUri })),
-  addCommand: vi.fn(),
+  getModel: vi.fn(() => ({
+    uri: mockModelUri,
+    getValue: () => 'SELECT 1',
+    getLineCount: () => 1,
+    getLineLength: (_line: number) => 8,
+  })),
+  addCommand: vi.fn((keyCode: number, handler: () => void) => {
+    capturedAddCommandHandlers[keyCode] = handler
+  }),
   updateOptions: vi.fn(),
 }
 // Track props passed to the mock Editor component
@@ -120,6 +142,8 @@ vi.mock('@monaco-editor/react', async () => {
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
+  // Reset AI store tabs to prevent state leaking between tests
+  useAiStore.setState({ tabs: {} })
   // Reset settings store to defaults (no loaded settings)
   useSettingsStore.setState({ settings: {}, pendingChanges: {}, isDirty: false })
   mockSetTheme.mockClear()
@@ -133,10 +157,24 @@ beforeEach(() => {
   mockEditorInstance.getModel.mockClear()
   mockEditorInstance.addCommand.mockClear()
   mockEditorInstance.updateOptions.mockClear()
+  mockEditorInstance.onDidChangeModelContent.mockClear()
+  mockContentChangeDispose.mockClear()
   mockRegisterModelConnection.mockClear()
   mockUnregisterModelConnection.mockClear()
   mockEditorComponent.mockClear()
+  mockTriggerCodeLensRefresh.mockClear()
+  capturedContentChangeHandler = null
+  Object.keys(capturedAddCommandHandlers).forEach(
+    (k) => delete capturedAddCommandHandlers[Number(k)]
+  )
   registeredDisposeHandlers.length = 0
+  // Reset getModel to its default implementation
+  mockEditorInstance.getModel.mockImplementation(() => ({
+    uri: mockModelUri,
+    getValue: () => 'SELECT 1',
+    getLineCount: () => 1,
+    getLineLength: (_line: number) => 8,
+  }))
 })
 
 describe('MonacoEditorWrapper', () => {
@@ -187,7 +225,12 @@ describe('MonacoEditorWrapper', () => {
 
   it('registers model-connection mapping when connectionId is provided', () => {
     render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
-    expect(mockRegisterModelConnection).toHaveBeenCalledWith('inmemory://model/1', 'conn-1')
+    expect(mockRegisterModelConnection).toHaveBeenCalledWith(
+      'inmemory://model/1',
+      'conn-1',
+      'tab-1',
+      'query-editor'
+    )
   })
 
   it('does not register model-connection mapping when connectionId is not provided', () => {
@@ -251,11 +294,18 @@ describe('MonacoEditorWrapper', () => {
     render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
 
     // Verify initial registration used the correct URI
-    expect(mockRegisterModelConnection).toHaveBeenCalledWith('inmemory://model/1', 'conn-1')
+    expect(mockRegisterModelConnection).toHaveBeenCalledWith(
+      'inmemory://model/1',
+      'conn-1',
+      'tab-1',
+      'query-editor'
+    )
 
     // Simulate the model being disposed before our handler runs
     // (getModel returns null when Monaco has already cleaned up)
-    mockEditorInstance.getModel.mockReturnValue(null as unknown as { uri: typeof mockModelUri })
+    mockEditorInstance.getModel.mockReturnValue(
+      null as unknown as ReturnType<typeof mockEditorInstance.getModel>
+    )
 
     // Trigger the dispose handler
     const handleDispose = registeredDisposeHandlers[0]
@@ -325,7 +375,7 @@ describe('MonacoEditorWrapper', () => {
         tabs: {
           'tab-1': {
             ...useQueryStore.getState().getTabState('tab-1'),
-            status: 'running',
+            tabStatus: 'running',
           },
         },
       })
@@ -349,6 +399,82 @@ describe('MonacoEditorWrapper', () => {
       const editor = screen.getByTestId('monaco-editor')
       fireEvent.change(editor, { target: { value: 'NEW CONTENT' } })
       expect(useQueryStore.getState().tabs['tab-1']?.content).toBe('NEW CONTENT')
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // AI pending overlay tests
+  // -----------------------------------------------------------------------
+
+  describe('ai pending overlay', () => {
+    it('shows ai-pending-overlay when status is ai-pending', () => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            ...useQueryStore.getState().getTabState('tab-1'),
+            tabStatus: 'ai-pending',
+          },
+        },
+      })
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+      expect(screen.getByTestId('ai-pending-overlay')).toBeInTheDocument()
+    })
+
+    it('shows ai-pending-overlay when status is ai-reviewing', () => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            ...useQueryStore.getState().getTabState('tab-1'),
+            tabStatus: 'ai-reviewing',
+          },
+        },
+      })
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+      expect(screen.getByTestId('ai-pending-overlay')).toBeInTheDocument()
+    })
+
+    it('does not show ai-pending-overlay when status is idle', () => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            ...useQueryStore.getState().getTabState('tab-1'),
+            tabStatus: 'idle',
+          },
+        },
+      })
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+      expect(screen.queryByTestId('ai-pending-overlay')).not.toBeInTheDocument()
+    })
+
+    it('does not show ai-pending-overlay when status is running', () => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            ...useQueryStore.getState().getTabState('tab-1'),
+            tabStatus: 'running',
+          },
+        },
+      })
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+      expect(screen.queryByTestId('ai-pending-overlay')).not.toBeInTheDocument()
+    })
+
+    it('does not show ai-pending-overlay when overrideReadOnly is set', () => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            ...useQueryStore.getState().getTabState('tab-1'),
+            tabStatus: 'ai-pending',
+          },
+        },
+      })
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" readOnly={true} />)
+      expect(screen.queryByTestId('ai-pending-overlay')).not.toBeInTheDocument()
     })
   })
 
@@ -395,6 +521,137 @@ describe('MonacoEditorWrapper', () => {
       expect(props.options.wordWrap).toBe('on')
       expect(props.options.minimap).toEqual({ enabled: true })
       expect(props.options.lineNumbers).toBe('off')
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // onDidChangeModelContent callback tests
+  // -----------------------------------------------------------------------
+
+  describe('onDidChangeModelContent callback', () => {
+    it('calls triggerCodeLensRefresh when editor content changes', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      // The onDidChangeModelContent callback was captured during mount
+      expect(capturedContentChangeHandler).not.toBeNull()
+      capturedContentChangeHandler!()
+
+      expect(mockTriggerCodeLensRefresh).toHaveBeenCalledTimes(1)
+    })
+
+    it('updates AI attached context when content changes and context exists', () => {
+      // Set up AI store with attached context for this tab
+      useAiStore.getState().setAttachedContext('tab-1', {
+        sql: 'old content',
+        range: {
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 12,
+        },
+      })
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      // Trigger the content change callback
+      capturedContentChangeHandler!()
+
+      // Verify AI store was updated with new model content
+      const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
+      expect(ctx).not.toBeNull()
+      expect(ctx!.sql).toBe('SELECT 1')
+      expect(ctx!.range).toEqual({
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: 9, // line length 8 + 1
+      })
+    })
+
+    it('does not update AI context when no attached context exists', () => {
+      // No AI context set — attachedContext is null by default
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      capturedContentChangeHandler!()
+
+      // triggerCodeLensRefresh should still be called
+      expect(mockTriggerCodeLensRefresh).toHaveBeenCalledTimes(1)
+      // AI store should have no attached context for this tab
+      const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
+      expect(ctx).toBeFalsy()
+    })
+
+    it('handles null model gracefully during AI context update', () => {
+      // Set up AI context
+      useAiStore.getState().setAttachedContext('tab-1', {
+        sql: 'old',
+        range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 4 },
+      })
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      // Simulate model being null when content change fires
+      mockEditorInstance.getModel.mockReturnValue(
+        null as unknown as ReturnType<typeof mockEditorInstance.getModel>
+      )
+
+      capturedContentChangeHandler!()
+
+      // triggerCodeLensRefresh is still called
+      expect(mockTriggerCodeLensRefresh).toHaveBeenCalledTimes(1)
+      // The context should remain unchanged (the old value) since model was null
+      const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
+      expect(ctx!.sql).toBe('old')
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // F9 / F12 keybinding handler tests
+  // -----------------------------------------------------------------------
+
+  describe('keybinding handlers', () => {
+    it('F9 handler dispatches execute-query action through shortcut store', () => {
+      const dispatchSpy = vi.spyOn(useShortcutStore.getState(), 'dispatchAction')
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      // F9 key code is 78 in our mock
+      expect(capturedAddCommandHandlers[78]).toBeDefined()
+      capturedAddCommandHandlers[78]()
+
+      expect(dispatchSpy).toHaveBeenCalledWith('execute-query')
+      dispatchSpy.mockRestore()
+    })
+
+    it('F12 handler dispatches format-query action through shortcut store', () => {
+      const dispatchSpy = vi.spyOn(useShortcutStore.getState(), 'dispatchAction')
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      // F12 key code is 81 in our mock
+      expect(capturedAddCommandHandlers[81]).toBeDefined()
+      capturedAddCommandHandlers[81]()
+
+      expect(dispatchSpy).toHaveBeenCalledWith('format-query')
+      dispatchSpy.mockRestore()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // contentChangeDisposable disposal test
+  // -----------------------------------------------------------------------
+
+  describe('content change disposable', () => {
+    it('disposes the content-change listener when the editor is disposed', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      expect(mockEditorInstance.onDidChangeModelContent).toHaveBeenCalledTimes(1)
+
+      // Trigger editor dispose
+      const handleDispose = registeredDisposeHandlers[0]
+      handleDispose()
+
+      expect(mockContentChangeDispose).toHaveBeenCalledTimes(1)
     })
   })
 })

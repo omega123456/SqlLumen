@@ -74,7 +74,13 @@ export function AppLayout() {
 
       const queryState = useQueryStore.getState()
       const tabState = queryState.tabs[tabId]
-      if (!tabState || tabState.status === 'running') return
+      if (
+        !tabState ||
+        tabState.tabStatus === 'running' ||
+        tabState.tabStatus === 'ai-pending' ||
+        tabState.tabStatus === 'ai-reviewing'
+      )
+        return
 
       const content = tabState.content
       if (!content.trim()) return
@@ -102,7 +108,13 @@ export function AppLayout() {
 
       const queryState = useQueryStore.getState()
       const tabState = queryState.tabs[tabId]
-      if (!tabState || tabState.status === 'running') return
+      if (
+        !tabState ||
+        tabState.tabStatus === 'running' ||
+        tabState.tabStatus === 'ai-pending' ||
+        tabState.tabStatus === 'ai-reviewing'
+      )
+        return
 
       const content = tabState.content
       if (!content.trim()) return
@@ -125,7 +137,13 @@ export function AppLayout() {
 
       if (tabType === 'query-editor') {
         const queryState = useQueryStore.getState()
-        const content = queryState.tabs[tabId]?.content ?? ''
+        const tabState = queryState.tabs[tabId]
+        if (!tabState) return
+
+        // Block format during AI lock states
+        if (tabState.tabStatus === 'ai-pending' || tabState.tabStatus === 'ai-reviewing') return
+
+        const content = tabState.content ?? ''
         if (!content.trim()) return
         try {
           const formatted = formatSQL(content, { language: 'mysql', tabWidth: 2 })

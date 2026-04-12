@@ -408,6 +408,28 @@
   --autocomplete-bg: var(--surface-container-high);
   --autocomplete-border: rgba(var(--outline-variant-rgb), 0.2);
   --autocomplete-backdrop: blur(12px);
+
+  /* ---------- AI Panel tokens ---------- */
+  --ai-panel-bg: var(--surface-container-low);
+  --ai-panel-header-bg: var(--surface-container);
+  --ai-panel-border: rgba(var(--outline-variant-rgb), 0.25);
+  --ai-user-bubble-bg: var(--surface-container-high);
+  --ai-assistant-accent: var(--primary);
+  --ai-code-block-bg: var(--surface-container-highest);
+  --ai-code-block-border: rgba(var(--outline-variant-rgb), 0.2);
+  --ai-error-bg: rgba(var(--error-rgb), 0.08);
+  --ai-cursor-color: var(--primary);
+  --ai-context-chip-bg: var(--surface-container-high);
+  --ai-context-chip-border: rgba(var(--outline-variant-rgb), 0.3);
+
+  /* Token colors for syntax highlighting — dark theme */
+  --token-keyword: #c792ea;
+  --token-string: #c3e88d;
+  --token-comment: #697098;
+  --token-function: #82aaff;
+  --token-number: #f78c6c;
+  --token-operator: #89ddff;
+  --token-type: #ffcb6b;
 }
 
 /* Light Theme — query_slate_light (applied via [data-theme="light"] on <html>) */
@@ -684,4 +706,26 @@
   /* Query Result Grid Editing — light */
   --color-cell-readonly-bg: rgba(0, 0, 0, 0.03);
   --color-cell-readonly-opacity: 0.65;
+
+  /* ---------- AI Panel tokens — light overrides ---------- */
+  --ai-panel-bg: var(--surface-container-lowest);
+  --ai-panel-header-bg: var(--surface-container-low);
+  --ai-panel-border: rgba(var(--outline-variant-rgb), 0.2);
+  --ai-user-bubble-bg: var(--surface-container);
+  --ai-assistant-accent: var(--primary);
+  --ai-code-block-bg: var(--surface-container);
+  --ai-code-block-border: rgba(var(--outline-variant-rgb), 0.15);
+  --ai-error-bg: rgba(var(--error-rgb), 0.08);
+  --ai-cursor-color: var(--primary);
+  --ai-context-chip-bg: var(--surface-container-low);
+  --ai-context-chip-border: rgba(var(--outline-variant-rgb), 0.2);
+
+  /* Token colors for syntax highlighting — light theme */
+  --token-keyword: #7c4dff;
+  --token-string: #2e7d32;
+  --token-comment: #90a4ae;
+  --token-function: #1565c0;
+  --token-number: #e65100;
+  --token-operator: #0277bd;
+  --token-type: #bf360c;
 }

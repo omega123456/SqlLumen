@@ -23,6 +23,11 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'connection.defaultKeepalive': '60',
   shortcuts: '{}',
   'session.state': 'null',
+  'ai.enabled': 'false',
+  'ai.endpoint': '',
+  'ai.model': '',
+  'ai.temperature': '0.3',
+  'ai.maxTokens': '2048',
 }
 
 /** Maps a settings key prefix to its SettingsSection. */
@@ -38,6 +43,7 @@ function sectionForKey(key: string): SettingsSection | null {
   if (key.startsWith('results.')) return 'results'
   if (key.startsWith('log.')) return 'logging'
   if (key === 'shortcuts') return 'shortcuts'
+  if (key.startsWith('ai.')) return 'ai'
   return null
 }
 

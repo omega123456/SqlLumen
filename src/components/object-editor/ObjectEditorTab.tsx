@@ -137,6 +137,7 @@ export function ObjectEditorTab({ tab }: ObjectEditorTabProps) {
         <MonacoEditorWrapper
           tabId={tabId}
           connectionId={connectionId}
+          tabType="object-editor"
           value={content}
           onChange={handleContentChange}
           readOnly={isSaving}

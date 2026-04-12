@@ -89,6 +89,12 @@ sqllumen-test-integration = [
   "sql_dump_integration",
   "--test",
   "sql_import_integration",
+  "--test",
+  "ai_client_integration",
+  "--test",
+  "ai_commands_integration",
+  "--test",
+  "schema_metadata_full_integration",
 ]
 
 sqllumen-llvm-cov = [
@@ -179,6 +185,12 @@ sqllumen-llvm-cov = [
   "sql_dump_integration",
   "--test",
   "sql_import_integration",
+  "--test",
+  "ai_client_integration",
+  "--test",
+  "ai_commands_integration",
+  "--test",
+  "schema_metadata_full_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",

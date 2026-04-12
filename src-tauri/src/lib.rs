@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod commands;
 pub mod credentials;
 pub mod db;
@@ -148,6 +149,7 @@ pub fn run() {
                 running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
                 dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+                ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
             };
             app.manage(state);
 
@@ -228,6 +230,7 @@ pub fn run() {
             commands::query::fetch_result_page,
             commands::query::evict_results,
             commands::query::fetch_schema_metadata,
+            commands::query::fetch_schema_metadata_full,
             commands::query::read_file,
             commands::query::write_file,
             commands::query::sort_results,
@@ -262,6 +265,9 @@ pub fn run() {
             commands::sql_dump::start_sql_import,
             commands::sql_dump::get_import_progress,
             commands::sql_dump::cancel_import,
+            commands::ai::ai_chat,
+            commands::ai::ai_cancel,
+            commands::ai::list_ai_models,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

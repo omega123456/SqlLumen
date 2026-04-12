@@ -1,0 +1,75 @@
+/* AiSettings — AI assistant configuration */
+
+.disabledGroup {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: var(--space-xs);
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+}
+
+/* Model listing section */
+
+.modelListSection {
+  margin-top: 12px;
+}
+
+.modelListHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.modelListLabel {
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+}
+
+.modelGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.modelCard {
+  width: 180px;
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  box-sizing: border-box;
+  font-size: var(--type-size-sm);
+  color: var(--on-surface);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 2px solid transparent;
+  transition:
+    border-color 150ms,
+    background 150ms,
+    box-shadow 150ms;
+}
+
+.modelCard:hover {
+  background: color-mix(in srgb, var(--ui-elevated-surface-bg) 92%, var(--on-surface));
+}
+
+.modelCardSelected {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--ui-elevated-surface-bg) 88%, var(--primary));
+}
+
+.modelError {
+  font-size: var(--type-size-sm);
+  color: var(--error);
+  margin-top: 4px;
+}
+
+.modelLoading {
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+  margin-top: 4px;
+}

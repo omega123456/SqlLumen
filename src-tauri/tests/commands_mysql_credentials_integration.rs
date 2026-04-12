@@ -78,6 +78,7 @@ fn test_state() -> AppState {
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
     }
 }
 
@@ -101,6 +102,7 @@ fn poisoned_state() -> AppState {
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
     }
 }
 

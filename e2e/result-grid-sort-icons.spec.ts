@@ -31,7 +31,7 @@ async function openQueryEditorWithResults(page: Page) {
   await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
   await editorSurface.click({ position: { x: 160, y: 40 } })
   await page.keyboard.type('SELECT * FROM users;')
-  await page.getByTestId('toolbar-execute').click()
+  await page.keyboard.press('F9')
   await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
 }
 
