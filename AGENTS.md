@@ -128,9 +128,10 @@ src-tauri/
 
 Silent error swallowing is **forbidden** without a log line:
 
-- For DevTools detail: `console.error('[module-name] ...')` / `console.warn('[module-name] ...')` with a stable prefix.
-- For user-visible failures: call `showErrorToast` (records an `error`-level log via `logFrontend`) in addition to any `console.error`.
-- For operational non-user-visible failures that are caught but allow the UI to continue: call `logFrontend` at the appropriate level (`error`/`warn`/`info`) from `app-log-commands.ts`. Do **not** rely on `console` alone.
+- Frontend logging must go through `src/lib/app-log-commands.ts` (`logFrontend` / helpers) as the only logging entrypoint.
+- Do **not** call raw `console.error` / `console.warn` / `console.log` directly in frontend feature code; `src/lib/app-log-commands.ts` already handles console output.
+- For user-visible failures: call `showErrorToast` (records an `error`-level log via `logFrontend`) and keep logging routed through `src/lib/app-log-commands.ts`.
+- For operational non-user-visible failures that are caught but allow the UI to continue: call `logFrontend` at the appropriate level (`error`/`warn`/`info`) from `src/lib/app-log-commands.ts`. Do **not** rely on `console` alone.
 - `logFrontend` invoke failures are logged with the prefix `[app-log]`.
 
 ### Rust
