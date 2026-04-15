@@ -5,7 +5,7 @@
 
 use crate::ai::types::{EmbeddingApiRequest, EmbeddingApiResponse};
 use std::fmt;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Maximum number of texts per embedding API call.
 const MAX_BATCH_SIZE: usize = 32;
@@ -107,8 +107,15 @@ pub async fn embed_texts(
     let url = normalise_to_embeddings_url(base_url);
 
     if texts.is_empty() {
+        tracing::debug!(model = %model, "embed_texts: empty input list — nothing to embed");
         return Ok(vec![]);
     }
+
+    tracing::debug!(
+        model = %model,
+        total_inputs = texts.len(),
+        "embed_texts: starting (OpenAI-compatible /v1/embeddings)"
+    );
 
     let mut all_embeddings: Vec<(usize, Vec<f32>)> = Vec::with_capacity(texts.len());
     let mut batch_size = MAX_BATCH_SIZE.min(texts.len());
@@ -119,8 +126,30 @@ pub async fn embed_texts(
         let batch: Vec<String> = texts[offset..end].to_vec();
         let batch_len = batch.len();
 
+        tracing::debug!(
+            model = %model,
+            offset,
+            batch_len,
+            "embed_texts: sending HTTP batch to embeddings endpoint"
+        );
+        let batch_started = Instant::now();
+
         match send_embedding_request(client, &url, model, batch).await {
             Ok(response) => {
+                let dims = response
+                    .data
+                    .first()
+                    .map(|d| d.embedding.len())
+                    .unwrap_or(0);
+                tracing::debug!(
+                    model = %model,
+                    offset,
+                    batch_len,
+                    vectors_in_response = response.data.len(),
+                    vector_dims = dims,
+                    elapsed_ms = batch_started.elapsed().as_millis() as u64,
+                    "embed_texts: HTTP batch succeeded"
+                );
                 for item in response.data {
                     all_embeddings.push((offset + item.index, item.embedding));
                 }
@@ -129,6 +158,13 @@ pub async fn embed_texts(
                 batch_size = MAX_BATCH_SIZE.min(texts.len() - offset);
             }
             Err(e) if is_retryable_status(&e) => {
+                tracing::warn!(
+                    model = %model,
+                    offset,
+                    batch_len,
+                    error = %e,
+                    "embed_texts: retryable HTTP error — halving batch size and retrying"
+                );
                 if batch_size <= 1 {
                     return Err(EmbeddingError::RetriesExhausted(e.to_string()));
                 }
@@ -149,6 +185,14 @@ pub async fn embed_texts(
 
                     match send_embedding_request(client, &url, model, retry_batch).await {
                         Ok(response) => {
+                            tracing::debug!(
+                                model = %model,
+                                offset,
+                                retry_batch_len,
+                                attempt = retries,
+                                vectors_in_response = response.data.len(),
+                                "embed_texts: retry batch succeeded after size reduction"
+                            );
                             for item in response.data {
                                 all_embeddings.push((offset + item.index, item.embedding));
                             }
@@ -157,6 +201,14 @@ pub async fn embed_texts(
                             break;
                         }
                         Err(retry_err) if is_retryable_status(&retry_err) => {
+                            tracing::warn!(
+                                model = %model,
+                                offset,
+                                attempt = retries,
+                                current_batch_size,
+                                error = %retry_err,
+                                "embed_texts: retry batch still retryable — halving further"
+                            );
                             if current_batch_size <= 1 {
                                 return Err(EmbeddingError::RetriesExhausted(
                                     retry_err.to_string(),
@@ -172,12 +224,26 @@ pub async fn embed_texts(
                     }
                 }
             }
-            Err(e) => return Err(e),
+            Err(e) => {
+                tracing::warn!(
+                    model = %model,
+                    offset,
+                    batch_len,
+                    error = %e,
+                    "embed_texts: non-retryable embedding HTTP error"
+                );
+                return Err(e);
+            }
         }
     }
 
     // Sort by original index and return just the vectors
     all_embeddings.sort_by_key(|(idx, _)| *idx);
+    tracing::debug!(
+        model = %model,
+        output_vectors = all_embeddings.len(),
+        "embed_texts: all batches complete"
+    );
     Ok(all_embeddings.into_iter().map(|(_, emb)| emb).collect())
 }
 
@@ -187,13 +253,19 @@ pub async fn detect_embedding_dimension(
     base_url: &str,
     model: &str,
 ) -> Result<usize, EmbeddingError> {
+    tracing::debug!(
+        model = %model,
+        "detect_embedding_dimension: probing model with a single test string"
+    );
     let result = embed_texts(client, base_url, model, vec!["test".to_string()]).await?;
 
     let first = result
         .into_iter()
         .next()
         .ok_or(EmbeddingError::EmptyResponse)?;
-    Ok(first.len())
+    let dim = first.len();
+    tracing::debug!(model = %model, dimension = dim, "detect_embedding_dimension: resolved vector size");
+    Ok(dim)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

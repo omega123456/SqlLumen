@@ -9,6 +9,8 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
+
+use chrono::Utc;
 use tokio_util::sync::CancellationToken;
 
 use super::embeddings;
@@ -116,9 +118,17 @@ pub fn qualify_references_in_ddl(db_name: &str, ddl: &str) -> String {
         let identifier = captures.get(1).map(|m| m.as_str()).unwrap_or_default();
         let parts = parse_identifier_parts(identifier);
         let qualified = match parts.as_slice() {
-            [table_name] => format!("{}.{}", quote_identifier(db_name), quote_identifier(table_name)),
+            [table_name] => format!(
+                "{}.{}",
+                quote_identifier(db_name),
+                quote_identifier(table_name)
+            ),
             [ref_db_name, table_name] => {
-                format!("{}.{}", quote_identifier(ref_db_name), quote_identifier(table_name))
+                format!(
+                    "{}.{}",
+                    quote_identifier(ref_db_name),
+                    quote_identifier(table_name)
+                )
             }
             _ => identifier.to_string(),
         };
@@ -295,9 +305,25 @@ pub async fn build_index(
     cancellation: &CancellationToken,
 ) -> Result<BuildResult, String> {
     let start = Instant::now();
+    let started_at = Utc::now().to_rfc3339();
+
+    tracing::info!(
+        profile_id = %config.connection_id,
+        model_id = %config.model_id,
+        started_at = %started_at,
+        "schema_index build_index: started (full / incremental)"
+    );
 
     // 1. Check model change and handle vec table recreation
+    tracing::debug!(
+        profile_id = %config.connection_id,
+        "schema_index build_index: checking model / vec0 schema (handle_model_change)"
+    );
     handle_model_change(config, sqlite_conn, http_client).await?;
+    tracing::debug!(
+        profile_id = %config.connection_id,
+        "schema_index build_index: model and vector storage ready"
+    );
 
     // 2. Set status = "building"
     {
@@ -307,13 +333,28 @@ pub async fn build_index(
         storage::update_index_status(&conn, &config.connection_id, &IndexStatus::Building)
             .map_err(|e| format!("Failed to set building status: {e}"))?;
     }
+    tracing::debug!(
+        profile_id = %config.connection_id,
+        status_at = %Utc::now().to_rfc3339(),
+        "schema_index build_index: SQLite index status set to building"
+    );
 
     // 3. Fetch databases and tables
     if cancellation.is_cancelled() {
+        tracing::warn!(
+            profile_id = %config.connection_id,
+            at = %Utc::now().to_rfc3339(),
+            "schema_index build_index: cancelled before MySQL enumeration"
+        );
         return Err("Build cancelled".to_string());
     }
 
     let databases = fetch_database_list(mysql_pool).await?;
+    tracing::info!(
+        profile_id = %config.connection_id,
+        database_count = databases.len(),
+        "schema_index build_index: enumerated user databases from MySQL"
+    );
 
     let mut all_ddl_inputs: Vec<TableDdlInput> = Vec::new();
     for db_name in &databases {
@@ -332,9 +373,20 @@ pub async fn build_index(
     }
 
     let tables_total = all_ddl_inputs.len();
+    tracing::info!(
+        profile_id = %config.connection_id,
+        tables_total,
+        "schema_index build_index: fetched SHOW CREATE TABLE for all tables"
+    );
 
     // 4. Generate chunk data (table + FK chunks)
     let (table_chunks, fk_chunks) = generate_all_chunks(&all_ddl_inputs);
+    tracing::debug!(
+        profile_id = %config.connection_id,
+        table_chunk_rows = table_chunks.len(),
+        fk_chunk_rows = fk_chunks.len(),
+        "schema_index build_index: generated table and FK chunk texts (DDL normalized, hashes computed)"
+    );
 
     // Merge into a single list for diffing
     let mut all_new: Vec<(
@@ -391,6 +443,17 @@ pub async fn build_index(
     // Delete removed chunks (by specific chunk key, not by table — avoids
     // cascade-deleting unrelated FK chunks that share the same table).
     if !to_delete_keys.is_empty() {
+        tracing::info!(
+            profile_id = %config.connection_id,
+            remove_count = to_delete_keys.len(),
+            at = %Utc::now().to_rfc3339(),
+            "schema_index build_index: deleting obsolete chunk keys no longer present in schema"
+        );
+        tracing::debug!(
+            profile_id = %config.connection_id,
+            obsolete_chunk_keys = ?to_delete_keys,
+            "schema_index build_index: obsolete chunk keys to delete"
+        );
         let conn = sqlite_conn
             .lock()
             .map_err(|e| format!("SQLite lock: {e}"))?;
@@ -407,6 +470,41 @@ pub async fn build_index(
         .collect();
 
     let total_to_embed = chunks_to_embed.len();
+    let staged_at = Utc::now().to_rfc3339();
+    let staged_table_chunks = chunks_to_embed
+        .iter()
+        .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Table))
+        .count();
+    let staged_fk_chunks = chunks_to_embed
+        .iter()
+        .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Fk))
+        .count();
+    let unchanged_chunks = all_new.len().saturating_sub(total_to_embed);
+
+    tracing::info!(
+        profile_id = %config.connection_id,
+        staged_at = %staged_at,
+        total_chunks_current = all_new.len(),
+        staged_for_embedding = total_to_embed,
+        staged_table_chunks,
+        staged_fk_chunks,
+        unchanged_chunks_skipped = unchanged_chunks,
+        obsolete_chunks_removed = to_delete_keys.len(),
+        "schema_index build_index: diff complete — staged chunks for embedding (new or hash-changed); skipped unchanged"
+    );
+
+    if tracing::enabled!(tracing::Level::DEBUG) && !chunks_to_embed.is_empty() {
+        let keys_preview: Vec<(&str, &str)> = chunks_to_embed
+            .iter()
+            .map(|(k, _, _, ct, ..)| (k.as_str(), ct.as_str()))
+            .collect();
+        tracing::debug!(
+            profile_id = %config.connection_id,
+            staged_chunk_keys = ?keys_preview,
+            "schema_index build_index: full list of chunk keys staged for this build"
+        );
+    }
+
     // Count tables that don't need re-embedding (unchanged tables are already "done")
     let unchanged_tables = {
         let table_keys_to_embed: std::collections::HashSet<&str> = chunks_to_embed
@@ -421,6 +519,13 @@ pub async fn build_index(
 
     for batch_start in (0..total_to_embed).step_by(EMBED_BATCH_SIZE) {
         if cancellation.is_cancelled() {
+            tracing::warn!(
+                profile_id = %config.connection_id,
+                at = %Utc::now().to_rfc3339(),
+                progress_chunks = batch_start,
+                total_chunks = total_to_embed,
+                "schema_index build_index: cancelled during embedding"
+            );
             return Err("Build cancelled".to_string());
         }
 
@@ -429,10 +534,34 @@ pub async fn build_index(
 
         let texts: Vec<String> = batch.iter().map(|(_, text, ..)| text.clone()).collect();
 
+        let batch_keys: Vec<&str> = batch.iter().map(|(k, ..)| k.as_str()).collect();
+        tracing::info!(
+            profile_id = %config.connection_id,
+            batch_start,
+            batch_end,
+            batch_len = batch.len(),
+            at = %Utc::now().to_rfc3339(),
+            "schema_index build_index: calling embedding API for batch"
+        );
+        tracing::debug!(
+            profile_id = %config.connection_id,
+            chunk_keys = ?batch_keys,
+            "schema_index build_index: batch chunk keys (no DDL text logged)"
+        );
+
+        let embed_started = Instant::now();
         let embeddings =
             embeddings::embed_texts(http_client, &config.endpoint, &config.model_id, texts)
                 .await
                 .map_err(|e| format!("Embedding failed: {e}"))?;
+        tracing::debug!(
+            profile_id = %config.connection_id,
+            batch_start,
+            elapsed_ms = embed_started.elapsed().as_millis() as u64,
+            vectors_returned = embeddings.len(),
+            vector_dims = embeddings.first().map(|v| v.len()).unwrap_or(0),
+            "schema_index build_index: embedding API batch finished"
+        );
 
         // Store in SQLite with batched transactions
         {
@@ -495,6 +624,13 @@ pub async fn build_index(
                 .map_err(|e| format!("COMMIT: {e}"))?;
         }
 
+        tracing::debug!(
+            profile_id = %config.connection_id,
+            batch_start,
+            at = %Utc::now().to_rfc3339(),
+            "schema_index build_index: SQLite transaction committed for embedding batch"
+        );
+
         // Count how many table chunks (not FK chunks) were in this batch
         let table_chunks_in_batch = batch
             .iter()
@@ -527,6 +663,16 @@ pub async fn build_index(
     }
 
     let duration_ms = start.elapsed().as_millis() as u64;
+    let finished_at = Utc::now().to_rfc3339();
+    tracing::info!(
+        profile_id = %config.connection_id,
+        finished_at = %finished_at,
+        tables_indexed = tables_total,
+        duration_ms,
+        chunks_embedded_this_run = total_to_embed,
+        "schema_index build_index: completed — status will be set to ready"
+    );
+
     Ok(BuildResult {
         profile_id: config.connection_id.clone(),
         tables_indexed: tables_total,
@@ -544,6 +690,15 @@ pub async fn rebuild_tables(
     http_client: &reqwest::Client,
     cancellation: &CancellationToken,
 ) -> Result<(), String> {
+    let started_at = Utc::now().to_rfc3339();
+    tracing::info!(
+        profile_id = %config.connection_id,
+        model_id = %config.model_id,
+        started_at = %started_at,
+        table_targets = tables.len(),
+        "schema_index rebuild_tables: started (partial table rebuild)"
+    );
+
     // 1. Delete all chunks for specified tables (covers FK chunks on both sides)
     {
         let conn = sqlite_conn
@@ -554,6 +709,10 @@ pub async fn rebuild_tables(
                 .map_err(|e| format!("Failed to delete chunks for {db}.{tbl}: {e}"))?;
         }
     }
+    tracing::debug!(
+        profile_id = %config.connection_id,
+        "schema_index rebuild_tables: removed existing chunks for targeted tables"
+    );
 
     // 2. Re-fetch DDL for those tables
     let mut ddl_inputs = Vec::new();
@@ -612,6 +771,24 @@ pub async fn rebuild_tables(
         ));
     }
 
+    let staged_at = Utc::now().to_rfc3339();
+    let staged_tables = embed_items
+        .iter()
+        .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Table))
+        .count();
+    let staged_fks = embed_items
+        .iter()
+        .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Fk))
+        .count();
+    tracing::info!(
+        profile_id = %config.connection_id,
+        staged_at = %staged_at,
+        chunks_to_embed = embed_items.len(),
+        staged_table_chunks = staged_tables,
+        staged_fk_chunks = staged_fks,
+        "schema_index rebuild_tables: staged all chunks for targeted tables before embedding"
+    );
+
     // 5. Embed and store
     for batch_start in (0..embed_items.len()).step_by(EMBED_BATCH_SIZE) {
         if cancellation.is_cancelled() {
@@ -622,10 +799,33 @@ pub async fn rebuild_tables(
         let batch = &embed_items[batch_start..batch_end];
 
         let texts: Vec<String> = batch.iter().map(|(_, text, ..)| text.clone()).collect();
+        let batch_keys: Vec<&str> = batch.iter().map(|(k, ..)| k.as_str()).collect();
+        tracing::info!(
+            profile_id = %config.connection_id,
+            batch_start,
+            batch_end,
+            batch_len = batch.len(),
+            at = %Utc::now().to_rfc3339(),
+            "schema_index rebuild_tables: calling embedding API for batch"
+        );
+        tracing::debug!(
+            profile_id = %config.connection_id,
+            chunk_keys = ?batch_keys,
+            "schema_index rebuild_tables: batch chunk keys"
+        );
+
+        let embed_started = Instant::now();
         let embeddings =
             embeddings::embed_texts(http_client, &config.endpoint, &config.model_id, texts)
                 .await
                 .map_err(|e| format!("Embedding failed: {e}"))?;
+        tracing::debug!(
+            profile_id = %config.connection_id,
+            batch_start,
+            elapsed_ms = embed_started.elapsed().as_millis() as u64,
+            vectors_returned = embeddings.len(),
+            "schema_index rebuild_tables: embedding API batch finished"
+        );
 
         let conn = sqlite_conn
             .lock()
@@ -657,9 +857,29 @@ pub async fn rebuild_tables(
             .map_err(|e| format!("COMMIT: {e}"))?;
     }
 
+    tracing::info!(
+        profile_id = %config.connection_id,
+        at = %Utc::now().to_rfc3339(),
+        "schema_index rebuild_tables: partial inserts done; running full incremental build_index to restore cross-table FK chunks"
+    );
+
     // Restore any inbound FK chunks deleted during the targeted wipe by running
     // a full incremental diff-based build afterward.
-    build_index(config, sqlite_conn, mysql_pool, http_client, None, cancellation).await?;
+    build_index(
+        config,
+        sqlite_conn,
+        mysql_pool,
+        http_client,
+        None,
+        cancellation,
+    )
+    .await?;
+
+    tracing::info!(
+        profile_id = %config.connection_id,
+        finished_at = %Utc::now().to_rfc3339(),
+        "schema_index rebuild_tables: finished (including follow-up build_index)"
+    );
 
     Ok(())
 }
@@ -782,6 +1002,11 @@ async fn handle_model_change(
         }
         Some(_) => {
             // Same model, same vec schema — continue incrementally
+            tracing::debug!(
+                profile_id = %config.connection_id,
+                model_id = %config.model_id,
+                "schema_index handle_model_change: same model and vec schema — incremental path"
+            );
         }
     }
 

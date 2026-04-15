@@ -167,7 +167,10 @@ async fn chat_impl_returns_error_when_request_map_lock_is_poisoned() {
         panic!("poison ai_requests mutex");
     });
 
-    let request = sample_request("stream-poisoned-chat", "http://127.0.0.1:1/v1/chat/completions");
+    let request = sample_request(
+        "stream-poisoned-chat",
+        "http://127.0.0.1:1/v1/chat/completions",
+    );
     let result = ai_chat_impl(&state, app.handle().clone(), request).await;
 
     assert!(result.is_err());

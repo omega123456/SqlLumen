@@ -3,6 +3,7 @@
 use crate::db::settings;
 use crate::schema_index::{builder, embeddings, search, storage, types::BuildConfig};
 use crate::state::AppState;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -115,6 +116,11 @@ pub async fn force_rebuild_schema_index_impl(
             .lock()
             .map_err(|e| format!("Lock error: {e}"))?;
         if let Some(old_token) = tokens.remove(&profile_id) {
+            tracing::info!(
+                profile_id = %profile_id,
+                at = %Utc::now().to_rfc3339(),
+                "schema_index force_rebuild: cancelling in-flight build for profile before wipe"
+            );
             old_token.cancel();
         }
     }
@@ -125,6 +131,11 @@ pub async fn force_rebuild_schema_index_impl(
         storage::delete_all_chunks(&conn, &profile_id)
             .map_err(|e| format!("Failed to delete chunks for profile '{profile_id}': {e}"))?;
     }
+    tracing::info!(
+        profile_id = %profile_id,
+        at = %Utc::now().to_rfc3339(),
+        "schema_index force_rebuild: wiped all stored chunks and vectors for profile"
+    );
 
     // Read AI settings
     let embedding_model = read_setting(&state.db, "ai.embeddingModel")?;
@@ -158,8 +169,8 @@ pub async fn force_rebuild_schema_index_impl(
 
     let config = BuildConfig {
         connection_id: profile_id.clone(),
-        model_id: embedding_model,
-        endpoint,
+        model_id: embedding_model.clone(),
+        endpoint: endpoint.clone(),
     };
 
     let db = state.db.clone();
@@ -167,7 +178,21 @@ pub async fn force_rebuild_schema_index_impl(
     let build_tokens = state.index_build_tokens.clone();
     let profile_id_clone = profile_id.clone();
 
+    tracing::info!(
+        session_id = %session_id,
+        profile_id = %profile_id,
+        model_id = %embedding_model,
+        scheduled_at = %Utc::now().to_rfc3339(),
+        "schema_index force_rebuild: scheduling full embedding index rebuild (background task)"
+    );
+
     tokio::task::spawn(async move {
+        tracing::info!(
+            profile_id = %profile_id_clone,
+            task_started_at = %Utc::now().to_rfc3339(),
+            "schema_index force_rebuild: background task started"
+        );
+
         let app_handle_progress = app_handle.clone();
 
         let on_progress: crate::schema_index::types::ProgressCallback =
@@ -187,12 +212,20 @@ pub async fn force_rebuild_schema_index_impl(
 
         match result {
             Ok(build_result) => {
+                tracing::info!(
+                    profile_id = %profile_id_clone,
+                    completed_at = %Utc::now().to_rfc3339(),
+                    tables_indexed = build_result.tables_indexed,
+                    duration_ms = build_result.duration_ms,
+                    "schema_index force_rebuild: background task completed successfully"
+                );
                 let _ = app_handle.emit("schema-index-complete", &build_result);
             }
             Err(err) => {
                 tracing::error!(
                     profile_id = %profile_id_clone,
                     error = %err,
+                    failed_at = %Utc::now().to_rfc3339(),
                     "Schema index force rebuild failed"
                 );
 
@@ -309,6 +342,12 @@ pub async fn build_schema_index_impl(
             .lock()
             .map_err(|e| format!("Lock error: {e}"))?;
         if tokens.contains_key(&profile_id) {
+            tracing::info!(
+                session_id = %session_id,
+                profile_id = %profile_id,
+                at = %Utc::now().to_rfc3339(),
+                "schema_index build: request ignored — embedding index build already in progress for profile"
+            );
             return Ok(()); // no-op — build already running
         }
     }
@@ -346,8 +385,8 @@ pub async fn build_schema_index_impl(
 
     let config = BuildConfig {
         connection_id: profile_id.clone(),
-        model_id: embedding_model,
-        endpoint,
+        model_id: embedding_model.clone(),
+        endpoint: endpoint.clone(),
     };
 
     let db = state.db.clone();
@@ -355,7 +394,21 @@ pub async fn build_schema_index_impl(
     let build_tokens = state.index_build_tokens.clone();
     let profile_id_clone = profile_id.clone();
 
+    tracing::info!(
+        session_id = %session_id,
+        profile_id = %profile_id,
+        model_id = %embedding_model,
+        scheduled_at = %Utc::now().to_rfc3339(),
+        "schema_index build: scheduling embedding index build (background task)"
+    );
+
     tokio::task::spawn(async move {
+        tracing::info!(
+            profile_id = %profile_id_clone,
+            task_started_at = %Utc::now().to_rfc3339(),
+            "schema_index build: background task started"
+        );
+
         let app_handle_progress = app_handle.clone();
 
         let on_progress: crate::schema_index::types::ProgressCallback =
@@ -375,12 +428,20 @@ pub async fn build_schema_index_impl(
 
         match result {
             Ok(build_result) => {
+                tracing::info!(
+                    profile_id = %profile_id_clone,
+                    completed_at = %Utc::now().to_rfc3339(),
+                    tables_indexed = build_result.tables_indexed,
+                    duration_ms = build_result.duration_ms,
+                    "schema_index build: background task completed successfully"
+                );
                 let _ = app_handle.emit("schema-index-complete", &build_result);
             }
             Err(err) => {
                 tracing::error!(
                     profile_id = %profile_id_clone,
                     error = %err,
+                    failed_at = %Utc::now().to_rfc3339(),
                     "Schema index build failed"
                 );
 
@@ -734,29 +795,48 @@ pub async fn invalidate_schema_index_impl(
 
     let config = BuildConfig {
         connection_id: profile_id.clone(),
-        model_id: embedding_model,
-        endpoint,
+        model_id: embedding_model.clone(),
+        endpoint: endpoint.clone(),
     };
 
     let db = state.db.clone();
     let http_client = state.http_client.clone();
     let token = CancellationToken::new();
 
+    tracing::info!(
+        session_id = %session_id,
+        profile_id = %profile_id,
+        model_id = %embedding_model,
+        table_targets = parsed_tables.len(),
+        targets = ?parsed_tables,
+        scheduled_at = %Utc::now().to_rfc3339(),
+        "schema_index invalidate: scheduling partial embedding index rebuild (background task)"
+    );
+
     tokio::task::spawn(async move {
+        tracing::info!(
+            profile_id = %profile_id,
+            task_started_at = %Utc::now().to_rfc3339(),
+            tables = ?parsed_tables,
+            "schema_index invalidate: background task started"
+        );
+
         match builder::rebuild_tables(&config, &parsed_tables, &db, &pool, &http_client, &token)
             .await
         {
             Ok(()) => {
                 tracing::info!(
                     profile_id = %profile_id,
+                    completed_at = %Utc::now().to_rfc3339(),
                     tables = ?parsed_tables,
-                    "Schema index partial rebuild complete"
+                    "schema_index invalidate: partial rebuild and follow-up incremental build completed"
                 );
             }
             Err(err) => {
                 tracing::error!(
                     profile_id = %profile_id,
                     error = %err,
+                    failed_at = %Utc::now().to_rfc3339(),
                     "Schema index partial rebuild failed"
                 );
                 let _ = app_handle.emit(
