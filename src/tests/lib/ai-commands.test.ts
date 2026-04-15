@@ -14,7 +14,13 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: (...args: unknown[]) => mockListen(...args),
 }))
 
-import { sendAiChat, cancelAiStream, listenToAiStream, listAiModels } from '../../lib/ai-commands'
+import {
+  sendAiChat,
+  cancelAiStream,
+  listenToAiStream,
+  listAiModels,
+  aiQueryExpand,
+} from '../../lib/ai-commands'
 import type { AiChatParams } from '../../lib/ai-commands'
 
 // ---------------------------------------------------------------------------
@@ -233,8 +239,8 @@ describe('listAiModels', () => {
   it('returns models from the backend', async () => {
     mockInvoke.mockResolvedValueOnce({
       models: [
-        { id: 'codellama', name: null },
-        { id: 'deepseek-coder', name: null },
+        { id: 'codellama', name: null, category: 'chat' },
+        { id: 'deepseek-coder', name: null, category: 'chat' },
       ],
     })
 
@@ -244,8 +250,8 @@ describe('listAiModels', () => {
       endpoint: 'http://localhost:11434/v1/chat/completions',
     })
     expect(result.models).toEqual([
-      { id: 'codellama', name: null },
-      { id: 'deepseek-coder', name: null },
+      { id: 'codellama', name: null, category: 'chat' },
+      { id: 'deepseek-coder', name: null, category: 'chat' },
     ])
     expect(result.error).toBeUndefined()
   })
@@ -269,5 +275,50 @@ describe('listAiModels', () => {
     const result = await listAiModels('http://localhost:11434/v1')
     expect(result.models).toEqual([])
     expect(result.error).toBeUndefined()
+  })
+
+  it('models include category field', async () => {
+    mockInvoke.mockResolvedValueOnce({
+      models: [
+        { id: 'llama3', name: null, category: 'chat' },
+        { id: 'nomic-embed-text', name: null, category: 'embedding' },
+      ],
+    })
+
+    const result = await listAiModels('http://localhost:11434/v1')
+    expect(result.models[0].category).toBe('chat')
+    expect(result.models[1].category).toBe('embedding')
+  })
+})
+
+describe('aiQueryExpand', () => {
+  it('invokes ai_query_expand with correct parameter mapping', async () => {
+    mockInvoke.mockResolvedValueOnce({ text: 'SELECT * FROM users' })
+
+    const req = {
+      endpoint: 'http://localhost:11434/v1/chat/completions',
+      model: 'llama3',
+      systemPrompt: 'You are a SQL assistant.',
+      userMessage: 'Find all users',
+    }
+
+    const result = await aiQueryExpand(req)
+
+    expect(mockInvoke).toHaveBeenCalledTimes(1)
+    expect(mockInvoke).toHaveBeenCalledWith('ai_query_expand', { req })
+    expect(result.text).toBe('SELECT * FROM users')
+  })
+
+  it('propagates errors from the backend', async () => {
+    mockInvoke.mockRejectedValueOnce(new Error('Model not found'))
+
+    await expect(
+      aiQueryExpand({
+        endpoint: 'http://localhost:11434/v1/chat/completions',
+        model: 'nonexistent',
+        systemPrompt: 'system',
+        userMessage: 'user',
+      })
+    ).rejects.toThrow('Model not found')
   })
 })

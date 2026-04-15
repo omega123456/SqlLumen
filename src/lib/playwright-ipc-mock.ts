@@ -111,6 +111,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'ai.enabled': 'false',
         'ai.endpoint': '',
         'ai.model': '',
+        'ai.embeddingModel': '',
         'ai.temperature': '0.3',
         'ai.maxTokens': '2048',
       }
@@ -140,6 +141,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'ai.enabled': 'false',
         'ai.endpoint': '',
         'ai.model': '',
+        'ai.embeddingModel': '',
         'ai.temperature': '0.3',
         'ai.maxTokens': '2048',
       }
@@ -1577,11 +1579,30 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'list_ai_models':
       return {
         models: [
-          { id: 'codellama', name: null },
-          { id: 'deepseek-coder', name: null },
-          { id: 'llama3.2', name: null },
+          { id: 'codellama', name: null, category: 'chat' },
+          { id: 'deepseek-coder', name: null, category: 'chat' },
+          { id: 'llama3.2', name: null, category: 'chat' },
+          { id: 'nomic-embed-text', name: null, category: 'embedding' },
+          { id: 'mxbai-embed-large', name: null, category: 'embedding' },
         ],
       }
+
+    case 'ai_query_expand':
+      return { text: '{"queries":["SELECT users","JOIN orders","user_id foreign key"]}' }
+
+    // --- Schema index commands ---
+    case 'build_schema_index':
+      return null
+    case 'force_rebuild_schema_index':
+      return null
+    case 'semantic_search':
+      return []
+    case 'get_index_status':
+      return { status: 'ready' }
+    case 'invalidate_schema_index':
+      return null
+    case 'list_indexed_tables':
+      return []
 
     default:
       return null

@@ -1,15 +1,12 @@
 import { create } from 'zustand'
 import { logFrontend } from '../lib/app-log-commands'
-import { sendAiChat, cancelAiStream, listenToAiStream } from '../lib/ai-commands'
+import { sendAiChat, cancelAiStream, listenToAiStream, aiQueryExpand } from '../lib/ai-commands'
 import type { AiMessage as IpcAiMessage } from '../lib/ai-commands'
-import { compactSchemaDdl } from '../lib/schema-ddl-compactor'
-import type { SchemaCompactionResult } from '../lib/schema-ddl-compactor'
-// Cross-layer import: schema-metadata-cache lives in components/ but is a
-// module-level singleton, not a React component. Accepted as a pragmatic
-// trade-off to avoid duplicating cache-loading logic.
-import { loadCache, getCache } from '../components/query-editor/schema-metadata-cache'
+import { semanticSearch } from '../lib/schema-index-commands'
+import { useSchemaIndexStore } from './schema-index-store'
 import { useSettingsStore } from './settings-store'
 import { useQueryStore } from './query-store'
+import { showErrorToast } from './toast-store'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,9 +36,12 @@ export interface TabAiState {
   attachedContext: AttachedContext | null
   isPanelOpen: boolean
   error: string | null
-  schemaDdl: string | null
-  schemaTokenCount: number
-  schemaWarning: boolean
+  /** DDL retrieved from vector search for the current retrieval. */
+  retrievedSchemaDdl: string
+  /** Timestamp of the last successful schema retrieval. */
+  lastRetrievalTimestamp: number
+  /** True while waiting for the schema index to finish building. */
+  isWaitingForIndex: boolean
   /** Connection ID associated with this tab — needed for cross-store status management. */
   connectionId: string | null
   _unlisten: (() => void) | null
@@ -59,9 +59,9 @@ function createDefaultTabAiState(): TabAiState {
     attachedContext: null,
     isPanelOpen: false,
     error: null,
-    schemaDdl: null,
-    schemaTokenCount: 0,
-    schemaWarning: false,
+    retrievedSchemaDdl: '',
+    lastRetrievalTimestamp: 0,
+    isWaitingForIndex: false,
     connectionId: null,
     _unlisten: null,
   }
@@ -108,11 +108,6 @@ interface AiState {
   setError: (tabId: string, error: string) => void
   clearError: (tabId: string) => void
 
-  // Schema context
-  setSchemaContext: (tabId: string, ddl: string, tokenCount: number, warning: boolean) => void
-  /** Pre-load schema DDL and populate token count so it's visible before the first send. */
-  preloadSchemaContext: (tabId: string, connectionId: string) => void
-
   // Editor lock — AI status management
   /** Lock the editor in 'ai-reviewing' state (e.g. while a diff overlay is open). */
   setAiReviewing: (tabId: string) => void
@@ -137,10 +132,32 @@ const AI_SYSTEM_PROMPT = `You are an expert SQL assistant integrated into a data
 
 You have access to the current database schema below. Always write SQL that is compatible with MySQL/MariaDB syntax.
 
+Use ONLY tables that appear in the retrieved schema context. Never invent, infer, assume, or reference tables that were not retrieved by semantic search.
+
+Whenever you reference a table in generated SQL, always use its full database-qualified name (for example, \`database_name\`.\`table_name\`).
+
 When writing SQL, prefer clear, readable queries. Format your SQL code in markdown code blocks with the sql language tag.`
 
 /** Note appended when schema DDL is provided to inform the AI of omitted metadata. */
 const SCHEMA_METADATA_NOTE = 'Note: Cardinality statistics are omitted from index metadata.'
+
+/** Query expansion system prompt for generating semantic search queries. */
+const QUERY_EXPANSION_SYSTEM_PROMPT = `You are a SQL schema search assistant. Given a user's natural language question about a database, generate exactly 3 short search queries that use SQL vocabulary (table names, column names, SQL keywords, JOIN patterns) to find the most relevant database tables. Think about which tables, columns, and relationships would be needed to answer the question. Output strictly as JSON with no explanation.
+
+When table names are mentioned or implied, prefer database-qualified names when possible so retrieval preserves the database prefix.
+Format: {"queries":["...","...","..."]}
+
+Examples:
+User: "Show me all customers who haven't ordered anything in the last 6 months"
+Output: {"queries":["customers orders LEFT JOIN last_order_date","customers table id name email","orders customer_id created_at date"]}
+
+User: "What's the total revenue by product category?"
+Output: {"queries":["products categories revenue SUM price","product_categories category_name JOIN products","orders order_items products price quantity amount"]}
+
+User: "List employees and their department managers"
+Output: {"queries":["employees departments manager_id supervisor","employees table id name department_id","departments manager employee hierarchy"]}`
+
+const SCHEMA_USAGE_INSTRUCTION = `Retrieved tables only:\n- Use only tables that are present in the retrieved schema below.\n- Never make up or reference any table that is not in the retrieved schema.\n- Always use database-qualified table names in generated SQL (\`db\`.\`table\`).`
 
 // ---------------------------------------------------------------------------
 // Store
@@ -181,63 +198,210 @@ export const useAiStore = create<AiState>()((set, get) => {
   }
 
   /**
-   * Prepend a system message to the tab's conversation if one doesn't already exist.
-   * Returns true if a system message was added.
+   * Replace or insert the system message in the tab's conversation.
+   * If a system message already exists, update its content.
+   * If not, prepend a new one.
    */
-  function ensureSystemMessage(tabId: string, systemContent: string): boolean {
+  function upsertSystemMessage(tabId: string, systemContent: string): void {
     const currentTab = get().tabs[tabId]
-    if (currentTab?.messages.some((m) => m.role === 'system')) return false
-    const systemMessage: AiMessage = {
-      id: crypto.randomUUID(),
-      role: 'system',
-      content: systemContent,
-      timestamp: Date.now(),
-    }
-    patchTab(tabId, {
-      messages: [systemMessage, ...get().tabs[tabId]!.messages],
-    })
-    return true
-  }
+    if (!currentTab) return
 
-  /**
-   * Build a system message containing the compact schema DDL for a connection.
-   * Loads the schema cache if needed, then compacts the metadata.
-   */
-  const buildSchemaSystemMessage = async (
-    connectionId: string
-  ): Promise<{ message: AiMessage; compaction: SchemaCompactionResult } | null> => {
-    try {
-      await loadCache(connectionId)
-      const cache = getCache(connectionId)
-
-      if (cache.status !== 'ready') {
-        return null
+    const existingIdx = currentTab.messages.findIndex((m) => m.role === 'system')
+    if (existingIdx >= 0) {
+      // Update existing system message content (replace, not stack)
+      const updatedMessages = [...currentTab.messages]
+      updatedMessages[existingIdx] = {
+        ...updatedMessages[existingIdx],
+        content: systemContent,
+        timestamp: Date.now(),
       }
-
-      if (Object.keys(cache.tables).length === 0) {
-        return null
-      }
-
-      const compaction = compactSchemaDdl(
-        cache.tables,
-        cache.columns,
-        cache.foreignKeys,
-        cache.indexes
-      )
-
+      patchTab(tabId, { messages: updatedMessages })
+    } else {
+      // Prepend new system message
       const systemMessage: AiMessage = {
         id: crypto.randomUUID(),
         role: 'system',
-        content: `${AI_SYSTEM_PROMPT}\n\n${SCHEMA_METADATA_NOTE}\n\nDatabase schema:\n${compaction.ddl}`,
+        content: systemContent,
         timestamp: Date.now(),
       }
+      patchTab(tabId, {
+        messages: [systemMessage, ...currentTab.messages],
+      })
+    }
+  }
 
-      return { message: systemMessage, compaction }
+  /**
+   * Retrieve schema context via the vector retrieval pipeline.
+   *
+   * 1. Wait for schema index if building
+   * 2. Expand user query into 3 search queries via aiQueryExpand
+   * 3. Perform semantic search
+   * 4. Assemble DDL context from results
+   */
+  async function retrieveSchemaContext(
+    tabId: string,
+    sessionId: string,
+    userMessage: string
+  ): Promise<string> {
+    try {
+      logFrontend(
+        'debug',
+        `[ai-store] retrieveSchemaContext start — tabId=${tabId} sessionId=${sessionId} userQuery="${userMessage}"`
+      )
+
+      // Check index status — if building, wait for it
+      const indexState = useSchemaIndexStore.getState().getStatusForSession(sessionId)
+      logFrontend(
+        'debug',
+        `[ai-store] schema index status for session=${sessionId}: ${indexState?.status ?? 'unknown'}`
+      )
+
+      if (indexState?.status === 'building') {
+        logFrontend('debug', `[ai-store] index is building — waiting (tabId=${tabId})`)
+        if (get().tabs[tabId]) {
+          patchTab(tabId, { isWaitingForIndex: true })
+        }
+
+        // Poll until index is no longer building (max ~30s)
+        const maxWaitMs = 30000
+        const pollIntervalMs = 500
+        let waited = 0
+        while (waited < maxWaitMs) {
+          await new Promise((r) => setTimeout(r, pollIntervalMs))
+          waited += pollIntervalMs
+          const current = useSchemaIndexStore.getState().getStatusForSession(sessionId)
+          if (!current || current.status !== 'building') break
+        }
+
+        const postWaitStatus = useSchemaIndexStore.getState().getStatusForSession(sessionId)
+        logFrontend(
+          'debug',
+          `[ai-store] done waiting for index — waited=${waited}ms finalStatus=${postWaitStatus?.status ?? 'unknown'}`
+        )
+        patchTab(tabId, { isWaitingForIndex: false })
+        if (!get().tabs[tabId]) return ''
+      }
+
+      // Query expansion — get 3 search queries
+      let queries: string[] = [userMessage]
+      try {
+        const getSetting = useSettingsStore.getState().getSetting
+        const endpoint = getSetting('ai.endpoint')
+        const model = getSetting('ai.model')
+
+        logFrontend(
+          'debug',
+          `[ai-store] query expansion — endpoint=${endpoint ? '[set]' : '[unset]'} model=${model || '[unset]'}`
+        )
+
+        if (endpoint && model) {
+          const result = await aiQueryExpand({
+            endpoint,
+            model,
+            systemPrompt: QUERY_EXPANSION_SYSTEM_PROMPT,
+            userMessage,
+          })
+
+          logFrontend('debug', `[ai-store] query expansion raw response: ${result.text}`)
+
+          // Parse JSON response
+          const parsed = JSON.parse(result.text)
+          if (
+            parsed &&
+            Array.isArray(parsed.queries) &&
+            parsed.queries.length > 0 &&
+            parsed.queries.every((q: unknown) => typeof q === 'string')
+          ) {
+            const normalizedExpandedQueries = parsed.queries
+              .map((query: string) => query.trim())
+              .filter((query: string) => query.length > 0)
+
+            queries = Array.from(new Set([userMessage, ...normalizedExpandedQueries])).slice(0, 4)
+            logFrontend(
+              'debug',
+              `[ai-store] query expansion succeeded — transformedQueries=${JSON.stringify(queries)}`
+            )
+          } else {
+            logFrontend(
+              'debug',
+              `[ai-store] query expansion response did not contain valid queries array — falling back to original message`
+            )
+          }
+        } else {
+          logFrontend(
+            'debug',
+            `[ai-store] query expansion skipped — missing endpoint or model, using original user query`
+          )
+        }
+      } catch (err) {
+        // Query expansion failed — fall back to original message
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error('[ai-store] Query expansion failed, using original message:', msg)
+        logFrontend('warn', `[ai-store] Query expansion fallback: ${msg}`)
+        logFrontend('debug', `[ai-store] falling back to original query: "${userMessage}"`)
+      }
+
+      logFrontend(
+        'debug',
+        `[ai-store] invoking semantic search — sessionId=${sessionId} queryCount=${queries.length} queries=${JSON.stringify(queries)}`
+      )
+
+      // Semantic search
+      const results = await semanticSearch(sessionId, queries)
+
+      logFrontend(
+        'debug',
+        `[ai-store] semantic search returned ${results.length} result(s): ${JSON.stringify(
+          results.map((r) => ({
+            chunkKey: r.chunkKey,
+            dbName: r.dbName,
+            tableName: r.tableName,
+            chunkType: r.chunkType,
+            score: r.score,
+          }))
+        )}`
+      )
+
+      // Assemble DDL from results (deduplicate by chunkKey)
+      const seen = new Set<string>()
+      const ddlParts: string[] = []
+      for (const result of results) {
+        if (!seen.has(result.chunkKey)) {
+          seen.add(result.chunkKey)
+          ddlParts.push(result.ddlText)
+        }
+      }
+
+      const ddl = ddlParts.join('\n\n')
+
+      logFrontend(
+        'debug',
+        `[ai-store] DDL assembly complete — uniqueChunks=${ddlParts.length} totalCharsInDdl=${ddl.length}`
+      )
+
+      // Update tab state (only if tab still exists — it may have been cleaned up)
+      if (get().tabs[tabId]) {
+        patchTab(tabId, {
+          retrievedSchemaDdl: ddl,
+          lastRetrievalTimestamp: Date.now(),
+        })
+      }
+
+      logFrontend(
+        'debug',
+        `[ai-store] retrieveSchemaContext complete — ddl ${ddl.length > 0 ? `injected (${ddl.length} chars)` : 'empty (no schema context)'}`
+      )
+
+      return ddl
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err)
-      console.error('[ai-store] Failed to build schema system message:', errorMsg)
-      logFrontend('error', `[ai-store] Schema loading failed: ${errorMsg}`)
-      return null
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[ai-store] Schema retrieval failed:', msg)
+      logFrontend('error', `[ai-store] Schema retrieval failed: ${msg}`)
+      showErrorToast('Schema retrieval failed', msg)
+      if (get().tabs[tabId]) {
+        patchTab(tabId, { isWaitingForIndex: false })
+      }
+      return ''
     }
   }
 
@@ -250,7 +414,6 @@ export const useAiStore = create<AiState>()((set, get) => {
       ensureTab(tabId)
 
       const tab = get().tabs[tabId]!
-      const isFirstMessage = tab.messages.length === 0
       const streamId = crypto.randomUUID()
 
       const userMessage: AiMessage = {
@@ -283,34 +446,24 @@ export const useAiStore = create<AiState>()((set, get) => {
       // Async IPC flow — fire-and-forget from the synchronous action
       const startStream = async () => {
         try {
-          // If this is the first user message, try to build a schema system message
-          let schemaResult: { message: AiMessage; compaction: SchemaCompactionResult } | null = null
-          if (isFirstMessage) {
-            schemaResult = await buildSchemaSystemMessage(connectionId)
-            if (!get().tabs[tabId]) return // tab was cleaned up while waiting
+          // Retrieve schema context via the vector pipeline
+          const schemaDdl = await retrieveSchemaContext(tabId, connectionId, message)
+          if (!get().tabs[tabId]) return // tab was cleaned up while waiting
 
-            // Guard: schema loading is async; abort if stream was cancelled before we got here
-            if (
-              get().tabs[tabId]?.activeStreamId !== streamId ||
-              !get().tabs[tabId]?.isGenerating
-            ) {
-              return
-            }
+          // Guard: schema retrieval is async; abort if stream was cancelled before we got here
+          if (get().tabs[tabId]?.activeStreamId !== streamId || !get().tabs[tabId]?.isGenerating) {
+            return
+          }
 
-            if (schemaResult) {
-              ensureSystemMessage(
-                tabId,
-                `${AI_SYSTEM_PROMPT}\n\n${SCHEMA_METADATA_NOTE}\n\nDatabase schema:\n${schemaResult.compaction.ddl}`
-              )
-              patchTab(tabId, {
-                schemaDdl: schemaResult.compaction.ddl,
-                schemaTokenCount: schemaResult.compaction.estimatedTokens,
-                schemaWarning: schemaResult.compaction.warning,
-              })
-            } else {
-              // No schema available — inject a system prompt without schema DDL
-              ensureSystemMessage(tabId, AI_SYSTEM_PROMPT)
-            }
+          // Build and upsert system message with retrieved schema
+          if (schemaDdl) {
+            upsertSystemMessage(
+              tabId,
+              `${AI_SYSTEM_PROMPT}\n\n${SCHEMA_USAGE_INSTRUCTION}\n\n${SCHEMA_METADATA_NOTE}\n\nDatabase schema:\n${schemaDdl}`
+            )
+          } else {
+            // No schema available — inject a system prompt without schema DDL
+            upsertSystemMessage(tabId, AI_SYSTEM_PROMPT)
           }
 
           if (!get().tabs[tabId]) return // tab was cleaned up
@@ -580,47 +733,6 @@ export const useAiStore = create<AiState>()((set, get) => {
     clearError: (tabId) => {
       ensureTab(tabId)
       patchTab(tabId, { error: null })
-    },
-
-    // ------ setSchemaContext ------
-
-    setSchemaContext: (tabId, ddl, tokenCount, warning) => {
-      ensureTab(tabId)
-      patchTab(tabId, {
-        schemaDdl: ddl,
-        schemaTokenCount: tokenCount,
-        schemaWarning: warning,
-      })
-    },
-
-    // ------ preloadSchemaContext ------
-
-    preloadSchemaContext: (tabId, connectionId) => {
-      ensureTab(tabId)
-
-      // Skip if already loaded
-      const tab = get().tabs[tabId]
-      if (tab && tab.schemaTokenCount > 0) return
-
-      // Fire-and-forget — do not block the panel from opening
-      buildSchemaSystemMessage(connectionId)
-        .then((result) => {
-          if (!result) return
-          // Only update if the tab still exists and hasn't been populated yet
-          const current = get().tabs[tabId]
-          if (current && current.schemaTokenCount === 0) {
-            patchTab(tabId, {
-              schemaDdl: result.compaction.ddl,
-              schemaTokenCount: result.compaction.estimatedTokens,
-              schemaWarning: result.compaction.warning,
-            })
-          }
-        })
-        .catch((err) => {
-          const errorMsg = err instanceof Error ? err.message : String(err)
-          console.error('[ai-store] Failed to preload schema context:', errorMsg)
-          logFrontend('warn', `[ai-store] Schema preload failed: ${errorMsg}`)
-        })
     },
 
     // ------ setAiReviewing ------

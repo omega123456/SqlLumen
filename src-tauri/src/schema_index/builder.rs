@@ -1,0 +1,915 @@
+//! Index build orchestration — generates DDL chunks, computes hashes,
+//! performs incremental embedding, and stores results.
+//!
+//! The public functions take explicit dependencies (SQLite mutex, MySQL pool,
+//! HTTP client) so they are testable without the Tauri runtime.
+
+use regex::Regex;
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
+use tokio_util::sync::CancellationToken;
+
+use super::embeddings;
+use super::storage;
+use super::types::{
+    BuildConfig, BuildProgress, BuildResult, ChunkInsert, ChunkType, FkInput, IndexMeta,
+    IndexStatus, ProgressCallback, TableDdlInput,
+};
+
+/// Maximum number of texts per embedding batch.
+const EMBED_BATCH_SIZE: usize = 32;
+
+/// Number of chunks to commit in a single SQLite transaction.
+const SQLITE_COMMIT_BATCH: usize = 20;
+
+// ── Pure helper functions ────────────────────────────────────────────────
+
+/// Strip MySQL engine/storage metadata from a CREATE TABLE statement so that
+/// the resulting text captures only the schema structure (columns, indexes, FKs).
+///
+/// Removes: `AUTO_INCREMENT=\d+`, `ROW_FORMAT=...`, `ENGINE=...`, trailing
+/// `DEFAULT CHARSET=...`, `COLLATE=...`, and `COMMENT='...'` clauses that
+/// appear after the closing `)` of the column list.
+pub fn compact_ddl(create_table_sql: &str) -> String {
+    static AUTO_INCREMENT_REGEX: OnceLock<Regex> = OnceLock::new();
+    static TRAILING_CLAUSE_REGEX: OnceLock<Regex> = OnceLock::new();
+    static WHITESPACE_REGEX: OnceLock<Regex> = OnceLock::new();
+
+    // Remove AUTO_INCREMENT=<digits> (case-insensitive)
+    let re_auto_inc = AUTO_INCREMENT_REGEX.get_or_init(|| {
+        Regex::new(r"(?i)\s*AUTO_INCREMENT\s*=\s*\d+").expect("valid auto_increment regex")
+    });
+    let text = re_auto_inc.replace_all(create_table_sql, "");
+
+    // Remove trailing engine/storage clauses after the last `)`
+    // These are: ENGINE=..., ROW_FORMAT=..., DEFAULT CHARSET=..., COLLATE=..., COMMENT='...'
+    let re_trailing = TRAILING_CLAUSE_REGEX.get_or_init(|| {
+        Regex::new(
+            r"(?i)\)\s*(ENGINE\s*=\s*\S+|ROW_FORMAT\s*=\s*\S+|DEFAULT\s+CHARSET\s*=\s*\S+|COLLATE\s*=\s*\S+|COMMENT\s*=\s*'[^']*'|/\*![^*]*\*/|\s)*\s*;?\s*$",
+        )
+        .expect("valid trailing clause regex")
+    });
+
+    let text = if let Some(mat) = re_trailing.find(&text) {
+        // Keep everything up to and including the `)`, strip the rest
+        let paren_pos = text[..mat.start() + 1].rfind(')');
+        match paren_pos {
+            Some(pos) => format!("{})", &text[..pos]),
+            None => text.to_string(),
+        }
+    } else {
+        text.to_string()
+    };
+
+    // Normalize whitespace
+    let re_ws =
+        WHITESPACE_REGEX.get_or_init(|| Regex::new(r"\s+").expect("valid whitespace regex"));
+    let text = re_ws.replace_all(&text, " ");
+
+    text.trim().to_string()
+}
+
+fn quote_identifier(name: &str) -> String {
+    format!("`{}`", name.replace('`', "``"))
+}
+
+fn parse_identifier_parts(identifier: &str) -> Vec<String> {
+    identifier
+        .split('.')
+        .map(|part| part.trim_matches('`').trim().to_string())
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+/// Ensure the leading `CREATE TABLE ...` identifier is fully qualified with the
+/// source database name so semantic search and downstream prompt assembly retain
+/// unambiguous table identity across databases.
+pub fn qualify_table_ddl(db_name: &str, table_name: &str, ddl: &str) -> String {
+    static CREATE_TABLE_REGEX: OnceLock<Regex> = OnceLock::new();
+    let re = CREATE_TABLE_REGEX.get_or_init(|| {
+        Regex::new(
+            r"(?i)^\s*(CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?)\s+((?:`[^`]+`|[a-z_][a-z0-9_$]*)(?:\.(?:`[^`]+`|[a-z_][a-z0-9_$]*))?)",
+        )
+        .expect("valid create table qualification regex")
+    });
+
+    let quoted_db = quote_identifier(db_name);
+    let quoted_table = quote_identifier(table_name);
+
+    re.replace(ddl, format!("$1 {quoted_db}.{quoted_table}"))
+        .into_owned()
+}
+
+/// Ensure REFERENCES clauses also use database-qualified table names.
+pub fn qualify_references_in_ddl(db_name: &str, ddl: &str) -> String {
+    static REFERENCES_REGEX: OnceLock<Regex> = OnceLock::new();
+    let re = REFERENCES_REGEX.get_or_init(|| {
+        Regex::new(
+            r"(?i)\bREFERENCES\s+((?:`[^`]+`|[a-z_][a-z0-9_$]*)(?:\.(?:`[^`]+`|[a-z_][a-z0-9_$]*))?)\s*\(",
+        )
+        .expect("valid references qualification regex")
+    });
+
+    re.replace_all(ddl, |captures: &regex::Captures<'_>| {
+        let identifier = captures.get(1).map(|m| m.as_str()).unwrap_or_default();
+        let parts = parse_identifier_parts(identifier);
+        let qualified = match parts.as_slice() {
+            [table_name] => format!("{}.{}", quote_identifier(db_name), quote_identifier(table_name)),
+            [ref_db_name, table_name] => {
+                format!("{}.{}", quote_identifier(ref_db_name), quote_identifier(table_name))
+            }
+            _ => identifier.to_string(),
+        };
+
+        format!("REFERENCES {qualified} (")
+    })
+    .into_owned()
+}
+
+/// Normalize table DDL so both the declared table and its REFERENCES targets are
+/// database-qualified.
+pub fn normalize_table_ddl(db_name: &str, table_name: &str, ddl: &str) -> String {
+    let ddl = qualify_table_ddl(db_name, table_name, ddl);
+    qualify_references_in_ddl(db_name, &ddl)
+}
+
+/// Generate a human-readable chunk text describing a foreign key relationship.
+pub fn generate_fk_chunk_text(fk: &FkInput) -> String {
+    let cols = fk.columns.join(", ");
+    let ref_cols = fk.ref_columns.join(", ");
+    format!(
+        "Table {db}.{table} has a foreign key ({cols}) that references {ref_db}.{ref_table}({ref_cols}) ON DELETE {on_delete} ON UPDATE {on_update}",
+        db = fk.db_name,
+        table = fk.table_name,
+        ref_db = fk.ref_db_name,
+        ref_table = fk.ref_table_name,
+        on_delete = fk.on_delete,
+        on_update = fk.on_update,
+    )
+}
+
+/// Compute a SHA-256 hex digest of the given text.
+pub fn compute_hash(text: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(text.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+/// Chunk key for a table DDL chunk.
+pub fn table_chunk_key(db_name: &str, table_name: &str) -> String {
+    format!("table:{db_name}.{table_name}")
+}
+
+/// Chunk key for a foreign key chunk.
+pub fn fk_chunk_key(db_name: &str, table_name: &str, constraint_name: &str) -> String {
+    format!("fk:{db_name}.{table_name}:{constraint_name}")
+}
+
+// ── FK parsing from DDL ──────────────────────────────────────────────────
+
+/// Parse foreign key definitions from a `SHOW CREATE TABLE` result.
+///
+/// Looks for lines matching:
+/// ```text
+/// CONSTRAINT `fk_name` FOREIGN KEY (`col1`, `col2`) REFERENCES `ref_table` (`ref_col1`, `ref_col2`) ON DELETE CASCADE ON UPDATE NO ACTION
+/// ```
+pub fn parse_fks_from_ddl(db_name: &str, table_name: &str, ddl: &str) -> Vec<FkInput> {
+    static FK_REGEX: OnceLock<Regex> = OnceLock::new();
+    let re = FK_REGEX.get_or_init(|| {
+        Regex::new(
+            r"(?i)CONSTRAINT\s+`([^`]+)`\s+FOREIGN\s+KEY\s+\(([^)]+)\)\s+REFERENCES\s+(?:`([^`]+)`\.)?`([^`]+)`\s+\(([^)]+)\)(?:\s+ON\s+DELETE\s+(RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT|NO\s+ACTION))?(?:\s+ON\s+UPDATE\s+(RESTRICT|CASCADE|SET\s+NULL|SET\s+DEFAULT|NO\s+ACTION))?",
+        )
+        .expect("valid FK regex")
+    });
+
+    let mut fks = Vec::new();
+    for cap in re.captures_iter(ddl) {
+        let constraint_name = cap[1].to_string();
+        let columns = parse_backtick_list(&cap[2]);
+        let ref_db = cap
+            .get(3)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| db_name.to_string());
+        let ref_table = cap[4].to_string();
+        let ref_columns = parse_backtick_list(&cap[5]);
+        let on_delete = cap
+            .get(6)
+            .map(|m| m.as_str().to_uppercase())
+            .unwrap_or_else(|| "RESTRICT".to_string());
+        let on_update = cap
+            .get(7)
+            .map(|m| m.as_str().to_uppercase())
+            .unwrap_or_else(|| "RESTRICT".to_string());
+
+        fks.push(FkInput {
+            db_name: db_name.to_string(),
+            table_name: table_name.to_string(),
+            constraint_name,
+            columns,
+            ref_db_name: ref_db,
+            ref_table_name: ref_table,
+            ref_columns,
+            on_delete,
+            on_update,
+        });
+    }
+    fks
+}
+
+/// Parse a backtick-delimited column list like `` `col1`,`col2` `` into `["col1", "col2"]`.
+fn parse_backtick_list(s: &str) -> Vec<String> {
+    static BACKTICK_LIST_REGEX: OnceLock<Regex> = OnceLock::new();
+    let re = BACKTICK_LIST_REGEX
+        .get_or_init(|| Regex::new(r"`([^`]+)`").expect("valid backtick list regex"));
+    re.captures_iter(s).map(|c| c[1].to_string()).collect()
+}
+
+// ── Diff logic ───────────────────────────────────────────────────────────
+
+/// Given the stored `(chunk_key, ddl_hash)` pairs and new DDL inputs,
+/// determine which chunks are new, changed, or unchanged.
+///
+/// Returns `(to_embed, to_delete_keys)`:
+/// - `to_embed`: `Vec<(chunk_key, ddl_text, ddl_hash, ChunkType, db, table, ref_db, ref_table)>` — new or changed
+/// - `to_delete_keys`: `Vec<String>` — chunk keys that existed before but are no longer present
+pub fn diff_chunks(
+    stored_hashes: &[(String, String)],
+    new_chunks: &[(String, String, String)], // (chunk_key, ddl_text, ddl_hash)
+) -> (Vec<String>, Vec<String>) {
+    let stored_map: HashMap<&str, &str> = stored_hashes
+        .iter()
+        .map(|(k, h)| (k.as_str(), h.as_str()))
+        .collect();
+
+    let new_map: HashMap<&str, (&str, &str)> = new_chunks
+        .iter()
+        .map(|(k, _text, h)| (k.as_str(), (_text.as_str(), h.as_str())))
+        .collect();
+
+    // Keys that need embedding: new or hash changed
+    let mut needs_embed = Vec::new();
+    for (key, (_text, hash)) in &new_map {
+        match stored_map.get(key) {
+            Some(stored_hash) if *stored_hash == *hash => {
+                // unchanged — skip
+            }
+            _ => {
+                needs_embed.push(key.to_string());
+            }
+        }
+    }
+
+    // Keys to delete: in stored but not in new
+    let mut to_delete = Vec::new();
+    for (key, _) in &stored_map {
+        if !new_map.contains_key(key) {
+            to_delete.push(key.to_string());
+        }
+    }
+
+    (needs_embed, to_delete)
+}
+
+// ── Build index (full) ──────────────────────────────────────────────────
+
+/// Build (or incrementally update) the schema index for a connection.
+///
+/// Algorithm:
+/// 1. Check model change → drop and recreate vec table if needed
+/// 2. Set status = "building"
+/// 3. Fetch all databases and tables via MySQL
+/// 4. For each table: SHOW CREATE TABLE → compact DDL → compute hash
+/// 5. Diff against stored hashes
+/// 6. Embed new/changed chunks in batches
+/// 7. Store results, report progress
+/// 8. Set status = "ready"
+#[cfg(not(coverage))]
+pub async fn build_index(
+    config: &BuildConfig,
+    sqlite_conn: &Mutex<rusqlite::Connection>,
+    mysql_pool: &sqlx::MySqlPool,
+    http_client: &reqwest::Client,
+    on_progress: Option<&ProgressCallback>,
+    cancellation: &CancellationToken,
+) -> Result<BuildResult, String> {
+    let start = Instant::now();
+
+    // 1. Check model change and handle vec table recreation
+    handle_model_change(config, sqlite_conn, http_client).await?;
+
+    // 2. Set status = "building"
+    {
+        let conn = sqlite_conn
+            .lock()
+            .map_err(|e| format!("SQLite lock: {e}"))?;
+        storage::update_index_status(&conn, &config.connection_id, &IndexStatus::Building)
+            .map_err(|e| format!("Failed to set building status: {e}"))?;
+    }
+
+    // 3. Fetch databases and tables
+    if cancellation.is_cancelled() {
+        return Err("Build cancelled".to_string());
+    }
+
+    let databases = fetch_database_list(mysql_pool).await?;
+
+    let mut all_ddl_inputs: Vec<TableDdlInput> = Vec::new();
+    for db_name in &databases {
+        if cancellation.is_cancelled() {
+            return Err("Build cancelled".to_string());
+        }
+        let tables = fetch_table_list(mysql_pool, db_name).await?;
+        for table_name in &tables {
+            let ddl = fetch_create_table(mysql_pool, db_name, table_name).await?;
+            all_ddl_inputs.push(TableDdlInput {
+                db_name: db_name.clone(),
+                table_name: table_name.clone(),
+                create_table_sql: ddl,
+            });
+        }
+    }
+
+    let tables_total = all_ddl_inputs.len();
+
+    // 4. Generate chunk data (table + FK chunks)
+    let (table_chunks, fk_chunks) = generate_all_chunks(&all_ddl_inputs);
+
+    // Merge into a single list for diffing
+    let mut all_new: Vec<(
+        String,
+        String,
+        String,
+        ChunkType,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+    )> = Vec::new();
+    for (key, text, hash, db, table) in &table_chunks {
+        all_new.push((
+            key.clone(),
+            text.clone(),
+            hash.clone(),
+            ChunkType::Table,
+            db.clone(),
+            table.clone(),
+            None,
+            None,
+        ));
+    }
+    for (key, text, hash, fk) in &fk_chunks {
+        all_new.push((
+            key.clone(),
+            text.clone(),
+            hash.clone(),
+            ChunkType::Fk,
+            fk.db_name.clone(),
+            fk.table_name.clone(),
+            Some(fk.ref_db_name.clone()),
+            Some(fk.ref_table_name.clone()),
+        ));
+    }
+
+    // 5. Diff against stored hashes
+    let stored_hashes = {
+        let conn = sqlite_conn
+            .lock()
+            .map_err(|e| format!("SQLite lock: {e}"))?;
+        storage::get_chunk_hashes(&conn, &config.connection_id)
+            .map_err(|e| format!("Failed to get chunk hashes: {e}"))?
+    };
+
+    let new_for_diff: Vec<(String, String, String)> = all_new
+        .iter()
+        .map(|(k, text, hash, ..)| (k.clone(), text.clone(), hash.clone()))
+        .collect();
+
+    let (needs_embed_keys, to_delete_keys) = diff_chunks(&stored_hashes, &new_for_diff);
+
+    // Delete removed chunks (by specific chunk key, not by table — avoids
+    // cascade-deleting unrelated FK chunks that share the same table).
+    if !to_delete_keys.is_empty() {
+        let conn = sqlite_conn
+            .lock()
+            .map_err(|e| format!("SQLite lock: {e}"))?;
+        for key in &to_delete_keys {
+            storage::delete_chunk_by_key(&conn, &config.connection_id, key)
+                .map_err(|e| format!("Failed to delete chunk {key}: {e}"))?;
+        }
+    }
+
+    // 6. Embed new/changed chunks in batches
+    let chunks_to_embed: Vec<_> = all_new
+        .iter()
+        .filter(|(k, ..)| needs_embed_keys.contains(k))
+        .collect();
+
+    let total_to_embed = chunks_to_embed.len();
+    // Count tables that don't need re-embedding (unchanged tables are already "done")
+    let unchanged_tables = {
+        let table_keys_to_embed: std::collections::HashSet<&str> = chunks_to_embed
+            .iter()
+            .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Table))
+            .map(|(k, ..)| k.as_str())
+            .collect();
+        let total_table_chunks = table_chunks.len();
+        total_table_chunks - table_keys_to_embed.len()
+    };
+    let mut tables_done: usize = unchanged_tables;
+
+    for batch_start in (0..total_to_embed).step_by(EMBED_BATCH_SIZE) {
+        if cancellation.is_cancelled() {
+            return Err("Build cancelled".to_string());
+        }
+
+        let batch_end = (batch_start + EMBED_BATCH_SIZE).min(total_to_embed);
+        let batch = &chunks_to_embed[batch_start..batch_end];
+
+        let texts: Vec<String> = batch.iter().map(|(_, text, ..)| text.clone()).collect();
+
+        let embeddings =
+            embeddings::embed_texts(http_client, &config.endpoint, &config.model_id, texts)
+                .await
+                .map_err(|e| format!("Embedding failed: {e}"))?;
+
+        // Store in SQLite with batched transactions
+        {
+            let conn = sqlite_conn
+                .lock()
+                .map_err(|e| format!("SQLite lock: {e}"))?;
+            let mut tx_count = 0;
+            conn.execute_batch("BEGIN")
+                .map_err(|e| format!("BEGIN: {e}"))?;
+
+            for (i, (key, text, hash, chunk_type, db, table, ref_db, ref_table)) in
+                batch.iter().enumerate()
+            {
+                let embedding = &embeddings[i];
+
+                // Check if chunk already exists (update vs insert)
+                let existing = storage::get_chunk_by_key(&conn, &config.connection_id, key)
+                    .map_err(|e| format!("Failed to lookup chunk: {e}"))?;
+
+                if let Some(existing_chunk) = existing {
+                    storage::update_chunk_embedding(
+                        &conn,
+                        existing_chunk.id,
+                        text,
+                        hash,
+                        &config.model_id,
+                        embedding,
+                        &config.connection_id,
+                    )
+                    .map_err(|e| format!("Failed to update chunk: {e}"))?;
+                } else {
+                    let insert = ChunkInsert {
+                        connection_id: config.connection_id.clone(),
+                        chunk_key: key.clone(),
+                        db_name: db.clone(),
+                        table_name: table.clone(),
+                        chunk_type: chunk_type.clone(),
+                        ddl_text: text.clone(),
+                        ddl_hash: hash.clone(),
+                        model_id: config.model_id.clone(),
+                        ref_db_name: ref_db.clone(),
+                        ref_table_name: ref_table.clone(),
+                        embedding: embedding.clone(),
+                    };
+                    storage::insert_chunk(&conn, &insert)
+                        .map_err(|e| format!("Failed to insert chunk: {e}"))?;
+                }
+
+                tx_count += 1;
+                if tx_count >= SQLITE_COMMIT_BATCH {
+                    conn.execute_batch("COMMIT")
+                        .map_err(|e| format!("COMMIT: {e}"))?;
+                    conn.execute_batch("BEGIN")
+                        .map_err(|e| format!("BEGIN: {e}"))?;
+                    tx_count = 0;
+                }
+            }
+
+            conn.execute_batch("COMMIT")
+                .map_err(|e| format!("COMMIT: {e}"))?;
+        }
+
+        // Count how many table chunks (not FK chunks) were in this batch
+        let table_chunks_in_batch = batch
+            .iter()
+            .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Table))
+            .count();
+        tables_done += table_chunks_in_batch;
+        if let Some(cb) = on_progress {
+            cb(BuildProgress {
+                profile_id: config.connection_id.clone(),
+                tables_done,
+                tables_total,
+            });
+        }
+    }
+
+    // 8. Set status = "ready", update last_build_at
+    {
+        let conn = sqlite_conn
+            .lock()
+            .map_err(|e| format!("SQLite lock: {e}"))?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let meta = storage::get_index_meta(&conn, &config.connection_id)
+            .map_err(|e| format!("Failed to get index meta: {e}"))?;
+        if let Some(mut m) = meta {
+            m.status = IndexStatus::Ready;
+            m.last_build_at = Some(now);
+            storage::upsert_index_meta(&conn, &m)
+                .map_err(|e| format!("Failed to update index meta: {e}"))?;
+        }
+    }
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+    Ok(BuildResult {
+        profile_id: config.connection_id.clone(),
+        tables_indexed: tables_total,
+        duration_ms,
+    })
+}
+
+/// Rebuild the index for specific tables only (partial rebuild).
+#[cfg(not(coverage))]
+pub async fn rebuild_tables(
+    config: &BuildConfig,
+    tables: &[(String, String)], // Vec<(db_name, table_name)>
+    sqlite_conn: &Mutex<rusqlite::Connection>,
+    mysql_pool: &sqlx::MySqlPool,
+    http_client: &reqwest::Client,
+    cancellation: &CancellationToken,
+) -> Result<(), String> {
+    // 1. Delete all chunks for specified tables (covers FK chunks on both sides)
+    {
+        let conn = sqlite_conn
+            .lock()
+            .map_err(|e| format!("SQLite lock: {e}"))?;
+        for (db, tbl) in tables {
+            storage::delete_chunks_by_table(&conn, &config.connection_id, db, tbl)
+                .map_err(|e| format!("Failed to delete chunks for {db}.{tbl}: {e}"))?;
+        }
+    }
+
+    // 2. Re-fetch DDL for those tables
+    let mut ddl_inputs = Vec::new();
+    for (db, tbl) in tables {
+        if cancellation.is_cancelled() {
+            return Err("Rebuild cancelled".to_string());
+        }
+        match fetch_create_table(mysql_pool, db, tbl).await {
+            Ok(ddl) => {
+                ddl_inputs.push(TableDdlInput {
+                    db_name: db.clone(),
+                    table_name: tbl.clone(),
+                    create_table_sql: ddl,
+                });
+            }
+            Err(e) => {
+                tracing::warn!(
+                    db_name = %db,
+                    table_name = %tbl,
+                    error = %e,
+                    "Table not found during rebuild (likely dropped), skipping"
+                );
+                // Skip this table — chunks were already deleted above
+                continue;
+            }
+        }
+    }
+
+    // 3. Generate new table + FK chunks
+    let (table_chunks, fk_chunks) = generate_all_chunks(&ddl_inputs);
+
+    // 4. Collect all texts to embed
+    let mut embed_items: Vec<(
+        String,
+        String,
+        String,
+        ChunkType,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+    )> = Vec::new();
+    for (key, text, hash, db, table) in table_chunks {
+        embed_items.push((key, text, hash, ChunkType::Table, db, table, None, None));
+    }
+    for (key, text, hash, fk) in fk_chunks {
+        embed_items.push((
+            key,
+            text,
+            hash,
+            ChunkType::Fk,
+            fk.db_name.clone(),
+            fk.table_name.clone(),
+            Some(fk.ref_db_name),
+            Some(fk.ref_table_name),
+        ));
+    }
+
+    // 5. Embed and store
+    for batch_start in (0..embed_items.len()).step_by(EMBED_BATCH_SIZE) {
+        if cancellation.is_cancelled() {
+            return Err("Rebuild cancelled".to_string());
+        }
+
+        let batch_end = (batch_start + EMBED_BATCH_SIZE).min(embed_items.len());
+        let batch = &embed_items[batch_start..batch_end];
+
+        let texts: Vec<String> = batch.iter().map(|(_, text, ..)| text.clone()).collect();
+        let embeddings =
+            embeddings::embed_texts(http_client, &config.endpoint, &config.model_id, texts)
+                .await
+                .map_err(|e| format!("Embedding failed: {e}"))?;
+
+        let conn = sqlite_conn
+            .lock()
+            .map_err(|e| format!("SQLite lock: {e}"))?;
+        conn.execute_batch("BEGIN")
+            .map_err(|e| format!("BEGIN: {e}"))?;
+
+        for (i, (key, text, hash, chunk_type, db, table, ref_db, ref_table)) in
+            batch.iter().enumerate()
+        {
+            let insert = ChunkInsert {
+                connection_id: config.connection_id.clone(),
+                chunk_key: key.clone(),
+                db_name: db.clone(),
+                table_name: table.clone(),
+                chunk_type: chunk_type.clone(),
+                ddl_text: text.clone(),
+                ddl_hash: hash.clone(),
+                model_id: config.model_id.clone(),
+                ref_db_name: ref_db.clone(),
+                ref_table_name: ref_table.clone(),
+                embedding: embeddings[i].clone(),
+            };
+            storage::insert_chunk(&conn, &insert)
+                .map_err(|e| format!("Failed to insert chunk: {e}"))?;
+        }
+
+        conn.execute_batch("COMMIT")
+            .map_err(|e| format!("COMMIT: {e}"))?;
+    }
+
+    // Restore any inbound FK chunks deleted during the targeted wipe by running
+    // a full incremental diff-based build afterward.
+    build_index(config, sqlite_conn, mysql_pool, http_client, None, cancellation).await?;
+
+    Ok(())
+}
+
+// ── Internal helpers ─────────────────────────────────────────────────────
+
+/// Handle model change: if the stored model differs from config, drop the vec table,
+/// clear all chunks, detect new dimension, and recreate.
+#[cfg(not(coverage))]
+async fn handle_model_change(
+    config: &BuildConfig,
+    sqlite_conn: &Mutex<rusqlite::Connection>,
+    http_client: &reqwest::Client,
+) -> Result<(), String> {
+    let existing_meta = {
+        let conn = sqlite_conn
+            .lock()
+            .map_err(|e| format!("SQLite lock: {e}"))?;
+        storage::get_index_meta(&conn, &config.connection_id)
+            .map_err(|e| format!("Failed to get index meta: {e}"))?
+    };
+
+    match existing_meta {
+        Some(meta) if meta.model_id != config.model_id => {
+            // Model changed — rebuild from scratch
+            tracing::info!(
+                old_model = %meta.model_id,
+                new_model = %config.model_id,
+                "Schema index model changed, rebuilding"
+            );
+
+            let dimension = embeddings::detect_embedding_dimension(
+                http_client,
+                &config.endpoint,
+                &config.model_id,
+            )
+            .await
+            .map_err(|e| format!("Failed to detect embedding dimension: {e}"))?;
+
+            let conn = sqlite_conn
+                .lock()
+                .map_err(|e| format!("SQLite lock: {e}"))?;
+            // Delete chunks BEFORE dropping vec table, because delete_all_chunks
+            // needs to remove rows from the vec table first.
+            storage::delete_all_chunks(&conn, &config.connection_id)
+                .map_err(|e| format!("Failed to delete chunks: {e}"))?;
+            storage::drop_vec_table(&conn, &config.connection_id)
+                .map_err(|e| format!("Failed to drop vec table: {e}"))?;
+            storage::create_vec_table(&conn, &config.connection_id, dimension)
+                .map_err(|e| format!("Failed to create vec table: {e}"))?;
+
+            let new_meta = IndexMeta {
+                connection_id: config.connection_id.clone(),
+                model_id: config.model_id.clone(),
+                embedding_dimension: dimension as i64,
+                last_build_at: None,
+                status: IndexStatus::Building,
+                vec_schema_version: Some(storage::VEC_SCHEMA_VERSION as i64),
+            };
+            storage::upsert_index_meta(&conn, &new_meta)
+                .map_err(|e| format!("Failed to upsert index meta: {e}"))?;
+        }
+        Some(meta) if meta.vec_schema_version != Some(storage::VEC_SCHEMA_VERSION as i64) => {
+            // Same model but stale vec0 schema (e.g. L2 → cosine migration) —
+            // drop and recreate with the current schema.
+            tracing::info!(
+                old_version = ?meta.vec_schema_version,
+                new_version = storage::VEC_SCHEMA_VERSION,
+                "Vec0 table schema version changed, rebuilding"
+            );
+
+            let dimension = meta.embedding_dimension as usize;
+            let conn = sqlite_conn
+                .lock()
+                .map_err(|e| format!("SQLite lock: {e}"))?;
+            storage::delete_all_chunks(&conn, &config.connection_id)
+                .map_err(|e| format!("Failed to delete chunks: {e}"))?;
+            storage::drop_vec_table(&conn, &config.connection_id)
+                .map_err(|e| format!("Failed to drop vec table: {e}"))?;
+            storage::create_vec_table(&conn, &config.connection_id, dimension)
+                .map_err(|e| format!("Failed to create vec table: {e}"))?;
+
+            let new_meta = IndexMeta {
+                connection_id: config.connection_id.clone(),
+                model_id: config.model_id.clone(),
+                embedding_dimension: dimension as i64,
+                last_build_at: None,
+                status: IndexStatus::Building,
+                vec_schema_version: Some(storage::VEC_SCHEMA_VERSION as i64),
+            };
+            storage::upsert_index_meta(&conn, &new_meta)
+                .map_err(|e| format!("Failed to upsert index meta: {e}"))?;
+        }
+        None => {
+            // No meta yet — detect dimension and create
+            let dimension = embeddings::detect_embedding_dimension(
+                http_client,
+                &config.endpoint,
+                &config.model_id,
+            )
+            .await
+            .map_err(|e| format!("Failed to detect embedding dimension: {e}"))?;
+
+            let conn = sqlite_conn
+                .lock()
+                .map_err(|e| format!("SQLite lock: {e}"))?;
+            storage::create_vec_table(&conn, &config.connection_id, dimension)
+                .map_err(|e| format!("Failed to create vec table: {e}"))?;
+
+            let new_meta = IndexMeta {
+                connection_id: config.connection_id.clone(),
+                model_id: config.model_id.clone(),
+                embedding_dimension: dimension as i64,
+                last_build_at: None,
+                status: IndexStatus::Building,
+                vec_schema_version: Some(storage::VEC_SCHEMA_VERSION as i64),
+            };
+            storage::upsert_index_meta(&conn, &new_meta)
+                .map_err(|e| format!("Failed to upsert index meta: {e}"))?;
+        }
+        Some(_) => {
+            // Same model, same vec schema — continue incrementally
+        }
+    }
+
+    Ok(())
+}
+
+/// Generate table + FK chunks from DDL inputs.
+///
+/// Returns:
+/// - table_chunks: `Vec<(chunk_key, ddl_text, ddl_hash, db_name, table_name)>`
+/// - fk_chunks: `Vec<(chunk_key, fk_text, fk_hash, FkInput)>`
+pub fn generate_all_chunks(
+    ddl_inputs: &[TableDdlInput],
+) -> (
+    Vec<(String, String, String, String, String)>,
+    Vec<(String, String, String, FkInput)>,
+) {
+    let mut table_chunks = Vec::new();
+    let mut fk_chunks = Vec::new();
+
+    for input in ddl_inputs {
+        // Table chunk
+        let compacted = compact_ddl(&input.create_table_sql);
+        let compacted = normalize_table_ddl(&input.db_name, &input.table_name, &compacted);
+        let hash = compute_hash(&compacted);
+        let key = table_chunk_key(&input.db_name, &input.table_name);
+        table_chunks.push((
+            key,
+            compacted,
+            hash,
+            input.db_name.clone(),
+            input.table_name.clone(),
+        ));
+
+        // FK chunks from DDL parsing
+        let fks = parse_fks_from_ddl(&input.db_name, &input.table_name, &input.create_table_sql);
+        for fk in fks {
+            let fk_text = generate_fk_chunk_text(&fk);
+            let fk_hash = compute_hash(&fk_text);
+            let fk_key = fk_chunk_key(&fk.db_name, &fk.table_name, &fk.constraint_name);
+            fk_chunks.push((fk_key, fk_text, fk_hash, fk));
+        }
+    }
+
+    (table_chunks, fk_chunks)
+}
+
+// ── MySQL fetch helpers (excluded from coverage builds) ──────────────────
+
+/// Fetch non-system database names from MySQL.
+#[cfg(not(coverage))]
+async fn fetch_database_list(pool: &sqlx::MySqlPool) -> Result<Vec<String>, String> {
+    use sqlx::Row;
+    let rows =
+        sqlx::query("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME")
+            .fetch_all(pool)
+            .await
+            .map_err(|e| format!("Failed to list databases: {e}"))?;
+
+    let system_dbs = ["information_schema", "mysql", "performance_schema", "sys"];
+    let mut names = Vec::new();
+    for row in &rows {
+        let name: String = row
+            .try_get::<String, _>(0)
+            .or_else(|_| {
+                row.try_get::<Vec<u8>, _>(0)
+                    .map(|b| String::from_utf8_lossy(&b).into_owned())
+            })
+            .map_err(|e| format!("Failed to decode database name: {e}"))?;
+        if !system_dbs.contains(&name.to_lowercase().as_str()) {
+            names.push(name);
+        }
+    }
+    Ok(names)
+}
+
+/// Fetch table names from a database.
+#[cfg(not(coverage))]
+async fn fetch_table_list(pool: &sqlx::MySqlPool, database: &str) -> Result<Vec<String>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+    )
+    .bind(database)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("Failed to list tables in {database}: {e}"))?;
+
+    let mut names = Vec::new();
+    for row in &rows {
+        let name: String = row
+            .try_get::<String, _>(0)
+            .or_else(|_| {
+                row.try_get::<Vec<u8>, _>(0)
+                    .map(|b| String::from_utf8_lossy(&b).into_owned())
+            })
+            .map_err(|e| format!("Failed to decode table name: {e}"))?;
+        names.push(name);
+    }
+    Ok(names)
+}
+
+/// Fetch `SHOW CREATE TABLE` output.
+#[cfg(not(coverage))]
+async fn fetch_create_table(
+    pool: &sqlx::MySqlPool,
+    database: &str,
+    table: &str,
+) -> Result<String, String> {
+    use crate::mysql::schema_queries::safe_identifier;
+    use sqlx::Row;
+
+    let safe_db = safe_identifier(database)?;
+    let safe_table = safe_identifier(table)?;
+    let sql = format!("SHOW CREATE TABLE {safe_db}.{safe_table}");
+    let row = sqlx::query(&sql)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("SHOW CREATE TABLE {database}.{table} failed: {e}"))?
+        .ok_or_else(|| format!("Table {database}.{table} not found"))?;
+
+    let ddl: String = row
+        .try_get::<String, _>(1)
+        .or_else(|_| {
+            row.try_get::<Vec<u8>, _>(1)
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+        })
+        .unwrap_or_default();
+
+    Ok(ddl)
+}

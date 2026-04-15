@@ -11,25 +11,28 @@ use common::mock_mysql_server::{
     MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse, MockQueryStep, MockTimeValue,
 };
 use opensrv_mysql::{ColumnFlags, ColumnType};
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
+use serde_json::json;
 use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
 use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
 use sqllumen_lib::mysql::query_executor::{execute_query_impl, ExecuteQueryResult};
 use sqllumen_lib::state::AppState;
-use serde::de::DeserializeOwned;
-use serde::Deserialize;
-use serde_json::json;
 use tauri::ipc::{CallbackFn, InvokeBody};
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
 
-fn build_query_commands_app(
-) -> (
+fn build_query_commands_app() -> (
     tauri::App<tauri::test::MockRuntime>,
     tauri::WebviewWindow<tauri::test::MockRuntime>,
 ) {
     let app = mock_builder()
         .manage(common::test_app_state())
-        .invoke_handler(tauri::generate_handler![save_connection, open_connection, execute_query])
+        .invoke_handler(tauri::generate_handler![
+            save_connection,
+            open_connection,
+            execute_query
+        ])
         .build(mock_context(noop_assets()))
         .expect("should build test app");
     let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -62,7 +65,14 @@ async fn execute_query(
     page_size: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<ExecuteQueryResult, String> {
-    execute_query_impl(&state, &connection_id, &tab_id, &sql, page_size.unwrap_or(1000)).await
+    execute_query_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        &sql,
+        page_size.unwrap_or(1000),
+    )
+    .await
 }
 
 fn invoke_tauri_command<T: DeserializeOwned>(
@@ -76,7 +86,9 @@ fn invoke_tauri_command<T: DeserializeOwned>(
             cmd: cmd.into(),
             callback: CallbackFn(0),
             error: CallbackFn(1),
-            url: "http://tauri.localhost".parse().expect("test URL should parse"),
+            url: "http://tauri.localhost"
+                .parse()
+                .expect("test URL should parse"),
             body: InvokeBody::Json(body),
             headers: Default::default(),
             invoke_key: INVOKE_KEY.to_string(),
@@ -247,14 +259,18 @@ async fn execute_query_ipc_serializes_mysql_result_values_instead_of_nulls() {
                 NaiveDate::from_ymd_opt(2023, 10, 1)
                     .expect("date should be valid")
                     .and_hms_opt(0, 0, 0)
-                .expect("time should be valid"),
+                    .expect("time should be valid"),
             ),
         ],
     })
     .await;
 
     assert_eq!(
-        result.columns.iter().map(|column| column.name.as_str()).collect::<Vec<_>>(),
+        result
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect::<Vec<_>>(),
         vec!["id", "type", "consumption", "created_at"]
     );
     assert_eq!(result.total_rows, 1);
@@ -485,7 +501,10 @@ async fn execute_query_ipc_treats_call_as_dml_after_call_removal_from_select_lik
     .await;
 
     // CALL treated as DML: no columns, no rows, affected_rows from execute()
-    assert!(result.columns.is_empty(), "CALL should be treated as DML — no columns");
+    assert!(
+        result.columns.is_empty(),
+        "CALL should be treated as DML — no columns"
+    );
     assert_eq!(result.total_rows, 0);
     assert!(result.first_page.is_empty());
 }

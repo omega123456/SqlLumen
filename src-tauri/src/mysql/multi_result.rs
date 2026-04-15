@@ -31,7 +31,10 @@ pub fn is_call_statement(sql: &str) -> bool {
 /// that matches the strings returned by `sqlx` for consistency.
 ///
 /// Uses the column flags to distinguish UNSIGNED variants and BINARY types.
-pub fn column_type_display_name(col_type: mysql_async::consts::ColumnType, flags: mysql_async::consts::ColumnFlags) -> String {
+pub fn column_type_display_name(
+    col_type: mysql_async::consts::ColumnType,
+    flags: mysql_async::consts::ColumnFlags,
+) -> String {
     use mysql_async::consts::ColumnType::*;
 
     let is_unsigned = flags.contains(mysql_async::consts::ColumnFlags::UNSIGNED_FLAG);
@@ -39,19 +42,39 @@ pub fn column_type_display_name(col_type: mysql_async::consts::ColumnType, flags
 
     match col_type {
         MYSQL_TYPE_TINY => {
-            if is_unsigned { "TINYINT UNSIGNED".to_string() } else { "TINYINT".to_string() }
+            if is_unsigned {
+                "TINYINT UNSIGNED".to_string()
+            } else {
+                "TINYINT".to_string()
+            }
         }
         MYSQL_TYPE_SHORT => {
-            if is_unsigned { "SMALLINT UNSIGNED".to_string() } else { "SMALLINT".to_string() }
+            if is_unsigned {
+                "SMALLINT UNSIGNED".to_string()
+            } else {
+                "SMALLINT".to_string()
+            }
         }
         MYSQL_TYPE_INT24 => {
-            if is_unsigned { "MEDIUMINT UNSIGNED".to_string() } else { "MEDIUMINT".to_string() }
+            if is_unsigned {
+                "MEDIUMINT UNSIGNED".to_string()
+            } else {
+                "MEDIUMINT".to_string()
+            }
         }
         MYSQL_TYPE_LONG => {
-            if is_unsigned { "INT UNSIGNED".to_string() } else { "INT".to_string() }
+            if is_unsigned {
+                "INT UNSIGNED".to_string()
+            } else {
+                "INT".to_string()
+            }
         }
         MYSQL_TYPE_LONGLONG => {
-            if is_unsigned { "BIGINT UNSIGNED".to_string() } else { "BIGINT".to_string() }
+            if is_unsigned {
+                "BIGINT UNSIGNED".to_string()
+            } else {
+                "BIGINT".to_string()
+            }
         }
         MYSQL_TYPE_FLOAT => "FLOAT".to_string(),
         MYSQL_TYPE_DOUBLE => "DOUBLE".to_string(),
@@ -66,22 +89,46 @@ pub fn column_type_display_name(col_type: mysql_async::consts::ColumnType, flags
         MYSQL_TYPE_ENUM => "ENUM".to_string(),
         MYSQL_TYPE_SET => "SET".to_string(),
         MYSQL_TYPE_TINY_BLOB => {
-            if is_binary { "TINYBLOB".to_string() } else { "TINYTEXT".to_string() }
+            if is_binary {
+                "TINYBLOB".to_string()
+            } else {
+                "TINYTEXT".to_string()
+            }
         }
         MYSQL_TYPE_BLOB => {
-            if is_binary { "BLOB".to_string() } else { "TEXT".to_string() }
+            if is_binary {
+                "BLOB".to_string()
+            } else {
+                "TEXT".to_string()
+            }
         }
         MYSQL_TYPE_MEDIUM_BLOB => {
-            if is_binary { "MEDIUMBLOB".to_string() } else { "MEDIUMTEXT".to_string() }
+            if is_binary {
+                "MEDIUMBLOB".to_string()
+            } else {
+                "MEDIUMTEXT".to_string()
+            }
         }
         MYSQL_TYPE_LONG_BLOB => {
-            if is_binary { "LONGBLOB".to_string() } else { "LONGTEXT".to_string() }
+            if is_binary {
+                "LONGBLOB".to_string()
+            } else {
+                "LONGTEXT".to_string()
+            }
         }
         MYSQL_TYPE_STRING => {
-            if is_binary { "BINARY".to_string() } else { "CHAR".to_string() }
+            if is_binary {
+                "BINARY".to_string()
+            } else {
+                "CHAR".to_string()
+            }
         }
         MYSQL_TYPE_VAR_STRING => {
-            if is_binary { "VARBINARY".to_string() } else { "VARCHAR".to_string() }
+            if is_binary {
+                "VARBINARY".to_string()
+            } else {
+                "VARCHAR".to_string()
+            }
         }
         MYSQL_TYPE_GEOMETRY => "GEOMETRY".to_string(),
         MYSQL_TYPE_NULL => "NULL".to_string(),
@@ -125,8 +172,7 @@ pub fn serialize_bytes_value(
         }
 
         // BLOB/BINARY types: base64-encode if binary flag is set
-        MYSQL_TYPE_TINY_BLOB | MYSQL_TYPE_BLOB | MYSQL_TYPE_MEDIUM_BLOB
-        | MYSQL_TYPE_LONG_BLOB => {
+        MYSQL_TYPE_TINY_BLOB | MYSQL_TYPE_BLOB | MYSQL_TYPE_MEDIUM_BLOB | MYSQL_TYPE_LONG_BLOB => {
             if is_binary {
                 serde_json::Value::String(BASE64_STANDARD.encode(bytes))
             } else {
@@ -140,9 +186,7 @@ pub fn serialize_bytes_value(
         }
 
         // JSON type — return as string (it's already JSON text, but we wrap it)
-        MYSQL_TYPE_JSON => {
-            serde_json::Value::String(String::from_utf8_lossy(bytes).into_owned())
-        }
+        MYSQL_TYPE_JSON => serde_json::Value::String(String::from_utf8_lossy(bytes).into_owned()),
 
         // All other Bytes values (VARCHAR, TEXT, ENUM, SET, etc.) — UTF-8 string
         _ => serde_json::Value::String(String::from_utf8_lossy(bytes).into_owned()),
@@ -159,9 +203,7 @@ pub fn serialize_mysql_value(
     match value {
         mysql_async::Value::NULL => serde_json::Value::Null,
 
-        mysql_async::Value::Bytes(bytes) => {
-            serialize_bytes_value(bytes, col_type, flags)
-        }
+        mysql_async::Value::Bytes(bytes) => serialize_bytes_value(bytes, col_type, flags),
 
         mysql_async::Value::Int(n) => {
             if (-JS_SAFE_INTEGER_MAX..=JS_SAFE_INTEGER_MAX).contains(n) {
@@ -179,25 +221,18 @@ pub fn serialize_mysql_value(
             }
         }
 
-        mysql_async::Value::Float(f) => {
-            serde_json::Number::from_f64(*f as f64)
-                .map(serde_json::Value::Number)
-                .unwrap_or(serde_json::Value::Null)
-        }
+        mysql_async::Value::Float(f) => serde_json::Number::from_f64(*f as f64)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
 
-        mysql_async::Value::Double(f) => {
-            serde_json::Number::from_f64(*f)
-                .map(serde_json::Value::Number)
-                .unwrap_or(serde_json::Value::Null)
-        }
+        mysql_async::Value::Double(f) => serde_json::Number::from_f64(*f)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
 
         mysql_async::Value::Date(year, month, day, hour, min, sec, micro) => {
             if *hour == 0 && *min == 0 && *sec == 0 && *micro == 0 {
                 // DATE only
-                serde_json::Value::String(format!(
-                    "{:04}-{:02}-{:02}",
-                    year, month, day
-                ))
+                serde_json::Value::String(format!("{:04}-{:02}-{:02}", year, month, day))
             } else if *micro == 0 {
                 // DATETIME/TIMESTAMP without microseconds
                 serde_json::Value::String(format!(
@@ -254,7 +289,6 @@ fn map_mysql_error(e: &mysql_async::Error) -> String {
 pub async fn build_connection(
     params: &crate::mysql::registry::StoredConnectionParams,
 ) -> Result<mysql_async::Conn, String> {
-
     // Retrieve password from keychain
     let password = if params.has_password {
         crate::credentials::retrieve_password_for_connection(
@@ -282,15 +316,15 @@ pub async fn build_connection(
         let mut ssl_opts = mysql_async::SslOpts::default();
 
         if let Some(ref ca_path) = params.ssl_ca_path {
-            ssl_opts = ssl_opts.with_root_certs(vec![
-                std::path::PathBuf::from(ca_path).into()
-            ]);
+            ssl_opts = ssl_opts.with_root_certs(vec![std::path::PathBuf::from(ca_path).into()]);
         } else {
             // No CA cert: accept any cert (equivalent to sqlx Required mode)
             ssl_opts = ssl_opts.with_danger_accept_invalid_certs(true);
         }
 
-        if let (Some(ref cert_path), Some(ref key_path)) = (&params.ssl_cert_path, &params.ssl_key_path) {
+        if let (Some(ref cert_path), Some(ref key_path)) =
+            (&params.ssl_cert_path, &params.ssl_key_path)
+        {
             let identity = mysql_async::ClientIdentity::new(
                 std::path::PathBuf::from(cert_path).into(),
                 std::path::PathBuf::from(key_path).into(),
@@ -321,10 +355,16 @@ async fn execute_single_select_statement(
     sql: &str,
     auto_limit_applied: bool,
     page_size_used: usize,
-) -> Result<(crate::mysql::query_executor::StoredResult, crate::mysql::query_executor::MultiQueryResultItem), String> {
+) -> Result<
+    (
+        crate::mysql::query_executor::StoredResult,
+        crate::mysql::query_executor::MultiQueryResultItem,
+    ),
+    String,
+> {
     use crate::mysql::query_executor::{
-        ColumnMeta, MultiQueryResultItem, StoredResult,
-        calculate_total_pages, get_page_rows, inject_limit_into_select,
+        calculate_total_pages, get_page_rows, inject_limit_into_select, ColumnMeta,
+        MultiQueryResultItem, StoredResult,
     };
     use mysql_async::prelude::Queryable;
 
@@ -336,7 +376,9 @@ async fn execute_single_select_statement(
 
     let start = std::time::Instant::now();
     crate::mysql::query_log::log_outgoing_sql(&sql_to_execute);
-    let mut result = conn.query_iter(&sql_to_execute).await
+    let mut result = conn
+        .query_iter(&sql_to_execute)
+        .await
         .map_err(|e| map_mysql_error(&e))?;
 
     let columns_ref = result.columns_ref();
@@ -348,13 +390,15 @@ async fn execute_single_select_statement(
         })
         .collect();
 
-    let col_types: Vec<(mysql_async::consts::ColumnType, mysql_async::consts::ColumnFlags)> = columns_ref
+    let col_types: Vec<(
+        mysql_async::consts::ColumnType,
+        mysql_async::consts::ColumnFlags,
+    )> = columns_ref
         .iter()
         .map(|c: &mysql_async::Column| (c.column_type(), c.flags()))
         .collect();
 
-    let rows: Vec<mysql_async::Row> = result.collect().await
-        .map_err(|e| map_mysql_error(&e))?;
+    let rows: Vec<mysql_async::Row> = result.collect().await.map_err(|e| map_mysql_error(&e))?;
 
     // Drop remaining result sets (if any unexpected ones)
     drop(result);
@@ -405,13 +449,21 @@ async fn execute_single_dml_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
     page_size_used: usize,
-) -> Result<(crate::mysql::query_executor::StoredResult, crate::mysql::query_executor::MultiQueryResultItem), String> {
-    use crate::mysql::query_executor::{StoredResult, MultiQueryResultItem};
+) -> Result<
+    (
+        crate::mysql::query_executor::StoredResult,
+        crate::mysql::query_executor::MultiQueryResultItem,
+    ),
+    String,
+> {
+    use crate::mysql::query_executor::{MultiQueryResultItem, StoredResult};
     use mysql_async::prelude::Queryable;
 
     let start = std::time::Instant::now();
     crate::mysql::query_log::log_outgoing_sql(sql);
-    let mut result = conn.query_iter(sql).await
+    let mut result = conn
+        .query_iter(sql)
+        .await
         .map_err(|e| map_mysql_error(&e))?;
 
     let affected = result.affected_rows();
@@ -458,16 +510,23 @@ async fn execute_call_statement(
     conn: &mut mysql_async::Conn,
     sql: &str,
     page_size_used: usize,
-) -> Result<Vec<(crate::mysql::query_executor::StoredResult, crate::mysql::query_executor::MultiQueryResultItem)>, String> {
+) -> Result<
+    Vec<(
+        crate::mysql::query_executor::StoredResult,
+        crate::mysql::query_executor::MultiQueryResultItem,
+    )>,
+    String,
+> {
     use crate::mysql::query_executor::{
-        ColumnMeta, MultiQueryResultItem, StoredResult,
-        calculate_total_pages, get_page_rows,
+        calculate_total_pages, get_page_rows, ColumnMeta, MultiQueryResultItem, StoredResult,
     };
     use mysql_async::prelude::Queryable;
 
     let start = std::time::Instant::now();
     crate::mysql::query_log::log_outgoing_sql(sql);
-    let mut result = conn.query_iter(sql).await
+    let mut result = conn
+        .query_iter(sql)
+        .await
         .map_err(|e| map_mysql_error(&e))?;
 
     let mut pairs: Vec<(StoredResult, MultiQueryResultItem)> = Vec::new();
@@ -496,13 +555,16 @@ async fn execute_call_statement(
             })
             .collect();
 
-        let col_types: Vec<(mysql_async::consts::ColumnType, mysql_async::consts::ColumnFlags)> = columns_ref
+        let col_types: Vec<(
+            mysql_async::consts::ColumnType,
+            mysql_async::consts::ColumnFlags,
+        )> = columns_ref
             .iter()
             .map(|c: &mysql_async::Column| (c.column_type(), c.flags()))
             .collect();
 
-        let rows: Vec<mysql_async::Row> = result.collect().await
-            .map_err(|e| map_mysql_error(&e))?;
+        let rows: Vec<mysql_async::Row> =
+            result.collect().await.map_err(|e| map_mysql_error(&e))?;
 
         let serialized_rows: Vec<Vec<serde_json::Value>> = rows
             .iter()
@@ -596,16 +658,22 @@ pub async fn execute_multi_query_internal(
     statements: &[String],
     page_size: usize,
     is_read_only: bool,
-) -> Result<(Vec<crate::mysql::query_executor::StoredResult>, Vec<crate::mysql::query_executor::MultiQueryResultItem>), String> {
+) -> Result<
+    (
+        Vec<crate::mysql::query_executor::StoredResult>,
+        Vec<crate::mysql::query_executor::MultiQueryResultItem>,
+    ),
+    String,
+> {
     use crate::mysql::query_executor::{
-        MultiQueryResultItem, StoredResult,
-        strip_non_executable_comments, get_first_keyword, find_with_main_keyword,
-        is_select_like, needs_auto_limit,
-        is_read_only_allowed,
+        find_with_main_keyword, get_first_keyword, is_read_only_allowed, is_select_like,
+        needs_auto_limit, strip_non_executable_comments, MultiQueryResultItem, StoredResult,
     };
     use mysql_async::prelude::Queryable;
 
-    let params = state.registry.get_connection_params(connection_id)
+    let params = state
+        .registry
+        .get_connection_params(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found in registry"))?;
 
     let mut conn = build_connection(&params).await?;
@@ -619,7 +687,11 @@ pub async fn execute_multi_query_internal(
 
     // Register thread ID for cancellation
     let key = (connection_id.to_string(), tab_id.to_string());
-    state.running_queries.write().await.insert(key.clone(), thread_id);
+    state
+        .running_queries
+        .write()
+        .await
+        .insert(key.clone(), thread_id);
 
     let page_size_used = if page_size == 0 { 1000 } else { page_size };
     let mut stored_results: Vec<StoredResult> = Vec::new();
@@ -776,7 +848,10 @@ pub async fn execute_multi_query_internal(
 #[cfg(not(coverage))]
 fn serialize_row(
     row: &mysql_async::Row,
-    col_types: &[(mysql_async::consts::ColumnType, mysql_async::consts::ColumnFlags)],
+    col_types: &[(
+        mysql_async::consts::ColumnType,
+        mysql_async::consts::ColumnFlags,
+    )],
 ) -> Vec<serde_json::Value> {
     (0..col_types.len())
         .map(|i| {

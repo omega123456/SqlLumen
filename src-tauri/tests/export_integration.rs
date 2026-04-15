@@ -1,15 +1,15 @@
 //! Integration tests for the export module — CSV, JSON, SQL, and XLSX writers.
 
+use rusqlite::Connection;
+use sqllumen_lib::commands::export::{export_results_impl, export_with_data};
 use sqllumen_lib::export::csv_writer::write_csv;
 use sqllumen_lib::export::json_writer::write_json;
 use sqllumen_lib::export::sql_writer::write_sql;
 use sqllumen_lib::export::xlsx_writer::write_xlsx;
 use sqllumen_lib::export::{ExportFormat, ExportOptions};
-use sqllumen_lib::commands::export::{export_results_impl, export_with_data};
 use sqllumen_lib::mysql::query_executor::{ColumnMeta, StoredResult};
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::state::AppState;
-use rusqlite::Connection;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
 
@@ -29,6 +29,10 @@ fn test_state() -> AppState {
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        http_client: reqwest::Client::new(),
     }
 }
 
@@ -221,8 +225,12 @@ fn test_sql_insert() {
     write_sql(&mut buf, &columns, &rows, true, "users").expect("write_sql should succeed");
     let output = String::from_utf8(buf).unwrap();
 
-    assert!(output.contains("INSERT INTO `users` (`id`, `name`, `email`) VALUES (1, 'Alice', 'alice@example.com');"));
-    assert!(output.contains("INSERT INTO `users` (`id`, `name`, `email`) VALUES (2, 'Bob', 'bob@example.com');"));
+    assert!(output.contains(
+        "INSERT INTO `users` (`id`, `name`, `email`) VALUES (1, 'Alice', 'alice@example.com');"
+    ));
+    assert!(output.contains(
+        "INSERT INTO `users` (`id`, `name`, `email`) VALUES (2, 'Bob', 'bob@example.com');"
+    ));
 }
 
 #[test]
@@ -291,8 +299,7 @@ fn test_sql_backtick_in_table_name() {
     let columns = vec!["id".to_string()];
     let rows = vec![vec![serde_json::json!(1)]];
     let mut buf = Vec::new();
-    write_sql(&mut buf, &columns, &rows, true, "foo`bar")
-        .expect("write_sql should succeed");
+    write_sql(&mut buf, &columns, &rows, true, "foo`bar").expect("write_sql should succeed");
     let output = String::from_utf8(buf).unwrap();
     // Backtick in table name should be doubled
     assert!(output.contains("INSERT INTO `foo``bar`"));
@@ -303,8 +310,7 @@ fn test_sql_backtick_in_column_name() {
     let columns = vec!["col`name".to_string()];
     let rows = vec![vec![serde_json::json!(42)]];
     let mut buf = Vec::new();
-    write_sql(&mut buf, &columns, &rows, true, "t")
-        .expect("write_sql should succeed");
+    write_sql(&mut buf, &columns, &rows, true, "t").expect("write_sql should succeed");
     let output = String::from_utf8(buf).unwrap();
     // Backtick in column name should be doubled
     assert!(output.contains("`col``name`"));
@@ -315,8 +321,7 @@ fn test_sql_backslash_in_string_value() {
     let columns = vec!["path".to_string()];
     let rows = vec![vec![serde_json::json!("C:\\Users\\test")]];
     let mut buf = Vec::new();
-    write_sql(&mut buf, &columns, &rows, true, "t")
-        .expect("write_sql should succeed");
+    write_sql(&mut buf, &columns, &rows, true, "t").expect("write_sql should succeed");
     let output = String::from_utf8(buf).unwrap();
     // Backslashes should be escaped
     assert!(output.contains("'C:\\\\Users\\\\test'"));
@@ -357,7 +362,8 @@ fn test_export_with_data_sql_default_table_name() {
         table_name: None, // should default to "exported_results"
     };
 
-    let result = export_with_data(&columns, &rows, options).expect("export_with_data should succeed");
+    let result =
+        export_with_data(&columns, &rows, options).expect("export_with_data should succeed");
     assert_eq!(result.rows_exported, 2);
     assert!(result.bytes_written > 0);
 
@@ -414,31 +420,144 @@ fn test_export_with_data_sql_with_custom_table_name() {
     let _ = std::fs::remove_file(&path);
 }
 
+// ── Serde round-trip tests for export types ─────────────────────────────────
+
+#[test]
+fn export_format_serde_round_trip() {
+    use sqllumen_lib::export::ExportFormat;
+
+    for (format, expected_str) in [
+        (ExportFormat::Csv, "\"csv\""),
+        (ExportFormat::Json, "\"json\""),
+        (ExportFormat::Xlsx, "\"xlsx\""),
+        (ExportFormat::SqlInsert, "\"sql-insert\""),
+    ] {
+        let json = serde_json::to_string(&format).unwrap();
+        assert_eq!(json, expected_str);
+        let deserialized: ExportFormat = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, format);
+    }
+}
+
+#[test]
+fn export_format_debug_and_clone() {
+    use sqllumen_lib::export::ExportFormat;
+
+    let fmt = ExportFormat::Csv;
+    let cloned = fmt.clone();
+    let debug_str = format!("{:?}", cloned);
+    assert!(debug_str.contains("Csv"));
+}
+
+#[test]
+fn export_options_serde_round_trip() {
+    let options = ExportOptions {
+        format: ExportFormat::Json,
+        file_path: "/tmp/export.json".to_string(),
+        include_headers: true,
+        table_name: Some("my_table".to_string()),
+    };
+
+    let json = serde_json::to_string(&options).unwrap();
+    assert!(json.contains("filePath"));
+    assert!(json.contains("includeHeaders"));
+    assert!(json.contains("tableName"));
+
+    let deserialized: ExportOptions = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized.format, ExportFormat::Json);
+    assert_eq!(deserialized.file_path, "/tmp/export.json");
+    assert!(deserialized.include_headers);
+    assert_eq!(deserialized.table_name, Some("my_table".to_string()));
+}
+
+#[test]
+fn export_options_debug_and_clone() {
+    let options = ExportOptions {
+        format: ExportFormat::Xlsx,
+        file_path: "/tmp/test.xlsx".to_string(),
+        include_headers: false,
+        table_name: None,
+    };
+
+    let cloned = options.clone();
+    assert_eq!(cloned.file_path, options.file_path);
+
+    let debug_str = format!("{:?}", options);
+    assert!(debug_str.contains("Xlsx"));
+}
+
+#[test]
+fn export_result_serde_round_trip() {
+    use sqllumen_lib::export::ExportResult;
+
+    let result = ExportResult {
+        bytes_written: 1024,
+        rows_exported: 50,
+    };
+
+    let json = serde_json::to_string(&result).unwrap();
+    assert!(json.contains("bytesWritten"));
+    assert!(json.contains("rowsExported"));
+
+    let deserialized: ExportResult = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized.bytes_written, 1024);
+    assert_eq!(deserialized.rows_exported, 50);
+}
+
+#[test]
+fn export_result_debug() {
+    use sqllumen_lib::export::ExportResult;
+
+    let result = ExportResult {
+        bytes_written: 512,
+        rows_exported: 10,
+    };
+
+    let debug_str = format!("{:?}", result);
+    assert!(debug_str.contains("512"));
+    assert!(debug_str.contains("10"));
+}
+
 // ── ExportFormat::from_format_str ─────────────────────────────────────────
 
 #[test]
 fn test_from_format_str_csv() {
-    assert_eq!(ExportFormat::from_format_str("csv").unwrap(), ExportFormat::Csv);
+    assert_eq!(
+        ExportFormat::from_format_str("csv").unwrap(),
+        ExportFormat::Csv
+    );
 }
 
 #[test]
 fn test_from_format_str_json() {
-    assert_eq!(ExportFormat::from_format_str("json").unwrap(), ExportFormat::Json);
+    assert_eq!(
+        ExportFormat::from_format_str("json").unwrap(),
+        ExportFormat::Json
+    );
 }
 
 #[test]
 fn test_from_format_str_xlsx() {
-    assert_eq!(ExportFormat::from_format_str("xlsx").unwrap(), ExportFormat::Xlsx);
+    assert_eq!(
+        ExportFormat::from_format_str("xlsx").unwrap(),
+        ExportFormat::Xlsx
+    );
 }
 
 #[test]
 fn test_from_format_str_sql() {
-    assert_eq!(ExportFormat::from_format_str("sql").unwrap(), ExportFormat::SqlInsert);
+    assert_eq!(
+        ExportFormat::from_format_str("sql").unwrap(),
+        ExportFormat::SqlInsert
+    );
 }
 
 #[test]
 fn test_from_format_str_sql_insert() {
-    assert_eq!(ExportFormat::from_format_str("sql-insert").unwrap(), ExportFormat::SqlInsert);
+    assert_eq!(
+        ExportFormat::from_format_str("sql-insert").unwrap(),
+        ExportFormat::SqlInsert
+    );
 }
 
 #[test]
@@ -736,7 +855,10 @@ fn test_export_results_impl_with_query_id() {
             vec![
                 StoredResult {
                     query_id: "first-q".to_string(),
-                    columns: vec![ColumnMeta { name: "a".to_string(), data_type: "INT".to_string() }],
+                    columns: vec![ColumnMeta {
+                        name: "a".to_string(),
+                        data_type: "INT".to_string(),
+                    }],
                     rows: vec![vec![serde_json::json!(10)]],
                     execution_time_ms: 1,
                     affected_rows: 0,
@@ -745,7 +867,10 @@ fn test_export_results_impl_with_query_id() {
                 },
                 StoredResult {
                     query_id: "second-q".to_string(),
-                    columns: vec![ColumnMeta { name: "b".to_string(), data_type: "INT".to_string() }],
+                    columns: vec![ColumnMeta {
+                        name: "b".to_string(),
+                        data_type: "INT".to_string(),
+                    }],
                     rows: vec![vec![serde_json::json!(20)]],
                     execution_time_ms: 2,
                     affected_rows: 0,
@@ -787,7 +912,10 @@ fn test_export_results_impl_invalid_query_id() {
             ("cx".to_string(), "tx".to_string()),
             vec![StoredResult {
                 query_id: "real-q".to_string(),
-                columns: vec![ColumnMeta { name: "id".to_string(), data_type: "INT".to_string() }],
+                columns: vec![ColumnMeta {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                }],
                 rows: vec![vec![serde_json::json!(1)]],
                 execution_time_ms: 1,
                 affected_rows: 0,
@@ -888,7 +1016,10 @@ fn test_export_results_impl_sql_default_table_name() {
             ("c1".to_string(), "t1".to_string()),
             vec![StoredResult {
                 query_id: "q1".to_string(),
-                columns: vec![ColumnMeta { name: "id".to_string(), data_type: "INT".to_string() }],
+                columns: vec![ColumnMeta {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                }],
                 rows: vec![vec![serde_json::json!(42)]],
                 execution_time_ms: 1,
                 affected_rows: 0,
@@ -905,7 +1036,8 @@ fn test_export_results_impl_sql_default_table_name() {
         table_name: None, // should default to "exported_results"
     };
 
-    let result = export_results_impl(&state, "c1", "t1", options, None).expect("export should succeed");
+    let result =
+        export_results_impl(&state, "c1", "t1", options, None).expect("export should succeed");
     assert_eq!(result.rows_exported, 1);
 
     let content = std::fs::read_to_string(&path).expect("read file");

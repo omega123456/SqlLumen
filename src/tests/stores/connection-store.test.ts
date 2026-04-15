@@ -41,6 +41,16 @@ beforeEach(() => {
         return null
       case 'log_frontend':
         return undefined
+      case 'build_schema_index':
+        return undefined
+      case 'get_index_status':
+        return { status: 'ready' }
+      case 'invalidate_schema_index':
+        return undefined
+      case 'semantic_search':
+        return []
+      case 'list_indexed_tables':
+        return []
       default:
         return null
     }

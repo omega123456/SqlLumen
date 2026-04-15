@@ -2,8 +2,8 @@
 
 use async_trait::async_trait;
 use opensrv_mysql::{
-    AsyncMysqlIntermediary, AsyncMysqlShim, Column, ColumnFlags, ColumnType, ErrorKind,
-    InitWriter, OkResponse, ParamParser, QueryResultWriter, StatementMetaWriter, ToMysqlValue,
+    AsyncMysqlIntermediary, AsyncMysqlShim, Column, ColumnFlags, ColumnType, ErrorKind, InitWriter,
+    OkResponse, ParamParser, QueryResultWriter, StatementMetaWriter, ToMysqlValue,
 };
 use std::collections::HashMap;
 use std::io;
@@ -395,7 +395,9 @@ impl MockMySqlServer {
                 tokio::spawn(async move {
                     let (reader, writer) = stream.into_split();
                     let writer = BufWriter::new(writer);
-                    if let Err(error) = AsyncMysqlIntermediary::run_on(backend, reader, writer).await {
+                    if let Err(error) =
+                        AsyncMysqlIntermediary::run_on(backend, reader, writer).await
+                    {
                         eprintln!("mock mysql server error: {error}");
                     }
                 });

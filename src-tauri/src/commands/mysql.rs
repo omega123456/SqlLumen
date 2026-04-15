@@ -3,16 +3,16 @@ use crate::db::connections;
 #[cfg(not(coverage))]
 use crate::mysql::health;
 #[cfg(not(coverage))]
-use crate::mysql::query_log;
-#[cfg(not(coverage))]
 use crate::mysql::pool;
 #[cfg(coverage)]
 use crate::mysql::pool::create_pool;
 #[cfg(not(coverage))]
 use crate::mysql::pool::ConnectionParams;
 #[cfg(not(coverage))]
-use crate::mysql::registry::{RegistryEntry, StoredConnectionParams};
+use crate::mysql::query_log;
 use crate::mysql::registry::ConnectionStatus;
+#[cfg(not(coverage))]
+use crate::mysql::registry::{RegistryEntry, StoredConnectionParams};
 use crate::state::AppState;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -346,9 +346,60 @@ pub async fn open_connection_impl(
     })
 }
 
+/// Clean up schema index session tracking for a closing connection.
+///
+/// Decrements the ref count for the associated profile. When the count
+/// reaches zero, cancels any in-progress build and removes tracking state.
+fn cleanup_schema_index_session(state: &AppState, connection_id: &str) {
+    // Look up profile_id from session_profile_map
+    let profile_id = match state.session_profile_map.lock() {
+        Ok(map) => map.get(connection_id).cloned(),
+        Err(_) => None,
+    };
+
+    let Some(profile_id) = profile_id else {
+        return;
+    };
+
+    // Decrement ref count
+    let should_cleanup = match state.session_ref_counts.lock() {
+        Ok(mut counts) => {
+            if let Some(count) = counts.get_mut(&profile_id) {
+                *count = count.saturating_sub(1);
+                *count == 0
+            } else {
+                false
+            }
+        }
+        Err(_) => false,
+    };
+
+    // Remove session → profile mapping
+    if let Ok(mut map) = state.session_profile_map.lock() {
+        map.remove(connection_id);
+    }
+
+    if should_cleanup {
+        // Cancel build token if any
+        if let Ok(mut tokens) = state.index_build_tokens.lock() {
+            if let Some(token) = tokens.remove(&profile_id) {
+                token.cancel();
+            }
+        }
+
+        // Clean up ref count entry
+        if let Ok(mut counts) = state.session_ref_counts.lock() {
+            counts.remove(&profile_id);
+        }
+    }
+}
+
 #[cfg(coverage)]
 pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
     if state.registry.contains(connection_id) {
+        // Clean up schema index session tracking
+        cleanup_schema_index_session(state, connection_id);
+
         // Clean up any running_queries entries for this connection
         {
             let mut rq = state.running_queries.write().await;
@@ -364,6 +415,10 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
 /// The registry's `remove()` cancels the health monitor's cancellation token.
 #[cfg(not(coverage))]
 pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
+    // Clean up schema index session tracking before removing from registry
+    // (we need the registry entry to still exist for profile_id lookup in some paths)
+    cleanup_schema_index_session(state, connection_id);
+
     let entry = state
         .registry
         .remove(connection_id)
@@ -392,9 +447,7 @@ pub fn get_connection_status_impl(
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub async fn test_connection(
-    input: TestConnectionInput,
-) -> Result<TestConnectionResult, String> {
+pub async fn test_connection(input: TestConnectionInput) -> Result<TestConnectionResult, String> {
     Ok(test_connection_impl(input).await)
 }
 

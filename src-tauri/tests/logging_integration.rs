@@ -138,9 +138,8 @@ fn apply_log_level_from_settings_returns_early_when_rust_log_is_set() {
     .expect("set log level setting");
 
     let subscriber = tracing_subscriber::registry();
-    let (layer, handle) = tracing_subscriber::reload::Layer::new(
-        tracing_subscriber::EnvFilter::new("debug"),
-    );
+    let (layer, handle) =
+        tracing_subscriber::reload::Layer::new(tracing_subscriber::EnvFilter::new("debug"));
     let _subscriber = subscriber.with(layer);
 
     sqllumen_lib::logging::apply_log_level_from_settings(&conn, &handle);
@@ -156,9 +155,8 @@ fn reload_log_level_from_setting_value_returns_early_for_missing_handle_and_rust
     {
         let _guard = RustLogGuard::set("warn");
         let subscriber = tracing_subscriber::registry();
-        let (layer, handle) = tracing_subscriber::reload::Layer::new(
-            tracing_subscriber::EnvFilter::new("debug"),
-        );
+        let (layer, handle) =
+            tracing_subscriber::reload::Layer::new(tracing_subscriber::EnvFilter::new("debug"));
         let _subscriber = subscriber.with(layer);
 
         sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&handle), "error");

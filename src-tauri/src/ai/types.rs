@@ -109,6 +109,8 @@ impl From<&IpcMessage> for ApiMessage {
 pub struct AiModelInfo {
     pub id: String,
     pub name: Option<String>,
+    /// `"chat"` or `"embedding"` — determined by server metadata or heuristic.
+    pub category: String,
 }
 
 /// Response from `list_ai_models` — a list of available models.
@@ -122,12 +124,69 @@ pub struct AiModelsResponse {
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAiModelEntry {
     pub id: String,
+    #[serde(default)]
+    pub object: String,
+    /// Some servers include a `type` field for categorisation.
+    #[serde(rename = "type", default)]
+    pub model_type: Option<String>,
+    /// Some servers include a `capabilities` object.
+    #[serde(default)]
+    pub capabilities: Option<serde_json::Value>,
 }
 
 /// The outer envelope of the OpenAI `/v1/models` response.
 #[derive(Debug, Clone, Deserialize)]
 pub struct OpenAiModelsApiResponse {
     pub data: Vec<OpenAiModelEntry>,
+}
+
+// ── Embedding API types ───────────────────────────────────────────────────
+
+/// Request body for the `/v1/embeddings` endpoint.
+#[derive(Debug, Serialize)]
+pub struct EmbeddingApiRequest {
+    pub model: String,
+    pub input: Vec<String>,
+    /// Ollama (llama.cpp) requires `truncate: true` to properly mark input tokens
+    /// as embedding outputs; without it, bge-m3 and similar models emit a warning
+    /// per token ("embeddings required but some input tokens were not marked as outputs").
+    pub truncate: bool,
+    /// Specifies the output format for embeddings.  The OpenAI-compatible
+    /// `/v1/embeddings` endpoint (used by Ollama) expects `"float"` to return
+    /// raw float arrays and suppress per-token output warnings.
+    pub encoding_format: String,
+}
+
+/// Response from the `/v1/embeddings` endpoint.
+#[derive(Debug, Deserialize)]
+pub struct EmbeddingApiResponse {
+    pub data: Vec<EmbeddingData>,
+}
+
+/// A single embedding vector in the API response.
+#[derive(Debug, Deserialize)]
+pub struct EmbeddingData {
+    pub embedding: Vec<f32>,
+    pub index: usize,
+}
+
+// ── Query expansion types ─────────────────────────────────────────────────
+
+/// Request for non-streaming query expansion via `ai_query_expand`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiQueryExpandRequest {
+    pub endpoint: String,
+    pub model: String,
+    pub system_prompt: String,
+    pub user_message: String,
+}
+
+/// Response from `ai_query_expand`.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiQueryExpandResponse {
+    pub text: String,
 }
 
 /// Result of parsing a single SSE line.

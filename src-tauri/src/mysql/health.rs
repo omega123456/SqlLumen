@@ -8,9 +8,9 @@
 #[cfg(not(coverage))]
 use crate::credentials;
 #[cfg(not(coverage))]
-use crate::mysql::query_log;
-#[cfg(not(coverage))]
 use crate::mysql::pool;
+#[cfg(not(coverage))]
+use crate::mysql::query_log;
 #[cfg(not(coverage))]
 use crate::mysql::registry::ConnectionStatus;
 #[cfg(not(coverage))]
@@ -238,12 +238,7 @@ async fn reconnect_loop_impl<R: Runtime>(
                     let state = app_handle.state::<AppState>();
                     state.registry.replace_pool(connection_id, new_pool);
                 }
-                update_and_emit(
-                    app_handle,
-                    connection_id,
-                    ConnectionStatus::Connected,
-                    None,
-                );
+                update_and_emit(app_handle, connection_id, ConnectionStatus::Connected, None);
                 return true;
             }
             Err(e) => {

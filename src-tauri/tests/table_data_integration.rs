@@ -1,12 +1,12 @@
 //! Integration tests for table data operations — filter translation and coverage stubs.
 
+use sqllumen_lib::commands::table_data::interpolate_sql_params;
+#[cfg(not(coverage))]
+use sqllumen_lib::mysql::table_data::parse_enum_values;
 use sqllumen_lib::mysql::table_data::{
     translate_filter_model, translate_filter_model_with_columns, ExportTableOptions,
     FilterCondition, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
 };
-use sqllumen_lib::commands::table_data::interpolate_sql_params;
-#[cfg(not(coverage))]
-use sqllumen_lib::mysql::table_data::parse_enum_values;
 
 mod common;
 
@@ -15,16 +15,16 @@ mod type_aware_filter_integration {
     use super::*;
     use chrono::NaiveDate;
     use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
+    use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
+    use rusqlite::Connection;
+    use serde::de::DeserializeOwned;
+    use serde_json::json;
     use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
     use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
     use sqllumen_lib::commands::table_data as table_data_commands;
     use sqllumen_lib::mysql::pool::set_test_pool_factory;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;
     use sqllumen_lib::state::AppState;
-    use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
-    use rusqlite::Connection;
-    use serde::de::DeserializeOwned;
-    use serde_json::json;
     use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
@@ -41,20 +41,31 @@ mod type_aware_filter_integration {
             results: std::sync::RwLock::new(std::collections::HashMap::new()),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
-            dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
-            import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            dump_jobs: std::sync::Arc::new(
+                std::sync::RwLock::new(std::collections::HashMap::new()),
+            ),
+            import_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
             ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            http_client: reqwest::Client::new(),
         }
     }
 
-    fn build_app(
-    ) -> (
+    fn build_app() -> (
         tauri::App<tauri::test::MockRuntime>,
         tauri::WebviewWindow<tauri::test::MockRuntime>,
     ) {
         let app = mock_builder()
             .manage(test_state())
-            .invoke_handler(tauri::generate_handler![save_connection, open_connection, fetch_table_data])
+            .invoke_handler(tauri::generate_handler![
+                save_connection,
+                open_connection,
+                fetch_table_data
+            ])
             .build(mock_context(noop_assets()))
             .expect("should build test app");
         let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -122,7 +133,9 @@ mod type_aware_filter_integration {
                 cmd: cmd.into(),
                 callback: CallbackFn(0),
                 error: CallbackFn(1),
-                url: "http://tauri.localhost".parse().expect("test URL should parse"),
+                url: "http://tauri.localhost"
+                    .parse()
+                    .expect("test URL should parse"),
                 body: InvokeBody::Json(body),
                 headers: Default::default(),
                 invoke_key: INVOKE_KEY.to_string(),
@@ -429,8 +442,14 @@ mod type_aware_filter_integration {
 
         assert_eq!(response.total_rows, 1);
         assert_eq!(response.rows.len(), 1);
-        assert_eq!(response.rows[0][1], serde_json::json!("2024-01-01 00:00:00"));
-        assert_eq!(response.rows[0][2], serde_json::json!("2024-01-02 03:04:05"));
+        assert_eq!(
+            response.rows[0][1],
+            serde_json::json!("2024-01-01 00:00:00")
+        );
+        assert_eq!(
+            response.rows[0][2],
+            serde_json::json!("2024-01-02 03:04:05")
+        );
 
         set_test_pool_factory(None);
     }
@@ -650,11 +669,11 @@ mod type_aware_filter_integration {
 #[cfg(coverage)]
 mod command_wrapper_coverage {
     use super::*;
+    use serde::de::DeserializeOwned;
+    use serde_json::json;
     use sqllumen_lib::commands::table_data as table_data_commands;
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
     use sqllumen_lib::state::AppState;
-    use serde::de::DeserializeOwned;
-    use serde_json::json;
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use std::collections::HashMap;
     use tauri::ipc::{CallbackFn, InvokeBody};
@@ -730,7 +749,9 @@ mod command_wrapper_coverage {
                 cmd: cmd.into(),
                 callback: CallbackFn(0),
                 error: CallbackFn(1),
-                url: "http://tauri.localhost".parse().expect("test URL should parse"),
+                url: "http://tauri.localhost"
+                    .parse()
+                    .expect("test URL should parse"),
                 body: InvokeBody::Json(body),
                 headers: Default::default(),
                 invoke_key: INVOKE_KEY.to_string(),
@@ -800,8 +821,15 @@ mod command_wrapper_coverage {
         values: HashMap<String, serde_json::Value>,
         pk_info: sqllumen_lib::mysql::table_data::PrimaryKeyInfo,
     ) -> Result<Vec<(String, serde_json::Value)>, String> {
-        table_data_commands::insert_table_row(state, connection_id, database, table, values, pk_info)
-            .await
+        table_data_commands::insert_table_row(
+            state,
+            connection_id,
+            database,
+            table,
+            values,
+            pk_info,
+        )
+        .await
     }
 
     #[tauri::command]
@@ -860,38 +888,42 @@ mod command_wrapper_coverage {
         register_connection(&state, "conn-1", false);
         let webview = build_app(state);
 
-        let zero_page_size_err = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
-            &webview,
-            "fetch_table_data",
-            json!({
-                "connectionId": "conn-1",
-                "database": "test_db",
-                "table": "users",
-                "page": 1,
-                "pageSize": 0,
-                "sortColumn": null,
-                "sortDirection": null,
-                "filterModel": null
-            }),
-        )
-        .expect_err("page size zero should error");
-        assert!(zero_page_size_err.to_string().contains("page_size must be at least 1"));
+        let zero_page_size_err =
+            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
+                &webview,
+                "fetch_table_data",
+                json!({
+                    "connectionId": "conn-1",
+                    "database": "test_db",
+                    "table": "users",
+                    "page": 1,
+                    "pageSize": 0,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": null
+                }),
+            )
+            .expect_err("page size zero should error");
+        assert!(zero_page_size_err
+            .to_string()
+            .contains("page_size must be at least 1"));
 
-        let missing_connection_err = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
-            &webview,
-            "fetch_table_data",
-            json!({
-                "connectionId": "missing",
-                "database": "test_db",
-                "table": "users",
-                "page": 1,
-                "pageSize": 50,
-                "sortColumn": null,
-                "sortDirection": null,
-                "filterModel": null
-            }),
-        )
-        .expect_err("missing connection should error");
+        let missing_connection_err =
+            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
+                &webview,
+                "fetch_table_data",
+                json!({
+                    "connectionId": "missing",
+                    "database": "test_db",
+                    "table": "users",
+                    "page": 1,
+                    "pageSize": 50,
+                    "sortColumn": null,
+                    "sortDirection": null,
+                    "filterModel": null
+                }),
+            )
+            .expect_err("missing connection should error");
         assert!(missing_connection_err.to_string().contains("not found"));
 
         let response = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
@@ -1126,8 +1158,16 @@ mod command_wrapper_coverage {
         assert!(entry.sql_text.contains("LIMIT 25 OFFSET 25"));
         assert!(entry.sql_text.contains("WHERE"));
         // Verify filter value is interpolated (not raw ?)
-        assert!(!entry.sql_text.contains(" ? "), "History SQL should not contain raw ? placeholders, got: {}", entry.sql_text);
-        assert!(entry.sql_text.contains("'%widget%'"), "History SQL should contain interpolated filter value, got: {}", entry.sql_text);
+        assert!(
+            !entry.sql_text.contains(" ? "),
+            "History SQL should not contain raw ? placeholders, got: {}",
+            entry.sql_text
+        );
+        assert!(
+            entry.sql_text.contains("'%widget%'"),
+            "History SQL should contain interpolated filter value, got: {}",
+            entry.sql_text
+        );
     }
 
     #[tokio::test]
@@ -1163,7 +1203,10 @@ mod command_wrapper_coverage {
             .expect("list history");
         // No history logged because the error happens before the impl call
         // and the wrapper returns Err before reaching the history logging code
-        assert_eq!(page.total, 0, "no history entry when connection not found (early return)");
+        assert_eq!(
+            page.total, 0,
+            "no history entry when connection not found (early return)"
+        );
     }
 
     #[tokio::test]
@@ -1196,7 +1239,10 @@ mod command_wrapper_coverage {
         let conn = db.lock().expect("db lock");
         let page = sqllumen_lib::db::history::list_history(&conn, "hist-export", 1, 50, None)
             .expect("list history");
-        assert_eq!(page.total, 1, "one history entry should be logged for export");
+        assert_eq!(
+            page.total, 1,
+            "one history entry should be logged for export"
+        );
         let entry = &page.entries[0];
         assert!(entry.success);
         assert!(entry.sql_text.contains("SELECT * FROM"));
@@ -1249,8 +1295,16 @@ mod command_wrapper_coverage {
         assert!(entry.sql_text.contains("ORDER BY"));
         assert!(entry.sql_text.contains("ASC"));
         // Verify filter value is interpolated
-        assert!(entry.sql_text.contains("'100'"), "Export history SQL should contain interpolated filter value, got: {}", entry.sql_text);
-        assert!(!entry.sql_text.contains("?"), "Export history SQL should not contain raw ? placeholders, got: {}", entry.sql_text);
+        assert!(
+            entry.sql_text.contains("'100'"),
+            "Export history SQL should contain interpolated filter value, got: {}",
+            entry.sql_text
+        );
+        assert!(
+            !entry.sql_text.contains("?"),
+            "Export history SQL should not contain raw ? placeholders, got: {}",
+            entry.sql_text
+        );
     }
 
     #[tokio::test]
@@ -1283,9 +1337,21 @@ mod command_wrapper_coverage {
         let entry = &page.entries[0];
         assert!(entry.success);
         assert!(entry.sql_text.contains("UPDATE"));
-        assert!(entry.sql_text.contains("'Alice'"), "Update history SQL should contain interpolated value 'Alice', got: {}", entry.sql_text);
-        assert!(entry.sql_text.contains("1"), "Update history SQL should contain PK value 1, got: {}", entry.sql_text);
-        assert!(!entry.sql_text.contains("?"), "Update history SQL should not contain raw ? placeholders, got: {}", entry.sql_text);
+        assert!(
+            entry.sql_text.contains("'Alice'"),
+            "Update history SQL should contain interpolated value 'Alice', got: {}",
+            entry.sql_text
+        );
+        assert!(
+            entry.sql_text.contains("1"),
+            "Update history SQL should contain PK value 1, got: {}",
+            entry.sql_text
+        );
+        assert!(
+            !entry.sql_text.contains("?"),
+            "Update history SQL should not contain raw ? placeholders, got: {}",
+            entry.sql_text
+        );
     }
 
     #[tokio::test]
@@ -1321,9 +1387,21 @@ mod command_wrapper_coverage {
         let entry = &page.entries[0];
         assert!(entry.success);
         assert!(entry.sql_text.contains("INSERT INTO"));
-        assert!(entry.sql_text.contains("30"), "Insert history SQL should contain interpolated value 30, got: {}", entry.sql_text);
-        assert!(entry.sql_text.contains("'Bob'"), "Insert history SQL should contain interpolated value 'Bob', got: {}", entry.sql_text);
-        assert!(!entry.sql_text.contains("?"), "Insert history SQL should not contain raw ? placeholders, got: {}", entry.sql_text);
+        assert!(
+            entry.sql_text.contains("30"),
+            "Insert history SQL should contain interpolated value 30, got: {}",
+            entry.sql_text
+        );
+        assert!(
+            entry.sql_text.contains("'Bob'"),
+            "Insert history SQL should contain interpolated value 'Bob', got: {}",
+            entry.sql_text
+        );
+        assert!(
+            !entry.sql_text.contains("?"),
+            "Insert history SQL should not contain raw ? placeholders, got: {}",
+            entry.sql_text
+        );
     }
 
     #[tokio::test]
@@ -1355,8 +1433,16 @@ mod command_wrapper_coverage {
         let entry = &page.entries[0];
         assert!(entry.success);
         assert!(entry.sql_text.contains("DELETE FROM"));
-        assert!(entry.sql_text.contains("42"), "Delete history SQL should contain interpolated PK value 42, got: {}", entry.sql_text);
-        assert!(!entry.sql_text.contains("?"), "Delete history SQL should not contain raw ? placeholders, got: {}", entry.sql_text);
+        assert!(
+            entry.sql_text.contains("42"),
+            "Delete history SQL should contain interpolated PK value 42, got: {}",
+            entry.sql_text
+        );
+        assert!(
+            !entry.sql_text.contains("?"),
+            "Delete history SQL should not contain raw ? placeholders, got: {}",
+            entry.sql_text
+        );
     }
 
     #[tokio::test]
@@ -1548,12 +1634,12 @@ fn interpolate_sql_params_no_placeholders() {
 #[test]
 fn interpolate_sql_params_string_values() {
     let sql = "UPDATE `db`.`t` SET `name` = ? WHERE `id` = ?";
-    let params = vec![
-        serde_json::json!("Alice"),
-        serde_json::json!(1),
-    ];
+    let params = vec![serde_json::json!("Alice"), serde_json::json!(1)];
     let result = interpolate_sql_params(sql, &params);
-    assert_eq!(result, "UPDATE `db`.`t` SET `name` = 'Alice' WHERE `id` = 1");
+    assert_eq!(
+        result,
+        "UPDATE `db`.`t` SET `name` = 'Alice' WHERE `id` = 1"
+    );
 }
 
 #[test]
@@ -1577,7 +1663,10 @@ fn interpolate_sql_params_number_values() {
     let sql = "SELECT * FROM `t` WHERE `price` > ? AND `qty` < ?";
     let params = vec![serde_json::json!(9.99), serde_json::json!(100)];
     let result = interpolate_sql_params(sql, &params);
-    assert_eq!(result, "SELECT * FROM `t` WHERE `price` > 9.99 AND `qty` < 100");
+    assert_eq!(
+        result,
+        "SELECT * FROM `t` WHERE `price` > 9.99 AND `qty` < 100"
+    );
 }
 
 #[test]
@@ -1598,7 +1687,10 @@ fn interpolate_sql_params_mixed_types() {
         serde_json::json!(true),
     ];
     let result = interpolate_sql_params(sql, &params);
-    assert_eq!(result, "INSERT INTO `t` (`a`, `b`, `c`, `d`) VALUES ('hello', 42, NULL, 1)");
+    assert_eq!(
+        result,
+        "INSERT INTO `t` (`a`, `b`, `c`, `d`) VALUES ('hello', 42, NULL, 1)"
+    );
 }
 
 #[test]
@@ -1726,11 +1818,7 @@ fn translate_filter_model_is_not_null() {
     }];
 
     let clause = translate_filter_model(&conditions);
-    assert!(
-        clause
-            .sql
-            .contains("`notes` IS NOT NULL AND `notes` != ''")
-    );
+    assert!(clause.sql.contains("`notes` IS NOT NULL AND `notes` != ''"));
     assert!(clause.params.is_empty());
 }
 
@@ -2101,8 +2189,7 @@ mod coverage_stubs {
             direction: "asc".to_string(),
         });
 
-        let result =
-            fetch_table_data_impl(&pool, "db", "tbl", 2, 50, sort, filter, "conn-1").await;
+        let result = fetch_table_data_impl(&pool, "db", "tbl", 2, 50, sort, filter, "conn-1").await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -2148,8 +2235,7 @@ mod coverage_stubs {
             m
         };
 
-        let result =
-            insert_table_row_impl(&pool, "test_db", "test_table", &values, &pk).await;
+        let result = insert_table_row_impl(&pool, "test_db", "test_table", &values, &pk).await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -2158,17 +2244,11 @@ mod coverage_stubs {
     #[tokio::test]
     async fn delete_table_row_impl_stub_returns_ok() {
         let pool = dummy_lazy_pool();
-        let result = delete_table_row_impl(
-            &pool,
-            "test_db",
-            "test_table",
-            &["id".to_string()],
-            &{
-                let mut m = HashMap::new();
-                m.insert("id".to_string(), serde_json::json!(1));
-                m
-            },
-        )
+        let result = delete_table_row_impl(&pool, "test_db", "test_table", &["id".to_string()], &{
+            let mut m = HashMap::new();
+            m.insert("id".to_string(), serde_json::json!(1));
+            m
+        })
         .await;
 
         assert!(result.is_ok());

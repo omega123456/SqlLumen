@@ -90,8 +90,10 @@ pub async fn list_exportable_objects_impl(
         let tables: Vec<ExportableTable> = table_rows
             .iter()
             .map(|row| {
-                let name: String = decode_mysql_text_cell_named(row, "TABLE_NAME").unwrap_or_default();
-                let table_type: String = decode_mysql_text_cell_named(row, "TABLE_TYPE").unwrap_or_default();
+                let name: String =
+                    decode_mysql_text_cell_named(row, "TABLE_NAME").unwrap_or_default();
+                let table_type: String =
+                    decode_mysql_text_cell_named(row, "TABLE_TYPE").unwrap_or_default();
                 let estimated_rows: i64 = row.try_get("TABLE_ROWS").unwrap_or(0);
                 ExportableTable {
                     name,
@@ -130,13 +132,7 @@ pub async fn start_sql_dump_impl(
     let total_tables: usize = input
         .databases
         .iter()
-        .map(|db| {
-            input
-                .tables
-                .get(db)
-                .map(|t| t.len())
-                .unwrap_or(0)
-        })
+        .map(|db| input.tables.get(db).map(|t| t.len()).unwrap_or(0))
         .sum();
 
     // Initialize progress
@@ -194,21 +190,19 @@ fn execute_dump(
     job_id: &str,
     dump_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
 ) -> Result<u64, String> {
-    let rt = tokio::runtime::Handle::try_current()
-        .map_err(|e| format!("No tokio runtime: {e}"))?;
+    let rt = tokio::runtime::Handle::try_current().map_err(|e| format!("No tokio runtime: {e}"))?;
 
     let mut file = std::fs::File::create(&input.file_path)
         .map_err(|e| format!("Failed to create file '{}': {e}", input.file_path))?;
 
     // Get server version
-    let server_version: String = rt
-        .block_on(async {
-            let row = sqlx::query("SELECT VERSION()")
-                .fetch_one(pool)
-                .await
-                .map_err(|e| format!("Failed to get server version: {e}"))?;
-            decode_mysql_text_cell(&row, 0)
-        })?;
+    let server_version: String = rt.block_on(async {
+        let row = sqlx::query("SELECT VERSION()")
+            .fetch_one(pool)
+            .await
+            .map_err(|e| format!("Failed to get server version: {e}"))?;
+        decode_mysql_text_cell(&row, 0)
+    })?;
 
     // Determine a representative database name for the header
     let header_db = input
@@ -261,7 +255,8 @@ fn execute_dump(
                     .map_err(|e| format!("Failed to check table type: {e}"))?;
                 match row {
                     Some(r) => {
-                        let tt: String = decode_mysql_text_cell_named(&r, "TABLE_TYPE").unwrap_or_default();
+                        let tt: String =
+                            decode_mysql_text_cell_named(&r, "TABLE_TYPE").unwrap_or_default();
                         Ok::<bool, String>(tt.contains("VIEW"))
                     }
                     None => Ok::<bool, String>(false),
@@ -277,10 +272,9 @@ fn execute_dump(
                             sql_dump::escape_identifier(db_name),
                             sql_dump::escape_identifier(table_name)
                         );
-                        let row = sqlx::query(&q)
-                            .fetch_one(pool)
-                            .await
-                            .map_err(|e| format!("Failed to get CREATE VIEW for '{table_name}': {e}"))?;
+                        let row = sqlx::query(&q).fetch_one(pool).await.map_err(|e| {
+                            format!("Failed to get CREATE VIEW for '{table_name}': {e}")
+                        })?;
                         decode_mysql_text_cell(&row, 1)
                     })?
                 } else {
@@ -290,10 +284,9 @@ fn execute_dump(
                             sql_dump::escape_identifier(db_name),
                             sql_dump::escape_identifier(table_name)
                         );
-                        let row = sqlx::query(&q)
-                            .fetch_one(pool)
-                            .await
-                            .map_err(|e| format!("Failed to get CREATE TABLE for '{table_name}': {e}"))?;
+                        let row = sqlx::query(&q).fetch_one(pool).await.map_err(|e| {
+                            format!("Failed to get CREATE TABLE for '{table_name}': {e}")
+                        })?;
                         decode_mysql_text_cell(&row, 1)
                     })?
                 };
@@ -367,8 +360,7 @@ fn execute_dump(
             .map_err(|e| format!("Failed to write transaction end: {e}"))?;
     }
 
-    sql_dump::write_footer(&mut file)
-        .map_err(|e| format!("Failed to write footer: {e}"))?;
+    sql_dump::write_footer(&mut file).map_err(|e| format!("Failed to write footer: {e}"))?;
 
     file.flush()
         .map_err(|e| format!("Failed to flush file: {e}"))?;
@@ -380,10 +372,7 @@ fn execute_dump(
 }
 
 /// Get progress of a dump job.
-pub fn get_dump_progress_impl(
-    state: &AppState,
-    job_id: &str,
-) -> Result<DumpJobProgress, String> {
+pub fn get_dump_progress_impl(state: &AppState, job_id: &str) -> Result<DumpJobProgress, String> {
     let mut jobs = state.dump_jobs.write().map_err(|e| e.to_string())?;
     // Lazy cleanup: remove terminal jobs older than 5 minutes
     cleanup_stale_dump_jobs(&mut jobs);
@@ -588,9 +577,7 @@ fn serialize_dump_temporal(value: MySqlValueRef<'_>) -> Option<String> {
     }
 
     // Last resort: raw string decode
-    sqlx::ValueRef::to_owned(&value)
-        .try_decode::<String>()
-        .ok()
+    sqlx::ValueRef::to_owned(&value).try_decode::<String>().ok()
 }
 
 // ---------------------------------------------------------------------------
@@ -774,10 +761,7 @@ fn cleanup_stale_import_jobs(jobs: &mut HashMap<String, ImportJobProgress>) {
 }
 
 /// Cancel an import job.
-pub fn cancel_import_impl(
-    state: &AppState,
-    job_id: &str,
-) -> Result<(), String> {
+pub fn cancel_import_impl(state: &AppState, job_id: &str) -> Result<(), String> {
     let mut jobs = state.import_jobs.write().map_err(|e| e.to_string())?;
     match jobs.get_mut(job_id) {
         Some(progress) => {

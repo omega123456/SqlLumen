@@ -26,6 +26,7 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'ai.enabled': 'false',
   'ai.endpoint': '',
   'ai.model': '',
+  'ai.embeddingModel': '',
   'ai.temperature': '0.3',
   'ai.maxTokens': '2048',
 }
@@ -68,6 +69,11 @@ interface SettingsState {
   /** Currently active settings section in the UI. */
   activeSection: SettingsSection
 
+  /** Whether the settings dialog is open. */
+  isDialogOpen: boolean
+  /** Which section to focus when opening the dialog. */
+  dialogSection: string | undefined
+
   // Actions
   loadSettings: () => Promise<void>
   setPendingChange: (key: string, value: string) => void
@@ -76,6 +82,8 @@ interface SettingsState {
   resetSection: (section: SettingsSection) => void
   getSetting: (key: string) => string
   setActiveSection: (section: SettingsSection) => void
+  openDialog: (section?: string) => void
+  closeDialog: () => void
 }
 
 export const useSettingsStore = create<SettingsState>()((set, get) => ({
@@ -84,6 +92,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   isLoading: false,
   isDirty: false,
   activeSection: 'general',
+  isDialogOpen: false,
+  dialogSection: undefined,
 
   loadSettings: async () => {
     set({ isLoading: true })
@@ -167,6 +177,14 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   setActiveSection: (section: SettingsSection) => {
     set({ activeSection: section })
+  },
+
+  openDialog: (section?: string) => {
+    set({ isDialogOpen: true, dialogSection: section })
+  },
+
+  closeDialog: () => {
+    set({ isDialogOpen: false, dialogSection: undefined })
   },
 }))
 

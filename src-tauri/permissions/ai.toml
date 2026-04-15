@@ -15,3 +15,9 @@ identifier = "allow-list-ai-models"
 description = "Allow invoking the list_ai_models command"
 commands.allow = ["list_ai_models"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-ai-query-expand"
+description = "Allow invoking the ai_query_expand command"
+commands.allow = ["ai_query_expand"]
+commands.deny = []

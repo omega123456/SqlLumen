@@ -67,7 +67,8 @@ fn test_global_favorites_included() {
 #[test]
 fn test_update_favorite() {
     let state = common::test_app_state();
-    let id = create_favorite_impl(&state, sample_create_input(Some("p1"), "original")).expect("create");
+    let id =
+        create_favorite_impl(&state, sample_create_input(Some("p1"), "original")).expect("create");
 
     let updated = update_favorite_impl(
         &state,
@@ -112,7 +113,8 @@ fn test_update_nonexistent_favorite() {
 #[test]
 fn test_delete_favorite() {
     let state = common::test_app_state();
-    let id = create_favorite_impl(&state, sample_create_input(Some("p1"), "to_delete")).expect("create");
+    let id =
+        create_favorite_impl(&state, sample_create_input(Some("p1"), "to_delete")).expect("create");
 
     let deleted = delete_favorite_impl(&state, id).expect("delete");
     assert!(deleted);
@@ -161,11 +163,8 @@ fn test_list_favorites_unknown_session_id_falls_back_to_raw_id() {
 fn test_create_favorite_unknown_session_id_falls_back_to_raw_id() {
     let state = common::test_app_state();
     // Registry is empty, so create_favorite_impl falls back to the raw id "session-123"
-    let id = create_favorite_impl(
-        &state,
-        sample_create_input(Some("session-123"), "my_fav"),
-    )
-    .expect("create");
+    let id = create_favorite_impl(&state, sample_create_input(Some("session-123"), "my_fav"))
+        .expect("create");
     assert!(id > 0);
 
     // The favorite should be stored under the raw id and retrievable
@@ -180,7 +179,8 @@ fn test_create_favorite_unknown_session_id_falls_back_to_raw_id() {
 #[test]
 fn test_get_favorite_by_id() {
     let state = common::test_app_state();
-    let id = create_favorite_impl(&state, sample_create_input(Some("p1"), "my_query")).expect("create");
+    let id =
+        create_favorite_impl(&state, sample_create_input(Some("p1"), "my_query")).expect("create");
 
     let conn = state.db.lock().expect("db lock");
     let favorite = sqllumen_lib::db::favorites::get_favorite(&conn, id)
@@ -190,7 +190,10 @@ fn test_get_favorite_by_id() {
     assert_eq!(favorite.id, id);
     assert_eq!(favorite.name, "my_query");
     assert_eq!(favorite.sql_text, "SELECT * FROM my_query");
-    assert_eq!(favorite.description.as_deref(), Some("Description for my_query"));
+    assert_eq!(
+        favorite.description.as_deref(),
+        Some("Description for my_query")
+    );
     assert_eq!(favorite.connection_id.as_deref(), Some("p1"));
     assert!(favorite.category.is_none());
 }
@@ -199,8 +202,7 @@ fn test_get_favorite_by_id() {
 fn test_get_favorite_nonexistent() {
     let state = common::test_app_state();
     let conn = state.db.lock().expect("db lock");
-    let result = sqllumen_lib::db::favorites::get_favorite(&conn, 99999)
-        .expect("should succeed");
+    let result = sqllumen_lib::db::favorites::get_favorite(&conn, 99999).expect("should succeed");
     assert!(result.is_none());
 }
 
@@ -251,13 +253,14 @@ fn test_create_favorite_impl_error_when_table_missing() {
     // Drop the favorites table so the INSERT fails.
     {
         let conn = state.db.lock().expect("db lock");
-        conn.execute_batch("DROP TABLE IF EXISTS favorites").expect("drop");
+        conn.execute_batch("DROP TABLE IF EXISTS favorites")
+            .expect("drop");
     }
-    let result = create_favorite_impl(
-        &state,
-        sample_create_input(Some("p1"), "will_fail"),
+    let result = create_favorite_impl(&state, sample_create_input(Some("p1"), "will_fail"));
+    assert!(
+        result.is_err(),
+        "should error when favorites table is missing"
     );
-    assert!(result.is_err(), "should error when favorites table is missing");
     assert!(
         result.unwrap_err().contains("no such table"),
         "error should mention missing table"
@@ -269,10 +272,14 @@ fn test_list_favorites_impl_error_when_table_missing() {
     let state = common::test_app_state();
     {
         let conn = state.db.lock().expect("db lock");
-        conn.execute_batch("DROP TABLE IF EXISTS favorites").expect("drop");
+        conn.execute_batch("DROP TABLE IF EXISTS favorites")
+            .expect("drop");
     }
     let result = list_favorites_impl(&state, "p1");
-    assert!(result.is_err(), "should error when favorites table is missing");
+    assert!(
+        result.is_err(),
+        "should error when favorites table is missing"
+    );
 }
 
 #[test]
@@ -280,7 +287,8 @@ fn test_update_favorite_impl_error_when_table_missing() {
     let state = common::test_app_state();
     {
         let conn = state.db.lock().expect("db lock");
-        conn.execute_batch("DROP TABLE IF EXISTS favorites").expect("drop");
+        conn.execute_batch("DROP TABLE IF EXISTS favorites")
+            .expect("drop");
     }
     let result = update_favorite_impl(
         &state,
@@ -293,7 +301,10 @@ fn test_update_favorite_impl_error_when_table_missing() {
             connection_id: None,
         },
     );
-    assert!(result.is_err(), "should error when favorites table is missing");
+    assert!(
+        result.is_err(),
+        "should error when favorites table is missing"
+    );
 }
 
 #[test]
@@ -301,10 +312,14 @@ fn test_delete_favorite_impl_error_when_table_missing() {
     let state = common::test_app_state();
     {
         let conn = state.db.lock().expect("db lock");
-        conn.execute_batch("DROP TABLE IF EXISTS favorites").expect("drop");
+        conn.execute_batch("DROP TABLE IF EXISTS favorites")
+            .expect("drop");
     }
     let result = delete_favorite_impl(&state, 1);
-    assert!(result.is_err(), "should error when favorites table is missing");
+    assert!(
+        result.is_err(),
+        "should error when favorites table is missing"
+    );
 }
 
 // ── Serde deserialization coverage ───────────────────────────────────────
@@ -396,7 +411,8 @@ fn test_favorite_entry_deserialize_from_json() {
 fn test_update_favorite_rescope_to_global() {
     let state = common::test_app_state();
     // Create a connection-specific favourite
-    let id = create_favorite_impl(&state, sample_create_input(Some("p1"), "scoped")).expect("create");
+    let id =
+        create_favorite_impl(&state, sample_create_input(Some("p1"), "scoped")).expect("create");
 
     // Re-scope to global
     let updated = update_favorite_impl(

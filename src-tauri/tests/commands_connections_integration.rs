@@ -327,3 +327,113 @@ fn test_update_connection_input_deserialize_clear_password_default() {
         serde_json::from_value(json).expect("should deserialize with defaults");
     assert!(!input.clear_password);
 }
+
+// ── clear_password path coverage ─────────────────────────────────────────
+
+#[test]
+fn test_update_clear_password_on_connection_with_password() {
+    let state = common::test_app_state();
+    // Save a connection WITH a password so keychain_ref is set
+    let mut input = common::sample_save_input();
+    input.password = Some("initial_secret".to_string());
+    let id = save_connection_impl(&state, input).expect("should save");
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+    assert!(record.has_password, "has_password should be true initially");
+
+    // Now clear the password
+    let update = UpdateConnectionInput {
+        name: "Test DB".to_string(),
+        host: "localhost".to_string(),
+        port: 3306,
+        username: "root".to_string(),
+        password: None,
+        clear_password: true,
+        default_database: None,
+        ssl_enabled: false,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        color: None,
+        group_id: None,
+        read_only: false,
+        sort_order: 0,
+        connect_timeout_secs: None,
+        keepalive_interval_secs: None,
+    };
+    update_connection_impl(&state, &id, update).expect("should update");
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+    assert!(
+        !record.has_password,
+        "has_password should be false after clearing"
+    );
+}
+
+#[test]
+fn test_update_password_on_connection_that_already_has_password() {
+    let state = common::test_app_state();
+    // Save with a password
+    let mut input = common::sample_save_input();
+    input.password = Some("old_password".to_string());
+    let id = save_connection_impl(&state, input).expect("should save");
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+    assert!(record.has_password);
+
+    // Update with a new password (exercises the filter closures when previous keychain_ref exists)
+    let update = UpdateConnectionInput {
+        name: "Test DB".to_string(),
+        host: "localhost".to_string(),
+        port: 3306,
+        username: "root".to_string(),
+        password: Some("new_password".to_string()),
+        clear_password: false,
+        default_database: None,
+        ssl_enabled: false,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        color: None,
+        group_id: None,
+        read_only: false,
+        sort_order: 0,
+        connect_timeout_secs: None,
+        keepalive_interval_secs: None,
+    };
+    update_connection_impl(&state, &id, update).expect("should update");
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+    assert!(
+        record.has_password,
+        "has_password should still be true after password update"
+    );
+}
+
+#[test]
+fn test_delete_connection_with_password() {
+    let state = common::test_app_state();
+    // Save with a password so keychain_ref is set
+    let mut input = common::sample_save_input();
+    input.password = Some("my_secret".to_string());
+    let id = save_connection_impl(&state, input).expect("should save");
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+    assert!(record.has_password);
+
+    // Delete the connection (exercises filter closure on keychain_ref)
+    delete_connection_impl(&state, &id).expect("should delete");
+
+    let result = get_connection_impl(&state, &id).expect("should not error");
+    assert!(result.is_none());
+}

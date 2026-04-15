@@ -6,7 +6,9 @@ use sqllumen_lib::commands::connection_groups::{
     create_connection_group_impl, delete_connection_group_impl, list_connection_groups_impl,
     update_connection_group_impl,
 };
-use sqllumen_lib::commands::connections::{get_connection_impl, save_connection_impl, SaveConnectionInput};
+use sqllumen_lib::commands::connections::{
+    get_connection_impl, save_connection_impl, SaveConnectionInput,
+};
 
 #[test]
 fn test_create_connection_group_impl_returns_uuid() {

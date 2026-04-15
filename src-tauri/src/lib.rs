@@ -5,12 +5,28 @@ pub mod db;
 pub mod export;
 pub mod logging;
 pub mod mysql;
+pub mod schema_index;
 pub mod state;
 
 use db::connection::open_database;
 use db::migrations::run_migrations;
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
+use std::sync::Once;
+
+/// Register the sqlite-vec extension as a global auto-extension.
+///
+/// Uses `sqlite3_auto_extension` so that every new `Connection::open*` call
+/// automatically loads the vec0 virtual table support. Safe to call multiple
+/// times — a `Once` guard ensures the FFI registration happens exactly once.
+pub fn init_sqlite_vec() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| unsafe {
+        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+            sqlite_vec::sqlite3_vec_init as *const (),
+        )));
+    });
+}
 
 /// Directory for SQLite, logs, and other app data.
 ///
@@ -34,6 +50,9 @@ pub fn resolved_app_data_dir(base: &Path) -> PathBuf {
 /// Opens the database at the given app data directory and runs all pending migrations.
 /// Returns the raw Connection — caller assembles AppState.
 pub fn initialize_database(app_data_dir: &Path) -> Result<Connection, String> {
+    // Register sqlite-vec auto-extension before opening any connection.
+    init_sqlite_vec();
+
     let db_path = app_data_dir.join("sqllumen.db");
     let conn =
         open_database(db_path).map_err(|e| format!("failed to open SQLite database: {e}"))?;
@@ -150,6 +169,15 @@ pub fn run() {
                 dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                http_client: reqwest::Client::builder()
+                    // Give Ollama (and other local LLM servers) up to 30 s to
+                    // finish loading a model before refusing the connection.
+                    .connect_timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .expect("failed to build shared HTTP client"),
             };
             app.manage(state);
 
@@ -268,6 +296,13 @@ pub fn run() {
             commands::ai::ai_chat,
             commands::ai::ai_cancel,
             commands::ai::list_ai_models,
+            commands::ai::ai_query_expand,
+            commands::schema_index::build_schema_index,
+            commands::schema_index::force_rebuild_schema_index,
+            commands::schema_index::semantic_search,
+            commands::schema_index::get_index_status,
+            commands::schema_index::invalidate_schema_index,
+            commands::schema_index::list_indexed_tables,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

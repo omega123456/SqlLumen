@@ -113,3 +113,82 @@
   opacity: 1;
   color: var(--primary);
 }
+
+/* ---------- Schema Indexing Indicator ---------- */
+
+.indexingIndicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+  margin-left: var(--space-md);
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
+}
+
+[data-theme='dark'] .indexingIndicator {
+  order: 1;
+  margin-left: var(--space-sm);
+}
+
+.indexingIcon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.indexingIconAnimated {
+  animation: indexPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes indexPulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indexingIconAnimated {
+    animation: none;
+  }
+}
+
+.indexingText {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-xs);
+  color: var(--on-surface-variant);
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+[data-theme='light'] .indexingText {
+  letter-spacing: 0.05em;
+  opacity: 1;
+  color: var(--primary);
+}
+
+.indexingReady {
+  color: var(--tertiary);
+}
+
+[data-theme='light'] .indexingReady {
+  color: var(--tertiary);
+}
+
+.indexingError {
+  color: var(--error);
+}
+
+[data-theme='light'] .indexingError {
+  color: var(--error);
+}
+
+.indexingFadeOut {
+  opacity: 0;
+  transform: translateX(-4px);
+}

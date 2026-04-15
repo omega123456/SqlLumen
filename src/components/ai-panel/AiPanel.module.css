@@ -6,3 +6,12 @@
   border-left: 1px solid var(--ai-panel-border);
   overflow: hidden;
 }
+
+.indexWaiting {
+  padding: 6px 12px;
+  font-size: var(--font-size-xs, 11px);
+  color: var(--text-muted);
+  background: var(--surface-secondary, var(--ai-panel-bg));
+  border-bottom: 1px solid var(--ai-panel-border);
+  text-align: center;
+}

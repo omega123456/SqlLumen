@@ -13,11 +13,11 @@ use crate::commands::query_history_bridge::{log_single_entry, resolve_connection
 #[cfg(not(coverage))]
 use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
+use crate::mysql::query_log;
+#[cfg(not(coverage))]
 use crate::mysql::table_designer::{
     DefaultValueModel, DesignerColumnDef, DesignerForeignKeyDef, DesignerIndexDef,
 };
-#[cfg(not(coverage))]
-use crate::mysql::query_log;
 #[cfg(not(coverage))]
 use sqlx::mysql::MySqlRow;
 #[cfg(not(coverage))]
@@ -79,7 +79,9 @@ pub fn parse_column_type(column_type: &str) -> (String, String, String) {
 fn parse_default_value(default_value: Option<String>) -> DefaultValueModel {
     match default_value {
         None => DefaultValueModel::NoDefault,
-        Some(value) if value.eq_ignore_ascii_case("NULL") => DefaultValueModel::Expression { value },
+        Some(value) if value.eq_ignore_ascii_case("NULL") => {
+            DefaultValueModel::Expression { value }
+        }
         Some(value)
             if value.eq_ignore_ascii_case("CURRENT_TIMESTAMP")
                 || value.to_ascii_uppercase().starts_with("CURRENT_TIMESTAMP(")
@@ -93,13 +95,18 @@ fn parse_default_value(default_value: Option<String>) -> DefaultValueModel {
 }
 
 #[cfg(not(coverage))]
-fn normalize_default_value(extra: Option<&str>, default_value: Option<String>) -> DefaultValueModel {
+fn normalize_default_value(
+    extra: Option<&str>,
+    default_value: Option<String>,
+) -> DefaultValueModel {
     let extra_text = extra.unwrap_or_default().to_ascii_lowercase();
     match default_value {
         Some(value) if extra_text.contains("default_generated") => {
             DefaultValueModel::Expression { value }
         }
-        Some(value) if value.eq_ignore_ascii_case("NULL") && !extra_text.contains("default_generated") => {
+        Some(value)
+            if value.eq_ignore_ascii_case("NULL") && !extra_text.contains("default_generated") =>
+        {
             DefaultValueModel::NullDefault
         }
         other => parse_default_value(other),
@@ -111,9 +118,9 @@ fn decode_text_cell_named(row: &MySqlRow, column: &str) -> Result<String, String
     match row.try_get::<String, _>(column) {
         Ok(value) => Ok(value),
         Err(_) => {
-            let bytes: Vec<u8> = row
-                .try_get(column)
-                .map_err(|err| format!("Failed to decode column '{column}' as UTF-8 text: {err}"))?;
+            let bytes: Vec<u8> = row.try_get(column).map_err(|err| {
+                format!("Failed to decode column '{column}' as UTF-8 text: {err}")
+            })?;
             Ok(String::from_utf8_lossy(&bytes).into_owned())
         }
     }
@@ -125,7 +132,9 @@ fn decode_optional_text_cell_named(row: &MySqlRow, column: &str) -> Result<Optio
         Ok(value) => Ok(value),
         Err(_) => match row.try_get::<Option<Vec<u8>>, _>(column) {
             Ok(value) => Ok(value.map(|bytes| String::from_utf8_lossy(&bytes).into_owned())),
-            Err(err) => Err(format!("Failed to decode optional column '{column}' as UTF-8 text: {err}")),
+            Err(err) => Err(format!(
+                "Failed to decode optional column '{column}' as UTF-8 text: {err}"
+            )),
         },
     }
 }
@@ -243,9 +252,7 @@ pub async fn load_table_for_designer_impl(
             }
         } else {
             // flush the previous index (if any), then start a new one
-            if let Some((name, prev_non_unique, prev_index_type, columns)) =
-                current_index.take()
-            {
+            if let Some((name, prev_non_unique, prev_index_type, columns)) = current_index.take() {
                 indexes.push(DesignerIndexDef {
                     name: name.clone(),
                     index_type: build_index_type(&name, prev_non_unique, &prev_index_type),
@@ -321,8 +328,8 @@ pub async fn load_table_for_designer_impl(
         foreign_keys.push(existing);
     }
 
-    let collation = decode_optional_text_cell_named(&metadata_row, "TABLE_COLLATION")?
-        .unwrap_or_default();
+    let collation =
+        decode_optional_text_cell_named(&metadata_row, "TABLE_COLLATION")?.unwrap_or_default();
 
     let properties = DesignerTableProperties {
         engine: decode_optional_text_cell_named(&metadata_row, "ENGINE")?.unwrap_or_default(),
@@ -339,8 +346,10 @@ pub async fn load_table_for_designer_impl(
                 .map_err(|_| unsigned_error.to_string())?
                 .and_then(|value| u64::try_from(value).ok()),
         },
-        row_format: decode_optional_text_cell_named(&metadata_row, "ROW_FORMAT")?.unwrap_or_default(),
-        comment: decode_optional_text_cell_named(&metadata_row, "TABLE_COMMENT")?.unwrap_or_default(),
+        row_format: decode_optional_text_cell_named(&metadata_row, "ROW_FORMAT")?
+            .unwrap_or_default(),
+        comment: decode_optional_text_cell_named(&metadata_row, "TABLE_COMMENT")?
+            .unwrap_or_default(),
     };
 
     Ok(DesignerTableSchema {
@@ -505,8 +514,7 @@ pub async fn load_table_for_designer(
     state: State<'_, AppState>,
 ) -> Result<DesignerTableSchema, String> {
     let start = std::time::Instant::now();
-    let result =
-        load_table_for_designer_impl(&state, &connection_id, &database, &table_name).await;
+    let result = load_table_for_designer_impl(&state, &connection_id, &database, &table_name).await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
@@ -533,7 +541,9 @@ pub async fn load_table_for_designer(
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub async fn generate_table_ddl(request: GenerateDdlRequest) -> Result<GenerateDdlResponse, String> {
+pub async fn generate_table_ddl(
+    request: GenerateDdlRequest,
+) -> Result<GenerateDdlResponse, String> {
     generate_table_ddl_impl(request).await
 }
 

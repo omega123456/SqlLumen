@@ -96,6 +96,27 @@ pub fn reload_log_level_from_setting_value(handle: Option<&LogFilterReloadHandle
     }
 }
 
+/// ANSI reset sequence.
+const ANSI_RESET: &str = "\x1b[0m";
+
+/// Return the opening ANSI colour escape sequence for a given tracing level.
+///
+/// Colours are chosen to be legible on both dark and light terminal backgrounds:
+/// - `TRACE` → dim (grey)
+/// - `DEBUG` → cyan
+/// - `INFO`  → green
+/// - `WARN`  → bold yellow
+/// - `ERROR` → bold red
+fn level_ansi_prefix(level: &tracing::Level) -> &'static str {
+    match *level {
+        tracing::Level::TRACE => "\x1b[2m",    // dim
+        tracing::Level::DEBUG => "\x1b[36m",   // cyan
+        tracing::Level::INFO => "\x1b[32m",    // green
+        tracing::Level::WARN => "\x1b[1;33m",  // bold yellow
+        tracing::Level::ERROR => "\x1b[1;31m", // bold red
+    }
+}
+
 fn bracket_level_event_format() -> Format<Full, SystemTime> {
     tracing_subscriber::fmt::format()
         .with_timer(SystemTime)
@@ -104,14 +125,21 @@ fn bracket_level_event_format() -> Format<Full, SystemTime> {
 }
 
 /// Writes `[LEVEL]` first, then the standard full line (timestamp, target, fields).
+///
+/// When `colored` is `true` the level token is wrapped in the appropriate ANSI
+/// colour escape sequence.  The flag is resolved once at subscriber construction
+/// time so there is no per-event syscall overhead.
+/// The file layer always passes `colored: false`, keeping log files plain text.
 struct BracketLevelFormat {
     inner: Format<Full, SystemTime>,
+    colored: bool,
 }
 
 impl BracketLevelFormat {
-    fn new() -> Self {
+    fn new(colored: bool) -> Self {
         Self {
             inner: bracket_level_event_format(),
+            colored,
         }
     }
 }
@@ -128,7 +156,18 @@ where
         mut writer: Writer<'_>,
         event: &tracing::Event<'_>,
     ) -> std::fmt::Result {
-        write!(writer, "[{}] ", event.metadata().level().as_str())?;
+        let level = event.metadata().level();
+        if self.colored {
+            write!(
+                writer,
+                "{}[{}]{} ",
+                level_ansi_prefix(level),
+                level.as_str(),
+                ANSI_RESET
+            )?;
+        } else {
+            write!(writer, "[{}] ", level.as_str())?;
+        }
         self.inner.format_event(ctx, writer, event)
     }
 }
@@ -208,6 +247,57 @@ fn build_initial_filter() -> EnvFilter {
     env_filter_from_rust_log().unwrap_or_else(default_env_filter)
 }
 
+/// Attempt to enable ANSI escape-sequence processing on the Windows console
+/// attached to stderr.
+///
+/// On Windows 10 1607+ the console must have `ENABLE_VIRTUAL_TERMINAL_PROCESSING`
+/// set on its mode flags before ANSI escape codes render as colour; without it
+/// they appear as literal characters (`^[[32m` etc.).
+///
+/// When stderr is a pipe (e.g. running via `pnpm tauri dev`) `GetConsoleMode`
+/// returns zero and this function is a silent no-op — the ANSI bytes will still
+/// pass through the pipe and be rendered correctly by the terminal at the other
+/// end of the chain.
+///
+/// On non-Windows platforms this compiles away to nothing.
+#[cfg(target_os = "windows")]
+fn try_enable_windows_ansi_stderr() {
+    use std::os::windows::io::AsRawHandle;
+    const ENABLE_VIRTUAL_TERMINAL_PROCESSING: u32 = 0x0004;
+    extern "system" {
+        fn GetConsoleMode(hConsoleHandle: *mut core::ffi::c_void, lpMode: *mut u32) -> i32;
+        fn SetConsoleMode(hConsoleHandle: *mut core::ffi::c_void, dwMode: u32) -> i32;
+    }
+    // SAFETY: we call standard Win32 console APIs with the stderr handle
+    // obtained from the stdlib.  SetConsoleMode is guarded behind a successful
+    // GetConsoleMode check, so we never call it on a non-console handle.
+    unsafe {
+        let handle = std::io::stderr().as_raw_handle() as *mut core::ffi::c_void;
+        let mut mode: u32 = 0;
+        if GetConsoleMode(handle, &mut mode) != 0 {
+            SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn try_enable_windows_ansi_stderr() {}
+
+/// Decide whether to emit ANSI colour codes on stderr.
+///
+/// Rules (evaluated in order):
+/// 1. `NO_COLOR` env var is set → **off** (<https://no-color.org/>)
+/// 2. Otherwise → **on**
+///
+/// Colour is on by default because `pnpm tauri dev` pipes stderr through
+/// Node.js, which makes `std::io::IsTerminal` return `false` inside the Rust
+/// process even though the output ultimately reaches a colour-capable terminal.
+/// ANSI escape bytes pass through pipes unmodified and are rendered by the
+/// terminal at the far end. Set `NO_COLOR=1` in your shell to suppress them.
+fn stderr_wants_color() -> bool {
+    std::env::var_os("NO_COLOR").is_none()
+}
+
 /// Initialize global tracing subscriber (stderr + daily log file). Call once at app startup.
 pub fn init_logging(log_dir: &Path) -> Result<LoggingInit, String> {
     let rust_log_env_set = std::env::var("RUST_LOG").is_ok();
@@ -215,6 +305,10 @@ pub fn init_logging(log_dir: &Path) -> Result<LoggingInit, String> {
 
     let today = Local::now().date_naive();
     prune_old_logs(log_dir, ROLLING_LOG_STEM, today).map_err(|e| e.to_string())?;
+
+    // Enable ANSI processing on Windows consoles before the subscriber starts
+    // emitting events.
+    try_enable_windows_ansi_stderr();
 
     let file_appender = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
@@ -228,14 +322,15 @@ pub fn init_logging(log_dir: &Path) -> Result<LoggingInit, String> {
     let initial_filter = build_initial_filter();
     let (reload_layer, reload_handle) = reload::Layer::new(initial_filter);
 
+    // Colour stderr unless NO_COLOR is set.  File logs are always plain text.
     let stderr_layer = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stderr)
-        .event_format(BracketLevelFormat::new());
+        .event_format(BracketLevelFormat::new(stderr_wants_color()));
 
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(non_blocking)
         .with_ansi(false)
-        .event_format(BracketLevelFormat::new());
+        .event_format(BracketLevelFormat::new(false));
 
     tracing_subscriber::registry()
         .with(reload_layer)

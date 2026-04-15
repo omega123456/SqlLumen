@@ -2,6 +2,7 @@
 //! These tests do not require a real MySQL connection — they test the
 //! SQL parsing, comment stripping, read-only enforcement, and file I/O logic.
 
+use rusqlite::Connection;
 use sqllumen_lib::mysql::query_executor::ColumnMeta;
 use sqllumen_lib::mysql::query_executor::StoredResult;
 use sqllumen_lib::mysql::query_executor::{
@@ -12,7 +13,6 @@ use sqllumen_lib::mysql::query_executor::{
 };
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::state::AppState;
-use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
 mod common;
@@ -31,6 +31,10 @@ fn test_state() -> AppState {
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        http_client: reqwest::Client::new(),
     }
 }
 
@@ -318,10 +322,7 @@ fn inject_limit_before_lock_in_share_mode() {
 
 #[test]
 fn inject_limit_skips_into_outfile() {
-    let result = inject_limit_into_select(
-        "SELECT * FROM t INTO OUTFILE '/tmp/out.csv'",
-        1000,
-    );
+    let result = inject_limit_into_select("SELECT * FROM t INTO OUTFILE '/tmp/out.csv'", 1000);
     assert!(
         result.contains("INTO OUTFILE"),
         "INTO OUTFILE should be preserved"
@@ -600,8 +601,8 @@ fn fetch_result_page_errors_on_page_zero() {
         );
     }
 
-    let err = fetch_result_page_impl(&state, "c1", "t1", "q1", 0, None)
-        .expect_err("page 0 should error");
+    let err =
+        fetch_result_page_impl(&state, "c1", "t1", "q1", 0, None).expect_err("page 0 should error");
     assert!(err.contains("out of range"));
 }
 
@@ -676,10 +677,7 @@ fn read_file_errors_for_non_utf8() {
     std::fs::write(&path, &[0xFF, 0xFE, 0xFD]).expect("write should succeed");
 
     let err = read_file_impl(&path.to_string_lossy()).expect_err("non-UTF-8 should error");
-    assert!(
-        err.contains("UTF-8"),
-        "expected UTF-8 error, got: {err}"
-    );
+    assert!(err.contains("UTF-8"), "expected UTF-8 error, got: {err}");
 
     let _ = std::fs::remove_file(&path);
 }
@@ -788,12 +786,8 @@ fn get_page_rows_full_page() {
 #[cfg(coverage)]
 mod coverage_stubs {
     use super::*;
-    use sqllumen_lib::mysql::query_executor::{
-        execute_query_impl, fetch_schema_metadata_impl,
-    };
-    use sqllumen_lib::mysql::registry::{
-        ConnectionStatus, RegistryEntry, StoredConnectionParams,
-    };
+    use sqllumen_lib::mysql::query_executor::{execute_query_impl, fetch_schema_metadata_impl};
+    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 
@@ -916,10 +910,9 @@ mod coverage_stubs {
         let state = test_state();
         register_lazy_pool(&state, "conn-cov", false);
 
-        let result =
-            execute_query_impl(&state, "conn-cov", "tab-1", "SELECT * FROM t", 100)
-                .await
-                .expect("stub should succeed");
+        let result = execute_query_impl(&state, "conn-cov", "tab-1", "SELECT * FROM t", 100)
+            .await
+            .expect("stub should succeed");
 
         // Verify result is stored and can be fetched
         let page = fetch_result_page_impl(&state, "conn-cov", "tab-1", &result.query_id, 1, None)

@@ -4,8 +4,8 @@
 //! for each token chunk, completion, or error.
 
 use crate::ai::types::{
-    AiChatRequest, ApiChatRequest, ApiMessage, SseParsed, StreamChunkEvent, StreamDoneEvent,
-    StreamErrorEvent, parse_sse_line,
+    parse_sse_line, AiChatRequest, ApiChatRequest, ApiMessage, SseParsed, StreamChunkEvent,
+    StreamDoneEvent, StreamErrorEvent,
 };
 use futures::StreamExt;
 use std::time::Duration;

@@ -29,6 +29,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const discard = useSettingsStore((s) => s.discard)
   const resetSection = useSettingsStore((s) => s.resetSection)
   const revertPreview = useThemeStore((s) => s.revertPreview)
+  const dialogSection = useSettingsStore((s) => s.dialogSection)
 
   const [confirmOpen, setConfirmOpen] = useState(false)
 
@@ -40,8 +41,13 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
       const settingsState = useSettingsStore.getState()
       const shortcutsSerialized = settingsState.getSetting('shortcuts')
       useShortcutStore.getState().loadShortcuts(shortcutsSerialized)
+
+      // If the dialog was opened programmatically to a specific section, navigate there
+      if (dialogSection) {
+        setActiveSection(dialogSection as SettingsSection)
+      }
     }
-  }, [isOpen, loadSettings])
+  }, [isOpen, loadSettings, dialogSection, setActiveSection])
 
   const handleSave = useCallback(async () => {
     await save()

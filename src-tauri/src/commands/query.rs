@@ -6,16 +6,15 @@
 
 #[cfg(not(coverage))]
 use crate::commands::query_history_bridge::{
-    execute_call_query_bridge, execute_multi_query_bridge, execute_query_bridge,
-    log_single_entry, resolve_connection_context,
+    execute_call_query_bridge, execute_multi_query_bridge, execute_query_bridge, log_single_entry,
+    resolve_connection_context,
 };
 #[cfg(not(coverage))]
 use crate::db::history::NewHistoryEntry;
 #[cfg(not(coverage))]
 use crate::mysql::query_executor::{
-    analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl,
-    fetch_result_page_impl, fetch_schema_metadata_impl, fetch_schema_metadata_full_impl,
-    read_file_impl,
+    analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl, fetch_result_page_impl,
+    fetch_schema_metadata_full_impl, fetch_schema_metadata_impl, read_file_impl,
     reexecute_single_result_impl, sort_results_impl, update_result_cell_impl, write_file_impl,
     ExecuteQueryResult, FetchPageResult, MultiQueryResult, MultiQueryResultItem,
     QueryTableEditInfo, SchemaMetadata, SchemaMetadataFull,
@@ -36,7 +35,14 @@ pub async fn execute_query(
     page_size: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<ExecuteQueryResult, String> {
-    execute_query_bridge(&state, &connection_id, &tab_id, &sql, page_size.unwrap_or(1000)).await
+    execute_query_bridge(
+        &state,
+        &connection_id,
+        &tab_id,
+        &sql,
+        page_size.unwrap_or(1000),
+    )
+    .await
 }
 
 // ── fetch_result_page ─────────────────────────────────────────────────────────
@@ -51,18 +57,21 @@ pub fn fetch_result_page(
     result_index: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<FetchPageResult, String> {
-    fetch_result_page_impl(&state, &connection_id, &tab_id, &query_id, page, result_index)
+    fetch_result_page_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        &query_id,
+        page,
+        result_index,
+    )
 }
 
 // ── evict_results ─────────────────────────────────────────────────────────────
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn evict_results(
-    connection_id: String,
-    tab_id: String,
-    state: tauri::State<'_, AppState>,
-) {
+pub fn evict_results(connection_id: String, tab_id: String, state: tauri::State<'_, AppState>) {
     evict_results_impl(&state, &connection_id, &tab_id);
 }
 
@@ -122,7 +131,14 @@ pub fn sort_results(
     result_index: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<FetchPageResult, String> {
-    sort_results_impl(&state, &connection_id, &tab_id, &column_name, &direction, result_index)
+    sort_results_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        &column_name,
+        &direction,
+        result_index,
+    )
 }
 
 // ── analyze_query_for_edit ────────────────────────────────────────────────────
@@ -149,7 +165,14 @@ pub fn update_result_cell(
     result_index: Option<usize>,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), String> {
-    update_result_cell_impl(&state, &connection_id, &tab_id, row_index, updates, result_index)
+    update_result_cell_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        row_index,
+        updates,
+        result_index,
+    )
 }
 
 // ── cancel_query ──────────────────────────────────────────────────────────────

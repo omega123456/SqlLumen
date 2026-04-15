@@ -5,8 +5,8 @@ mod common;
 use chrono::NaiveDate;
 use common::log_capture::LogCaptureGuard;
 use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryResponse};
-use sqllumen_lib::mysql::query_log;
 use opensrv_mysql::{ColumnFlags, ColumnType};
+use sqllumen_lib::mysql::query_log;
 use sqlx::mysql::MySqlPoolOptions;
 
 #[tokio::test]
@@ -66,10 +66,7 @@ async fn query_log_rows_and_execute_hit_formatting_paths() {
     };
 
     let server = MockMySqlServer::start(response).await;
-    let url = format!(
-        "mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED",
-        server.port
-    );
+    let url = format!("mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED", server.port);
     let pool = MySqlPoolOptions::new()
         .max_connections(1)
         .connect(&url)
@@ -132,10 +129,7 @@ async fn query_log_formats_timestamp_columns_without_decode_errors() {
     };
 
     let server = MockMySqlServer::start(response).await;
-    let url = format!(
-        "mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED",
-        server.port
-    );
+    let url = format!("mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED", server.port);
     let pool = MySqlPoolOptions::new()
         .max_connections(1)
         .connect(&url)
@@ -205,10 +199,7 @@ async fn query_log_formats_decimal_columns_without_decode_errors() {
     };
 
     let server = MockMySqlServer::start(response).await;
-    let url = format!(
-        "mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED",
-        server.port
-    );
+    let url = format!("mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED", server.port);
     let pool = MySqlPoolOptions::new()
         .max_connections(1)
         .connect(&url)

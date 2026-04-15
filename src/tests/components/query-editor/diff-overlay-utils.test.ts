@@ -251,7 +251,6 @@ describe('handleDiffAccept flow — attachedContext staleness', () => {
   })
 })
 
-
 // ---------------------------------------------------------------------------
 // computeUpdatedRange — additional coverage
 // ---------------------------------------------------------------------------
@@ -296,7 +295,9 @@ describe('applyDiff — attachedContext sync edge cases', () => {
 
     applyDiff(editor, state, 'SELECT id FROM users')
     // Without tabId, context should remain unchanged
-    expect(useAiStore.getState().tabs['tab-no-id']?.attachedContext?.sql).toBe('SELECT * FROM users')
+    expect(useAiStore.getState().tabs['tab-no-id']?.attachedContext?.sql).toBe(
+      'SELECT * FROM users'
+    )
   })
 
   it('does NOT update attachedContext when tab has no context set', () => {

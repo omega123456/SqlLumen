@@ -1,7 +1,7 @@
 //! On-disk `open_database` and basic SQLite connectivity (`db/connection.rs`).
 
-use sqllumen_lib::db::connection::open_database;
 use rusqlite::Connection;
+use sqllumen_lib::db::connection::open_database;
 
 fn unique_temp_path(prefix: &str, file_name: &str) -> std::path::PathBuf {
     let unique = format!(

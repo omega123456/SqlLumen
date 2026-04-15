@@ -51,10 +51,7 @@ fn test_rust_log_override_detection() {
 fn test_app_version_has_value() {
     let info = get_app_info_impl(&None);
     // CARGO_PKG_VERSION is always set during a cargo build
-    assert!(
-        !info.app_version.is_empty(),
-        "app_version should be set"
-    );
+    assert!(!info.app_version.is_empty(), "app_version should be set");
 }
 
 #[test]

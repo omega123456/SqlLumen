@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { render, screen, act } from '@testing-library/react'
 import { StatusBar } from '../../components/layout/StatusBar'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useQueryStore } from '../../stores/query-store'
 import { useThemeStore } from '../../stores/theme-store'
+import { useSchemaIndexStore } from '../../stores/schema-index-store'
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
 import type { WorkspaceTab } from '../../types/schema'
 import { makeTabState } from '../helpers/query-test-utils'
@@ -44,6 +45,14 @@ function makeActiveConnection(overrides: Partial<ActiveConnection> = {}): Active
   }
 }
 
+function setupActiveConnection() {
+  const conn = makeActiveConnection()
+  useConnectionStore.setState({
+    activeConnections: { 'conn-1': conn },
+    activeTabId: 'conn-1',
+  })
+}
+
 beforeEach(() => {
   useConnectionStore.setState({
     activeConnections: {},
@@ -56,6 +65,11 @@ beforeEach(() => {
     activeTabByConnection: {},
   })
   useQueryStore.setState({ tabs: {} })
+  useSchemaIndexStore.setState({
+    connections: {},
+    profileToSessions: {},
+    sessionToProfile: {},
+  })
 })
 
 describe('StatusBar', () => {
@@ -341,6 +355,281 @@ describe('StatusBar', () => {
 
       render(<StatusBar />)
       expect(screen.queryByTestId('query-info')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('schema indexing indicator', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('shows indexing indicator with correct table counts when status is building', () => {
+      useThemeStore.setState({ resolvedTheme: 'dark' })
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            tablesDone: 3,
+            tablesTotal: 10,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      expect(screen.getByTestId('indexing-indicator')).toBeInTheDocument()
+      expect(screen.getByTestId('indexing-text')).toHaveTextContent('Indexing 3/10')
+    })
+
+    it('shows uppercase indexing text in light theme', () => {
+      useThemeStore.setState({ resolvedTheme: 'light' })
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            tablesDone: 5,
+            tablesTotal: 20,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      expect(screen.getByTestId('indexing-text')).toHaveTextContent('INDEXING: 5/20 TABLES')
+    })
+
+    it('shows completion flash when status transitions to ready', () => {
+      vi.useFakeTimers()
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            tablesDone: 10,
+            tablesTotal: 10,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      const { rerender } = render(<StatusBar />)
+
+      expect(screen.getByTestId('indexing-indicator')).toBeInTheDocument()
+
+      // Transition to ready
+      act(() => {
+        useSchemaIndexStore.setState({
+          connections: {
+            'conn-1': {
+              status: 'ready',
+              tablesDone: 10,
+              tablesTotal: 10,
+              lastBuildTimestamp: Date.now(),
+            },
+          },
+        })
+      })
+
+      rerender(<StatusBar />)
+
+      expect(screen.getByTestId('indexing-ready')).toBeInTheDocument()
+      expect(screen.queryByTestId('indexing-indicator')).not.toBeInTheDocument()
+    })
+
+    it('completion flash disappears after 2 seconds', () => {
+      vi.useFakeTimers()
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            tablesDone: 10,
+            tablesTotal: 10,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      // Transition to ready
+      act(() => {
+        useSchemaIndexStore.setState({
+          connections: {
+            'conn-1': {
+              status: 'ready',
+              tablesDone: 10,
+              tablesTotal: 10,
+              lastBuildTimestamp: Date.now(),
+            },
+          },
+        })
+      })
+
+      expect(screen.getByTestId('indexing-ready')).toBeInTheDocument()
+
+      // Advance past the 2s flash duration + 500ms fade
+      act(() => {
+        vi.advanceTimersByTime(2501)
+      })
+
+      expect(screen.queryByTestId('indexing-ready')).not.toBeInTheDocument()
+    })
+
+    it('shows error flash when status transitions to error', () => {
+      vi.useFakeTimers()
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            tablesDone: 5,
+            tablesTotal: 10,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      const { rerender } = render(<StatusBar />)
+
+      // Transition to error
+      act(() => {
+        useSchemaIndexStore.setState({
+          connections: {
+            'conn-1': {
+              status: 'error',
+              tablesDone: 5,
+              tablesTotal: 10,
+              lastBuildTimestamp: 0,
+              error: 'Connection lost',
+            },
+          },
+        })
+      })
+
+      rerender(<StatusBar />)
+
+      expect(screen.getByTestId('indexing-error')).toBeInTheDocument()
+      expect(screen.queryByTestId('indexing-indicator')).not.toBeInTheDocument()
+    })
+
+    it('error flash disappears after 3 seconds', () => {
+      vi.useFakeTimers()
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            tablesDone: 5,
+            tablesTotal: 10,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      // Transition to error
+      act(() => {
+        useSchemaIndexStore.setState({
+          connections: {
+            'conn-1': {
+              status: 'error',
+              tablesDone: 5,
+              tablesTotal: 10,
+              lastBuildTimestamp: 0,
+              error: 'Failed',
+            },
+          },
+        })
+      })
+
+      expect(screen.getByTestId('indexing-error')).toBeInTheDocument()
+
+      // Advance past the 3s flash duration + 500ms fade
+      act(() => {
+        vi.advanceTimersByTime(3501)
+      })
+
+      expect(screen.queryByTestId('indexing-error')).not.toBeInTheDocument()
+    })
+
+    it('does not show any indicator when status is not_configured', () => {
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'not_configured',
+            tablesDone: 0,
+            tablesTotal: 0,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      expect(screen.queryByTestId('indexing-indicator')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('indexing-ready')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('indexing-error')).not.toBeInTheDocument()
+    })
+
+    it('does not show any indicator when no index state exists', () => {
+      setupActiveConnection()
+      // No entry in connections for 'conn-1'
+      useSchemaIndexStore.setState({ connections: {} })
+
+      render(<StatusBar />)
+
+      expect(screen.queryByTestId('indexing-indicator')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('indexing-ready')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('indexing-error')).not.toBeInTheDocument()
+    })
+
+    it('has correct ARIA attributes when building', () => {
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            tablesDone: 7,
+            tablesTotal: 15,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      const indicator = screen.getByTestId('indexing-indicator')
+      expect(indicator).toHaveAttribute('role', 'progressbar')
+      expect(indicator).toHaveAttribute('aria-valuenow', '7')
+      expect(indicator).toHaveAttribute('aria-valuemin', '0')
+      expect(indicator).toHaveAttribute('aria-valuemax', '15')
+      expect(indicator).toHaveAttribute('aria-valuetext', 'Indexing schema: 7 of 15 tables')
+    })
+
+    it('has aria-live="polite" region', () => {
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            tablesDone: 1,
+            tablesTotal: 5,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      const liveRegion = screen.getByTestId('indexing-indicator').parentElement
+      expect(liveRegion).toHaveAttribute('aria-live', 'polite')
     })
   })
 })

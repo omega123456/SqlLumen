@@ -56,7 +56,10 @@ fn test_cancellation_token_clone_propagates() {
     let cloned = token.clone();
     assert!(!cloned.is_cancelled());
     token.cancel();
-    assert!(cloned.is_cancelled(), "cancellation should propagate to clones");
+    assert!(
+        cloned.is_cancelled(),
+        "cancellation should propagate to clones"
+    );
 }
 
 #[test]

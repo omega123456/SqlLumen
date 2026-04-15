@@ -142,9 +142,7 @@ mod coverage_bridge_tests {
     use sqllumen_lib::commands::query_history_bridge::{
         execute_call_query_bridge, execute_multi_query_bridge, execute_query_bridge,
     };
-    use sqllumen_lib::mysql::registry::{
-        ConnectionStatus, RegistryEntry, StoredConnectionParams,
-    };
+    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
     use sqllumen_lib::state::AppState;
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
@@ -269,7 +267,10 @@ mod coverage_bridge_tests {
 
         // Verify batch history entries were logged
         let page = list_history_impl(&state, "profile-2", 1, 50, None).expect("list");
-        assert!(page.total >= 1, "at least one history entry should be logged");
+        assert!(
+            page.total >= 1,
+            "at least one history entry should be logged"
+        );
     }
 
     // ── execute_multi_query_bridge: error path ────────────────────────────

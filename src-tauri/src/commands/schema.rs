@@ -438,11 +438,10 @@ pub async fn rename_database_impl(
         }
         let sql = format!("RENAME TABLE {}", rename_pairs.join(", "));
         query_log::log_outgoing_sql(&sql);
-        let r = sqlx::query(&sql).execute(&pool).await.map_err(|e| {
-            format!(
-                "Failed to move tables from '{old_name}' to '{new_name}': {e}"
-            )
-        })?;
+        let r = sqlx::query(&sql)
+            .execute(&pool)
+            .await
+            .map_err(|e| format!("Failed to move tables from '{old_name}' to '{new_name}': {e}"))?;
         query_log::log_execute_result(&r);
     }
 
@@ -945,9 +944,7 @@ pub async fn rename_table(
 
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
-    let sql_text = format!(
-        "RENAME TABLE `{database}`.`{old_name}` TO `{database}`.`{new_name}`"
-    );
+    let sql_text = format!("RENAME TABLE `{database}`.`{old_name}` TO `{database}`.`{new_name}`");
 
     log_single_entry(
         &state.db,

@@ -10,6 +10,7 @@ import {
   renameTable,
 } from '../lib/schema-commands'
 import { dropObject, getRoutineParameters } from '../lib/object-editor-commands'
+import { invalidateSchemaIndex, buildSchemaIndex } from '../lib/schema-index-commands'
 import { buildExecuteTemplate } from '../lib/execute-template-builder'
 import { ConfirmDialog } from '../components/dialogs/ConfirmDialog'
 import { CreateDatabaseDialog } from '../components/dialogs/CreateDatabaseDialog'
@@ -319,6 +320,11 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       invalidateSchemaMetadataCache(connectionId)
       void refreshAll(connectionId)
       showSuccessToast('Database dropped', droppedName)
+
+      // Full rebuild of schema index after dropping a database (fire-and-forget)
+      buildSchemaIndex(connectionId).catch(() => {
+        // Best-effort — index rebuild failure is non-critical
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setConfirmError(msg)
@@ -339,6 +345,11 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
       setDropTableConfirm(null)
       void refreshCategory(connectionId, db, 'table')
       showSuccessToast('Table dropped', `${db}.${table}`)
+
+      // Invalidate schema index for the dropped table (fire-and-forget)
+      invalidateSchemaIndex(connectionId, [`${db}.${table}`]).catch(() => {
+        // Best-effort — index invalidation failure is non-critical
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setConfirmError(msg)
@@ -381,6 +392,17 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         setRenameTableOpen(null)
         void refreshCategory(connectionId, db, 'table')
         showSuccessToast('Table renamed', `${prev} → ${newName}`)
+
+        // Invalidate schema index for the old table name, then trigger a full
+        // rebuild so the new table name is discovered and indexed.
+        invalidateSchemaIndex(connectionId, [`${db}.${prev}`])
+          .then(() => buildSchemaIndex(connectionId))
+          .catch((err) => {
+            console.error(
+              '[useObjectBrowserActions] schema index rebuild after rename failed',
+              err instanceof Error ? err.message : String(err)
+            )
+          })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         setRenameError(msg)

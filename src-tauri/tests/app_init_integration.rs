@@ -2,8 +2,8 @@
 
 mod common;
 
-use sqllumen_lib::initialize_database;
 use rusqlite::Connection;
+use sqllumen_lib::initialize_database;
 
 #[test]
 fn test_initialize_database_succeeds() {

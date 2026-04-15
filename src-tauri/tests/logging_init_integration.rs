@@ -34,6 +34,9 @@ fn init_logging_and_reload_helpers() {
     let init = sqllumen_lib::logging::init_logging(dir.path()).expect("init logging");
     assert!(!init.rust_log_env_set);
 
+    // Emit a tracing event to exercise BracketLevelFormat::format_event
+    tracing::info!(target: "sqllumen_lib::logging", "logging init integration test event");
+
     let log_files: Vec<_> = std::fs::read_dir(dir.path())
         .expect("read log dir")
         .filter_map(|e| e.ok())
@@ -52,10 +55,7 @@ fn init_logging_and_reload_helpers() {
     .expect("set log.level");
     sqllumen_lib::logging::apply_log_level_from_settings(&conn, &init.filter_reload);
 
-    sqllumen_lib::logging::reload_log_level_from_setting_value(
-        Some(&init.filter_reload),
-        "error",
-    );
+    sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&init.filter_reload), "error");
     sqllumen_lib::logging::reload_log_level_from_setting_value(None, "trace");
     sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&init.filter_reload), "bogus");
 

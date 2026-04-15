@@ -61,6 +61,7 @@ async function enableAiViaStore(page: Page) {
         'ai.enabled': 'true',
         'ai.endpoint': 'http://localhost:11434/v1',
         'ai.model': 'llama3',
+        'ai.embeddingModel': 'nomic-embed-text',
       },
       pendingChanges: {},
     }))

@@ -3,12 +3,12 @@
 //! Tests exercise `sort_results_impl` and the `compare_json_values` helper
 //! against various data type scenarios, NULL handling, and pagination.
 
+use rusqlite::Connection;
 use sqllumen_lib::mysql::query_executor::{
     compare_json_values, sort_results_impl, ColumnMeta, StoredResult,
 };
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::state::AppState;
-use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 
 mod common;
@@ -27,6 +27,10 @@ fn test_state() -> AppState {
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        http_client: reqwest::Client::new(),
     }
 }
 
@@ -108,42 +112,24 @@ fn compare_null_greater_than_non_null() {
 fn compare_numbers() {
     let a = serde_json::json!(10);
     let b = serde_json::json!(20);
-    assert_eq!(
-        compare_json_values(&a, &b),
-        std::cmp::Ordering::Less
-    );
-    assert_eq!(
-        compare_json_values(&b, &a),
-        std::cmp::Ordering::Greater
-    );
-    assert_eq!(
-        compare_json_values(&a, &a),
-        std::cmp::Ordering::Equal
-    );
+    assert_eq!(compare_json_values(&a, &b), std::cmp::Ordering::Less);
+    assert_eq!(compare_json_values(&b, &a), std::cmp::Ordering::Greater);
+    assert_eq!(compare_json_values(&a, &a), std::cmp::Ordering::Equal);
 }
 
 #[test]
 fn compare_float_numbers() {
     let a = serde_json::json!(1.5);
     let b = serde_json::json!(2.5);
-    assert_eq!(
-        compare_json_values(&a, &b),
-        std::cmp::Ordering::Less
-    );
+    assert_eq!(compare_json_values(&a, &b), std::cmp::Ordering::Less);
 }
 
 #[test]
 fn compare_strings() {
     let a = serde_json::json!("apple");
     let b = serde_json::json!("banana");
-    assert_eq!(
-        compare_json_values(&a, &b),
-        std::cmp::Ordering::Less
-    );
-    assert_eq!(
-        compare_json_values(&b, &a),
-        std::cmp::Ordering::Greater
-    );
+    assert_eq!(compare_json_values(&a, &b), std::cmp::Ordering::Less);
+    assert_eq!(compare_json_values(&b, &a), std::cmp::Ordering::Greater);
 }
 
 #[test]
@@ -359,10 +345,7 @@ fn sort_missing_result_returns_error() {
 
     let err = sort_results_impl(&state, "c-missing", "t-missing", "id", "asc", None)
         .expect_err("should error for missing result");
-    assert!(
-        err.contains("No results found"),
-        "error was: {err}"
-    );
+    assert!(err.contains("No results found"), "error was: {err}");
 }
 
 #[test]
@@ -370,9 +353,8 @@ fn sort_returns_first_page_with_correct_pagination() {
     let state = test_state();
 
     // Create 25 rows with page_size = 10
-    let rows: Vec<Vec<serde_json::Value>> = (1i64..=25)
-        .map(|i| vec![serde_json::json!(i)])
-        .collect();
+    let rows: Vec<Vec<serde_json::Value>> =
+        (1i64..=25).map(|i| vec![serde_json::json!(i)]).collect();
 
     insert_result(&state, "c1", "t1", id_col(), rows, 10);
 

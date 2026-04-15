@@ -1,7 +1,7 @@
 //! Migration runner (`db/migrations.rs`).
 
-use sqllumen_lib::db::migrations::run_migrations;
 use rusqlite::Connection;
+use sqllumen_lib::db::migrations::run_migrations;
 
 fn test_conn() -> Connection {
     Connection::open_in_memory().expect("should open in-memory connection")

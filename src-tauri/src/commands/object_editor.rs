@@ -223,9 +223,7 @@ pub async fn get_object_body_impl(
             r"(?i)^(\s*CREATE\s+)((?:ALGORITHM\s*=\s*\w+\s+)?(?:DEFINER\s*=\s*\S+\s+)?(?:SQL\s+SECURITY\s+\w+\s+)?)VIEW\s+",
         )
         .map_err(|e| format!("Internal regex error: {e}"))?;
-        let normalized = re
-            .replace(&ddl, "${1}OR REPLACE ${2}VIEW ")
-            .to_string();
+        let normalized = re.replace(&ddl, "${1}OR REPLACE ${2}VIEW ").to_string();
         return Ok(normalized);
     }
 
@@ -243,15 +241,11 @@ pub async fn get_object_body_impl(
     match object_type {
         "view" => Ok("CREATE OR REPLACE VIEW `v` AS SELECT 1".to_string()),
         "procedure" => Ok("CREATE PROCEDURE `p`() BEGIN SELECT 1; END".to_string()),
-        "function" => {
-            Ok("CREATE FUNCTION `f`() RETURNS INT BEGIN RETURN 1; END".to_string())
+        "function" => Ok("CREATE FUNCTION `f`() RETURNS INT BEGIN RETURN 1; END".to_string()),
+        "trigger" => {
+            Ok("CREATE TRIGGER `t` BEFORE INSERT ON `tbl` FOR EACH ROW BEGIN END".to_string())
         }
-        "trigger" => Ok(
-            "CREATE TRIGGER `t` BEFORE INSERT ON `tbl` FOR EACH ROW BEGIN END".to_string(),
-        ),
-        "event" => {
-            Ok("CREATE EVENT `e` ON SCHEDULE EVERY 1 DAY DO SELECT 1".to_string())
-        }
+        "event" => Ok("CREATE EVENT `e` ON SCHEDULE EVERY 1 DAY DO SELECT 1".to_string()),
         "table" => Ok("CREATE TABLE `t` (id INT)".to_string()),
         _ => Err(format!("Unknown object type: '{object_type}'")),
     }
@@ -328,107 +322,81 @@ pub async fn save_object_impl(
         // -----------------------------------------------------------------
         (false, "alter") => {
             // DROP
-            let drop_sql =
-                format!("DROP {type_keyword} IF EXISTS {safe_db}.{safe_name}");
+            let drop_sql = format!("DROP {type_keyword} IF EXISTS {safe_db}.{safe_name}");
             if let Err(error) = execute_simple_sql(&mut conn, &drop_sql).await {
                 return Err(format!("Failed to drop {}: {error}", request.object_type));
             }
 
             // CREATE
             match execute_simple_sql(&mut conn, &request.body).await {
-                Ok(_) => {
-                    Ok(SaveObjectResponse {
-                        success: true,
-                        error_message: None,
-                        drop_succeeded: true,
-                        saved_object_name: Some(parsed_name),
-                    })
-                }
-                Err(e) => {
-                    Ok(SaveObjectResponse {
-                        success: false,
-                        error_message: Some(format!("CREATE failed after DROP: {e}")),
-                        drop_succeeded: true,
-                        saved_object_name: None,
-                    })
-                }
+                Ok(_) => Ok(SaveObjectResponse {
+                    success: true,
+                    error_message: None,
+                    drop_succeeded: true,
+                    saved_object_name: Some(parsed_name),
+                }),
+                Err(e) => Ok(SaveObjectResponse {
+                    success: false,
+                    error_message: Some(format!("CREATE failed after DROP: {e}")),
+                    drop_succeeded: true,
+                    saved_object_name: None,
+                }),
             }
         }
 
         // -----------------------------------------------------------------
         // Non-view, create mode: CREATE only
         // -----------------------------------------------------------------
-        (false, "create") => {
-            match execute_simple_sql(&mut conn, &request.body).await {
-                Ok(_) => {
-                    Ok(SaveObjectResponse {
-                        success: true,
-                        error_message: None,
-                        drop_succeeded: false,
-                        saved_object_name: Some(parsed_name),
-                    })
-                }
-                Err(e) => {
-                    Ok(SaveObjectResponse {
-                        success: false,
-                        error_message: Some(format!(
-                            "Failed to create {}: {e}",
-                            request.object_type
-                        )),
-                        drop_succeeded: false,
-                        saved_object_name: None,
-                    })
-                }
-            }
-        }
+        (false, "create") => match execute_simple_sql(&mut conn, &request.body).await {
+            Ok(_) => Ok(SaveObjectResponse {
+                success: true,
+                error_message: None,
+                drop_succeeded: false,
+                saved_object_name: Some(parsed_name),
+            }),
+            Err(e) => Ok(SaveObjectResponse {
+                success: false,
+                error_message: Some(format!("Failed to create {}: {e}", request.object_type)),
+                drop_succeeded: false,
+                saved_object_name: None,
+            }),
+        },
 
         // -----------------------------------------------------------------
         // View, alter mode: CREATE OR REPLACE VIEW
         // -----------------------------------------------------------------
-        (true, "alter") => {
-            match execute_simple_sql(&mut conn, &request.body).await {
-                Ok(_) => {
-                    Ok(SaveObjectResponse {
-                        success: true,
-                        error_message: None,
-                        drop_succeeded: false,
-                        saved_object_name: Some(parsed_name),
-                    })
-                }
-                Err(e) => {
-                    Ok(SaveObjectResponse {
-                        success: false,
-                        error_message: Some(format!("Failed to alter view: {e}")),
-                        drop_succeeded: false,
-                        saved_object_name: None,
-                    })
-                }
-            }
-        }
+        (true, "alter") => match execute_simple_sql(&mut conn, &request.body).await {
+            Ok(_) => Ok(SaveObjectResponse {
+                success: true,
+                error_message: None,
+                drop_succeeded: false,
+                saved_object_name: Some(parsed_name),
+            }),
+            Err(e) => Ok(SaveObjectResponse {
+                success: false,
+                error_message: Some(format!("Failed to alter view: {e}")),
+                drop_succeeded: false,
+                saved_object_name: None,
+            }),
+        },
 
         // -----------------------------------------------------------------
         // View, create mode: CREATE VIEW
         // -----------------------------------------------------------------
-        (true, "create") => {
-            match execute_simple_sql(&mut conn, &request.body).await {
-                Ok(_) => {
-                    Ok(SaveObjectResponse {
-                        success: true,
-                        error_message: None,
-                        drop_succeeded: false,
-                        saved_object_name: Some(parsed_name),
-                    })
-                }
-                Err(e) => {
-                    Ok(SaveObjectResponse {
-                        success: false,
-                        error_message: Some(format!("Failed to create view: {e}")),
-                        drop_succeeded: false,
-                        saved_object_name: None,
-                    })
-                }
-            }
-        }
+        (true, "create") => match execute_simple_sql(&mut conn, &request.body).await {
+            Ok(_) => Ok(SaveObjectResponse {
+                success: true,
+                error_message: None,
+                drop_succeeded: false,
+                saved_object_name: Some(parsed_name),
+            }),
+            Err(e) => Ok(SaveObjectResponse {
+                success: false,
+                error_message: Some(format!("Failed to create view: {e}")),
+                drop_succeeded: false,
+                saved_object_name: None,
+            }),
+        },
 
         // -----------------------------------------------------------------
         // Invalid combination
@@ -517,7 +485,9 @@ pub async fn drop_object_impl(
     let mut conn = pool.acquire().await.map_err(|e| e.to_string())?;
     match execute_simple_sql(&mut conn, &sql).await {
         Ok(_) => Ok(()),
-        Err(error) => Err(format!("Failed to drop {object_type} '{object_name}': {error}")),
+        Err(error) => Err(format!(
+            "Failed to drop {object_type} '{object_name}': {error}"
+        )),
     }
 }
 
@@ -581,8 +551,15 @@ pub async fn get_routine_parameters_impl(
     routine_name: &str,
     routine_type: &str,
 ) -> Result<Vec<RoutineParameter>, String> {
-    get_routine_parameters_inner(state, connection_id, database, routine_name, routine_type, false)
-        .await
+    get_routine_parameters_inner(
+        state,
+        connection_id,
+        database,
+        routine_name,
+        routine_type,
+        false,
+    )
+    .await
 }
 
 #[cfg(coverage)]
@@ -660,8 +637,14 @@ pub async fn get_object_body(
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let start = std::time::Instant::now();
-    let result =
-        get_object_body_impl(&state, &connection_id, &database, &object_name, &object_type).await;
+    let result = get_object_body_impl(
+        &state,
+        &connection_id,
+        &database,
+        &object_name,
+        &object_type,
+    )
+    .await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
@@ -697,8 +680,7 @@ pub async fn save_object(
     let result = save_object_impl(request, &state).await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
-    let (conn_id, database_name) =
-        resolve_connection_context(&state, &connection_id_for_log);
+    let (conn_id, database_name) = resolve_connection_context(&state, &connection_id_for_log);
 
     match &result {
         Ok(response) => {
@@ -746,15 +728,19 @@ pub async fn drop_object(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let start = std::time::Instant::now();
-    let result =
-        drop_object_impl(&state, &connection_id, &database, &object_name, &object_type).await;
+    let result = drop_object_impl(
+        &state,
+        &connection_id,
+        &database,
+        &object_name,
+        &object_type,
+    )
+    .await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
     let type_keyword = object_type_keyword(&object_type).unwrap_or("UNKNOWN");
-    let sql_text = format!(
-        "DROP {type_keyword} IF EXISTS `{database}`.`{object_name}`"
-    );
+    let sql_text = format!("DROP {type_keyword} IF EXISTS `{database}`.`{object_name}`");
 
     log_single_entry(
         &state.db,

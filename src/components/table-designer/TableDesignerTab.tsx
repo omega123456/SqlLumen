@@ -5,6 +5,7 @@ import { useSchemaStore } from '../../stores/schema-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useThemeStore } from '../../stores/theme-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { invalidateSchemaIndex } from '../../lib/schema-index-commands'
 import type { DesignerSubTab, TableDesignerTab as TableDesignerTabType } from '../../types/schema'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
@@ -145,6 +146,13 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
     }
 
     await refreshCategory(connectionId, databaseName, 'table')
+
+    // Invalidate schema index for the modified table (fire-and-forget)
+    const qualifiedName = `${databaseName}.${latestTableName}`
+    invalidateSchemaIndex(connectionId, [qualifiedName]).catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[table-designer] Schema index invalidation failed:', msg)
+    })
 
     const action = postApplyActionRef.current
     postApplyActionRef.current = null

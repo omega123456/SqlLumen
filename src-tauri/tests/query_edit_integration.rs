@@ -172,7 +172,10 @@ fn update_result_cell_multiple_columns() {
     let stored = &result_vec[0];
     assert_eq!(stored.rows[0][0], serde_json::json!(1)); // id unchanged
     assert_eq!(stored.rows[0][1], serde_json::json!("Alice New"));
-    assert_eq!(stored.rows[0][2], serde_json::json!("alice.new@example.com"));
+    assert_eq!(
+        stored.rows[0][2],
+        serde_json::json!("alice.new@example.com")
+    );
 }
 
 // ── analyze_query_for_edit_impl coverage-stub tests ────────────────────────────

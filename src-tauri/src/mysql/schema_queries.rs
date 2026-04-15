@@ -3,14 +3,14 @@
 //! This module contains SQL query helpers that run against a live MySQL/MariaDB
 //! server. It is intentionally separate from the `db/` module which is SQLite-only.
 
-use serde::{Deserialize, Serialize};
-use sqlx::mysql::MySqlRow;
-use sqlx::Row;
-use std::collections::HashMap;
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
+use serde::{Deserialize, Serialize};
+use sqlx::mysql::MySqlRow;
 #[cfg(not(coverage))]
 use sqlx::MySqlPool;
+use sqlx::Row;
+use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
 // Data models
@@ -164,16 +164,11 @@ pub(crate) fn decode_mysql_text_cell_named(row: &MySqlRow, column: &str) -> Resu
 }
 
 #[cfg(not(coverage))]
-fn decode_mysql_optional_text_cell(
-    row: &MySqlRow,
-    index: usize,
-) -> Result<Option<String>, String> {
+fn decode_mysql_optional_text_cell(row: &MySqlRow, index: usize) -> Result<Option<String>, String> {
     match row.try_get::<Option<String>, _>(index) {
         Ok(value) => Ok(value),
         Err(_) => match row.try_get::<Option<Vec<u8>>, _>(index) {
-            Ok(opt) => Ok(opt.map(|bytes: Vec<u8>| {
-                String::from_utf8_lossy(&bytes).into_owned()
-            })),
+            Ok(opt) => Ok(opt.map(|bytes: Vec<u8>| String::from_utf8_lossy(&bytes).into_owned())),
             Err(err) => Err(format!(
                 "Failed to decode optional text column index {index}: {err}"
             )),
@@ -579,10 +574,7 @@ pub async fn query_ddl(
             format!("SHOW CREATE FUNCTION {safe_db}.{safe_name}"),
             2usize,
         ),
-        "trigger" => (
-            format!("SHOW CREATE TRIGGER {safe_db}.{safe_name}"),
-            2usize,
-        ),
+        "trigger" => (format!("SHOW CREATE TRIGGER {safe_db}.{safe_name}"), 2usize),
         "event" => (format!("SHOW CREATE EVENT {safe_db}.{safe_name}"), 3usize),
         _ => return Err(format!("Unknown object type: '{object_type}'")),
     };
@@ -842,11 +834,9 @@ async fn query_routine_parameters_inner(
     let mut params = Vec::with_capacity(rows.len());
     for row in &rows {
         params.push(RoutineParameterRow {
-            name: decode_mysql_optional_text_cell(row, 0)?
-                .unwrap_or_default(),
+            name: decode_mysql_optional_text_cell(row, 0)?.unwrap_or_default(),
             data_type: decode_mysql_text_cell(row, 1)?,
-            mode: decode_mysql_optional_text_cell(row, 2)?
-                .unwrap_or_default(),
+            mode: decode_mysql_optional_text_cell(row, 2)?.unwrap_or_default(),
             ordinal_position: row.try_get::<i64, _>(3).unwrap_or(0) as i32,
         });
     }
@@ -1053,4 +1043,3 @@ pub async fn query_all_indexes(
 ) -> Result<HashMap<String, Vec<IndexInfo>>, String> {
     Ok(HashMap::new())
 }
-

@@ -17,6 +17,12 @@ function setupMockIPC() {
     if (cmd === 'get_all_settings') return {}
     if (cmd === 'ai_chat') return undefined
     if (cmd === 'ai_cancel') return undefined
+    if (cmd === 'ai_query_expand') return { text: '{"queries":["q1","q2","q3"]}' }
+    if (cmd === 'semantic_search') return []
+    if (cmd === 'build_schema_index') return undefined
+    if (cmd === 'get_index_status') return { status: 'ready' }
+    if (cmd === 'invalidate_schema_index') return undefined
+    if (cmd === 'list_indexed_tables') return []
     if (cmd === 'fetch_schema_metadata')
       return {
         databases: ['testdb'],
@@ -45,9 +51,9 @@ function emptyTabState(overrides?: Partial<TabAiState>): TabAiState {
     attachedContext: null,
     isPanelOpen: true,
     error: null,
-    schemaDdl: null,
-    schemaTokenCount: 0,
-    schemaWarning: false,
+    retrievedSchemaDdl: '',
+    lastRetrievalTimestamp: 0,
+    isWaitingForIndex: false,
     connectionId: null,
     _unlisten: null,
     ...overrides,
@@ -67,11 +73,14 @@ beforeEach(() => {
       'ai.enabled': 'true',
       'ai.endpoint': 'http://localhost:11434',
       'ai.model': 'llama3',
+      'ai.embeddingModel': 'nomic-embed-text',
     },
     pendingChanges: {},
     isDirty: false,
     isLoading: false,
     activeSection: 'ai',
+    isDialogOpen: false,
+    dialogSection: undefined,
   })
 
   useAiStore.setState({ tabs: { 'tab-1': emptyTabState() } })
@@ -85,20 +94,6 @@ describe('AiPanel', () => {
   it('renders with correct data-testid', () => {
     render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
-  })
-
-  it('calls preloadSchemaContext on mount when connectionId is provided', () => {
-    const preloadSpy = vi.spyOn(useAiStore.getState(), 'preloadSchemaContext')
-    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
-    expect(preloadSpy).toHaveBeenCalledWith('tab-1', 'conn-1')
-    preloadSpy.mockRestore()
-  })
-
-  it('does not call preloadSchemaContext when connectionId is null', () => {
-    const preloadSpy = vi.spyOn(useAiStore.getState(), 'preloadSchemaContext')
-    render(<AiPanel tabId="tab-1" connectionId={null} />)
-    expect(preloadSpy).not.toHaveBeenCalled()
-    preloadSpy.mockRestore()
   })
 
   it('renders the header', () => {
@@ -196,13 +191,6 @@ describe('AiPanel', () => {
 
     render(<AiPanel tabId="tab-1" connectionId="conn-1" onTriggerDiff={onTriggerDiff} />)
 
-    // The handleTriggerDiff callback is created inside AiPanel and passed as
-    // onTriggerDiff to AiChatMessages. We access it indirectly by calling it
-    // through the component's internal wiring. Since the markdown renderer is
-    // mocked, we cannot reach the Diff button. Instead, test the function
-    // directly by extracting it via the component tree.
-    // The react-markdown mock renders raw text, so we cannot click Diff.
-    // Instead, we verify the component renders correctly with the callback.
     expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
   })
 
@@ -220,5 +208,131 @@ describe('AiPanel', () => {
     expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
     // onTriggerDiff should not have been called yet
     expect(onTriggerDiff).not.toHaveBeenCalled()
+  })
+
+  it('shows waiting for index indicator when isWaitingForIndex is true', () => {
+    useAiStore.setState({
+      tabs: {
+        'tab-1': emptyTabState({
+          isWaitingForIndex: true,
+        }),
+      },
+    })
+
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('ai-index-waiting')).toBeInTheDocument()
+    expect(screen.getByText('Waiting for schema index...')).toBeInTheDocument()
+  })
+
+  it('does not show waiting indicator when isWaitingForIndex is false', () => {
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.queryByTestId('ai-index-waiting')).not.toBeInTheDocument()
+  })
+})
+
+describe('AiPanel — setup required state', () => {
+  it('shows AiSetupRequired when AI is enabled but embedding model is empty', () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434',
+        'ai.model': 'llama3',
+        'ai.embeddingModel': '',
+      },
+      pendingChanges: {},
+    })
+
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('ai-setup-required')).toBeInTheDocument()
+  })
+
+  it('does not show AiSetupRequired when embedding model is configured', () => {
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.queryByTestId('ai-setup-required')).not.toBeInTheDocument()
+  })
+
+  it('does not show messages area when setup required but shows disabled input', () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434',
+        'ai.model': 'llama3',
+        'ai.embeddingModel': '',
+      },
+      pendingChanges: {},
+    })
+
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.queryByTestId('ai-chat-messages')).not.toBeInTheDocument()
+    // Chat input should be present but disabled
+    expect(screen.getByTestId('ai-chat-input')).toBeInTheDocument()
+    const textarea = screen.getByTestId('ai-chat-textarea') as HTMLTextAreaElement
+    expect(textarea.disabled).toBe(true)
+    expect(textarea.placeholder).toContain('Embedding model required')
+  })
+
+  it('still shows the header when setup required', () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434',
+        'ai.model': 'llama3',
+        'ai.embeddingModel': '',
+      },
+      pendingChanges: {},
+    })
+
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('ai-panel-header')).toBeInTheDocument()
+  })
+
+  it('does not show setup required when AI is disabled', () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'false',
+        'ai.embeddingModel': '',
+      },
+      pendingChanges: {},
+    })
+
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.queryByTestId('ai-setup-required')).not.toBeInTheDocument()
+  })
+
+  it('AiSetupRequired disappears when embedding model is configured reactively', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434',
+        'ai.model': 'llama3',
+        'ai.embeddingModel': '',
+      },
+      pendingChanges: {},
+    })
+
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('ai-setup-required')).toBeInTheDocument()
+
+    // Simulate user configuring the embedding model
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434',
+        'ai.model': 'llama3',
+        'ai.embeddingModel': 'nomic-embed-text',
+      },
+      pendingChanges: {},
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('ai-setup-required')).not.toBeInTheDocument()
+    })
+    expect(screen.getByTestId('ai-chat-messages')).toBeInTheDocument()
   })
 })

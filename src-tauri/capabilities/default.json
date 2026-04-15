@@ -86,6 +86,13 @@
     "allow-ai-chat",
     "allow-ai-cancel",
     "allow-list-ai-models",
+    "allow-ai-query-expand",
+    "allow-build-schema-index",
+    "allow-semantic-search",
+    "allow-get-index-status",
+    "allow-invalidate-schema-index",
+    "allow-force-rebuild-schema-index",
+    "allow-list-indexed-tables",
     "dialog:allow-save",
     "dialog:allow-open"
   ]

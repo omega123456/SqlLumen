@@ -2,9 +2,7 @@
 
 mod common;
 
-use sqllumen_lib::commands::settings::{
-    get_all_settings_impl, get_setting_impl, set_setting_impl,
-};
+use sqllumen_lib::commands::settings::{get_all_settings_impl, get_setting_impl, set_setting_impl};
 
 #[test]
 fn test_get_setting_impl_returns_none_for_missing() {

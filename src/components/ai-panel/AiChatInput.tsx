@@ -14,6 +14,10 @@ export interface AiChatInputProps {
   suggestionText?: string
   /** Called after the suggestion text has been consumed. */
   onSuggestionConsumed?: () => void
+  /** When true, the entire input is disabled (no typing, no sending). */
+  disabled?: boolean
+  /** Override the default placeholder text. */
+  placeholder?: string
 }
 
 export function AiChatInput({
@@ -21,6 +25,8 @@ export function AiChatInput({
   connectionId,
   suggestionText,
   onSuggestionConsumed,
+  disabled: externalDisabled,
+  placeholder: externalPlaceholder,
 }: AiChatInputProps) {
   const [value, setValue] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -37,7 +43,13 @@ export function AiChatInput({
     (s) => !!(s.pendingChanges['ai.model'] ?? s.settings['ai.model'] ?? '')
   )
 
-  const canSend = aiEnabled && hasEndpoint && hasModel && value.trim().length > 0 && !isGenerating
+  const canSend =
+    !externalDisabled &&
+    aiEnabled &&
+    hasEndpoint &&
+    hasModel &&
+    value.trim().length > 0 &&
+    !isGenerating
 
   // Consume external suggestion text
   useEffect(() => {
@@ -126,13 +138,15 @@ export function AiChatInput({
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={
-            !aiEnabled
-              ? 'AI is disabled — enable it in Settings'
-              : !hasEndpoint || !hasModel
-                ? 'Configure AI endpoint and model in Settings'
-                : 'Ask about your database...'
+            externalPlaceholder
+              ? externalPlaceholder
+              : !aiEnabled
+                ? 'AI is disabled — enable it in Settings'
+                : !hasEndpoint || !hasModel
+                  ? 'Configure AI endpoint and model in Settings'
+                  : 'Ask about your database...'
           }
-          disabled={isGenerating}
+          disabled={externalDisabled || isGenerating}
           rows={1}
           data-testid="ai-chat-textarea"
         />

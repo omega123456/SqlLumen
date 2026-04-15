@@ -235,8 +235,7 @@ mod coverage_stubs {
     async fn test_create_database_impl_coverage() {
         let state = common::test_app_state();
         // Registry has no entries, so is_read_only returns false
-        let result =
-            create_database_impl(&state, "test-conn", "newdb", None, None).await;
+        let result = create_database_impl(&state, "test-conn", "newdb", None, None).await;
         assert!(result.is_ok());
     }
 
@@ -250,8 +249,7 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_alter_database_impl_coverage() {
         let state = common::test_app_state();
-        let result =
-            alter_database_impl(&state, "test-conn", "db", Some("utf8"), None).await;
+        let result = alter_database_impl(&state, "test-conn", "db", Some("utf8"), None).await;
         assert!(result.is_ok());
     }
 
@@ -279,16 +277,14 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_rename_table_impl_coverage() {
         let state = common::test_app_state();
-        let result =
-            rename_table_impl(&state, "test-conn", "db", "old", "new").await;
+        let result = rename_table_impl(&state, "test-conn", "db", "old", "new").await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_create_database_impl_rejects_empty_name() {
         let state = common::test_app_state();
-        let result =
-            create_database_impl(&state, "test-conn", "", None, None).await;
+        let result = create_database_impl(&state, "test-conn", "", None, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("empty"));
     }

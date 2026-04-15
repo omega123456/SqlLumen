@@ -191,7 +191,7 @@ fn parse_windows_line_endings() {
 
 #[test]
 fn import_progress_types_serialize() {
-    use sqllumen_lib::state::{ImportJobProgress, ImportJobStatus, ImportError};
+    use sqllumen_lib::state::{ImportError, ImportJobProgress, ImportJobStatus};
 
     let progress = ImportJobProgress {
         job_id: "test-123".to_string(),
@@ -392,8 +392,14 @@ fn import_error_serde_round_trip() {
 
     let json = serde_json::to_value(&err).expect("serialize");
     assert_eq!(json["statementIndex"], serde_json::json!(42));
-    assert_eq!(json["sqlPreview"], serde_json::json!("INSERT INTO broken..."));
-    assert_eq!(json["errorMessage"], serde_json::json!("Unknown column 'x'"));
+    assert_eq!(
+        json["sqlPreview"],
+        serde_json::json!("INSERT INTO broken...")
+    );
+    assert_eq!(
+        json["errorMessage"],
+        serde_json::json!("Unknown column 'x'")
+    );
 
     let round_trip: ImportError = serde_json::from_value(json).expect("deserialize");
     assert_eq!(round_trip.statement_index, 42);
@@ -403,7 +409,7 @@ fn import_error_serde_round_trip() {
 
 #[test]
 fn import_job_progress_serde_round_trip() {
-    use sqllumen_lib::state::{ImportJobProgress, ImportJobStatus, ImportError};
+    use sqllumen_lib::state::{ImportError, ImportJobProgress, ImportJobStatus};
 
     let progress = ImportJobProgress {
         job_id: "imp-456".to_string(),

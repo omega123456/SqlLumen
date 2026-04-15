@@ -255,8 +255,7 @@ fn test_list_history_error_entry_fields() {
 fn test_list_history_search_no_matches() {
     let state = common::test_app_state();
     insert_sample_entries(&state, "p1", 5);
-    let page = list_history_impl(&state, "p1", 1, 50, Some("NONEXISTENT_KEYWORD"))
-        .expect("search");
+    let page = list_history_impl(&state, "p1", 1, 50, Some("NONEXISTENT_KEYWORD")).expect("search");
     assert_eq!(page.entries.len(), 0);
     assert_eq!(page.total, 0);
 }
@@ -297,8 +296,14 @@ fn test_insert_history_batch_with_mixed_entries() {
     let page = list_history_impl(&state, "p1", 1, 50, None).expect("list");
     assert_eq!(page.total, 2);
     // Entries are ordered by timestamp DESC; both have the same timestamp, so check presence
-    let has_success = page.entries.iter().any(|e| e.success && e.sql_text == "SELECT 1");
-    let has_error = page.entries.iter().any(|e| !e.success && e.error_message.as_deref() == Some("syntax error"));
+    let has_success = page
+        .entries
+        .iter()
+        .any(|e| e.success && e.sql_text == "SELECT 1");
+    let has_error = page
+        .entries
+        .iter()
+        .any(|e| !e.success && e.error_message.as_deref() == Some("syntax error"));
     assert!(has_success);
     assert!(has_error);
 }
@@ -312,10 +317,14 @@ fn test_list_history_impl_error_when_table_missing() {
     let state = common::test_app_state();
     {
         let conn = state.db.lock().expect("db lock");
-        conn.execute_batch("DROP TABLE IF EXISTS query_history").expect("drop");
+        conn.execute_batch("DROP TABLE IF EXISTS query_history")
+            .expect("drop");
     }
     let result = list_history_impl(&state, "p1", 1, 10, None);
-    assert!(result.is_err(), "should error when query_history table is missing");
+    assert!(
+        result.is_err(),
+        "should error when query_history table is missing"
+    );
     assert!(
         result.unwrap_err().contains("no such table"),
         "error should mention missing table"
@@ -327,10 +336,14 @@ fn test_delete_history_entry_impl_error_when_table_missing() {
     let state = common::test_app_state();
     {
         let conn = state.db.lock().expect("db lock");
-        conn.execute_batch("DROP TABLE IF EXISTS query_history").expect("drop");
+        conn.execute_batch("DROP TABLE IF EXISTS query_history")
+            .expect("drop");
     }
     let result = delete_history_entry_impl(&state, 1);
-    assert!(result.is_err(), "should error when query_history table is missing");
+    assert!(
+        result.is_err(),
+        "should error when query_history table is missing"
+    );
 }
 
 #[test]
@@ -338,10 +351,14 @@ fn test_clear_history_impl_error_when_table_missing() {
     let state = common::test_app_state();
     {
         let conn = state.db.lock().expect("db lock");
-        conn.execute_batch("DROP TABLE IF EXISTS query_history").expect("drop");
+        conn.execute_batch("DROP TABLE IF EXISTS query_history")
+            .expect("drop");
     }
     let result = clear_history_impl(&state, "p1");
-    assert!(result.is_err(), "should error when query_history table is missing");
+    assert!(
+        result.is_err(),
+        "should error when query_history table is missing"
+    );
 }
 
 // ── Serde deserialization coverage ───────────────────────────────────────
@@ -401,8 +418,7 @@ fn test_history_page_deserialize_from_json() {
         "pageSize": 25
     });
 
-    let page: HistoryPage =
-        serde_json::from_value(json).expect("should deserialize HistoryPage");
+    let page: HistoryPage = serde_json::from_value(json).expect("should deserialize HistoryPage");
     assert_eq!(page.entries.len(), 1);
     assert_eq!(page.total, 100);
     assert_eq!(page.page, 1);

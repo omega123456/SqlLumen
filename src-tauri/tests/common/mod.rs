@@ -6,11 +6,11 @@ pub mod fake_credentials;
 pub mod log_capture;
 pub mod mock_mysql_server;
 
+use rusqlite::Connection;
 use sqllumen_lib::commands::connections::SaveConnectionInput;
 use sqllumen_lib::db::migrations;
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::state::AppState;
-use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -40,6 +40,10 @@ pub fn test_app_state() -> AppState {
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        http_client: reqwest::Client::new(),
     }
 }
 

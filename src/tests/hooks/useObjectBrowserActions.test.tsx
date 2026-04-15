@@ -25,6 +25,11 @@ vi.mock('../../lib/object-editor-commands', () => ({
   getRoutineParameters: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock('../../lib/schema-index-commands', () => ({
+  invalidateSchemaIndex: vi.fn().mockResolvedValue(undefined),
+  buildSchemaIndex: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('../../stores/toast-store', () => ({
   showSuccessToast: vi.fn(),
   showErrorToast: vi.fn(),

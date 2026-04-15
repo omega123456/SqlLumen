@@ -20,6 +20,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "004_fix_history_favorites_schema",
         include_str!("../../migrations/004_fix_history_favorites_schema.sql"),
     ),
+    (
+        "005_schema_index",
+        include_str!("../../migrations/005_schema_index.sql"),
+    ),
 ];
 
 /// Run all pending migrations on the given connection.

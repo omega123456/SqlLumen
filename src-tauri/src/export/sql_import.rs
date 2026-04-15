@@ -42,7 +42,11 @@ pub fn parse_sql_statements(input: &str) -> Vec<String> {
 
                 // Skip whitespace after DELIMITER keyword
                 let mut j = after;
-                while j < len && chars[j] != '\n' && chars[j] != '\r' && chars[j].is_ascii_whitespace() {
+                while j < len
+                    && chars[j] != '\n'
+                    && chars[j] != '\r'
+                    && chars[j].is_ascii_whitespace()
+                {
                     j += 1;
                 }
 
@@ -256,8 +260,7 @@ pub fn execute_sql_import(
     db: &Arc<Mutex<rusqlite::Connection>>,
     connection_id: &str,
 ) -> Result<(), String> {
-    let rt = tokio::runtime::Handle::try_current()
-        .map_err(|e| format!("No tokio runtime: {e}"))?;
+    let rt = tokio::runtime::Handle::try_current().map_err(|e| format!("No tokio runtime: {e}"))?;
 
     let start_time = std::time::Instant::now();
 
@@ -355,11 +358,7 @@ pub fn execute_sql_import(
 
         // Execute the statement
         let stmt_start = std::time::Instant::now();
-        let result = rt.block_on(async {
-            sqlx::query(sql)
-                .execute(pool)
-                .await
-        });
+        let result = rt.block_on(async { sqlx::query(sql).execute(pool).await });
         let stmt_elapsed_ms = stmt_start.elapsed().as_millis() as i64;
 
         // Update progress
@@ -473,10 +472,7 @@ pub fn execute_sql_import(
         }
     }
 
-    query_history_bridge::log_batch_entries(
-        db,
-        std::mem::take(&mut statement_history_entries),
-    );
+    query_history_bridge::log_batch_entries(db, std::mem::take(&mut statement_history_entries));
     log_import_history(
         db,
         connection_id,

@@ -28,6 +28,7 @@ export interface AiStreamCallbacks {
 export interface AiModelInfo {
   id: string
   name?: string
+  category: string
 }
 
 // ---------------------------------------------------------------------------
@@ -131,4 +132,27 @@ export async function listAiModels(endpoint: string): Promise<ListAiModelsResult
     console.error('[ai-commands] Failed to list AI models:', errorMsg)
     return { models: [], error: errorMsg }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Query expansion (non-streaming)
+// ---------------------------------------------------------------------------
+
+export interface AiQueryExpandRequest {
+  endpoint: string
+  model: string
+  systemPrompt: string
+  userMessage: string
+}
+
+export interface AiQueryExpandResponse {
+  text: string
+}
+
+/**
+ * Non-streaming query expansion via `ai_query_expand`.
+ * Sends a system + user message pair and returns the assistant response text.
+ */
+export async function aiQueryExpand(req: AiQueryExpandRequest): Promise<AiQueryExpandResponse> {
+  return invoke<AiQueryExpandResponse>('ai_query_expand', { req })
 }

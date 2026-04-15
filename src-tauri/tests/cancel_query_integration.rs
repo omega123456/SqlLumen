@@ -17,7 +17,11 @@ async fn cancel_query_returns_false_when_no_running_query() {
     let state = common::test_app_state();
 
     let result = cancel_query_impl(&state, "conn-1", "tab-1").await;
-    assert_eq!(result, Ok(false), "should return Ok(false) for missing query");
+    assert_eq!(
+        result,
+        Ok(false),
+        "should return Ok(false) for missing query"
+    );
 }
 
 #[tokio::test]
@@ -32,7 +36,11 @@ async fn cancel_query_returns_false_for_wrong_connection_id() {
         .insert(("conn-other".to_string(), "tab-1".to_string()), 42u64);
 
     let result = cancel_query_impl(&state, "conn-1", "tab-1").await;
-    assert_eq!(result, Ok(false), "should return Ok(false) for wrong connection");
+    assert_eq!(
+        result,
+        Ok(false),
+        "should return Ok(false) for wrong connection"
+    );
 }
 
 #[tokio::test]
@@ -83,9 +91,7 @@ async fn running_queries_insert_and_remove() {
 mod coverage_cancel {
     use super::*;
     use sqllumen_lib::mysql::query_executor::execute_query_impl;
-    use sqllumen_lib::mysql::registry::{
-        ConnectionStatus, RegistryEntry, StoredConnectionParams,
-    };
+    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 
@@ -172,7 +178,11 @@ mod coverage_cancel {
 
         // Coverage stub: thread ID found + connection exists → Ok(true)
         let result = cancel_query_impl(&state, "conn-cancel", "tab-1").await;
-        assert_eq!(result, Ok(true), "should return Ok(true) when thread ID found and connection exists");
+        assert_eq!(
+            result,
+            Ok(true),
+            "should return Ok(true) when thread ID found and connection exists"
+        );
     }
 
     #[tokio::test]
@@ -201,11 +211,9 @@ mod coverage_cancel {
 #[cfg(not(coverage))]
 mod mock_cancel {
     use super::*;
-    use common::mock_mysql_server::{MockColumnDef, MockMySqlServer, MockQueryStep, MockCell};
-    use sqllumen_lib::mysql::registry::{
-        ConnectionStatus, RegistryEntry, StoredConnectionParams,
-    };
+    use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
     use opensrv_mysql::{ColumnFlags, ColumnType};
+    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use tokio_util::sync::CancellationToken;
 
@@ -244,18 +252,16 @@ mod mock_cancel {
     /// Start a mock MySQL server that responds to `SELECT CONNECTION_ID()` and
     /// accepts any `KILL QUERY` command (unmatched queries return OK by default).
     async fn start_mock_with_connection_id(thread_id: u64) -> (MockMySqlServer, sqlx::MySqlPool) {
-        let server = MockMySqlServer::start_script(vec![
-            MockQueryStep {
-                query: "SELECT CONNECTION_ID()",
-                columns: vec![MockColumnDef {
-                    name: "CONNECTION_ID()",
-                    coltype: ColumnType::MYSQL_TYPE_LONGLONG,
-                    colflags: ColumnFlags::UNSIGNED_FLAG,
-                }],
-                rows: vec![vec![MockCell::U64(thread_id)]],
-                error: None,
-            },
-        ])
+        let server = MockMySqlServer::start_script(vec![MockQueryStep {
+            query: "SELECT CONNECTION_ID()",
+            columns: vec![MockColumnDef {
+                name: "CONNECTION_ID()",
+                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                colflags: ColumnFlags::UNSIGNED_FLAG,
+            }],
+            rows: vec![vec![MockCell::U64(thread_id)]],
+            error: None,
+        }])
         .await;
 
         let opts = MySqlConnectOptions::new()
@@ -288,6 +294,10 @@ mod mock_cancel {
         // cancel_query_impl should find the thread ID and issue KILL QUERY 12345
         // The mock server returns OK for unmatched queries (like KILL QUERY 12345)
         let result = cancel_query_impl(&state, "conn-1", "tab-1").await;
-        assert_eq!(result, Ok(true), "should return Ok(true) after issuing KILL QUERY");
+        assert_eq!(
+            result,
+            Ok(true),
+            "should return Ok(true) after issuing KILL QUERY"
+        );
     }
 }

@@ -27,6 +27,11 @@ vi.mock('../../../lib/table-designer-commands', () => ({
   applyTableDdl: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('../../../lib/schema-index-commands', () => ({
+  invalidateSchemaIndex: vi.fn().mockResolvedValue(undefined),
+  buildSchemaIndex: vi.fn().mockResolvedValue(undefined),
+}))
+
 import {
   applyTableDdl,
   generateTableDdl,

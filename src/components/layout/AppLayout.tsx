@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { Group, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 import { format as formatSQL } from 'sql-formatter'
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
@@ -17,6 +17,7 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useQueryStore, isCallSql } from '../../stores/query-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useImportDialogStore } from '../../stores/import-dialog-store'
+import { useSettingsStore } from '../../stores/settings-store'
 import { readFile } from '../../lib/query-commands'
 import {
   splitStatements,
@@ -27,7 +28,9 @@ import styles from './AppLayout.module.css'
 
 export function AppLayout() {
   const sidebarPanelRef = usePanelRef()
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const isSettingsOpen = useSettingsStore((s) => s.isDialogOpen)
+  const openSettingsDialog = useSettingsStore((s) => s.openDialog)
+  const closeSettingsDialog = useSettingsStore((s) => s.closeDialog)
   const importDialogRequest = useImportDialogStore((s) => s.request)
   const closeImportDialog = useImportDialogStore((s) => s.closeImportDialog)
 
@@ -39,12 +42,12 @@ export function AppLayout() {
   }
 
   const handleOpenSettings = useCallback(() => {
-    setIsSettingsOpen(true)
-  }, [])
+    openSettingsDialog()
+  }, [openSettingsDialog])
 
   const handleCloseSettings = useCallback(() => {
-    setIsSettingsOpen(false)
-  }, [])
+    closeSettingsDialog()
+  }, [closeSettingsDialog])
 
   // Register shortcut action callbacks
   useEffect(() => {
@@ -212,7 +215,7 @@ export function AppLayout() {
     })
 
     store.registerAction('settings', () => {
-      setIsSettingsOpen(true)
+      useSettingsStore.getState().openDialog()
     })
 
     return () => {

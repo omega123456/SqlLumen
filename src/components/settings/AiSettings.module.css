@@ -18,22 +18,78 @@
   margin-top: 12px;
 }
 
-.modelListHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+.helperText {
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+  margin: 0 0 12px;
 }
 
-.modelListLabel {
+/* Category sections */
+
+.categorySections {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.categorySection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionDivider {
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.3);
+}
+
+.categoryHeader {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.categoryIcon {
+  width: 16px;
+  height: 16px;
+  color: var(--on-surface-variant);
+  flex-shrink: 0;
+}
+
+.categoryLabel {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+
+.categoryBadge {
+  border-radius: 4px;
+  font-size: 10px;
+  background: var(--surface-container-high);
+  padding: 2px 6px;
+  color: var(--on-surface-variant);
+}
+
+.categoryEmptyState {
+  background: var(--surface-container-high);
+  border-radius: var(--radius-sm);
+  padding: 12px;
   font-size: var(--type-size-sm);
   color: var(--on-surface-variant);
 }
+
+/* Card grid and cards */
 
 .modelGrid {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.cardWrapper {
+  position: relative;
 }
 
 .modelCard {
@@ -62,6 +118,14 @@
   background: color-mix(in srgb, var(--ui-elevated-surface-bg) 88%, var(--primary));
 }
 
+.cardCheckmark {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  color: var(--primary);
+  pointer-events: none;
+}
+
 .modelError {
   font-size: var(--type-size-sm);
   color: var(--error);
@@ -72,4 +136,12 @@
   font-size: var(--type-size-sm);
   color: var(--on-surface-variant);
   margin-top: 4px;
+}
+
+/* Force Reindex row */
+
+.reindexRow {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.3);
 }

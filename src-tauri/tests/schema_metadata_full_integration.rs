@@ -1,12 +1,12 @@
 //! Integration tests for `fetch_schema_metadata_full_impl` and the bulk
 //! foreign-key / index query coverage stubs.
 
+use rusqlite::Connection;
 use sqllumen_lib::mysql::query_executor::fetch_schema_metadata_full_impl;
 use sqllumen_lib::mysql::registry::{
     ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams,
 };
 use sqllumen_lib::state::AppState;
-use rusqlite::Connection;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
 use std::sync::{Arc, Mutex};
 
@@ -26,6 +26,10 @@ fn test_state() -> AppState {
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        http_client: reqwest::Client::new(),
     }
 }
 

@@ -1,6 +1,6 @@
-use sqlx::mysql::{MySqlConnectOptions, MySqlSslMode};
 #[cfg(not(coverage))]
 use sqlx::mysql::MySqlPoolOptions;
+use sqlx::mysql::{MySqlConnectOptions, MySqlSslMode};
 use sqlx::MySqlPool;
 #[cfg(not(coverage))]
 use std::time::Duration;
@@ -64,7 +64,9 @@ pub fn build_connect_options(params: &ConnectionParams) -> MySqlConnectOptions {
 
 #[cfg(any(test, feature = "test-utils"))]
 pub fn set_test_pool_factory(factory: Option<TestPoolFactory>) {
-    let mut guard = TEST_POOL_FACTORY.lock().expect("test pool factory lock poisoned");
+    let mut guard = TEST_POOL_FACTORY
+        .lock()
+        .expect("test pool factory lock poisoned");
     *guard = factory;
 }
 
@@ -78,7 +80,10 @@ pub fn set_test_pool_factory(factory: Option<TestPoolFactory>) {
 #[cfg(not(coverage))]
 pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::Error> {
     #[cfg(any(test, feature = "test-utils"))]
-    if let Some(factory) = *TEST_POOL_FACTORY.lock().expect("test pool factory lock poisoned") {
+    if let Some(factory) = *TEST_POOL_FACTORY
+        .lock()
+        .expect("test pool factory lock poisoned")
+    {
         return factory(params);
     }
 
@@ -95,7 +100,10 @@ pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::E
 #[cfg(coverage)]
 pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::Error> {
     #[cfg(any(test, feature = "test-utils"))]
-    if let Some(factory) = *TEST_POOL_FACTORY.lock().expect("test pool factory lock poisoned") {
+    if let Some(factory) = *TEST_POOL_FACTORY
+        .lock()
+        .expect("test pool factory lock poisoned")
+    {
         return factory(params);
     }
 

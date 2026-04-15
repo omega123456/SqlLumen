@@ -1,13 +1,107 @@
-import { useCallback, useRef, useState } from 'react'
-import { TextInput } from '../common/TextInput'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '../common/Button'
+import { TextInput } from '../common/TextInput'
 import { ElevatedSurface } from '../common/ElevatedSurface'
+import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { SettingsSection } from './SettingsSection'
 import { SettingsToggle } from './SettingsToggle'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
+import { useSchemaIndexStore } from '../../stores/schema-index-store'
 import { listAiModels } from '../../lib/ai-commands'
 import type { AiModelInfo } from '../../lib/ai-commands'
+import { ChatCircleText, Database, Check } from '@phosphor-icons/react'
+import type { Icon } from '@phosphor-icons/react'
 import styles from './AiSettings.module.css'
+
+// ---------------------------------------------------------------------------
+// Local component: ModelCategorySection
+// ---------------------------------------------------------------------------
+
+interface ModelCategorySectionProps {
+  categoryKey: string
+  label: string
+  icon: Icon
+  models: AiModelInfo[]
+  selectedModelId: string
+  onSelectModel: (id: string) => void
+  emptyText: string
+}
+
+function ModelCategorySection({
+  categoryKey,
+  label,
+  icon: IconComponent,
+  models,
+  selectedModelId,
+  onSelectModel,
+  emptyText,
+}: ModelCategorySectionProps) {
+  const labelId = `ai-category-${categoryKey}-label`
+
+  return (
+    <div className={styles.categorySection} data-testid={`ai-category-${categoryKey}`}>
+      <div className={styles.categoryHeader}>
+        <IconComponent size={16} weight="regular" className={styles.categoryIcon} />
+        <span
+          id={labelId}
+          className={styles.categoryLabel}
+          data-testid={`ai-category-${categoryKey}-label`}
+        >
+          {label}
+        </span>
+        <span className={styles.categoryBadge} data-testid={`ai-category-${categoryKey}-count`}>
+          {models.length}
+        </span>
+      </div>
+      {models.length > 0 ? (
+        <div
+          className={styles.modelGrid}
+          data-testid={`ai-${categoryKey}-model-grid`}
+          role="radiogroup"
+          aria-labelledby={labelId}
+        >
+          {models.map((m) => (
+            <div key={m.id} className={styles.cardWrapper}>
+              <ElevatedSurface
+                className={`${styles.modelCard}${selectedModelId === m.id ? ` ${styles.modelCardSelected}` : ''}`}
+                onClick={() => onSelectModel(m.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onSelectModel(m.id)
+                  }
+                }}
+                tabIndex={0}
+                role="radio"
+                aria-checked={selectedModelId === m.id}
+                data-testid={`ai-model-card-${m.id}`}
+                title={m.name ?? m.id}
+              >
+                {m.name ?? m.id}
+              </ElevatedSurface>
+              {selectedModelId === m.id && (
+                <Check
+                  size={14}
+                  weight="bold"
+                  className={styles.cardCheckmark}
+                  data-testid={`ai-model-check-${m.id}`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={styles.categoryEmptyState} data-testid={`ai-${categoryKey}-empty-state`}>
+          {emptyText}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// AiSettings
+// ---------------------------------------------------------------------------
 
 export function AiSettings() {
   const setPendingChange = useSettingsStore((s) => s.setPendingChange)
@@ -15,12 +109,15 @@ export function AiSettings() {
   const aiEnabled = useSettingValue('ai.enabled') === 'true'
   const endpoint = useSettingValue('ai.endpoint')
   const model = useSettingValue('ai.model')
+  const embeddingModel = useSettingValue('ai.embeddingModel')
   const temperature = useSettingValue('ai.temperature')
   const maxTokens = useSettingValue('ai.maxTokens')
 
   const [availableModels, setAvailableModels] = useState<AiModelInfo[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
   const [modelError, setModelError] = useState<string | null>(null)
+  const [reindexConfirmOpen, setReindexConfirmOpen] = useState(false)
+  const [isReindexing, setIsReindexing] = useState(false)
 
   const fetchCounterRef = useRef(0)
 
@@ -51,8 +148,33 @@ export function AiSettings() {
     }
   }, [endpoint])
 
-  function handleSelectModel(modelId: string) {
+  const handleForceReindex = useCallback(async () => {
+    const store = useSchemaIndexStore.getState()
+    const sessions = Object.keys(store.sessionToProfile)
+    setIsReindexing(true)
+    try {
+      await Promise.all(sessions.map((sid) => store.forceRebuild(sid)))
+    } finally {
+      setIsReindexing(false)
+      setReindexConfirmOpen(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (aiEnabled && endpoint.trim()) {
+      handleFetchModels()
+    }
+  }, [aiEnabled, endpoint, handleFetchModels])
+
+  const chatModels = availableModels.filter((m) => m.category === 'chat' || !m.category)
+  const embeddingModels = availableModels.filter((m) => m.category === 'embedding')
+
+  function handleSelectChatModel(modelId: string) {
     setPendingChange('ai.model', modelId)
+  }
+
+  function handleSelectEmbeddingModel(modelId: string) {
+    setPendingChange('ai.embeddingModel', modelId)
   }
 
   return (
@@ -86,35 +208,12 @@ export function AiSettings() {
               style={{ width: 360 }}
             />
           </div>
-          <div>
-            <label htmlFor="settings-ai-model" className={styles.fieldLabel}>
-              Model name
-            </label>
-            <TextInput
-              id="settings-ai-model"
-              value={model}
-              onChange={(e) => setPendingChange('ai.model', e.target.value)}
-              placeholder="codellama"
-              disabled={!aiEnabled}
-              data-testid="settings-ai-model"
-              style={{ width: 260 }}
-            />
-          </div>
 
           {aiEnabled && endpoint.trim() && (
             <div className={styles.modelListSection} data-testid="ai-model-list-section">
-              <div className={styles.modelListHeader}>
-                <span className={styles.modelListLabel}>Or select from available models:</span>
-                <Button
-                  variant="secondary"
-                  onClick={handleFetchModels}
-                  disabled={loadingModels}
-                  data-testid="ai-fetch-models-btn"
-                  style={{ fontSize: 'var(--type-size-sm)', padding: '4px 10px' }}
-                >
-                  {loadingModels ? 'Fetching...' : 'Fetch models'}
-                </Button>
-              </div>
+              <p className={styles.helperText} data-testid="ai-helper-text">
+                Models will be grouped by type: chat for conversation, embedding for schema search
+              </p>
 
               {loadingModels && (
                 <div className={styles.modelLoading} data-testid="ai-models-loading">
@@ -129,28 +228,41 @@ export function AiSettings() {
               )}
 
               {availableModels.length > 0 && (
-                <div className={styles.modelGrid} data-testid="ai-model-grid">
-                  {availableModels.map((m) => (
-                    <ElevatedSurface
-                      key={m.id}
-                      className={`${styles.modelCard}${model === m.id ? ` ${styles.modelCardSelected}` : ''}`}
-                      onClick={() => handleSelectModel(m.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          handleSelectModel(m.id)
-                        }
-                      }}
-                      tabIndex={0}
-                      role="button"
-                      data-testid={`ai-model-card-${m.id}`}
-                      title={m.name ?? m.id}
-                    >
-                      {m.name ?? m.id}
-                    </ElevatedSurface>
-                  ))}
+                <div className={styles.categorySections} data-testid="ai-model-categories">
+                  <ModelCategorySection
+                    categoryKey="chat"
+                    label="Chat Models"
+                    icon={ChatCircleText}
+                    models={chatModels}
+                    selectedModelId={model}
+                    onSelectModel={handleSelectChatModel}
+                    emptyText="No chat models found"
+                  />
+
+                  <div className={styles.sectionDivider} />
+
+                  <ModelCategorySection
+                    categoryKey="embedding"
+                    label="Embedding Models"
+                    icon={Database}
+                    models={embeddingModels}
+                    selectedModelId={embeddingModel}
+                    onSelectModel={handleSelectEmbeddingModel}
+                    emptyText="No embedding models found"
+                  />
                 </div>
               )}
+
+              <div className={styles.reindexRow} data-testid="ai-reindex-row">
+                <Button
+                  variant="secondary"
+                  onClick={() => setReindexConfirmOpen(true)}
+                  disabled={isReindexing}
+                  data-testid="ai-force-reindex-btn"
+                >
+                  Force Reindex
+                </Button>
+              </div>
             </div>
           )}
         </SettingsSection>
@@ -191,6 +303,18 @@ export function AiSettings() {
           </div>
         </SettingsSection>
       </div>
+
+      <ConfirmDialog
+        isOpen={reindexConfirmOpen}
+        title="Force Reindex Vector DB"
+        message="This will wipe the current schema index and rebuild it from scratch for all active connections. This may take a few minutes."
+        confirmLabel="Reindex"
+        isDestructive
+        warningText={null}
+        isLoading={isReindexing}
+        onConfirm={() => void handleForceReindex()}
+        onCancel={() => setReindexConfirmOpen(false)}
+      />
     </div>
   )
 }

@@ -149,12 +149,7 @@ pub async fn fetch_table_data(
                     .map(|r| r.execution_time_ms as i64)
                     .unwrap_or(0),
             ),
-            row_count: Some(
-                result
-                    .as_ref()
-                    .map(|r| r.total_rows as i64)
-                    .unwrap_or(0),
-            ),
+            row_count: Some(result.as_ref().map(|r| r.total_rows as i64).unwrap_or(0)),
             affected_rows: Some(0),
             success: result.is_ok(),
             error_message: result.as_ref().err().cloned(),
@@ -266,20 +261,15 @@ pub async fn insert_table_row(
     // Build a descriptive SQL text for history
     let mut sorted_keys: Vec<&String> = values.keys().collect();
     sorted_keys.sort();
-    let col_names: Vec<String> = sorted_keys
-        .iter()
-        .map(|k| format!("`{k}`"))
-        .collect();
+    let col_names: Vec<String> = sorted_keys.iter().map(|k| format!("`{k}`")).collect();
     let placeholders: Vec<&str> = vec!["?"; col_names.len()];
     let raw_sql = format!(
         "INSERT INTO `{database}`.`{table}` ({}) VALUES ({})",
         col_names.join(", "),
         placeholders.join(", ")
     );
-    let history_params: Vec<serde_json::Value> = sorted_keys
-        .iter()
-        .map(|k| values[*k].clone())
-        .collect();
+    let history_params: Vec<serde_json::Value> =
+        sorted_keys.iter().map(|k| values[*k].clone()).collect();
     let sql_text = interpolate_sql_params(&raw_sql, &history_params);
 
     let start = std::time::Instant::now();
@@ -325,29 +315,20 @@ pub async fn delete_table_row(
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
     // Build a descriptive SQL text for history
-    let where_cols: Vec<String> = pk_columns
-        .iter()
-        .map(|k| format!("`{k}` = ?"))
-        .collect();
+    let where_cols: Vec<String> = pk_columns.iter().map(|k| format!("`{k}` = ?")).collect();
     let raw_sql = format!(
         "DELETE FROM `{database}`.`{table}` WHERE {}",
         where_cols.join(" AND ")
     );
     let history_params: Vec<serde_json::Value> = pk_columns
         .iter()
-        .map(|k| {
-            pk_values
-                .get(k)
-                .cloned()
-                .unwrap_or(serde_json::Value::Null)
-        })
+        .map(|k| pk_values.get(k).cloned().unwrap_or(serde_json::Value::Null))
         .collect();
     let sql_text = interpolate_sql_params(&raw_sql, &history_params);
 
     let start = std::time::Instant::now();
     let result =
-        table_data::delete_table_row_impl(&pool, &database, &table, &pk_columns, &pk_values)
-            .await;
+        table_data::delete_table_row_impl(&pool, &database, &table, &pk_columns, &pk_values).await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
@@ -397,9 +378,9 @@ pub async fn export_table_data(
 
     // Build descriptive SQL for history (export = SELECT without LIMIT)
     let filter_clause = table_data::translate_filter_model(&filter);
-    let raw_sql = build_select_sql(&database, &table, &filter, &sort, None).unwrap_or_else(
-        || format!("SELECT * FROM `{database}`.`{table}` /* export to {format} */"),
-    );
+    let raw_sql = build_select_sql(&database, &table, &filter, &sort, None).unwrap_or_else(|| {
+        format!("SELECT * FROM `{database}`.`{table}` /* export to {format} */")
+    });
     let sql_text = interpolate_sql_params(&raw_sql, &filter_clause.params);
 
     let options = table_data::ExportTableOptions {

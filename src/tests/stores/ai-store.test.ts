@@ -9,28 +9,6 @@ import type { TabStatus } from '../../stores/query-store'
 // Mocks
 // ---------------------------------------------------------------------------
 
-vi.mock('../../components/query-editor/schema-metadata-cache', () => ({
-  loadCache: vi.fn().mockResolvedValue(undefined),
-  getCache: vi.fn().mockReturnValue({
-    status: 'ready',
-    databases: ['testdb'],
-    tables: {
-      testdb: [
-        { name: 'users', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 10, dataSize: 1024 },
-      ],
-    },
-    columns: {
-      'testdb.users': [
-        { name: 'id', dataType: 'INT' },
-        { name: 'name', dataType: 'VARCHAR(255)' },
-      ],
-    },
-    routines: {},
-    foreignKeys: {},
-    indexes: {},
-  }),
-}))
-
 vi.mock('../../lib/app-log-commands', () => ({
   logFrontend: vi.fn(),
 }))
@@ -38,11 +16,66 @@ vi.mock('../../lib/app-log-commands', () => ({
 const mockSendAiChat = vi.fn().mockResolvedValue(undefined)
 const mockCancelAiStream = vi.fn().mockResolvedValue(undefined)
 const mockListenToAiStream = vi.fn().mockResolvedValue(vi.fn())
+const mockAiQueryExpand = vi.fn().mockResolvedValue({
+  text: '{"queries":["search query 1","search query 2","search query 3"]}',
+})
 
 vi.mock('../../lib/ai-commands', () => ({
   sendAiChat: (...args: unknown[]) => mockSendAiChat(...args),
   cancelAiStream: (...args: unknown[]) => mockCancelAiStream(...args),
   listenToAiStream: (...args: unknown[]) => mockListenToAiStream(...args),
+  aiQueryExpand: (...args: unknown[]) => mockAiQueryExpand(...args),
+}))
+
+const mockSemanticSearch = vi.fn().mockResolvedValue([
+  {
+    chunkId: 1,
+    chunkKey: 'testdb.users:table',
+    dbName: 'testdb',
+    tableName: 'users',
+    chunkType: 'table',
+    ddlText: 'CREATE TABLE `testdb`.`users` (`id` INT, `name` VARCHAR(255));',
+    refDbName: null,
+    refTableName: null,
+    score: 0.9,
+  },
+])
+
+vi.mock('../../lib/schema-index-commands', () => ({
+  semanticSearch: (...args: unknown[]) => mockSemanticSearch(...args),
+  buildSchemaIndex: vi.fn().mockResolvedValue(undefined),
+  getIndexStatus: vi.fn().mockResolvedValue({ status: 'ready' }),
+  invalidateSchemaIndex: vi.fn().mockResolvedValue(undefined),
+  listIndexedTables: vi.fn().mockResolvedValue([]),
+}))
+
+let mockIndexStatus: {
+  status: string
+  tablesDone: number
+  tablesTotal: number
+  lastBuildTimestamp: number
+} = {
+  status: 'ready',
+  tablesDone: 0,
+  tablesTotal: 0,
+  lastBuildTimestamp: Date.now(),
+}
+
+vi.mock('../../stores/schema-index-store', () => ({
+  useSchemaIndexStore: {
+    getState: () => ({
+      getStatusForSession: () => mockIndexStatus,
+      registerSession: vi.fn(),
+      unregisterSession: vi.fn(),
+      triggerBuild: vi.fn().mockResolvedValue(undefined),
+    }),
+  },
+}))
+
+vi.mock('../../stores/toast-store', () => ({
+  showErrorToast: vi.fn(),
+  showSuccessToast: vi.fn(),
+  showWarningToast: vi.fn(),
 }))
 
 vi.mock('../../stores/settings-store', () => ({
@@ -54,10 +87,12 @@ vi.mock('../../stores/settings-store', () => ({
           'ai.model': 'llama3',
           'ai.temperature': '0.3',
           'ai.maxTokens': '2048',
+          'ai.embeddingModel': '',
         }
         return defaults[key] ?? ''
       },
     }),
+    subscribe: vi.fn(),
   },
 }))
 
@@ -84,6 +119,28 @@ beforeEach(() => {
   mockSendAiChat.mockResolvedValue(undefined)
   mockCancelAiStream.mockResolvedValue(undefined)
   mockListenToAiStream.mockResolvedValue(vi.fn())
+  mockAiQueryExpand.mockResolvedValue({
+    text: '{"queries":["search query 1","search query 2","search query 3"]}',
+  })
+  mockSemanticSearch.mockResolvedValue([
+    {
+      chunkId: 1,
+      chunkKey: 'testdb.users:table',
+      dbName: 'testdb',
+      tableName: 'users',
+      chunkType: 'table',
+      ddlText: 'CREATE TABLE `testdb`.`users` (`id` INT, `name` VARCHAR(255));',
+      refDbName: null,
+      refTableName: null,
+      score: 0.9,
+    },
+  ])
+  mockIndexStatus = {
+    status: 'ready',
+    tablesDone: 0,
+    tablesTotal: 0,
+    lastBuildTimestamp: Date.now(),
+  }
 
   mockIPC((cmd) => {
     if (cmd === 'log_frontend') return undefined
@@ -92,6 +149,15 @@ beforeEach(() => {
     if (cmd === 'get_setting') return null
     if (cmd === 'set_setting') return undefined
     if (cmd === 'get_all_settings') return {}
+    if (cmd === 'build_schema_index') return undefined
+    if (cmd === 'semantic_search') return []
+    if (cmd === 'get_index_status') return { status: 'ready' }
+    if (cmd === 'invalidate_schema_index') return undefined
+    if (cmd === 'list_indexed_tables') return []
+    if (cmd === 'ai_query_expand')
+      return {
+        text: '{"queries":["search query 1","search query 2","search query 3"]}',
+      }
     throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
   })
 })
@@ -178,13 +244,71 @@ describe('useAiStore', () => {
       })
     })
 
-    it('prepends system message with capability prompt and schema DDL on first send', async () => {
+    it('calls aiQueryExpand for query expansion before semantic search', async () => {
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me all users', {})
+
+      await vi.waitFor(() => {
+        expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
+      })
+
+      const expandCall = mockAiQueryExpand.mock.calls[0][0]
+      expect(expandCall.userMessage).toBe('Show me all users')
+      expect(expandCall.systemPrompt).toContain('SQL schema search assistant')
+      expect(expandCall.systemPrompt).toContain('prefer database-qualified names')
+    })
+
+    it('calls semanticSearch with expanded queries', async () => {
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me all users', {})
+
+      await vi.waitFor(() => {
+        expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
+      })
+
+      const searchCall = mockSemanticSearch.mock.calls[0]
+      expect(searchCall[0]).toBe('conn-1') // sessionId
+      expect(searchCall[1]).toEqual([
+        'Show me all users',
+        'search query 1',
+        'search query 2',
+        'search query 3',
+      ])
+    })
+
+    it('dedupes and trims expanded queries while preserving the original message', async () => {
+      mockAiQueryExpand.mockResolvedValueOnce({
+        text: '{"queries":["  Show me all users  ","search query 1","search query 1","   "]}',
+      })
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me all users', {})
+
+      await vi.waitFor(() => {
+        expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
+      })
+
+      const searchCall = mockSemanticSearch.mock.calls[0]
+      expect(searchCall[1]).toEqual(['Show me all users', 'search query 1'])
+    })
+
+    it('falls back to original message when aiQueryExpand parse fails', async () => {
+      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockAiQueryExpand.mockResolvedValueOnce({ text: 'not valid json' })
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me users', {})
+
+      await vi.waitFor(() => {
+        expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
+      })
+
+      const searchCall = mockSemanticSearch.mock.calls[0]
+      expect(searchCall[1]).toEqual(['Show me users'])
+    })
+
+    it('injects system message with retrieved DDL from semantic search', async () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
 
-      // Wait for the async schema loading to complete
       await vi.waitFor(() => {
         const tab = getTab('tab-1')!
-        expect(tab.messages.length).toBe(2)
+        expect(tab.messages.length).toBe(2) // system + user
       })
 
       const tab = getTab('tab-1')!
@@ -192,62 +316,67 @@ describe('useAiStore', () => {
       expect(tab.messages[0].content).toContain(
         'You are an expert SQL assistant integrated into a database client'
       )
+      expect(tab.messages[0].content).toContain(
+        'Use ONLY tables that appear in the retrieved schema context'
+      )
+      expect(tab.messages[0].content).toContain('Always use database-qualified table names')
       expect(tab.messages[0].content).toContain('Database schema:')
       expect(tab.messages[0].content).toContain('CREATE TABLE `testdb`.`users`')
       expect(tab.messages[1].role).toBe('user')
       expect(tab.messages[1].content).toBe('First message')
     })
 
-    it('sets schema context fields after first message', async () => {
+    it('includes dbName in semantic search debug logging payload', async () => {
+      const { logFrontend } = await import('../../lib/app-log-commands')
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      expect(logFrontend).toHaveBeenCalledWith(
+        'debug',
+        expect.stringContaining('"dbName":"testdb"')
+      )
+    })
+
+    it('updates retrievedSchemaDdl on the tab after retrieval', async () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
 
       await vi.waitFor(() => {
         const tab = getTab('tab-1')!
-        expect(tab.schemaDdl).not.toBeNull()
+        expect(tab.retrievedSchemaDdl).toBeTruthy()
       })
 
       const tab = getTab('tab-1')!
-      expect(tab.schemaDdl).toContain('CREATE TABLE `testdb`.`users`')
-      expect(tab.schemaTokenCount).toBeGreaterThan(0)
-      expect(tab.schemaWarning).toBe(false)
+      expect(tab.retrievedSchemaDdl).toContain('CREATE TABLE `testdb`.`users`')
+      expect(tab.lastRetrievalTimestamp).toBeGreaterThan(0)
     })
 
-    it('does not prepend system message on subsequent sends', async () => {
-      // First message — triggers system message
+    it('replaces system message on subsequent sends (does not stack)', async () => {
+      // First message
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First', {})
       await vi.waitFor(() => {
-        expect(getTab('tab-1')!.messages.length).toBe(2)
+        expect(getTab('tab-1')!.messages.length).toBe(2) // system + user
       })
 
-      // Second message — should not add another system message
+      // Second message — system message should be updated, not duplicated
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Second', {})
-
-      // Small delay to ensure no async system message is added
-      await new Promise((r) => setTimeout(r, 50))
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
 
       const tab = getTab('tab-1')!
-      expect(tab.messages).toHaveLength(3)
-      expect(tab.messages[0].role).toBe('system')
-      expect(tab.messages[1].role).toBe('user')
-      expect(tab.messages[2].role).toBe('user')
+      const systemMessages = tab.messages.filter((m) => m.role === 'system')
+      expect(systemMessages).toHaveLength(1) // Only one system message
     })
 
-    it('sends system prompt without schema when cache is not ready', async () => {
-      const { getCache } = await import('../../components/query-editor/schema-metadata-cache')
-      vi.mocked(getCache).mockReturnValueOnce({
-        status: 'error',
-        databases: [],
-        tables: {},
-        columns: {},
-        routines: {},
-        foreignKeys: {},
-        indexes: {},
-        error: 'load failed',
-      })
+    it('sends system prompt without schema when semantic search returns empty', async () => {
+      mockSemanticSearch.mockResolvedValueOnce([])
 
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
 
-      // Wait for the async path to complete — system prompt without schema is still added
       await vi.waitFor(() => {
         const tab = getTab('tab-1')!
         expect(tab.messages.length).toBe(2)
@@ -436,14 +565,15 @@ describe('useAiStore', () => {
       expect(contextMsg).toBeUndefined()
     })
 
-    it('aborts stream setup if cancelled during schema loading', async () => {
-      // Make buildSchemaSystemMessage take a bit of time
-      const { loadCache } = await import('../../components/query-editor/schema-metadata-cache')
-      vi.mocked(loadCache).mockImplementationOnce(() => new Promise((r) => setTimeout(r, 50)))
+    it('aborts stream setup if cancelled during schema retrieval', async () => {
+      // Make semantic search take a bit of time
+      mockSemanticSearch.mockImplementationOnce(
+        () => new Promise((r) => setTimeout(() => r([]), 50))
+      )
 
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
 
-      // Cancel immediately while schema is loading
+      // Cancel immediately while schema is being retrieved
       useAiStore.getState().cancelStream('tab-1')
 
       // Wait for the async path to try to complete
@@ -451,6 +581,64 @@ describe('useAiStore', () => {
 
       // sendAiChat should NOT have been called because the stream was cancelled
       expect(mockSendAiChat).not.toHaveBeenCalled()
+    })
+
+    it('waits for schema index when status is building then proceeds', async () => {
+      // Start with building status, then switch to ready after a short delay
+      mockIndexStatus = {
+        status: 'building',
+        tablesDone: 0,
+        tablesTotal: 5,
+        lastBuildTimestamp: 0,
+      }
+
+      // Switch to ready after ~600ms (the poll interval is 500ms)
+      setTimeout(() => {
+        mockIndexStatus = {
+          status: 'ready',
+          tablesDone: 5,
+          tablesTotal: 5,
+          lastBuildTimestamp: Date.now(),
+        }
+      }, 600)
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+
+      // The tab should initially be waiting for index
+      await vi.waitFor(() => {
+        expect(getTab('tab-1')!.isWaitingForIndex).toBe(true)
+      })
+
+      // Eventually it should proceed and call sendAiChat
+      await vi.waitFor(
+        () => {
+          expect(mockSendAiChat).toHaveBeenCalled()
+        },
+        { timeout: 5000 }
+      )
+
+      // isWaitingForIndex should be cleared
+      expect(getTab('tab-1')!.isWaitingForIndex).toBe(false)
+    })
+
+    it('handles schema retrieval error gracefully', async () => {
+      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      // Make semantic search throw an error
+      mockSemanticSearch.mockRejectedValueOnce(new Error('Search engine unavailable'))
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+
+      // Should still proceed with sendAiChat (with empty schema context)
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalled()
+      })
+
+      // The system message should not contain any schema DDL
+      const tab = getTab('tab-1')!
+      const systemMsg = tab.messages.find((m) => m.role === 'system')
+      expect(systemMsg).toBeDefined()
+      // Since retrieval failed, schema DDL should be empty
+      expect(systemMsg!.content).not.toContain('Database schema:')
     })
   })
 
@@ -723,150 +911,6 @@ describe('useAiStore', () => {
     })
   })
 
-  describe('setSchemaContext', () => {
-    it('stores schema DDL and token information', () => {
-      useAiStore.getState().setSchemaContext('tab-1', 'CREATE TABLE foo (id INT);', 10, false)
-      const tab = getTab('tab-1')!
-      expect(tab.schemaDdl).toBe('CREATE TABLE foo (id INT);')
-      expect(tab.schemaTokenCount).toBe(10)
-      expect(tab.schemaWarning).toBe(false)
-    })
-
-    it('stores schema with warning flag', () => {
-      useAiStore.getState().setSchemaContext('tab-1', 'long ddl', 9000, true)
-      const tab = getTab('tab-1')!
-      expect(tab.schemaWarning).toBe(true)
-      expect(tab.schemaTokenCount).toBe(9000)
-    })
-  })
-
-  describe('preloadSchemaContext', () => {
-    it('populates schema token count asynchronously', async () => {
-      useAiStore.getState().preloadSchemaContext('tab-1', 'conn-1')
-
-      await vi.waitFor(() => {
-        const tab = getTab('tab-1')!
-        expect(tab.schemaTokenCount).toBeGreaterThan(0)
-      })
-
-      const tab = getTab('tab-1')!
-      expect(tab.schemaDdl).toContain('CREATE TABLE `testdb`.`users`')
-      expect(tab.schemaWarning).toBe(false)
-    })
-
-    it('skips loading if schema is already populated', async () => {
-      useAiStore.getState().setSchemaContext('tab-1', 'existing ddl', 42, false)
-
-      const { loadCache } = await import('../../components/query-editor/schema-metadata-cache')
-      vi.mocked(loadCache).mockClear()
-
-      useAiStore.getState().preloadSchemaContext('tab-1', 'conn-1')
-
-      // loadCache should not be called since token count is already > 0
-      await new Promise((r) => setTimeout(r, 50))
-      expect(vi.mocked(loadCache)).not.toHaveBeenCalled()
-
-      // Original values should be preserved
-      const tab = getTab('tab-1')!
-      expect(tab.schemaDdl).toBe('existing ddl')
-      expect(tab.schemaTokenCount).toBe(42)
-    })
-
-    it('handles schema loading failure gracefully', async () => {
-      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      const { loadCache } = await import('../../components/query-editor/schema-metadata-cache')
-      vi.mocked(loadCache).mockRejectedValueOnce(new Error('Network error'))
-
-      useAiStore.getState().preloadSchemaContext('tab-1', 'conn-1')
-
-      await vi.waitFor(() => {
-        expect(consoleSpy).toHaveBeenCalledWith(
-          '[ai-store] Failed to build schema system message:',
-          'Network error'
-        )
-      })
-
-      // Token count should remain at 0
-      const tab = getTab('tab-1')!
-      expect(tab.schemaTokenCount).toBe(0)
-    })
-
-    it('does not overwrite schema populated by sendMessage', async () => {
-      // Start a sendMessage which populates schema
-      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
-      await vi.waitFor(() => {
-        const tab = getTab('tab-1')!
-        expect(tab.schemaTokenCount).toBeGreaterThan(0)
-      })
-
-      const originalCount = getTab('tab-1')!.schemaTokenCount
-
-      // Now try preloading — should be a no-op since already populated
-      useAiStore.getState().preloadSchemaContext('tab-1', 'conn-1')
-      await new Promise((r) => setTimeout(r, 50))
-
-      expect(getTab('tab-1')!.schemaTokenCount).toBe(originalCount)
-    })
-
-    it('includes FK and index data in the DDL when cache has them', async () => {
-      const { getCache } = await import('../../components/query-editor/schema-metadata-cache')
-      vi.mocked(getCache).mockReturnValue({
-        status: 'ready',
-        databases: ['testdb'],
-        tables: {
-          testdb: [
-            { name: 'orders', engine: 'InnoDB', charset: 'utf8mb4', rowCount: 10, dataSize: 1024 },
-          ],
-        },
-        columns: {
-          'testdb.orders': [
-            { name: 'id', dataType: 'INT' },
-            { name: 'user_id', dataType: 'INT' },
-          ],
-        },
-        routines: {},
-        foreignKeys: {
-          'testdb.orders': [
-            {
-              name: 'fk_user',
-              columnName: 'user_id',
-              referencedDatabase: 'testdb',
-              referencedTable: 'users',
-              referencedColumn: 'id',
-              onDelete: 'CASCADE',
-              onUpdate: 'NO ACTION',
-            },
-          ],
-        },
-        indexes: {
-          'testdb.orders': [
-            {
-              name: 'idx_user_id',
-              indexType: 'BTREE',
-              cardinality: null,
-              columns: ['user_id'],
-              isVisible: true,
-              isUnique: false,
-            },
-          ],
-        },
-      })
-
-      useAiStore.getState().preloadSchemaContext('tab-fk-idx', 'conn-1')
-
-      await vi.waitFor(() => {
-        const tab = getTab('tab-fk-idx')!
-        expect(tab.schemaTokenCount).toBeGreaterThan(0)
-      })
-
-      const tab = getTab('tab-fk-idx')!
-      expect(tab.schemaDdl).toContain('INDEX `idx_user_id` (`user_id`)')
-      expect(tab.schemaDdl).toContain(
-        'CONSTRAINT `fk_user` FOREIGN KEY (`user_id`) REFERENCES `testdb`.`users`(`id`) ON DELETE CASCADE ON UPDATE NO ACTION'
-      )
-    })
-  })
-
   describe('retryLastMessage', () => {
     it('re-sends the last user message', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
@@ -996,29 +1040,23 @@ describe('useAiStore', () => {
 
   describe('attachedContext staleness after diff accept', () => {
     it('followup sendMessage uses updated SQL after setAttachedContext is called with new SQL', async () => {
-      // Simulate the flow:
-      // 1. User clicks "Ask AI" — attachedContext is set with original SQL
       const originalRange = { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 20 }
       useAiStore.getState().setAttachedContext('tab-1', {
         sql: 'SELECT * FROM users',
         range: originalRange,
       })
 
-      // 2. AI responds, user accepts diff — handleDiffAccept SHOULD update
-      //    attachedContext.sql to the accepted SQL. Simulate the fix:
       useAiStore.getState().setAttachedContext('tab-1', {
         sql: 'SELECT id, name FROM users WHERE active = 1',
         range: originalRange,
       })
 
-      // 3. User sends a followup message
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Now add ORDER BY', {})
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      // The IPC messages should contain the UPDATED SQL, not the original
       const params = mockSendAiChat.mock.calls[0][0]
       const contextMsg = params.messages.find(
         (m: { role: string; content: string }) =>
@@ -1030,35 +1068,24 @@ describe('useAiStore', () => {
     })
 
     it('proves stale context: without re-calling setAttachedContext, sendMessage injects original SQL', async () => {
-      // This test documents the current (buggy) behavior:
-      // After the diff is accepted, if handleDiffAccept does NOT update
-      // attachedContext, the store still holds the original SQL.
-
-      // 1. Set context with original SQL
       const originalRange = { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 20 }
       useAiStore.getState().setAttachedContext('tab-1', {
         sql: 'SELECT * FROM users',
         range: originalRange,
       })
 
-      // 2. Diff is accepted — but handleDiffAccept does NOT call setAttachedContext
-      //    (this is the bug). The attachedContext.sql still holds 'SELECT * FROM users'.
-
-      // 3. User sends a followup message
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Now add ORDER BY', {})
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      // BUG PROOF: The IPC messages contain the STALE SQL
       const params = mockSendAiChat.mock.calls[0][0]
       const contextMsg = params.messages.find(
         (m: { role: string; content: string }) =>
           m.role === 'user' && m.content.includes('The following SQL statement is the context')
       )
       expect(contextMsg).toBeDefined()
-      // This passes because the bug means the original SQL is preserved (stale)
       expect(contextMsg.content).toContain('SELECT * FROM users')
     })
   })
@@ -1079,10 +1106,6 @@ describe('useAiStore', () => {
   // -------------------------------------------------------------------------
 
   describe('editor lock — AI status management', () => {
-    /**
-     * Set up a query-store tab so that setTabStatus / restoreTabStatus
-     * calls actually affect it.
-     */
     function ensureQueryTab(tabId: string, initialTabStatus: TabStatus = 'idle') {
       useQueryStore.getState().setContent(tabId, 'SELECT 1')
       if (initialTabStatus !== 'idle') {

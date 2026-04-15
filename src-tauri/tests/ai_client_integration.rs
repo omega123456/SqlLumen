@@ -1,8 +1,8 @@
 //! Integration tests for AI types serialization/deserialization and SSE line parsing.
 
 use sqllumen_lib::ai::types::{
-    AiChatRequest, ApiChatRequest, ApiMessage, ApiStreamChunk,
-    IpcMessage, SseParsed, StreamChunkEvent, StreamDoneEvent, StreamErrorEvent, parse_sse_line,
+    parse_sse_line, AiChatRequest, ApiChatRequest, ApiMessage, ApiStreamChunk, IpcMessage,
+    SseParsed, StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
 };
 
 // ── IPC type serialization (camelCase) ────────────────────────────────────
@@ -43,7 +43,10 @@ fn ai_chat_request_serializes_to_camel_case() {
         stream_id: "abc-123".to_string(),
     };
     let json = serde_json::to_value(&req).unwrap();
-    assert!(json["maxTokens"].is_number(), "expected camelCase maxTokens");
+    assert!(
+        json["maxTokens"].is_number(),
+        "expected camelCase maxTokens"
+    );
     assert_eq!(json["maxTokens"], 1024);
     assert!(json["streamId"].is_string(), "expected camelCase streamId");
     assert_eq!(json["streamId"], "abc-123");
@@ -94,7 +97,10 @@ fn api_chat_request_serializes_to_snake_case() {
         stream: true,
     };
     let json = serde_json::to_value(&req).unwrap();
-    assert!(json["max_tokens"].is_number(), "expected snake_case max_tokens");
+    assert!(
+        json["max_tokens"].is_number(),
+        "expected snake_case max_tokens"
+    );
     assert_eq!(json["max_tokens"], 512);
     assert_eq!(json["stream"], true);
     // camelCase keys should NOT exist
@@ -303,7 +309,7 @@ mod wiremock_tests {
         let lines: Vec<&str> = body.lines().collect();
 
         // Parse each line
-        use sqllumen_lib::ai::types::{SseParsed, parse_sse_line};
+        use sqllumen_lib::ai::types::{parse_sse_line, SseParsed};
         let mut tokens = Vec::new();
         for line in lines {
             match parse_sse_line(line) {
@@ -505,9 +511,7 @@ mod stream_integration {
 
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
-            .respond_with(
-                ResponseTemplate::new(500).set_body_string("Internal Server Error"),
-            )
+            .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
             .mount(&server)
             .await;
 
@@ -520,7 +524,10 @@ mod stream_integration {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("HTTP"), "error should mention HTTP: {err}");
-        assert!(err.contains("500"), "error should mention status 500: {err}");
+        assert!(
+            err.contains("500"),
+            "error should mention status 500: {err}"
+        );
     }
 
     /// HTTP 401 — should return an error with status code and response body.
@@ -530,9 +537,7 @@ mod stream_integration {
 
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
-            .respond_with(
-                ResponseTemplate::new(401).set_body_string("Unauthorized"),
-            )
+            .respond_with(ResponseTemplate::new(401).set_body_string("Unauthorized"))
             .mount(&server)
             .await;
 
@@ -544,7 +549,10 @@ mod stream_integration {
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("401"), "error should mention status 401: {err}");
+        assert!(
+            err.contains("401"),
+            "error should mention status 401: {err}"
+        );
     }
 
     /// Connection refused — should return an HTTP request error.
@@ -568,8 +576,10 @@ mod stream_integration {
     #[tokio::test]
     async fn stream_cancellation_before_response() {
         let app = mock_app();
-        let request =
-            sample_request("stream-cancel-pre", "http://127.0.0.1:1/v1/chat/completions");
+        let request = sample_request(
+            "stream-cancel-pre",
+            "http://127.0.0.1:1/v1/chat/completions",
+        );
         let token = CancellationToken::new();
 
         // Cancel immediately — should beat any connection attempt
@@ -607,7 +617,10 @@ mod stream_integration {
         // This exercises the streaming loop and EOF path.
         let result = stream_chat_completion(app.handle(), request, token).await;
         // Should complete with Ok (EOF reached)
-        assert!(result.is_ok(), "should complete when response is fully delivered");
+        assert!(
+            result.is_ok(),
+            "should complete when response is fully delivered"
+        );
     }
 
     /// Empty response body — stream ends immediately at EOF.
@@ -764,8 +777,7 @@ mod stream_integration {
     async fn stream_error_emits_error_event() {
         let app = mock_app();
         // Use unreachable endpoint
-        let request =
-            sample_request("stream-error-evt", "http://127.0.0.1:1/v1/chat/completions");
+        let request = sample_request("stream-error-evt", "http://127.0.0.1:1/v1/chat/completions");
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
@@ -778,8 +790,10 @@ mod stream_integration {
     #[tokio::test]
     async fn cancelled_stream_does_not_emit_error_event() {
         let app = mock_app();
-        let request =
-            sample_request("stream-cancel-no-err", "http://127.0.0.1:1/v1/chat/completions");
+        let request = sample_request(
+            "stream-cancel-no-err",
+            "http://127.0.0.1:1/v1/chat/completions",
+        );
         let token = CancellationToken::new();
         token.cancel();
 
@@ -1028,6 +1042,9 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "should flush buffer and complete on residual [DONE]");
+        assert!(
+            result.is_ok(),
+            "should flush buffer and complete on residual [DONE]"
+        );
     }
 }

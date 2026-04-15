@@ -1,9 +1,9 @@
+use sqllumen_lib::commands::table_designer::{generate_table_ddl_impl, parse_column_type};
 use sqllumen_lib::mysql::table_designer::{
     derive_charset_from_collation, generate_alter_table_ddl, generate_create_table_ddl,
     validate_schema, DefaultValueModel, DesignerColumnDef, DesignerForeignKeyDef, DesignerIndexDef,
     DesignerTableProperties, DesignerTableSchema, GenerateDdlRequest, GenerateDdlResponse,
 };
-use sqllumen_lib::commands::table_designer::{generate_table_ddl_impl, parse_column_type};
 
 mod common;
 
@@ -640,7 +640,10 @@ async fn assert_generate_table_ddl_validation_error(
         .await
         .expect_err("invalid designer input should surface a validation error");
 
-    assert!(error.contains(expected_fragment), "unexpected error: {error}");
+    assert!(
+        error.contains(expected_fragment),
+        "unexpected error: {error}"
+    );
 }
 
 // ── CREATE TABLE: FULLTEXT index ──────────────────────────────────
@@ -1006,8 +1009,7 @@ fn test_designer_column_def_serde_round_trip() {
     };
 
     let json = serde_json::to_string(&col).expect("should serialize");
-    let deserialized: DesignerColumnDef =
-        serde_json::from_str(&json).expect("should deserialize");
+    let deserialized: DesignerColumnDef = serde_json::from_str(&json).expect("should deserialize");
     assert_eq!(col, deserialized);
     assert!(json.contains("\"typeModifier\":\"UNSIGNED\""));
 }
@@ -1017,8 +1019,7 @@ fn test_designer_column_def_serde_round_trip() {
 fn test_designer_index_def_serde_round_trip() {
     let idx = index("idx_email", "UNIQUE", &["email"]);
     let json = serde_json::to_string(&idx).expect("should serialize");
-    let deserialized: DesignerIndexDef =
-        serde_json::from_str(&json).expect("should deserialize");
+    let deserialized: DesignerIndexDef = serde_json::from_str(&json).expect("should deserialize");
     assert_eq!(idx, deserialized);
 }
 
@@ -1110,6 +1111,123 @@ fn test_create_table_table_comment_with_single_quote() {
     );
 }
 
+// ── Query functions return non-empty strings ─────────────────────
+// These are public functions that are only called from `#[cfg(not(coverage))]`
+// code during normal execution, so they show as uncovered. Calling them here
+// ensures the coverage instrumenter counts them.
+#[test]
+fn test_load_columns_query_returns_sql() {
+    use sqllumen_lib::mysql::table_designer::{
+        load_columns_query, load_foreign_keys_query, load_indexes_query, load_table_metadata_query,
+    };
+
+    let columns_sql = load_columns_query();
+    assert!(
+        columns_sql.contains("COLUMN_NAME"),
+        "should contain COLUMN_NAME"
+    );
+    assert!(
+        columns_sql.contains("INFORMATION_SCHEMA.COLUMNS"),
+        "should query COLUMNS table"
+    );
+
+    let metadata_sql = load_table_metadata_query();
+    assert!(metadata_sql.contains("ENGINE"), "should contain ENGINE");
+    assert!(
+        metadata_sql.contains("INFORMATION_SCHEMA.TABLES"),
+        "should query TABLES table"
+    );
+
+    let indexes_sql = load_indexes_query();
+    assert!(
+        indexes_sql.contains("INDEX_NAME"),
+        "should contain INDEX_NAME"
+    );
+    assert!(
+        indexes_sql.contains("INFORMATION_SCHEMA.STATISTICS"),
+        "should query STATISTICS table"
+    );
+
+    let fk_sql = load_foreign_keys_query();
+    assert!(
+        fk_sql.contains("CONSTRAINT_NAME"),
+        "should contain CONSTRAINT_NAME"
+    );
+    assert!(
+        fk_sql.contains("REFERENTIAL_CONSTRAINTS"),
+        "should query FK tables"
+    );
+}
+
+// ── ALTER TABLE: unchanged index is not dropped or re-added ──────
+// This exercises the `indexes_equal` function which compares matching indexes
+// between original and current schemas, returning true when they match.
+#[test]
+fn test_alter_table_unchanged_index_is_preserved() {
+    let mut original = schema(vec![column("email"), column("name")]);
+    original
+        .indexes
+        .push(index("idx_email", "INDEX", &["email"]));
+
+    let mut current = schema(vec![column("email"), column("name")]);
+    current
+        .indexes
+        .push(index("idx_email", "INDEX", &["email"]));
+    // Only change the column to trigger MODIFY, not index changes
+    let mut changed_name = column("name");
+    changed_name.nullable = true;
+    current.columns[1] = changed_name;
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    // The MODIFY should be present but no index changes
+    assert!(
+        ddl.contains("MODIFY COLUMN `name` INT NULL"),
+        "should still MODIFY the changed column, got: {ddl}"
+    );
+    assert!(
+        !ddl.contains("DROP INDEX"),
+        "unchanged index should NOT be dropped, got: {ddl}"
+    );
+    assert!(
+        !ddl.contains("ADD INDEX"),
+        "unchanged index should NOT be re-added, got: {ddl}"
+    );
+}
+
+// ── ALTER TABLE: unchanged foreign key is not dropped or re-added ─
+// This exercises the `foreign_keys_equal` function which compares matching
+// foreign keys between original and current schemas.
+#[test]
+fn test_alter_table_unchanged_foreign_key_is_preserved() {
+    let mut original = schema(vec![column("role_id"), column("name")]);
+    original
+        .foreign_keys
+        .push(foreign_key("fk_users_role", "role_id"));
+
+    let mut current = schema(vec![column("role_id"), column("name")]);
+    current
+        .foreign_keys
+        .push(foreign_key("fk_users_role", "role_id"));
+    // Only change a column to trigger MODIFY
+    let mut changed_name = column("name");
+    changed_name.nullable = true;
+    current.columns[1] = changed_name;
+
+    let (ddl, _) = generate_alter_table_ddl(&original, &current, "appdb");
+    assert!(
+        ddl.contains("MODIFY COLUMN `name` INT NULL"),
+        "should still MODIFY the changed column, got: {ddl}"
+    );
+    assert!(
+        !ddl.contains("DROP FOREIGN KEY"),
+        "unchanged FK should NOT be dropped, got: {ddl}"
+    );
+    assert!(
+        !ddl.contains("ADD CONSTRAINT"),
+        "unchanged FK should NOT be re-added, got: {ddl}"
+    );
+}
+
 // ── ALTER TABLE: auto_increment removed (Some → None) ────────────
 #[test]
 fn test_alter_table_auto_increment_removed() {
@@ -1127,16 +1245,18 @@ fn test_alter_table_auto_increment_removed() {
 #[cfg(not(coverage))]
 mod command_wrapper_integration {
     use super::*;
-    use crate::common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
+    use crate::common::mock_mysql_server::{
+        MockCell, MockColumnDef, MockMySqlServer, MockQueryStep,
+    };
+    use opensrv_mysql::{ColumnFlags, ColumnType};
+    use rusqlite::Connection;
+    use serde::de::DeserializeOwned;
+    use serde_json::json;
     use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
     use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
     use sqllumen_lib::commands::table_designer::load_table_for_designer_impl;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;
     use sqllumen_lib::state::AppState;
-    use opensrv_mysql::{ColumnFlags, ColumnType};
-    use rusqlite::Connection;
-    use serde::de::DeserializeOwned;
-    use serde_json::json;
     use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
@@ -1153,20 +1273,31 @@ mod command_wrapper_integration {
             results: std::sync::RwLock::new(std::collections::HashMap::new()),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
-            dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
-            import_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+            dump_jobs: std::sync::Arc::new(
+                std::sync::RwLock::new(std::collections::HashMap::new()),
+            ),
+            import_jobs: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
             ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            http_client: reqwest::Client::new(),
         }
     }
 
-    fn build_app(
-    ) -> (
+    fn build_app() -> (
         tauri::App<tauri::test::MockRuntime>,
         tauri::WebviewWindow<tauri::test::MockRuntime>,
     ) {
         let app = mock_builder()
             .manage(test_state())
-            .invoke_handler(tauri::generate_handler![save_connection, open_connection, load_table_for_designer])
+            .invoke_handler(tauri::generate_handler![
+                save_connection,
+                open_connection,
+                load_table_for_designer
+            ])
             .build(mock_context(noop_assets()))
             .expect("should build test app");
         let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -1218,7 +1349,9 @@ mod command_wrapper_integration {
                 cmd: cmd.into(),
                 callback: CallbackFn(0),
                 error: CallbackFn(1),
-                url: "http://tauri.localhost".parse().expect("test URL should parse"),
+                url: "http://tauri.localhost"
+                    .parse()
+                    .expect("test URL should parse"),
                 body: InvokeBody::Json(body),
                 headers: Default::default(),
                 invoke_key: INVOKE_KEY.to_string(),
@@ -1329,31 +1462,35 @@ mod command_wrapper_integration {
                         colflags: ColumnFlags::empty(),
                     },
                 ],
-                rows: vec![vec![
-                    MockCell::Bytes(b"id"),
-                    MockCell::Bytes(b"int(11) unsigned"),
-                    MockCell::Bytes(b"NO"),
-                    MockCell::Bytes(b"PRI"),
-                    MockCell::Null,
-                    MockCell::Bytes(b"auto_increment"),
-                    MockCell::Bytes(b"primary key"),
-                ], vec![
-                    MockCell::Bytes(b"created_at"),
-                    MockCell::Bytes(b"timestamp"),
-                    MockCell::Bytes(b"NO"),
-                    MockCell::Bytes(b""),
-                    MockCell::Bytes(b"CURRENT_TIMESTAMP"),
-                    MockCell::Bytes(b"DEFAULT_GENERATED"),
-                    MockCell::Bytes(b"created time"),
-                ], vec![
-                    MockCell::Bytes(b"tracking_id"),
-                    MockCell::Bytes(b"char(36)"),
-                    MockCell::Bytes(b"NO"),
-                    MockCell::Bytes(b""),
-                    MockCell::Bytes(b"UUID()"),
-                    MockCell::Bytes(b"DEFAULT_GENERATED"),
-                    MockCell::Bytes(b"tracking identifier"),
-                ]],
+                rows: vec![
+                    vec![
+                        MockCell::Bytes(b"id"),
+                        MockCell::Bytes(b"int(11) unsigned"),
+                        MockCell::Bytes(b"NO"),
+                        MockCell::Bytes(b"PRI"),
+                        MockCell::Null,
+                        MockCell::Bytes(b"auto_increment"),
+                        MockCell::Bytes(b"primary key"),
+                    ],
+                    vec![
+                        MockCell::Bytes(b"created_at"),
+                        MockCell::Bytes(b"timestamp"),
+                        MockCell::Bytes(b"NO"),
+                        MockCell::Bytes(b""),
+                        MockCell::Bytes(b"CURRENT_TIMESTAMP"),
+                        MockCell::Bytes(b"DEFAULT_GENERATED"),
+                        MockCell::Bytes(b"created time"),
+                    ],
+                    vec![
+                        MockCell::Bytes(b"tracking_id"),
+                        MockCell::Bytes(b"char(36)"),
+                        MockCell::Bytes(b"NO"),
+                        MockCell::Bytes(b""),
+                        MockCell::Bytes(b"UUID()"),
+                        MockCell::Bytes(b"DEFAULT_GENERATED"),
+                        MockCell::Bytes(b"tracking identifier"),
+                    ],
+                ],
                 error: None,
             },
             MockQueryStep {
@@ -1511,7 +1648,10 @@ mod command_wrapper_integration {
         assert_eq!(schema.columns[0].length, "11");
         assert!(schema.columns[0].is_primary_key);
         assert!(schema.columns[0].is_auto_increment);
-        assert_eq!(schema.columns[0].default_value, DefaultValueModel::NoDefault);
+        assert_eq!(
+            schema.columns[0].default_value,
+            DefaultValueModel::NoDefault
+        );
         assert_eq!(schema.columns[0].comment, "primary key");
         assert_eq!(schema.columns[1].name, "created_at");
         assert_eq!(schema.columns[1].r#type, "TIMESTAMP");
@@ -1550,8 +1690,12 @@ mod command_wrapper_integration {
 
         let ddl = generate_create_table_ddl(&schema, "app_db");
         assert!(ddl.contains("`id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT"));
-        assert!(ddl.contains("`created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time'"));
-        assert!(ddl.contains("`tracking_id` CHAR(36) NOT NULL DEFAULT UUID() COMMENT 'tracking identifier'"));
+        assert!(ddl.contains(
+            "`created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created time'"
+        ));
+        assert!(ddl.contains(
+            "`tracking_id` CHAR(36) NOT NULL DEFAULT UUID() COMMENT 'tracking identifier'"
+        ));
     }
 }
 
@@ -1677,7 +1821,9 @@ mod coverage_stubs {
         })
         .await;
         assert!(invalid_mode.is_err());
-        assert!(invalid_mode.unwrap_err().contains("Unsupported DDL generation mode"));
+        assert!(invalid_mode
+            .unwrap_err()
+            .contains("Unsupported DDL generation mode"));
     }
 
     #[tokio::test]
@@ -1685,8 +1831,7 @@ mod coverage_stubs {
         let read_only_state = common::test_app_state();
         register_lazy_pool(&read_only_state, "conn-ro", true);
         let read_only_result =
-            apply_table_ddl_impl(&read_only_state, "conn-ro", "appdb", "ALTER TABLE x")
-                .await;
+            apply_table_ddl_impl(&read_only_state, "conn-ro", "appdb", "ALTER TABLE x").await;
         assert!(read_only_result.is_err());
         assert!(read_only_result.unwrap_err().contains("read-only"));
 
@@ -1701,9 +1846,13 @@ mod coverage_stubs {
         assert!(empty_ddl.is_err());
         assert!(empty_ddl.unwrap_err().contains("DDL cannot be empty"));
 
-        let success =
-            apply_table_ddl_impl(&state, "conn-1", "appdb", "ALTER TABLE `users` ADD COLUMN `x` INT")
-                .await;
+        let success = apply_table_ddl_impl(
+            &state,
+            "conn-1",
+            "appdb",
+            "ALTER TABLE `users` ADD COLUMN `x` INT",
+        )
+        .await;
         assert!(success.is_ok());
     }
 }

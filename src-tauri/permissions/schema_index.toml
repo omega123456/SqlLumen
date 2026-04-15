@@ -1,0 +1,35 @@
+[[permission]]
+identifier = "allow-build-schema-index"
+description = "Allow triggering a schema index build"
+[permission.commands]
+allow = ["build_schema_index"]
+
+[[permission]]
+identifier = "allow-semantic-search"
+description = "Allow semantic search against the schema index"
+[permission.commands]
+allow = ["semantic_search"]
+
+[[permission]]
+identifier = "allow-get-index-status"
+description = "Allow getting schema index status"
+[permission.commands]
+allow = ["get_index_status"]
+
+[[permission]]
+identifier = "allow-invalidate-schema-index"
+description = "Allow invalidating schema index entries"
+[permission.commands]
+allow = ["invalidate_schema_index"]
+
+[[permission]]
+identifier = "allow-force-rebuild-schema-index"
+description = "Allow force-wiping and rebuilding the schema index from scratch"
+[permission.commands]
+allow = ["force_rebuild_schema_index"]
+
+[[permission]]
+identifier = "allow-list-indexed-tables"
+description = "Allow listing indexed tables"
+[permission.commands]
+allow = ["list_indexed_tables"]

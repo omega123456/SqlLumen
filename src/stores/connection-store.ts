@@ -19,6 +19,7 @@ import { useWorkspaceStore } from './workspace-store'
 import { useQueryStore } from './query-store'
 import { useTableDataStore } from './table-data-store'
 import { useObjectEditorStore } from './object-editor-store'
+import { useSchemaIndexStore } from './schema-index-store'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { invalidateCache } from '../components/query-editor/schema-metadata-cache'
 import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
@@ -116,6 +117,14 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       }))
       useWorkspaceStore.getState().openHistoryTab(result.sessionId, false)
       showSuccessToast('Connected', profile.name)
+
+      // Register session for schema index and trigger initial build (fire-and-forget)
+      const schemaIndexStore = useSchemaIndexStore.getState()
+      schemaIndexStore.registerSession(result.sessionId, id)
+      schemaIndexStore.triggerBuild(result.sessionId).catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error('[connection-store] Schema index build failed:', msg)
+      })
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)
       set({ error: errorMsg })
@@ -201,6 +210,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       // Clear dependent store state for this connection
       useSchemaStore.getState().clearConnectionState(id)
       useWorkspaceStore.getState().clearConnectionTabs(id)
+      useSchemaIndexStore.getState().unregisterSession(id)
       invalidateCache(id)
       invalidateRoutineCache(id)
 

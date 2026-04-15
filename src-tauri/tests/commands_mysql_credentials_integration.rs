@@ -1,3 +1,6 @@
+use rusqlite::Connection;
+use serde::de::DeserializeOwned;
+use serde_json::json;
 use sqllumen_lib::commands::connection_groups::{
     create_connection_group_impl, delete_connection_group_impl, list_connection_groups_impl,
     update_connection_group_impl,
@@ -10,9 +13,7 @@ use sqllumen_lib::commands::mysql::{
     close_connection_impl, get_connection_status_impl, open_connection_impl, test_connection_impl,
     OpenConnectionPayload, OpenConnectionResult, TestConnectionInput,
 };
-use sqllumen_lib::commands::settings::{
-    get_all_settings_impl, get_setting_impl, set_setting_impl,
-};
+use sqllumen_lib::commands::settings::{get_all_settings_impl, get_setting_impl, set_setting_impl};
 use sqllumen_lib::credentials::{self};
 use sqllumen_lib::db::connections::set_keychain_ref;
 #[cfg(coverage)]
@@ -20,23 +21,22 @@ use sqllumen_lib::mysql::health::spawn_health_monitor;
 use sqllumen_lib::mysql::pool::{
     build_connect_options, create_pool, set_test_pool_factory, ConnectionParams,
 };
-use sqllumen_lib::mysql::registry::{ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams};
+use sqllumen_lib::mysql::registry::{
+    ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams,
+};
 use sqllumen_lib::state::AppState;
-use rusqlite::Connection;
-use serde::de::DeserializeOwned;
-use serde_json::json;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlSslMode};
 use sqlx::ConnectOptions;
-use std::time::Duration;
 #[cfg(coverage)]
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-#[cfg(coverage)]
-use tauri::AppHandle;
+use std::time::Duration;
 use tauri::ipc::{CallbackFn, InvokeBody};
-use tauri::Manager;
 use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
 use tauri::webview::InvokeRequest;
+#[cfg(coverage)]
+use tauri::AppHandle;
+use tauri::Manager;
 use tokio_util::sync::CancellationToken;
 
 mod common;
@@ -79,6 +79,10 @@ fn test_state() -> AppState {
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        http_client: reqwest::Client::new(),
     }
 }
 
@@ -103,6 +107,10 @@ fn poisoned_state() -> AppState {
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        http_client: reqwest::Client::new(),
     }
 }
 
@@ -119,7 +127,10 @@ fn dummy_pool() -> sqlx::MySqlPool {
 }
 
 #[tauri::command]
-fn save_connection(data: SaveConnectionInput, state: tauri::State<'_, AppState>) -> Result<String, String> {
+fn save_connection(
+    data: SaveConnectionInput,
+    state: tauri::State<'_, AppState>,
+) -> Result<String, String> {
     save_connection_impl(&state, data)
 }
 
@@ -148,8 +159,7 @@ async fn open_connection(
     open_connection_impl(&state, &payload.profile_id).await
 }
 
-fn build_connection_commands_app(
-) -> (
+fn build_connection_commands_app() -> (
     tauri::App<tauri::test::MockRuntime>,
     tauri::WebviewWindow<tauri::test::MockRuntime>,
 ) {
@@ -180,7 +190,9 @@ fn invoke_tauri_command<T: DeserializeOwned>(
             cmd: cmd.into(),
             callback: CallbackFn(0),
             error: CallbackFn(1),
-            url: "http://tauri.localhost".parse().expect("test URL should parse"),
+            url: "http://tauri.localhost"
+                .parse()
+                .expect("test URL should parse"),
             body: InvokeBody::Json(body),
             headers: Default::default(),
             invoke_key: INVOKE_KEY.to_string(),
@@ -350,13 +362,17 @@ fn credentials_surface_fake_backend_errors() {
     let store_error = credentials::store_password("cred-err", "secret")
         .expect_err("store should propagate errors");
     assert!(store_error.contains("Failed to store password in keychain"));
-    common::fake_credentials::queue_fake_credential_error("No matching entry found in secure storage");
-    let get_error = credentials::retrieve_password("cred-err")
-        .expect_err("retrieve should propagate errors");
+    common::fake_credentials::queue_fake_credential_error(
+        "No matching entry found in secure storage",
+    );
+    let get_error =
+        credentials::retrieve_password("cred-err").expect_err("retrieve should propagate errors");
     assert!(get_error.contains("Failed to retrieve password from keychain"));
-    common::fake_credentials::queue_fake_credential_error("No matching entry found in secure storage");
-    let delete_error = credentials::delete_password("cred-err")
-        .expect_err("delete should propagate errors");
+    common::fake_credentials::queue_fake_credential_error(
+        "No matching entry found in secure storage",
+    );
+    let delete_error =
+        credentials::delete_password("cred-err").expect_err("delete should propagate errors");
     assert!(delete_error.contains("Failed to delete password from keychain"));
 }
 
@@ -392,8 +408,8 @@ fn save_connection_impl_rolls_back_when_password_storage_fails() {
 fn update_connection_impl_surfaces_password_update_errors() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
-    let connection_id = save_connection_impl(&state, sample_save_input(None))
-        .expect("save should succeed");
+    let connection_id =
+        save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
     common::fake_credentials::queue_fake_credential_error("update failed");
     let error = sqllumen_lib::commands::connections::update_connection_impl(
         &state,
@@ -447,8 +463,8 @@ fn settings_impls_surface_database_errors() {
 #[test]
 fn connection_group_impls_cover_success_and_missing_errors() {
     let state = test_state();
-    let group_id = create_connection_group_impl(&state, "Production")
-        .expect("create group should succeed");
+    let group_id =
+        create_connection_group_impl(&state, "Production").expect("create group should succeed");
     assert_eq!(
         list_connection_groups_impl(&state)
             .expect("list groups should succeed")
@@ -461,8 +477,8 @@ fn connection_group_impls_cover_success_and_missing_errors() {
 
     let missing_update = update_connection_group_impl(&state, "missing", "Nope")
         .expect_err("missing update should fail");
-    let missing_delete = delete_connection_group_impl(&state, "missing")
-        .expect_err("missing delete should fail");
+    let missing_delete =
+        delete_connection_group_impl(&state, "missing").expect_err("missing delete should fail");
     assert!(missing_update.contains("Query returned no rows"));
     assert!(missing_delete.contains("Query returned no rows"));
 
@@ -491,8 +507,8 @@ fn connection_impls_cover_missing_row_and_lock_errors() {
     assert!(missing_get.is_none());
     let missing_update = update_connection_impl(&state, "missing", update_input(None))
         .expect_err("missing update should fail");
-    let missing_delete = delete_connection_impl(&state, "missing")
-        .expect_err("missing delete should fail");
+    let missing_delete =
+        delete_connection_impl(&state, "missing").expect_err("missing delete should fail");
     assert!(missing_update.contains("Query returned no rows"));
     assert!(missing_delete.contains("Query returned no rows"));
 
@@ -517,8 +533,8 @@ fn connection_impls_cover_missing_row_and_lock_errors() {
 #[test]
 fn update_connection_without_password_preserves_absent_keychain_ref() {
     let state = test_state();
-    let connection_id = save_connection_impl(&state, sample_save_input(None))
-        .expect("save should succeed");
+    let connection_id =
+        save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
 
     update_connection_impl(&state, &connection_id, update_input(None))
         .expect("update should succeed without password");
@@ -533,8 +549,8 @@ fn update_connection_without_password_preserves_absent_keychain_ref() {
 fn update_connection_with_password_sets_keychain_ref() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
-    let connection_id = save_connection_impl(&state, sample_save_input(None))
-        .expect("save should succeed");
+    let connection_id =
+        save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
 
     update_connection_impl(&state, &connection_id, update_input(Some("secret")))
         .expect("update with password should succeed");
@@ -577,8 +593,8 @@ fn update_connection_with_password_migrates_legacy_keychain_ref() {
 fn update_connection_with_password_surfaces_sqlite_write_errors() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
-    let connection_id = save_connection_impl(&state, sample_save_input(None))
-        .expect("save should succeed");
+    let connection_id =
+        save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
     {
         let conn = state.db.lock().expect("db lock should succeed");
         conn.execute("DROP TABLE connections", [])
@@ -634,8 +650,8 @@ fn update_connection_clear_password_removes_legacy_and_current_keychain_entries(
 async fn open_connection_impl_surfaces_keychain_lookup_errors() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
-    let profile_id = save_connection_impl(&state, sample_save_input(Some("pw")))
-        .expect("save should succeed");
+    let profile_id =
+        save_connection_impl(&state, sample_save_input(Some("pw"))).expect("save should succeed");
     common::fake_credentials::queue_fake_credential_error("missing secret");
 
     let error = open_connection_impl(&state, &profile_id)
@@ -648,8 +664,8 @@ async fn open_connection_impl_surfaces_keychain_lookup_errors() {
 async fn open_connection_impl_coverage_succeeds_with_test_pool_factory() {
     let _guard = install_test_pool_factory(forced_pool_success);
     let state = test_state();
-    let profile_id = save_connection_impl(&state, sample_save_input(None))
-        .expect("save should succeed");
+    let profile_id =
+        save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
 
     let result = open_connection_impl(&state, &profile_id)
         .await
@@ -725,7 +741,10 @@ async fn test_connection_impl_reports_connection_failures() {
     let _guard = install_test_pool_factory(forced_pool_error);
     let result = test_connection_impl(sample_test_connection_input()).await;
     assert!(!result.success);
-    assert!(result.error_message.expect("error should exist").starts_with("Connection failed:"));
+    assert!(result
+        .error_message
+        .expect("error should exist")
+        .starts_with("Connection failed:"));
 }
 
 #[tokio::test]
@@ -786,9 +805,11 @@ async fn open_connection_impl_errors_for_missing_saved_connection() {
 async fn open_connection_impl_surfaces_keychain_errors() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
-    let connection_id = save_connection_impl(&state, sample_save_input(Some("pw")))
-        .expect("save should succeed");
-    common::fake_credentials::queue_fake_credential_error("No matching entry found in secure storage");
+    let connection_id =
+        save_connection_impl(&state, sample_save_input(Some("pw"))).expect("save should succeed");
+    common::fake_credentials::queue_fake_credential_error(
+        "No matching entry found in secure storage",
+    );
     let error = open_connection_impl(&state, &connection_id)
         .await
         .expect_err("keychain retrieval failure should be surfaced");
@@ -983,7 +1004,10 @@ async fn open_connection_ipc_preserves_saved_password_after_blank_update() {
     )
     .expect("get_connection IPC should succeed");
 
-    assert!(record.is_some(), "connection should still exist after update");
+    assert!(
+        record.is_some(),
+        "connection should still exist after update"
+    );
     assert!(
         record.expect("connection should exist").has_password,
         "blank password update should preserve saved password state"
@@ -1047,7 +1071,10 @@ async fn update_connection_ipc_clear_password_clears_saved_password_state() {
     )
     .expect("get_connection IPC should succeed");
 
-    assert!(record.is_some(), "connection should still exist after update");
+    assert!(
+        record.is_some(),
+        "connection should still exist after update"
+    );
     assert!(
         !record.expect("connection should exist").has_password,
         "clearPassword should clear saved password state"
@@ -1058,8 +1085,8 @@ async fn update_connection_ipc_clear_password_clears_saved_password_state() {
 async fn open_connection_impl_surfaces_pool_creation_errors() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
-    let connection_id = save_connection_impl(&state, sample_save_input(None))
-        .expect("save should succeed");
+    let connection_id =
+        save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
     let _pool_guard = install_test_pool_factory(forced_pool_error);
     let error = open_connection_impl(&state, &connection_id)
         .await
@@ -1143,8 +1170,8 @@ async fn health_reconnect_uses_stored_keychain_ref() {
 #[cfg(coverage)]
 async fn open_connection_impl_registers_connection_without_health_monitor() {
     let state = test_state();
-    let connection_id = save_connection_impl(&state, sample_save_input(None))
-        .expect("save should succeed");
+    let connection_id =
+        save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
     let _pool_guard = install_test_pool_factory(forced_pool_success);
 
     let result = open_connection_impl(&state, &connection_id)
@@ -1172,8 +1199,8 @@ async fn open_connection_impl_creates_uncancelled_token_when_keepalive_enabled_w
 #[cfg(coverage)]
 async fn open_connection_impl_distinct_session_per_open() {
     let state = test_state();
-    let profile_id = save_connection_impl(&state, sample_save_input(None))
-        .expect("save should succeed");
+    let profile_id =
+        save_connection_impl(&state, sample_save_input(None)).expect("save should succeed");
     let _pool_guard = install_test_pool_factory(forced_pool_success);
 
     let r1 = open_connection_impl(&state, &profile_id)
@@ -1199,7 +1226,9 @@ fn mock_app_manages_state_for_tauri_commands() {
         .db
         .lock()
         .expect("db lock poisoned")
-        .query_row("SELECT 1", [], |row: &rusqlite::Row<'_>| row.get::<_, i64>(0))
+        .query_row("SELECT 1", [], |row: &rusqlite::Row<'_>| {
+            row.get::<_, i64>(0)
+        })
         .expect("should query sqlite");
     assert_eq!(one, 1);
 }
@@ -1237,12 +1266,8 @@ fn connection_group_command_wrappers_work_via_ipc() {
         "Production",
     )
     .expect("create should succeed");
-    sqllumen_lib::commands::connection_groups::update_connection_group_impl(
-        &state,
-        &id,
-        "Renamed",
-    )
-    .expect("update should succeed");
+    sqllumen_lib::commands::connection_groups::update_connection_group_impl(&state, &id, "Renamed")
+        .expect("update should succeed");
     let groups = sqllumen_lib::commands::connection_groups::list_connection_groups_impl(&state)
         .expect("list should succeed");
     assert_eq!(groups[0].name, "Renamed");

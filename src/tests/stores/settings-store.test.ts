@@ -15,6 +15,8 @@ beforeEach(() => {
     isLoading: false,
     isDirty: false,
     activeSection: 'general',
+    isDialogOpen: false,
+    dialogSection: undefined,
   })
 
   mockGetAllSettings.mockClear()
@@ -290,6 +292,31 @@ describe('useSettingsStore', () => {
     it('returns empty string for unknown keys', () => {
       const { result } = renderHook(() => useSettingValue('nonexistent.key'))
       expect(result.current).toBe('')
+    })
+  })
+
+  describe('dialog state', () => {
+    it('isDialogOpen defaults to false', () => {
+      expect(useSettingsStore.getState().isDialogOpen).toBe(false)
+    })
+
+    it('openDialog() sets isDialogOpen to true', () => {
+      useSettingsStore.getState().openDialog()
+      expect(useSettingsStore.getState().isDialogOpen).toBe(true)
+    })
+
+    it('openDialog("ai") sets isDialogOpen to true and dialogSection to "ai"', () => {
+      useSettingsStore.getState().openDialog('ai')
+      expect(useSettingsStore.getState().isDialogOpen).toBe(true)
+      expect(useSettingsStore.getState().dialogSection).toBe('ai')
+    })
+
+    it('closeDialog() sets isDialogOpen to false', () => {
+      useSettingsStore.getState().openDialog()
+      expect(useSettingsStore.getState().isDialogOpen).toBe(true)
+
+      useSettingsStore.getState().closeDialog()
+      expect(useSettingsStore.getState().isDialogOpen).toBe(false)
     })
   })
 })

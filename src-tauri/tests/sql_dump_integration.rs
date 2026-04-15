@@ -5,9 +5,7 @@
 
 mod common;
 
-use sqllumen_lib::export::sql_dump::{
-    self, DumpOptions, SqlDumpValue, INSERT_BATCH_SIZE,
-};
+use sqllumen_lib::export::sql_dump::{self, DumpOptions, SqlDumpValue, INSERT_BATCH_SIZE};
 use sqllumen_lib::state::{DumpJobProgress, DumpJobStatus};
 
 // ── Header/Footer generation ──────────────────────────────────────────────
@@ -15,8 +13,7 @@ use sqllumen_lib::state::{DumpJobProgress, DumpJobStatus};
 #[test]
 fn test_write_header_includes_database_and_version() {
     let mut buf = Vec::new();
-    sql_dump::write_header(&mut buf, "test_db", "8.0.33")
-        .expect("write_header should succeed");
+    sql_dump::write_header(&mut buf, "test_db", "8.0.33").expect("write_header should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("Database: test_db"));
@@ -28,8 +25,7 @@ fn test_write_header_includes_database_and_version() {
 #[test]
 fn test_write_footer_restores_settings() {
     let mut buf = Vec::new();
-    sql_dump::write_footer(&mut buf)
-        .expect("write_footer should succeed");
+    sql_dump::write_footer(&mut buf).expect("write_footer should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT"));
@@ -98,8 +94,14 @@ fn test_write_data_inserts_basic() {
     let mut buf = Vec::new();
     let columns = vec!["id".to_string(), "name".to_string()];
     let rows = vec![
-        vec![SqlDumpValue::Int(1), SqlDumpValue::QuotedString("Alice".to_string())],
-        vec![SqlDumpValue::Int(2), SqlDumpValue::QuotedString("Bob".to_string())],
+        vec![
+            SqlDumpValue::Int(1),
+            SqlDumpValue::QuotedString("Alice".to_string()),
+        ],
+        vec![
+            SqlDumpValue::Int(2),
+            SqlDumpValue::QuotedString("Bob".to_string()),
+        ],
     ];
 
     let count = sql_dump::write_data_inserts(&mut buf, "users", &columns, &rows)
@@ -188,8 +190,7 @@ fn test_write_data_inserts_null_values() {
     let columns = vec!["id".to_string(), "name".to_string()];
     let rows = vec![vec![SqlDumpValue::Int(1), SqlDumpValue::Null]];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows)
-        .expect("should succeed");
+    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).expect("should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("(1, NULL)"));
@@ -204,8 +205,7 @@ fn test_write_data_inserts_boolean_values() {
         vec![SqlDumpValue::Bool(false)],
     ];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows)
-        .expect("should succeed");
+    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).expect("should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("(1)"));
@@ -221,8 +221,7 @@ fn test_write_data_inserts_string_escaping() {
         vec![SqlDumpValue::QuotedString("C:\\Users\\test".to_string())],
     ];
 
-    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows)
-        .expect("should succeed");
+    sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).expect("should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("'it''s a test'"));
@@ -235,8 +234,7 @@ fn test_write_data_inserts_backtick_in_names() {
     let columns = vec!["col`name".to_string()];
     let rows = vec![vec![SqlDumpValue::Int(42)]];
 
-    sql_dump::write_data_inserts(&mut buf, "table`name", &columns, &rows)
-        .expect("should succeed");
+    sql_dump::write_data_inserts(&mut buf, "table`name", &columns, &rows).expect("should succeed");
     let output = String::from_utf8(buf).unwrap();
 
     assert!(output.contains("`table``name`"));
@@ -260,7 +258,10 @@ fn test_escape_string_value_basic() {
     assert_eq!(sql_dump::escape_string_value("a'\\b"), "a''\\\\b");
     // New: null bytes, newlines, carriage returns
     assert_eq!(sql_dump::escape_string_value("a\0b"), "a\\0b");
-    assert_eq!(sql_dump::escape_string_value("line1\nline2"), "line1\\nline2");
+    assert_eq!(
+        sql_dump::escape_string_value("line1\nline2"),
+        "line1\\nline2"
+    );
     assert_eq!(sql_dump::escape_string_value("cr\rhere"), "cr\\rhere");
 }
 
@@ -269,15 +270,13 @@ fn test_escape_string_value_basic() {
 #[test]
 fn test_transaction_wrappers() {
     let mut buf = Vec::new();
-    sql_dump::write_transaction_start(&mut buf)
-        .expect("should succeed");
+    sql_dump::write_transaction_start(&mut buf).expect("should succeed");
     let start = String::from_utf8(buf).unwrap();
     assert!(start.contains("SET AUTOCOMMIT = 0;"));
     assert!(start.contains("SET FOREIGN_KEY_CHECKS = 0;"));
 
     let mut buf = Vec::new();
-    sql_dump::write_transaction_end(&mut buf)
-        .expect("should succeed");
+    sql_dump::write_transaction_end(&mut buf).expect("should succeed");
     let end = String::from_utf8(buf).unwrap();
     assert!(end.contains("SET FOREIGN_KEY_CHECKS = 1;"));
     assert!(end.contains("COMMIT;"));
@@ -308,8 +307,7 @@ fn test_dump_options_serde_round_trip() {
     assert_eq!(json["includeDrop"], serde_json::json!(true));
     assert_eq!(json["useTransaction"], serde_json::json!(false));
 
-    let round_trip: DumpOptions =
-        serde_json::from_value(json).expect("deserialize");
+    let round_trip: DumpOptions = serde_json::from_value(json).expect("deserialize");
     assert_eq!(round_trip.include_data, false);
     assert_eq!(round_trip.use_transaction, false);
 }
@@ -345,18 +343,9 @@ fn test_dump_job_status_variants() {
     let completed = DumpJobStatus::Completed;
     let failed = DumpJobStatus::Failed;
 
-    assert_eq!(
-        serde_json::to_string(&running).unwrap(),
-        "\"running\""
-    );
-    assert_eq!(
-        serde_json::to_string(&completed).unwrap(),
-        "\"completed\""
-    );
-    assert_eq!(
-        serde_json::to_string(&failed).unwrap(),
-        "\"failed\""
-    );
+    assert_eq!(serde_json::to_string(&running).unwrap(), "\"running\"");
+    assert_eq!(serde_json::to_string(&completed).unwrap(), "\"completed\"");
+    assert_eq!(serde_json::to_string(&failed).unwrap(), "\"failed\"");
 
     assert_eq!(running, DumpJobStatus::Running);
     assert_ne!(running, DumpJobStatus::Failed);
@@ -473,13 +462,20 @@ fn test_full_dump_output_structure() {
     sql_dump::write_header(&mut buf, "mydb", "8.0.33").unwrap();
     sql_dump::write_transaction_start(&mut buf).unwrap();
 
-    let create_sql = "CREATE TABLE `users` (\n  `id` int NOT NULL,\n  `name` varchar(255)\n) ENGINE=InnoDB";
+    let create_sql =
+        "CREATE TABLE `users` (\n  `id` int NOT NULL,\n  `name` varchar(255)\n) ENGINE=InnoDB";
     sql_dump::write_structure(&mut buf, "users", create_sql, true, false).unwrap();
 
     let columns = vec!["id".to_string(), "name".to_string()];
     let rows = vec![
-        vec![SqlDumpValue::Int(1), SqlDumpValue::QuotedString("Alice".to_string())],
-        vec![SqlDumpValue::Int(2), SqlDumpValue::QuotedString("Bob".to_string())],
+        vec![
+            SqlDumpValue::Int(1),
+            SqlDumpValue::QuotedString("Alice".to_string()),
+        ],
+        vec![
+            SqlDumpValue::Int(2),
+            SqlDumpValue::QuotedString("Bob".to_string()),
+        ],
     ];
     sql_dump::write_data_inserts(&mut buf, "users", &columns, &rows).unwrap();
 
@@ -590,7 +586,9 @@ fn test_sql_dump_value_quoted_string_with_special_chars() {
         // Null byte, newline, carriage return
         vec![SqlDumpValue::QuotedString("a\0b\nc\rd".to_string())],
         // JSON content
-        vec![SqlDumpValue::QuotedString("{\"key\": \"value\"}".to_string())],
+        vec![SqlDumpValue::QuotedString(
+            "{\"key\": \"value\"}".to_string(),
+        )],
     ];
 
     sql_dump::write_data_inserts(&mut buf, "t", &columns, &rows).unwrap();
@@ -796,7 +794,8 @@ fn test_stale_import_job_cleanup() {
     }
 
     // Accessing get_import_progress_impl triggers cleanup
-    let result = sqllumen_lib::commands::sql_dump::get_import_progress_impl(&state, "running-import");
+    let result =
+        sqllumen_lib::commands::sql_dump::get_import_progress_impl(&state, "running-import");
     assert!(result.is_ok());
 
     // Stale import job should be cleaned up

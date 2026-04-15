@@ -181,9 +181,7 @@ fn get_filter_op(operator: &str) -> Option<FilterOp> {
 /// Conditions are processed in order (the frontend controls ordering).
 /// Column names are backtick-quoted via `safe_identifier`.
 /// If the slice is empty, returns an empty `FilterClause`.
-pub fn translate_filter_model(
-    conditions: &[FilterCondition],
-) -> FilterClause {
+pub fn translate_filter_model(conditions: &[FilterCondition]) -> FilterClause {
     if conditions.is_empty() {
         return FilterClause {
             sql: String::new(),
@@ -222,9 +220,7 @@ pub fn translate_filter_model(
                 sql_parts.push(format!("({safe_col} IS NULL OR {safe_col} = '')"));
             }
             FilterOp::IsNotNull => {
-                sql_parts.push(format!(
-                    "({safe_col} IS NOT NULL AND {safe_col} != '')"
-                ));
+                sql_parts.push(format!("({safe_col} IS NOT NULL AND {safe_col} != '')"));
             }
         }
     }
@@ -311,9 +307,7 @@ pub fn translate_filter_model_with_columns(
             }
             FilterOp::IsNotNull => {
                 if column_kind == ColumnFilterKind::TextLike {
-                    sql_parts.push(format!(
-                        "({safe_col} IS NOT NULL AND {safe_col} != '')"
-                    ));
+                    sql_parts.push(format!("({safe_col} IS NOT NULL AND {safe_col} != '')"));
                 } else {
                     sql_parts.push(format!("{safe_col} IS NOT NULL"));
                 }
@@ -518,14 +512,10 @@ fn serialize_table_value(
             return match v {
                 Some(bytes) => {
                     if is_pk {
-                        let hex: String =
-                            bytes.iter().map(|b| format!("{:02X}", b)).collect();
+                        let hex: String = bytes.iter().map(|b| format!("{:02X}", b)).collect();
                         serde_json::Value::String(format!("0x{hex}"))
                     } else {
-                        serde_json::Value::String(format!(
-                            "[BLOB - {} bytes]",
-                            bytes.len()
-                        ))
+                        serde_json::Value::String(format!("[BLOB - {} bytes]", bytes.len()))
                     }
                 }
                 None => serde_json::Value::Null,
@@ -964,7 +954,9 @@ pub async fn fetch_table_data_impl(
         .await
         .map_err(|e| format!("Count query failed: {e}"))?;
     crate::mysql::query_log::log_mysql_row(&count_row);
-    let total_rows: i64 = count_row.try_get(0).map_err(|e| format!("Failed to read count: {e}"))?;
+    let total_rows: i64 = count_row
+        .try_get(0)
+        .map_err(|e| format!("Failed to read count: {e}"))?;
     let total_rows = total_rows as u64;
 
     // Build and execute DATA query
@@ -1234,9 +1226,10 @@ pub async fn insert_table_row_impl(
             refetch_query = bind_json_value(refetch_query, param);
         }
 
-        let opt = refetch_query.fetch_optional(pool).await.map_err(|e| {
-            format!("Failed to re-fetch inserted row: {e}")
-        })?;
+        let opt = refetch_query
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| format!("Failed to re-fetch inserted row: {e}"))?;
         if let Some(ref r) = opt {
             crate::mysql::query_log::log_mysql_row(r);
         }
@@ -1268,9 +1261,10 @@ pub async fn insert_table_row_impl(
             refetch_query = bind_json_value(refetch_query, param);
         }
 
-        let opt = refetch_query.fetch_optional(pool).await.map_err(|e| {
-            format!("Failed to re-fetch inserted row: {e}")
-        })?;
+        let opt = refetch_query
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| format!("Failed to re-fetch inserted row: {e}"))?;
         if let Some(ref r) = opt {
             crate::mysql::query_log::log_mysql_row(r);
         }
@@ -1284,7 +1278,8 @@ pub async fn insert_table_row_impl(
             let result: Vec<(String, serde_json::Value)> = (0..row.columns().len())
                 .map(|i| {
                     let col_name = row.column(i).name().to_string();
-                    let is_boolean_alias = columns.get(i).map(|c| c.is_boolean_alias).unwrap_or(false);
+                    let is_boolean_alias =
+                        columns.get(i).map(|c| c.is_boolean_alias).unwrap_or(false);
                     let is_binary = columns.get(i).map(|c| c.is_binary).unwrap_or(false);
                     let value = serialize_table_value(&row, i, is_boolean_alias, is_binary, false);
                     (col_name, value)
@@ -1508,8 +1503,8 @@ pub async fn export_table_data_impl(
     }
     let mut stream = query.fetch(pool);
 
-    let file = std::fs::File::create(&temp_path)
-        .map_err(|e| format!("Failed to create file: {e}"))?;
+    let file =
+        std::fs::File::create(&temp_path).map_err(|e| format!("Failed to create file: {e}"))?;
     let buf_writer = std::io::BufWriter::new(file);
 
     match format {
@@ -1527,11 +1522,8 @@ pub async fn export_table_data_impl(
                 crate::mysql::query_log::log_mysql_row(&row);
                 if !headers_written {
                     if options.include_headers {
-                        let cols: Vec<String> = row
-                            .columns()
-                            .iter()
-                            .map(|c| c.name().to_string())
-                            .collect();
+                        let cols: Vec<String> =
+                            row.columns().iter().map(|c| c.name().to_string()).collect();
                         csv_wtr
                             .write_record(&cols)
                             .map_err(|e| format!("CSV write error: {e}"))?;
@@ -1580,12 +1572,7 @@ pub async fn export_table_data_impl(
             {
                 crate::mysql::query_log::log_mysql_row(&row);
                 if columns.is_none() {
-                    columns = Some(
-                        row.columns()
-                            .iter()
-                            .map(|c| c.name().to_string())
-                            .collect(),
-                    );
+                    columns = Some(row.columns().iter().map(|c| c.name().to_string()).collect());
                 }
                 let cols = columns.as_ref().unwrap();
                 let col_count = row.columns().len();
@@ -1636,12 +1623,7 @@ pub async fn export_table_data_impl(
             {
                 crate::mysql::query_log::log_mysql_row(&row);
                 if columns.is_none() {
-                    columns = Some(
-                        row.columns()
-                            .iter()
-                            .map(|c| c.name().to_string())
-                            .collect(),
-                    );
+                    columns = Some(row.columns().iter().map(|c| c.name().to_string()).collect());
                 }
                 let cols = columns.as_ref().unwrap();
                 let col_count = row.columns().len();
@@ -1670,9 +1652,8 @@ pub async fn export_table_data_impl(
     }
 
     // Streaming succeeded — atomically replace the target file
-    std::fs::rename(&temp_path, &options.file_path).map_err(|e| {
-        format!("Failed to finalize export file: {e}")
-    })?;
+    std::fs::rename(&temp_path, &options.file_path)
+        .map_err(|e| format!("Failed to finalize export file: {e}"))?;
     guard.disarm();
 
     Ok(())

@@ -20,9 +20,12 @@ pub fn export_results_impl(
             .get(&(connection_id.to_string(), tab_id.to_string()))
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
         let idx = result_index.unwrap_or(0);
-        let stored = result_vec
-            .get(idx)
-            .ok_or_else(|| format!("Result index {idx} out of range (total: {})", result_vec.len()))?;
+        let stored = result_vec.get(idx).ok_or_else(|| {
+            format!(
+                "Result index {idx} out of range (total: {})",
+                result_vec.len()
+            )
+        })?;
         let cols: Vec<String> = stored.columns.iter().map(|c| c.name.clone()).collect();
         let rows = stored.rows.clone();
         (cols, rows)
@@ -46,9 +49,12 @@ pub async fn export_results(
             .get(&(connection_id.clone(), tab_id.clone()))
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
         let idx = result_index.unwrap_or(0);
-        let stored = result_vec
-            .get(idx)
-            .ok_or_else(|| format!("Result index {idx} out of range (total: {})", result_vec.len()))?;
+        let stored = result_vec.get(idx).ok_or_else(|| {
+            format!(
+                "Result index {idx} out of range (total: {})",
+                result_vec.len()
+            )
+        })?;
         let cols: Vec<String> = stored.columns.iter().map(|c| c.name.clone()).collect();
         let rows = stored.rows.clone();
         (cols, rows)

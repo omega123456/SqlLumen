@@ -289,8 +289,7 @@ fn test_delete_group_nullifies_contained_connections() {
     let conn = common::test_db();
 
     // Create a group
-    let group_id =
-        connection_groups::insert_group(&conn, "Staging").expect("should insert group");
+    let group_id = connection_groups::insert_group(&conn, "Staging").expect("should insert group");
 
     // Create two connections in the group
     let data1 = NewConnectionData {
@@ -329,8 +328,14 @@ fn test_delete_group_nullifies_contained_connections() {
         .expect("should not error")
         .expect("connection 2 should exist");
 
-    assert!(rec1.group_id.is_none(), "connection 1 group_id should be NULL");
-    assert!(rec2.group_id.is_none(), "connection 2 group_id should be NULL");
+    assert!(
+        rec1.group_id.is_none(),
+        "connection 1 group_id should be NULL"
+    );
+    assert!(
+        rec2.group_id.is_none(),
+        "connection 2 group_id should be NULL"
+    );
 }
 
 #[test]

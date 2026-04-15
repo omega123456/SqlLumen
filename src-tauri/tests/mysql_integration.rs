@@ -174,10 +174,16 @@ async fn test_registry_remove_cancels_token() {
     let token_clone = entry.cancellation_token.clone();
 
     registry.insert("test-health-1".to_string(), entry);
-    assert!(!token_clone.is_cancelled(), "token should not be cancelled before remove");
+    assert!(
+        !token_clone.is_cancelled(),
+        "token should not be cancelled before remove"
+    );
 
     registry.remove("test-health-1");
-    assert!(token_clone.is_cancelled(), "token should be cancelled after remove");
+    assert!(
+        token_clone.is_cancelled(),
+        "token should be cancelled after remove"
+    );
 }
 
 #[tokio::test]
@@ -194,9 +200,18 @@ async fn test_registry_insert_replacement_cancels_old_token() {
     let token2_clone = entry2.cancellation_token.clone();
     let old = registry.insert("test-replace".to_string(), entry2);
 
-    assert!(old.is_some(), "insert should return old entry on replacement");
-    assert!(token1_clone.is_cancelled(), "old token should be cancelled on replacement");
-    assert!(!token2_clone.is_cancelled(), "new token should still be active");
+    assert!(
+        old.is_some(),
+        "insert should return old entry on replacement"
+    );
+    assert!(
+        token1_clone.is_cancelled(),
+        "old token should be cancelled on replacement"
+    );
+    assert!(
+        !token2_clone.is_cancelled(),
+        "new token should still be active"
+    );
 }
 
 #[tokio::test]
@@ -271,11 +286,9 @@ fn test_credential_store_and_retrieve() {
     common::ensure_fake_backend_once();
     let test_id = format!("test-cred-{}", uuid::Uuid::new_v4());
 
-    credentials::store_password(&test_id, "my_secret_password")
-        .expect("should store password");
+    credentials::store_password(&test_id, "my_secret_password").expect("should store password");
 
-    let retrieved =
-        credentials::retrieve_password(&test_id).expect("should retrieve password");
+    let retrieved = credentials::retrieve_password(&test_id).expect("should retrieve password");
     assert_eq!(retrieved, "my_secret_password");
 
     credentials::delete_password(&test_id).expect("should delete password");
@@ -433,17 +446,16 @@ async fn test_schema_text_decode_accepts_varbinary_like_information_schema() {
         .expect("named CAST AS BINARY query");
 
     assert_eq!(
-        decode_mysql_text_cell_named_for_test(&row_named, "Key_name").expect("named VARBINARY decode"),
+        decode_mysql_text_cell_named_for_test(&row_named, "Key_name")
+            .expect("named VARBINARY decode"),
         "named_idx"
     );
 
-    let row_txt = sqlx::query(
-        "SELECT CAST(? AS CHAR(64) CHARACTER SET utf8mb4) AS plain",
-    )
-    .bind("utf8_plain")
-    .fetch_one(&pool)
-    .await
-    .expect("CHAR utf8mb4 query");
+    let row_txt = sqlx::query("SELECT CAST(? AS CHAR(64) CHARACTER SET utf8mb4) AS plain")
+        .bind("utf8_plain")
+        .fetch_one(&pool)
+        .await
+        .expect("CHAR utf8mb4 query");
 
     assert_eq!(
         decode_mysql_text_cell_for_test(&row_txt, 0).expect("VARCHAR decode"),
@@ -511,10 +523,7 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
         .await
         .expect("connect MYSQL_TEST_URL");
 
-    let table = format!(
-        "__ins_unsigned_ai_{}",
-        uuid::Uuid::new_v4().simple()
-    );
+    let table = format!("__ins_unsigned_ai_{}", uuid::Uuid::new_v4().simple());
 
     let create_sql = format!(
         "CREATE TABLE `{}`.`{}` ( \
@@ -545,7 +554,8 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
 
     pool.close().await;
 
-    let row_vec = insert_outcome.expect("insert should succeed for BIGINT UNSIGNED AUTO_INCREMENT PK");
+    let row_vec =
+        insert_outcome.expect("insert should succeed for BIGINT UNSIGNED AUTO_INCREMENT PK");
     let id_cell = row_vec.iter().find(|(c, _)| c == "id").map(|(_, v)| v);
     assert!(
         id_cell.is_some_and(|v| v.as_u64().is_some_and(|n| n >= 1)),

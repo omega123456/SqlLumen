@@ -97,4 +97,12 @@ pub struct AppState {
     pub import_jobs: Arc<RwLock<HashMap<String, ImportJobProgress>>>,
     /// Cancellation tokens for in-progress AI chat streams, keyed by stream_id.
     pub ai_requests: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    /// Cancellation tokens for in-progress schema index builds, keyed by profile_id.
+    pub index_build_tokens: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    /// Maps session_id → profile_id for schema index tracking.
+    pub session_profile_map: Arc<Mutex<HashMap<String, String>>>,
+    /// Reference count of active sessions per profile_id.
+    pub session_ref_counts: Arc<Mutex<HashMap<String, usize>>>,
+    /// Shared HTTP client for embedding API calls.
+    pub http_client: reqwest::Client,
 }

@@ -3,7 +3,6 @@
 
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 #[cfg(not(coverage))]
 use sqlx::mysql::types::MySqlTime;
 #[cfg(not(coverage))]
@@ -20,6 +19,7 @@ use sqlx::TypeInfo;
 use sqlx::Value;
 #[cfg(not(coverage))]
 use sqlx::ValueRef;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 #[cfg(not(coverage))]
@@ -109,7 +109,8 @@ pub struct SchemaMetadataFull {
     pub tables: std::collections::HashMap<String, Vec<TableInfo>>,
     pub columns: std::collections::HashMap<String, Vec<ColumnMeta>>,
     pub routines: std::collections::HashMap<String, Vec<RoutineMeta>>,
-    pub foreign_keys: std::collections::HashMap<String, Vec<crate::mysql::schema_queries::ForeignKeyInfo>>,
+    pub foreign_keys:
+        std::collections::HashMap<String, Vec<crate::mysql::schema_queries::ForeignKeyInfo>>,
     pub indexes: std::collections::HashMap<String, Vec<crate::mysql::schema_queries::IndexInfo>>,
 }
 
@@ -229,7 +230,7 @@ pub fn get_first_keyword(sql: &str) -> String {
     // Handle executable comments: /*!50001 keyword ... */
     if trimmed.starts_with("/*!") {
         let inner = &trimmed[3..]; // Strip /*!
-        // Skip optional version number (digits)
+                                   // Skip optional version number (digits)
         let after_version = inner.trim_start_matches(|c: char| c.is_ascii_digit());
         let after_ws = after_version.trim_start();
         // Extract first word
@@ -368,8 +369,7 @@ pub fn has_top_level_limit(sql: &str) -> bool {
         if depth == 0 && i + 4 < len && chars[i].to_ascii_uppercase() == 'L' {
             let word: String = chars[i..i + 5].iter().collect();
             if word.eq_ignore_ascii_case("LIMIT") {
-                let before_ok =
-                    i == 0 || !(chars[i - 1].is_alphanumeric() || chars[i - 1] == '_');
+                let before_ok = i == 0 || !(chars[i - 1].is_alphanumeric() || chars[i - 1] == '_');
                 let after_ok =
                     i + 5 >= len || !(chars[i + 5].is_alphanumeric() || chars[i + 5] == '_');
                 if before_ok && after_ok {
@@ -395,11 +395,7 @@ fn has_into_outfile(sql: &str) -> bool {
 /// Returns the byte offset of the clause start if found, or None.
 fn find_trailing_lock_clause(sql: &str) -> Option<usize> {
     let upper = sql.trim_end().to_uppercase();
-    let patterns = [
-        "FOR UPDATE",
-        "FOR SHARE",
-        "LOCK IN SHARE MODE",
-    ];
+    let patterns = ["FOR UPDATE", "FOR SHARE", "LOCK IN SHARE MODE"];
     for pat in &patterns {
         if upper.ends_with(pat) {
             return Some(sql.trim_end().len() - pat.len());
@@ -412,10 +408,7 @@ fn find_trailing_lock_clause(sql: &str) -> Option<usize> {
 /// Note: CALL is intentionally excluded — it is handled via a dedicated
 /// `execute_call_query` path that supports multiple result sets.
 pub fn is_select_like(keyword: &str) -> bool {
-    matches!(
-        keyword,
-        "SELECT" | "SHOW" | "DESCRIBE" | "DESC" | "EXPLAIN"
-    )
+    matches!(keyword, "SELECT" | "SHOW" | "DESCRIBE" | "DESC" | "EXPLAIN")
 }
 
 /// Returns true if a SELECT statement needs an auto-LIMIT injected.
@@ -529,8 +522,10 @@ fn serialize_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::Value {
     let type_name = raw_value.type_info().name().to_uppercase();
 
     // Integer types
-    if matches!(type_name.as_str(), "TINYINT" | "SHORT" | "LONG" | "INT24" | "LONGLONG")
-        || type_name.contains("INT")
+    if matches!(
+        type_name.as_str(),
+        "TINYINT" | "SHORT" | "LONG" | "INT24" | "LONGLONG"
+    ) || type_name.contains("INT")
         || type_name == "YEAR"
     {
         if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
@@ -664,8 +659,7 @@ fn decode_raw_string(value: MySqlValueRef<'_>) -> Option<String> {
 
 #[cfg(not(coverage))]
 fn decode_required_identifier(row: &sqlx::mysql::MySqlRow, index: usize) -> Option<String> {
-    decode_unchecked_string(row, index)
-        .filter(|value| !value.trim().is_empty())
+    decode_unchecked_string(row, index).filter(|value| !value.trim().is_empty())
 }
 
 #[cfg(not(coverage))]
@@ -798,10 +792,7 @@ async fn execute_single_statement_inner(
 
     let (columns, all_rows, affected_rows) = if is_result_set {
         crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
-        match sqlx::query(&sql_to_execute)
-            .fetch_all(&mut **conn)
-            .await
-        {
+        match sqlx::query(&sql_to_execute).fetch_all(&mut **conn).await {
             Ok(rows) => {
                 crate::mysql::query_log::log_mysql_rows(&rows);
 
@@ -839,10 +830,7 @@ async fn execute_single_statement_inner(
         }
     } else {
         crate::mysql::query_log::log_outgoing_sql(sql_to_execute.as_str());
-        match sqlx::query(&sql_to_execute)
-            .execute(&mut **conn)
-            .await
-        {
+        match sqlx::query(&sql_to_execute).execute(&mut **conn).await {
             Ok(result) => {
                 crate::mysql::query_log::log_execute_result(&result);
                 Ok((vec![], vec![], result.rows_affected()))
@@ -1096,9 +1084,12 @@ pub fn fetch_result_page_impl(
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
 
     let idx = result_index.unwrap_or(0);
-    let stored = result_vec
-        .get(idx)
-        .ok_or_else(|| format!("Result index {idx} out of range (total: {})", result_vec.len()))?;
+    let stored = result_vec.get(idx).ok_or_else(|| {
+        format!(
+            "Result index {idx} out of range (total: {})",
+            result_vec.len()
+        )
+    })?;
 
     if stored.query_id != query_id {
         return Err(
@@ -1157,16 +1148,18 @@ pub async fn cancel_query_impl(
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
     // Acquire a different connection from the pool to issue the KILL command
-    let mut conn = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        pool.acquire(),
-    )
-    .await
-    .map_err(|_| "Cancel timed out waiting for a pool connection".to_string())?
-    .map_err(|e| e.to_string())?;
+    let mut conn = tokio::time::timeout(std::time::Duration::from_secs(5), pool.acquire())
+        .await
+        .map_err(|_| "Cancel timed out waiting for a pool connection".to_string())?
+        .map_err(|e| e.to_string())?;
 
     let kill_sql = format!("KILL QUERY {}", thread_id);
-    tracing::debug!(connection_id, tab_id, thread_id, "cancel_query: issuing KILL QUERY");
+    tracing::debug!(
+        connection_id,
+        tab_id,
+        thread_id,
+        "cancel_query: issuing KILL QUERY"
+    );
     crate::mysql::query_log::log_outgoing_sql(&kill_sql);
     let result = sqlx::query(&kill_sql)
         .execute(&mut *conn)
@@ -1343,10 +1336,10 @@ pub async fn fetch_schema_metadata_impl(
             continue;
         };
         let routine_type = decode_metadata_text(row, 2);
-        routines.entry(schema).or_default().push(RoutineMeta {
-            name,
-            routine_type,
-        });
+        routines
+            .entry(schema)
+            .or_default()
+            .push(RoutineMeta { name, routine_type });
     }
 
     Ok(SchemaMetadata {
@@ -1426,19 +1419,20 @@ pub async fn fetch_schema_metadata_full_impl(
 
     let mut foreign_keys: HashMap<String, Vec<crate::mysql::schema_queries::ForeignKeyInfo>> =
         HashMap::new();
-    let mut indexes: HashMap<String, Vec<crate::mysql::schema_queries::IndexInfo>> =
-        HashMap::new();
+    let mut indexes: HashMap<String, Vec<crate::mysql::schema_queries::IndexInfo>> = HashMap::new();
 
     // For each database, fetch all FKs and indexes
     for db_name in &base.databases {
-        let db_fks = query_all_foreign_keys(&pool, db_name).await.unwrap_or_else(|e| {
-            tracing::warn!(
-                database = db_name,
-                error = %e,
-                "failed to fetch foreign keys for database"
-            );
-            HashMap::new()
-        });
+        let db_fks = query_all_foreign_keys(&pool, db_name)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    database = db_name,
+                    error = %e,
+                    "failed to fetch foreign keys for database"
+                );
+                HashMap::new()
+            });
         for (table_name, fk_list) in db_fks {
             let key = format!("{db_name}.{table_name}");
             foreign_keys.entry(key).or_default().extend(fk_list);
@@ -1562,7 +1556,10 @@ pub fn sort_results_impl(
 
     let idx = result_index.unwrap_or(0);
     if idx >= result_vec.len() {
-        return Err(format!("Result index {idx} out of range (total: {})", result_vec.len()));
+        return Err(format!(
+            "Result index {idx} out of range (total: {})",
+            result_vec.len()
+        ));
     }
     let stored = &mut result_vec[idx];
 
@@ -1639,10 +1636,7 @@ pub async fn analyze_query_for_edit_impl(
     let default_database = if default_database.is_some() {
         default_database
     } else {
-        match sqlx::query("SELECT DATABASE()")
-            .fetch_one(&pool)
-            .await
-        {
+        match sqlx::query("SELECT DATABASE()").fetch_one(&pool).await {
             Ok(row) => match row.try_get::<String, _>(0) {
                 Ok(db) => {
                     tracing::debug!(database = %db, "analyze_query_for_edit: resolved current database via SELECT DATABASE()");
@@ -1687,8 +1681,7 @@ pub async fn analyze_query_for_edit_impl(
             continue;
         };
 
-        match crate::mysql::table_data::fetch_table_pk_impl(&pool, database, &table_ref.table)
-            .await
+        match crate::mysql::table_data::fetch_table_pk_impl(&pool, database, &table_ref.table).await
         {
             Ok((pk_info, columns)) => {
                 let foreign_keys = crate::mysql::schema_queries::query_foreign_keys(
@@ -1788,7 +1781,10 @@ pub fn update_result_cell_impl(
 
     let idx = result_index.unwrap_or(0);
     if idx >= result_vec.len() {
-        return Err(format!("Result index {idx} out of range (total: {})", result_vec.len()));
+        return Err(format!(
+            "Result index {idx} out of range (total: {})",
+            result_vec.len()
+        ));
     }
     let stored = &mut result_vec[idx];
 
@@ -1905,9 +1901,7 @@ pub async fn reexecute_single_result_impl(
     // were replaced by a newer query while this re-execution was in flight.
     {
         let mut results = state.results.write().expect("results lock poisoned");
-        let result_vec = match results
-            .get_mut(&(connection_id.to_string(), tab_id.to_string()))
-        {
+        let result_vec = match results.get_mut(&(connection_id.to_string(), tab_id.to_string())) {
             Some(v) => v,
             None => {
                 tracing::warn!(
@@ -1915,7 +1909,10 @@ pub async fn reexecute_single_result_impl(
                     result_index,
                     "reexecute_single_result: tab results disappeared after await — discarding stale result"
                 );
-                return Err("Tab results no longer exist — a newer query may have replaced them".to_string());
+                return Err(
+                    "Tab results no longer exist — a newer query may have replaced them"
+                        .to_string(),
+                );
             }
         };
         if result_index >= result_vec.len() {
@@ -2011,12 +2008,13 @@ pub async fn reexecute_single_result_impl(
     // and query_id hasn't changed (prevents overwriting newer results).
     {
         let mut results = state.results.write().expect("results lock poisoned");
-        let result_vec = match results
-            .get_mut(&(connection_id.to_string(), tab_id.to_string()))
-        {
+        let result_vec = match results.get_mut(&(connection_id.to_string(), tab_id.to_string())) {
             Some(v) => v,
             None => {
-                return Err("Tab results no longer exist — a newer query may have replaced them".to_string());
+                return Err(
+                    "Tab results no longer exist — a newer query may have replaced them"
+                        .to_string(),
+                );
             }
         };
         if result_index >= result_vec.len() {
@@ -2399,14 +2397,8 @@ mod tests {
 
     #[test]
     fn test_get_first_keyword_executable_comment() {
-        assert_eq!(
-            get_first_keyword("/*!50001 DELETE FROM t */"),
-            "DELETE"
-        );
-        assert_eq!(
-            get_first_keyword("/*!50708 SELECT * FROM t */"),
-            "SELECT"
-        );
+        assert_eq!(get_first_keyword("/*!50001 DELETE FROM t */"), "DELETE");
+        assert_eq!(get_first_keyword("/*!50708 SELECT * FROM t */"), "SELECT");
         assert_eq!(get_first_keyword("/*!SELECT * FROM t */"), "SELECT");
     }
 
@@ -2421,7 +2413,9 @@ mod tests {
             "INSERT"
         );
         assert_eq!(
-            find_with_main_keyword("WITH cte AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT * FROM cte)"),
+            find_with_main_keyword(
+                "WITH cte AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT * FROM cte)"
+            ),
             "DELETE"
         );
         assert_eq!(
@@ -2471,9 +2465,7 @@ mod tests {
     #[test]
     fn test_needs_auto_limit_with_cte_select() {
         // WITH...SELECT should get auto-LIMIT
-        assert!(needs_auto_limit(
-            "WITH cte AS (SELECT 1) SELECT * FROM cte"
-        ));
+        assert!(needs_auto_limit("WITH cte AS (SELECT 1) SELECT * FROM cte"));
     }
 
     #[test]

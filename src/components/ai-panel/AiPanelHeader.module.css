@@ -21,11 +21,6 @@
   text-overflow: ellipsis;
 }
 
-.schemaSlot {
-  flex: 1;
-  min-width: 0;
-}
-
 .actions {
   display: flex;
   align-items: center;

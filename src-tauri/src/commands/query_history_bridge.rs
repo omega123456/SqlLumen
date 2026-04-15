@@ -143,8 +143,7 @@ pub async fn execute_multi_query_bridge(
     statements: Vec<String>,
     page_size: usize,
 ) -> Result<MultiQueryResult, String> {
-    let result =
-        execute_multi_query_impl(state, session_id, tab_id, statements, page_size).await;
+    let result = execute_multi_query_impl(state, session_id, tab_id, statements, page_size).await;
 
     let (connection_id, database_name) = resolve_connection_context(state, session_id);
 
@@ -207,8 +206,7 @@ pub async fn execute_call_query_bridge(
             // Aggregate: sum execution time, total rows from all result sets.
             let total_time: i64 = multi.results.iter().map(|r| r.execution_time_ms).sum();
             let total_rows: i64 = multi.results.iter().map(|r| r.total_rows).sum();
-            let total_affected: i64 =
-                multi.results.iter().map(|r| r.affected_rows as i64).sum();
+            let total_affected: i64 = multi.results.iter().map(|r| r.affected_rows as i64).sum();
             let has_error = multi.results.iter().any(|r| r.error.is_some());
             let error_msg = multi
                 .results

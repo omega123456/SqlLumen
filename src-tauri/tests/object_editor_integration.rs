@@ -8,8 +8,8 @@ mod common;
 
 use sqllumen_lib::commands::object_editor::{
     drop_object_impl, get_object_body_impl, get_routine_parameters_impl,
-    get_routine_parameters_with_return_type_impl, parse_ddl_name,
-    save_object_impl, validate_view_ddl_prefix, SaveObjectRequest,
+    get_routine_parameters_with_return_type_impl, parse_ddl_name, save_object_impl,
+    validate_view_ddl_prefix, SaveObjectRequest,
 };
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use sqllumen_lib::state::AppState;
@@ -217,7 +217,8 @@ fn test_parse_ddl_name_unquoted_view() {
 
 #[test]
 fn test_parse_ddl_name_mixed_quoted_db_unquoted_name() {
-    let (db, name, type_kw) = parse_ddl_name("CREATE PROCEDURE `mydb`.my_proc() BEGIN END").unwrap();
+    let (db, name, type_kw) =
+        parse_ddl_name("CREATE PROCEDURE `mydb`.my_proc() BEGIN END").unwrap();
     assert_eq!(db, Some("mydb".to_string()));
     assert_eq!(name, "my_proc");
     assert_eq!(type_kw, "PROCEDURE");
@@ -225,7 +226,8 @@ fn test_parse_ddl_name_mixed_quoted_db_unquoted_name() {
 
 #[test]
 fn test_parse_ddl_name_unquoted_db_quoted_name() {
-    let (db, name, type_kw) = parse_ddl_name("CREATE PROCEDURE mydb.`my_proc`() BEGIN END").unwrap();
+    let (db, name, type_kw) =
+        parse_ddl_name("CREATE PROCEDURE mydb.`my_proc`() BEGIN END").unwrap();
     assert_eq!(db, Some("mydb".to_string()));
     assert_eq!(name, "my_proc");
     assert_eq!(type_kw, "PROCEDURE");
@@ -233,8 +235,7 @@ fn test_parse_ddl_name_unquoted_db_quoted_name() {
 
 #[test]
 fn test_parse_ddl_name_quoted_name_with_escaped_backtick() {
-    let (db, name, type_kw) =
-        parse_ddl_name("CREATE VIEW `my``view` AS SELECT 1").unwrap();
+    let (db, name, type_kw) = parse_ddl_name("CREATE VIEW `my``view` AS SELECT 1").unwrap();
     assert_eq!(db, None);
     assert_eq!(name, "my`view");
     assert_eq!(type_kw, "VIEW");
@@ -255,8 +256,7 @@ fn test_parse_ddl_name_quoted_db_with_escaped_backtick() {
 
 #[test]
 fn test_view_prefix_alter_accepts_create_or_replace_view() {
-    let result =
-        validate_view_ddl_prefix("CREATE OR REPLACE VIEW `v1` AS SELECT 1", "alter");
+    let result = validate_view_ddl_prefix("CREATE OR REPLACE VIEW `v1` AS SELECT 1", "alter");
     assert!(result.is_ok());
 }
 
@@ -264,9 +264,7 @@ fn test_view_prefix_alter_accepts_create_or_replace_view() {
 fn test_view_prefix_alter_rejects_create_view_without_or_replace() {
     let result = validate_view_ddl_prefix("CREATE VIEW `v1` AS SELECT 1", "alter");
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("CREATE OR REPLACE VIEW"));
+    assert!(result.unwrap_err().contains("CREATE OR REPLACE VIEW"));
 }
 
 #[test]
@@ -283,8 +281,7 @@ fn test_view_prefix_create_accepts_create_view() {
 
 #[test]
 fn test_view_prefix_create_rejects_create_or_replace_view() {
-    let result =
-        validate_view_ddl_prefix("CREATE OR REPLACE VIEW `v1` AS SELECT 1", "create");
+    let result = validate_view_ddl_prefix("CREATE OR REPLACE VIEW `v1` AS SELECT 1", "create");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("must not use"));
 }
@@ -298,27 +295,20 @@ fn test_view_prefix_create_rejects_random_ddl() {
 
 #[test]
 fn test_view_prefix_invalid_mode() {
-    let result =
-        validate_view_ddl_prefix("CREATE VIEW `v1` AS SELECT 1", "delete");
+    let result = validate_view_ddl_prefix("CREATE VIEW `v1` AS SELECT 1", "delete");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Invalid mode"));
 }
 
 #[test]
 fn test_view_prefix_case_insensitive() {
-    let result = validate_view_ddl_prefix(
-        "create or replace view `v1` AS SELECT 1",
-        "alter",
-    );
+    let result = validate_view_ddl_prefix("create or replace view `v1` AS SELECT 1", "alter");
     assert!(result.is_ok());
 }
 
 #[test]
 fn test_view_prefix_with_leading_whitespace() {
-    let result = validate_view_ddl_prefix(
-        "  CREATE OR REPLACE VIEW `v1` AS SELECT 1",
-        "alter",
-    );
+    let result = validate_view_ddl_prefix("  CREATE OR REPLACE VIEW `v1` AS SELECT 1", "alter");
     assert!(result.is_ok());
 }
 
@@ -355,10 +345,7 @@ fn test_view_prefix_create_with_definer() {
 
 #[test]
 fn test_view_prefix_create_with_algorithm() {
-    let result = validate_view_ddl_prefix(
-        "CREATE ALGORITHM=MERGE VIEW `v1` AS SELECT 1",
-        "create",
-    );
+    let result = validate_view_ddl_prefix("CREATE ALGORITHM=MERGE VIEW `v1` AS SELECT 1", "create");
     assert!(result.is_ok());
 }
 
@@ -544,14 +531,7 @@ async fn test_save_object_rejects_unparseable_ddl() {
     let state = common::test_app_state();
     register_lazy_pool(&state, "c1", false);
 
-    let request = make_request(
-        "c1",
-        "mydb",
-        "obj",
-        "procedure",
-        "SELECT 1",
-        "alter",
-    );
+    let request = make_request("c1", "mydb", "obj", "procedure", "SELECT 1", "alter");
     let result = save_object_impl(request, &state).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Could not parse"));
@@ -643,8 +623,7 @@ async fn test_drop_object_rejects_unknown_object_type() {
 #[tokio::test]
 async fn test_get_routine_parameters_errors_when_connection_not_open() {
     let state = common::test_app_state();
-    let result =
-        get_routine_parameters_impl(&state, "missing", "db", "proc", "PROCEDURE").await;
+    let result = get_routine_parameters_impl(&state, "missing", "db", "proc", "PROCEDURE").await;
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
@@ -689,10 +668,7 @@ mod mock_success_paths {
         steps: Vec<MockQueryStep>,
     ) -> MockMySqlServer {
         let server = MockMySqlServer::start_script(steps).await;
-        let url = format!(
-            "mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED",
-            server.port
-        );
+        let url = format!("mysql://root@127.0.0.1:{}/?ssl-mode=DISABLED", server.port);
         let pool = MySqlPoolOptions::new()
             .max_connections(2)
             .connect(&url)
@@ -737,7 +713,10 @@ mod mock_success_paths {
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
         let resp = result.unwrap();
         assert!(resp.success, "expected success=true, response: {:?}", resp);
-        assert!(resp.drop_succeeded, "alter mode should report drop_succeeded");
+        assert!(
+            resp.drop_succeeded,
+            "alter mode should report drop_succeeded"
+        );
         assert_eq!(resp.saved_object_name, Some("my_proc".to_string()));
         assert!(resp.error_message.is_none());
     }
@@ -760,7 +739,10 @@ mod mock_success_paths {
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
         let resp = result.unwrap();
         assert!(resp.success, "expected success=true, response: {:?}", resp);
-        assert!(!resp.drop_succeeded, "create mode should not report drop_succeeded");
+        assert!(
+            !resp.drop_succeeded,
+            "create mode should not report drop_succeeded"
+        );
         assert_eq!(resp.saved_object_name, Some("new_proc".to_string()));
     }
 
@@ -845,7 +827,10 @@ mod mock_success_paths {
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
         let resp = result.unwrap();
         assert!(resp.success, "expected success=true, response: {:?}", resp);
-        assert!(resp.drop_succeeded, "trigger alter should report drop_succeeded");
+        assert!(
+            resp.drop_succeeded,
+            "trigger alter should report drop_succeeded"
+        );
         assert_eq!(resp.saved_object_name, Some("my_trigger".to_string()));
     }
 
@@ -954,9 +939,9 @@ mod mock_success_paths {
 mod ipc_paths {
     use super::*;
     use common::mock_mysql_server::MockMySqlServer;
-    use sqllumen_lib::mysql::pool::{create_pool, ConnectionParams};
     use serde::de::DeserializeOwned;
     use serde_json::json;
+    use sqllumen_lib::mysql::pool::{create_pool, ConnectionParams};
     use tauri::ipc::{CallbackFn, InvokeBody};
     use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
     use tauri::webview::InvokeRequest;
@@ -1036,7 +1021,9 @@ mod ipc_paths {
                 cmd: cmd.into(),
                 callback: CallbackFn(0),
                 error: CallbackFn(1),
-                url: "http://tauri.localhost".parse().expect("test URL should parse"),
+                url: "http://tauri.localhost"
+                    .parse()
+                    .expect("test URL should parse"),
                 body: InvokeBody::Json(body),
                 headers: Default::default(),
                 invoke_key: INVOKE_KEY.to_string(),
@@ -1074,7 +1061,10 @@ mod ipc_paths {
         )
         .expect("save_object IPC should succeed without prepared statements");
 
-        assert!(response.success, "expected success=true, response: {response:?}");
+        assert!(
+            response.success,
+            "expected success=true, response: {response:?}"
+        );
         assert_eq!(response.saved_object_name, Some("my_proc".to_string()));
         assert_eq!(response.error_message, None);
         assert!(!response.drop_succeeded);
@@ -1272,8 +1262,7 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_drop_object_coverage_procedure() {
         let state = common::test_app_state();
-        let result =
-            drop_object_impl(&state, "c1", "mydb", "my_proc", "procedure").await;
+        let result = drop_object_impl(&state, "c1", "mydb", "my_proc", "procedure").await;
         assert!(result.is_ok());
     }
 
@@ -1294,8 +1283,7 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_drop_object_coverage_trigger() {
         let state = common::test_app_state();
-        let result =
-            drop_object_impl(&state, "c1", "mydb", "t1", "trigger").await;
+        let result = drop_object_impl(&state, "c1", "mydb", "t1", "trigger").await;
         assert!(result.is_ok());
     }
 
@@ -1309,9 +1297,7 @@ mod coverage_stubs {
     #[tokio::test]
     async fn test_get_routine_parameters_coverage() {
         let state = common::test_app_state();
-        let result =
-            get_routine_parameters_impl(&state, "c1", "mydb", "proc", "PROCEDURE")
-                .await;
+        let result = get_routine_parameters_impl(&state, "c1", "mydb", "proc", "PROCEDURE").await;
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
     }
@@ -1342,6 +1328,9 @@ mod coverage_stubs {
         assert!(result.is_ok());
         let resp = result.unwrap();
         assert!(resp.parameters.is_empty());
-        assert!(!resp.found, "routine starting with 'missing' should have found=false");
+        assert!(
+            !resp.found,
+            "routine starting with 'missing' should have found=false"
+        );
     }
 }
