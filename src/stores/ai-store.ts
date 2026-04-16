@@ -159,6 +159,35 @@ Output: {"queries":["employees departments manager_id supervisor","employees tab
 
 const SCHEMA_USAGE_INSTRUCTION = `Retrieved tables only:\n- Use only tables that are present in the retrieved schema below.\n- Never make up or reference any table that is not in the retrieved schema.\n- Always use database-qualified table names in generated SQL (\`db\`.\`table\`).`
 
+/**
+ * Soft token budget for retrieved schema context. Used to stop piling more
+ * DDL into the system message once we approach model context-window limits
+ * for large schemas (plan item C12).
+ *
+ * A common `chars / 4` approximation for token count is applied downstream;
+ * the effective character budget is therefore `SCHEMA_CONTEXT_TOKEN_BUDGET * 4`.
+ * Results are always ordered most-to-least relevant before the cap is applied,
+ * so we drop in ascending relevance order.
+ */
+const SCHEMA_CONTEXT_TOKEN_BUDGET = 4000
+
+/**
+ * Render a per-chunk relevance header (plan item C14). Emitted above each
+ * DDL/FK chunk so the LLM can prioritize the more relevant tables when it
+ * generates SQL. The score is the raw cosine similarity for vector-ranked
+ * chunks, or 0.0 for FK fan-out chunks.
+ */
+function formatChunkHeader(result: {
+  dbName: string
+  tableName: string
+  chunkType: string
+  score: number
+}): string {
+  const label = result.chunkType === 'fk' ? 'foreign key' : 'table'
+  const scoreFormatted = Number.isFinite(result.score) ? result.score.toFixed(2) : '0.00'
+  return `-- ${label} ${result.dbName}.${result.tableName} (relevance ${scoreFormatted})`
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -362,21 +391,40 @@ export const useAiStore = create<AiState>()((set, get) => {
         )}`
       )
 
-      // Assemble DDL from results (deduplicate by chunkKey)
+      // Assemble DDL from results (deduplicate by chunkKey) with:
+      //   - per-chunk relevance headers so the LLM can prioritize (plan C14)
+      //   - a soft token budget so large schemas don't blow the context
+      //     window (plan C12). The estimate is chars/4, matching the widely
+      //     used OpenAI heuristic; over-budget chunks are dropped in
+      //     ascending-relevance order.
+      const CONTEXT_CHAR_BUDGET = SCHEMA_CONTEXT_TOKEN_BUDGET * 4
       const seen = new Set<string>()
       const ddlParts: string[] = []
+      let accumulatedChars = 0
+      let droppedCount = 0
       for (const result of results) {
-        if (!seen.has(result.chunkKey)) {
-          seen.add(result.chunkKey)
-          ddlParts.push(result.ddlText)
+        if (seen.has(result.chunkKey)) {
+          continue
         }
+        seen.add(result.chunkKey)
+
+        const header = formatChunkHeader(result)
+        const block = `${header}\n${result.ddlText}`
+        const blockLen = block.length + 2
+        if (accumulatedChars + blockLen > CONTEXT_CHAR_BUDGET && ddlParts.length > 0) {
+          droppedCount += 1
+          continue
+        }
+
+        ddlParts.push(block)
+        accumulatedChars += blockLen
       }
 
       const ddl = ddlParts.join('\n\n')
 
       logFrontend(
         'debug',
-        `[ai-store] DDL assembly complete — uniqueChunks=${ddlParts.length} totalCharsInDdl=${ddl.length}`
+        `[ai-store] DDL assembly complete — uniqueChunks=${ddlParts.length} droppedOverBudget=${droppedCount} totalCharsInDdl=${ddl.length}`
       )
 
       // Update tab state (only if tab still exists — it may have been cleaned up)

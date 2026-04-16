@@ -341,6 +341,92 @@ describe('useAiStore', () => {
       )
     })
 
+    it('prefixes each retrieved DDL block with a relevance header (C14)', async () => {
+      mockSemanticSearch.mockResolvedValueOnce([
+        {
+          chunkId: 1,
+          chunkKey: 'testdb.users:table',
+          dbName: 'testdb',
+          tableName: 'users',
+          chunkType: 'table',
+          ddlText: 'CREATE TABLE `testdb`.`users` (id INT)',
+          refDbName: null,
+          refTableName: null,
+          score: 0.87,
+        },
+        {
+          chunkId: 2,
+          chunkKey: 'testdb.orders:fk:fk_user',
+          dbName: 'testdb',
+          tableName: 'orders',
+          chunkType: 'fk',
+          ddlText: 'Table testdb.orders has a foreign key (user_id) that references testdb.users(id)',
+          refDbName: 'testdb',
+          refTableName: 'users',
+          score: 0.0,
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-hdr', 'conn-1', 'Question', {})
+
+      await vi.waitFor(() => {
+        expect(getTab('tab-hdr')!.retrievedSchemaDdl).toBeTruthy()
+      })
+
+      const ddl = getTab('tab-hdr')!.retrievedSchemaDdl
+      expect(ddl).toContain('-- table testdb.users (relevance 0.87)')
+      expect(ddl).toContain('-- foreign key testdb.orders (relevance 0.00)')
+    })
+
+    it('caps retrieved context by token budget dropping low-relevance tail (C12)', async () => {
+      const huge = 'x'.repeat(20000)
+      mockSemanticSearch.mockResolvedValueOnce([
+        {
+          chunkId: 1,
+          chunkKey: 'db.high:table',
+          dbName: 'db',
+          tableName: 'high',
+          chunkType: 'table',
+          ddlText: `CREATE TABLE high (${huge})`,
+          refDbName: null,
+          refTableName: null,
+          score: 0.95,
+        },
+        {
+          chunkId: 2,
+          chunkKey: 'db.medium:table',
+          dbName: 'db',
+          tableName: 'medium',
+          chunkType: 'table',
+          ddlText: `CREATE TABLE medium (${huge})`,
+          refDbName: null,
+          refTableName: null,
+          score: 0.60,
+        },
+        {
+          chunkId: 3,
+          chunkKey: 'db.low:table',
+          dbName: 'db',
+          tableName: 'low',
+          chunkType: 'table',
+          ddlText: `CREATE TABLE low (${huge})`,
+          refDbName: null,
+          refTableName: null,
+          score: 0.10,
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-budget', 'conn-1', 'Huge schema query', {})
+
+      await vi.waitFor(() => {
+        expect(getTab('tab-budget')!.retrievedSchemaDdl).toBeTruthy()
+      })
+
+      const ddl = getTab('tab-budget')!.retrievedSchemaDdl
+      expect(ddl).toContain('-- table db.high (relevance 0.95)')
+      expect(ddl).not.toContain('-- table db.low (relevance 0.10)')
+    })
+
     it('updates retrievedSchemaDdl on the tab after retrieval', async () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
 
