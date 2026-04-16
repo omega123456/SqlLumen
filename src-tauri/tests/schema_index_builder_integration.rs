@@ -106,9 +106,17 @@ fn test_generate_fk_chunk_text_single_column() {
     };
 
     let text = builder::generate_fk_chunk_text(&fk);
-    assert_eq!(
-        text,
-        "Table mydb.orders has a foreign key (user_id) that references mydb.users(id) ON DELETE CASCADE ON UPDATE NO ACTION"
+    assert!(
+        text.contains("Table mydb.orders has a foreign key (user_id) that references mydb.users(id) ON DELETE CASCADE ON UPDATE NO ACTION"),
+        "parent→child phrasing should be present, got: {text}"
+    );
+    assert!(
+        text.contains("Table mydb.users is referenced by mydb.orders on (user_id)"),
+        "reverse phrasing (A6) should be present, got: {text}"
+    );
+    assert!(
+        text.contains("Join mydb.orders to mydb.users ON mydb.orders.user_id = mydb.users.id"),
+        "JOIN hint (A7) should be present, got: {text}"
     );
 }
 
@@ -410,9 +418,11 @@ fn test_generate_all_chunks_table_only() {
         create_table_sql: "CREATE TABLE `users` (\n  `id` int NOT NULL,\n  PRIMARY KEY (`id`)\n) ENGINE=InnoDB AUTO_INCREMENT=10".to_string(),
     }];
 
-    let (table_chunks, fk_chunks) = builder::generate_all_chunks(&inputs);
+    let (table_chunks, summary_chunks, fk_chunks) = builder::generate_all_chunks(&inputs);
     assert_eq!(table_chunks.len(), 1);
     assert!(fk_chunks.is_empty());
+    // A summary chunk should be generated whenever column info was parsable.
+    assert_eq!(summary_chunks.len(), 1);
 
     let (key, text, hash, db, table) = &table_chunks[0];
     assert_eq!(key, "table:mydb.users");
@@ -422,11 +432,21 @@ fn test_generate_all_chunks_table_only() {
         text.starts_with("CREATE TABLE `mydb`.`users`"),
         "table chunk DDL should be database-qualified, got: {text}"
     );
-    // Verify DDL was compacted
     assert!(!text.contains("ENGINE=InnoDB"));
     assert!(!text.contains("AUTO_INCREMENT=10"));
-    // Verify hash is of the compacted text
     assert_eq!(hash, &builder::compute_hash(text));
+
+    let (summary_key, summary_text, summary_hash, _, _) = &summary_chunks[0];
+    assert_eq!(summary_key, "summary:mydb.users");
+    assert!(
+        summary_text.starts_with("Table mydb.users"),
+        "summary prose should start with qualified table name (A2), got: {summary_text}"
+    );
+    assert!(
+        summary_text.contains("Primary key: id"),
+        "summary should mention primary key, got: {summary_text}"
+    );
+    assert_eq!(summary_hash, &builder::compute_hash(summary_text));
 }
 
 #[test]
@@ -486,15 +506,72 @@ fn test_generate_all_chunks_with_fks() {
 ) ENGINE=InnoDB"#.to_string(),
     }];
 
-    let (table_chunks, fk_chunks) = builder::generate_all_chunks(&inputs);
+    let (table_chunks, summary_chunks, fk_chunks) = builder::generate_all_chunks(&inputs);
     assert_eq!(table_chunks.len(), 1);
     assert_eq!(fk_chunks.len(), 1);
+    assert_eq!(summary_chunks.len(), 1);
 
     let (fk_key, fk_text, fk_hash, fk) = &fk_chunks[0];
     assert_eq!(fk_key, "fk:shop.orders:fk_order_user");
     assert!(fk_text.contains("Table shop.orders has a foreign key"));
     assert_eq!(fk_hash, &builder::compute_hash(fk_text));
     assert_eq!(fk.constraint_name, "fk_order_user");
+}
+
+// ── parse_table_summary / generate_summary_chunk_text (A2) ───────────────
+
+#[test]
+fn test_parse_table_summary_extracts_columns_and_keys() {
+    let ddl = "CREATE TABLE `users` (\n  `id` int NOT NULL AUTO_INCREMENT COMMENT 'primary id',\n  `email` varchar(255) NOT NULL COMMENT 'unique user email',\n  `name` varchar(128) DEFAULT NULL,\n  PRIMARY KEY (`id`),\n  UNIQUE KEY `uk_email` (`email`),\n  KEY `idx_name` (`name`)\n) ENGINE=InnoDB COMMENT='Application users'";
+
+    let summary = builder::parse_table_summary("app", "users", ddl);
+
+    assert_eq!(summary.table_comment.as_deref(), Some("Application users"));
+    assert_eq!(summary.columns.len(), 3);
+    assert_eq!(summary.columns[0].name, "id");
+    assert_eq!(summary.columns[0].data_type, "int");
+    assert_eq!(
+        summary.columns[0].comment.as_deref(),
+        Some("primary id"),
+        "column comment should be parsed"
+    );
+    assert_eq!(summary.columns[1].name, "email");
+    assert_eq!(summary.columns[1].data_type, "varchar(255)");
+    assert!(summary.columns[1].not_null, "email NOT NULL should be detected");
+    assert_eq!(summary.primary_key, vec!["id".to_string()]);
+    assert_eq!(summary.unique_keys.len(), 1);
+    assert_eq!(summary.unique_keys[0], vec!["email".to_string()]);
+    assert_eq!(summary.indexes.len(), 1);
+    assert_eq!(summary.indexes[0], vec!["name".to_string()]);
+}
+
+#[test]
+fn test_generate_summary_chunk_text_includes_comment_and_structure() {
+    let ddl = "CREATE TABLE `orders` (\n  `id` int NOT NULL,\n  `user_id` int NOT NULL,\n  `total` decimal(10,2),\n  PRIMARY KEY (`id`),\n  CONSTRAINT `fk_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE\n) ENGINE=InnoDB COMMENT='Customer orders'";
+
+    let summary = builder::parse_table_summary("shop", "orders", ddl);
+    let text = builder::generate_summary_chunk_text("shop", "orders", &summary)
+        .expect("summary should be generated");
+
+    assert!(
+        text.starts_with("Table shop.orders — Customer orders"),
+        "summary should start with qualified table name + comment, got: {text}"
+    );
+    assert!(
+        text.contains("Primary key: id"),
+        "summary should name the PK, got: {text}"
+    );
+    assert!(
+        text.contains("Foreign keys:") && text.contains("shop.users(id)"),
+        "summary should reference FK targets, got: {text}"
+    );
+}
+
+#[test]
+fn test_generate_summary_chunk_text_returns_none_without_columns() {
+    let summary = builder::parse_table_summary("x", "y", "not a valid table statement");
+    let text = builder::generate_summary_chunk_text("x", "y", &summary);
+    assert!(text.is_none(), "no columns → no summary chunk");
 }
 
 // ── Incremental build simulation (chunk generation + hash diffing) ───────
@@ -516,8 +593,7 @@ fn test_incremental_build_simulation() {
         },
     ];
 
-    let (chunks_v1, _fks_v1) = builder::generate_all_chunks(&inputs_v1);
-    // Store as "existing"
+    let (chunks_v1, _summaries_v1, _fks_v1) = builder::generate_all_chunks(&inputs_v1);
     let stored_v1: Vec<(String, String)> = chunks_v1
         .iter()
         .map(|(k, _, h, _, _)| (k.clone(), h.clone()))
@@ -542,7 +618,7 @@ fn test_incremental_build_simulation() {
         },
     ];
 
-    let (chunks_v2, _fks_v2) = builder::generate_all_chunks(&inputs_v2);
+    let (chunks_v2, _summaries_v2, _fks_v2) = builder::generate_all_chunks(&inputs_v2);
     let new_for_diff: Vec<(String, String, String)> = chunks_v2
         .iter()
         .map(|(k, text, h, _, _)| (k.clone(), text.clone(), h.clone()))
@@ -590,7 +666,7 @@ fn test_incremental_build_with_table_removal() {
         },
     ];
 
-    let (chunks_v1, _) = builder::generate_all_chunks(&inputs_v1);
+    let (chunks_v1, _, _) = builder::generate_all_chunks(&inputs_v1);
     let stored_v1: Vec<(String, String)> = chunks_v1
         .iter()
         .map(|(k, _, h, _, _)| (k.clone(), h.clone()))
@@ -610,7 +686,7 @@ fn test_incremental_build_with_table_removal() {
         },
     ];
 
-    let (chunks_v2, _) = builder::generate_all_chunks(&inputs_v2);
+    let (chunks_v2, _, _) = builder::generate_all_chunks(&inputs_v2);
     let new_for_diff: Vec<(String, String, String)> = chunks_v2
         .iter()
         .map(|(k, text, h, _, _)| (k.clone(), text.clone(), h.clone()))
@@ -708,17 +784,46 @@ fn test_diff_chunks_both_empty() {
 }
 
 #[test]
-fn test_compact_ddl_with_comment_clause() {
+fn test_compact_ddl_preserves_table_comment() {
     let ddl =
         "CREATE TABLE `t` (`id` int) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='test table'";
     let result = builder::compact_ddl(ddl);
     assert!(
-        !result.contains("COMMENT="),
-        "COMMENT should be stripped, got: {result}"
+        result.contains("COMMENT='test table'"),
+        "table-level COMMENT should be preserved (A1), got: {result}"
     );
     assert!(
         !result.contains("ENGINE="),
         "ENGINE should be stripped, got: {result}"
+    );
+    assert!(
+        !result.contains("CHARSET="),
+        "CHARSET should be stripped, got: {result}"
+    );
+}
+
+#[test]
+fn test_compact_ddl_preserves_comment_with_escaped_quotes() {
+    let ddl =
+        "CREATE TABLE `t` (`id` int) ENGINE=InnoDB COMMENT='user''s profile table'";
+    let result = builder::compact_ddl(ddl);
+    assert!(
+        result.contains("COMMENT='user''s profile table'"),
+        "escaped-quote COMMENT should round-trip, got: {result}"
+    );
+}
+
+#[test]
+fn test_compact_ddl_without_comment_clause_still_strips_engine() {
+    let ddl = "CREATE TABLE `t` (`id` int) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+    let result = builder::compact_ddl(ddl);
+    assert!(
+        !result.contains("ENGINE="),
+        "ENGINE should be stripped, got: {result}"
+    );
+    assert!(
+        !result.contains("COMMENT"),
+        "no COMMENT should be synthesized when absent, got: {result}"
     );
 }
 

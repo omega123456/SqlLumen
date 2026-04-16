@@ -24,6 +24,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "005_schema_index",
         include_str!("../../migrations/005_schema_index.sql"),
     ),
+    (
+        "006_schema_index_summary_chunks",
+        include_str!("../../migrations/006_schema_index_summary_chunks.sql"),
+    ),
 ];
 
 /// Run all pending migrations on the given connection.

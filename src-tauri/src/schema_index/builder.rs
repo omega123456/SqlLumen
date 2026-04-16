@@ -32,30 +32,38 @@ const SQLITE_COMMIT_BATCH: usize = 20;
 /// the resulting text captures only the schema structure (columns, indexes, FKs).
 ///
 /// Removes: `AUTO_INCREMENT=\d+`, `ROW_FORMAT=...`, `ENGINE=...`, trailing
-/// `DEFAULT CHARSET=...`, `COLLATE=...`, and `COMMENT='...'` clauses that
-/// appear after the closing `)` of the column list.
+/// `DEFAULT CHARSET=...`, `COLLATE=...` clauses that appear after the closing
+/// `)` of the column list.
+///
+/// **Preserves** the table-level `COMMENT='...'` clause: if present, it is
+/// reattached to the closing `)` so the documentation signal (arguably the
+/// single highest-signal semantic field on a MySQL table) survives into the
+/// embedding input. See plan item A1.
 pub fn compact_ddl(create_table_sql: &str) -> String {
     static AUTO_INCREMENT_REGEX: OnceLock<Regex> = OnceLock::new();
     static TRAILING_CLAUSE_REGEX: OnceLock<Regex> = OnceLock::new();
     static WHITESPACE_REGEX: OnceLock<Regex> = OnceLock::new();
 
-    // Remove AUTO_INCREMENT=<digits> (case-insensitive)
     let re_auto_inc = AUTO_INCREMENT_REGEX.get_or_init(|| {
         Regex::new(r"(?i)\s*AUTO_INCREMENT\s*=\s*\d+").expect("valid auto_increment regex")
     });
     let text = re_auto_inc.replace_all(create_table_sql, "");
 
+    // Extract the table-level COMMENT='...' clause (if any) before stripping
+    // trailing clauses, so it can be reattached below.
+    let table_comment = extract_table_comment(&text);
+
     // Remove trailing engine/storage clauses after the last `)`
-    // These are: ENGINE=..., ROW_FORMAT=..., DEFAULT CHARSET=..., COLLATE=..., COMMENT='...'
+    // These are: ENGINE=..., ROW_FORMAT=..., DEFAULT CHARSET=..., COLLATE=...,
+    // COMMENT='...', /*!...*/ comment tokens.
     let re_trailing = TRAILING_CLAUSE_REGEX.get_or_init(|| {
         Regex::new(
-            r"(?i)\)\s*(ENGINE\s*=\s*\S+|ROW_FORMAT\s*=\s*\S+|DEFAULT\s+CHARSET\s*=\s*\S+|COLLATE\s*=\s*\S+|COMMENT\s*=\s*'[^']*'|/\*![^*]*\*/|\s)*\s*;?\s*$",
+            r"(?i)\)\s*(ENGINE\s*=\s*\S+|ROW_FORMAT\s*=\s*\S+|DEFAULT\s+CHARSET\s*=\s*\S+|COLLATE\s*=\s*\S+|COMMENT\s*=\s*'(?:[^']|'')*'|/\*![^*]*\*/|\s)*\s*;?\s*$",
         )
         .expect("valid trailing clause regex")
     });
 
     let text = if let Some(mat) = re_trailing.find(&text) {
-        // Keep everything up to and including the `)`, strip the rest
         let paren_pos = text[..mat.start() + 1].rfind(')');
         match paren_pos {
             Some(pos) => format!("{})", &text[..pos]),
@@ -65,12 +73,17 @@ pub fn compact_ddl(create_table_sql: &str) -> String {
         text.to_string()
     };
 
-    // Normalize whitespace
     let re_ws =
         WHITESPACE_REGEX.get_or_init(|| Regex::new(r"\s+").expect("valid whitespace regex"));
     let text = re_ws.replace_all(&text, " ");
+    let text = text.trim().to_string();
 
-    text.trim().to_string()
+    match table_comment {
+        Some(comment) if !comment.is_empty() => {
+            format!("{text} COMMENT='{}'", comment.replace('\'', "''"))
+        }
+        _ => text,
+    }
 }
 
 fn quote_identifier(name: &str) -> String {
@@ -146,10 +159,35 @@ pub fn normalize_table_ddl(db_name: &str, table_name: &str, ddl: &str) -> String
 }
 
 /// Generate a human-readable chunk text describing a foreign key relationship.
+///
+/// Includes:
+/// - parent → child phrasing (original sentence)
+/// - child ← parent phrasing ("Table X is referenced by Y on ...") so that
+///   queries written from the referenced-table side still match (plan A6)
+/// - an explicit JOIN hint line so JOIN-flavored queries embed against the
+///   same chunk (plan A7)
 pub fn generate_fk_chunk_text(fk: &FkInput) -> String {
     let cols = fk.columns.join(", ");
     let ref_cols = fk.ref_columns.join(", ");
-    format!(
+
+    let join_pairs: Vec<String> = fk
+        .columns
+        .iter()
+        .zip(fk.ref_columns.iter())
+        .map(|(src, tgt)| {
+            format!(
+                "{db}.{table}.{src} = {ref_db}.{ref_table}.{tgt}",
+                db = fk.db_name,
+                table = fk.table_name,
+                src = src,
+                ref_db = fk.ref_db_name,
+                ref_table = fk.ref_table_name,
+                tgt = tgt,
+            )
+        })
+        .collect();
+
+    let parent_child = format!(
         "Table {db}.{table} has a foreign key ({cols}) that references {ref_db}.{ref_table}({ref_cols}) ON DELETE {on_delete} ON UPDATE {on_update}",
         db = fk.db_name,
         table = fk.table_name,
@@ -157,7 +195,26 @@ pub fn generate_fk_chunk_text(fk: &FkInput) -> String {
         ref_table = fk.ref_table_name,
         on_delete = fk.on_delete,
         on_update = fk.on_update,
-    )
+    );
+
+    let reverse = format!(
+        "Table {ref_db}.{ref_table} is referenced by {db}.{table} on ({cols}).",
+        db = fk.db_name,
+        table = fk.table_name,
+        ref_db = fk.ref_db_name,
+        ref_table = fk.ref_table_name,
+    );
+
+    let join_hint = format!(
+        "Join {db}.{table} to {ref_db}.{ref_table} ON {pairs}.",
+        db = fk.db_name,
+        table = fk.table_name,
+        ref_db = fk.ref_db_name,
+        ref_table = fk.ref_table_name,
+        pairs = join_pairs.join(" AND "),
+    );
+
+    format!("{parent_child}. {reverse} {join_hint}")
 }
 
 /// Compute a SHA-256 hex digest of the given text.
@@ -175,6 +232,362 @@ pub fn table_chunk_key(db_name: &str, table_name: &str) -> String {
 /// Chunk key for a foreign key chunk.
 pub fn fk_chunk_key(db_name: &str, table_name: &str, constraint_name: &str) -> String {
     format!("fk:{db_name}.{table_name}:{constraint_name}")
+}
+
+/// Chunk key for a natural-language summary chunk (see plan A2).
+pub fn summary_chunk_key(db_name: &str, table_name: &str) -> String {
+    format!("summary:{db_name}.{table_name}")
+}
+
+// ── Summary chunk (prose) ────────────────────────────────────────────────
+
+/// Describe a table column parsed from the CREATE TABLE statement; used to
+/// compose the prose summary chunk.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SummaryColumn {
+    pub name: String,
+    pub data_type: String,
+    pub not_null: bool,
+    pub comment: Option<String>,
+}
+
+/// Intermediate structure collected from a CREATE TABLE statement that is used
+/// to render a natural-language summary chunk (plan item A2).
+#[derive(Debug, Clone, Default)]
+pub struct TableSummary {
+    pub table_comment: Option<String>,
+    pub columns: Vec<SummaryColumn>,
+    pub primary_key: Vec<String>,
+    pub unique_keys: Vec<Vec<String>>,
+    pub indexes: Vec<Vec<String>>,
+    pub foreign_keys: Vec<FkInput>,
+}
+
+/// Parse a raw CREATE TABLE statement into the subset of information used to
+/// render a prose summary chunk.
+///
+/// This is a best-effort regex/line-based parser that targets the shape emitted
+/// by MySQL's `SHOW CREATE TABLE`. It is intentionally lenient — any field it
+/// fails to extract simply drops out of the rendered summary rather than
+/// breaking the build.
+pub fn parse_table_summary(db_name: &str, table_name: &str, ddl: &str) -> TableSummary {
+    let table_comment = extract_table_comment(ddl);
+
+    let (col_block, constraint_lines) = split_columns_and_constraints(ddl);
+
+    let columns = parse_summary_columns(&col_block);
+
+    let mut primary_key: Vec<String> = Vec::new();
+    let mut unique_keys: Vec<Vec<String>> = Vec::new();
+    let mut indexes: Vec<Vec<String>> = Vec::new();
+
+    for line in &constraint_lines {
+        let trimmed = line.trim().trim_end_matches(',');
+        let upper = trimmed.to_ascii_uppercase();
+        if upper.starts_with("PRIMARY KEY") {
+            primary_key = parse_backtick_list(trimmed);
+        } else if upper.starts_with("UNIQUE KEY") || upper.starts_with("UNIQUE INDEX") {
+            let cols = parse_backtick_list(trimmed);
+            if cols.len() > 1 {
+                // First backtick segment is the index name; remainder are columns.
+                unique_keys.push(cols.into_iter().skip(1).collect());
+            } else if !cols.is_empty() {
+                unique_keys.push(cols);
+            }
+        } else if upper.starts_with("KEY ") || upper.starts_with("INDEX ") {
+            let cols = parse_backtick_list(trimmed);
+            if cols.len() > 1 {
+                indexes.push(cols.into_iter().skip(1).collect());
+            }
+        }
+    }
+
+    let foreign_keys = parse_fks_from_ddl(db_name, table_name, ddl);
+
+    TableSummary {
+        table_comment,
+        columns,
+        primary_key,
+        unique_keys,
+        indexes,
+        foreign_keys,
+    }
+}
+
+/// Extract the value of the table-level `COMMENT='...'` clause from a raw
+/// CREATE TABLE statement. Exposed for `parse_table_summary`; the
+/// `compact_ddl` helper has its own internal copy (kept colocated with the
+/// rest of DDL stripping for readability).
+fn extract_table_comment(create_table_sql: &str) -> Option<String> {
+    static TABLE_COMMENT_REGEX: OnceLock<Regex> = OnceLock::new();
+    let re = TABLE_COMMENT_REGEX.get_or_init(|| {
+        Regex::new(r"(?is)\)\s*[^()]*?\bCOMMENT\s*=\s*'((?:[^']|'')*)'")
+            .expect("valid table comment regex")
+    });
+    re.captures(create_table_sql)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().replace("''", "'"))
+}
+
+/// Split a CREATE TABLE statement into (column_lines, constraint_lines) based
+/// on the top-level `(...)` column list. Column lines are entries whose first
+/// non-whitespace character is a backtick; constraint lines are everything else
+/// (PRIMARY KEY, UNIQUE, INDEX, CONSTRAINT ...).
+fn split_columns_and_constraints(ddl: &str) -> (Vec<String>, Vec<String>) {
+    let Some(open) = ddl.find('(') else {
+        return (Vec::new(), Vec::new());
+    };
+    let body = &ddl[open + 1..];
+    let Some(close_rel) = find_matching_close_paren(body) else {
+        return (Vec::new(), Vec::new());
+    };
+    let inside = &body[..close_rel];
+
+    let mut parts: Vec<String> = Vec::new();
+    let mut depth: usize = 0;
+    let mut current = String::new();
+    let mut in_quote = false;
+    for ch in inside.chars() {
+        match ch {
+            '\'' => {
+                in_quote = !in_quote;
+                current.push(ch);
+            }
+            '(' if !in_quote => {
+                depth += 1;
+                current.push(ch);
+            }
+            ')' if !in_quote => {
+                if depth > 0 {
+                    depth -= 1;
+                }
+                current.push(ch);
+            }
+            ',' if !in_quote && depth == 0 => {
+                parts.push(current.trim().to_string());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+    if !current.trim().is_empty() {
+        parts.push(current.trim().to_string());
+    }
+
+    let mut columns = Vec::new();
+    let mut constraints = Vec::new();
+    for part in parts {
+        let t = part.trim();
+        if t.starts_with('`') {
+            columns.push(part);
+        } else {
+            constraints.push(part);
+        }
+    }
+    (columns, constraints)
+}
+
+fn find_matching_close_paren(body: &str) -> Option<usize> {
+    let mut depth: usize = 0;
+    let mut in_quote = false;
+    for (i, ch) in body.char_indices() {
+        match ch {
+            '\'' => in_quote = !in_quote,
+            '(' if !in_quote => depth += 1,
+            ')' if !in_quote => {
+                if depth == 0 {
+                    return Some(i);
+                }
+                depth -= 1;
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parse_summary_columns(col_lines: &[String]) -> Vec<SummaryColumn> {
+    static COL_HEAD_REGEX: OnceLock<Regex> = OnceLock::new();
+    let head_re = COL_HEAD_REGEX.get_or_init(|| {
+        Regex::new(r"^`((?:[^`]|``)+)`\s+(.+)$").expect("valid column head regex")
+    });
+
+    static COLUMN_COMMENT_REGEX: OnceLock<Regex> = OnceLock::new();
+    let comment_re = COLUMN_COMMENT_REGEX.get_or_init(|| {
+        Regex::new(r"(?i)COMMENT\s+'((?:[^']|'')*)'").expect("valid column comment regex")
+    });
+
+    let mut out = Vec::new();
+    for raw in col_lines {
+        let line = raw.trim().trim_end_matches(',');
+        let Some(cap) = head_re.captures(line) else {
+            continue;
+        };
+        let name = cap[1].replace("``", "`");
+        let rest = &cap[2];
+
+        let data_type = extract_column_type(rest);
+        let upper = rest.to_ascii_uppercase();
+        let not_null = upper.contains("NOT NULL");
+        let comment = comment_re
+            .captures(rest)
+            .and_then(|c| c.get(1))
+            .map(|m| m.as_str().replace("''", "'"));
+
+        out.push(SummaryColumn {
+            name,
+            data_type,
+            not_null,
+            comment,
+        });
+    }
+    out
+}
+
+/// Extract the SQL type from the tail of a column definition (everything
+/// after the backticked column name). Takes the first whitespace-delimited
+/// token plus a balanced `(...)` length/precision suffix if present.
+fn extract_column_type(rest: &str) -> String {
+    let s = rest.trim_start();
+    let mut end = 0;
+    let bytes = s.as_bytes();
+    while end < bytes.len() && !bytes[end].is_ascii_whitespace() && bytes[end] != b'(' {
+        end += 1;
+    }
+    let mut result = String::from(&s[..end]);
+    if end < bytes.len() && bytes[end] == b'(' {
+        let mut depth = 0;
+        let mut close_idx = None;
+        for (i, ch) in s[end..].char_indices() {
+            match ch {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close_idx = Some(end + i + 1);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(idx) = close_idx {
+            result.push_str(&s[end..idx]);
+        }
+    }
+    if result.to_ascii_uppercase().starts_with("UNSIGNED") {
+        // Odd spacing, skip; otherwise leave as-is.
+    }
+    // Detect trailing "unsigned" / "zerofill" attributes (they come after the type).
+    let tail_upper = s[result.len()..].trim_start().to_ascii_uppercase();
+    for modifier in ["UNSIGNED", "ZEROFILL"] {
+        if tail_upper.starts_with(modifier) {
+            result.push(' ');
+            result.push_str(&tail_upper[..modifier.len()].to_ascii_lowercase());
+            break;
+        }
+    }
+    result
+}
+
+/// Render a natural-language summary chunk from a parsed table (see plan A2).
+/// Returns `None` if there's no meaningful content (e.g. no columns parsed) —
+/// in that case the caller should simply skip emitting a summary chunk.
+pub fn generate_summary_chunk_text(
+    db_name: &str,
+    table_name: &str,
+    summary: &TableSummary,
+) -> Option<String> {
+    if summary.columns.is_empty() {
+        return None;
+    }
+
+    let mut out = String::new();
+    out.push_str(&format!("Table {db_name}.{table_name}"));
+    if let Some(comment) = &summary.table_comment {
+        let trimmed = comment.trim();
+        if !trimmed.is_empty() {
+            out.push_str(&format!(" — {trimmed}"));
+        }
+    }
+    out.push('.');
+
+    out.push_str(" Columns: ");
+    let col_strings: Vec<String> = summary
+        .columns
+        .iter()
+        .map(|c| render_summary_column(c, summary))
+        .collect();
+    out.push_str(&col_strings.join("; "));
+    out.push('.');
+
+    if !summary.primary_key.is_empty() {
+        out.push_str(&format!(
+            " Primary key: {}.",
+            summary.primary_key.join(", ")
+        ));
+    }
+
+    if !summary.unique_keys.is_empty() {
+        let unique_strs: Vec<String> = summary
+            .unique_keys
+            .iter()
+            .map(|cols| format!("({})", cols.join(", ")))
+            .collect();
+        out.push_str(&format!(" Unique: {}.", unique_strs.join(", ")));
+    }
+
+    if !summary.indexes.is_empty() {
+        let idx_strs: Vec<String> = summary
+            .indexes
+            .iter()
+            .map(|cols| format!("({})", cols.join(", ")))
+            .collect();
+        out.push_str(&format!(" Indexes on: {}.", idx_strs.join(", ")));
+    }
+
+    if !summary.foreign_keys.is_empty() {
+        let fk_strs: Vec<String> = summary
+            .foreign_keys
+            .iter()
+            .map(|fk| {
+                format!(
+                    "({}) → {}.{}({})",
+                    fk.columns.join(", "),
+                    fk.ref_db_name,
+                    fk.ref_table_name,
+                    fk.ref_columns.join(", ")
+                )
+            })
+            .collect();
+        out.push_str(&format!(" Foreign keys: {}.", fk_strs.join(", ")));
+    }
+
+    Some(out)
+}
+
+fn render_summary_column(col: &SummaryColumn, summary: &TableSummary) -> String {
+    let mut parts = vec![format!("{} {}", col.name, col.data_type)];
+    if summary.primary_key.iter().any(|p| p == &col.name) {
+        parts.push("PK".to_string());
+    } else if summary
+        .unique_keys
+        .iter()
+        .any(|uk| uk.len() == 1 && uk[0] == col.name)
+    {
+        parts.push("UNIQUE".to_string());
+    }
+    if col.not_null && !summary.primary_key.iter().any(|p| p == &col.name) {
+        parts.push("NOT NULL".to_string());
+    }
+    let mut rendered = parts.join(" ");
+    if let Some(comment) = &col.comment {
+        let trimmed = comment.trim();
+        if !trimmed.is_empty() {
+            rendered.push_str(&format!(" — {trimmed}"));
+        }
+    }
+    rendered
 }
 
 // ── FK parsing from DDL ──────────────────────────────────────────────────
@@ -379,13 +792,14 @@ pub async fn build_index(
         "schema_index build_index: fetched SHOW CREATE TABLE for all tables"
     );
 
-    // 4. Generate chunk data (table + FK chunks)
-    let (table_chunks, fk_chunks) = generate_all_chunks(&all_ddl_inputs);
+    // 4. Generate chunk data (table + summary + FK chunks)
+    let (table_chunks, summary_chunks, fk_chunks) = generate_all_chunks(&all_ddl_inputs);
     tracing::debug!(
         profile_id = %config.connection_id,
         table_chunk_rows = table_chunks.len(),
+        summary_chunk_rows = summary_chunks.len(),
         fk_chunk_rows = fk_chunks.len(),
-        "schema_index build_index: generated table and FK chunk texts (DDL normalized, hashes computed)"
+        "schema_index build_index: generated table, summary and FK chunk texts (DDL normalized, hashes computed)"
     );
 
     // Merge into a single list for diffing
@@ -405,6 +819,18 @@ pub async fn build_index(
             text.clone(),
             hash.clone(),
             ChunkType::Table,
+            db.clone(),
+            table.clone(),
+            None,
+            None,
+        ));
+    }
+    for (key, text, hash, db, table) in &summary_chunks {
+        all_new.push((
+            key.clone(),
+            text.clone(),
+            hash.clone(),
+            ChunkType::Summary,
             db.clone(),
             table.clone(),
             None,
@@ -475,6 +901,10 @@ pub async fn build_index(
         .iter()
         .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Table))
         .count();
+    let staged_summary_chunks = chunks_to_embed
+        .iter()
+        .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Summary))
+        .count();
     let staged_fk_chunks = chunks_to_embed
         .iter()
         .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Fk))
@@ -487,6 +917,7 @@ pub async fn build_index(
         total_chunks_current = all_new.len(),
         staged_for_embedding = total_to_embed,
         staged_table_chunks,
+        staged_summary_chunks,
         staged_fk_chunks,
         unchanged_chunks_skipped = unchanged_chunks,
         obsolete_chunks_removed = to_delete_keys.len(),
@@ -741,8 +1172,8 @@ pub async fn rebuild_tables(
         }
     }
 
-    // 3. Generate new table + FK chunks
-    let (table_chunks, fk_chunks) = generate_all_chunks(&ddl_inputs);
+    // 3. Generate new table + summary + FK chunks
+    let (table_chunks, summary_chunks, fk_chunks) = generate_all_chunks(&ddl_inputs);
 
     // 4. Collect all texts to embed
     let mut embed_items: Vec<(
@@ -757,6 +1188,9 @@ pub async fn rebuild_tables(
     )> = Vec::new();
     for (key, text, hash, db, table) in table_chunks {
         embed_items.push((key, text, hash, ChunkType::Table, db, table, None, None));
+    }
+    for (key, text, hash, db, table) in summary_chunks {
+        embed_items.push((key, text, hash, ChunkType::Summary, db, table, None, None));
     }
     for (key, text, hash, fk) in fk_chunks {
         embed_items.push((
@@ -776,6 +1210,10 @@ pub async fn rebuild_tables(
         .iter()
         .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Table))
         .count();
+    let staged_summaries = embed_items
+        .iter()
+        .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Summary))
+        .count();
     let staged_fks = embed_items
         .iter()
         .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Fk))
@@ -785,6 +1223,7 @@ pub async fn rebuild_tables(
         staged_at = %staged_at,
         chunks_to_embed = embed_items.len(),
         staged_table_chunks = staged_tables,
+        staged_summary_chunks = staged_summaries,
         staged_fk_chunks = staged_fks,
         "schema_index rebuild_tables: staged all chunks for targeted tables before embedding"
     );
@@ -1013,22 +1452,29 @@ async fn handle_model_change(
     Ok(())
 }
 
-/// Generate table + FK chunks from DDL inputs.
+/// Generate table + summary + FK chunks from DDL inputs.
 ///
 /// Returns:
 /// - table_chunks: `Vec<(chunk_key, ddl_text, ddl_hash, db_name, table_name)>`
+/// - summary_chunks: `Vec<(chunk_key, summary_text, summary_hash, db_name, table_name)>`
 /// - fk_chunks: `Vec<(chunk_key, fk_text, fk_hash, FkInput)>`
+///
+/// Each table yields one DDL chunk (used for exact-identifier match) and, when
+/// enough structure can be parsed, one natural-language summary chunk (used for
+/// English-ish question matching — plan item A2). FK constraints yield one
+/// chunk per constraint (plan items A6/A7 — bidirectional + JOIN phrasing).
 pub fn generate_all_chunks(
     ddl_inputs: &[TableDdlInput],
 ) -> (
     Vec<(String, String, String, String, String)>,
+    Vec<(String, String, String, String, String)>,
     Vec<(String, String, String, FkInput)>,
 ) {
     let mut table_chunks = Vec::new();
+    let mut summary_chunks = Vec::new();
     let mut fk_chunks = Vec::new();
 
     for input in ddl_inputs {
-        // Table chunk
         let compacted = compact_ddl(&input.create_table_sql);
         let compacted = normalize_table_ddl(&input.db_name, &input.table_name, &compacted);
         let hash = compute_hash(&compacted);
@@ -1041,7 +1487,22 @@ pub fn generate_all_chunks(
             input.table_name.clone(),
         ));
 
-        // FK chunks from DDL parsing
+        let summary =
+            parse_table_summary(&input.db_name, &input.table_name, &input.create_table_sql);
+        if let Some(summary_text) =
+            generate_summary_chunk_text(&input.db_name, &input.table_name, &summary)
+        {
+            let summary_hash = compute_hash(&summary_text);
+            let summary_key = summary_chunk_key(&input.db_name, &input.table_name);
+            summary_chunks.push((
+                summary_key,
+                summary_text,
+                summary_hash,
+                input.db_name.clone(),
+                input.table_name.clone(),
+            ));
+        }
+
         let fks = parse_fks_from_ddl(&input.db_name, &input.table_name, &input.create_table_sql);
         for fk in fks {
             let fk_text = generate_fk_chunk_text(&fk);
@@ -1051,7 +1512,7 @@ pub fn generate_all_chunks(
         }
     }
 
-    (table_chunks, fk_chunks)
+    (table_chunks, summary_chunks, fk_chunks)
 }
 
 // ── MySQL fetch helpers (excluded from coverage builds) ──────────────────

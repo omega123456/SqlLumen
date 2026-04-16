@@ -68,6 +68,9 @@ pub struct FkInput {
 pub enum ChunkType {
     Table,
     Fk,
+    /// Natural-language prose summary chunk for a table (see plan A2). Supplements
+    /// the raw DDL `Table` chunk so embedding models can match on English-ish text.
+    Summary,
 }
 
 impl ChunkType {
@@ -76,6 +79,7 @@ impl ChunkType {
         match self {
             ChunkType::Table => "table",
             ChunkType::Fk => "fk",
+            ChunkType::Summary => "summary",
         }
     }
 
@@ -84,6 +88,7 @@ impl ChunkType {
         match s {
             "table" => Some(ChunkType::Table),
             "fk" => Some(ChunkType::Fk),
+            "summary" => Some(ChunkType::Summary),
             _ => None,
         }
     }
