@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { AiSettings } from '../../../components/settings/AiSettings'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
-import { useSchemaIndexStore } from '../../../stores/schema-index-store'
 
 // Mock the ai-commands module for listAiModels
 const mockListAiModels = vi.fn()
@@ -12,15 +11,26 @@ vi.mock('../../../lib/ai-commands', () => ({
   listAiModels: (...args: unknown[]) => mockListAiModels(...args),
 }))
 
-// Mock the schema-index-store module
-vi.mock('../../../stores/schema-index-store', () => ({
-  useSchemaIndexStore: {
-    getState: vi.fn(() => ({
-      sessionToProfile: {},
-      forceRebuild: vi.fn().mockResolvedValue(undefined),
-    })),
+// Mock the schema-index-store module as a callable hook with `getState`.
+// The hook form is used by AiSettings for subscribing to `connections`.
+// Using vi.hoisted so the state object survives vi.mock hoisting.
+const { mockStoreState } = vi.hoisted(() => ({
+  mockStoreState: {
+    connections: {} as Record<string, unknown>,
+    sessionToProfile: {} as Record<string, string>,
+    forceRebuild: (() => Promise.resolve()) as (sid: string) => Promise<void>,
   },
 }))
+
+vi.mock('../../../stores/schema-index-store', () => {
+  const hook = ((selector?: (state: typeof mockStoreState) => unknown) =>
+    selector ? selector(mockStoreState) : mockStoreState) as unknown as {
+    (selector?: (state: typeof mockStoreState) => unknown): unknown
+    getState: () => typeof mockStoreState
+  }
+  hook.getState = () => mockStoreState
+  return { useSchemaIndexStore: hook }
+})
 
 function setupMockIPC() {
   mockIPC((cmd, args) => {
@@ -47,11 +57,11 @@ let consoleSpy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   vi.clearAllMocks()
   mockListAiModels.mockReset()
-  ;(useSchemaIndexStore.getState as ReturnType<typeof vi.fn>).mockReset()
-  ;(useSchemaIndexStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({
-    sessionToProfile: {},
-    forceRebuild: vi.fn().mockResolvedValue(undefined),
-  })
+  mockStoreState.connections = {}
+  mockStoreState.sessionToProfile = {}
+  mockStoreState.forceRebuild = vi.fn().mockResolvedValue(undefined) as unknown as (
+    sid: string
+  ) => Promise<void>
   consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   useSettingsStore.setState({
     settings: { ...SETTINGS_DEFAULTS },
@@ -1030,10 +1040,8 @@ describe('AiSettings - Force Reindex', () => {
   it('cancelling the confirm dialog closes it without calling forceRebuild', async () => {
     const user = userEvent.setup()
     const mockForceRebuild = vi.fn().mockResolvedValue(undefined)
-    ;(useSchemaIndexStore.getState as ReturnType<typeof vi.fn>).mockReturnValueOnce({
-      sessionToProfile: { 'session-1': 'profile-1' },
-      forceRebuild: mockForceRebuild,
-    })
+    mockStoreState.sessionToProfile = { 'session-1': 'profile-1' }
+    mockStoreState.forceRebuild = mockForceRebuild
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1053,10 +1061,11 @@ describe('AiSettings - Force Reindex', () => {
   it('confirming reindex calls forceRebuild for each registered session', async () => {
     const user = userEvent.setup()
     const mockForceRebuild = vi.fn().mockResolvedValue(undefined)
-    ;(useSchemaIndexStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({
-      sessionToProfile: { 'session-1': 'profile-1', 'session-2': 'profile-2' },
-      forceRebuild: mockForceRebuild,
-    })
+    mockStoreState.sessionToProfile = {
+      'session-1': 'profile-1',
+      'session-2': 'profile-2',
+    }
+    mockStoreState.forceRebuild = mockForceRebuild
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1078,10 +1087,8 @@ describe('AiSettings - Force Reindex', () => {
   it('confirm dialog closes after successful reindex', async () => {
     const user = userEvent.setup()
     const mockForceRebuild = vi.fn().mockResolvedValue(undefined)
-    ;(useSchemaIndexStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({
-      sessionToProfile: { 'session-1': 'profile-1' },
-      forceRebuild: mockForceRebuild,
-    })
+    mockStoreState.sessionToProfile = { 'session-1': 'profile-1' }
+    mockStoreState.forceRebuild = mockForceRebuild
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1102,10 +1109,8 @@ describe('AiSettings - Force Reindex', () => {
   it('calls forceRebuild with no sessions when sessionToProfile is empty', async () => {
     const user = userEvent.setup()
     const mockForceRebuild = vi.fn().mockResolvedValue(undefined)
-    ;(useSchemaIndexStore.getState as ReturnType<typeof vi.fn>).mockReturnValue({
-      sessionToProfile: {},
-      forceRebuild: mockForceRebuild,
-    })
+    mockStoreState.sessionToProfile = {}
+    mockStoreState.forceRebuild = mockForceRebuild
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1122,5 +1127,110 @@ describe('AiSettings - Force Reindex', () => {
       expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
     })
     expect(mockForceRebuild).not.toHaveBeenCalled()
+  })
+
+  it('disables the Force Reindex button when any connection is building', () => {
+    mockStoreState.connections = {
+      'session-1': {
+        status: 'building',
+        phase: 'embedding',
+        tablesDone: 3,
+        tablesTotal: 25,
+        lastBuildTimestamp: 0,
+      },
+    }
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434/v1',
+      },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+    const btn = screen.getByTestId('ai-force-reindex-btn')
+    expect(btn).toBeDisabled()
+    expect(btn).toHaveTextContent('Reindexing...')
+  })
+
+  it('shows inline reindex status with embedding phase progress', () => {
+    mockStoreState.connections = {
+      'session-1': {
+        status: 'building',
+        phase: 'embedding',
+        tablesDone: 7,
+        tablesTotal: 20,
+        lastBuildTimestamp: 0,
+      },
+    }
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434/v1',
+      },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+    const status = screen.getByTestId('ai-reindex-status')
+    expect(status).toHaveTextContent('Indexing 7/20 tables (1 connection)...')
+  })
+
+  it('shows inline reindex status with loading_schema phase', () => {
+    mockStoreState.connections = {
+      'session-1': {
+        status: 'building',
+        phase: 'loading_schema',
+        tablesDone: 5,
+        tablesTotal: 0,
+        lastBuildTimestamp: 0,
+      },
+      'session-2': {
+        status: 'building',
+        phase: 'loading_schema',
+        tablesDone: 5,
+        tablesTotal: 0,
+        lastBuildTimestamp: 0,
+      },
+    }
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434/v1',
+      },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+    expect(screen.getByTestId('ai-reindex-status')).toHaveTextContent(
+      'Reading schema (5 tables, 2 connections)...'
+    )
+  })
+
+  it('does not show inline reindex status when no builds are active', () => {
+    mockStoreState.connections = {
+      'session-1': {
+        status: 'ready',
+        phase: null,
+        tablesDone: 10,
+        tablesTotal: 10,
+        lastBuildTimestamp: 0,
+      },
+    }
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434/v1',
+      },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+    expect(screen.queryByTestId('ai-reindex-status')).not.toBeInTheDocument()
+    expect(screen.getByTestId('ai-force-reindex-btn')).not.toBeDisabled()
   })
 })

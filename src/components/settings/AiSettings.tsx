@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../common/Button'
 import { TextInput } from '../common/TextInput'
 import { ElevatedSurface } from '../common/ElevatedSurface'
@@ -6,7 +6,7 @@ import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { SettingsSection } from './SettingsSection'
 import { SettingsToggle } from './SettingsToggle'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
-import { useSchemaIndexStore } from '../../stores/schema-index-store'
+import { useSchemaIndexStore, type ConnectionIndexState } from '../../stores/schema-index-store'
 import { listAiModels } from '../../lib/ai-commands'
 import type { AiModelInfo } from '../../lib/ai-commands'
 import { ChatCircleText, Database, Check } from '@phosphor-icons/react'
@@ -117,7 +117,14 @@ export function AiSettings() {
   const [loadingModels, setLoadingModels] = useState(false)
   const [modelError, setModelError] = useState<string | null>(null)
   const [reindexConfirmOpen, setReindexConfirmOpen] = useState(false)
-  const [isReindexing, setIsReindexing] = useState(false)
+
+  // Subscribe to the schema index store so the Force Reindex button reflects
+  // builds triggered from anywhere (other tabs, settings changes, etc.).
+  const connections = useSchemaIndexStore((s) => s.connections)
+  const buildingConnections = useMemo<ConnectionIndexState[]>(() => {
+    return Object.values(connections).filter((c) => c.status === 'building')
+  }, [connections])
+  const isBuilding = buildingConnections.length > 0
 
   const fetchCounterRef = useRef(0)
 
@@ -151,14 +158,28 @@ export function AiSettings() {
   const handleForceReindex = useCallback(async () => {
     const store = useSchemaIndexStore.getState()
     const sessions = Object.keys(store.sessionToProfile)
-    setIsReindexing(true)
     try {
       await Promise.all(sessions.map((sid) => store.forceRebuild(sid)))
     } finally {
-      setIsReindexing(false)
+      // Close the dialog; the button stays disabled while the store still
+      // reports any connection in the 'building' state.
       setReindexConfirmOpen(false)
     }
   }, [])
+
+  function describeBuildingState(): string {
+    const count = buildingConnections.length
+    const first = buildingConnections[0]
+    const phase = first?.phase ?? null
+    const countLabel = count === 1 ? '1 connection' : `${count} connections`
+    if (phase === 'embedding' && (first?.tablesTotal ?? 0) > 0) {
+      return `Indexing ${first.tablesDone}/${first.tablesTotal} tables (${countLabel})...`
+    }
+    if (phase === 'loading_schema' && (first?.tablesDone ?? 0) > 0) {
+      return `Reading schema (${first.tablesDone} tables, ${countLabel})...`
+    }
+    return `Reading schema (${countLabel})...`
+  }
 
   useEffect(() => {
     if (aiEnabled && endpoint.trim()) {
@@ -257,11 +278,21 @@ export function AiSettings() {
                 <Button
                   variant="secondary"
                   onClick={() => setReindexConfirmOpen(true)}
-                  disabled={isReindexing}
+                  disabled={isBuilding}
                   data-testid="ai-force-reindex-btn"
                 >
-                  Force Reindex
+                  {isBuilding ? 'Reindexing...' : 'Force Reindex'}
                 </Button>
+                {isBuilding && (
+                  <span
+                    className={styles.reindexStatus}
+                    data-testid="ai-reindex-status"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {describeBuildingState()}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -311,7 +342,7 @@ export function AiSettings() {
         confirmLabel="Reindex"
         isDestructive
         warningText={null}
-        isLoading={isReindexing}
+        isLoading={isBuilding}
         onConfirm={() => void handleForceReindex()}
         onCancel={() => setReindexConfirmOpen(false)}
       />

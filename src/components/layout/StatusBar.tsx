@@ -96,10 +96,33 @@ export function StatusBar() {
   // Show running indicator for query-editor tabs with tabStatus === 'running'
   const showRunningInfo = isQueryEditorTab && queryState?.tabStatus === 'running'
 
-  // Determine what indexing indicator to show
   const showIndexBuilding = indexStatus === 'building'
   const showIndexReady = flashType === 'ready' && !showIndexBuilding
   const showIndexError = flashType === 'error' && !showIndexBuilding
+
+  const indexPhase = indexState?.phase ?? null
+  const isEmbeddingPhase = indexPhase === 'embedding' && (indexState?.tablesTotal ?? 0) > 0
+  const isDark = resolvedTheme === 'dark'
+
+  function buildIndexingLabel(): string {
+    if (!indexState) {
+      return isDark ? 'Preparing index...' : 'PREPARING INDEX...'
+    }
+    if (isEmbeddingPhase) {
+      return isDark
+        ? `Indexing ${indexState.tablesDone}/${indexState.tablesTotal}`
+        : `INDEXING: ${indexState.tablesDone}/${indexState.tablesTotal} TABLES`
+    }
+    // loading_schema or unknown phase
+    if (indexPhase === 'loading_schema' && indexState.tablesDone > 0) {
+      return isDark
+        ? `Reading schema (${indexState.tablesDone} tables)...`
+        : `READING SCHEMA (${indexState.tablesDone} TABLES)...`
+    }
+    return isDark ? 'Reading schema...' : 'READING SCHEMA...'
+  }
+
+  const indexingLabel = buildIndexingLabel()
 
   if (!activeConnection) {
     return (
@@ -116,27 +139,44 @@ export function StatusBar() {
         <span className={styles.statusText}>{statusLabel[activeConnection.status]}</span>
       </div>
       <div aria-live="polite">
-        {showIndexBuilding && indexState && (
-          <div
-            className={styles.indexingIndicator}
-            data-testid="indexing-indicator"
-            role="progressbar"
-            aria-valuenow={indexState.tablesDone}
-            aria-valuemin={0}
-            aria-valuemax={indexState.tablesTotal}
-            aria-valuetext={`Indexing schema: ${indexState.tablesDone} of ${indexState.tablesTotal} tables`}
-          >
-            <Database
-              size={12}
-              className={`${styles.indexingIcon} ${styles.indexingIconAnimated}`}
-            />
-            <span className={styles.indexingText} data-testid="indexing-text">
-              {resolvedTheme === 'dark'
-                ? `Indexing ${indexState.tablesDone}/${indexState.tablesTotal}`
-                : `INDEXING: ${indexState.tablesDone}/${indexState.tablesTotal} TABLES`}
-            </span>
-          </div>
-        )}
+        {showIndexBuilding &&
+          indexState &&
+          (isEmbeddingPhase ? (
+            <div
+              className={styles.indexingIndicator}
+              data-testid="indexing-indicator"
+              data-phase="embedding"
+              role="progressbar"
+              aria-valuenow={indexState.tablesDone}
+              aria-valuemin={0}
+              aria-valuemax={indexState.tablesTotal}
+              aria-valuetext={`Indexing schema: ${indexState.tablesDone} of ${indexState.tablesTotal} tables`}
+            >
+              <Database
+                size={12}
+                className={`${styles.indexingIcon} ${styles.indexingIconAnimated}`}
+              />
+              <span className={styles.indexingText} data-testid="indexing-text">
+                {indexingLabel}
+              </span>
+            </div>
+          ) : (
+            <div
+              className={styles.indexingIndicator}
+              data-testid="indexing-indicator"
+              data-phase={indexPhase ?? 'preparing'}
+              role="status"
+              aria-label={indexingLabel}
+            >
+              <Database
+                size={12}
+                className={`${styles.indexingIcon} ${styles.indexingIconAnimated}`}
+              />
+              <span className={styles.indexingText} data-testid="indexing-text">
+                {indexingLabel}
+              </span>
+            </div>
+          ))}
         {showIndexReady && (
           <div
             className={`${styles.indexingIndicator} ${fadingOut ? styles.indexingFadeOut : ''}`}

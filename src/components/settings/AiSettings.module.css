@@ -144,4 +144,13 @@
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid rgba(var(--outline-variant-rgb), 0.3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.reindexStatus {
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
 }

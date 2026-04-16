@@ -370,6 +370,7 @@ describe('StatusBar', () => {
         connections: {
           'conn-1': {
             status: 'building',
+            phase: 'embedding',
             tablesDone: 3,
             tablesTotal: 10,
             lastBuildTimestamp: 0,
@@ -390,6 +391,7 @@ describe('StatusBar', () => {
         connections: {
           'conn-1': {
             status: 'building',
+            phase: 'embedding',
             tablesDone: 5,
             tablesTotal: 20,
             lastBuildTimestamp: 0,
@@ -402,6 +404,87 @@ describe('StatusBar', () => {
       expect(screen.getByTestId('indexing-text')).toHaveTextContent('INDEXING: 5/20 TABLES')
     })
 
+    it('shows "Reading schema..." during loading_schema phase with no tables yet (dark)', () => {
+      useThemeStore.setState({ resolvedTheme: 'dark' })
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            phase: 'loading_schema',
+            tablesDone: 0,
+            tablesTotal: 0,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      expect(screen.getByTestId('indexing-text')).toHaveTextContent('Reading schema...')
+    })
+
+    it('shows table count during loading_schema phase when tablesDone > 0', () => {
+      useThemeStore.setState({ resolvedTheme: 'dark' })
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            phase: 'loading_schema',
+            tablesDone: 12,
+            tablesTotal: 0,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      expect(screen.getByTestId('indexing-text')).toHaveTextContent('Reading schema (12 tables)...')
+    })
+
+    it('shows "Preparing index..." when phase is null (build just started)', () => {
+      useThemeStore.setState({ resolvedTheme: 'dark' })
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            phase: null,
+            tablesDone: 0,
+            tablesTotal: 0,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      expect(screen.getByTestId('indexing-text')).toHaveTextContent('Reading schema...')
+    })
+
+    it('uses role="status" (not "progressbar") during loading_schema phase', () => {
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            phase: 'loading_schema',
+            tablesDone: 4,
+            tablesTotal: 0,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      const indicator = screen.getByTestId('indexing-indicator')
+      expect(indicator).toHaveAttribute('role', 'status')
+      expect(indicator).not.toHaveAttribute('aria-valuenow')
+    })
+
     it('shows completion flash when status transitions to ready', () => {
       vi.useFakeTimers()
       setupActiveConnection()
@@ -409,6 +492,7 @@ describe('StatusBar', () => {
         connections: {
           'conn-1': {
             status: 'building',
+            phase: 'embedding',
             tablesDone: 10,
             tablesTotal: 10,
             lastBuildTimestamp: 0,
@@ -426,6 +510,7 @@ describe('StatusBar', () => {
           connections: {
             'conn-1': {
               status: 'ready',
+              phase: null,
               tablesDone: 10,
               tablesTotal: 10,
               lastBuildTimestamp: Date.now(),
@@ -447,6 +532,7 @@ describe('StatusBar', () => {
         connections: {
           'conn-1': {
             status: 'building',
+            phase: 'embedding',
             tablesDone: 10,
             tablesTotal: 10,
             lastBuildTimestamp: 0,
@@ -462,6 +548,7 @@ describe('StatusBar', () => {
           connections: {
             'conn-1': {
               status: 'ready',
+              phase: null,
               tablesDone: 10,
               tablesTotal: 10,
               lastBuildTimestamp: Date.now(),
@@ -487,6 +574,7 @@ describe('StatusBar', () => {
         connections: {
           'conn-1': {
             status: 'building',
+            phase: 'embedding',
             tablesDone: 5,
             tablesTotal: 10,
             lastBuildTimestamp: 0,
@@ -502,6 +590,7 @@ describe('StatusBar', () => {
           connections: {
             'conn-1': {
               status: 'error',
+              phase: null,
               tablesDone: 5,
               tablesTotal: 10,
               lastBuildTimestamp: 0,
@@ -524,6 +613,7 @@ describe('StatusBar', () => {
         connections: {
           'conn-1': {
             status: 'building',
+            phase: 'embedding',
             tablesDone: 5,
             tablesTotal: 10,
             lastBuildTimestamp: 0,
@@ -539,6 +629,7 @@ describe('StatusBar', () => {
           connections: {
             'conn-1': {
               status: 'error',
+              phase: null,
               tablesDone: 5,
               tablesTotal: 10,
               lastBuildTimestamp: 0,
@@ -564,6 +655,7 @@ describe('StatusBar', () => {
         connections: {
           'conn-1': {
             status: 'not_configured',
+            phase: null,
             tablesDone: 0,
             tablesTotal: 0,
             lastBuildTimestamp: 0,
@@ -596,6 +688,7 @@ describe('StatusBar', () => {
         connections: {
           'conn-1': {
             status: 'building',
+            phase: 'embedding',
             tablesDone: 7,
             tablesTotal: 15,
             lastBuildTimestamp: 0,
@@ -619,6 +712,7 @@ describe('StatusBar', () => {
         connections: {
           'conn-1': {
             status: 'building',
+            phase: 'embedding',
             tablesDone: 1,
             tablesTotal: 5,
             lastBuildTimestamp: 0,

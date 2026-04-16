@@ -627,16 +627,40 @@ fn test_incremental_build_with_table_removal() {
 
 #[test]
 fn test_build_progress_serde() {
-    use sqllumen_lib::schema_index::types::BuildProgress;
+    use sqllumen_lib::schema_index::types::{BuildPhase, BuildProgress};
     let progress = BuildProgress {
         profile_id: "conn-1".to_string(),
+        phase: BuildPhase::Embedding,
         tables_done: 5,
         tables_total: 10,
     };
     let json = serde_json::to_value(&progress).expect("serialize");
     assert_eq!(json["profileId"], "conn-1");
+    assert_eq!(json["phase"], "embedding");
     assert_eq!(json["tablesDone"], 5);
     assert_eq!(json["tablesTotal"], 10);
+}
+
+#[test]
+fn test_build_progress_loading_schema_serde() {
+    use sqllumen_lib::schema_index::types::{BuildPhase, BuildProgress};
+    let progress = BuildProgress {
+        profile_id: "conn-1".to_string(),
+        phase: BuildPhase::LoadingSchema,
+        tables_done: 7,
+        tables_total: 0,
+    };
+    let json = serde_json::to_value(&progress).expect("serialize");
+    assert_eq!(json["phase"], "loading_schema");
+    assert_eq!(json["tablesDone"], 7);
+    assert_eq!(json["tablesTotal"], 0);
+}
+
+#[test]
+fn test_build_phase_as_str() {
+    use sqllumen_lib::schema_index::types::BuildPhase;
+    assert_eq!(BuildPhase::LoadingSchema.as_str(), "loading_schema");
+    assert_eq!(BuildPhase::Embedding.as_str(), "embedding");
 }
 
 #[test]
