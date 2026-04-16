@@ -2,11 +2,14 @@
 //! and FK edge chunk auto-inclusion.
 //!
 //! The entry point is [`multi_query_search`], which:
-//! 1. Runs sqlite-vec KNN for each pre-embedded query vector
-//! 2. Deduplicates by chunk ID, keeping the best score
-//! 3. Selects the top-N results
-//! 4. Fans out to include related FK chunks for tables in the top-N
-//! 5. Returns table chunks (sorted by score desc) followed by FK chunks (grouped by table)
+//! 1. Runs sqlite-vec KNN for each pre-embedded query vector (one ranked list per query)
+//! 2. Runs a lexical (table-name heuristic) ranker → one ranked list (plan C2)
+//! 3. Runs FTS5 BM25 over `ddl_text` → one ranked list per query (plan C3)
+//! 4. Fuses every ranked list with Reciprocal Rank Fusion (plan C1) — the
+//!    "agreed by many signals" intuition — producing a single score per chunk
+//! 5. Selects the top-N results
+//! 6. Fans out to include related FK chunks for tables in the top-N
+//! 7. Returns table chunks (sorted by fused score desc), then FK chunks
 
 use rusqlite::{params, Connection, Result};
 use serde::{Deserialize, Serialize};
@@ -15,6 +18,31 @@ use std::sync::OnceLock;
 
 use super::{builder::normalize_table_ddl, embedding_to_bytes};
 
+/// Reciprocal Rank Fusion constant (the standard value in the literature; see
+/// Cormack, Clarke & Buettcher 2009). Larger values flatten the contribution
+/// of high-ranked items, 60 is the widely-adopted default.
+const RRF_K: f64 = 60.0;
+
+/// Weights applied to each ranked list before RRF combination. Vector search
+/// and BM25 are weighted equally. Lexical table-name matches get a slightly
+/// higher weight because an exact `FROM db.table` or qualified identifier is
+/// a very high-precision signal (the user literally named the table), whereas
+/// a single query expansion may be approximate. The previous pipeline gave
+/// lexical matches an absolute score of 2.5 which dwarfed any cosine hit
+/// bounded by 1.0 — too strong. RRF makes this tunable: the lexical lane
+/// participates in ranking but cannot single-handedly override multi-signal
+/// agreement from vector + BM25 (plan C2).
+const WEIGHT_VECTOR: f64 = 1.0;
+const WEIGHT_BM25: f64 = 1.0;
+const WEIGHT_LEXICAL: f64 = 1.5;
+
+/// Ranks from the lexical heuristic ranker below this value are ignored when
+/// fusing — a segment-match ranked 500th shouldn't add appreciable signal.
+const LEXICAL_RANK_CUTOFF: usize = 50;
+
+// ── Legacy lexical-score constants (kept for the lexical ranker's internal
+// ordering within its own ranked list; the absolute magnitudes no longer
+// leak into the final fused score since we use RRF — plan C2).
 const DIRECT_TABLE_MATCH_SCORE: f64 = 2.5;
 const IDENTIFIER_EXACT_MATCH_SCORE: f64 = 2.0;
 const DIRECT_TABLE_SEGMENT_MATCH_SCORE: f64 = 1.5;
@@ -221,8 +249,20 @@ pub fn multi_query_search(
     )
 }
 
-/// Run the full multi-query vector search pipeline with optional lexical boosts
-/// derived from the original query text.
+/// Run the full multi-query retrieval pipeline with vector + BM25 + lexical
+/// fusion (plan C1–C3).
+///
+/// Stages (see module-level docs):
+///
+/// 1. Run sqlite-vec KNN once per query vector → one ranked list per query.
+/// 2. Run FTS5 BM25 once per query text → one ranked list per query.
+/// 3. Run the lexical table-name heuristic once → one ranked list.
+/// 4. Fuse all ranked lists via weighted Reciprocal Rank Fusion (RRF). The
+///    previous implementation took `max(vector_score, lexical_score)` per
+///    chunk, which let one lexical constant `2.5` outrank any cosine hit
+///    (bounded by 1.0) — that's fixed here.
+/// 5. Fetch metadata, take top-N by fused score, run FK fan-out, and assemble
+///    the final list.
 pub fn multi_query_search_with_query_texts(
     conn: &Connection,
     connection_id: &str,
@@ -247,11 +287,19 @@ pub fn multi_query_search_with_query_texts(
         return Ok(vec![]);
     }
 
-    // ── Step 1: KNN for each query vector ───────────────────────────────
-    let mut best_scores: HashMap<i64, f64> = HashMap::new();
-    let mut raw_hit_count = 0usize;
+    // ── Ranked lists feed RRF ────────────────────────────────────────────
+    let mut ranked_lists: Vec<(f64, Vec<i64>)> = Vec::new();
+
+    // ── Step 1: KNN — one ranked list per query vector ──────────────────
+    let knn_k = top_k_per_query;
 
     let vec_table = super::storage::vec_table_name(connection_id);
+    // Track best raw cosine score per chunk (useful for debugging / legacy
+    // callers). The returned `SearchResult.score` is set from this map when
+    // available; otherwise we fall back to the fused RRF score so callers can
+    // still show "relevance" to the user.
+    let mut best_cosine: HashMap<i64, f64> = HashMap::new();
+    let mut raw_hit_count = 0usize;
 
     for (i, query_vec) in query_vectors.iter().enumerate() {
         let embedding_bytes = embedding_to_bytes(query_vec);
@@ -260,52 +308,77 @@ pub fn multi_query_search_with_query_texts(
             "SELECT id, distance FROM {vec_table} WHERE embedding MATCH ?1 AND k = ?2"
         ))?;
 
-        let knn_rows = stmt.query_map(params![embedding_bytes, top_k_per_query as i64], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)?))
-        })?;
+        let rows: Vec<(i64, f64)> = stmt
+            .query_map(params![embedding_bytes, knn_k as i64], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)?))
+            })?
+            .collect::<Result<Vec<_>>>()?;
 
-        for row_result in knn_rows {
-            let (chunk_id, distance) = row_result?;
+        raw_hit_count += rows.len();
+        let mut ranked_ids: Vec<i64> = Vec::with_capacity(rows.len());
+        for (chunk_id, distance) in rows {
             let score = 1.0 - distance;
-            raw_hit_count += 1;
-            let entry = best_scores.entry(chunk_id).or_insert(score);
-            if score > *entry {
-                *entry = score;
-            }
+            ranked_ids.push(chunk_id);
+            best_cosine
+                .entry(chunk_id)
+                .and_modify(|e| {
+                    if score > *e {
+                        *e = score;
+                    }
+                })
+                .or_insert(score);
         }
 
         tracing::debug!(
             connection_id = %connection_id,
             query_index = i,
-            knn_hits = best_scores.len().min(top_k_per_query),
+            knn_hits = ranked_ids.len(),
+            ranking = ?ranked_ids,
             "multi_query_search: step 1 — query vector {i} returned {} hit(s)",
-            best_scores.len().min(top_k_per_query)
+            ranked_ids.len()
+        );
+
+        if !ranked_ids.is_empty() {
+            ranked_lists.push((WEIGHT_VECTOR, ranked_ids));
+        }
+    }
+
+    tracing::debug!(
+        connection_id = %connection_id,
+        total_raw_knn_results = raw_hit_count,
+        "multi_query_search: step 1 complete — KNN ranked lists collected"
+    );
+
+    // ── Step 2: FTS5 BM25 — one ranked list per query text (plan C3) ────
+    let fts_available = is_fts_populated(conn, connection_id).unwrap_or(false);
+    if fts_available {
+        for (i, qt) in query_texts.iter().enumerate() {
+            let match_query = sanitize_fts_query(qt);
+            if match_query.is_empty() {
+                continue;
+            }
+            let rows = bm25_search(conn, connection_id, &match_query, knn_k)?;
+            if rows.is_empty() {
+                continue;
+            }
+            tracing::debug!(
+                connection_id = %connection_id,
+                query_index = i,
+                bm25_hits = rows.len(),
+                "multi_query_search: step 2 — BM25 ranked list for query {i}"
+            );
+            ranked_lists.push((WEIGHT_BM25, rows));
+        }
+    } else {
+        tracing::debug!(
+            connection_id = %connection_id,
+            "multi_query_search: step 2 — FTS5 index unavailable; BM25 lane skipped"
         );
     }
 
-    tracing::debug!(
-        connection_id = %connection_id,
-        total_raw_results = raw_hit_count,
-        "multi_query_search: step 1 complete — total raw KNN results before dedup"
-    );
-
-    if best_scores.is_empty() {
-        tracing::debug!(connection_id = %connection_id, "multi_query_search: no KNN results — returning empty");
-        return Ok(vec![]);
-    }
-
-    // ── Step 2: Dedup by chunk_id, keeping best score ───────────────────
-    tracing::debug!(
-        connection_id = %connection_id,
-        unique_chunks = best_scores.len(),
-        raw_count = raw_hit_count,
-        "multi_query_search: step 2 — dedup complete"
-    );
-
-    // ── Step 2b: Lexical table-name boosts from original queries ───────────
+    // ── Step 3: Lexical table-name heuristic — one ranked list (plan C2) ──
     let direct_table_candidates = extract_direct_table_candidates(query_texts);
     let identifier_tokens = extract_identifier_tokens(query_texts);
-
     if !direct_table_candidates.is_empty() || !identifier_tokens.is_empty() {
         let lexical_matches = collect_lexical_table_matches(
             conn,
@@ -313,30 +386,34 @@ pub fn multi_query_search_with_query_texts(
             &direct_table_candidates,
             &identifier_tokens,
         )?;
-
-        for (chunk_id, lexical_score) in lexical_matches {
-            let entry = best_scores.entry(chunk_id).or_insert(lexical_score);
-            if lexical_score > *entry {
-                *entry = lexical_score;
-            }
+        if !lexical_matches.is_empty() {
+            let mut pairs: Vec<(i64, f64)> = lexical_matches.into_iter().collect();
+            pairs.sort_by(|a, b| {
+                b.1.partial_cmp(&a.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| a.0.cmp(&b.0))
+            });
+            let ranked: Vec<i64> = pairs.into_iter().map(|(id, _)| id).collect();
+            tracing::debug!(
+                connection_id = %connection_id,
+                direct_table_candidates = ?direct_table_candidates,
+                identifier_tokens = ?identifier_tokens,
+                lexical_hits = ranked.len(),
+                "multi_query_search: step 3 — lexical heuristic ranked list"
+            );
+            ranked_lists.push((WEIGHT_LEXICAL, ranked));
         }
-
-        tracing::debug!(
-            connection_id = %connection_id,
-            direct_table_candidates = ?direct_table_candidates,
-            identifier_tokens = ?identifier_tokens,
-            candidate_count = best_scores.len(),
-            "multi_query_search: step 2b — lexical boosts applied"
-        );
     }
 
-    // ── Step 3: Sort by score desc ──────────────────────────────────────
-    let mut deduped: Vec<(i64, f64)> = best_scores.into_iter().collect();
-    deduped.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.0.cmp(&b.0))
-    });
+    if ranked_lists.is_empty() {
+        tracing::debug!(connection_id = %connection_id, "multi_query_search: no ranked lists — returning empty");
+        return Ok(vec![]);
+    }
+
+    // ── Step 4: Reciprocal Rank Fusion (plan C1) ────────────────────────
+    let fused = reciprocal_rank_fuse(&ranked_lists);
+
+    let deduped: Vec<(i64, f64)> = fused;
 
     let score_range = deduped
         .first()
@@ -345,16 +422,27 @@ pub fn multi_query_search_with_query_texts(
 
     tracing::debug!(
         connection_id = %connection_id,
-        sorted_count = deduped.len(),
+        fused_count = deduped.len(),
         score_range = ?score_range,
         top5 = ?deduped.iter().take(5).map(|(id, s)| (*id, *s)).collect::<Vec<_>>(),
-        "multi_query_search: step 3 — sorted by score desc"
+        "multi_query_search: step 4 — RRF fusion complete"
     );
 
-    // ── Step 4: Fetch chunk metadata, filter by connection_id, take top-N ──
-    let mut top_n: Vec<SearchResult> = Vec::new();
-    for (chunk_id, score) in &deduped {
-        let result: Option<SearchResult> = conn
+    // ── Step 5: Fetch chunk metadata, collapse summary chunks, take top-N ─
+    //
+    // `summary` chunks only exist to boost retrieval; we don't want to return
+    // them as separate blocks. When a summary chunk wins, surface the sibling
+    // `table` chunk instead (or skip if absent). That way multiple lanes can
+    // vote the same table up, and the final output still carries DDL.
+    //
+    // `top_n_rank` is the 0-indexed position in the fused ranking, captured
+    // before we overwrite `SearchResult.score` with the user-facing cosine
+    // value. We use it later to preserve the fused order when sorting — see
+    // plan C1 (RRF ordering must not be undone by the display score).
+    let mut top_n: Vec<(SearchResult, usize)> = Vec::new();
+    let mut absorbed_table_keys: HashSet<String> = HashSet::new();
+    for (rank, (chunk_id, score)) in deduped.iter().enumerate() {
+        let raw: Option<SearchResult> = conn
             .query_row(
                 "SELECT id, chunk_key, db_name, table_name, chunk_type, ddl_text, ref_db_name, ref_table_name
                  FROM schema_index_chunks
@@ -385,19 +473,53 @@ pub fn multi_query_search_with_query_texts(
             )
             .ok();
 
-        if let Some(r) = result {
-            top_n.push(r);
-            if top_n.len() >= top_n_results {
-                break;
+        let Some(mut result) = raw else {
+            continue;
+        };
+
+        if result.chunk_type == "summary" {
+            let table_key = super::builder::table_chunk_key(&result.db_name, &result.table_name);
+            if absorbed_table_keys.contains(&table_key) {
+                continue;
             }
+            match fetch_chunk_by_key(conn, connection_id, &table_key)? {
+                Some(mut tbl) => {
+                    tbl.score = *score;
+                    absorbed_table_keys.insert(table_key);
+                    result = tbl;
+                }
+                None => {
+                    continue;
+                }
+            }
+        } else if result.chunk_type == "table" {
+            let table_key = super::builder::table_chunk_key(&result.db_name, &result.table_name);
+            if absorbed_table_keys.contains(&table_key) {
+                continue;
+            }
+            absorbed_table_keys.insert(table_key);
+        }
+
+        // Prefer raw cosine similarity as the user-facing `score` when
+        // available; fall back to the fused RRF score otherwise. RRF values
+        // are in [0, small] — not comparable to cosine — so we avoid surfacing
+        // them directly where a cosine-like score is expected. The fused rank
+        // is captured separately so ordering stays RRF-consistent.
+        if let Some(cos) = best_cosine.get(&result.chunk_id) {
+            result.score = *cos;
+        }
+
+        top_n.push((result, rank));
+        if top_n.len() >= top_n_results {
+            break;
         }
     }
 
     tracing::debug!(
         connection_id = %connection_id,
         top_n_count = top_n.len(),
-        top_n_results = ?top_n.iter().map(|r| (&r.table_name, &r.chunk_type, r.score)).collect::<Vec<_>>(),
-        "multi_query_search: step 4 — top-N selected"
+        top_n_results = ?top_n.iter().map(|(r, rank)| (&r.table_name, &r.chunk_type, r.score, *rank)).collect::<Vec<_>>(),
+        "multi_query_search: step 5 — top-N selected"
     );
 
     if top_n.is_empty() {
@@ -405,12 +527,12 @@ pub fn multi_query_search_with_query_texts(
         return Ok(vec![]);
     }
 
-    // ── Step 5: Collect chunk IDs already in top-N (for exclusion) ──────
-    let mut seen_chunk_ids: HashSet<i64> = top_n.iter().map(|r| r.chunk_id).collect();
+    // ── Step 6a: Collect chunk IDs already in top-N (for exclusion) ──────
+    let mut seen_chunk_ids: HashSet<i64> = top_n.iter().map(|(r, _)| r.chunk_id).collect();
 
     // Collect distinct (db_name, table_name) pairs from all top-N results
     let mut table_pairs: HashSet<(String, String)> = HashSet::new();
-    for r in &top_n {
+    for (r, _) in &top_n {
         table_pairs.insert((r.db_name.clone(), r.table_name.clone()));
     }
 
@@ -492,19 +614,30 @@ pub fn multi_query_search_with_query_texts(
     );
 
     // ── Step 7: Assemble final results ──────────────────────────────────
-    // Table chunks first (sorted by score desc — already sorted),
-    // then FK chunks (grouped by table — order from iteration).
-    // Separate top-N into table chunks and FK chunks that were in top-N
-    let mut table_results: Vec<SearchResult> = Vec::new();
-    let mut top_n_fk_results: Vec<SearchResult> = Vec::new();
+    // Table chunks first, ordered by the fused RRF rank captured when the
+    // chunk was picked — NOT by the user-facing cosine score we overwrote
+    // earlier. This keeps the RRF ordering intact even when the cosine
+    // "display" score inverts it (e.g. a lexical match chunk may have cosine
+    // 0 but RRF rank 0). Tiebreak by chunk_id ascending for deterministic
+    // output when sqlite-vec returns tied KNN distances.
+    let mut table_results: Vec<(SearchResult, usize)> = Vec::new();
+    let mut top_n_fk_results: Vec<(SearchResult, usize)> = Vec::new();
 
-    for r in top_n {
-        if r.chunk_type == "fk" {
-            top_n_fk_results.push(r);
+    for entry in top_n {
+        if entry.0.chunk_type == "fk" {
+            top_n_fk_results.push(entry);
         } else {
-            table_results.push(r);
+            table_results.push(entry);
         }
     }
+
+    table_results.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.chunk_id.cmp(&b.0.chunk_id)));
+    top_n_fk_results
+        .sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.chunk_id.cmp(&b.0.chunk_id)));
+
+    let table_results: Vec<SearchResult> = table_results.into_iter().map(|(r, _)| r).collect();
+    let top_n_fk_results: Vec<SearchResult> =
+        top_n_fk_results.into_iter().map(|(r, _)| r).collect();
 
     let mut final_results = Vec::new();
     // Table chunks by score desc (already sorted)
@@ -684,4 +817,238 @@ fn lexical_score_for_table(
     } else {
         0.0
     }
+}
+
+// ── Reciprocal Rank Fusion (plan C1) ────────────────────────────────────
+
+/// Fuse multiple ranked lists of chunk IDs via weighted Reciprocal Rank Fusion.
+///
+/// For each list `l` with weight `w_l`, a chunk at rank `r` (0-indexed)
+/// contributes `w_l / (RRF_K + r + 1)` to its fused score. The resulting
+/// chunk ids are returned sorted by fused score descending (ties broken by
+/// chunk id ascending for determinism).
+fn reciprocal_rank_fuse(ranked_lists: &[(f64, Vec<i64>)]) -> Vec<(i64, f64)> {
+    let mut scores: HashMap<i64, f64> = HashMap::new();
+    for (weight, list) in ranked_lists {
+        let effective = if *weight == WEIGHT_LEXICAL {
+            // Truncate the lexical list so deep matches don't rack up noise.
+            let end = list.len().min(LEXICAL_RANK_CUTOFF);
+            &list[..end]
+        } else {
+            list.as_slice()
+        };
+        for (rank, id) in effective.iter().enumerate() {
+            let contribution = weight / (RRF_K + (rank as f64) + 1.0);
+            *scores.entry(*id).or_insert(0.0) += contribution;
+        }
+    }
+
+    let mut out: Vec<(i64, f64)> = scores.into_iter().collect();
+    out.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    out
+}
+
+// ── FTS5 BM25 lane (plan C3) ────────────────────────────────────────────
+
+/// Name of the per-profile FTS5 virtual table backing BM25 retrieval.
+pub(super) fn fts_table_name(profile_id: &str) -> String {
+    format!(
+        "schema_index_fts_{}",
+        super::storage::sanitize_table_name(profile_id)
+    )
+}
+
+/// Create the per-profile FTS5 virtual table if it doesn't exist and backfill
+/// it from `schema_index_chunks`.
+///
+/// The FTS5 index is a contentless index keyed by `rowid = chunk_id`. The text
+/// content is `ddl_text` (which for summary/FK chunks is already prose). We
+/// rebuild it lazily on first BM25 use so existing profiles start receiving
+/// BM25 signal without a migration. A live build is cheap (SQLite-local, no
+/// embedding calls) — a few ms for thousands of chunks.
+pub fn ensure_fts_populated(conn: &Connection, connection_id: &str) -> Result<()> {
+    let table = fts_table_name(connection_id);
+    conn.execute_batch(&format!(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS {table} USING fts5(
+            content,
+            tokenize='unicode61 remove_diacritics 2 tokenchars ''_.''',
+            prefix='2 3'
+        )"
+    ))?;
+
+    let row_count: i64 =
+        conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))?;
+    let chunk_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM schema_index_chunks WHERE connection_id = ?1",
+        params![connection_id],
+        |row| row.get(0),
+    )?;
+
+    if row_count == chunk_count && row_count > 0 {
+        return Ok(());
+    }
+
+    conn.execute(&format!("DELETE FROM {table}"), [])?;
+    let mut stmt = conn.prepare(
+        "SELECT id, ddl_text FROM schema_index_chunks WHERE connection_id = ?1",
+    )?;
+    let rows = stmt.query_map(params![connection_id], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    conn.execute_batch("BEGIN")?;
+    for row in rows {
+        let (id, text) = row?;
+        conn.execute(
+            &format!("INSERT INTO {table} (rowid, content) VALUES (?1, ?2)"),
+            params![id, text],
+        )?;
+    }
+    conn.execute_batch("COMMIT")?;
+    Ok(())
+}
+
+/// Check whether the FTS5 index for this profile is populated. If it doesn't
+/// exist yet, attempt to create and backfill it; callers gracefully fall back
+/// to the vector + lexical lanes when anything fails (FTS5 is an enhancement,
+/// not a requirement).
+fn is_fts_populated(conn: &Connection, connection_id: &str) -> Result<bool> {
+    match ensure_fts_populated(conn, connection_id) {
+        Ok(()) => {
+            let table = fts_table_name(connection_id);
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
+                .unwrap_or(0);
+            Ok(count > 0)
+        }
+        Err(e) => {
+            tracing::warn!(
+                connection_id = %connection_id,
+                error = %e,
+                "multi_query_search: FTS5 index setup failed; BM25 lane will be skipped"
+            );
+            Ok(false)
+        }
+    }
+}
+
+/// Sanitize a free-form user query for the FTS5 MATCH operator.
+///
+/// FTS5 MATCH is strict: unbalanced quotes, punctuation and SQL keywords like
+/// `FROM` all mean something to it. We keep only alphanumerics, underscores
+/// and dots, split on whitespace, drop short noise tokens, and OR the rest.
+fn sanitize_fts_query(query: &str) -> String {
+    let mut cleaned = String::with_capacity(query.len());
+    for ch in query.chars() {
+        if ch.is_alphanumeric() || ch == '_' || ch == '.' || ch.is_whitespace() {
+            cleaned.push(ch);
+        } else {
+            cleaned.push(' ');
+        }
+    }
+
+    let tokens: Vec<String> = cleaned
+        .split_whitespace()
+        .filter(|t| t.len() >= 2)
+        .map(|t| {
+            // Quote each token so FTS5 treats it as a phrase and dots don't
+            // mean anything special.
+            format!("\"{}\"", t.replace('"', ""))
+        })
+        .collect();
+
+    tokens.join(" OR ")
+}
+
+/// Run a BM25 query against the per-profile FTS5 index and return chunk IDs
+/// sorted by BM25 score (best first).
+fn bm25_search(
+    conn: &Connection,
+    connection_id: &str,
+    match_query: &str,
+    limit: usize,
+) -> Result<Vec<i64>> {
+    let fts = fts_table_name(connection_id);
+    let sql = format!(
+        "SELECT rowid FROM {fts} WHERE {fts} MATCH ?1 ORDER BY bm25({fts}) LIMIT ?2"
+    );
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(
+                connection_id = %connection_id,
+                error = %e,
+                "multi_query_search: bm25 prepare failed; treating lane as empty"
+            );
+            return Ok(Vec::new());
+        }
+    };
+
+    let rows = match stmt.query_map(params![match_query, limit as i64], |row| row.get::<_, i64>(0))
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(
+                connection_id = %connection_id,
+                error = %e,
+                query = %match_query,
+                "multi_query_search: bm25 query_map failed; treating lane as empty"
+            );
+            return Ok(Vec::new());
+        }
+    };
+
+    let mut out = Vec::new();
+    for row in rows {
+        match row {
+            Ok(id) => out.push(id),
+            Err(e) => {
+                tracing::warn!(
+                    connection_id = %connection_id,
+                    error = %e,
+                    "multi_query_search: bm25 row decode failed; skipping"
+                );
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Fetch a single chunk by (connection_id, chunk_key) and return a
+/// fully-populated [`SearchResult`] with `score = 0.0` (callers set it).
+fn fetch_chunk_by_key(
+    conn: &Connection,
+    connection_id: &str,
+    chunk_key: &str,
+) -> Result<Option<SearchResult>> {
+    let result = conn
+        .query_row(
+            "SELECT id, chunk_key, db_name, table_name, chunk_type, ddl_text, ref_db_name, ref_table_name
+             FROM schema_index_chunks
+             WHERE connection_id = ?1 AND chunk_key = ?2",
+            params![connection_id, chunk_key],
+            |row| {
+                let db_name: String = row.get(2)?;
+                let table_name: String = row.get(3)?;
+                let chunk_type: String = row.get(4)?;
+                let ddl_text: String = row.get(5)?;
+                Ok(SearchResult {
+                    chunk_id: row.get(0)?,
+                    chunk_key: row.get(1)?,
+                    db_name: db_name.clone(),
+                    table_name: table_name.clone(),
+                    chunk_type: chunk_type.clone(),
+                    ddl_text: normalize_result_ddl(&db_name, &table_name, &chunk_type, ddl_text),
+                    ref_db_name: row.get(6)?,
+                    ref_table_name: row.get(7)?,
+                    score: 0.0,
+                })
+            },
+        )
+        .ok();
+    Ok(result)
 }

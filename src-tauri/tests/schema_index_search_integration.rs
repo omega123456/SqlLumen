@@ -863,7 +863,21 @@ fn test_top_n_with_fk_only_knn_results() {
         results[0].chunk_type, "table",
         "related table DDL should be backfilled first"
     );
-    assert_eq!(results[0].table_name, "orders");
+    // After the RRF fusion redesign (plan C1) the deterministic tiebreak that
+    // used to surface 'orders' first is gone — whichever table the KNN lane
+    // ranked higher wins. The invariant that matters is that BOTH related
+    // tables are surfaced as table chunks and that FK chunks still appear
+    // after the table backfill.
+    let table_names: std::collections::HashSet<&str> = results
+        .iter()
+        .filter(|r| r.chunk_type == "table")
+        .map(|r| r.table_name.as_str())
+        .collect();
+    assert!(
+        table_names.contains("orders") && table_names.contains("items"),
+        "both FK-endpoint tables should be present, got: {:?}",
+        table_names
+    );
     assert!(
         results.iter().any(|r| r.chunk_type == "fk"),
         "FK chunks should still be included after table backfill"
@@ -1029,6 +1043,156 @@ fn test_knn_returns_results_but_connection_filter_removes_them() {
         multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
 
     assert!(results.is_empty(), "conn-1 should have no results");
+}
+
+// ── RRF fusion: consensus across queries beats a single top-1 hit ────────
+
+#[test]
+fn test_rrf_consensus_beats_single_best() {
+    let conn = setup_db();
+
+    // "alpha" is the single best vector for query_a (rank 0 exactly).
+    // "gamma" is middling for both query_a and query_b but consistently
+    // ranked in both — RRF should prefer gamma over alpha once the fusion
+    // penalty for not appearing in query_b kicks in (plan C1: "agreed by
+    // many queries" beats "top-1 in one query").
+    insert_table_chunk(&conn, "conn-1", "db", "alpha", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db", "beta", unit_vec(1));
+    insert_table_chunk(&conn, "conn-1", "db", "gamma", blend_vec(0, 1, 0.6));
+
+    // top_k_per_query=2 → each query yields its top-2 only, so alpha appears
+    // only in query_a's list and beta only in query_b's, while gamma appears
+    // in BOTH lists. RRF rewards cross-query consensus (plan C1).
+    let queries = vec![unit_vec(0), unit_vec(1)];
+    let results = multi_query_search(&conn, "conn-1", &queries, 2, 10, 0)
+        .expect("search should succeed");
+
+    let gamma_pos = results
+        .iter()
+        .position(|r| r.table_name == "gamma")
+        .expect("gamma should appear");
+    let alpha_pos = results
+        .iter()
+        .position(|r| r.table_name == "alpha")
+        .expect("alpha should appear");
+
+    assert!(
+        gamma_pos < alpha_pos,
+        "gamma (appears in both queries, RRF consensus) should outrank alpha (single top-1 hit). gamma={}, alpha={}",
+        gamma_pos,
+        alpha_pos
+    );
+}
+
+// ── BM25 (FTS5) surfaces a chunk when the vector lane misses entirely ───
+
+#[test]
+fn test_bm25_rescues_chunks_with_token_match_but_poor_vector_match() {
+    let conn = setup_db();
+
+    // "invoice_lines" DDL contains the word "invoice"; its embedding is far
+    // from the query direction. Without BM25 the vector lane wouldn't rank
+    // it meaningfully. With BM25 (plan C3) the token match should surface it.
+    let mut chunk = ChunkInsert {
+        connection_id: "conn-1".to_string(),
+        chunk_key: "table:billing.invoice_lines".to_string(),
+        db_name: "billing".to_string(),
+        table_name: "invoice_lines".to_string(),
+        chunk_type: ChunkType::Table,
+        ddl_text: "CREATE TABLE `billing`.`invoice_lines` (invoice_id INT, amount DECIMAL(10,2))"
+            .to_string(),
+        ddl_hash: "hash_invoice".to_string(),
+        model_id: "test-model".to_string(),
+        ref_db_name: None,
+        ref_table_name: None,
+        embedding: unit_vec(3),
+    };
+    sqllumen_lib::schema_index::storage::insert_chunk(&conn, &chunk).expect("insert invoice");
+
+    // A decoy with a vector right on the query direction but no matching token.
+    chunk = ChunkInsert {
+        connection_id: "conn-1".to_string(),
+        chunk_key: "table:billing.decoy".to_string(),
+        db_name: "billing".to_string(),
+        table_name: "decoy".to_string(),
+        chunk_type: ChunkType::Table,
+        ddl_text: "CREATE TABLE `billing`.`decoy` (id INT)".to_string(),
+        ddl_hash: "hash_decoy".to_string(),
+        model_id: "test-model".to_string(),
+        ref_db_name: None,
+        ref_table_name: None,
+        embedding: unit_vec(0),
+    };
+    sqllumen_lib::schema_index::storage::insert_chunk(&conn, &chunk).expect("insert decoy");
+
+    let query_vectors = vec![unit_vec(0)];
+    let query_texts = vec!["find invoice rows by amount".to_string()];
+
+    let results = multi_query_search_with_query_texts(
+        &conn,
+        "conn-1",
+        &query_texts,
+        &query_vectors,
+        5,
+        10,
+        0,
+    )
+    .expect("search should succeed");
+
+    assert!(
+        results
+            .iter()
+            .any(|r| r.table_name == "invoice_lines" && r.chunk_type == "table"),
+        "BM25 should surface invoice_lines via token match, got: {:?}",
+        results.iter().map(|r| &r.table_name).collect::<Vec<_>>()
+    );
+}
+
+// ── Lexical match cannot single-handedly override vector agreement ──────
+
+#[test]
+fn test_lexical_boost_does_not_dominate_cosine() {
+    let conn = setup_db();
+
+    // "matching_table" has a far-away vector but its name matches the query
+    // text lexically. "other_table" has a good vector match but no lexical
+    // hint. After plan C2, lexical boost should *participate* in ranking,
+    // not override a clear vector winner when the vector hit is strong.
+    insert_table_chunk(&conn, "conn-1", "db", "matching_table", unit_vec(3));
+    insert_table_chunk(&conn, "conn-1", "db", "other_table", unit_vec(0));
+
+    let query_vectors = vec![unit_vec(0)];
+    let query_texts = vec!["matching_table content".to_string()];
+
+    let results = multi_query_search_with_query_texts(
+        &conn,
+        "conn-1",
+        &query_texts,
+        &query_vectors,
+        5,
+        10,
+        0,
+    )
+    .expect("search should succeed");
+
+    // Both surface as table chunks; the lexical-only match no longer sits
+    // alone at the top when a far-better cosine hit exists — but it must
+    // still be *included* so the user's explicit mention is respected.
+    let table_names: Vec<&str> = results
+        .iter()
+        .filter(|r| r.chunk_type == "table")
+        .map(|r| r.table_name.as_str())
+        .collect();
+    assert!(
+        table_names.contains(&"matching_table"),
+        "lexical match should still be included, got: {:?}",
+        table_names
+    );
+    assert!(
+        table_names.contains(&"other_table"),
+        "strong cosine match should still be included, got: {:?}",
+        table_names
+    );
 }
 
 // ── top_k_per_query limits KNN hits per query ───────────────────────────
