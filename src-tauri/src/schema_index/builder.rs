@@ -282,6 +282,40 @@ pub fn diff_chunks(
     (needs_embed, to_delete)
 }
 
+// ── Signature short-circuit partition (pure) ────────────────────────────
+
+/// Outcome of the signature-based partition for a single table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SignatureDecision {
+    /// The stored signature matches and a `table:` chunk already exists;
+    /// the caller can reuse the stored DDL text without calling
+    /// `SHOW CREATE TABLE`.
+    Reuse,
+    /// Signature differs, is missing, or the expected chunk is gone — the
+    /// caller must fetch fresh DDL via `SHOW CREATE TABLE`.
+    Refetch,
+}
+
+/// Decide whether a single `(db_name, table_name)` can be short-circuited.
+///
+/// `current_sig` is the freshly computed signature for this table (or `None`
+/// if absent from `current_signatures`, which typically means the table is
+/// brand new in this pass). `stored_sig` is the previously persisted
+/// signature. `chunk_exists` must be true iff a `table:` chunk for this table
+/// is present in the `schema_index_chunks` SQLite store.
+///
+/// Pure / no I/O — used in both production (inside the build loop) and tests.
+pub fn decide_signature_action(
+    current_sig: Option<&str>,
+    stored_sig: Option<&str>,
+    chunk_exists: bool,
+) -> SignatureDecision {
+    match (current_sig, stored_sig) {
+        (Some(c), Some(s)) if c == s && chunk_exists => SignatureDecision::Reuse,
+        _ => SignatureDecision::Refetch,
+    }
+}
+
 // ── Build index (full) ──────────────────────────────────────────────────
 
 /// Build (or incrementally update) the schema index for a connection.
@@ -401,35 +435,36 @@ pub async fn build_index(
         for (db_name, table_name) in &all_tables {
             let current = current_signatures
                 .get(&(db_name.clone(), table_name.clone()))
-                .cloned();
-            let stored = stored_signatures.get(&(db_name.clone(), table_name.clone()));
-            let can_reuse = matches!(
-                (current.as_deref(), stored.map(|s| s.as_str())),
-                (Some(c), Some(s)) if c == s
-            );
-            if can_reuse {
-                let chunk_key = table_chunk_key(db_name, table_name);
-                match storage::get_chunk_by_key(&conn, &config.connection_id, &chunk_key) {
-                    Ok(Some(existing)) => {
-                        reused_ddls.push(TableDdlInput {
-                            db_name: db_name.clone(),
-                            table_name: table_name.clone(),
-                            create_table_sql: existing.ddl_text,
-                        });
-                        continue;
-                    }
-                    Ok(None) => {
-                        // Signature was stored but chunk is gone (e.g. model
-                        // change wiped chunks). Fall back to fetching fresh.
-                    }
-                    Err(e) => {
-                        return Err(format!(
-                            "Failed to look up existing chunk {chunk_key}: {e}"
-                        ));
-                    }
+                .map(|s| s.as_str());
+            let stored = stored_signatures
+                .get(&(db_name.clone(), table_name.clone()))
+                .map(|s| s.as_str());
+
+            // We only need to check for chunk existence when the signatures
+            // match — otherwise the decision is already `Refetch`.
+            let chunk_key = table_chunk_key(db_name, table_name);
+            let existing_chunk = if matches!((current, stored), (Some(c), Some(s)) if c == s) {
+                storage::get_chunk_by_key(&conn, &config.connection_id, &chunk_key)
+                    .map_err(|e| format!("Failed to look up existing chunk {chunk_key}: {e}"))?
+            } else {
+                None
+            };
+            let chunk_exists = existing_chunk.is_some();
+
+            match decide_signature_action(current, stored, chunk_exists) {
+                SignatureDecision::Reuse => {
+                    // Safe to unwrap: chunk_exists implies Some(...).
+                    let ddl = existing_chunk.expect("chunk_exists").ddl_text;
+                    reused_ddls.push(TableDdlInput {
+                        db_name: db_name.clone(),
+                        table_name: table_name.clone(),
+                        create_table_sql: ddl,
+                    });
+                }
+                SignatureDecision::Refetch => {
+                    to_fetch.push((db_name.clone(), table_name.clone()));
                 }
             }
-            to_fetch.push((db_name.clone(), table_name.clone()));
         }
     }
 

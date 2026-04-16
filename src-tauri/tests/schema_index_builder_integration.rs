@@ -2,6 +2,7 @@
 //! hash computation, chunk key generation, and diff logic.
 
 use sqllumen_lib::schema_index::builder;
+use sqllumen_lib::schema_index::builder::SignatureDecision;
 use sqllumen_lib::schema_index::types::{FkInput, TableDdlInput};
 
 // ── compact_ddl ──────────────────────────────────────────────────────────
@@ -719,6 +720,168 @@ fn test_compact_ddl_with_comment_clause() {
     assert!(
         !result.contains("ENGINE="),
         "ENGINE should be stripped, got: {result}"
+    );
+}
+
+// ── decide_signature_action (signature short-circuit) ───────────────────
+
+#[test]
+fn test_decide_signature_action_reuse_when_matching_and_chunk_present() {
+    // Signature hasn't changed AND a chunk already exists → short-circuit.
+    let decision = builder::decide_signature_action(Some("sig-v1"), Some("sig-v1"), true);
+    assert_eq!(decision, SignatureDecision::Reuse);
+}
+
+#[test]
+fn test_decide_signature_action_refetch_when_signature_differs() {
+    // A column-type change would produce a different bulk signature, forcing
+    // a fresh SHOW CREATE TABLE + diff even though a chunk is still present.
+    let decision = builder::decide_signature_action(Some("sig-v2"), Some("sig-v1"), true);
+    assert_eq!(decision, SignatureDecision::Refetch);
+}
+
+#[test]
+fn test_decide_signature_action_refetch_when_no_stored_signature() {
+    // First-ever build for this table, or `delete_all_chunks` just wiped the
+    // signature store — no stored row at all.
+    let decision = builder::decide_signature_action(Some("sig-v1"), None, false);
+    assert_eq!(decision, SignatureDecision::Refetch);
+}
+
+#[test]
+fn test_decide_signature_action_refetch_when_chunk_missing_despite_match() {
+    // Signature row survived (e.g. model change cleared chunks but not
+    // signatures in some historic state) — still must re-fetch DDL.
+    let decision = builder::decide_signature_action(Some("sig-v1"), Some("sig-v1"), false);
+    assert_eq!(decision, SignatureDecision::Refetch);
+}
+
+#[test]
+fn test_decide_signature_action_refetch_when_current_signature_absent() {
+    // Shouldn't happen in practice (bulk query covers every enumerated
+    // table), but guard the degenerate case.
+    let decision = builder::decide_signature_action(None, Some("sig-v1"), true);
+    assert_eq!(decision, SignatureDecision::Refetch);
+}
+
+// ── Signature short-circuit end-to-end against a SQLite store ───────────
+
+#[test]
+fn test_signature_short_circuit_reuses_stored_ddl_without_refetch() {
+    use rusqlite::Connection;
+    use sqllumen_lib::db::migrations::run_migrations;
+    use sqllumen_lib::init_sqlite_vec;
+    use sqllumen_lib::schema_index::storage;
+    use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType};
+
+    init_sqlite_vec();
+    let conn = Connection::open_in_memory().expect("open db");
+    run_migrations(&conn).expect("migrations");
+    storage::create_vec_table(&conn, "conn-1", 4).expect("vec table");
+
+    // Pre-seed a chunk and a matching signature for one table.
+    let chunk = ChunkInsert {
+        connection_id: "conn-1".to_string(),
+        chunk_key: builder::table_chunk_key("db", "users"),
+        db_name: "db".to_string(),
+        table_name: "users".to_string(),
+        chunk_type: ChunkType::Table,
+        ddl_text: "CREATE TABLE `db`.`users` (`id` int)".to_string(),
+        ddl_hash: "h1".to_string(),
+        model_id: "m1".to_string(),
+        ref_db_name: None,
+        ref_table_name: None,
+        embedding: vec![0.1, 0.2, 0.3, 0.4],
+    };
+    storage::insert_chunk(&conn, &chunk).expect("insert chunk");
+    storage::upsert_signatures(
+        &conn,
+        "conn-1",
+        &[("db".to_string(), "users".to_string(), "sig-v1".to_string())],
+    )
+    .expect("upsert sig");
+
+    // Simulate the builder's decision path for this table on the next run:
+    // current signature == stored signature AND the chunk exists.
+    let stored_sigs = storage::get_signatures_for_connection(&conn, "conn-1").expect("read sigs");
+    let stored = stored_sigs
+        .get(&("db".to_string(), "users".to_string()))
+        .map(|s| s.as_str());
+    let current = Some("sig-v1");
+    let chunk_exists = storage::get_chunk_by_key(
+        &conn,
+        "conn-1",
+        &builder::table_chunk_key("db", "users"),
+    )
+    .expect("lookup")
+    .is_some();
+
+    assert!(chunk_exists, "seed must produce a chunk");
+    assert_eq!(
+        builder::decide_signature_action(current, stored, chunk_exists),
+        SignatureDecision::Reuse,
+        "unchanged table with a live chunk must short-circuit"
+    );
+}
+
+#[test]
+fn test_signature_change_forces_refetch_after_column_mutation() {
+    use rusqlite::Connection;
+    use sqllumen_lib::db::migrations::run_migrations;
+    use sqllumen_lib::init_sqlite_vec;
+    use sqllumen_lib::schema_index::storage;
+
+    init_sqlite_vec();
+    let conn = Connection::open_in_memory().expect("open db");
+    run_migrations(&conn).expect("migrations");
+    storage::create_vec_table(&conn, "conn-1", 4).expect("vec table");
+
+    // Stored signature represents yesterday's schema.
+    storage::upsert_signatures(
+        &conn,
+        "conn-1",
+        &[("db".to_string(), "users".to_string(), "old-sig".to_string())],
+    )
+    .expect("upsert");
+
+    // Today's bulk query returns a different signature (e.g. because the
+    // `email` column's COLUMN_TYPE changed from varchar(255) to varchar(512)).
+    let stored_sigs = storage::get_signatures_for_connection(&conn, "conn-1").expect("read sigs");
+    let stored = stored_sigs
+        .get(&("db".to_string(), "users".to_string()))
+        .map(|s| s.as_str());
+    let current = Some("new-sig");
+
+    assert_eq!(
+        builder::decide_signature_action(current, stored, true),
+        SignatureDecision::Refetch,
+        "signature change must trigger SHOW CREATE TABLE"
+    );
+}
+
+#[test]
+fn test_new_table_without_prior_signature_is_refetched() {
+    use rusqlite::Connection;
+    use sqllumen_lib::db::migrations::run_migrations;
+    use sqllumen_lib::init_sqlite_vec;
+    use sqllumen_lib::schema_index::storage;
+
+    init_sqlite_vec();
+    let conn = Connection::open_in_memory().expect("open db");
+    run_migrations(&conn).expect("migrations");
+    storage::create_vec_table(&conn, "conn-1", 4).expect("vec table");
+
+    // No signature ever stored for this table (first time we see it).
+    let stored_sigs = storage::get_signatures_for_connection(&conn, "conn-1").expect("read sigs");
+    let stored = stored_sigs
+        .get(&("db".to_string(), "products".to_string()))
+        .map(|s| s.as_str());
+    assert!(stored.is_none(), "precondition: no stored signature");
+
+    assert_eq!(
+        builder::decide_signature_action(Some("brand-new-sig"), stored, false),
+        SignatureDecision::Refetch,
+        "new tables always require a SHOW CREATE TABLE"
     );
 }
 

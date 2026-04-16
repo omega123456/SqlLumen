@@ -728,3 +728,194 @@ fn test_old_l2_table_survives_when_same_model_id_used() {
         "After upsert, vec_schema_version should be set to current VEC_SCHEMA_VERSION"
     );
 }
+
+// ── schema_index_table_signatures CRUD ──────────────────────────────────
+
+#[test]
+fn test_signatures_roundtrip_and_partition_by_connection() {
+    let conn = setup_db(4);
+
+    let entries_a = vec![
+        ("db1".to_string(), "users".to_string(), "sig-a-users".to_string()),
+        ("db1".to_string(), "orders".to_string(), "sig-a-orders".to_string()),
+    ];
+    storage::upsert_signatures(&conn, "conn-A", &entries_a).expect("upsert A");
+
+    let entries_b = vec![(
+        "db1".to_string(),
+        "users".to_string(),
+        "sig-b-users".to_string(),
+    )];
+    storage::upsert_signatures(&conn, "conn-B", &entries_b).expect("upsert B");
+
+    let got_a = storage::get_signatures_for_connection(&conn, "conn-A").expect("read A");
+    assert_eq!(got_a.len(), 2);
+    assert_eq!(
+        got_a.get(&("db1".to_string(), "users".to_string())),
+        Some(&"sig-a-users".to_string())
+    );
+    assert_eq!(
+        got_a.get(&("db1".to_string(), "orders".to_string())),
+        Some(&"sig-a-orders".to_string())
+    );
+
+    let got_b = storage::get_signatures_for_connection(&conn, "conn-B").expect("read B");
+    assert_eq!(got_b.len(), 1);
+    assert_eq!(
+        got_b.get(&("db1".to_string(), "users".to_string())),
+        Some(&"sig-b-users".to_string())
+    );
+}
+
+#[test]
+fn test_signatures_upsert_updates_existing_row() {
+    let conn = setup_db(4);
+
+    storage::upsert_signatures(
+        &conn,
+        "conn-1",
+        &[("db".to_string(), "t".to_string(), "v1".to_string())],
+    )
+    .expect("insert");
+
+    storage::upsert_signatures(
+        &conn,
+        "conn-1",
+        &[("db".to_string(), "t".to_string(), "v2".to_string())],
+    )
+    .expect("update");
+
+    let got = storage::get_signatures_for_connection(&conn, "conn-1").expect("read");
+    assert_eq!(got.len(), 1);
+    assert_eq!(
+        got.get(&("db".to_string(), "t".to_string())),
+        Some(&"v2".to_string()),
+        "upsert must replace the existing signature"
+    );
+}
+
+#[test]
+fn test_delete_signature_targets_single_row() {
+    let conn = setup_db(4);
+
+    storage::upsert_signatures(
+        &conn,
+        "conn-1",
+        &[
+            ("db".to_string(), "a".to_string(), "sig-a".to_string()),
+            ("db".to_string(), "b".to_string(), "sig-b".to_string()),
+        ],
+    )
+    .expect("upsert");
+
+    storage::delete_signature(&conn, "conn-1", "db", "a").expect("delete a");
+
+    let remaining = storage::get_signatures_for_connection(&conn, "conn-1").expect("read");
+    assert_eq!(remaining.len(), 1);
+    assert!(remaining.contains_key(&("db".to_string(), "b".to_string())));
+}
+
+#[test]
+fn test_delete_signature_is_noop_when_missing() {
+    let conn = setup_db(4);
+
+    storage::upsert_signatures(
+        &conn,
+        "conn-1",
+        &[("db".to_string(), "a".to_string(), "sig-a".to_string())],
+    )
+    .expect("upsert");
+
+    storage::delete_signature(&conn, "conn-1", "db", "nonexistent")
+        .expect("delete missing row should succeed");
+
+    let remaining = storage::get_signatures_for_connection(&conn, "conn-1").expect("read");
+    assert_eq!(remaining.len(), 1);
+}
+
+#[test]
+fn test_delete_all_chunks_also_wipes_signatures() {
+    let dim = 4;
+    let conn = setup_db(dim);
+
+    // Seed both a chunk and a signature for the same connection.
+    let chunk = sample_chunk("conn-1", "table:testdb.users", dim);
+    storage::insert_chunk(&conn, &chunk).expect("insert chunk");
+    storage::upsert_signatures(
+        &conn,
+        "conn-1",
+        &[(
+            "testdb".to_string(),
+            "users".to_string(),
+            "initial-sig".to_string(),
+        )],
+    )
+    .expect("upsert sig");
+
+    // Sanity: both are present.
+    assert_eq!(
+        storage::get_signatures_for_connection(&conn, "conn-1")
+            .expect("read")
+            .len(),
+        1
+    );
+
+    storage::delete_all_chunks(&conn, "conn-1").expect("wipe");
+
+    assert!(
+        storage::list_chunks(&conn, "conn-1")
+            .expect("list")
+            .is_empty(),
+        "chunks should be wiped"
+    );
+    assert!(
+        storage::get_signatures_for_connection(&conn, "conn-1")
+            .expect("read sigs")
+            .is_empty(),
+        "signatures should also be wiped by delete_all_chunks"
+    );
+}
+
+#[test]
+fn test_delete_all_signatures_scoped_to_connection() {
+    let conn = setup_db(4);
+
+    storage::upsert_signatures(
+        &conn,
+        "conn-A",
+        &[("db".to_string(), "a".to_string(), "a1".to_string())],
+    )
+    .expect("seed A");
+    storage::upsert_signatures(
+        &conn,
+        "conn-B",
+        &[("db".to_string(), "b".to_string(), "b1".to_string())],
+    )
+    .expect("seed B");
+
+    storage::delete_all_signatures(&conn, "conn-A").expect("wipe A");
+
+    assert!(
+        storage::get_signatures_for_connection(&conn, "conn-A")
+            .expect("read A")
+            .is_empty()
+    );
+    assert_eq!(
+        storage::get_signatures_for_connection(&conn, "conn-B")
+            .expect("read B")
+            .len(),
+        1,
+        "other connections must be untouched"
+    );
+}
+
+#[test]
+fn test_upsert_signatures_empty_batch_is_noop() {
+    let conn = setup_db(4);
+    storage::upsert_signatures(&conn, "conn-1", &[]).expect("empty upsert should succeed");
+    assert!(
+        storage::get_signatures_for_connection(&conn, "conn-1")
+            .expect("read")
+            .is_empty()
+    );
+}
