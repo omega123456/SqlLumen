@@ -539,10 +539,11 @@ async function markActiveTableDesignerDirty(page: Page) {
 
 /** Stable scroll for full-layout screenshots (parallel workers otherwise differ on tree scroll). */
 async function resetChromeScrollPositions(page: Page) {
-  await page.getByTestId('object-browser-scroll').evaluate((el) => {
-    el.scrollTop = 0
-  })
   await page.evaluate(() => {
+    const objectBrowser = document.querySelector('[data-testid="object-browser-scroll"]')
+    if (objectBrowser instanceof HTMLElement) {
+      objectBrowser.scrollTop = 0
+    }
     window.scrollTo(0, 0)
   })
 }
@@ -2230,7 +2231,9 @@ for (const theme of themes) {
         const el = document.activeElement
         if (el && el instanceof HTMLElement) el.blur()
       })
-      await expect(page.getByTestId('confirm-dialog')).toHaveScreenshot(
+      await resetChromeScrollPositions(page)
+      await page.mouse.move(0, 0)
+      await expect(page.getByTestId('confirm-dialog-panel')).toHaveScreenshot(
         `settings-dialog-ai-force-reindex-confirm-${theme}.png`,
         { animations: 'disabled' }
       )
@@ -2259,8 +2262,8 @@ for (const theme of themes) {
           pendingChanges: {},
         }))
       })
-      await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
-      await page.getByTestId('toolbar-ai-toggle').click()
+      await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('ai-sidebar-expand').click()
       await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('ai-setup-required')).toBeVisible({ timeout: APP_READY_MS })
       // Blur any focused element for stable screenshot
@@ -2278,8 +2281,8 @@ for (const theme of themes) {
     test('AI panel — welcome state', async ({ page }) => {
       await openQueryEditorTab(page)
       await enableAiViaStore(page)
-      await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
-      await page.getByTestId('toolbar-ai-toggle').click()
+      await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('ai-sidebar-expand').click()
       await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('ai-welcome-state')).toBeVisible({ timeout: APP_READY_MS })
       // Blur any focused element for stable screenshot
@@ -2296,8 +2299,8 @@ for (const theme of themes) {
     test('AI panel — with messages', async ({ page }) => {
       await openQueryEditorTab(page)
       await enableAiViaStore(page)
-      await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
-      await page.getByTestId('toolbar-ai-toggle').click()
+      await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('ai-sidebar-expand').click()
       await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
 
       // Send a message and wait for streaming to finish
@@ -2327,8 +2330,8 @@ for (const theme of themes) {
     test('AI panel — error state', async ({ page }) => {
       await openQueryEditorTab(page)
       await enableAiViaStore(page)
-      await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
-      await page.getByTestId('toolbar-ai-toggle').click()
+      await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('ai-sidebar-expand').click()
       await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
 
       // Enable AI error simulation
@@ -2360,17 +2363,17 @@ for (const theme of themes) {
       })
     })
 
-    test('EditorToolbar — AI toggle button visible', async ({ page }) => {
+    test('AI workspace rail — visible when AI enabled', async ({ page }) => {
       await openQueryEditorTab(page)
       await enableAiViaStore(page)
-      await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
       // Blur any focused element for stable screenshot
       await page.evaluate(() => {
         const el = document.activeElement
         if (el && el instanceof HTMLElement) el.blur()
       })
-      await expect(page.getByTestId('editor-toolbar')).toHaveScreenshot(
-        `editor-toolbar-ai-toggle-${theme}.png`,
+      await expect(page.getByTestId('ai-workspace-rail')).toHaveScreenshot(
+        `ai-workspace-rail-${theme}.png`,
         { animations: 'disabled' }
       )
     })
@@ -2426,8 +2429,8 @@ for (const theme of themes) {
       await page.waitForTimeout(300)
 
       // Open AI panel
-      await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
-      await page.getByTestId('toolbar-ai-toggle').click()
+      await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('ai-sidebar-expand').click()
       await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
 
       // Send a message and wait for the response with SQL

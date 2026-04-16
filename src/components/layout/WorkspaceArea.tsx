@@ -1,10 +1,13 @@
 import { Button } from '../common/Button'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { useSettingsStore } from '../../stores/settings-store'
 import { WorkspaceTabs } from '../workspace/WorkspaceTabs'
 import { TableDataTab } from '../table-data/TableDataTab'
 import { SchemaInfoTab } from '../schema-info/SchemaInfoTab'
 import { QueryEditorTab } from '../query-editor/QueryEditorTab'
+import { AiDiffBridgeProvider } from '../query-editor/ai-diff-bridge-context'
+import { WorkspaceAiResizableRow } from './WorkspaceAiResizableRow'
 import { TableDesignerTab as TableDesignerTabComponent } from '../table-designer/TableDesignerTab'
 import { ObjectEditorTab as ObjectEditorTabComponent } from '../object-editor/ObjectEditorTab'
 import { HistoryTab as HistoryTabComponent } from '../history/HistoryTab'
@@ -36,6 +39,48 @@ export function WorkspaceArea() {
 
   const activeTab = tabs.find((t) => t.id === activeWorkspaceTabId) ?? null
 
+  const aiEnabled = useSettingsStore((s) => s.getSetting('ai.enabled') === 'true')
+  const queryEditorTab =
+    activeTab?.type === 'query-editor' ? (activeTab as QueryEditorTabType) : null
+  const useAiResizeLayout = Boolean(aiEnabled && queryEditorTab)
+
+  const tabContent = (
+    <>
+      {/* No tabs: connected placeholder */}
+      {activeConnection && tabs.length === 0 && (
+        <div className={styles.connectedPlaceholder}>
+          <p className={styles.connectedText}>
+            Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
+            {activeConnection.profile.port})
+          </p>
+        </div>
+      )}
+      {/* Active tab content */}
+      {activeTab?.type === 'table-data' && <TableDataTab key={activeTab.id} tab={activeTab} />}
+      {activeTab?.type === 'schema-info' && (
+        <SchemaInfoTab key={activeTab.id} tab={activeTab as SchemaInfoTabType} />
+      )}
+      {activeTab?.type === 'query-editor' && (
+        <QueryEditorTab key={activeTab.id} tab={activeTab as QueryEditorTabType} />
+      )}
+      {activeTab?.type === 'table-designer' && (
+        <TableDesignerTabComponent key={activeTab.id} tab={activeTab as TableDesignerTabType} />
+      )}
+      {activeTab?.type === 'object-editor' && (
+        <ObjectEditorTabComponent key={activeTab.id} tab={activeTab as ObjectEditorTabType} />
+      )}
+      {activeTab?.type === 'history' && (
+        <HistoryTabComponent key={activeTab.id} tab={activeTab as HistoryTabType} />
+      )}
+      {/* Tabs exist but none active */}
+      {tabs.length > 0 && !activeTab && (
+        <div className={styles.connectedPlaceholder}>
+          <p className={styles.connectedText}>Select a tab to view content</p>
+        </div>
+      )}
+    </>
+  )
+
   // No active connection → welcome screen
   if (!activeConnection) {
     return (
@@ -55,42 +100,17 @@ export function WorkspaceArea() {
   return (
     <div className={styles.workspaceTabbed} data-testid="workspace-area">
       <WorkspaceTabs connectionId={activeTabId!} />
-      <div className={styles.workspaceScroll}>
-        <div className={styles.tabContent}>
-          {/* No tabs: connected placeholder */}
-          {tabs.length === 0 && (
-            <div className={styles.connectedPlaceholder}>
-              <p className={styles.connectedText}>
-                Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
-                {activeConnection.profile.port})
-              </p>
+      <AiDiffBridgeProvider>
+        {useAiResizeLayout ? (
+          <WorkspaceAiResizableRow tab={queryEditorTab!}>{tabContent}</WorkspaceAiResizableRow>
+        ) : (
+          <div className={styles.workspaceMain}>
+            <div className={styles.workspaceScroll}>
+              <div className={styles.tabContent}>{tabContent}</div>
             </div>
-          )}
-          {/* Active tab content */}
-          {activeTab?.type === 'table-data' && <TableDataTab key={activeTab.id} tab={activeTab} />}
-          {activeTab?.type === 'schema-info' && (
-            <SchemaInfoTab key={activeTab.id} tab={activeTab as SchemaInfoTabType} />
-          )}
-          {activeTab?.type === 'query-editor' && (
-            <QueryEditorTab key={activeTab.id} tab={activeTab as QueryEditorTabType} />
-          )}
-          {activeTab?.type === 'table-designer' && (
-            <TableDesignerTabComponent key={activeTab.id} tab={activeTab as TableDesignerTabType} />
-          )}
-          {activeTab?.type === 'object-editor' && (
-            <ObjectEditorTabComponent key={activeTab.id} tab={activeTab as ObjectEditorTabType} />
-          )}
-          {activeTab?.type === 'history' && (
-            <HistoryTabComponent key={activeTab.id} tab={activeTab as HistoryTabType} />
-          )}
-          {/* Tabs exist but none active */}
-          {tabs.length > 0 && !activeTab && (
-            <div className={styles.connectedPlaceholder}>
-              <p className={styles.connectedText}>Select a tab to view content</p>
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+      </AiDiffBridgeProvider>
     </div>
   )
 }

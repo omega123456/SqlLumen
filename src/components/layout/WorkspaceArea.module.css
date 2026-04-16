@@ -16,9 +16,19 @@
   overflow: visible;
 }
 
+/* Row below tab strip: scroll host + optional AI sidebar (right) */
+.workspaceMain {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  min-width: 0;
+}
+
 /* Scroll host below the tab strip (Panel overflow:visible — scroll must not live on Panel inner default) */
 .workspaceScroll {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
 }

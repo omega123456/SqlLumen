@@ -310,7 +310,7 @@ pub fn execute_sql_import(
                     let mut jobs = import_jobs.write().unwrap_or_else(|p| p.into_inner());
                     if let Some(progress) = jobs.get_mut(job_id) {
                         progress.status = ImportJobStatus::Cancelled;
-                        progress.completed_at = Some(std::time::Instant::now());
+                        progress.completed_at = Some(std::time::SystemTime::now());
                     }
 
                     let elapsed_ms = start_time.elapsed().as_millis() as i64;
@@ -408,7 +408,7 @@ pub fn execute_sql_import(
 
                         if stop_on_error {
                             progress.status = ImportJobStatus::Failed;
-                            progress.completed_at = Some(std::time::Instant::now());
+                            progress.completed_at = Some(std::time::SystemTime::now());
 
                             let elapsed_ms = start_time.elapsed().as_millis() as i64;
                             tracing::info!(
@@ -467,7 +467,7 @@ pub fn execute_sql_import(
                     // Completed with errors (not stop_on_error mode)
                     progress.status = ImportJobStatus::Completed;
                 }
-                progress.completed_at = Some(std::time::Instant::now());
+                progress.completed_at = Some(std::time::SystemTime::now());
             }
         }
     }

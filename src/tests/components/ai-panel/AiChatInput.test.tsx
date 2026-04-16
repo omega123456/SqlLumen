@@ -82,6 +82,33 @@ describe('AiChatInput', () => {
     expect(textarea.value).toBe('Hello world')
   })
 
+  it('keeps the empty textarea at one-row height when the placeholder would wrap', async () => {
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      'scrollHeight'
+    )
+
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get() {
+        return 140
+      },
+    })
+
+    try {
+      render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+      await waitFor(() => {
+        const textarea = screen.getByTestId('ai-chat-textarea') as HTMLTextAreaElement
+        expect(textarea.style.height).toBe('36px')
+      })
+    } finally {
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', originalScrollHeight)
+      }
+    }
+  })
+
   it('shows send button during idle', () => {
     render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByTestId('ai-send-button')).toBeInTheDocument()

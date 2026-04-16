@@ -10,22 +10,13 @@
  */
 
 import { useState } from 'react'
-import {
-  FastForward,
-  FloppyDisk,
-  FolderOpen,
-  MagicWand,
-  UploadSimple,
-  Sparkle,
-} from '@phosphor-icons/react'
+import { FastForward, FloppyDisk, FolderOpen, MagicWand, UploadSimple } from '@phosphor-icons/react'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { format as formatSQL } from 'sql-formatter'
 import { useQueryStore } from '../../stores/query-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useImportDialogStore } from '../../stores/import-dialog-store'
-import { useAiStore } from '../../stores/ai-store'
-import { useSettingsStore } from '../../stores/settings-store'
 import { readFile, writeFile } from '../../lib/query-commands'
 import { splitStatements } from './sql-parser-utils'
 import { RunningIndicator } from './RunningIndicator'
@@ -50,9 +41,6 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
 
   const isReadOnly =
     useConnectionStore((state) => state.activeConnections[connectionId]?.profile?.readOnly) ?? false
-
-  const aiEnabled = useSettingsStore((s) => s.getSetting('ai.enabled') === 'true')
-  const toggleAiPanel = useAiStore((s) => s.togglePanel)
 
   const isRunning = status === 'running'
   const isAiLocked = status === 'ai-pending' || status === 'ai-reviewing'
@@ -193,20 +181,8 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
         </button>
       </div>
 
-      {/* Right: AI toggle + execute buttons or running indicator */}
+      {/* Right: execute buttons or running indicator */}
       <div className={styles.rightActions}>
-        {aiEnabled && (
-          <button
-            type="button"
-            className={styles.iconButton}
-            title="AI Assistant"
-            onClick={() => toggleAiPanel(tabId)}
-            disabled={isDisabled}
-            data-testid="toolbar-ai-toggle"
-          >
-            <Sparkle size={16} weight="regular" />
-          </button>
-        )}
         {isRunning ? (
           <RunningIndicator connectionId={connectionId} tabId={tabId} />
         ) : (

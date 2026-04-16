@@ -727,7 +727,9 @@ fn test_stale_dump_job_cleanup() {
                 bytes_written: 1024,
                 error_message: None,
                 // completed_at set to 10 minutes ago (stale > 5 min)
-                completed_at: Some(std::time::Instant::now() - std::time::Duration::from_secs(601)),
+                completed_at: Some(
+                    std::time::SystemTime::now() - std::time::Duration::from_secs(601),
+                ),
             },
         );
         // Insert a running job (should never be cleaned up)
@@ -774,7 +776,9 @@ fn test_stale_import_job_cleanup() {
                 errors: Vec::new(),
                 stop_on_error: false,
                 cancel_requested: false,
-                completed_at: Some(std::time::Instant::now() - std::time::Duration::from_secs(601)),
+                completed_at: Some(
+                    std::time::SystemTime::now() - std::time::Duration::from_secs(601),
+                ),
             },
         );
         // Insert a running import job

@@ -33,7 +33,7 @@ pub struct DumpJobProgress {
     /// When the job reached a terminal state (Completed/Failed).
     /// Used for lazy cleanup of stale entries.
     #[serde(skip)]
-    pub completed_at: Option<std::time::Instant>,
+    pub completed_at: Option<std::time::SystemTime>,
 }
 
 /// Status of a SQL import job.
@@ -71,7 +71,7 @@ pub struct ImportJobProgress {
     /// When the job reached a terminal state (Completed/Failed/Cancelled).
     /// Used for lazy cleanup of stale entries.
     #[serde(skip)]
-    pub completed_at: Option<std::time::Instant>,
+    pub completed_at: Option<std::time::SystemTime>,
 }
 
 /// Application-wide state accessible from Tauri commands.

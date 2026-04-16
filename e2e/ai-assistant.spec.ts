@@ -44,7 +44,7 @@ async function connectToSample(page: Page) {
   await dismissAllToasts(page)
 }
 
-/** Enable AI via the settings store so the toolbar toggle appears. */
+/** Enable AI via the settings store so the workspace AI rail appears. */
 async function enableAiViaStore(page: Page) {
   await page.evaluate(() => {
     const store = (window as unknown as Record<string, unknown>).__settingsStore__ as {
@@ -76,12 +76,11 @@ async function openQueryEditorTab(page: Page) {
   await expect(page.getByTestId('editor-toolbar')).toBeVisible()
 }
 
-/** Open the AI panel via the toolbar toggle button. Requires AI to be enabled. */
+/** Open the AI panel via the workspace rail button. Requires AI to be enabled. */
 async function openAiPanel(page: Page) {
   await enableAiViaStore(page)
-  // Wait for the toolbar AI toggle to appear
-  await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
-  await page.getByTestId('toolbar-ai-toggle').click()
+  await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
+  await page.getByTestId('ai-sidebar-expand').click()
   await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
 }
 
@@ -94,22 +93,20 @@ test.describe('AI Assistant', () => {
     await waitForApp(page)
   })
 
-  test('AI panel toggle — enabling AI shows toolbar button, clicking opens panel', async ({
+  test('AI panel toggle — enabling AI shows workspace rail, clicking opens panel', async ({
     page,
   }) => {
     await openQueryEditorTab(page)
 
-    // AI is disabled by default — toolbar toggle should not be visible
-    await expect(page.getByTestId('toolbar-ai-toggle')).toBeHidden()
+    // AI is disabled by default — workspace rail should not be visible
+    await expect(page.getByTestId('ai-sidebar-expand')).toBeHidden()
 
     // Enable AI via settings store
     await enableAiViaStore(page)
 
-    // The toolbar AI toggle should now be visible
-    await expect(page.getByTestId('toolbar-ai-toggle')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
 
-    // Click to open AI panel
-    await page.getByTestId('toolbar-ai-toggle').click()
+    await page.getByTestId('ai-sidebar-expand').click()
     await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
     await expect(page.getByTestId('ai-panel-header')).toBeVisible()
     await expect(page.getByTestId('ai-chat-messages')).toBeVisible()
@@ -183,8 +180,7 @@ test.describe('AI Assistant', () => {
     // Click the close button
     await page.getByTestId('ai-close-button').click()
 
-    // The panel is a collapsible react-resizable-panels Panel — when closed,
-    // it collapses to 0% width. Verify via the AI store state rather than DOM visibility.
+    // When closed, the chat column unmounts. Verify via the AI store state.
     await expect
       .poll(
         async () =>

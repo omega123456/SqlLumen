@@ -7,6 +7,9 @@ import { Button } from '../common/Button'
 import { IconButton } from '../common/IconButton'
 import styles from './AiChatInput.module.css'
 
+const MIN_TEXTAREA_HEIGHT_PX = 36
+const MAX_TEXTAREA_HEIGHT_PX = 140
+
 export interface AiChatInputProps {
   tabId: string
   connectionId: string | null
@@ -65,10 +68,19 @@ export function AiChatInput({
   // Auto-expand textarea based on content
   const adjustHeight = useCallback(() => {
     const el = textareaRef.current
-    if (!el) return
+    if (!el) {
+      return
+    }
+    if (value.length === 0) {
+      el.style.height = `${MIN_TEXTAREA_HEIGHT_PX}px`
+      return
+    }
     el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 140)}px`
-  }, [])
+    el.style.height = `${Math.min(
+      Math.max(el.scrollHeight, MIN_TEXTAREA_HEIGHT_PX),
+      MAX_TEXTAREA_HEIGHT_PX
+    )}px`
+  }, [value])
 
   useEffect(() => {
     adjustHeight()
@@ -76,7 +88,9 @@ export function AiChatInput({
 
   const handleSend = useCallback(() => {
     const trimmed = value.trim()
-    if (!trimmed || !connectionId || !canSend) return
+    if (!trimmed || !connectionId || !canSend) {
+      return
+    }
 
     useAiStore.getState().sendMessage(tabId, connectionId, trimmed, {})
     setValue('')
@@ -85,7 +99,7 @@ export function AiChatInput({
     requestAnimationFrame(() => {
       const el = textareaRef.current
       if (el) {
-        el.style.height = 'auto'
+        el.style.height = `${MIN_TEXTAREA_HEIGHT_PX}px`
       }
     })
   }, [value, connectionId, canSend, tabId])

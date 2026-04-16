@@ -9,6 +9,7 @@ import {
   _resetQueryTabCounter,
 } from '../../stores/workspace-store'
 import { useQueryStore } from '../../stores/query-store'
+import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
 import { mockIPC } from '@tauri-apps/api/mocks'
@@ -261,6 +262,34 @@ describe('WorkspaceArea', () => {
     expect(screen.getByTestId('editor-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('monaco-editor-wrapper')).toBeInTheDocument()
     expect(screen.getByTestId('result-panel')).toBeInTheDocument()
+  })
+
+  it('shows the AI workspace rail when AI is enabled and a query tab is active', () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.embeddingModel': 'nomic-embed-text',
+      },
+      pendingChanges: {},
+      isDirty: false,
+      isLoading: false,
+      activeSection: 'ai',
+      isDialogOpen: false,
+      dialogSection: undefined,
+    })
+
+    const conn = makeActiveConnection()
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': conn },
+      activeTabId: 'conn-1',
+    })
+
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    render(<WorkspaceArea />)
+
+    expect(screen.getByTestId('ai-workspace-rail')).toBeInTheDocument()
   })
 
   it('renders TableDesignerTab for table-designer tab type', () => {

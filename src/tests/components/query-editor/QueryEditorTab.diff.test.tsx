@@ -6,6 +6,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { QueryEditorTab } from '../../../components/query-editor/QueryEditorTab'
+import { AiDiffBridgeProvider } from '../../../components/query-editor/ai-diff-bridge-context'
+import { WorkspaceAiResizableRow } from '../../../components/layout/WorkspaceAiResizableRow'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
@@ -48,6 +50,18 @@ const mockTab: QueryEditorTabType = {
   connectionId: 'conn-1',
 }
 
+function renderQueryTabWithAiWorkspace() {
+  return render(
+    <AiDiffBridgeProvider>
+      <div style={{ height: 400, minHeight: 0 }}>
+        <WorkspaceAiResizableRow tab={mockTab}>
+          <QueryEditorTab tab={mockTab} />
+        </WorkspaceAiResizableRow>
+      </div>
+    </AiDiffBridgeProvider>
+  )
+}
+
 let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
@@ -82,7 +96,7 @@ describe('QueryEditorTab — diff overlay', () => {
     useAiStore.setState({
       tabs: { 'tab-1': emptyAiTabState({ isPanelOpen: true }) },
     })
-    render(<QueryEditorTab tab={mockTab} />)
+    renderQueryTabWithAiWorkspace()
     expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
   })
 
@@ -98,7 +112,7 @@ describe('QueryEditorTab — diff overlay', () => {
     useAiStore.setState({
       tabs: { 'tab-1': emptyAiTabState() },
     })
-    render(<QueryEditorTab tab={mockTab} />)
+    renderQueryTabWithAiWorkspace()
     expect(screen.getByTestId('query-editor-tab')).toBeInTheDocument()
     expect(screen.getByTestId('monaco-editor-wrapper')).toBeInTheDocument()
     expect(screen.getByTestId('result-panel')).toBeInTheDocument()

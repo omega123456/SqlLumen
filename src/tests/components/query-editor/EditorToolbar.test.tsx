@@ -301,37 +301,16 @@ describe('EditorToolbar', () => {
     expect(tabState?.tabStatus).toBe('error')
   })
 
-  it('does not show AI toggle button when ai.enabled is false', () => {
+  it('does not show AI toggle on the toolbar when ai.enabled is false', () => {
     renderToolbar()
     expect(screen.queryByTestId('toolbar-ai-toggle')).not.toBeInTheDocument()
   })
 
-  it('shows AI toggle button when ai.enabled is true', () => {
+  it('does not show AI toggle on the toolbar when ai.enabled is true', () => {
     useSettingsStore.setState({
       settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
     })
     renderToolbar()
-    expect(screen.getByTestId('toolbar-ai-toggle')).toBeInTheDocument()
-  })
-
-  it('AI toggle button calls togglePanel on click', () => {
-    useSettingsStore.setState({
-      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
-    })
-    renderToolbar()
-    const toggleBtn = screen.getByTestId('toolbar-ai-toggle')
-    fireEvent.click(toggleBtn)
-    // Panel should now be open in the AI store
-    const aiTab = useAiStore.getState().tabs['tab-1']
-    expect(aiTab?.isPanelOpen).toBe(true)
-  })
-
-  it('AI toggle button has title attribute', () => {
-    useSettingsStore.setState({
-      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
-    })
-    renderToolbar()
-    const toggleBtn = screen.getByTestId('toolbar-ai-toggle')
-    expect(toggleBtn).toHaveAttribute('title', 'AI Assistant')
+    expect(screen.queryByTestId('toolbar-ai-toggle')).not.toBeInTheDocument()
   })
 })

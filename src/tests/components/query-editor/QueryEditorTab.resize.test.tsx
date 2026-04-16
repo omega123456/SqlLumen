@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, waitFor } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
@@ -213,70 +213,30 @@ describe('QueryEditorTab — panel resize', () => {
   })
 })
 
-describe('QueryEditorTab — AI panel resize (ai.enabled=true)', () => {
+describe('QueryEditorTab — AI sidebar open state (Monaco layout)', () => {
   beforeEach(() => {
     useSettingsStore.setState({
       settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
     })
+  })
+
+  it('calls editor.layout() when isPanelOpen toggles in the AI store', async () => {
     useAiStore.setState({
-      tabs: { 'tab-1': emptyAiTabState({ isPanelOpen: true }) },
+      tabs: { 'tab-1': emptyAiTabState({ isPanelOpen: false }) },
     })
-  })
-
-  it('calls editor.layout() when the horizontal editor panel is resized', () => {
     render(<QueryEditorTab tab={mockTab} />)
 
-    // With AI enabled the panels are:
-    //   [0] editorPanelOuter (vertical), [1] editorPanel (horizontal),
-    //   [2] aiPanel (horizontal), [3] resultPanel (vertical)
-    const horizontalEditorPanel = panelRenders.find(
-      (p) => (p.className as string)?.includes('editorPanel') && p.defaultSize === '70%'
-    )
-    expect(horizontalEditorPanel).toBeDefined()
-    expect(typeof horizontalEditorPanel!.onResize).toBe('function')
+    await waitFor(() => {
+      expect(mockLayout).toHaveBeenCalled()
+    })
+    mockLayout.mockClear()
 
-    const onResize = horizontalEditorPanel!.onResize as (size: number) => void
-    onResize(55)
-
-    expect(mockLayout).toHaveBeenCalled()
-  })
-
-  it('syncs store when AI panel resize handler fires (collapsed path)', () => {
-    render(<QueryEditorTab tab={mockTab} />)
-
-    // Find the AI panel by its className containing 'aiPanel'
-    const aiPanel = panelRenders.find((p) => (p.className as string)?.includes('aiPanel'))
-    expect(aiPanel).toBeDefined()
-    expect(typeof aiPanel!.onResize).toBe('function')
-
-    // usePanelRef mock returns { current: null }, so isCollapsed() is undefined → false.
-    // Store has isPanelOpen=true, so the callback body is exercised but no state change
-    // (both !collapsed and storeOpen → no branch matches).
-    const onResize = aiPanel!.onResize as (size: number) => void
-    onResize(25)
-
-    // Verify AI store state is still open (no spurious close)
-    expect(useAiStore.getState().tabs['tab-1']?.isPanelOpen).toBe(true)
-  })
-
-  it('closes panel in store when AI panel reports collapsed', () => {
-    // Set up AI panel as open in the store
     useAiStore.setState({
       tabs: { 'tab-1': emptyAiTabState({ isPanelOpen: true }) },
     })
 
-    render(<QueryEditorTab tab={mockTab} />)
-
-    const aiPanel = panelRenders.find((p) => (p.className as string)?.includes('aiPanel'))
-    expect(aiPanel).toBeDefined()
-
-    // Note: Since usePanelRef returns { current: null }, aiPanelRef.current?.isCollapsed()
-    // returns undefined, which is falsy → `collapsed` = false via ?? false.
-    // Store has isPanelOpen=true. Neither branch fires, which still exercises the callback body.
-    const onResize = aiPanel!.onResize as (size: number) => void
-    onResize(0)
-
-    // Panel is still open per store (can't actually collapse with null ref)
-    expect(useAiStore.getState().tabs['tab-1']?.isPanelOpen).toBe(true)
+    await waitFor(() => {
+      expect(mockLayout).toHaveBeenCalled()
+    })
   })
 })

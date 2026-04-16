@@ -168,13 +168,13 @@ pub async fn start_sql_dump_impl(
                     progress.status = DumpJobStatus::Completed;
                     progress.bytes_written = bytes;
                     progress.current_table = None;
-                    progress.completed_at = Some(std::time::Instant::now());
+                    progress.completed_at = Some(std::time::SystemTime::now());
                 }
                 Err(err) => {
                     progress.status = DumpJobStatus::Failed;
                     progress.error_message = Some(err);
                     progress.current_table = None;
-                    progress.completed_at = Some(std::time::Instant::now());
+                    progress.completed_at = Some(std::time::SystemTime::now());
                 }
             }
         }
@@ -388,7 +388,14 @@ const DUMP_JOB_STALE_DURATION: std::time::Duration = std::time::Duration::from_s
 fn cleanup_stale_dump_jobs(jobs: &mut HashMap<String, DumpJobProgress>) {
     jobs.retain(|_, progress| {
         if let Some(completed_at) = progress.completed_at {
-            completed_at.elapsed() < DUMP_JOB_STALE_DURATION
+            match std::time::SystemTime::now().duration_since(completed_at) {
+                Ok(age) => {
+                    age < DUMP_JOB_STALE_DURATION
+                }
+                Err(_) => {
+                    true
+                }
+            }
         } else {
             true // Running jobs are always kept
         }
@@ -724,7 +731,7 @@ pub async fn start_sql_import_impl(
                         sql_preview: String::new(),
                         error_message: err,
                     });
-                    progress.completed_at = Some(std::time::Instant::now());
+                    progress.completed_at = Some(std::time::SystemTime::now());
                 }
             }
         }
@@ -753,7 +760,14 @@ const IMPORT_JOB_STALE_DURATION: std::time::Duration = std::time::Duration::from
 fn cleanup_stale_import_jobs(jobs: &mut HashMap<String, ImportJobProgress>) {
     jobs.retain(|_, progress| {
         if let Some(completed_at) = progress.completed_at {
-            completed_at.elapsed() < IMPORT_JOB_STALE_DURATION
+            match std::time::SystemTime::now().duration_since(completed_at) {
+                Ok(age) => {
+                    age < IMPORT_JOB_STALE_DURATION
+                }
+                Err(_) => {
+                    true
+                }
+            }
         } else {
             true // Running jobs are always kept
         }
