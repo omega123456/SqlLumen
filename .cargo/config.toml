@@ -107,6 +107,8 @@ sqllumen-test-integration = [
   "schema_index_search_integration",
   "--test",
   "schema_index_cosine_distance_integration",
+  "--test",
+  "schema_index_retrieval_eval_integration",
 ]
 
 sqllumen-llvm-cov = [
@@ -215,6 +217,8 @@ sqllumen-llvm-cov = [
   "schema_index_search_integration",
   "--test",
   "schema_index_cosine_distance_integration",
+  "--test",
+  "schema_index_retrieval_eval_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",
