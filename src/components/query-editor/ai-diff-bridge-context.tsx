@@ -36,10 +36,7 @@ export function AiDiffBridgeProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const value = useMemo(
-    () => ({ registerHandler, triggerDiff }),
-    [registerHandler, triggerDiff]
-  )
+  const value = useMemo(() => ({ registerHandler, triggerDiff }), [registerHandler, triggerDiff])
 
   return <AiDiffBridgeContext.Provider value={value}>{children}</AiDiffBridgeContext.Provider>
 }
@@ -57,7 +54,11 @@ export function useRegisterAiDiffHandler(tabId: string, handler: AiDiffHandler |
   }, [ctx, tabId, handler])
 }
 
-export function useAiDiffTrigger(): (tabId: string, proposedSql: string, range: PlainRange) => void {
+export function useAiDiffTrigger(): (
+  tabId: string,
+  proposedSql: string,
+  range: PlainRange
+) => void {
   const ctx = useContext(AiDiffBridgeContext)
   if (!ctx) {
     return () => {}

@@ -71,7 +71,7 @@ beforeEach(() => {
     settings: {
       ...SETTINGS_DEFAULTS,
       'ai.enabled': 'true',
-      'ai.endpoint': 'http://localhost:11434',
+      'ai.endpoint': 'http://localhost:11434/v1',
       'ai.model': 'llama3',
       'ai.embeddingModel': 'nomic-embed-text',
     },
@@ -236,7 +236,7 @@ describe('AiPanel — setup required state', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434',
+        'ai.endpoint': 'http://localhost:11434/v1',
         'ai.model': 'llama3',
         'ai.embeddingModel': '',
       },
@@ -257,7 +257,7 @@ describe('AiPanel — setup required state', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434',
+        'ai.endpoint': 'http://localhost:11434/v1',
         'ai.model': 'llama3',
         'ai.embeddingModel': '',
       },
@@ -278,7 +278,7 @@ describe('AiPanel — setup required state', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434',
+        'ai.endpoint': 'http://localhost:11434/v1',
         'ai.model': 'llama3',
         'ai.embeddingModel': '',
       },
@@ -308,7 +308,7 @@ describe('AiPanel — setup required state', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434',
+        'ai.endpoint': 'http://localhost:11434/v1',
         'ai.model': 'llama3',
         'ai.embeddingModel': '',
       },
@@ -323,7 +323,7 @@ describe('AiPanel — setup required state', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434',
+        'ai.endpoint': 'http://localhost:11434/v1',
         'ai.model': 'llama3',
         'ai.embeddingModel': 'nomic-embed-text',
       },

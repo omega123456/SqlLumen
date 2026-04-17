@@ -56,36 +56,6 @@ impl fmt::Display for EmbeddingError {
 
 impl std::error::Error for EmbeddingError {}
 
-// ── URL normalisation ─────────────────────────────────────────────────────
-
-/// Normalise a base URL to the `/v1/embeddings` endpoint.
-///
-/// Strips known path suffixes like `/chat/completions`, `/models`, etc.,
-/// ensures the URL includes `/v1`, and appends `/embeddings`.
-fn normalise_to_embeddings_url(base_url: &str) -> String {
-    let mut base = base_url.trim().trim_end_matches('/').to_string();
-
-    // Strip known suffixes
-    for suffix in &[
-        "/chat/completions",
-        "/completions",
-        "/models",
-        "/embeddings",
-    ] {
-        if base.ends_with(suffix) {
-            base = base[..base.len() - suffix.len()].to_string();
-            break;
-        }
-    }
-
-    // Ensure base ends with /v1
-    if !base.ends_with("/v1") {
-        base = format!("{}/v1", base.trim_end_matches('/'));
-    }
-
-    format!("{base}/embeddings")
-}
-
 // ── Core functions ────────────────────────────────────────────────────────
 
 /// Embed a list of texts using the given model via the `/v1/embeddings` endpoint.
@@ -104,7 +74,7 @@ pub async fn embed_texts(
         ));
     }
 
-    let url = normalise_to_embeddings_url(base_url);
+    let url = crate::ai::url::normalise_openai_url(base_url, "embeddings");
 
     if texts.is_empty() {
         tracing::debug!(model = %model, "embed_texts: empty input list — nothing to embed");

@@ -139,7 +139,7 @@ async fn chat_impl_stores_cancellation_token() {
     let stream_id = "stream-chat-1";
 
     // Use a port that is guaranteed unreachable so the task fails quickly.
-    let request = sample_request(stream_id, "http://127.0.0.1:1/v1/chat/completions");
+    let request = sample_request(stream_id, "http://127.0.0.1:1/v1");
 
     let result = ai_chat_impl(&state, app.handle().clone(), request).await;
     assert!(result.is_ok(), "ai_chat_impl should return Ok immediately");
@@ -169,7 +169,7 @@ async fn chat_impl_returns_error_when_request_map_lock_is_poisoned() {
 
     let request = sample_request(
         "stream-poisoned-chat",
-        "http://127.0.0.1:1/v1/chat/completions",
+        "http://127.0.0.1:1/v1",
     );
     let result = ai_chat_impl(&state, app.handle().clone(), request).await;
 
@@ -213,7 +213,7 @@ async fn chat_impl_cancel_stops_stream() {
         .mount(&server)
         .await;
 
-    let endpoint = format!("{}/v1/chat/completions", server.uri());
+    let endpoint = format!("{}/v1", server.uri());
     let request = sample_request(stream_id, &endpoint);
 
     let result = ai_chat_impl(&state, app.handle().clone(), request).await;
@@ -265,7 +265,7 @@ async fn chat_impl_cleans_up_token_after_successful_stream() {
         .mount(&server)
         .await;
 
-    let endpoint = format!("{}/v1/chat/completions", server.uri());
+    let endpoint = format!("{}/v1", server.uri());
     let request = sample_request(stream_id, &endpoint);
 
     let result = ai_chat_impl(&state, app.handle().clone(), request).await;
@@ -333,7 +333,7 @@ async fn list_models_returns_models_from_openai_format() {
         .mount(&server)
         .await;
 
-    let endpoint = format!("{}/v1/chat/completions", server.uri());
+    let endpoint = format!("{}/v1", server.uri());
     let result = list_ai_models_impl(endpoint).await;
 
     assert!(result.is_ok(), "should succeed: {:?}", result);
@@ -676,7 +676,7 @@ async fn query_expand_returns_text() {
 
     let state = test_state();
     let req = AiQueryExpandRequest {
-        endpoint: format!("{}/v1/chat/completions", server.uri()),
+        endpoint: format!("{}/v1", server.uri()),
         model: "test-model".to_string(),
         system_prompt: "You are a SQL assistant.".to_string(),
         user_message: "Find active users".to_string(),
@@ -730,7 +730,7 @@ async fn query_expand_retries_with_fresh_client_after_transport_error() {
 
     let state = test_state();
     let req = AiQueryExpandRequest {
-        endpoint: format!("http://{addr}/v1/chat/completions"),
+        endpoint: format!("http://{addr}/v1"),
         model: "test-model".to_string(),
         system_prompt: "system".to_string(),
         user_message: "user".to_string(),
@@ -763,7 +763,7 @@ async fn query_expand_handles_empty_choices() {
 
     let state = test_state();
     let req = AiQueryExpandRequest {
-        endpoint: format!("{}/v1/chat/completions", server.uri()),
+        endpoint: format!("{}/v1", server.uri()),
         model: "test-model".to_string(),
         system_prompt: "system".to_string(),
         user_message: "user".to_string(),
@@ -790,7 +790,7 @@ async fn query_expand_returns_error_on_http_500() {
 
     let state = test_state();
     let req = AiQueryExpandRequest {
-        endpoint: format!("{}/v1/chat/completions", server.uri()),
+        endpoint: format!("{}/v1", server.uri()),
         model: "test-model".to_string(),
         system_prompt: "system".to_string(),
         user_message: "user".to_string(),
@@ -805,7 +805,7 @@ async fn query_expand_returns_error_on_http_500() {
 async fn query_expand_returns_error_on_connection_refused() {
     let state = test_state();
     let req = AiQueryExpandRequest {
-        endpoint: "http://127.0.0.1:1/v1/chat/completions".to_string(),
+        endpoint: "http://127.0.0.1:1/v1".to_string(),
         model: "test-model".to_string(),
         system_prompt: "system".to_string(),
         user_message: "user".to_string(),
@@ -831,7 +831,7 @@ async fn query_expand_returns_error_on_invalid_json() {
 
     let state = test_state();
     let req = AiQueryExpandRequest {
-        endpoint: format!("{}/v1/chat/completions", server.uri()),
+        endpoint: format!("{}/v1", server.uri()),
         model: "test-model".to_string(),
         system_prompt: "system".to_string(),
         user_message: "user".to_string(),

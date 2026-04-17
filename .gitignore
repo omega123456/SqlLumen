@@ -54,3 +54,4 @@ opencode.json
 .cursor
 !.cursor/mcp.json
 .cargo
+.windsurf

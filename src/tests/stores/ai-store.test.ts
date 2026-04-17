@@ -83,7 +83,7 @@ vi.mock('../../stores/settings-store', () => ({
     getState: () => ({
       getSetting: (key: string) => {
         const defaults: Record<string, string> = {
-          'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+          'ai.endpoint': 'http://localhost:11434/v1',
           'ai.model': 'llama3',
           'ai.temperature': '0.3',
           'ai.maxTokens': '2048',
@@ -206,7 +206,7 @@ describe('useAiStore', () => {
 
       expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       const params = mockSendAiChat.mock.calls[0][0]
-      expect(params.endpoint).toBe('http://localhost:11434/v1/chat/completions')
+      expect(params.endpoint).toBe('http://localhost:11434/v1')
       expect(params.model).toBe('llama3')
       expect(params.temperature).toBe(0.3)
       expect(params.maxTokens).toBe(2048)

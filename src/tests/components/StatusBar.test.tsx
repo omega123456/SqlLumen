@@ -727,10 +727,7 @@ describe('StatusBar', () => {
       expect(indicator).toHaveAttribute('aria-valuenow', '7')
       expect(indicator).toHaveAttribute('aria-valuemin', '0')
       expect(indicator).toHaveAttribute('aria-valuemax', '15')
-      expect(indicator).toHaveAttribute(
-        'aria-valuetext',
-        'Schema indexing progress: 7 of 15'
-      )
+      expect(indicator).toHaveAttribute('aria-valuetext', 'Schema indexing progress: 7 of 15')
     })
 
     it('has aria-live="polite" region', () => {

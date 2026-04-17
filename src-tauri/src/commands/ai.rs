@@ -95,26 +95,6 @@ const QUERY_EXPAND_TIMEOUT: Duration = Duration::from_secs(60);
 /// Connect timeout for the one-off retry client.
 const QUERY_EXPAND_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Normalise an endpoint URL to a `/v1/models` path.
-///
-/// Strips any trailing `/chat/completions` and ensures the URL ends with `/v1/models`.
-fn normalise_to_models_url(endpoint_base: &str) -> Result<String, String> {
-    let mut base = endpoint_base.trim().trim_end_matches('/').to_string();
-
-    // Strip /chat/completions suffix if present
-    if base.ends_with("/chat/completions") {
-        base = base[..base.len() - "/chat/completions".len()].to_string();
-    }
-
-    // Ensure base ends with /v1
-    if !base.ends_with("/v1") {
-        // If it doesn't end with /v1, append it
-        base = format!("{}/v1", base.trim_end_matches('/'));
-    }
-
-    Ok(format!("{}/models", base))
-}
-
 /// Heuristic keywords that indicate an embedding model.
 const EMBEDDING_KEYWORDS: &[&str] = &["embed", "nomic", "bge", "e5-", "e5_", "minilm", "jina"];
 
@@ -165,7 +145,7 @@ pub fn categorise_model(entry: &crate::ai::types::OpenAiModelEntry) -> String {
 /// Makes a GET request, parses the standard `{ "data": [{ "id": "..." }] }`
 /// response, categorises each model, and returns a simplified list.
 pub async fn list_ai_models_impl(endpoint_base: String) -> Result<AiModelsResponse, String> {
-    let url = normalise_to_models_url(&endpoint_base)?;
+    let url = crate::ai::url::normalise_openai_url(&endpoint_base, "models");
 
     tracing::info!(url = %url, "listing AI models");
 
@@ -299,8 +279,9 @@ async fn send_query_expand_request(
     endpoint: &str,
     body: &serde_json::Value,
 ) -> Result<reqwest::Response, reqwest::Error> {
+    let chat_url = crate::ai::client::normalise_to_chat_completions_url(endpoint);
     client
-        .post(endpoint)
+        .post(&chat_url)
         .timeout(QUERY_EXPAND_TIMEOUT)
         .json(body)
         .send()

@@ -44,7 +44,7 @@ describe('sendAiChat', () => {
         { role: 'system', content: 'You are a SQL assistant.' },
         { role: 'user', content: 'Show me all users' },
       ],
-      endpoint: 'http://localhost:11434/v1/chat/completions',
+      endpoint: 'http://localhost:11434/v1',
       model: 'llama3',
       temperature: 0.5,
       maxTokens: 1024,
@@ -244,10 +244,10 @@ describe('listAiModels', () => {
       ],
     })
 
-    const result = await listAiModels('http://localhost:11434/v1/chat/completions')
+    const result = await listAiModels('http://localhost:11434/v1')
 
     expect(mockInvoke).toHaveBeenCalledWith('list_ai_models', {
-      endpoint: 'http://localhost:11434/v1/chat/completions',
+      endpoint: 'http://localhost:11434/v1',
     })
     expect(result.models).toEqual([
       { id: 'codellama', name: null, category: 'chat' },
@@ -296,7 +296,7 @@ describe('aiQueryExpand', () => {
     mockInvoke.mockResolvedValueOnce({ text: 'SELECT * FROM users' })
 
     const req = {
-      endpoint: 'http://localhost:11434/v1/chat/completions',
+      endpoint: 'http://localhost:11434/v1',
       model: 'llama3',
       systemPrompt: 'You are a SQL assistant.',
       userMessage: 'Find all users',
@@ -314,7 +314,7 @@ describe('aiQueryExpand', () => {
 
     await expect(
       aiQueryExpand({
-        endpoint: 'http://localhost:11434/v1/chat/completions',
+        endpoint: 'http://localhost:11434/v1',
         model: 'nonexistent',
         systemPrompt: 'system',
         userMessage: 'user',

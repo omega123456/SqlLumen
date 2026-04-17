@@ -56,7 +56,7 @@ pub struct BuildConfig {
     pub connection_id: String,
     /// The embedding model to use (e.g. "nomic-embed-text").
     pub model_id: String,
-    /// Base URL for the embedding endpoint (e.g. "http://localhost:11434/v1/embeddings").
+    /// Base URL for the embedding endpoint (e.g. "http://localhost:11434/v1").
     pub endpoint: String,
 }
 

@@ -281,7 +281,7 @@ describe('AiSettings', () => {
   it('shows correct label text for fields', () => {
     render(<AiSettings />)
     expect(screen.getByText('Enable AI assistant')).toBeInTheDocument()
-    expect(screen.getByText('Endpoint URL')).toBeInTheDocument()
+    expect(screen.getByText('Base URL')).toBeInTheDocument()
     expect(screen.getByText('Temperature')).toBeInTheDocument()
     expect(screen.getByText('Max tokens')).toBeInTheDocument()
   })
@@ -323,7 +323,7 @@ describe('AiSettings', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -363,7 +363,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -382,7 +382,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -404,7 +404,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -428,7 +428,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -451,7 +451,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -471,7 +471,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'false',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -505,7 +505,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -523,7 +523,7 @@ describe('AiSettings - Model Categories', () => {
         settings: {
           ...SETTINGS_DEFAULTS,
           'ai.enabled': 'true',
-          'ai.endpoint': 'http://localhost:9999/v1/chat/completions',
+          'ai.endpoint': 'http://localhost:9999/v1',
         },
         pendingChanges: {},
         isDirty: false,
@@ -544,7 +544,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -569,7 +569,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -595,7 +595,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -622,7 +622,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -652,7 +652,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -683,7 +683,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -710,7 +710,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -735,7 +735,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -760,7 +760,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -785,7 +785,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -815,7 +815,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
         'ai.model': 'llama3',
         'ai.embeddingModel': 'nomic-embed-text',
       },
@@ -854,7 +854,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
         'ai.model': 'llama3',
         'ai.embeddingModel': 'nomic-embed-text',
       },
@@ -885,7 +885,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -915,7 +915,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -938,7 +938,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
       },
       pendingChanges: {},
       isDirty: false,
@@ -964,7 +964,7 @@ describe('AiSettings - Model Categories', () => {
       settings: {
         ...SETTINGS_DEFAULTS,
         'ai.enabled': 'true',
-        'ai.endpoint': 'http://localhost:11434/v1/chat/completions',
+        'ai.endpoint': 'http://localhost:11434/v1',
         'ai.model': 'llama3',
       },
       pendingChanges: {},

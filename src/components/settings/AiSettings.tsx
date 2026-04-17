@@ -216,17 +216,17 @@ export function AiSettings() {
       <div className={!aiEnabled ? styles.disabledGroup : undefined}>
         <SettingsSection
           title="Connection"
-          description="Configure the endpoint and model for a local/self-hosted LLM (e.g. Ollama, LM Studio, Jan)."
+          description="Configure the base URL and model for a local/self-hosted LLM (e.g. Ollama, LM Studio, Jan). Enter the base URL only (e.g. http://localhost:11434/v1) — paths like /chat/completions are appended automatically."
         >
           <div>
             <label htmlFor="settings-ai-endpoint" className={styles.fieldLabel}>
-              Endpoint URL
+              Base URL
             </label>
             <TextInput
               id="settings-ai-endpoint"
               value={endpoint}
               onChange={(e) => setPendingChange('ai.endpoint', e.target.value)}
-              placeholder="http://localhost:11434/v1/chat/completions"
+              placeholder="http://localhost:11434/v1"
               disabled={!aiEnabled}
               data-testid="settings-ai-endpoint"
               style={{ width: 360 }}

@@ -23,6 +23,15 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Overall request timeout (generous for long completions).
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// Derive the chat completions URL from a base URL.
+///
+/// Thin wrapper around [`crate::ai::url::normalise_openai_url`] that pins the
+/// final segment to `chat/completions`. Kept `pub` so existing call sites and
+/// integration tests continue to have a single entry point for this use case.
+pub fn normalise_to_chat_completions_url(base_url: &str) -> String {
+    crate::ai::url::normalise_openai_url(base_url, "chat/completions")
+}
+
 /// Stream a chat completion from an OpenAI-compatible endpoint, emitting Tauri events.
 ///
 /// The function makes a POST request with `stream: true`, reads SSE lines from
@@ -87,13 +96,15 @@ async fn stream_chat_inner<R: Runtime>(
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
+    let chat_url = normalise_to_chat_completions_url(&request.endpoint);
+
     // Send the request, racing against cancellation
     let response = tokio::select! {
         biased;
         _ = cancellation_token.cancelled() => {
             return Err("Stream cancelled".to_string());
         }
-        result = client.post(&request.endpoint).json(&api_request).send() => {
+        result = client.post(&chat_url).json(&api_request).send() => {
             result.map_err(|e| format!("HTTP request failed: {e}"))?
         }
     };
