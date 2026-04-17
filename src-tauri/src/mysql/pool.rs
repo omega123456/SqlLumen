@@ -76,7 +76,12 @@ pub fn set_test_pool_factory(factory: Option<TestPoolFactory>) {
 /// If a CA cert is provided, `VerifyCa` mode is used; otherwise `Required` mode
 /// (encrypted but no cert verification).
 ///
-/// Pool config: min_connections=1, max_connections=5.
+/// Pool config: min_connections=1, max_connections=10.
+///
+/// The cap was bumped from 5 to 10 to let the schema-index builder run
+/// `SHOW CREATE TABLE` concurrently (see `schema_index::builder`) without
+/// starving foreground queries. Idle connections aren't held open by sqlx —
+/// max_connections is an upper bound, not a reservation.
 #[cfg(not(coverage))]
 pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::Error> {
     #[cfg(any(test, feature = "test-utils"))]
@@ -91,7 +96,7 @@ pub async fn create_pool(params: &ConnectionParams) -> Result<MySqlPool, sqlx::E
 
     MySqlPoolOptions::new()
         .min_connections(1)
-        .max_connections(5)
+        .max_connections(10)
         .acquire_timeout(Duration::from_secs(params.connect_timeout_secs))
         .connect_with(opts)
         .await

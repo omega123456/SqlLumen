@@ -7,11 +7,33 @@ pub type ProgressCallback = Box<dyn Fn(BuildProgress) + Send + Sync>;
 
 // ── Build progress / result / config ─────────────────────────────────────
 
+/// Current phase of an in-flight index build.
+///
+/// `LoadingSchema` covers MySQL enumeration + `SHOW CREATE TABLE` fetches
+/// (can take minutes for large instances). `Embedding` covers the embedding
+/// API calls and SQLite writes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildPhase {
+    LoadingSchema,
+    Embedding,
+}
+
+impl BuildPhase {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BuildPhase::LoadingSchema => "loading_schema",
+            BuildPhase::Embedding => "embedding",
+        }
+    }
+}
+
 /// Incremental progress reported during an index build.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildProgress {
     pub profile_id: String,
+    pub phase: BuildPhase,
     pub tables_done: usize,
     pub tables_total: usize,
 }

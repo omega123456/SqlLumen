@@ -46,6 +46,12 @@ const eventListenerCallbackIds = new Map<string, number[]>()
  */
 function emitMockEvent(eventName: string, payload: unknown): void {
   const ids = eventListenerCallbackIds.get(eventName) ?? []
+  // Tolerate `window` being gone (e.g. jsdom tears down before a pending
+  // setTimeout fires in unit tests). The AI streaming path schedules chunks
+  // with setTimeout, and a test may complete before they run.
+  if (typeof window === 'undefined') {
+    return
+  }
   const internals = (
     window as unknown as {
       __TAURI_INTERNALS__?: { runCallback?: (id: number, data: unknown) => void }
