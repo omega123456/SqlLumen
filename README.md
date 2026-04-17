@@ -14,6 +14,7 @@ A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://t
 - **Import / export** — data and SQL-oriented workflows (e.g. CSV, JSON, XLSX, SQL dump paths—see in-app dialogs)
 - **History & favorites** — query history and saved snippets/favorites
 - **Settings** — general, editor, and results preferences; theme (light / dark / system) persisted locally
+- **AI Assistant** — in-app assistant workflows for SQL tasks and product guidance
 - **Native desktop app** — smaller footprint than typical Electron stacks; bundles via Tauri
 
 ## Stack
@@ -121,6 +122,29 @@ The workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) bu
 3. If asset upload fails with a permissions error, set the repository’s **Settings → Actions → General → Workflow permissions** to **Read and write**.
 
 Releases are created as **drafts** by default; publish them from the Releases page when ready. macOS artifacts from CI are **unsigned** unless you add Apple code signing secrets to the workflow—users may see Gatekeeper warnings until signing/notarization is configured ([Tauri macOS signing](https://v2.tauri.app/distribute/sign-macos/)).
+
+## macOS quarantine exclusion (step by step)
+
+If macOS blocks the app because it is unsigned (for example, "app is damaged" or "cannot be opened"), remove quarantine attributes from the app bundle.
+
+1. Move the app to a stable location, such as `/Applications/SqlLumen.app`.
+2. Open Terminal.
+3. Verify the quarantine flag is present:
+   ```bash
+   xattr -l "/Applications/SqlLumen.app"
+   ```
+4. Remove the quarantine attribute recursively:
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/SqlLumen.app"
+   ```
+5. Confirm the attribute is gone:
+   ```bash
+   xattr -l "/Applications/SqlLumen.app"
+   ```
+   If nothing prints for `com.apple.quarantine`, quarantine is removed.
+6. Start the app from Finder. If Gatekeeper still prompts, right-click the app, choose **Open**, then confirm **Open**.
+
+Use this only for binaries you trust.
 
 ## Project layout
 

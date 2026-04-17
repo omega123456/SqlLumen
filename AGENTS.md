@@ -2,6 +2,10 @@
 
 Agent guidance for the **SqlLumen** repo — a cross-platform desktop MySQL/MariaDB client built with **Tauri v2** (Rust backend) + **React 19 / TypeScript** (frontend). They communicate exclusively via Tauri IPC (`invoke`).
 
+## Product Surface Note
+
+- SqlLumen now includes an **AI Assistant** user-facing workflow. When changing related UI/IPC/backend behavior, keep the assistant paths covered by tests and document any user-visible behavior changes in `README.md`.
+
 ---
 
 ## Commands
