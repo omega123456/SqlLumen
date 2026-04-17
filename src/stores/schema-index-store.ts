@@ -14,8 +14,15 @@ import { useSettingsStore } from './settings-store'
 // Types
 // ---------------------------------------------------------------------------
 
+export type BuildPhase = 'loading_schema' | 'embedding'
+
 export interface ConnectionIndexState {
   status: SchemaIndexStatus['status']
+  /**
+   * Current phase of an in-flight build. `null` means no known phase yet
+   * (either not building, or building but no progress event has arrived).
+   */
+  phase: BuildPhase | null
   tablesDone: number
   tablesTotal: number
   lastBuildTimestamp: number
@@ -37,7 +44,12 @@ interface SchemaIndexStore {
   getStatusForSession: (sessionId: string) => ConnectionIndexState | undefined
 
   // Internal — called by event listeners
-  _handleProgress: (profileId: string, tablesDone: number, tablesTotal: number) => void
+  _handleProgress: (
+    profileId: string,
+    phase: BuildPhase,
+    tablesDone: number,
+    tablesTotal: number
+  ) => void
   _handleComplete: (profileId: string) => void
   _handleError: (profileId: string, error: string) => void
 }
@@ -49,6 +61,7 @@ interface SchemaIndexStore {
 function createDefaultConnectionIndexState(): ConnectionIndexState {
   return {
     status: 'stale',
+    phase: null,
     tablesDone: 0,
     tablesTotal: 0,
     lastBuildTimestamp: 0,
@@ -104,16 +117,19 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
     if (listenersInitialized || !canUseTauriEventListen()) return
     listenersInitialized = true
 
-    listen<{ profileId: string; tablesDone: number; tablesTotal: number }>(
-      'schema-index-progress',
-      (event) => {
-        get()._handleProgress(
-          event.payload.profileId,
-          event.payload.tablesDone,
-          event.payload.tablesTotal
-        )
-      }
-    ).catch((err) => {
+    listen<{
+      profileId: string
+      phase: BuildPhase
+      tablesDone: number
+      tablesTotal: number
+    }>('schema-index-progress', (event) => {
+      get()._handleProgress(
+        event.payload.profileId,
+        event.payload.phase,
+        event.payload.tablesDone,
+        event.payload.tablesTotal
+      )
+    }).catch((err) => {
       console.error('[schema-index-store] Failed to listen for schema-index-progress:', err)
     })
 
@@ -248,15 +264,17 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
 
     triggerBuild: async (sessionId) => {
       const state = get()
-      if (!state.sessionToProfile[sessionId]) return
+      if (!state.sessionToProfile[sessionId]) {
+        return
+      }
 
-      // Set status to building
       set((s) => ({
         connections: {
           ...s.connections,
           [sessionId]: {
             ...(s.connections[sessionId] ?? createDefaultConnectionIndexState()),
             status: 'building' as const,
+            phase: null,
             tablesDone: 0,
             tablesTotal: 0,
           },
@@ -310,15 +328,17 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
 
     forceRebuild: async (sessionId) => {
       const state = get()
-      if (!state.sessionToProfile[sessionId]) return
+      if (!state.sessionToProfile[sessionId]) {
+        return
+      }
 
-      // Set status to building
       set((s) => ({
         connections: {
           ...s.connections,
           [sessionId]: {
             ...(s.connections[sessionId] ?? createDefaultConnectionIndexState()),
             status: 'building' as const,
+            phase: null,
             tablesDone: 0,
             tablesTotal: 0,
           },
@@ -384,10 +404,11 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
       return get().connections[sessionId]
     },
 
-    _handleProgress: (profileId, tablesDone, tablesTotal) => {
+    _handleProgress: (profileId, phase, tablesDone, tablesTotal) => {
       updateSessionsForProfile(get, set, profileId, (conn) => ({
         ...conn,
         status: 'building',
+        phase,
         tablesDone,
         tablesTotal,
       }))
@@ -397,6 +418,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
       updateSessionsForProfile(get, set, profileId, (conn) => ({
         ...conn,
         status: 'ready',
+        phase: null,
         lastBuildTimestamp: Date.now(),
       }))
     },
@@ -405,6 +427,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
       updateSessionsForProfile(get, set, profileId, (conn) => ({
         ...conn,
         status: 'error',
+        phase: null,
         error,
       }))
     },

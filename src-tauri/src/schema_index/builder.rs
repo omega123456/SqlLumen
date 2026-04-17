@@ -16,8 +16,8 @@ use tokio_util::sync::CancellationToken;
 use super::embeddings;
 use super::storage;
 use super::types::{
-    BuildConfig, BuildProgress, BuildResult, ChunkInsert, ChunkType, FkInput, IndexMeta,
-    IndexStatus, ProgressCallback, TableDdlInput,
+    BuildConfig, BuildPhase, BuildProgress, BuildResult, ChunkInsert, ChunkType, FkInput,
+    IndexMeta, IndexStatus, ProgressCallback, TableDdlInput,
 };
 
 /// Maximum number of texts per embedding batch.
@@ -391,11 +391,22 @@ pub async fn build_index(
         all_tables.iter().map(|(db, _)| db.as_str()).collect();
     tracing::info!(
         profile_id = %config.connection_id,
-        database_count = distinct_dbs.len(),
+        database_count = databases.len(),
         tables_total,
         elapsed_ms = enum_started.elapsed().as_millis() as u64,
-        "schema_index build_index: bulk enumerated user tables from information_schema"
+        "schema_index build_index: enumerated user databases from MySQL"
     );
+
+    // Emit an initial loading_schema progress event so the UI can immediately
+    // leave the "0/0" indeterminate state and show "Reading schema...".
+    if let Some(cb) = on_progress {
+        cb(BuildProgress {
+            profile_id: config.connection_id.clone(),
+            phase: BuildPhase::LoadingSchema,
+            tables_done: 0,
+            tables_total: 0,
+        });
+    }
 
     if cancellation.is_cancelled() {
         return Err("Build cancelled".to_string());
@@ -460,6 +471,18 @@ pub async fn build_index(
                         table_name: table_name.clone(),
                         create_table_sql: ddl,
                     });
+            // Emit loading_schema progress after each table's DDL is fetched.
+            // tables_total is 0 because it is still unknown at this point;
+            // the UI uses (phase, tables_done) to render
+            // "Reading schema (N tables)..." in an indeterminate mode.
+            if let Some(cb) = on_progress {
+                cb(BuildProgress {
+                    profile_id: config.connection_id.clone(),
+                    phase: BuildPhase::LoadingSchema,
+                    tables_done: all_ddl_inputs.len(),
+                    tables_total: 0,
+                });
+            }
                 }
                 SignatureDecision::Refetch => {
                     to_fetch.push((db_name.clone(), table_name.clone()));
@@ -649,6 +672,18 @@ pub async fn build_index(
     };
     let mut tables_done: usize = unchanged_tables;
 
+    // Emit an initial embedding-phase progress event so the UI can switch
+    // from "Reading schema..." to "Indexing <done>/<total>" before the first
+    // batch even completes.
+    if let Some(cb) = on_progress {
+        cb(BuildProgress {
+            profile_id: config.connection_id.clone(),
+            phase: BuildPhase::Embedding,
+            tables_done,
+            tables_total,
+        });
+    }
+
     for batch_start in (0..total_to_embed).step_by(EMBED_BATCH_SIZE) {
         if cancellation.is_cancelled() {
             tracing::warn!(
@@ -772,6 +807,7 @@ pub async fn build_index(
         if let Some(cb) = on_progress {
             cb(BuildProgress {
                 profile_id: config.connection_id.clone(),
+                phase: BuildPhase::Embedding,
                 tables_done,
                 tables_total,
             });

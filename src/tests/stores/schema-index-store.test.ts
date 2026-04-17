@@ -175,48 +175,65 @@ describe('useSchemaIndexStore', () => {
   })
 
   describe('_handleProgress', () => {
-    it('updates status to building with correct counts', () => {
+    it('updates status to building with correct counts and phase', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
-      useSchemaIndexStore.getState()._handleProgress('profile-1', 5, 10)
+      useSchemaIndexStore.getState()._handleProgress('profile-1', 'embedding', 5, 10)
 
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].status).toBe('building')
+      expect(state.connections['session-1'].phase).toBe('embedding')
       expect(state.connections['session-1'].tablesDone).toBe(5)
       expect(state.connections['session-1'].tablesTotal).toBe(10)
+    })
+
+    it('stores loading_schema phase with zero total', () => {
+      useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
+      useSchemaIndexStore.getState()._handleProgress('profile-1', 'loading_schema', 7, 0)
+
+      const state = useSchemaIndexStore.getState()
+      expect(state.connections['session-1'].phase).toBe('loading_schema')
+      expect(state.connections['session-1'].tablesDone).toBe(7)
+      expect(state.connections['session-1'].tablesTotal).toBe(0)
     })
 
     it('updates all sessions for the profile', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       useSchemaIndexStore.getState().registerSession('session-2', 'profile-1')
-      useSchemaIndexStore.getState()._handleProgress('profile-1', 3, 8)
+      useSchemaIndexStore.getState()._handleProgress('profile-1', 'embedding', 3, 8)
 
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].status).toBe('building')
+      expect(state.connections['session-1'].phase).toBe('embedding')
       expect(state.connections['session-1'].tablesDone).toBe(3)
       expect(state.connections['session-2'].status).toBe('building')
+      expect(state.connections['session-2'].phase).toBe('embedding')
       expect(state.connections['session-2'].tablesDone).toBe(3)
     })
   })
 
   describe('_handleComplete', () => {
-    it('updates status to ready with timestamp', () => {
+    it('updates status to ready with timestamp and clears phase', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
+      useSchemaIndexStore.getState()._handleProgress('profile-1', 'embedding', 5, 10)
       const beforeTime = Date.now()
       useSchemaIndexStore.getState()._handleComplete('profile-1')
 
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].status).toBe('ready')
+      expect(state.connections['session-1'].phase).toBeNull()
       expect(state.connections['session-1'].lastBuildTimestamp).toBeGreaterThanOrEqual(beforeTime)
     })
   })
 
   describe('_handleError', () => {
-    it('updates status to error with message', () => {
+    it('updates status to error with message and clears phase', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
+      useSchemaIndexStore.getState()._handleProgress('profile-1', 'loading_schema', 0, 0)
       useSchemaIndexStore.getState()._handleError('profile-1', 'Something went wrong')
 
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].status).toBe('error')
+      expect(state.connections['session-1'].phase).toBeNull()
       expect(state.connections['session-1'].error).toBe('Something went wrong')
     })
   })
@@ -312,7 +329,7 @@ describe('useSchemaIndexStore', () => {
 
   describe('_handleProgress / _handleComplete / _handleError with no sessions', () => {
     it('_handleProgress does nothing for unknown profile', () => {
-      useSchemaIndexStore.getState()._handleProgress('unknown-profile', 1, 10)
+      useSchemaIndexStore.getState()._handleProgress('unknown-profile', 'embedding', 1, 10)
       expect(useSchemaIndexStore.getState().connections).toEqual({})
     })
 

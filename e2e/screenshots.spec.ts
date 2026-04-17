@@ -691,7 +691,8 @@ for (const theme of themes) {
     test('StatusBar — indexing indicator', async ({ page }) => {
       await connectToSample(page)
 
-      // Inject a 'building' state into the schema index store for the active session
+      // Inject a 'building' state (embedding phase) into the schema index
+      // store for the active session.
       await page.evaluate(() => {
         const store = (window as unknown as Record<string, unknown>).__schemaIndexStore__ as {
           setState: (
@@ -705,6 +706,7 @@ for (const theme of themes) {
             ...state.connections,
             'session-playwright-1': {
               status: 'building',
+              phase: 'embedding',
               tablesDone: 7,
               tablesTotal: 15,
               lastBuildTimestamp: 0,
@@ -713,11 +715,44 @@ for (const theme of themes) {
         }))
       })
 
-      // Wait for the indexing indicator to appear in the status bar
       await expect(page.getByTestId('indexing-indicator')).toBeVisible({ timeout: APP_READY_MS })
 
       await expect(page.getByTestId('status-bar')).toHaveScreenshot(
         `status-bar-indexing-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('StatusBar — indexing indicator (loading_schema phase)', async ({ page }) => {
+      await connectToSample(page)
+
+      // Inject a 'building' state with the loading_schema phase (no totals).
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__schemaIndexStore__ as {
+          setState: (
+            updater: (state: {
+              connections: Record<string, Record<string, unknown>>
+            }) => Record<string, unknown>
+          ) => void
+        }
+        store.setState((state) => ({
+          connections: {
+            ...state.connections,
+            'session-playwright-1': {
+              status: 'building',
+              phase: 'loading_schema',
+              tablesDone: 12,
+              tablesTotal: 0,
+              lastBuildTimestamp: 0,
+            },
+          },
+        }))
+      })
+
+      await expect(page.getByTestId('indexing-indicator')).toBeVisible({ timeout: APP_READY_MS })
+
+      await expect(page.getByTestId('status-bar')).toHaveScreenshot(
+        `status-bar-indexing-loading-schema-${theme}.png`,
         { animations: 'disabled' }
       )
     })
