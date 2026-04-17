@@ -391,7 +391,7 @@ pub async fn build_index(
         all_tables.iter().map(|(db, _)| db.as_str()).collect();
     tracing::info!(
         profile_id = %config.connection_id,
-        database_count = databases.len(),
+        database_count = distinct_dbs.len(),
         tables_total,
         elapsed_ms = enum_started.elapsed().as_millis() as u64,
         "schema_index build_index: enumerated user databases from MySQL"
@@ -471,18 +471,6 @@ pub async fn build_index(
                         table_name: table_name.clone(),
                         create_table_sql: ddl,
                     });
-            // Emit loading_schema progress after each table's DDL is fetched.
-            // tables_total is 0 because it is still unknown at this point;
-            // the UI uses (phase, tables_done) to render
-            // "Reading schema (N tables)..." in an indeterminate mode.
-            if let Some(cb) = on_progress {
-                cb(BuildProgress {
-                    profile_id: config.connection_id.clone(),
-                    phase: BuildPhase::LoadingSchema,
-                    tables_done: all_ddl_inputs.len(),
-                    tables_total: 0,
-                });
-            }
                 }
                 SignatureDecision::Refetch => {
                     to_fetch.push((db_name.clone(), table_name.clone()));
@@ -503,6 +491,7 @@ pub async fn build_index(
     if let Some(cb) = on_progress {
         cb(BuildProgress {
             profile_id: config.connection_id.clone(),
+            phase: BuildPhase::LoadingSchema,
             tables_done: reused_ddls.len(),
             tables_total,
         });
@@ -1273,8 +1262,6 @@ pub const SHOW_CREATE_TABLE_CONCURRENCY: usize = 8;
 async fn fetch_all_user_tables(
     pool: &sqlx::MySqlPool,
 ) -> Result<Vec<(String, String)>, String> {
-    use sqlx::Row;
-
     let rows = sqlx::query(
         "SELECT TABLE_SCHEMA, TABLE_NAME \
          FROM information_schema.TABLES \
@@ -1605,6 +1592,7 @@ async fn fetch_create_tables_parallel(
                 let done = completed.load(Ordering::Relaxed);
                 cb(BuildProgress {
                     profile_id: profile_id.to_string(),
+                    phase: BuildPhase::LoadingSchema,
                     tables_done: initial_done + done,
                     tables_total: total,
                 });
