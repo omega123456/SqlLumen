@@ -282,6 +282,40 @@ pub fn diff_chunks(
     (needs_embed, to_delete)
 }
 
+// ── Signature short-circuit partition (pure) ────────────────────────────
+
+/// Outcome of the signature-based partition for a single table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SignatureDecision {
+    /// The stored signature matches and a `table:` chunk already exists;
+    /// the caller can reuse the stored DDL text without calling
+    /// `SHOW CREATE TABLE`.
+    Reuse,
+    /// Signature differs, is missing, or the expected chunk is gone — the
+    /// caller must fetch fresh DDL via `SHOW CREATE TABLE`.
+    Refetch,
+}
+
+/// Decide whether a single `(db_name, table_name)` can be short-circuited.
+///
+/// `current_sig` is the freshly computed signature for this table (or `None`
+/// if absent from `current_signatures`, which typically means the table is
+/// brand new in this pass). `stored_sig` is the previously persisted
+/// signature. `chunk_exists` must be true iff a `table:` chunk for this table
+/// is present in the `schema_index_chunks` SQLite store.
+///
+/// Pure / no I/O — used in both production (inside the build loop) and tests.
+pub fn decide_signature_action(
+    current_sig: Option<&str>,
+    stored_sig: Option<&str>,
+    chunk_exists: bool,
+) -> SignatureDecision {
+    match (current_sig, stored_sig) {
+        (Some(c), Some(s)) if c == s && chunk_exists => SignatureDecision::Reuse,
+        _ => SignatureDecision::Refetch,
+    }
+}
+
 // ── Build index (full) ──────────────────────────────────────────────────
 
 /// Build (or incrementally update) the schema index for a connection.
@@ -349,10 +383,17 @@ pub async fn build_index(
         return Err("Build cancelled".to_string());
     }
 
-    let databases = fetch_database_list(mysql_pool).await?;
+    // 3a. Enumerate every user (non-system) base table in one round-trip.
+    let enum_started = Instant::now();
+    let all_tables = fetch_all_user_tables(mysql_pool).await?;
+    let tables_total = all_tables.len();
+    let distinct_dbs: std::collections::HashSet<&str> =
+        all_tables.iter().map(|(db, _)| db.as_str()).collect();
     tracing::info!(
         profile_id = %config.connection_id,
-        database_count = databases.len(),
+        database_count = distinct_dbs.len(),
+        tables_total,
+        elapsed_ms = enum_started.elapsed().as_millis() as u64,
         "schema_index build_index: enumerated user databases from MySQL"
     );
 
@@ -367,35 +408,115 @@ pub async fn build_index(
         });
     }
 
-    let mut all_ddl_inputs: Vec<TableDdlInput> = Vec::new();
-    for db_name in &databases {
-        if cancellation.is_cancelled() {
-            return Err("Build cancelled".to_string());
-        }
-        let tables = fetch_table_list(mysql_pool, db_name).await?;
-        for table_name in &tables {
-            let ddl = fetch_create_table(mysql_pool, db_name, table_name).await?;
-            all_ddl_inputs.push(TableDdlInput {
-                db_name: db_name.clone(),
-                table_name: table_name.clone(),
-                create_table_sql: ddl,
-            });
-            // Emit loading_schema progress after each table's DDL is fetched.
-            // tables_total is 0 because it is still unknown at this point;
-            // the UI uses (phase, tables_done) to render
-            // "Reading schema (N tables)..." in an indeterminate mode.
-            if let Some(cb) = on_progress {
-                cb(BuildProgress {
-                    profile_id: config.connection_id.clone(),
-                    phase: BuildPhase::LoadingSchema,
-                    tables_done: all_ddl_inputs.len(),
-                    tables_total: 0,
-                });
+    if cancellation.is_cancelled() {
+        return Err("Build cancelled".to_string());
+    }
+
+    // 3b. Compute current per-table MySQL signatures in three bulk queries.
+    let sig_started = Instant::now();
+    let current_signatures = fetch_all_table_signatures(mysql_pool).await?;
+    tracing::info!(
+        profile_id = %config.connection_id,
+        signature_count = current_signatures.len(),
+        elapsed_ms = sig_started.elapsed().as_millis() as u64,
+        "schema_index build_index: bulk-fetched per-table schema signatures"
+    );
+
+    if cancellation.is_cancelled() {
+        return Err("Build cancelled".to_string());
+    }
+
+    // 3c. Load previously stored signatures so unchanged tables can skip DDL fetch.
+    let stored_signatures = {
+        let conn = sqlite_conn
+            .lock()
+            .map_err(|e| format!("SQLite lock: {e}"))?;
+        storage::get_signatures_for_connection(&conn, &config.connection_id)
+            .map_err(|e| format!("Failed to load stored signatures: {e}"))?
+    };
+
+    // Partition tables: reuse stored DDL when signature matches AND a `table:`
+    // chunk already exists in SQLite; otherwise queue for SHOW CREATE TABLE.
+    let mut reused_ddls: Vec<TableDdlInput> = Vec::new();
+    let mut to_fetch: Vec<(String, String)> = Vec::new();
+    {
+        let conn = sqlite_conn
+            .lock()
+            .map_err(|e| format!("SQLite lock: {e}"))?;
+        for (db_name, table_name) in &all_tables {
+            let current = current_signatures
+                .get(&(db_name.clone(), table_name.clone()))
+                .map(|s| s.as_str());
+            let stored = stored_signatures
+                .get(&(db_name.clone(), table_name.clone()))
+                .map(|s| s.as_str());
+
+            // We only need to check for chunk existence when the signatures
+            // match — otherwise the decision is already `Refetch`.
+            let chunk_key = table_chunk_key(db_name, table_name);
+            let existing_chunk = if matches!((current, stored), (Some(c), Some(s)) if c == s) {
+                storage::get_chunk_by_key(&conn, &config.connection_id, &chunk_key)
+                    .map_err(|e| format!("Failed to look up existing chunk {chunk_key}: {e}"))?
+            } else {
+                None
+            };
+            let chunk_exists = existing_chunk.is_some();
+
+            match decide_signature_action(current, stored, chunk_exists) {
+                SignatureDecision::Reuse => {
+                    // Safe to unwrap: chunk_exists implies Some(...).
+                    let ddl = existing_chunk.expect("chunk_exists").ddl_text;
+                    reused_ddls.push(TableDdlInput {
+                        db_name: db_name.clone(),
+                        table_name: table_name.clone(),
+                        create_table_sql: ddl,
+                    });
+                }
+                SignatureDecision::Refetch => {
+                    to_fetch.push((db_name.clone(), table_name.clone()));
+                }
             }
         }
     }
 
-    let tables_total = all_ddl_inputs.len();
+    tracing::info!(
+        profile_id = %config.connection_id,
+        reused_ddls = reused_ddls.len(),
+        to_fetch = to_fetch.len(),
+        total_tables = tables_total,
+        "schema_index build_index: signature short-circuit partitioned tables"
+    );
+
+    // Emit an initial progress event so the UI can leave the 0/0 state now.
+    if let Some(cb) = on_progress {
+        cb(BuildProgress {
+            profile_id: config.connection_id.clone(),
+            phase: BuildPhase::LoadingSchema,
+            tables_done: reused_ddls.len(),
+            tables_total,
+        });
+    }
+
+    // 3d. Parallel SHOW CREATE TABLE for tables that actually changed.
+    let fetched_ddls = if to_fetch.is_empty() {
+        Vec::new()
+    } else {
+        fetch_create_tables_parallel(
+            mysql_pool,
+            to_fetch,
+            &config.connection_id,
+            cancellation,
+            on_progress,
+            reused_ddls.len(),
+            tables_total,
+        )
+        .await?
+    };
+
+    let mut all_ddl_inputs: Vec<TableDdlInput> = Vec::with_capacity(tables_total);
+    all_ddl_inputs.extend(reused_ddls);
+    all_ddl_inputs.extend(fetched_ddls);
+
     tracing::info!(
         profile_id = %config.connection_id,
         tables_total,
@@ -682,6 +803,38 @@ pub async fn build_index(
         }
     }
 
+    // 7a. Persist current signatures for every table that now has a chunk so
+    // the next build can short-circuit unchanged tables. Also drop signatures
+    // for tables that no longer exist in the bulk enumeration.
+    {
+        let conn = sqlite_conn
+            .lock()
+            .map_err(|e| format!("SQLite lock: {e}"))?;
+
+        let sig_rows: Vec<(String, String, String)> = current_signatures
+            .iter()
+            .map(|((db, tbl), sig)| (db.clone(), tbl.clone(), sig.clone()))
+            .collect();
+        conn.execute_batch("BEGIN")
+            .map_err(|e| format!("BEGIN signatures: {e}"))?;
+        storage::upsert_signatures(&conn, &config.connection_id, &sig_rows)
+            .map_err(|e| format!("Failed to upsert signatures: {e}"))?;
+
+        // Remove signatures for tables no longer present. `current_signatures`
+        // already covers only existing tables, so stored signatures whose key
+        // isn't in `current_signatures` are stale.
+        let current_keys: std::collections::HashSet<(String, String)> =
+            current_signatures.keys().cloned().collect();
+        for (db, tbl) in stored_signatures.keys() {
+            if !current_keys.contains(&(db.clone(), tbl.clone())) {
+                storage::delete_signature(&conn, &config.connection_id, db, tbl)
+                    .map_err(|e| format!("Failed to delete stale signature: {e}"))?;
+            }
+        }
+        conn.execute_batch("COMMIT")
+            .map_err(|e| format!("COMMIT signatures: {e}"))?;
+    }
+
     // 8. Set status = "ready", update last_build_at
     {
         let conn = sqlite_conn
@@ -736,6 +889,8 @@ pub async fn rebuild_tables(
     );
 
     // 1. Delete all chunks for specified tables (covers FK chunks on both sides)
+    // and invalidate their stored signatures so the follow-up `build_index`
+    // will re-fetch DDL instead of short-circuiting on a stale signature.
     {
         let conn = sqlite_conn
             .lock()
@@ -743,11 +898,13 @@ pub async fn rebuild_tables(
         for (db, tbl) in tables {
             storage::delete_chunks_by_table(&conn, &config.connection_id, db, tbl)
                 .map_err(|e| format!("Failed to delete chunks for {db}.{tbl}: {e}"))?;
+            storage::delete_signature(&conn, &config.connection_id, db, tbl)
+                .map_err(|e| format!("Failed to delete signature for {db}.{tbl}: {e}"))?;
         }
     }
     tracing::debug!(
         profile_id = %config.connection_id,
-        "schema_index rebuild_tables: removed existing chunks for targeted tables"
+        "schema_index rebuild_tables: removed existing chunks and signatures for targeted tables"
     );
 
     // 2. Re-fetch DDL for those tables
@@ -1092,57 +1249,264 @@ pub fn generate_all_chunks(
 
 // ── MySQL fetch helpers (excluded from coverage builds) ──────────────────
 
-/// Fetch non-system database names from MySQL.
-#[cfg(not(coverage))]
-async fn fetch_database_list(pool: &sqlx::MySqlPool) -> Result<Vec<String>, String> {
-    use sqlx::Row;
-    let rows =
-        sqlx::query("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME")
-            .fetch_all(pool)
-            .await
-            .map_err(|e| format!("Failed to list databases: {e}"))?;
+/// MySQL system schemas that should never be indexed.
+const SYSTEM_SCHEMAS: &[&str] = &["information_schema", "mysql", "performance_schema", "sys"];
 
-    let system_dbs = ["information_schema", "mysql", "performance_schema", "sys"];
-    let mut names = Vec::new();
-    for row in &rows {
-        let name: String = row
-            .try_get::<String, _>(0)
-            .or_else(|_| {
-                row.try_get::<Vec<u8>, _>(0)
-                    .map(|b| String::from_utf8_lossy(&b).into_owned())
-            })
-            .map_err(|e| format!("Failed to decode database name: {e}"))?;
-        if !system_dbs.contains(&name.to_lowercase().as_str()) {
-            names.push(name);
-        }
-    }
-    Ok(names)
-}
+/// Concurrency for parallel `SHOW CREATE TABLE` fetches. Must stay at or below
+/// the MySQL pool's `max_connections` so foreground queries aren't starved.
+pub const SHOW_CREATE_TABLE_CONCURRENCY: usize = 8;
 
-/// Fetch table names from a database.
+/// Enumerate every user (non-system) base table in one `information_schema`
+/// round-trip. Returns `(schema, table)` pairs sorted by `(schema, table)`.
 #[cfg(not(coverage))]
-async fn fetch_table_list(pool: &sqlx::MySqlPool, database: &str) -> Result<Vec<String>, String> {
-    use sqlx::Row;
+async fn fetch_all_user_tables(
+    pool: &sqlx::MySqlPool,
+) -> Result<Vec<(String, String)>, String> {
     let rows = sqlx::query(
-        "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+        "SELECT TABLE_SCHEMA, TABLE_NAME \
+         FROM information_schema.TABLES \
+         WHERE TABLE_TYPE = 'BASE TABLE' \
+           AND TABLE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys') \
+         ORDER BY TABLE_SCHEMA, TABLE_NAME",
     )
-    .bind(database)
     .fetch_all(pool)
     .await
-    .map_err(|e| format!("Failed to list tables in {database}: {e}"))?;
+    .map_err(|e| format!("Failed to enumerate user tables: {e}"))?;
 
-    let mut names = Vec::new();
+    let mut out = Vec::with_capacity(rows.len());
     for row in &rows {
-        let name: String = row
-            .try_get::<String, _>(0)
-            .or_else(|_| {
-                row.try_get::<Vec<u8>, _>(0)
-                    .map(|b| String::from_utf8_lossy(&b).into_owned())
-            })
-            .map_err(|e| format!("Failed to decode table name: {e}"))?;
-        names.push(name);
+        let schema = decode_string(row, 0).map_err(|e| format!("schema: {e}"))?;
+        let table = decode_string(row, 1).map_err(|e| format!("table: {e}"))?;
+        // Double-check: bind does not work with NOT IN (tuple) so guard in Rust too.
+        if SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str()) {
+            continue;
+        }
+        out.push((schema, table));
     }
-    Ok(names)
+    Ok(out)
+}
+
+/// Tolerant UTF-8 column decoder: try `String`, fall back to bytes → lossy UTF-8.
+/// Used everywhere we read MySQL identifier / metadata columns that the server
+/// may hand back as either depending on collation.
+#[cfg(not(coverage))]
+fn decode_string(row: &sqlx::mysql::MySqlRow, idx: usize) -> Result<String, sqlx::Error> {
+    use sqlx::Row;
+    row.try_get::<String, _>(idx).or_else(|_| {
+        row.try_get::<Vec<u8>, _>(idx)
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+    })
+}
+
+/// Fetch a per-table MySQL "schema fingerprint" for every user table in a
+/// single sweep. Three bulk queries (one each against `COLUMNS`, `STATISTICS`,
+/// `KEY_COLUMN_USAGE` joined with `REFERENTIAL_CONSTRAINTS`) are issued
+/// regardless of table count, and the raw rows are SHA-256'd client-side per
+/// table — this avoids any `group_concat_max_len` truncation and keeps the
+/// signature logic testable in pure Rust.
+///
+/// Returned map is `(db_name, table_name) -> signature_hex`.
+#[cfg(not(coverage))]
+async fn fetch_all_table_signatures(
+    pool: &sqlx::MySqlPool,
+) -> Result<HashMap<(String, String), String>, String> {
+    use sqlx::Row;
+
+    let system_filter = "TABLE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys')";
+
+    let cols_sql = format!(
+        "SELECT TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION, COLUMN_NAME, COLUMN_TYPE, \
+                IS_NULLABLE, IFNULL(COLUMN_DEFAULT, ''), EXTRA, COLUMN_KEY, \
+                IFNULL(COLUMN_COMMENT, ''), IFNULL(CHARACTER_SET_NAME, ''), IFNULL(COLLATION_NAME, '') \
+         FROM information_schema.COLUMNS \
+         WHERE {system_filter} \
+         ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION"
+    );
+
+    let idx_sql = format!(
+        "SELECT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, \
+                NON_UNIQUE, IFNULL(INDEX_TYPE, '') \
+         FROM information_schema.STATISTICS \
+         WHERE {system_filter} \
+         ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX"
+    );
+
+    let fks_sql = format!(
+        "SELECT kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION, \
+                kcu.COLUMN_NAME, IFNULL(kcu.REFERENCED_TABLE_SCHEMA, ''), \
+                IFNULL(kcu.REFERENCED_TABLE_NAME, ''), IFNULL(kcu.REFERENCED_COLUMN_NAME, ''), \
+                IFNULL(rc.UPDATE_RULE, ''), IFNULL(rc.DELETE_RULE, '') \
+         FROM information_schema.KEY_COLUMN_USAGE kcu \
+         LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS rc \
+              ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA \
+             AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME \
+             AND rc.TABLE_NAME = kcu.TABLE_NAME \
+         WHERE kcu.REFERENCED_TABLE_NAME IS NOT NULL \
+           AND kcu.{system_filter} \
+         ORDER BY kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION"
+    );
+
+    // Per-table SHA-256 hashers keyed on (schema, table).
+    let mut hashers: HashMap<(String, String), Sha256> = HashMap::new();
+
+    // Columns
+    let started = Instant::now();
+    let col_rows = sqlx::query(&cols_sql)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch column signatures: {e}"))?;
+    for row in &col_rows {
+        let schema = decode_string(row, 0).map_err(|e| format!("schema: {e}"))?;
+        if SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str()) {
+            continue;
+        }
+        let table = decode_string(row, 1).map_err(|e| format!("table: {e}"))?;
+        let ordinal: i64 = row
+            .try_get::<i64, _>(2)
+            .or_else(|_| row.try_get::<u64, _>(2).map(|v| v as i64))
+            .unwrap_or(0);
+        let col_name = decode_string(row, 3).unwrap_or_default();
+        let col_type = decode_string(row, 4).unwrap_or_default();
+        let is_null = decode_string(row, 5).unwrap_or_default();
+        let default = decode_string(row, 6).unwrap_or_default();
+        let extra = decode_string(row, 7).unwrap_or_default();
+        let col_key = decode_string(row, 8).unwrap_or_default();
+        let comment = decode_string(row, 9).unwrap_or_default();
+        let charset = decode_string(row, 10).unwrap_or_default();
+        let collation = decode_string(row, 11).unwrap_or_default();
+
+        let hasher = hashers
+            .entry((schema.clone(), table.clone()))
+            .or_insert_with(Sha256::new);
+        hasher.update(b"C|");
+        hasher.update(ordinal.to_le_bytes());
+        hasher.update(b"|");
+        hasher.update(col_name.as_bytes());
+        hasher.update(b"|");
+        hasher.update(col_type.as_bytes());
+        hasher.update(b"|");
+        hasher.update(is_null.as_bytes());
+        hasher.update(b"|");
+        hasher.update(default.as_bytes());
+        hasher.update(b"|");
+        hasher.update(extra.as_bytes());
+        hasher.update(b"|");
+        hasher.update(col_key.as_bytes());
+        hasher.update(b"|");
+        hasher.update(comment.as_bytes());
+        hasher.update(b"|");
+        hasher.update(charset.as_bytes());
+        hasher.update(b"|");
+        hasher.update(collation.as_bytes());
+        hasher.update(b"\x1e");
+    }
+    tracing::debug!(
+        rows = col_rows.len(),
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "schema_index signatures: COLUMNS bulk query complete"
+    );
+
+    // Indexes
+    let started = Instant::now();
+    let idx_rows = sqlx::query(&idx_sql)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch index signatures: {e}"))?;
+    for row in &idx_rows {
+        let schema = decode_string(row, 0).map_err(|e| format!("schema: {e}"))?;
+        if SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str()) {
+            continue;
+        }
+        let table = decode_string(row, 1).map_err(|e| format!("table: {e}"))?;
+        let idx_name = decode_string(row, 2).unwrap_or_default();
+        let seq: i64 = row
+            .try_get::<i64, _>(3)
+            .or_else(|_| row.try_get::<u64, _>(3).map(|v| v as i64))
+            .unwrap_or(0);
+        let col_name = decode_string(row, 4).unwrap_or_default();
+        let non_unique: i64 = row
+            .try_get::<i64, _>(5)
+            .or_else(|_| row.try_get::<u64, _>(5).map(|v| v as i64))
+            .unwrap_or(0);
+        let idx_type = decode_string(row, 6).unwrap_or_default();
+
+        let hasher = hashers
+            .entry((schema.clone(), table.clone()))
+            .or_insert_with(Sha256::new);
+        hasher.update(b"I|");
+        hasher.update(idx_name.as_bytes());
+        hasher.update(b"|");
+        hasher.update(seq.to_le_bytes());
+        hasher.update(b"|");
+        hasher.update(col_name.as_bytes());
+        hasher.update(b"|");
+        hasher.update(non_unique.to_le_bytes());
+        hasher.update(b"|");
+        hasher.update(idx_type.as_bytes());
+        hasher.update(b"\x1e");
+    }
+    tracing::debug!(
+        rows = idx_rows.len(),
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "schema_index signatures: STATISTICS bulk query complete"
+    );
+
+    // Foreign keys
+    let started = Instant::now();
+    let fk_rows = sqlx::query(&fks_sql)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to fetch FK signatures: {e}"))?;
+    for row in &fk_rows {
+        let schema = decode_string(row, 0).map_err(|e| format!("schema: {e}"))?;
+        if SYSTEM_SCHEMAS.contains(&schema.to_lowercase().as_str()) {
+            continue;
+        }
+        let table = decode_string(row, 1).map_err(|e| format!("table: {e}"))?;
+        let constraint = decode_string(row, 2).unwrap_or_default();
+        let ord: i64 = row
+            .try_get::<i64, _>(3)
+            .or_else(|_| row.try_get::<u64, _>(3).map(|v| v as i64))
+            .unwrap_or(0);
+        let col_name = decode_string(row, 4).unwrap_or_default();
+        let ref_schema = decode_string(row, 5).unwrap_or_default();
+        let ref_table = decode_string(row, 6).unwrap_or_default();
+        let ref_col = decode_string(row, 7).unwrap_or_default();
+        let upd = decode_string(row, 8).unwrap_or_default();
+        let del = decode_string(row, 9).unwrap_or_default();
+
+        let hasher = hashers
+            .entry((schema.clone(), table.clone()))
+            .or_insert_with(Sha256::new);
+        hasher.update(b"F|");
+        hasher.update(constraint.as_bytes());
+        hasher.update(b"|");
+        hasher.update(ord.to_le_bytes());
+        hasher.update(b"|");
+        hasher.update(col_name.as_bytes());
+        hasher.update(b"|");
+        hasher.update(ref_schema.as_bytes());
+        hasher.update(b"|");
+        hasher.update(ref_table.as_bytes());
+        hasher.update(b"|");
+        hasher.update(ref_col.as_bytes());
+        hasher.update(b"|");
+        hasher.update(upd.as_bytes());
+        hasher.update(b"|");
+        hasher.update(del.as_bytes());
+        hasher.update(b"\x1e");
+    }
+    tracing::debug!(
+        rows = fk_rows.len(),
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "schema_index signatures: KEY_COLUMN_USAGE bulk query complete"
+    );
+
+    let out = hashers
+        .into_iter()
+        .map(|(k, hasher)| (k, format!("{:x}", hasher.finalize())))
+        .collect();
+    Ok(out)
 }
 
 /// Fetch `SHOW CREATE TABLE` output.
@@ -1173,4 +1537,86 @@ async fn fetch_create_table(
         .unwrap_or_default();
 
     Ok(ddl)
+}
+
+/// Parallel `SHOW CREATE TABLE` fetch for a set of `(db, table)` pairs.
+///
+/// Uses `buffer_unordered` bounded by `SHOW_CREATE_TABLE_CONCURRENCY` so the
+/// MySQL pool can't be exhausted. Per-table heartbeats log every 10 completed
+/// fetches so the previously silent phase is visible in tracing output.
+#[cfg(not(coverage))]
+async fn fetch_create_tables_parallel(
+    pool: &sqlx::MySqlPool,
+    targets: Vec<(String, String)>,
+    profile_id: &str,
+    cancellation: &CancellationToken,
+    on_progress: Option<&ProgressCallback>,
+    initial_done: usize,
+    total: usize,
+) -> Result<Vec<TableDdlInput>, String> {
+    use futures::stream::{self, StreamExt};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let total_to_fetch = targets.len();
+    let completed = Arc::new(AtomicUsize::new(0));
+    let phase_started = Instant::now();
+
+    let results: Vec<Result<TableDdlInput, String>> = stream::iter(targets.into_iter())
+        .map(|(db, tbl)| {
+            let completed = Arc::clone(&completed);
+            let profile_id = profile_id.to_string();
+            async move {
+                let per_started = Instant::now();
+                let ddl = fetch_create_table(pool, &db, &tbl).await?;
+                let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                if done % 10 == 0 || done == total_to_fetch {
+                    tracing::debug!(
+                        profile_id = %profile_id,
+                        fetched = done,
+                        total = total_to_fetch,
+                        last_elapsed_ms = per_started.elapsed().as_millis() as u64,
+                        "schema_index build_index: SHOW CREATE TABLE progress"
+                    );
+                }
+                Ok(TableDdlInput {
+                    db_name: db,
+                    table_name: tbl,
+                    create_table_sql: ddl,
+                })
+            }
+        })
+        .buffer_unordered(SHOW_CREATE_TABLE_CONCURRENCY)
+        .inspect(|_| {
+            if let Some(cb) = on_progress {
+                let done = completed.load(Ordering::Relaxed);
+                cb(BuildProgress {
+                    profile_id: profile_id.to_string(),
+                    phase: BuildPhase::LoadingSchema,
+                    tables_done: initial_done + done,
+                    tables_total: total,
+                });
+            }
+        })
+        .collect()
+        .await;
+
+    if cancellation.is_cancelled() {
+        return Err("Build cancelled".to_string());
+    }
+
+    let mut out = Vec::with_capacity(results.len());
+    for r in results {
+        out.push(r?);
+    }
+
+    tracing::info!(
+        profile_id = %profile_id,
+        fetched = out.len(),
+        elapsed_ms = phase_started.elapsed().as_millis() as u64,
+        concurrency = SHOW_CREATE_TABLE_CONCURRENCY,
+        "schema_index build_index: parallel SHOW CREATE TABLE phase complete"
+    );
+
+    Ok(out)
 }
