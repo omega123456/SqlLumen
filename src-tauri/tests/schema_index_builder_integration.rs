@@ -658,10 +658,26 @@ fn test_build_progress_loading_schema_serde() {
 }
 
 #[test]
+fn test_build_progress_finalizing_serde() {
+    use sqllumen_lib::schema_index::types::{BuildPhase, BuildProgress};
+    let progress = BuildProgress {
+        profile_id: "conn-1".to_string(),
+        phase: BuildPhase::Finalizing,
+        tables_done: 10,
+        tables_total: 10,
+    };
+    let json = serde_json::to_value(&progress).expect("serialize");
+    assert_eq!(json["phase"], "finalizing");
+    assert_eq!(json["tablesDone"], 10);
+    assert_eq!(json["tablesTotal"], 10);
+}
+
+#[test]
 fn test_build_phase_as_str() {
     use sqllumen_lib::schema_index::types::BuildPhase;
     assert_eq!(BuildPhase::LoadingSchema.as_str(), "loading_schema");
     assert_eq!(BuildPhase::Embedding.as_str(), "embedding");
+    assert_eq!(BuildPhase::Finalizing.as_str(), "finalizing");
 }
 
 #[test]

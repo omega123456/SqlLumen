@@ -17,6 +17,7 @@ pub type ProgressCallback = Box<dyn Fn(BuildProgress) + Send + Sync>;
 pub enum BuildPhase {
     LoadingSchema,
     Embedding,
+    Finalizing,
 }
 
 impl BuildPhase {
@@ -24,6 +25,7 @@ impl BuildPhase {
         match self {
             BuildPhase::LoadingSchema => "loading_schema",
             BuildPhase::Embedding => "embedding",
+            BuildPhase::Finalizing => "finalizing",
         }
     }
 }

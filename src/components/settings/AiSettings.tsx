@@ -172,6 +172,9 @@ export function AiSettings() {
     const first = buildingConnections[0]
     const phase = first?.phase ?? null
     const countLabel = count === 1 ? '1 connection' : `${count} connections`
+    if (phase === 'finalizing' && (first?.tablesTotal ?? 0) > 0) {
+      return `Finalizing ${first.tablesDone}/${first.tablesTotal} steps (${countLabel})...`
+    }
     if (phase === 'embedding' && (first?.tablesTotal ?? 0) > 0) {
       return `Indexing ${first.tablesDone}/${first.tablesTotal} tables (${countLabel})...`
     }

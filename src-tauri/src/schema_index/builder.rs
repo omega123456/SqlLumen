@@ -660,17 +660,39 @@ pub async fn build_index(
         total_table_chunks - table_keys_to_embed.len()
     };
     let mut tables_done: usize = unchanged_tables;
+    let total_embed_batches = if total_to_embed == 0 {
+        0
+    } else {
+        (total_to_embed + EMBED_BATCH_SIZE - 1) / EMBED_BATCH_SIZE
+    };
+    let mut embed_batches_done: usize = 0;
+    let mut finalizing_started = false;
+    let mut finalizing_done: usize = 0;
+    let mut finalizing_total: usize = 0;
 
-    // Emit an initial embedding-phase progress event so the UI can switch
-    // from "Reading schema..." to "Indexing <done>/<total>" before the first
-    // batch even completes.
+    // Emit an initial embedding/finalizing progress event so the UI can switch
+    // from "Reading schema..." immediately. If table progress is already
+    // complete (e.g. only FK chunks remain), report Finalizing right away
+    // with a separate step counter.
     if let Some(cb) = on_progress {
-        cb(BuildProgress {
-            profile_id: config.connection_id.clone(),
-            phase: BuildPhase::Embedding,
-            tables_done,
-            tables_total,
-        });
+        if tables_done >= tables_total {
+            finalizing_started = true;
+            // Remaining embedding batches + signature upsert + metadata finalize.
+            finalizing_total = total_embed_batches + 2;
+            cb(BuildProgress {
+                profile_id: config.connection_id.clone(),
+                phase: BuildPhase::Finalizing,
+                tables_done: finalizing_done,
+                tables_total: finalizing_total,
+            });
+        } else {
+            cb(BuildProgress {
+                profile_id: config.connection_id.clone(),
+                phase: BuildPhase::Embedding,
+                tables_done,
+                tables_total,
+            });
+        }
     }
 
     for batch_start in (0..total_to_embed).step_by(EMBED_BATCH_SIZE) {
@@ -793,13 +815,43 @@ pub async fn build_index(
             .filter(|(_, _, _, ct, ..)| matches!(ct, &ChunkType::Table))
             .count();
         tables_done += table_chunks_in_batch;
+        embed_batches_done += 1;
         if let Some(cb) = on_progress {
-            cb(BuildProgress {
-                profile_id: config.connection_id.clone(),
-                phase: BuildPhase::Embedding,
-                tables_done,
-                tables_total,
-            });
+            let mut entered_finalizing_this_batch = false;
+
+            if !finalizing_started {
+                if tables_done >= tables_total {
+                    finalizing_started = true;
+                    entered_finalizing_this_batch = true;
+                    // Remaining embedding batches after this one + two SQLite
+                    // finalization steps (signatures + metadata status update).
+                    finalizing_total = total_embed_batches.saturating_sub(embed_batches_done) + 2;
+                    finalizing_done = 0;
+                    cb(BuildProgress {
+                        profile_id: config.connection_id.clone(),
+                        phase: BuildPhase::Finalizing,
+                        tables_done: finalizing_done,
+                        tables_total: finalizing_total,
+                    });
+                } else {
+                    cb(BuildProgress {
+                        profile_id: config.connection_id.clone(),
+                        phase: BuildPhase::Embedding,
+                        tables_done,
+                        tables_total,
+                    });
+                }
+            }
+
+            if finalizing_started && !entered_finalizing_this_batch {
+                finalizing_done = (finalizing_done + 1).min(finalizing_total);
+                cb(BuildProgress {
+                    profile_id: config.connection_id.clone(),
+                    phase: BuildPhase::Finalizing,
+                    tables_done: finalizing_done,
+                    tables_total: finalizing_total,
+                });
+            }
         }
     }
 
@@ -835,6 +887,18 @@ pub async fn build_index(
             .map_err(|e| format!("COMMIT signatures: {e}"))?;
     }
 
+    if let Some(cb) = on_progress {
+        if finalizing_started {
+            finalizing_done = (finalizing_done + 1).min(finalizing_total);
+            cb(BuildProgress {
+                profile_id: config.connection_id.clone(),
+                phase: BuildPhase::Finalizing,
+                tables_done: finalizing_done,
+                tables_total: finalizing_total,
+            });
+        }
+    }
+
     // 8. Set status = "ready", update last_build_at
     {
         let conn = sqlite_conn
@@ -848,6 +912,18 @@ pub async fn build_index(
             m.last_build_at = Some(now);
             storage::upsert_index_meta(&conn, &m)
                 .map_err(|e| format!("Failed to update index meta: {e}"))?;
+        }
+    }
+
+    if let Some(cb) = on_progress {
+        if finalizing_started {
+            finalizing_done = (finalizing_done + 1).min(finalizing_total);
+            cb(BuildProgress {
+                profile_id: config.connection_id.clone(),
+                phase: BuildPhase::Finalizing,
+                tables_done: finalizing_done,
+                tables_total: finalizing_total,
+            });
         }
     }
 

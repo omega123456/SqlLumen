@@ -444,6 +444,30 @@ describe('StatusBar', () => {
       expect(screen.getByTestId('indexing-text')).toHaveTextContent('Reading schema (12 tables)...')
     })
 
+    it('shows count-based finalizing indicator after embedding table progress reaches completion', () => {
+      useThemeStore.setState({ resolvedTheme: 'dark' })
+      setupActiveConnection()
+      useSchemaIndexStore.setState({
+        connections: {
+          'conn-1': {
+            status: 'building',
+            phase: 'finalizing',
+            tablesDone: 20,
+            tablesTotal: 20,
+            lastBuildTimestamp: 0,
+          },
+        },
+      })
+
+      render(<StatusBar />)
+
+      const indicator = screen.getByTestId('indexing-indicator')
+      expect(screen.getByTestId('indexing-text')).toHaveTextContent('Finalizing 20/20')
+      expect(indicator).toHaveAttribute('role', 'progressbar')
+      expect(indicator).toHaveAttribute('aria-valuenow', '20')
+      expect(indicator).toHaveAttribute('aria-valuemax', '20')
+    })
+
     it('shows "Preparing index..." when phase is null (build just started)', () => {
       useThemeStore.setState({ resolvedTheme: 'dark' })
       setupActiveConnection()
@@ -703,7 +727,10 @@ describe('StatusBar', () => {
       expect(indicator).toHaveAttribute('aria-valuenow', '7')
       expect(indicator).toHaveAttribute('aria-valuemin', '0')
       expect(indicator).toHaveAttribute('aria-valuemax', '15')
-      expect(indicator).toHaveAttribute('aria-valuetext', 'Indexing schema: 7 of 15 tables')
+      expect(indicator).toHaveAttribute(
+        'aria-valuetext',
+        'Schema indexing progress: 7 of 15'
+      )
     })
 
     it('has aria-live="polite" region', () => {

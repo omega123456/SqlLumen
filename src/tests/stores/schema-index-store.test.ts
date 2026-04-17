@@ -196,6 +196,16 @@ describe('useSchemaIndexStore', () => {
       expect(state.connections['session-1'].tablesTotal).toBe(0)
     })
 
+    it('stores finalizing phase after table indexing reaches completion', () => {
+      useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
+      useSchemaIndexStore.getState()._handleProgress('profile-1', 'finalizing', 10, 10)
+
+      const state = useSchemaIndexStore.getState()
+      expect(state.connections['session-1'].phase).toBe('finalizing')
+      expect(state.connections['session-1'].tablesDone).toBe(10)
+      expect(state.connections['session-1'].tablesTotal).toBe(10)
+    })
+
     it('updates all sessions for the profile', () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       useSchemaIndexStore.getState().registerSession('session-2', 'profile-1')

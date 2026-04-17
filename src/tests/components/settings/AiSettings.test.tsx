@@ -1210,6 +1210,31 @@ describe('AiSettings - Force Reindex', () => {
     )
   })
 
+  it('shows inline reindex status with finalizing phase', () => {
+    mockStoreState.connections = {
+      'session-1': {
+        status: 'building',
+        phase: 'finalizing',
+        tablesDone: 20,
+        tablesTotal: 20,
+        lastBuildTimestamp: 0,
+      },
+    }
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'ai.enabled': 'true',
+        'ai.endpoint': 'http://localhost:11434/v1',
+      },
+      pendingChanges: {},
+      isDirty: false,
+    })
+    render(<AiSettings />)
+    expect(screen.getByTestId('ai-reindex-status')).toHaveTextContent(
+      'Finalizing 20/20 steps (1 connection)...'
+    )
+  })
+
   it('does not show inline reindex status when no builds are active', () => {
     mockStoreState.connections = {
       'session-1': {

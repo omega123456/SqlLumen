@@ -101,19 +101,27 @@ export function StatusBar() {
   const showIndexError = flashType === 'error' && !showIndexBuilding
 
   const indexPhase = indexState?.phase ?? null
+  const hasTableTotals = (indexState?.tablesTotal ?? 0) > 0
   const isEmbeddingPhase = indexPhase === 'embedding' && (indexState?.tablesTotal ?? 0) > 0
+  const isFinalizingPhase = indexPhase === 'finalizing' && hasTableTotals
+  const isCountBasedProgressPhase = isEmbeddingPhase || isFinalizingPhase
   const isDark = resolvedTheme === 'dark'
 
   function buildIndexingLabel(): string {
     if (!indexState) {
       return isDark ? 'Preparing index...' : 'PREPARING INDEX...'
     }
+    if (isFinalizingPhase) {
+      return isDark
+        ? `Finalizing ${indexState.tablesDone}/${indexState.tablesTotal}`
+        : `FINALIZING: ${indexState.tablesDone}/${indexState.tablesTotal}`
+    }
     if (isEmbeddingPhase) {
       return isDark
         ? `Indexing ${indexState.tablesDone}/${indexState.tablesTotal}`
         : `INDEXING: ${indexState.tablesDone}/${indexState.tablesTotal} TABLES`
     }
-    // loading_schema or unknown phase
+    // loading_schema or unknown pre-progress phase
     if (indexPhase === 'loading_schema' && indexState.tablesDone > 0) {
       return isDark
         ? `Reading schema (${indexState.tablesDone} tables)...`
@@ -141,16 +149,16 @@ export function StatusBar() {
       <div aria-live="polite">
         {showIndexBuilding &&
           indexState &&
-          (isEmbeddingPhase ? (
+          (isCountBasedProgressPhase ? (
             <div
               className={styles.indexingIndicator}
               data-testid="indexing-indicator"
-              data-phase="embedding"
+              data-phase={indexPhase ?? 'preparing'}
               role="progressbar"
               aria-valuenow={indexState.tablesDone}
               aria-valuemin={0}
               aria-valuemax={indexState.tablesTotal}
-              aria-valuetext={`Indexing schema: ${indexState.tablesDone} of ${indexState.tablesTotal} tables`}
+              aria-valuetext={`Schema indexing progress: ${indexState.tablesDone} of ${indexState.tablesTotal}`}
             >
               <Database
                 size={12}

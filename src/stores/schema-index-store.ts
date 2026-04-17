@@ -14,7 +14,7 @@ import { useSettingsStore } from './settings-store'
 // Types
 // ---------------------------------------------------------------------------
 
-export type BuildPhase = 'loading_schema' | 'embedding'
+export type BuildPhase = 'loading_schema' | 'embedding' | 'finalizing'
 
 export interface ConnectionIndexState {
   status: SchemaIndexStatus['status']
