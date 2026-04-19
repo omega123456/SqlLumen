@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { logFrontend } from './app-log-commands'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,11 +18,18 @@ export interface AiChatParams {
   temperature: number
   maxTokens: number
   streamId: string
+  previousResponseId?: string | null
+  preferResponsesApi?: boolean
+}
+
+export interface AiStreamDoneInfo {
+  responseId?: string | null
+  transport?: 'chat_completions' | 'responses'
 }
 
 export interface AiStreamCallbacks {
   onChunk: (content: string) => void
-  onDone: () => void
+  onDone: (info: AiStreamDoneInfo) => void
   onError: (error: string) => void
 }
 
@@ -42,6 +50,8 @@ interface StreamChunkPayload {
 
 interface StreamDonePayload {
   streamId: string
+  responseId?: string | null
+  transport?: 'chat_completions' | 'responses'
 }
 
 interface StreamErrorPayload {
@@ -66,6 +76,8 @@ export async function sendAiChat(params: AiChatParams): Promise<void> {
       temperature: params.temperature,
       maxTokens: params.maxTokens,
       streamId: params.streamId,
+      previousResponseId: params.previousResponseId ?? null,
+      preferResponsesApi: params.preferResponsesApi ?? true,
     },
   })
 }
@@ -96,7 +108,10 @@ export async function listenToAiStream(
 
   const unlistenDone = await listen<StreamDonePayload>('ai-stream-done', (event) => {
     if (event.payload.streamId === streamId) {
-      callbacks.onDone()
+      callbacks.onDone({
+        responseId: event.payload.responseId ?? null,
+        transport: event.payload.transport,
+      })
     }
   })
 
@@ -129,7 +144,7 @@ export async function listAiModels(endpoint: string): Promise<ListAiModelsResult
     return { models: response.models }
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err)
-    console.error('[ai-commands] Failed to list AI models:', errorMsg)
+    logFrontend('error', `[ai-commands] Failed to list AI models: ${errorMsg}`)
     return { models: [], error: errorMsg }
   }
 }

@@ -222,6 +222,25 @@ async fn select_database_surfaces_pool_errors_after_password_lookup() {
     assert_eq!(params.default_database.as_deref(), Some("ecommerce_db"));
 }
 
+#[tokio::test]
+async fn select_database_errors_when_password_lookup_fails() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    let state = test_state();
+    register_connection_with_password(&state, "conn-1", "profile-select-failure", None);
+    common::fake_credentials::queue_fake_credential_error("missing secret");
+
+    let err = select_database_impl(&state, "conn-1", "analytics_db")
+        .await
+        .expect_err("password lookup failure should be surfaced");
+    assert!(err.contains("Failed to retrieve password from keychain"));
+
+    let params = state
+        .registry
+        .get_connection_params("conn-1")
+        .expect("connection params should exist");
+    assert_eq!(params.default_database.as_deref(), Some("ecommerce_db"));
+}
+
 fn install_test_hook() -> HookGuard {
     let guard = SELECT_DATABASE_HOOK_LOCK
         .lock()

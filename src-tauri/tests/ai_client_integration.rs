@@ -1,8 +1,8 @@
 //! Integration tests for AI types serialization/deserialization and SSE line parsing.
 
 use sqllumen_lib::ai::types::{
-    parse_sse_line, AiChatRequest, ApiChatRequest, ApiMessage, ApiStreamChunk, IpcMessage,
-    SseParsed, StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
+    parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiStreamChunk,
+    IpcMessage, SseParsed, StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
 };
 
 // ── IPC type serialization (camelCase) ────────────────────────────────────
@@ -41,6 +41,8 @@ fn ai_chat_request_serializes_to_camel_case() {
         temperature: 0.7,
         max_tokens: 1024,
         stream_id: "abc-123".to_string(),
+        previous_response_id: Some("resp_prev".to_string()),
+        prefer_responses_api: true,
     };
     let json = serde_json::to_value(&req).unwrap();
     assert!(
@@ -50,6 +52,8 @@ fn ai_chat_request_serializes_to_camel_case() {
     assert_eq!(json["maxTokens"], 1024);
     assert!(json["streamId"].is_string(), "expected camelCase streamId");
     assert_eq!(json["streamId"], "abc-123");
+    assert_eq!(json["previousResponseId"], "resp_prev");
+    assert_eq!(json["preferResponsesApi"], true);
     // snake_case keys should NOT exist
     assert!(json.get("max_tokens").is_none());
     assert!(json.get("stream_id").is_none());
@@ -63,12 +67,32 @@ fn ai_chat_request_deserializes_from_camel_case() {
         "model": "llama3",
         "temperature": 0.7,
         "maxTokens": 2048,
-        "streamId": "stream-1"
+        "streamId": "stream-1",
+        "previousResponseId": "resp_1",
+        "preferResponsesApi": false
     });
     let req: AiChatRequest = serde_json::from_value(json).unwrap();
     assert_eq!(req.max_tokens, 2048);
     assert_eq!(req.stream_id, "stream-1");
+    assert_eq!(req.previous_response_id.as_deref(), Some("resp_1"));
+    assert!(!req.prefer_responses_api);
     assert_eq!(req.messages.len(), 1);
+}
+
+#[test]
+fn ai_chat_request_defaults_prefer_responses_api_to_true() {
+    let json = serde_json::json!({
+        "messages": [{"role": "user", "content": "hello"}],
+        "endpoint": "http://localhost:11434/v1/chat/completions",
+        "model": "llama3",
+        "temperature": 0.7,
+        "maxTokens": 2048,
+        "streamId": "stream-default"
+    });
+
+    let req: AiChatRequest = serde_json::from_value(json).unwrap();
+    assert_eq!(req.previous_response_id, None);
+    assert!(req.prefer_responses_api);
 }
 
 // ── API type serialization (snake_case) ───────────────────────────────────
@@ -164,9 +188,13 @@ fn stream_chunk_event_serializes_to_camel_case() {
 fn stream_done_event_serializes_to_camel_case() {
     let evt = StreamDoneEvent {
         stream_id: "s2".to_string(),
+        response_id: Some("resp_2".to_string()),
+        transport: AiTransport::Responses,
     };
     let json = serde_json::to_value(&evt).unwrap();
     assert_eq!(json["streamId"], "s2");
+    assert_eq!(json["responseId"], "resp_2");
+    assert_eq!(json["transport"], "responses");
 }
 
 #[test]
@@ -361,10 +389,10 @@ mod wiremock_tests {
 
 #[cfg(test)]
 mod stream_integration {
-    use sqllumen_lib::ai::client::stream_chat_completion;
+    use sqllumen_lib::ai::client::{normalise_to_chat_completions_url, stream_chat_completion};
     use sqllumen_lib::ai::types::{AiChatRequest, IpcMessage};
     use tokio_util::sync::CancellationToken;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_partial_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn sample_request(stream_id: &str, endpoint: &str) -> AiChatRequest {
@@ -378,6 +406,8 @@ mod stream_integration {
             temperature: 0.7,
             max_tokens: 100,
             stream_id: stream_id.to_string(),
+            previous_response_id: None,
+            prefer_responses_api: true,
         }
     }
 
@@ -1045,6 +1075,934 @@ mod stream_integration {
         assert!(
             result.is_ok(),
             "should flush buffer and complete on residual [DONE]"
+        );
+    }
+
+    /// Responses API streams should complete successfully and capture response ids.
+    #[tokio::test]
+    async fn responses_api_stream_completes_for_openai_compatible_endpoint() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_123\"}}\n",
+            "\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello\"}\n",
+            "\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_123\"}}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let request = sample_request("stream-responses", &format!("{}/v1/responses", server.uri()));
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "responses stream should complete successfully");
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_completes_on_residual_done_without_trailing_newline() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello\"}\n\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_residual\"}}",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let request = sample_request(
+            "stream-responses-residual-done",
+            &format!("{}/v1/responses", server.uri()),
+        );
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(
+            result.is_ok(),
+            "responses stream should complete when final data line has no trailing newline"
+        );
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_errors_on_invalid_residual_json() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello\"}\n\n",
+            "event: response.completed\n",
+            "data: {not valid json}",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let request = sample_request(
+            "stream-responses-residual-error",
+            &format!("{}/v1/responses", server.uri()),
+        );
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_err(), "invalid residual JSON should return an error");
+        assert!(
+            result
+                .expect_err("responses stream should fail")
+                .contains("Failed to parse SSE JSON"),
+            "error should mention SSE JSON parse failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_errors_on_eof_before_completed_event() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: response.created\n",
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_partial\"}}\n\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello\"}\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let request = sample_request(
+            "stream-responses-partial-eof",
+            &format!("{}/v1/responses", server.uri()),
+        );
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_err(), "EOF before response.completed should error");
+        assert!(
+            result
+                .expect_err("responses stream should fail")
+                .contains("response.completed"),
+            "error should mention missing completion event"
+        );
+    }
+
+    #[test]
+    fn responses_endpoint_normalises_to_chat_completions_url() {
+        let normalized = normalise_to_chat_completions_url("http://example.test/v1/responses");
+        assert_eq!(normalized, "http://example.test/v1/chat/completions");
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_chat_completions_when_responses_endpoint_is_missing() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"fallback\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-fallback-404", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "missing responses endpoint should fall back to chat completions");
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_chat_completions_when_previous_response_id_is_unsupported() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .and(body_partial_json(serde_json::json!({
+                "previous_response_id": "resp_prev"
+            })))
+            .respond_with(
+                ResponseTemplate::new(400)
+                    .set_body_string("Unknown parameter: previous_response_id"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [
+                    {"role": "system", "content": "You are helpful"},
+                    {"role": "user", "content": "Hello"},
+                    {"role": "assistant", "content": "Hi"},
+                    {"role": "user", "content": "Follow up"}
+                ]
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"fallback follow-up\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = AiChatRequest {
+            messages: vec![
+                IpcMessage {
+                    role: "system".to_string(),
+                    content: "You are helpful".to_string(),
+                },
+                IpcMessage {
+                    role: "user".to_string(),
+                    content: "Hello".to_string(),
+                },
+                IpcMessage {
+                    role: "assistant".to_string(),
+                    content: "Hi".to_string(),
+                },
+                IpcMessage {
+                    role: "user".to_string(),
+                    content: "Follow up".to_string(),
+                },
+            ],
+            endpoint: format!("{}/v1", server.uri()),
+            model: "test-model".to_string(),
+            temperature: 0.7,
+            max_tokens: 100,
+            stream_id: "stream-followup-fallback".to_string(),
+            previous_response_id: Some("resp_prev".to_string()),
+            prefer_responses_api: true,
+        };
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(
+            result.is_ok(),
+            "unsupported response chaining should fall back to chat completions"
+        );
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_chat_completions_when_responses_stream_uses_chat_completions_payload_shape() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"wrong stream\"}}]}\n",
+                            "\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"fallback ok\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-fallback-shape", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(
+            result.is_ok(),
+            "chat-completions-shaped responses stream should fall back to chat completions"
+        );
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_surfaces_structured_failure_message() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: response.failed\n",
+            "data: {\"type\":\"response.failed\",\"error\":{\"message\":\"model overloaded\"}}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-failed", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_err());
+        assert_eq!(
+            result.expect_err("structured response failure should surface as an error"),
+            "model overloaded"
+        );
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_accepts_sse_event_names_without_json_type() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: response.created\n",
+            "data: {\"response\":{\"id\":\"resp_evt\"}}\n",
+            "\n",
+            "event: response.output_text.delta\n",
+            "data: {\"delta\":\"Hello\"}\n",
+            "\n",
+            "event: response.completed\n",
+            "data: {\"response\":{\"id\":\"resp_evt\"}}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-event-name", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "event-name-only responses streams should succeed");
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_extracts_text_from_done_text_field() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: response.output_text.done\n",
+            "data: {\"text\":\"Hello from done\"}\n",
+            "\n",
+            "event: response.completed\n",
+            "data: {\"response\":{\"id\":\"resp_done_text\"}}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-done-text", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "done-text responses streams should succeed");
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_does_not_duplicate_done_text_when_completed_repeats_output() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: response.output_text.done\n",
+            "data: {\"text\":\"Hello once\"}\n",
+            "\n",
+            "event: response.completed\n",
+            "data: {\"response\":{\"id\":\"resp_done_once\",\"output\":[{\"content\":[{\"text\":\"Hello once\"}]}]}}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-done-once", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "done text should not be duplicated by completed payloads");
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_accepts_follow_up_with_previous_response_id() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .and(body_partial_json(serde_json::json!({
+                "previous_response_id": "resp_prev",
+                "input": [
+                    {
+                        "role": "user",
+                        "content": "Follow up"
+                    }
+                ]
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "event: response.completed\n",
+                            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_followup\"}}\n",
+                            "\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = AiChatRequest {
+            messages: vec![
+                IpcMessage {
+                    role: "system".to_string(),
+                    content: "You are helpful".to_string(),
+                },
+                IpcMessage {
+                    role: "user".to_string(),
+                    content: "Hello".to_string(),
+                },
+                IpcMessage {
+                    role: "assistant".to_string(),
+                    content: "Hi".to_string(),
+                },
+                IpcMessage {
+                    role: "user".to_string(),
+                    content: "Follow up".to_string(),
+                },
+            ],
+            endpoint: format!("{}/v1/responses", server.uri()),
+            model: "test-model".to_string(),
+            temperature: 0.7,
+            max_tokens: 100,
+            stream_id: "stream-followup".to_string(),
+            previous_response_id: Some("resp_prev".to_string()),
+            prefer_responses_api: true,
+        };
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn responses_api_request_maps_system_role_to_developer_without_previous_response_id() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .and(body_partial_json(serde_json::json!({
+                "input": [
+                    {
+                        "role": "developer",
+                        "content": "You are helpful"
+                    },
+                    {
+                        "role": "user",
+                        "content": "Hello"
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "Hi"
+                    }
+                ]
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "event: response.completed\n",
+                            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_full_history\"}}\n",
+                            "\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = AiChatRequest {
+            messages: vec![
+                IpcMessage {
+                    role: "system".to_string(),
+                    content: "You are helpful".to_string(),
+                },
+                IpcMessage {
+                    role: "user".to_string(),
+                    content: "Hello".to_string(),
+                },
+                IpcMessage {
+                    role: "assistant".to_string(),
+                    content: "Hi".to_string(),
+                },
+            ],
+            endpoint: format!("{}/v1", server.uri()),
+            model: "test-model".to_string(),
+            temperature: 0.7,
+            max_tokens: 100,
+            stream_id: "stream-full-history".to_string(),
+            previous_response_id: None,
+            prefer_responses_api: true,
+        };
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn responses_api_follow_up_without_new_user_message_sends_full_history() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .and(body_partial_json(serde_json::json!({
+                "previous_response_id": "resp_prev",
+                "input": [
+                    {
+                        "role": "developer",
+                        "content": "You are helpful"
+                    },
+                    {
+                        "role": "user",
+                        "content": "Hello"
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "Hi"
+                    }
+                ]
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "event: response.completed\n",
+                            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_replayed_history\"}}\n",
+                            "\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = AiChatRequest {
+            messages: vec![
+                IpcMessage {
+                    role: "system".to_string(),
+                    content: "You are helpful".to_string(),
+                },
+                IpcMessage {
+                    role: "user".to_string(),
+                    content: "Hello".to_string(),
+                },
+                IpcMessage {
+                    role: "assistant".to_string(),
+                    content: "Hi".to_string(),
+                },
+            ],
+            endpoint: format!("{}/v1", server.uri()),
+            model: "test-model".to_string(),
+            temperature: 0.7,
+            max_tokens: 100,
+            stream_id: "stream-replayed-history".to_string(),
+            previous_response_id: Some("resp_prev".to_string()),
+            prefer_responses_api: true,
+        };
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn responses_api_does_not_fallback_on_generic_bad_request() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(ResponseTemplate::new(400).set_body_string("validation failed"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-bad-request", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_err());
+        let error = result.expect_err("generic 400 should be surfaced directly");
+        assert!(error.contains("400"));
+        assert!(error.contains("validation failed"));
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_chat_completions_when_responses_rejects_role_value() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(400).set_body_string("Invalid value for 'role': developer"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"fallback role\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-fallback-role", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "role validation failures should fall back to chat completions");
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_chat_completions_when_responses_rejects_unknown_input_field() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(ResponseTemplate::new(400).set_body_string("unknown field \"input\""))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"fallback input\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-fallback-input", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "unknown input field failures should fall back to chat completions");
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_chat_completions_when_responses_endpoint_returns_server_error() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("server exploded"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"fallback 500\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-fallback-500", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "server errors should fall back to chat completions");
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_extracts_text_from_response_output_content_array() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: response.output_text.done\n",
+            "data: {\"response\":{\"output\":[{\"content\":[{\"text\":\"Hello from response output\"}]}]}}\n",
+            "\n",
+            "event: response.completed\n",
+            "data: {\"response\":{\"id\":\"resp_output_nested\"}}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-output-array", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "nested response.output text should be accepted");
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_extracts_text_from_top_level_output_content_array() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: response.output_text.done\n",
+            "data: {\"output\":[{\"content\":[{\"text\":\"Hello from output array\"}]}]}\n",
+            "\n",
+            "event: response.completed\n",
+            "data: {\"response\":{\"id\":\"resp_output_top_level\"}}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-top-output-array", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "top-level output text should be accepted");
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_surfaces_top_level_message_failure() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: response.failed\n",
+            "data: {\"message\":\"request failed\"}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-message-failure", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert_eq!(
+            result.expect_err("top-level message failures should surface as errors"),
+            "request failed"
+        );
+    }
+
+    #[tokio::test]
+    async fn responses_api_stream_surfaces_string_error_failure() {
+        let server = MockServer::start().await;
+
+        let sse_body = [
+            "event: error\n",
+            "data: {\"error\":\"request failed\"}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-string-error", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert_eq!(
+            result.expect_err("string error failures should surface as errors"),
+            "request failed"
         );
     }
 }

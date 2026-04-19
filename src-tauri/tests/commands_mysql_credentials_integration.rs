@@ -390,6 +390,41 @@ fn credentials_retrieve_password_for_connection_prefers_stored_keychain_ref() {
 }
 
 #[test]
+fn effective_keychain_ref_falls_back_to_connection_id_for_missing_or_empty_ref() {
+    assert_eq!(credentials::effective_keychain_ref("conn-1", None), "conn-1");
+    assert_eq!(
+        credentials::effective_keychain_ref("conn-1", Some("")),
+        "conn-1"
+    );
+    assert_eq!(
+        credentials::effective_keychain_ref("conn-1", Some("legacy-ref")),
+        "legacy-ref"
+    );
+}
+
+#[test]
+fn credentials_retrieve_password_for_connection_uses_connection_id_when_keychain_ref_missing() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    credentials::store_password("conn-1", "secret").expect("should store password");
+
+    let password = credentials::retrieve_password_for_connection("conn-1", None)
+        .expect("should read using connection id");
+
+    assert_eq!(password, "secret");
+}
+
+#[test]
+fn credentials_retrieve_password_for_connection_ignores_empty_keychain_ref() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    credentials::store_password("conn-1", "secret").expect("should store password");
+
+    let password = credentials::retrieve_password_for_connection("conn-1", Some(""))
+        .expect("should fall back to connection id when keychain ref is empty");
+
+    assert_eq!(password, "secret");
+}
+
+#[test]
 fn save_connection_impl_rolls_back_when_password_storage_fails() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
@@ -791,6 +826,177 @@ async fn close_connection_impl_removes_registry_entry_and_cancels_token() {
     assert!(token_clone.is_cancelled());
     #[cfg(coverage)]
     assert!(!token_clone.is_cancelled());
+}
+
+#[tokio::test]
+async fn close_connection_impl_removes_only_matching_running_queries() {
+    let state = test_state();
+    let mut entry = sample_registry_entry(ConnectionStatus::Connected);
+    entry.session_id = "conn-1".to_string();
+    state.registry.insert("conn-1".to_string(), entry);
+
+    {
+        let mut running = state.running_queries.write().await;
+        running.insert(("conn-1".to_string(), "tab-1".to_string()), 101);
+        running.insert(("conn-2".to_string(), "tab-2".to_string()), 202);
+    }
+
+    close_connection_impl(&state, "conn-1")
+        .await
+        .expect("close should succeed");
+
+    let running = state.running_queries.read().await;
+    assert!(!running.contains_key(&("conn-1".to_string(), "tab-1".to_string())));
+    assert_eq!(
+        running.get(&("conn-2".to_string(), "tab-2".to_string())),
+        Some(&202)
+    );
+}
+
+#[tokio::test]
+async fn close_connection_impl_decrements_schema_index_ref_count_without_cancelling_when_shared() {
+    let state = test_state();
+    let mut entry = sample_registry_entry(ConnectionStatus::Connected);
+    entry.session_id = "conn-1".to_string();
+    state.registry.insert("conn-1".to_string(), entry);
+
+    let build_token = CancellationToken::new();
+    {
+        let mut session_map = state
+            .session_profile_map
+            .lock()
+            .expect("session_profile_map lock should succeed");
+        session_map.insert("conn-1".to_string(), "profile-1".to_string());
+    }
+    {
+        let mut ref_counts = state
+            .session_ref_counts
+            .lock()
+            .expect("session_ref_counts lock should succeed");
+        ref_counts.insert("profile-1".to_string(), 2);
+    }
+    {
+        let mut build_tokens = state
+            .index_build_tokens
+            .lock()
+            .expect("index_build_tokens lock should succeed");
+        build_tokens.insert("profile-1".to_string(), build_token.clone());
+    }
+
+    close_connection_impl(&state, "conn-1")
+        .await
+        .expect("close should succeed");
+
+    assert!(!build_token.is_cancelled(), "shared profile token should stay active");
+    assert!(
+        !state
+            .session_profile_map
+            .lock()
+            .expect("session_profile_map lock should succeed")
+            .contains_key("conn-1")
+    );
+    assert_eq!(
+        state
+            .session_ref_counts
+            .lock()
+            .expect("session_ref_counts lock should succeed")
+            .get("profile-1")
+            .copied(),
+        Some(1)
+    );
+    assert!(
+        state
+            .index_build_tokens
+            .lock()
+            .expect("index_build_tokens lock should succeed")
+            .contains_key("profile-1")
+    );
+}
+
+#[tokio::test]
+async fn close_connection_impl_cleans_schema_index_tracking_when_last_session_closes() {
+    let state = test_state();
+    let mut entry = sample_registry_entry(ConnectionStatus::Connected);
+    entry.session_id = "conn-1".to_string();
+    state.registry.insert("conn-1".to_string(), entry);
+
+    let build_token = CancellationToken::new();
+    {
+        let mut session_map = state
+            .session_profile_map
+            .lock()
+            .expect("session_profile_map lock should succeed");
+        session_map.insert("conn-1".to_string(), "profile-1".to_string());
+    }
+    {
+        let mut ref_counts = state
+            .session_ref_counts
+            .lock()
+            .expect("session_ref_counts lock should succeed");
+        ref_counts.insert("profile-1".to_string(), 1);
+    }
+    {
+        let mut build_tokens = state
+            .index_build_tokens
+            .lock()
+            .expect("index_build_tokens lock should succeed");
+        build_tokens.insert("profile-1".to_string(), build_token.clone());
+    }
+
+    close_connection_impl(&state, "conn-1")
+        .await
+        .expect("close should succeed");
+
+    assert!(build_token.is_cancelled(), "last profile token should be cancelled");
+    assert!(
+        !state
+            .session_profile_map
+            .lock()
+            .expect("session_profile_map lock should succeed")
+            .contains_key("conn-1")
+    );
+    assert!(
+        !state
+            .session_ref_counts
+            .lock()
+            .expect("session_ref_counts lock should succeed")
+            .contains_key("profile-1")
+    );
+    assert!(
+        !state
+            .index_build_tokens
+            .lock()
+            .expect("index_build_tokens lock should succeed")
+            .contains_key("profile-1")
+    );
+}
+
+#[tokio::test]
+async fn close_connection_impl_removes_session_mapping_even_without_ref_count_entry() {
+    let state = test_state();
+    let mut entry = sample_registry_entry(ConnectionStatus::Connected);
+    entry.session_id = "conn-1".to_string();
+    state.registry.insert("conn-1".to_string(), entry);
+
+    {
+        let mut session_map = state
+            .session_profile_map
+            .lock()
+            .expect("session_profile_map lock should succeed");
+        session_map.insert("conn-1".to_string(), "profile-1".to_string());
+    }
+
+    close_connection_impl(&state, "conn-1")
+        .await
+        .expect("close should succeed");
+
+    assert!(
+        !state
+            .session_profile_map
+            .lock()
+            .expect("session_profile_map lock should succeed")
+            .contains_key("conn-1")
+    );
 }
 
 #[tokio::test]

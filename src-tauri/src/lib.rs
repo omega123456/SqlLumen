@@ -176,6 +176,7 @@ pub fn run() {
                     // Give Ollama (and other local LLM servers) up to 30 s to
                     // finish loading a model before refusing the connection.
                     .connect_timeout(std::time::Duration::from_secs(30))
+                    .timeout(std::time::Duration::from_secs(300))
                     .build()
                     .expect("failed to build shared HTTP client"),
                 embedding_cache: crate::schema_index::embeddings_cache::EmbeddingCache::new(),

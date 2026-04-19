@@ -20,6 +20,14 @@ pub struct AiChatRequest {
     pub temperature: f64,
     pub max_tokens: u32,
     pub stream_id: String,
+    #[serde(default)]
+    pub previous_response_id: Option<String>,
+    #[serde(default = "default_true")]
+    pub prefer_responses_api: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 // ── API-facing types (Rust → OpenAI HTTP API, snake_case) ──────────────────
@@ -41,6 +49,27 @@ pub struct ApiChatRequest {
     pub temperature: f64,
     pub max_tokens: u32,
     pub stream: bool,
+}
+
+/// Input item for the OpenAI-compatible Responses API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ResponsesInputItem {
+    pub role: String,
+    pub content: String,
+}
+
+/// The request body sent to the OpenAI-compatible `/v1/responses` endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ApiResponsesRequest {
+    pub model: String,
+    pub input: Vec<ResponsesInputItem>,
+    pub temperature: f64,
+    pub max_output_tokens: u32,
+    pub stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_response_id: Option<String>,
 }
 
 /// The delta object inside an SSE stream choice.
@@ -79,6 +108,9 @@ pub struct StreamChunkEvent {
 #[serde(rename_all = "camelCase")]
 pub struct StreamDoneEvent {
     pub stream_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
+    pub transport: AiTransport,
 }
 
 /// Payload emitted when the stream encounters an error.
@@ -89,6 +121,14 @@ pub struct StreamErrorEvent {
     pub error: String,
 }
 
+/// Which upstream AI API transport fulfilled the request.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AiTransport {
+    ChatCompletions,
+    Responses,
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /// Convert IPC messages to API messages.
@@ -96,6 +136,21 @@ impl From<&IpcMessage> for ApiMessage {
     fn from(msg: &IpcMessage) -> Self {
         Self {
             role: msg.role.clone(),
+            content: msg.content.clone(),
+        }
+    }
+}
+
+impl From<&IpcMessage> for ResponsesInputItem {
+    fn from(msg: &IpcMessage) -> Self {
+        let role = if msg.role == "system" {
+            "developer".to_string()
+        } else {
+            msg.role.clone()
+        };
+
+        Self {
+            role,
             content: msg.content.clone(),
         }
     }

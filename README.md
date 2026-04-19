@@ -14,7 +14,7 @@ A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://t
 - **Import / export** — data and SQL-oriented workflows (e.g. CSV, JSON, XLSX, SQL dump paths—see in-app dialogs)
 - **History & favorites** — query history and saved snippets/favorites
 - **Settings** — general, editor, and results preferences; theme (light / dark / system) persisted locally
-- **AI Assistant** — in-app assistant workflows for SQL tasks and product guidance
+- **AI Assistant** — in-app assistant workflows for SQL tasks and product guidance, with longer local-model timeouts (~5+ minutes for generation), same-tab schema-context reuse, and OpenAI-compatible Responses API chaining with automatic chat-completions fallback to maximize prompt-cache reuse on follow-up requests where supported
 - **Native desktop app** — smaller footprint than typical Electron stacks; bundles via Tauri
 
 > **Upgrade note:** Upgrading to this version triggers a one-time v2 schema index rebuild. The first AI-assisted query after upgrading will take slightly longer while the index is rebuilt with enriched metadata (row counts, table/column comments, FK edge graph).

@@ -2,12 +2,8 @@
 //!
 //! Provides batch embedding generation with automatic retry on payload-too-large
 //! errors, and dimension detection for model configuration.
-//!
-//! Batches are processed with bounded concurrency (`EMBED_CONCURRENCY`) so that
-//! multiple HTTP requests fly in parallel, improving throughput for large schemas.
 
 use crate::ai::types::{EmbeddingApiRequest, EmbeddingApiResponse};
-use futures::StreamExt;
 use std::fmt;
 use std::time::{Duration, Instant};
 
@@ -18,10 +14,7 @@ const MAX_BATCH_SIZE: usize = 32;
 const MAX_RETRIES: u32 = 3;
 
 /// HTTP request timeout for embedding calls.
-const EMBED_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Maximum number of batches to process concurrently.
-const EMBED_CONCURRENCY: usize = 4;
+const EMBED_TIMEOUT: Duration = Duration::from_secs(300);
 
 // ── Error type ────────────────────────────────────────────────────────────
 
@@ -67,15 +60,29 @@ impl std::error::Error for EmbeddingError {}
 
 /// Embed a list of texts using the given model via the `/v1/embeddings` endpoint.
 ///
-/// Automatically batches texts (max 32 per call) and processes up to
-/// `EMBED_CONCURRENCY` batches in parallel. Each batch retries with halved
-/// batch sizes on HTTP 400/413 errors (up to 3 retries).
+/// Automatically batches texts (max 32 per call) and retries with halved batch
+/// sizes on HTTP 400/413 errors (up to 3 retries).
 pub async fn embed_texts(
     client: &reqwest::Client,
     base_url: &str,
     model: &str,
     texts: Vec<String>,
     dimensions: Option<u32>,
+) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+    embed_texts_with_timeout(client, base_url, model, texts, dimensions, EMBED_TIMEOUT).await
+}
+
+/// Same as [`embed_texts`] but with an explicit per-request timeout.
+///
+/// This keeps production behavior on the long default timeout while allowing
+/// focused tests to exercise timeout paths without waiting several minutes.
+pub async fn embed_texts_with_timeout(
+    client: &reqwest::Client,
+    base_url: &str,
+    model: &str,
+    texts: Vec<String>,
+    dimensions: Option<u32>,
+    request_timeout: Duration,
 ) -> Result<Vec<Vec<f32>>, EmbeddingError> {
     if base_url.trim().is_empty() {
         return Err(EmbeddingError::HttpRequest(
@@ -90,48 +97,143 @@ pub async fn embed_texts(
         return Ok(vec![]);
     }
 
-    let texts_len = texts.len();
-
-    // Pre-compute batches: (global_offset, batch_texts)
-    let batch_size = MAX_BATCH_SIZE.min(texts_len);
-    let mut batches: Vec<(usize, Vec<String>)> = Vec::new();
-    let mut offset = 0;
-    while offset < texts_len {
-        let end = (offset + batch_size).min(texts_len);
-        batches.push((offset, texts[offset..end].to_vec()));
-        offset = end;
-    }
-
     tracing::debug!(
         model = %model,
-        total_inputs = texts_len,
-        batch_count = batches.len(),
-        concurrency = EMBED_CONCURRENCY,
-        "embed_texts: starting parallel batched embedding (OpenAI-compatible /v1/embeddings)"
+        total_inputs = texts.len(),
+        "embed_texts: starting (OpenAI-compatible /v1/embeddings)"
     );
 
-    // Process batches with bounded concurrency
-    let results: Vec<Result<Vec<(usize, Vec<f32>)>, EmbeddingError>> =
-        futures::stream::iter(batches)
-            .map(|(global_offset, batch)| {
-                let url = url.clone();
-                let model = model.to_string();
-                async move {
-                    embed_batch_with_retry(client, &url, &model, batch, dimensions, global_offset)
-                        .await
+    let mut all_embeddings: Vec<(usize, Vec<f32>)> = Vec::with_capacity(texts.len());
+    let mut batch_size = MAX_BATCH_SIZE.min(texts.len());
+    let mut offset = 0;
+
+    while offset < texts.len() {
+        let end = (offset + batch_size).min(texts.len());
+        let batch: Vec<String> = texts[offset..end].to_vec();
+        let batch_len = batch.len();
+
+        tracing::debug!(
+            model = %model,
+            offset,
+            batch_len,
+            "embed_texts: sending HTTP batch to embeddings endpoint"
+        );
+        let batch_started = Instant::now();
+
+        match send_embedding_request(client, &url, model, batch, dimensions, request_timeout).await {
+            Ok(response) => {
+                let dims = response
+                    .data
+                    .first()
+                    .map(|d| d.embedding.len())
+                    .unwrap_or(0);
+                tracing::debug!(
+                    model = %model,
+                    offset,
+                    batch_len,
+                    vectors_in_response = response.data.len(),
+                    vector_dims = dims,
+                    elapsed_ms = batch_started.elapsed().as_millis() as u64,
+                    "embed_texts: HTTP batch succeeded"
+                );
+                for item in response.data {
+                    all_embeddings.push((offset + item.index, item.embedding));
                 }
-            })
-            .buffered(EMBED_CONCURRENCY)
-            .collect()
-            .await;
+                offset += batch_len;
+                // Reset batch size for next chunk
+                batch_size = MAX_BATCH_SIZE.min(texts.len() - offset);
+            }
+            Err(e) if is_retryable_status(&e) => {
+                tracing::warn!(
+                    model = %model,
+                    offset,
+                    batch_len,
+                    error = %e,
+                    "embed_texts: retryable HTTP error — halving batch size and retrying"
+                );
+                if batch_size <= 1 {
+                    return Err(EmbeddingError::RetriesExhausted(e.to_string()));
+                }
+                // Halve batch size and retry (up to MAX_RETRIES times from the same offset)
+                let mut retries = 0;
+                let mut current_batch_size = batch_size / 2;
+                let mut last_err = e;
 
-    // Flatten, sort by global index, return
-    let mut all_embeddings: Vec<(usize, Vec<f32>)> = Vec::with_capacity(texts_len);
-    for result in results {
-        all_embeddings.extend(result?);
+                loop {
+                    retries += 1;
+                    if retries > MAX_RETRIES {
+                        return Err(EmbeddingError::RetriesExhausted(last_err.to_string()));
+                    }
+
+                    let retry_end = (offset + current_batch_size).min(texts.len());
+                    let retry_batch: Vec<String> = texts[offset..retry_end].to_vec();
+                    let retry_batch_len = retry_batch.len();
+
+                    match send_embedding_request(
+                        client,
+                        &url,
+                        model,
+                        retry_batch,
+                        dimensions,
+                        request_timeout,
+                    )
+                    .await
+                    {
+                        Ok(response) => {
+                            tracing::debug!(
+                                model = %model,
+                                offset,
+                                retry_batch_len,
+                                attempt = retries,
+                                vectors_in_response = response.data.len(),
+                                "embed_texts: retry batch succeeded after size reduction"
+                            );
+                            for item in response.data {
+                                all_embeddings.push((offset + item.index, item.embedding));
+                            }
+                            offset += retry_batch_len;
+                            batch_size = current_batch_size;
+                            break;
+                        }
+                        Err(retry_err) if is_retryable_status(&retry_err) => {
+                            tracing::warn!(
+                                model = %model,
+                                offset,
+                                attempt = retries,
+                                current_batch_size,
+                                error = %retry_err,
+                                "embed_texts: retry batch still retryable — halving further"
+                            );
+                            if current_batch_size <= 1 {
+                                return Err(EmbeddingError::RetriesExhausted(
+                                    retry_err.to_string(),
+                                ));
+                            }
+                            current_batch_size /= 2;
+                            if current_batch_size == 0 {
+                                current_batch_size = 1;
+                            }
+                            last_err = retry_err;
+                        }
+                        Err(retry_err) => return Err(retry_err),
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    model = %model,
+                    offset,
+                    batch_len,
+                    error = %e,
+                    "embed_texts: non-retryable embedding HTTP error"
+                );
+                return Err(e);
+            }
+        }
     }
-    all_embeddings.sort_by_key(|(idx, _)| *idx);
 
+    // Sort by original index and return just the vectors
+    all_embeddings.sort_by_key(|(idx, _)| *idx);
     tracing::debug!(
         model = %model,
         output_vectors = all_embeddings.len(),
@@ -163,126 +265,6 @@ pub async fn detect_embedding_dimension(
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-/// Process a single batch with halving-retry on retryable HTTP errors.
-///
-/// On success, returns `(global_index, embedding)` pairs. On a retryable
-/// 400/413 error, splits the batch in half and retries each half sequentially,
-/// up to `MAX_RETRIES` cumulative halvings.
-async fn embed_batch_with_retry(
-    client: &reqwest::Client,
-    url: &str,
-    model: &str,
-    batch: Vec<String>,
-    dimensions: Option<u32>,
-    global_offset: usize,
-) -> Result<Vec<(usize, Vec<f32>)>, EmbeddingError> {
-    let batch_len = batch.len();
-    let started = Instant::now();
-
-    tracing::debug!(
-        model = %model,
-        global_offset,
-        batch_len,
-        "embed_batch_with_retry: sending HTTP batch"
-    );
-
-    // Try the full batch first
-    match send_embedding_request(client, url, model, batch.clone(), dimensions).await {
-        Ok(response) => {
-            let dims = response
-                .data
-                .first()
-                .map(|d| d.embedding.len())
-                .unwrap_or(0);
-            tracing::debug!(
-                model = %model,
-                global_offset,
-                batch_len,
-                vectors_in_response = response.data.len(),
-                vector_dims = dims,
-                elapsed_ms = started.elapsed().as_millis() as u64,
-                "embed_batch_with_retry: batch succeeded"
-            );
-            return Ok(response
-                .data
-                .into_iter()
-                .map(|item| (global_offset + item.index, item.embedding))
-                .collect());
-        }
-        Err(e) if is_retryable_status(&e) => {
-            tracing::warn!(
-                model = %model,
-                global_offset,
-                batch_len,
-                error = %e,
-                "embed_batch_with_retry: retryable HTTP error — halving batch size"
-            );
-            if batch_len <= 1 {
-                return Err(EmbeddingError::RetriesExhausted(e.to_string()));
-            }
-            // Fall through to halving retry below
-        }
-        Err(e) => {
-            tracing::warn!(
-                model = %model,
-                global_offset,
-                batch_len,
-                error = %e,
-                "embed_batch_with_retry: non-retryable error"
-            );
-            return Err(e);
-        }
-    }
-
-    // Halving retry: process the batch sequentially with smaller sub-batches
-    let mut results: Vec<(usize, Vec<f32>)> = Vec::with_capacity(batch_len);
-    let mut sub_offset = 0;
-    let mut sub_size = (batch_len / 2).max(1);
-    let mut retries: u32 = 0;
-
-    while sub_offset < batch_len {
-        let sub_end = (sub_offset + sub_size).min(batch_len);
-        let sub_batch: Vec<String> = batch[sub_offset..sub_end].to_vec();
-        let sub_batch_len = sub_batch.len();
-
-        match send_embedding_request(client, url, model, sub_batch, dimensions).await {
-            Ok(response) => {
-                tracing::debug!(
-                    model = %model,
-                    global_offset,
-                    sub_offset,
-                    sub_batch_len,
-                    attempt = retries,
-                    "embed_batch_with_retry: retry sub-batch succeeded"
-                );
-                for item in response.data {
-                    results.push((global_offset + sub_offset + item.index, item.embedding));
-                }
-                sub_offset = sub_end;
-            }
-            Err(e) if is_retryable_status(&e) => {
-                retries += 1;
-                tracing::warn!(
-                    model = %model,
-                    global_offset,
-                    sub_offset,
-                    attempt = retries,
-                    sub_size,
-                    error = %e,
-                    "embed_batch_with_retry: sub-batch still retryable — halving further"
-                );
-                if retries > MAX_RETRIES || sub_size <= 1 {
-                    return Err(EmbeddingError::RetriesExhausted(e.to_string()));
-                }
-                sub_size = (sub_size / 2).max(1);
-            }
-            Err(e) => return Err(e),
-        }
-    }
-
-    Ok(results)
-}
-
 /// Send a single embedding request to the API.
 async fn send_embedding_request(
     client: &reqwest::Client,
@@ -290,6 +272,7 @@ async fn send_embedding_request(
     model: &str,
     input: Vec<String>,
     dimensions: Option<u32>,
+    request_timeout: Duration,
 ) -> Result<EmbeddingApiResponse, EmbeddingError> {
     let body = EmbeddingApiRequest {
         model: model.to_string(),
@@ -301,7 +284,7 @@ async fn send_embedding_request(
 
     let response = client
         .post(url)
-        .timeout(EMBED_TIMEOUT)
+        .timeout(request_timeout)
         .json(&body)
         .send()
         .await

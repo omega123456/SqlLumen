@@ -1,7 +1,9 @@
 //! Integration tests for the schema_index embeddings HTTP client.
 
 use sqllumen_lib::ai::types::EmbeddingApiRequest;
-use sqllumen_lib::schema_index::embeddings::{detect_embedding_dimension, embed_texts};
+use sqllumen_lib::schema_index::embeddings::{
+    detect_embedding_dimension, embed_texts, embed_texts_with_timeout,
+};
 use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -72,7 +74,15 @@ async fn embed_texts_normalises_chat_completions_url() {
     // Pass a /v1/chat/completions URL — should be normalised to /v1/embeddings
     let base_url = format!("{}/v1/chat/completions", server.uri());
 
-    let result = embed_texts(&client, &base_url, "m", vec!["test".to_string()], None).await;
+    let result = embed_texts_with_timeout(
+        &client,
+        &base_url,
+        "m",
+        vec!["test".to_string()],
+        None,
+        std::time::Duration::from_millis(50),
+    )
+    .await;
     assert!(result.is_ok(), "should normalise URL: {:?}", result);
     assert_eq!(result.unwrap()[0], vec![1.0]);
 }
@@ -214,7 +224,7 @@ async fn embed_texts_returns_error_on_malformed_json() {
 async fn embed_texts_returns_error_on_timeout() {
     let server = MockServer::start().await;
 
-    // Respond with a 35-second delay — exceeds the 30s timeout
+    // Respond with a delay that exceeds the short test-only timeout.
     Mock::given(method("POST"))
         .and(path("/v1/embeddings"))
         .respond_with(
@@ -222,7 +232,7 @@ async fn embed_texts_returns_error_on_timeout() {
                 .set_body_json(serde_json::json!({
                     "data": [{ "embedding": [1.0], "index": 0 }]
                 }))
-                .set_delay(std::time::Duration::from_secs(35)),
+                .set_delay(std::time::Duration::from_millis(500)),
         )
         .mount(&server)
         .await;
@@ -230,7 +240,15 @@ async fn embed_texts_returns_error_on_timeout() {
     let client = test_client();
     let base_url = format!("{}/v1", server.uri());
 
-    let result = embed_texts(&client, &base_url, "m", vec!["test".to_string()], None).await;
+    let result = embed_texts_with_timeout(
+        &client,
+        &base_url,
+        "m",
+        vec!["test".to_string()],
+        None,
+        std::time::Duration::from_millis(50),
+    )
+    .await;
 
     assert!(result.is_err());
     let err = format!("{}", result.unwrap_err());

@@ -229,7 +229,7 @@ export function AiSettings() {
       <div className={!aiEnabled ? styles.disabledGroup : undefined}>
         <SettingsSection
           title="Connection"
-          description="Configure the base URL and model for a local/self-hosted LLM (e.g. Ollama, LM Studio, Jan). Enter the base URL only (e.g. http://localhost:11434/v1) — paths like /chat/completions are appended automatically."
+          description="Configure the base URL and model for an OpenAI-compatible service (e.g. Ollama, Jan, vLLM). Enter the base URL only (e.g. http://localhost:11434/v1) — paths like /chat/completions are appended automatically."
         >
           <div>
             <label htmlFor="settings-ai-endpoint" className={styles.fieldLabel}>

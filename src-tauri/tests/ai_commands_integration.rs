@@ -43,6 +43,8 @@ fn sample_request(stream_id: &str, endpoint: &str) -> AiChatRequest {
         temperature: 0.7,
         max_tokens: 100,
         stream_id: stream_id.to_string(),
+        previous_response_id: None,
+        prefer_responses_api: true,
     }
 }
 
@@ -576,6 +578,25 @@ fn categorise_chat_model_by_server_type_field() {
 }
 
 #[test]
+fn categorise_chat_model_by_completion_or_generate_type_field() {
+    let completion_entry = sqllumen_lib::ai::types::OpenAiModelEntry {
+        id: "completion-model".to_string(),
+        object: "model".to_string(),
+        model_type: Some("completion".to_string()),
+        capabilities: None,
+    };
+    let generate_entry = sqllumen_lib::ai::types::OpenAiModelEntry {
+        id: "generate-model".to_string(),
+        object: "model".to_string(),
+        model_type: Some("generate".to_string()),
+        capabilities: None,
+    };
+
+    assert_eq!(categorise_model(&completion_entry), "chat");
+    assert_eq!(categorise_model(&generate_entry), "chat");
+}
+
+#[test]
 fn categorise_embedding_model_by_capabilities_bool() {
     let entry = sqllumen_lib::ai::types::OpenAiModelEntry {
         id: "custom-model".to_string(),
@@ -820,6 +841,42 @@ async fn query_expand_returns_error_on_connection_refused() {
     let result = ai_query_expand_impl(&state, req).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("failed"));
+}
+
+#[tokio::test]
+async fn query_expand_returns_timeout_message_after_retry_timeout() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let server = tokio::spawn(async move {
+        let (mut first_socket, _) = listener.accept().await.unwrap();
+        let mut first_buffer = [0_u8; 4096];
+        let _ = first_socket.read(&mut first_buffer).await.unwrap();
+        drop(first_socket);
+
+        let (mut second_socket, _) = listener.accept().await.unwrap();
+        let mut second_buffer = [0_u8; 4096];
+        let _ = second_socket.read(&mut second_buffer).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(65)).await;
+        let _ = second_socket.shutdown().await;
+    });
+
+    let state = test_state();
+    let req = AiQueryExpandRequest {
+        endpoint: format!("http://{addr}/v1"),
+        model: "test-model".to_string(),
+        system_prompt: "system".to_string(),
+        user_message: "user".to_string(),
+    };
+
+    let result = ai_query_expand_impl(&state, req).await;
+    let error = result.expect_err("retry timeout should surface as an error");
+    assert!(error.contains("timed out after 60s"), "unexpected error: {error}");
+
+    server.abort();
 }
 
 #[tokio::test]

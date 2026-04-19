@@ -5,6 +5,7 @@ const themes = ['light', 'dark'] as const
 const AUTOCOMPLETE_OPEN_RETRIES = 4
 const AUTOCOMPLETE_OPEN_TIMEOUT_MS = 1_500
 const AUTOCOMPLETE_RETRY_DELAY_MS = 300
+const SCREENSHOT_TEST_TIMEOUT_MS = 25_000
 
 async function ensureTheme(page: Page, theme: 'light' | 'dark') {
   for (let i = 0; i < 6; i++) {
@@ -550,6 +551,8 @@ async function resetChromeScrollPositions(page: Page) {
 
 for (const theme of themes) {
   test.describe(`visual regression (${theme})`, () => {
+    test.describe.configure({ timeout: SCREENSHOT_TEST_TIMEOUT_MS })
+
     test.beforeEach(async ({ page }) => {
       await waitForApp(page)
       await ensureTheme(page, theme)

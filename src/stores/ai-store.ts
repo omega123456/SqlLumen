@@ -35,6 +35,7 @@ export interface TabAiState {
   messages: AiMessage[]
   isGenerating: boolean
   activeStreamId: string | null
+  previousResponseId?: string | null
   attachedContext: AttachedContext | null
   isPanelOpen: boolean
   error: string | null
@@ -42,6 +43,24 @@ export interface TabAiState {
   retrievedSchemaDdl: string
   /** Timestamp of the last successful schema retrieval. */
   lastRetrievalTimestamp: number
+  /** Schema-index build timestamp that produced the currently cached DDL. */
+  schemaContextBuildTimestamp: number
+  /** Stable key derived from the semantic-retrieval query set. */
+  schemaContextQueryKey: string
+  /** System prompt used for the last successfully completed response chain. */
+  lastCompletedSystemPrompt: string
+  /** Transport that produced the last reusable response chain. */
+  lastCompletedTransport: 'chat_completions' | 'responses' | null
+  /** Endpoint used for the last reusable response chain. */
+  lastCompletedEndpoint: string
+  /** Model used for the last reusable response chain. */
+  lastCompletedModel: string
+  /** Endpoint used by the currently active AI request. */
+  activeRequestEndpoint: string
+  /** Model used by the currently active AI request. */
+  activeRequestModel: string
+  /** True once the current stream has produced visible assistant output. */
+  activeStreamHasAssistantOutput: boolean
   /** True while waiting for the schema index to finish building. */
   isWaitingForIndex: boolean
   /** Connection ID associated with this tab — needed for cross-store status management. */
@@ -58,11 +77,21 @@ function createDefaultTabAiState(): TabAiState {
     messages: [],
     isGenerating: false,
     activeStreamId: null,
+    previousResponseId: null,
     attachedContext: null,
     isPanelOpen: false,
     error: null,
     retrievedSchemaDdl: '',
     lastRetrievalTimestamp: 0,
+    schemaContextBuildTimestamp: 0,
+    schemaContextQueryKey: '',
+    lastCompletedSystemPrompt: '',
+    lastCompletedTransport: null,
+    lastCompletedEndpoint: '',
+    lastCompletedModel: '',
+    activeRequestEndpoint: '',
+    activeRequestModel: '',
+    activeStreamHasAssistantOutput: false,
     isWaitingForIndex: false,
     connectionId: null,
     _unlisten: null,
@@ -92,7 +121,11 @@ interface AiState {
 
   // Stream lifecycle
   onStreamChunk: (tabId: string, streamId: string, content: string) => void
-  onStreamDone: (tabId: string, streamId: string) => void
+  onStreamDone: (
+    tabId: string,
+    streamId: string,
+    info: { responseId?: string | null; transport?: 'chat_completions' | 'responses' }
+  ) => void
   onStreamError: (tabId: string, streamId: string, error: string) => void
   setUnlisten: (tabId: string, unlisten: () => void) => void
 
@@ -173,6 +206,40 @@ User: "What's the total revenue by product category?"
 Output: {"queries":["products categories revenue SUM price","product_categories category_name JOIN products","orders order_items products price quantity amount"],"hypotheticalSql":"SELECT pc.name, SUM(oi.price * oi.quantity) as revenue FROM \`db\`.\`product_categories\` pc JOIN \`db\`.\`products\` p ON pc.id = p.category_id JOIN \`db\`.\`order_items\` oi ON p.id = oi.product_id GROUP BY pc.name","entities":["products","product_categories","order_items","orders"],"joins":["product_categories → products","products → order_items"],"metrics":["revenue","sum","price","quantity"]}`
 
 const SCHEMA_USAGE_INSTRUCTION = `Retrieved tables only:\n- Use only tables that are present in the retrieved schema below.\n- Never make up or reference any table that is not in the retrieved schema.\n- Always use database-qualified table names in generated SQL (\`db\`.\`table\`).`
+
+function buildSystemPrompt(schemaDdl: string): string {
+  if (!schemaDdl) {
+    return AI_SYSTEM_PROMPT
+  }
+
+  return `${AI_SYSTEM_PROMPT}\n\n${SCHEMA_USAGE_INSTRUCTION}\n\n${SCHEMA_METADATA_NOTE}\n\nDatabase schema:\n${schemaDdl}`
+}
+
+function normaliseSchemaQueryKey(queries: string[]): string {
+  return JSON.stringify(
+    Array.from(
+      new Set(queries.map((query) => query.trim()).filter((query) => query.length > 0))
+    ).sort()
+  )
+}
+
+function shouldReuseResponseChain(
+  tab: TabAiState | undefined,
+  systemPrompt: string | undefined,
+  endpoint: string,
+  model: string
+): boolean {
+  if (!tab?.previousResponseId || !systemPrompt) {
+    return false
+  }
+
+  return (
+    tab.lastCompletedTransport === 'responses' &&
+    tab.lastCompletedSystemPrompt === systemPrompt &&
+    tab.lastCompletedEndpoint === endpoint &&
+    tab.lastCompletedModel === model
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Table extraction helper (shared by hint assembly)
@@ -402,6 +469,22 @@ export const useAiStore = create<AiState>()((set, get) => {
     }
   }
 
+  function getCurrentSystemPrompt(tabId: string): string {
+    return get().tabs[tabId]?.messages.find((message) => message.role === 'system')?.content ?? ''
+  }
+
+  function resetResponseChain(tabId: string): void {
+    if (!get().tabs[tabId]) return
+
+    patchTab(tabId, {
+      previousResponseId: null,
+      lastCompletedSystemPrompt: '',
+      lastCompletedTransport: null,
+      lastCompletedEndpoint: '',
+      lastCompletedModel: '',
+    })
+  }
+
   /**
    * Retrieve schema context via the vector retrieval pipeline.
    *
@@ -420,6 +503,35 @@ export const useAiStore = create<AiState>()((set, get) => {
         'debug',
         `[ai-store] retrieveSchemaContext start — tabId=${tabId} sessionId=${sessionId} userQuery="${userMessage}"`
       )
+
+      let schemaQueryKey = ''
+
+      const getCachedSchemaContext = (queryKey: string) => {
+        const indexStatus = useSchemaIndexStore.getState().getStatusForSession(sessionId)
+        const currentTab = get().tabs[tabId]
+        const cachedDdl = currentTab?.retrievedSchemaDdl
+        const cachedTimestamp = currentTab?.lastRetrievalTimestamp ?? 0
+
+        if (
+          indexStatus?.status === 'ready' &&
+          cachedDdl &&
+          cachedTimestamp > 0 &&
+          indexStatus.lastBuildTimestamp > 0 &&
+          currentTab.schemaContextBuildTimestamp === indexStatus.lastBuildTimestamp &&
+          currentTab.schemaContextQueryKey === queryKey &&
+          currentTab?.connectionId === sessionId &&
+          currentTab.messages.some((message) => message.role === 'assistant')
+        ) {
+          logFrontend(
+            'debug',
+            `[ai-store] reusing tab schema context — tabId=${tabId} sessionId=${sessionId} buildTs=${indexStatus.lastBuildTimestamp} ddlChars=${cachedDdl.length}`
+          )
+
+          return cachedDdl
+        }
+
+        return null
+      }
 
       // Check index status — if building, wait for it
       const indexState = useSchemaIndexStore.getState().getStatusForSession(sessionId)
@@ -543,9 +655,15 @@ export const useAiStore = create<AiState>()((set, get) => {
       } catch (err) {
         // Query expansion failed — fall back to original message
         const msg = err instanceof Error ? err.message : String(err)
-        console.error('[ai-store] Query expansion failed, using original message:', msg)
         logFrontend('warn', `[ai-store] Query expansion fallback: ${msg}`)
         logFrontend('debug', `[ai-store] falling back to original query: "${userMessage}"`)
+      }
+
+      schemaQueryKey = normaliseSchemaQueryKey(queries)
+
+      const cachedSchemaDdl = getCachedSchemaContext(schemaQueryKey)
+      if (cachedSchemaDdl != null) {
+        return cachedSchemaDdl
       }
 
       logFrontend(
@@ -700,11 +818,23 @@ export const useAiStore = create<AiState>()((set, get) => {
       )
 
       // Update tab state (only if tab still exists — it may have been cleaned up)
+      const retrievalTimestamp = Date.now()
+      const latestIndexState = useSchemaIndexStore.getState().getStatusForSession(sessionId)
+      const schemaContextBuildTimestamp = latestIndexState?.lastBuildTimestamp ?? 0
       if (get().tabs[tabId]) {
         patchTab(tabId, {
           retrievedSchemaDdl: ddl,
-          lastRetrievalTimestamp: Date.now(),
+          lastRetrievalTimestamp: retrievalTimestamp,
+          schemaContextBuildTimestamp,
+          schemaContextQueryKey: schemaQueryKey,
         })
+      }
+
+      if (ddl) {
+        logFrontend(
+          'debug',
+          `[ai-store] cached schema context on tab — tabId=${tabId} sessionId=${sessionId} buildTs=${schemaContextBuildTimestamp} ddlChars=${ddl.length}`
+        )
       }
 
       logFrontend(
@@ -715,7 +845,6 @@ export const useAiStore = create<AiState>()((set, get) => {
       return ddl
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[ai-store] Schema retrieval failed:', msg)
       logFrontend('error', `[ai-store] Schema retrieval failed: ${msg}`)
       showErrorToast('Schema retrieval failed', msg)
       if (get().tabs[tabId]) {
@@ -735,6 +864,13 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       const tab = get().tabs[tabId]!
       const streamId = crypto.randomUUID()
+      const trimmedMessage = message.trim()
+      const lastMessage = tab.messages[tab.messages.length - 1]
+      const shouldReplaceTrailingFailedUserMessage =
+        !tab.isGenerating &&
+        !!tab.error &&
+        lastMessage?.role === 'user' &&
+        lastMessage.content.trim() === trimmedMessage
 
       const userMessage: AiMessage = {
         id: crypto.randomUUID(),
@@ -748,11 +884,17 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       // Add the user message immediately and store connectionId
       patchTab(tabId, {
-        messages: [...tab.messages, userMessage],
+        messages: shouldReplaceTrailingFailedUserMessage
+          ? [...tab.messages.slice(0, -1), userMessage]
+          : [...tab.messages, userMessage],
         error: null,
         isGenerating: true,
         activeStreamId: streamId,
         connectionId,
+        previousResponseId: tab.previousResponseId,
+        activeRequestEndpoint: '',
+        activeRequestModel: '',
+        activeStreamHasAssistantOutput: false,
       })
 
       // NOTE: Do NOT clear attachedContext here. It must remain set so that
@@ -776,22 +918,21 @@ export const useAiStore = create<AiState>()((set, get) => {
           }
 
           // Build and upsert system message with retrieved schema
-          if (schemaDdl) {
-            upsertSystemMessage(
-              tabId,
-              `${AI_SYSTEM_PROMPT}\n\n${SCHEMA_USAGE_INSTRUCTION}\n\n${SCHEMA_METADATA_NOTE}\n\nDatabase schema:\n${schemaDdl}`
-            )
-          } else {
-            // No schema available — inject a system prompt without schema DDL
-            upsertSystemMessage(tabId, AI_SYSTEM_PROMPT)
+          const previousSystemPrompt = getCurrentSystemPrompt(tabId)
+          const nextSystemPrompt = buildSystemPrompt(schemaDdl)
+
+          if (previousSystemPrompt && previousSystemPrompt !== nextSystemPrompt) {
+            resetResponseChain(tabId)
           }
+
+          upsertSystemMessage(tabId, nextSystemPrompt)
 
           if (!get().tabs[tabId]) return // tab was cleaned up
 
           // Set up event listeners for this stream
           const unlisten = await listenToAiStream(streamId, {
             onChunk: (content) => get().onStreamChunk(tabId, streamId, content),
-            onDone: () => get().onStreamDone(tabId, streamId),
+            onDone: (info) => get().onStreamDone(tabId, streamId, info),
             onError: (error) => get().onStreamError(tabId, streamId, error),
           })
 
@@ -815,8 +956,15 @@ export const useAiStore = create<AiState>()((set, get) => {
           const temperature = settings.temperature ?? parseFloat(getSetting('ai.temperature'))
           const maxTokens = settings.maxTokens ?? parseInt(getSetting('ai.maxTokens'), 10)
 
+          patchTab(tabId, {
+            activeRequestEndpoint: endpoint,
+            activeRequestModel: model,
+          })
+
           // Build IPC messages from the current conversation
           const currentMessages = get().tabs[tabId]?.messages ?? []
+          const currentSystemPrompt = getCurrentSystemPrompt(tabId)
+
           const ipcMessages: IpcAiMessage[] = currentMessages.map((m) => ({
             role: m.role,
             content: m.content,
@@ -841,10 +989,18 @@ export const useAiStore = create<AiState>()((set, get) => {
             temperature: isNaN(temperature) ? 0.3 : temperature,
             maxTokens: isNaN(maxTokens) ? 2048 : maxTokens,
             streamId,
+            previousResponseId: shouldReuseResponseChain(
+              get().tabs[tabId],
+              currentSystemPrompt,
+              endpoint,
+              model
+            )
+              ? (get().tabs[tabId]?.previousResponseId ?? null)
+              : null,
+            preferResponsesApi: true,
           })
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : String(err)
-          console.error('[ai-store] Failed to start AI chat stream:', errorMsg)
           logFrontend('error', `[ai-store] AI chat failed: ${errorMsg}`)
 
           if (get().tabs[tabId]) {
@@ -877,6 +1033,14 @@ export const useAiStore = create<AiState>()((set, get) => {
       patchTab(tabId, {
         isGenerating: false,
         activeStreamId: null,
+        previousResponseId: null,
+        lastCompletedSystemPrompt: '',
+        lastCompletedTransport: null,
+        lastCompletedEndpoint: '',
+        lastCompletedModel: '',
+        activeRequestEndpoint: '',
+        activeRequestModel: '',
+        activeStreamHasAssistantOutput: false,
       })
 
       // Restore the editor lock
@@ -888,7 +1052,6 @@ export const useAiStore = create<AiState>()((set, get) => {
       // Cancel the backend stream (fire-and-forget)
       cancelAiStream(streamId).catch((err) => {
         const errorMsg = err instanceof Error ? err.message : String(err)
-        console.error('[ai-store] Failed to cancel AI stream:', errorMsg)
         logFrontend('warn', `[ai-store] AI cancel failed: ${errorMsg}`)
       })
     },
@@ -910,6 +1073,14 @@ export const useAiStore = create<AiState>()((set, get) => {
       patchTab(tabId, {
         messages: messagesUpToLastUser,
         error: null,
+        previousResponseId: null,
+        lastCompletedSystemPrompt: '',
+        lastCompletedTransport: null,
+        lastCompletedEndpoint: '',
+        lastCompletedModel: '',
+        activeRequestEndpoint: '',
+        activeRequestModel: '',
+        activeStreamHasAssistantOutput: false,
       })
 
       // Re-send the message
@@ -946,19 +1117,35 @@ export const useAiStore = create<AiState>()((set, get) => {
         messages,
         isGenerating: true,
         activeStreamId: streamId,
+        activeStreamHasAssistantOutput: true,
       })
     },
 
     // ------ onStreamDone ------
 
-    onStreamDone: (tabId, streamId) => {
+    onStreamDone: (tabId, streamId, info) => {
       // Stale-stream guard: ignore events from a previous stream that was superseded
       const tab = get().tabs[tabId]
       if (!tab || tab.activeStreamId !== streamId) return
 
+      const canReuseResponsesChain =
+        info.transport === 'responses' &&
+        tab.activeStreamHasAssistantOutput &&
+        (info.responseId?.trim().length ?? 0) > 0
+
       patchTab(tabId, {
         isGenerating: false,
         activeStreamId: null,
+        previousResponseId: canReuseResponsesChain ? (info.responseId ?? null) : null,
+        lastCompletedSystemPrompt: canReuseResponsesChain
+          ? (tab.messages.find((message) => message.role === 'system')?.content ?? '')
+          : '',
+        lastCompletedTransport: info.transport ?? null,
+        lastCompletedEndpoint: canReuseResponsesChain ? tab.activeRequestEndpoint : '',
+        lastCompletedModel: canReuseResponsesChain ? tab.activeRequestModel : '',
+        activeRequestEndpoint: '',
+        activeRequestModel: '',
+        activeStreamHasAssistantOutput: false,
       })
 
       // Tear down event listeners now that the stream is complete
@@ -979,6 +1166,14 @@ export const useAiStore = create<AiState>()((set, get) => {
         isGenerating: false,
         error,
         activeStreamId: null,
+        previousResponseId: null,
+        lastCompletedSystemPrompt: '',
+        lastCompletedTransport: null,
+        lastCompletedEndpoint: '',
+        lastCompletedModel: '',
+        activeRequestEndpoint: '',
+        activeRequestModel: '',
+        activeStreamHasAssistantOutput: false,
       })
 
       // Tear down event listeners now that the stream has errored
@@ -1035,10 +1230,42 @@ export const useAiStore = create<AiState>()((set, get) => {
 
     clearConversation: (tabId) => {
       ensureTab(tabId)
+      const tab = get().tabs[tabId]
+      const hadActiveStream = !!tab?.activeStreamId
+
+      if (tab?._unlisten) {
+        callUnlistenSafely(tabId, tab)
+      }
+
+      if (tab?.activeStreamId) {
+        cancelAiStream(tab.activeStreamId).catch((err) => {
+          const errorMsg = err instanceof Error ? err.message : String(err)
+          logFrontend('warn', `[ai-store] AI cancel during clearConversation failed: ${errorMsg}`)
+        })
+      }
+
       patchTab(tabId, {
         messages: [],
         error: null,
+        isGenerating: false,
+        activeStreamId: null,
+        previousResponseId: null,
+        retrievedSchemaDdl: '',
+        lastRetrievalTimestamp: 0,
+        schemaContextBuildTimestamp: 0,
+        schemaContextQueryKey: '',
+        lastCompletedSystemPrompt: '',
+        lastCompletedTransport: null,
+        lastCompletedEndpoint: '',
+        lastCompletedModel: '',
+        activeRequestEndpoint: '',
+        activeRequestModel: '',
+        activeStreamHasAssistantOutput: false,
       })
+
+      if (hadActiveStream) {
+        get().restoreTabStatus(tabId)
+      }
     },
 
     // ------ setError ------
@@ -1086,7 +1313,6 @@ export const useAiStore = create<AiState>()((set, get) => {
       if (tab?.activeStreamId) {
         cancelAiStream(tab.activeStreamId).catch((err) => {
           const errorMsg = err instanceof Error ? err.message : String(err)
-          console.error('[ai-store] Failed to cancel AI stream during cleanup:', errorMsg)
           logFrontend(
             'warn',
             `[ai-store] AI cancel during cleanup for tab ${tabId} failed: ${errorMsg}`
@@ -1098,7 +1324,6 @@ export const useAiStore = create<AiState>()((set, get) => {
         try {
           tab._unlisten()
         } catch (err) {
-          console.error('[ai-store] Error calling unlisten during cleanup:', err)
           logFrontend(
             'warn',
             `[ai-store] Error calling unlisten for tab ${tabId}: ${err instanceof Error ? err.message : String(err)}`

@@ -53,6 +53,14 @@ fn already_chat_completions_is_idempotent() {
 }
 
 #[test]
+fn responses_suffix_is_stripped_and_replaced() {
+    assert_eq!(
+        normalise_openai_url("http://host:11434/v1/responses", "chat/completions"),
+        EXPECTED
+    );
+}
+
+#[test]
 fn v1_models_suffix_is_stripped_and_replaced() {
     assert_eq!(
         normalise_openai_url("http://host:11434/v1/models", "chat/completions"),

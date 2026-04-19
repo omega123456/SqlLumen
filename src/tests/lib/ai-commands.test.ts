@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // Module mocks — must be before imports of the module under test
@@ -12,6 +12,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 const mockListen = vi.fn()
 vi.mock('@tauri-apps/api/event', () => ({
   listen: (...args: unknown[]) => mockListen(...args),
+}))
+
+const mockLogFrontend = vi.fn()
+vi.mock('../../lib/app-log-commands', () => ({
+  logFrontend: (...args: unknown[]) => mockLogFrontend(...args),
 }))
 
 import {
@@ -49,6 +54,8 @@ describe('sendAiChat', () => {
       temperature: 0.5,
       maxTokens: 1024,
       streamId: 'stream-123',
+      previousResponseId: 'resp_prev',
+      preferResponsesApi: true,
     }
 
     await sendAiChat(params)
@@ -62,6 +69,8 @@ describe('sendAiChat', () => {
         temperature: params.temperature,
         maxTokens: params.maxTokens,
         streamId: params.streamId,
+        previousResponseId: 'resp_prev',
+        preferResponsesApi: true,
       },
     })
   })
@@ -180,7 +189,15 @@ describe('listenToAiStream', () => {
   })
 
   it('filters done events by streamId', async () => {
-    let doneHandler: ((event: { payload: { streamId: string } }) => void) | null = null
+    let doneHandler:
+      | ((event: {
+          payload: {
+            streamId: string
+            responseId?: string | null
+            transport?: 'chat_completions' | 'responses'
+          }
+        }) => void)
+      | null = null
 
     mockListen.mockImplementation((eventName: string, handler: unknown) => {
       if (eventName === 'ai-stream-done') {
@@ -193,8 +210,13 @@ describe('listenToAiStream', () => {
     await listenToAiStream('stream-done-test', callbacks)
 
     // Matching
-    doneHandler!({ payload: { streamId: 'stream-done-test' } })
-    expect(callbacks.onDone).toHaveBeenCalledTimes(1)
+    doneHandler!({
+      payload: { streamId: 'stream-done-test', responseId: 'resp_123', transport: 'responses' },
+    })
+    expect(callbacks.onDone).toHaveBeenCalledWith({
+      responseId: 'resp_123',
+      transport: 'responses',
+    })
 
     // Non-matching
     doneHandler!({ payload: { streamId: 'stream-other' } })
@@ -226,16 +248,6 @@ describe('listenToAiStream', () => {
 })
 
 describe('listAiModels', () => {
-  let consoleSpy: ReturnType<typeof vi.spyOn>
-
-  beforeEach(() => {
-    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-  })
-
-  afterEach(() => {
-    consoleSpy?.mockRestore()
-  })
-
   it('returns models from the backend', async () => {
     mockInvoke.mockResolvedValueOnce({
       models: [
@@ -263,9 +275,9 @@ describe('listAiModels', () => {
 
     expect(result.models).toEqual([])
     expect(result.error).toBe('Connection refused')
-    expect(consoleSpy).toHaveBeenCalledWith(
-      '[ai-commands] Failed to list AI models:',
-      'Connection refused'
+    expect(mockLogFrontend).toHaveBeenCalledWith(
+      'error',
+      '[ai-commands] Failed to list AI models: Connection refused'
     )
   })
 
