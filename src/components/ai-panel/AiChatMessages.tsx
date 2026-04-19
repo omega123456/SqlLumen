@@ -12,6 +12,7 @@ export interface AiChatMessagesProps {
   connectionId?: string | null
   onTriggerDiff?: (sql: string) => void
   onSuggestionFill?: (text: string) => void
+  onSqlAccepted?: (sql: string) => void
 }
 
 /** Stable empty array to avoid re-render loops when tab state doesn't exist. */
@@ -22,6 +23,7 @@ export function AiChatMessages({
   connectionId,
   onTriggerDiff,
   onSuggestionFill,
+  onSqlAccepted,
 }: AiChatMessagesProps) {
   const messages = useAiStore((s) => s.tabs[tabId]?.messages ?? EMPTY_MESSAGES)
   const error = useAiStore((s) => s.tabs[tabId]?.error ?? null)
@@ -101,6 +103,7 @@ export function AiChatMessages({
               message={msg}
               isStreaming={isStreamingMessage}
               onTriggerDiff={hasAttachedContext ? onTriggerDiff : undefined}
+              onSqlAccepted={onSqlAccepted}
             />
           </div>
         )

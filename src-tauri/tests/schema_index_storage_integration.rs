@@ -40,6 +40,8 @@ fn sample_chunk(connection_id: &str, chunk_key: &str, dimension: usize) -> Chunk
         ref_db_name: None,
         ref_table_name: None,
         embedding: test_embedding(dimension, 1.0),
+        text_for_embedding: None,
+        row_count_approx: None,
     }
 }
 
@@ -186,6 +188,8 @@ fn test_delete_chunks_by_table_removes_source_and_reference() {
         ref_db_name: Some("testdb".to_string()),
         ref_table_name: Some("users".to_string()),
         embedding: test_embedding(dim, 2.0),
+        text_for_embedding: None,
+        row_count_approx: None,
     };
     storage::insert_chunk(&conn, &fk_chunk).expect("insert fk chunk");
 
@@ -202,6 +206,8 @@ fn test_delete_chunks_by_table_removes_source_and_reference() {
         ref_db_name: None,
         ref_table_name: None,
         embedding: test_embedding(dim, 3.0),
+        text_for_embedding: None,
+        row_count_approx: None,
     };
     storage::insert_chunk(&conn, &other_chunk).expect("insert other chunk");
 
@@ -264,6 +270,8 @@ fn test_update_chunk_embedding() {
         "gpt-4",
         &new_embedding,
         "conn-1",
+        None,
+        None,
     )
     .expect("update chunk embedding");
 
@@ -401,6 +409,8 @@ fn test_drop_and_recreate_vec_table() {
         ref_db_name: None,
         ref_table_name: None,
         embedding: test_embedding(new_dim, 1.0),
+        text_for_embedding: None,
+        row_count_approx: None,
     };
 
     // Need to clear old chunks from the metadata table since their vectors are gone
@@ -479,6 +489,8 @@ fn test_insert_fk_chunk() {
         ref_db_name: Some("testdb".to_string()),
         ref_table_name: Some("users".to_string()),
         embedding: test_embedding(dim, 1.0),
+        text_for_embedding: None,
+        row_count_approx: None,
     };
 
     let id = storage::insert_chunk(&conn, &fk_chunk).expect("insert fk chunk");
@@ -503,11 +515,29 @@ fn test_chunk_type_serde() {
     let json_fk = serde_json::to_string(&ChunkType::Fk).expect("serialize");
     assert_eq!(json_fk, "\"fk\"");
 
+    let json_view = serde_json::to_string(&ChunkType::View).expect("serialize");
+    assert_eq!(json_view, "\"view\"");
+
+    let json_proc = serde_json::to_string(&ChunkType::Procedure).expect("serialize");
+    assert_eq!(json_proc, "\"procedure\"");
+
+    let json_func = serde_json::to_string(&ChunkType::Function).expect("serialize");
+    assert_eq!(json_func, "\"function\"");
+
     let deserialized: ChunkType = serde_json::from_str("\"table\"").expect("deserialize");
     assert_eq!(deserialized, ChunkType::Table);
 
     let deserialized_fk: ChunkType = serde_json::from_str("\"fk\"").expect("deserialize");
     assert_eq!(deserialized_fk, ChunkType::Fk);
+
+    let deserialized_view: ChunkType = serde_json::from_str("\"view\"").expect("deserialize");
+    assert_eq!(deserialized_view, ChunkType::View);
+
+    let deserialized_proc: ChunkType = serde_json::from_str("\"procedure\"").expect("deserialize");
+    assert_eq!(deserialized_proc, ChunkType::Procedure);
+
+    let deserialized_func: ChunkType = serde_json::from_str("\"function\"").expect("deserialize");
+    assert_eq!(deserialized_func, ChunkType::Function);
 }
 
 #[test]
@@ -551,6 +581,8 @@ fn test_chunk_metadata_serde() {
         embedded_at: "2025-01-15".to_string(),
         ref_db_name: None,
         ref_table_name: None,
+        text_for_embedding: None,
+        row_count_approx: None,
     };
 
     let json = serde_json::to_value(&meta).expect("serialize");
@@ -615,6 +647,8 @@ fn test_delete_chunk_by_key_removes_only_target_chunk() {
         ref_db_name: Some("testdb".to_string()),
         ref_table_name: Some("users".to_string()),
         embedding: test_embedding(dim, 2.0),
+        text_for_embedding: None,
+        row_count_approx: None,
     };
     storage::insert_chunk(&conn, &fk_chunk).expect("insert fk chunk");
 
@@ -736,8 +770,16 @@ fn test_signatures_roundtrip_and_partition_by_connection() {
     let conn = setup_db(4);
 
     let entries_a = vec![
-        ("db1".to_string(), "users".to_string(), "sig-a-users".to_string()),
-        ("db1".to_string(), "orders".to_string(), "sig-a-orders".to_string()),
+        (
+            "db1".to_string(),
+            "users".to_string(),
+            "sig-a-users".to_string(),
+        ),
+        (
+            "db1".to_string(),
+            "orders".to_string(),
+            "sig-a-orders".to_string(),
+        ),
     ];
     storage::upsert_signatures(&conn, "conn-A", &entries_a).expect("upsert A");
 
@@ -895,11 +937,9 @@ fn test_delete_all_signatures_scoped_to_connection() {
 
     storage::delete_all_signatures(&conn, "conn-A").expect("wipe A");
 
-    assert!(
-        storage::get_signatures_for_connection(&conn, "conn-A")
-            .expect("read A")
-            .is_empty()
-    );
+    assert!(storage::get_signatures_for_connection(&conn, "conn-A")
+        .expect("read A")
+        .is_empty());
     assert_eq!(
         storage::get_signatures_for_connection(&conn, "conn-B")
             .expect("read B")
@@ -913,9 +953,7 @@ fn test_delete_all_signatures_scoped_to_connection() {
 fn test_upsert_signatures_empty_batch_is_noop() {
     let conn = setup_db(4);
     storage::upsert_signatures(&conn, "conn-1", &[]).expect("empty upsert should succeed");
-    assert!(
-        storage::get_signatures_for_connection(&conn, "conn-1")
-            .expect("read")
-            .is_empty()
-    );
+    assert!(storage::get_signatures_for_connection(&conn, "conn-1")
+        .expect("read")
+        .is_empty());
 }

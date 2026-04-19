@@ -105,4 +105,6 @@ pub struct AppState {
     pub session_ref_counts: Arc<Mutex<HashMap<String, usize>>>,
     /// Shared HTTP client for embedding API calls.
     pub http_client: reqwest::Client,
+    /// Cache for query embedding vectors (avoids re-embedding identical queries).
+    pub embedding_cache: crate::schema_index::embeddings_cache::EmbeddingCache,
 }

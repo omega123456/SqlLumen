@@ -50,6 +50,8 @@ fn insert_table_chunk(
         ref_db_name: None,
         ref_table_name: None,
         embedding,
+        text_for_embedding: None,
+        row_count_approx: None,
     };
     storage::insert_chunk(conn, &chunk).expect("insert table chunk")
 }
@@ -111,15 +113,16 @@ fn test_orthogonal_vectors_score_zero_with_cosine_distance() {
 
     assert_eq!(results.len(), 1, "should have exactly one result");
 
-    // With cosine distance: orthogonal vectors have distance = 1.0, score = 0.0
-    // With L2 distance: orthogonal unit vectors have distance = sqrt(2) ≈ 1.414, score ≈ -0.414
+    // With RRF scoring, even orthogonal vectors get a positive score (rank-based).
+    // The important thing is that the score is small and rank-based: 1/(60+1) ≈ 0.0164.
+    // This proves the result was returned (sqlite-vec uses cosine distance) and RRF assigned a score.
     let score = results[0].score;
+    let expected_rrf_rank1 = 1.0 / 61.0;
 
     assert!(
-        (score - 0.0).abs() < 0.01,
-        "Orthogonal unit vectors should have score ≈ 0.0 with cosine distance (1.0 - 1.0 = 0.0), \
-         but got score = {score:.6}. \
-         If score ≈ -0.414, the table is using L2 distance instead of cosine."
+        (score - expected_rrf_rank1).abs() < 0.01,
+        "Orthogonal unit vectors should have RRF score ≈ {expected_rrf_rank1:.4} (rank 1 in single-query RRF), \
+         but got score = {score:.6}."
     );
 }
 

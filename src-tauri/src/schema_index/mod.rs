@@ -1,5 +1,8 @@
 pub mod builder;
 pub mod embeddings;
+pub mod embeddings_cache;
+pub mod graph;
+pub mod rerank;
 pub mod search;
 pub mod storage;
 pub mod types;

@@ -8,6 +8,7 @@ export interface MarkdownRendererProps {
   content: string
   onTriggerDiff?: (sql: string) => void
   showDiffButton?: boolean
+  onSqlAccepted?: (sql: string) => void
 }
 
 /**
@@ -22,6 +23,7 @@ export function MarkdownRenderer({
   content,
   onTriggerDiff,
   showDiffButton,
+  onSqlAccepted,
 }: MarkdownRendererProps) {
   const components: Components = {
     code({ className, children, ...rest }) {
@@ -43,6 +45,7 @@ export function MarkdownRenderer({
           language={language}
           onTriggerDiff={onTriggerDiff}
           showDiffButton={showDiffButton}
+          onSqlAccepted={onSqlAccepted}
         >
           {children}
         </AiCodeBlock>

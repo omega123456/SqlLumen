@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use rusqlite::{params, Connection, Result};
 
 use super::embedding_to_bytes;
-use super::types::{ChunkInsert, ChunkMetadata, ChunkType, IndexMeta, IndexStatus};
+use super::types::{ChunkInsert, ChunkMetadata, ChunkType, FkEdge, IndexMeta, IndexStatus};
 
 /// Current schema version of the vec0 virtual table layout.
 /// Increment this when the vec0 CREATE statement changes (e.g. distance metric).
 /// Version 1 = cosine distance metric.
-pub const VEC_SCHEMA_VERSION: u32 = 1;
+pub const VEC_SCHEMA_VERSION: u32 = 2;
 
 /// Sanitize an ID string for use in a SQL table name by replacing
 /// non-alphanumeric characters with underscores.
@@ -44,8 +44,8 @@ pub fn drop_vec_table(conn: &Connection, profile_id: &str) -> Result<()> {
 /// profile-specific vector table. Returns the inserted chunk ID.
 pub fn insert_chunk(conn: &Connection, chunk: &ChunkInsert) -> Result<i64> {
     conn.execute(
-        "INSERT INTO schema_index_chunks (connection_id, chunk_key, db_name, table_name, chunk_type, ddl_text, ddl_hash, model_id, ref_db_name, ref_table_name)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO schema_index_chunks (connection_id, chunk_key, db_name, table_name, chunk_type, ddl_text, ddl_hash, model_id, ref_db_name, ref_table_name, text_for_embedding, row_count_approx)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             chunk.connection_id,
             chunk.chunk_key,
@@ -57,6 +57,8 @@ pub fn insert_chunk(conn: &Connection, chunk: &ChunkInsert) -> Result<i64> {
             chunk.model_id,
             chunk.ref_db_name,
             chunk.ref_table_name,
+            chunk.text_for_embedding,
+            chunk.row_count_approx,
         ],
     )?;
     let chunk_id = conn.last_insert_rowid();
@@ -80,10 +82,12 @@ pub fn update_chunk_embedding(
     model_id: &str,
     embedding: &[f32],
     profile_id: &str,
+    text_for_embedding: Option<&str>,
+    row_count_approx: Option<i64>,
 ) -> Result<()> {
     conn.execute(
-        "UPDATE schema_index_chunks SET ddl_text = ?1, ddl_hash = ?2, model_id = ?3, embedded_at = datetime('now') WHERE id = ?4",
-        params![ddl_text, ddl_hash, model_id, chunk_id],
+        "UPDATE schema_index_chunks SET ddl_text = ?1, ddl_hash = ?2, model_id = ?3, embedded_at = datetime('now'), text_for_embedding = ?5, row_count_approx = ?6 WHERE id = ?4",
+        params![ddl_text, ddl_hash, model_id, chunk_id, text_for_embedding, row_count_approx],
     )?;
 
     let table = vec_table_name(profile_id);
@@ -167,6 +171,10 @@ pub fn delete_all_chunks(conn: &Connection, connection_id: &str) -> Result<()> {
     // them alongside fresh DDL.
     delete_all_signatures(conn, connection_id)?;
 
+    // Also wipe FK edges and segment DF for this connection.
+    delete_fk_edges_for_connection(conn, connection_id)?;
+    delete_segment_df_for_connection(conn, connection_id)?;
+
     Ok(())
 }
 
@@ -219,7 +227,7 @@ pub fn get_chunk_by_key(
     chunk_key: &str,
 ) -> Result<Option<ChunkMetadata>> {
     let mut stmt = conn.prepare(
-        "SELECT id, connection_id, chunk_key, db_name, table_name, chunk_type, ddl_text, ddl_hash, model_id, embedded_at, ref_db_name, ref_table_name
+        "SELECT id, connection_id, chunk_key, db_name, table_name, chunk_type, ddl_text, ddl_hash, model_id, embedded_at, ref_db_name, ref_table_name, text_for_embedding, row_count_approx
          FROM schema_index_chunks
          WHERE connection_id = ?1 AND chunk_key = ?2",
     )?;
@@ -236,7 +244,7 @@ pub fn get_chunk_by_key(
 /// List all chunks for a connection.
 pub fn list_chunks(conn: &Connection, connection_id: &str) -> Result<Vec<ChunkMetadata>> {
     let mut stmt = conn.prepare(
-        "SELECT id, connection_id, chunk_key, db_name, table_name, chunk_type, ddl_text, ddl_hash, model_id, embedded_at, ref_db_name, ref_table_name
+        "SELECT id, connection_id, chunk_key, db_name, table_name, chunk_type, ddl_text, ddl_hash, model_id, embedded_at, ref_db_name, ref_table_name, text_for_embedding, row_count_approx
          FROM schema_index_chunks
          WHERE connection_id = ?1
          ORDER BY id",
@@ -407,6 +415,107 @@ pub fn delete_all_signatures(conn: &Connection, connection_id: &str) -> Result<(
     Ok(())
 }
 
+// ── schema_index_fk_edges CRUD ─────────────────────────────────────────
+
+/// Replace all FK edges for an entire connection.
+/// Deletes all existing edges for `connection_id` then inserts the new edges.
+pub fn replace_fk_edges_for_connection(
+    conn: &Connection,
+    connection_id: &str,
+    edges: &[FkEdge],
+) -> Result<()> {
+    delete_fk_edges_for_connection(conn, connection_id)?;
+    let mut stmt = conn.prepare(
+        "INSERT INTO schema_index_fk_edges (connection_id, src_db, src_tbl, src_col, dst_db, dst_tbl, dst_col, constraint_name, on_delete, on_update)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+    )?;
+    for edge in edges {
+        stmt.execute(params![
+            connection_id,
+            edge.src_db,
+            edge.src_tbl,
+            edge.src_col,
+            edge.dst_db,
+            edge.dst_tbl,
+            edge.dst_col,
+            edge.constraint_name,
+            edge.on_delete.as_deref().unwrap_or("RESTRICT"),
+            edge.on_update.as_deref().unwrap_or("RESTRICT"),
+        ])?;
+    }
+    Ok(())
+}
+
+/// Replace all FK edges for a specific table (as source).
+/// Deletes existing edges for this `(connection_id, src_db, src_tbl)` then
+/// inserts the new edges.
+pub fn replace_fk_edges_for_table(
+    conn: &Connection,
+    connection_id: &str,
+    src_db: &str,
+    src_tbl: &str,
+    edges: &[FkEdge],
+) -> Result<()> {
+    conn.execute(
+        "DELETE FROM schema_index_fk_edges WHERE connection_id = ?1 AND src_db = ?2 AND src_tbl = ?3",
+        params![connection_id, src_db, src_tbl],
+    )?;
+    let mut stmt = conn.prepare(
+        "INSERT INTO schema_index_fk_edges (connection_id, src_db, src_tbl, src_col, dst_db, dst_tbl, dst_col, constraint_name, on_delete, on_update)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+    )?;
+    for edge in edges {
+        stmt.execute(params![
+            connection_id,
+            edge.src_db,
+            edge.src_tbl,
+            edge.src_col,
+            edge.dst_db,
+            edge.dst_tbl,
+            edge.dst_col,
+            edge.constraint_name,
+            edge.on_delete.as_deref().unwrap_or("RESTRICT"),
+            edge.on_update.as_deref().unwrap_or("RESTRICT"),
+        ])?;
+    }
+    Ok(())
+}
+
+/// Get all FK edges for a connection.
+pub fn get_fk_edges_for_connection(conn: &Connection, connection_id: &str) -> Result<Vec<FkEdge>> {
+    let mut stmt = conn.prepare(
+        "SELECT connection_id, src_db, src_tbl, src_col, dst_db, dst_tbl, dst_col, constraint_name, on_delete, on_update
+         FROM schema_index_fk_edges
+         WHERE connection_id = ?1",
+    )?;
+    let rows = stmt
+        .query_map(params![connection_id], |row| {
+            Ok(FkEdge {
+                connection_id: row.get(0)?,
+                src_db: row.get(1)?,
+                src_tbl: row.get(2)?,
+                src_col: row.get(3)?,
+                dst_db: row.get(4)?,
+                dst_tbl: row.get(5)?,
+                dst_col: row.get(6)?,
+                constraint_name: row.get(7)?,
+                on_delete: row.get(8)?,
+                on_update: row.get(9)?,
+            })
+        })?
+        .collect::<Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+/// Delete all FK edges for a connection.
+pub fn delete_fk_edges_for_connection(conn: &Connection, connection_id: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM schema_index_fk_edges WHERE connection_id = ?1",
+        params![connection_id],
+    )?;
+    Ok(())
+}
+
 /// Map a rusqlite row to ChunkMetadata.
 fn row_to_chunk_metadata(row: &rusqlite::Row<'_>) -> Result<ChunkMetadata> {
     let chunk_type_str: String = row.get(5)?;
@@ -423,5 +532,65 @@ fn row_to_chunk_metadata(row: &rusqlite::Row<'_>) -> Result<ChunkMetadata> {
         embedded_at: row.get(9)?,
         ref_db_name: row.get(10)?,
         ref_table_name: row.get(11)?,
+        text_for_embedding: row.get(12)?,
+        row_count_approx: row.get(13)?,
     })
+}
+
+// ── schema_index_segment_df CRUD ───────────────────────────────────────
+
+/// Replace all segment document frequency entries for a connection.
+/// `entries` is a list of `(segment, doc_count)`.
+pub fn replace_segment_df_for_connection(
+    conn: &Connection,
+    connection_id: &str,
+    entries: &[(String, usize)],
+) -> Result<()> {
+    delete_segment_df_for_connection(conn, connection_id)?;
+    let mut stmt = conn.prepare(
+        "INSERT INTO schema_index_segment_df (connection_id, segment, doc_count)
+         VALUES (?1, ?2, ?3)",
+    )?;
+    for (segment, doc_count) in entries {
+        stmt.execute(params![connection_id, segment, *doc_count as i64])?;
+    }
+    Ok(())
+}
+
+/// Get segment → doc_count map for a connection.
+pub fn get_segment_df_for_connection(
+    conn: &Connection,
+    connection_id: &str,
+) -> Result<HashMap<String, usize>> {
+    let mut stmt = conn.prepare(
+        "SELECT segment, doc_count FROM schema_index_segment_df WHERE connection_id = ?1",
+    )?;
+    let rows = stmt.query_map(params![connection_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
+    })?;
+    let mut map = HashMap::new();
+    for row in rows {
+        let (seg, count) = row?;
+        map.insert(seg, count);
+    }
+    Ok(map)
+}
+
+/// Delete all segment DF entries for a connection.
+pub fn delete_segment_df_for_connection(conn: &Connection, connection_id: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM schema_index_segment_df WHERE connection_id = ?1",
+        params![connection_id],
+    )?;
+    Ok(())
+}
+
+/// Count distinct table chunks for a connection (used as N in IDF computation).
+pub fn count_table_chunks(conn: &Connection, connection_id: &str) -> Result<usize> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM schema_index_chunks WHERE connection_id = ?1 AND chunk_type = 'table'",
+        params![connection_id],
+        |row| row.get(0),
+    )?;
+    Ok(count as usize)
 }

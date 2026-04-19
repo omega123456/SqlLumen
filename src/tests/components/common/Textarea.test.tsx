@@ -27,4 +27,9 @@ describe('Textarea', () => {
     expect(el).toHaveAttribute('autocapitalize', 'none')
     expect(el).toHaveAttribute('autocorrect', 'off')
   })
+
+  it('applies ui-field-chrome for formField variant', () => {
+    render(<Textarea variant="formField" aria-label="Field" />)
+    expect(screen.getByRole('textbox', { name: 'Field' })).toHaveClass('ui-field-chrome')
+  })
 })

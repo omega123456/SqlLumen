@@ -319,4 +319,33 @@ describe('useSettingsStore', () => {
       expect(useSettingsStore.getState().isDialogOpen).toBe(false)
     })
   })
+
+  describe('ai.retrieval defaults', () => {
+    it('has default values for all ai.retrieval.* keys', () => {
+      expect(SETTINGS_DEFAULTS['ai.retrieval.topKPerQuery']).toBe('20')
+      expect(SETTINGS_DEFAULTS['ai.retrieval.topN']).toBe('12')
+      expect(SETTINGS_DEFAULTS['ai.retrieval.fkFanoutCap']).toBe('30')
+      expect(SETTINGS_DEFAULTS['ai.retrieval.lexicalWeight']).toBe('0.2')
+      expect(SETTINGS_DEFAULTS['ai.retrieval.rerankEnabled']).toBe('false')
+      expect(SETTINGS_DEFAULTS['ai.retrieval.tokenBudget']).toBe('6000')
+      expect(SETTINGS_DEFAULTS['ai.retrieval.embedRichText']).toBe('true')
+      expect(SETTINGS_DEFAULTS['ai.retrieval.hydeEnabled']).toBe('true')
+      expect(SETTINGS_DEFAULTS['ai.retrieval.expansionMaxQueries']).toBe('8')
+    })
+
+    it('getSetting returns defaults for ai.retrieval.* keys when not set', () => {
+      const { getSetting } = useSettingsStore.getState()
+      expect(getSetting('ai.retrieval.topKPerQuery')).toBe('20')
+      expect(getSetting('ai.retrieval.tokenBudget')).toBe('6000')
+      expect(getSetting('ai.retrieval.rerankEnabled')).toBe('false')
+    })
+
+    it('ai.retrieval.* keys map to the ai section', () => {
+      useSettingsStore.getState().setPendingChange('ai.retrieval.topN', '5')
+      expect(useSettingsStore.getState().getSetting('ai.retrieval.topN')).toBe('5')
+
+      useSettingsStore.getState().resetSection('ai')
+      expect(useSettingsStore.getState().getSetting('ai.retrieval.topN')).toBe('12')
+    })
+  })
 })

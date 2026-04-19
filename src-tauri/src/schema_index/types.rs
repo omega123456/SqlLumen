@@ -92,6 +92,9 @@ pub struct FkInput {
 pub enum ChunkType {
     Table,
     Fk,
+    View,
+    Procedure,
+    Function,
 }
 
 impl ChunkType {
@@ -100,6 +103,9 @@ impl ChunkType {
         match self {
             ChunkType::Table => "table",
             ChunkType::Fk => "fk",
+            ChunkType::View => "view",
+            ChunkType::Procedure => "procedure",
+            ChunkType::Function => "function",
         }
     }
 
@@ -108,6 +114,9 @@ impl ChunkType {
         match s {
             "table" => Some(ChunkType::Table),
             "fk" => Some(ChunkType::Fk),
+            "view" => Some(ChunkType::View),
+            "procedure" => Some(ChunkType::Procedure),
+            "function" => Some(ChunkType::Function),
             _ => None,
         }
     }
@@ -163,6 +172,8 @@ pub struct ChunkMetadata {
     pub embedded_at: String,
     pub ref_db_name: Option<String>,
     pub ref_table_name: Option<String>,
+    pub text_for_embedding: Option<String>,
+    pub row_count_approx: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,4 +203,22 @@ pub struct ChunkInsert {
     pub ref_db_name: Option<String>,
     pub ref_table_name: Option<String>,
     pub embedding: Vec<f32>,
+    pub text_for_embedding: Option<String>,
+    pub row_count_approx: Option<i64>,
+}
+
+/// A foreign key edge stored in the `schema_index_fk_edges` adjacency table.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FkEdge {
+    pub connection_id: String,
+    pub src_db: String,
+    pub src_tbl: String,
+    pub src_col: String,
+    pub dst_db: String,
+    pub dst_tbl: String,
+    pub dst_col: String,
+    pub constraint_name: String,
+    pub on_delete: Option<String>,
+    pub on_update: Option<String>,
 }

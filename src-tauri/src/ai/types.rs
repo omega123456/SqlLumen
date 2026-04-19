@@ -155,6 +155,10 @@ pub struct EmbeddingApiRequest {
     /// `/v1/embeddings` endpoint (used by Ollama) expects `"float"` to return
     /// raw float arrays and suppress per-token output warnings.
     pub encoding_format: String,
+    /// Optional dimension override for models that support variable-dimension
+    /// output (e.g. Matryoshka embeddings).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimensions: Option<u32>,
 }
 
 /// Response from the `/v1/embeddings` endpoint.
@@ -180,6 +184,9 @@ pub struct AiQueryExpandRequest {
     pub model: String,
     pub system_prompt: String,
     pub user_message: String,
+    /// Optional pre-formatted conversation context (last ~4 turns + attached SQL).
+    #[serde(default)]
+    pub conversation_context: Option<String>,
 }
 
 /// Response from `ai_query_expand`.

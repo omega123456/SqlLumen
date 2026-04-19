@@ -210,11 +210,17 @@ pub async fn ai_query_expand_impl(
 ) -> Result<AiQueryExpandResponse, String> {
     tracing::info!(endpoint = %req.endpoint, model = %req.model, "query expansion request");
 
+    // Build user message, optionally prepending conversation context.
+    let effective_user_message = match &req.conversation_context {
+        Some(ctx) if !ctx.is_empty() => format!("{ctx}\n\nCurrent question: {}", req.user_message),
+        _ => req.user_message.clone(),
+    };
+
     let body = serde_json::json!({
         "model": req.model,
         "messages": [
             { "role": "system", "content": req.system_prompt },
-            { "role": "user", "content": req.user_message },
+            { "role": "user", "content": effective_user_message },
         ],
         "stream": false,
     });

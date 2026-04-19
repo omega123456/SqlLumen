@@ -28,6 +28,7 @@ fn test_state() -> AppState {
         session_profile_map: Arc::new(Mutex::new(HashMap::new())),
         session_ref_counts: Arc::new(Mutex::new(HashMap::new())),
         http_client: reqwest::Client::new(),
+        embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
     }
 }
 
@@ -680,6 +681,7 @@ async fn query_expand_returns_text() {
         model: "test-model".to_string(),
         system_prompt: "You are a SQL assistant.".to_string(),
         user_message: "Find active users".to_string(),
+        conversation_context: None,
     };
 
     let result = ai_query_expand_impl(&state, req).await;
@@ -734,6 +736,7 @@ async fn query_expand_retries_with_fresh_client_after_transport_error() {
         model: "test-model".to_string(),
         system_prompt: "system".to_string(),
         user_message: "user".to_string(),
+        conversation_context: None,
     };
 
     let result = ai_query_expand_impl(&state, req).await;
@@ -767,6 +770,7 @@ async fn query_expand_handles_empty_choices() {
         model: "test-model".to_string(),
         system_prompt: "system".to_string(),
         user_message: "user".to_string(),
+        conversation_context: None,
     };
 
     let result = ai_query_expand_impl(&state, req).await;
@@ -794,6 +798,7 @@ async fn query_expand_returns_error_on_http_500() {
         model: "test-model".to_string(),
         system_prompt: "system".to_string(),
         user_message: "user".to_string(),
+        conversation_context: None,
     };
 
     let result = ai_query_expand_impl(&state, req).await;
@@ -809,6 +814,7 @@ async fn query_expand_returns_error_on_connection_refused() {
         model: "test-model".to_string(),
         system_prompt: "system".to_string(),
         user_message: "user".to_string(),
+        conversation_context: None,
     };
 
     let result = ai_query_expand_impl(&state, req).await;
@@ -835,6 +841,7 @@ async fn query_expand_returns_error_on_invalid_json() {
         model: "test-model".to_string(),
         system_prompt: "system".to_string(),
         user_message: "user".to_string(),
+        conversation_context: None,
     };
 
     let result = ai_query_expand_impl(&state, req).await;

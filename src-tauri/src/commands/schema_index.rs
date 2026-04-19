@@ -1,7 +1,8 @@
 //! Tauri commands for schema index operations — build, search, status, invalidation, listing.
 
 use crate::db::settings;
-use crate::schema_index::{builder, embeddings, search, storage, types::BuildConfig};
+use crate::schema_index::{builder, embeddings, rerank, search, storage, types::BuildConfig};
+use crate::schema_index::search::{RetrievalHints, SearchConfigExt};
 use crate::state::AppState;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -533,12 +534,13 @@ pub async fn build_schema_index_impl(state: &AppState, session_id: String) -> Re
 }
 
 /// Semantic search against the schema index — full multi-query pipeline
-/// with dedup, re-ranking, and FK edge chunk auto-inclusion.
+/// with dedup, re-ranking, graph walk, and usage-signal boosts.
 #[cfg(not(coverage))]
 pub async fn semantic_search_impl(
     state: &AppState,
     session_id: String,
     queries: Vec<String>,
+    hints: Option<RetrievalHints>,
 ) -> Result<Vec<SearchResult>, String> {
     let profile_id = resolve_profile_id(state, &session_id)?;
 
@@ -570,6 +572,38 @@ pub async fn semantic_search_impl(
         return Ok(vec![]);
     }
 
+    // Read retrieval settings
+    let top_k: usize = read_setting(&state.db, "ai.retrieval.topKPerQuery")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20);
+    let top_n: usize = read_setting(&state.db, "ai.retrieval.topN")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(12);
+    let fk_fanout_cap: usize = read_setting(&state.db, "ai.retrieval.fkFanoutCap")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30);
+    let lexical_weight: f64 = read_setting(&state.db, "ai.retrieval.lexicalWeight")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.2);
+    let rerank_enabled: bool = read_setting(&state.db, "ai.retrieval.rerankEnabled")
+        .ok()
+        .map(|s| s == "true")
+        .unwrap_or(false);
+    let graph_depth: u32 = read_setting(&state.db, "ai.retrieval.graphDepth")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2)
+        .min(3)
+        .max(1);
+    let feedback_boost: f64 = read_setting(&state.db, "ai.retrieval.feedbackBoost")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.15);
+
     tracing::debug!(
         profile_id = %profile_id,
         query_count = queries.len(),
@@ -577,15 +611,39 @@ pub async fn semantic_search_impl(
         "semantic_search: embedding queries"
     );
 
-    // Embed all query strings in one batch
-    let query_vectors = embeddings::embed_texts(
-        &state.http_client,
-        &endpoint,
-        &embedding_model,
-        queries.clone(),
-    )
-    .await
-    .map_err(|e| format!("Embedding failed: {e}"))?;
+    // Embed all query strings in one batch (with cache)
+    let mut query_vectors: Vec<Vec<f32>> = Vec::with_capacity(queries.len());
+    let mut uncached_indices: Vec<usize> = Vec::new();
+    let mut uncached_texts: Vec<String> = Vec::new();
+
+    // Check cache for each query
+    for (i, q) in queries.iter().enumerate() {
+        if let Some(cached_vec) = state.embedding_cache.get(&embedding_model, q) {
+            query_vectors.push(cached_vec);
+        } else {
+            query_vectors.push(Vec::new()); // placeholder
+            uncached_indices.push(i);
+            uncached_texts.push(q.clone());
+        }
+    }
+
+    // Embed only cache misses
+    if !uncached_texts.is_empty() {
+        let new_embeddings = embeddings::embed_texts(
+            &state.http_client,
+            &endpoint,
+            &embedding_model,
+            uncached_texts.clone(),
+            None,
+        )
+        .await
+        .map_err(|e| format!("Embedding failed: {e}"))?;
+
+        for (j, idx) in uncached_indices.iter().enumerate() {
+            query_vectors[*idx] = new_embeddings[j].clone();
+            state.embedding_cache.insert(&embedding_model, &queries[*idx], new_embeddings[j].clone());
+        }
+    }
 
     tracing::debug!(
         profile_id = %profile_id,
@@ -594,28 +652,78 @@ pub async fn semantic_search_impl(
         "semantic_search: embedding complete"
     );
 
-    let conn = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+    let mut results = {
+        let conn = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
 
-    tracing::debug!(
-        profile_id = %profile_id,
-        "semantic_search: running multi_query_search (top_k_per_query=5, top_n_results=10, max_fk_chunks=20)"
-    );
+        let search_config = SearchConfigExt {
+            base: search::SearchConfig {
+                top_k_per_query: top_k,
+                top_n_results: top_n,
+                max_fk_chunks: fk_fanout_cap,
+                lexical_weight,
+            },
+            graph_depth,
+            feedback_boost,
+            hints: hints.unwrap_or_default(),
+        };
 
-    let results = search::multi_query_search_with_query_texts(
-        &conn,
-        &profile_id,
-        &queries,
-        &query_vectors,
-        5,
-        10,
-        20,
-    )
-    .map_err(|e| format!("Search failed: {e}"))?;
+        tracing::debug!(
+            profile_id = %profile_id,
+            graph_depth = search_config.graph_depth,
+            feedback_boost = search_config.feedback_boost,
+            "semantic_search: running pipeline (rerank before graph={})",
+            rerank_enabled
+        );
+
+        // Run base search + hint boosts (no graph yet)
+        search::multi_query_search_with_hints(
+            &conn,
+            &profile_id,
+            &queries,
+            &query_vectors,
+            &search_config,
+        )
+        .map_err(|e| format!("Search failed: {e}"))?
+    };
+
+    // Re-rank BEFORE graph expansion (if enabled)
+    if rerank_enabled && !results.is_empty() {
+        let chat_model = read_setting(&state.db, "ai.model").unwrap_or_default();
+        if !chat_model.is_empty() && !endpoint.is_empty() {
+            let original_query = queries.first().cloned().unwrap_or_default();
+            tracing::debug!(
+                profile_id = %profile_id,
+                candidate_count = results.len(),
+                "semantic_search: invoking LLM re-rank (before graph expansion)"
+            );
+            results = rerank::rerank_with_llm(
+                results,
+                &original_query,
+                &state.http_client,
+                &endpoint,
+                &chat_model,
+            )
+            .await;
+        }
+    }
+
+    // Graph expansion AFTER re-rank
+    if graph_depth > 0 && !results.is_empty() {
+        let conn = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
+        results = search::apply_graph_expansion(
+            &conn,
+            &profile_id,
+            results,
+            graph_depth,
+            fk_fanout_cap as u32,
+        )
+        .map_err(|e| format!("Graph expansion failed: {e}"))?;
+    }
 
     tracing::debug!(
         profile_id = %profile_id,
         result_count = results.len(),
-        top_results = ?results.iter().take(5).map(|r| (&r.table_name, &r.chunk_type, r.score)).collect::<Vec<_>>(),
+        top_results = ?results.iter().take(5).map(|r| (format!("{}.{}", r.db_name, r.table_name), &r.chunk_type, r.score)).collect::<Vec<_>>(),
         "semantic_search: complete"
     );
 
@@ -627,8 +735,10 @@ pub async fn semantic_search_impl(
     state: &AppState,
     session_id: String,
     queries: Vec<String>,
+    hints: Option<RetrievalHints>,
 ) -> Result<Vec<SearchResult>, String> {
     let _profile_id = resolve_profile_id(state, &session_id)?;
+    let _ = hints;
 
     tracing::debug!(
         session_id = %session_id,
@@ -918,8 +1028,9 @@ pub async fn semantic_search(
     state: State<'_, AppState>,
     session_id: String,
     queries: Vec<String>,
+    hints: Option<RetrievalHints>,
 ) -> Result<Vec<SearchResult>, String> {
-    semantic_search_impl(&state, session_id, queries).await
+    semantic_search_impl(&state, session_id, queries, hints).await
 }
 
 #[cfg(not(coverage))]

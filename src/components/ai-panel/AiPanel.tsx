@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
-import { useAiStore } from '../../stores/ai-store'
+import { useAiStore, extractTablesFromSql } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
+import { useAiFeedbackStore } from '../../stores/ai-feedback-store'
 import { AiPanelHeader } from './AiPanelHeader'
 import { AiChatMessages } from './AiChatMessages'
 import { AiChatInput } from './AiChatInput'
@@ -48,6 +49,17 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
     setSuggestionText(undefined)
   }, [])
 
+  const handleSqlAccepted = useCallback(
+    (sql: string) => {
+      if (!connectionId) return
+      const tables = extractTablesFromSql(sql)
+      if (tables.length > 0) {
+        useAiFeedbackStore.getState().recordAccepted(connectionId, tables)
+      }
+    },
+    [connectionId]
+  )
+
   if (aiEnabled && !embeddingModel) {
     return (
       <div className={styles.panel} data-testid="ai-panel">
@@ -76,6 +88,7 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
         connectionId={connectionId}
         onTriggerDiff={handleTriggerDiff}
         onSuggestionFill={handleSuggestionFill}
+        onSqlAccepted={handleSqlAccepted}
       />
       <AiChatInput
         tabId={tabId}

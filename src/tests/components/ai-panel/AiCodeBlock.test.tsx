@@ -266,4 +266,71 @@ describe('AiCodeBlock', () => {
     )
     expect(screen.queryByTestId('ai-code-diff-button')).not.toBeInTheDocument()
   })
+
+  it('does not call onSqlAccepted when SQL code is copied (feedback on diff/run only)', async () => {
+    const user = userEvent.setup()
+    const onSqlAccepted = vi.fn()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      writable: true,
+      configurable: true,
+    })
+
+    render(
+      <AiCodeBlock language="sql" onSqlAccepted={onSqlAccepted}>
+        SELECT * FROM orders
+      </AiCodeBlock>
+    )
+
+    await user.click(screen.getByTestId('ai-code-copy-button'))
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled()
+    })
+    expect(onSqlAccepted).not.toHaveBeenCalled()
+  })
+
+  it('calls onSqlAccepted when diff is triggered for SQL', async () => {
+    const user = userEvent.setup()
+    const onSqlAccepted = vi.fn()
+    const onTriggerDiff = vi.fn()
+
+    render(
+      <AiCodeBlock
+        language="sql"
+        showDiffButton={true}
+        onTriggerDiff={onTriggerDiff}
+        onSqlAccepted={onSqlAccepted}
+      >
+        SELECT * FROM orders
+      </AiCodeBlock>
+    )
+
+    await user.click(screen.getByTestId('ai-code-diff-button'))
+    expect(onSqlAccepted).toHaveBeenCalledWith('SELECT * FROM orders')
+    expect(onTriggerDiff).toHaveBeenCalled()
+  })
+
+  it('does not call onSqlAccepted for non-SQL code', async () => {
+    const user = userEvent.setup()
+    const onSqlAccepted = vi.fn()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      writable: true,
+      configurable: true,
+    })
+
+    render(
+      <AiCodeBlock language="javascript" onSqlAccepted={onSqlAccepted}>
+        console.log('hello')
+      </AiCodeBlock>
+    )
+
+    await user.click(screen.getByTestId('ai-code-copy-button'))
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled()
+    })
+    expect(onSqlAccepted).not.toHaveBeenCalled()
+  })
 })

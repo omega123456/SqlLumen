@@ -9,6 +9,7 @@ export interface AiCodeBlockProps {
   children: ReactNode
   onTriggerDiff?: (sql: string) => void
   showDiffButton?: boolean
+  onSqlAccepted?: (sql: string) => void
 }
 
 export function AiCodeBlock({
@@ -16,6 +17,7 @@ export function AiCodeBlock({
   children,
   onTriggerDiff,
   showDiffButton = false,
+  onSqlAccepted,
 }: AiCodeBlockProps) {
   const [copied, setCopied] = useState(false)
 
@@ -35,14 +37,22 @@ export function AiCodeBlock({
     return extractText(children)
   }, [children])
 
+  const isSql = language === 'sql' || language === 'mysql'
+
   /** True when the SQL is exactly one statement (multi-statement diff is not supported). */
   const isSingleStatement = useMemo((): boolean => {
-    const isSql = language === 'sql' || language === 'mysql'
     if (!isSql) return false
     const text = getTextContent()
     if (!text.trim()) return false
     return splitStatements(text).length === 1
-  }, [language, getTextContent])
+  }, [isSql, getTextContent])
+
+  const notifyAccepted = useCallback(
+    (text: string) => {
+      if (isSql && onSqlAccepted) onSqlAccepted(text)
+    },
+    [isSql, onSqlAccepted]
+  )
 
   const handleCopy = useCallback(async () => {
     try {
@@ -59,9 +69,8 @@ export function AiCodeBlock({
     if (!onTriggerDiff) return
     const text = getTextContent()
     onTriggerDiff(text)
-  }, [onTriggerDiff, getTextContent])
-
-  const isSql = language === 'sql' || language === 'mysql'
+    notifyAccepted(text)
+  }, [onTriggerDiff, getTextContent, notifyAccepted])
 
   return (
     <div className={styles.codeBlock} data-testid="ai-code-block">

@@ -29,6 +29,18 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'ai.embeddingModel': '',
   'ai.temperature': '0.3',
   'ai.maxTokens': '2048',
+  'ai.retrieval.topKPerQuery': '20',
+  'ai.retrieval.topN': '12',
+  'ai.retrieval.fkFanoutCap': '30',
+  'ai.retrieval.lexicalWeight': '0.2',
+  'ai.retrieval.rerankEnabled': 'false',
+  'ai.retrieval.tokenBudget': '6000',
+  'ai.retrieval.embedRichText': 'true',
+  'ai.retrieval.hydeEnabled': 'true',
+  'ai.retrieval.expansionMaxQueries': '8',
+  'ai.retrieval.graphDepth': '2',
+  'ai.retrieval.feedbackBoost': '0.15',
+  'ai.retrieval.recentQueryWindow': '20',
 }
 
 /** Maps a settings key prefix to its SettingsSection. */

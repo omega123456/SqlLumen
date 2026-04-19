@@ -16,7 +16,7 @@ export interface SearchResult {
   chunkKey: string
   dbName: string
   tableName: string
-  chunkType: 'table' | 'fk'
+  chunkType: 'table' | 'fk' | 'view' | 'procedure' | 'function'
   ddlText: string
   refDbName?: string | null
   refTableName?: string | null
@@ -29,6 +29,23 @@ export interface IndexedTableInfo {
   chunkType: string
   embeddedAt: string
   modelId: string
+}
+
+export interface TableHint {
+  dbName: string
+  tableName: string
+  weight: number
+}
+
+export interface TableRef {
+  dbName: string
+  tableName: string
+}
+
+export interface RetrievalHints {
+  recentTables: TableHint[]
+  editorTables: TableRef[]
+  acceptedTables: TableHint[]
 }
 
 // ---------------------------------------------------------------------------
@@ -45,9 +62,10 @@ export async function forceRebuildSchemaIndex(sessionId: string): Promise<void> 
 
 export async function semanticSearch(
   sessionId: string,
-  queries: string[]
+  queries: string[],
+  hints?: RetrievalHints
 ): Promise<SearchResult[]> {
-  return invoke('semantic_search', { sessionId, queries })
+  return invoke('semantic_search', { sessionId, queries, hints: hints ?? null })
 }
 
 export async function getIndexStatus(sessionId: string): Promise<SchemaIndexStatus> {

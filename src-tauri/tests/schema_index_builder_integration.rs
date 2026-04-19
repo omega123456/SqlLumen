@@ -415,19 +415,25 @@ fn test_generate_all_chunks_table_only() {
     assert_eq!(table_chunks.len(), 1);
     assert!(fk_chunks.is_empty());
 
-    let (key, text, hash, db, table) = &table_chunks[0];
-    assert_eq!(key, "table:mydb.users");
-    assert_eq!(db, "mydb");
-    assert_eq!(table, "users");
+    let tc = &table_chunks[0];
+    assert_eq!(tc.chunk_key, "table:mydb.users");
+    assert_eq!(tc.db_name, "mydb");
+    assert_eq!(tc.table_name, "users");
     assert!(
-        text.starts_with("CREATE TABLE `mydb`.`users`"),
-        "table chunk DDL should be database-qualified, got: {text}"
+        tc.ddl_text.starts_with("CREATE TABLE `mydb`.`users`"),
+        "table chunk DDL should be database-qualified, got: {}",
+        tc.ddl_text
     );
     // Verify DDL was compacted
-    assert!(!text.contains("ENGINE=InnoDB"));
-    assert!(!text.contains("AUTO_INCREMENT=10"));
+    assert!(!tc.ddl_text.contains("ENGINE=InnoDB"));
+    assert!(!tc.ddl_text.contains("AUTO_INCREMENT=10"));
     // Verify hash is of the compacted text
-    assert_eq!(hash, &builder::compute_hash(text));
+    assert_eq!(tc.ddl_hash, builder::compute_hash(&tc.ddl_text));
+    // Verify text_for_embedding is populated
+    assert!(
+        tc.text_for_embedding.is_some(),
+        "text_for_embedding should be set"
+    );
 }
 
 #[test]
@@ -521,7 +527,7 @@ fn test_incremental_build_simulation() {
     // Store as "existing"
     let stored_v1: Vec<(String, String)> = chunks_v1
         .iter()
-        .map(|(k, _, h, _, _)| (k.clone(), h.clone()))
+        .map(|tc| (tc.chunk_key.clone(), tc.ddl_hash.clone()))
         .collect();
 
     // Simulate second build: users unchanged, orders modified, new table products
@@ -546,7 +552,13 @@ fn test_incremental_build_simulation() {
     let (chunks_v2, _fks_v2) = builder::generate_all_chunks(&inputs_v2);
     let new_for_diff: Vec<(String, String, String)> = chunks_v2
         .iter()
-        .map(|(k, text, h, _, _)| (k.clone(), text.clone(), h.clone()))
+        .map(|tc| {
+            (
+                tc.chunk_key.clone(),
+                tc.ddl_text.clone(),
+                tc.ddl_hash.clone(),
+            )
+        })
         .collect();
 
     let (needs_embed, to_delete) = builder::diff_chunks(&stored_v1, &new_for_diff);
@@ -594,7 +606,7 @@ fn test_incremental_build_with_table_removal() {
     let (chunks_v1, _) = builder::generate_all_chunks(&inputs_v1);
     let stored_v1: Vec<(String, String)> = chunks_v1
         .iter()
-        .map(|(k, _, h, _, _)| (k.clone(), h.clone()))
+        .map(|tc| (tc.chunk_key.clone(), tc.ddl_hash.clone()))
         .collect();
 
     // Build v2: table 'b' dropped
@@ -614,7 +626,13 @@ fn test_incremental_build_with_table_removal() {
     let (chunks_v2, _) = builder::generate_all_chunks(&inputs_v2);
     let new_for_diff: Vec<(String, String, String)> = chunks_v2
         .iter()
-        .map(|(k, text, h, _, _)| (k.clone(), text.clone(), h.clone()))
+        .map(|tc| {
+            (
+                tc.chunk_key.clone(),
+                tc.ddl_text.clone(),
+                tc.ddl_hash.clone(),
+            )
+        })
         .collect();
 
     let (needs_embed, to_delete) = builder::diff_chunks(&stored_v1, &new_for_diff);
@@ -832,6 +850,8 @@ fn test_signature_short_circuit_reuses_stored_ddl_without_refetch() {
         ref_db_name: None,
         ref_table_name: None,
         embedding: vec![0.1, 0.2, 0.3, 0.4],
+        text_for_embedding: None,
+        row_count_approx: None,
     };
     storage::insert_chunk(&conn, &chunk).expect("insert chunk");
     storage::upsert_signatures(
@@ -848,13 +868,10 @@ fn test_signature_short_circuit_reuses_stored_ddl_without_refetch() {
         .get(&("db".to_string(), "users".to_string()))
         .map(|s| s.as_str());
     let current = Some("sig-v1");
-    let chunk_exists = storage::get_chunk_by_key(
-        &conn,
-        "conn-1",
-        &builder::table_chunk_key("db", "users"),
-    )
-    .expect("lookup")
-    .is_some();
+    let chunk_exists =
+        storage::get_chunk_by_key(&conn, "conn-1", &builder::table_chunk_key("db", "users"))
+            .expect("lookup")
+            .is_some();
 
     assert!(chunk_exists, "seed must produce a chunk");
     assert_eq!(

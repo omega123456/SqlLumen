@@ -94,6 +94,17 @@ describe('ColumnsPanel', () => {
     expect(screen.getByText('active')).toBeInTheDocument()
   })
 
+  it('shows unknown key without specific badge class', () => {
+    const columns = [makeColumn({ name: 'x', columnKey: 'OTHER' })]
+
+    render(<ColumnsPanel columns={columns} />)
+
+    const badge = screen.getByText('OTHER')
+    expect(badge).toBeInTheDocument()
+    expect(badge.className).toContain('keyBadge')
+    expect(badge.className).not.toContain('keyPri')
+  })
+
   it('shows NULL when default value is null', () => {
     const columns = [makeColumn({ name: 'id', defaultValue: null })]
 

@@ -1284,6 +1284,7 @@ mod command_wrapper_integration {
             session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
             session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
             http_client: reqwest::Client::new(),
+        embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
         }
     }
 

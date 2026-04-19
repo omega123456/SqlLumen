@@ -143,6 +143,7 @@ export interface AiQueryExpandRequest {
   model: string
   systemPrompt: string
   userMessage: string
+  conversationContext?: string
 }
 
 export interface AiQueryExpandResponse {

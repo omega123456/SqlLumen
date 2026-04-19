@@ -1594,7 +1594,9 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       }
 
     case 'ai_query_expand':
-      return { text: '{"queries":["SELECT users","JOIN orders","user_id foreign key"]}' }
+      return {
+        text: '{"queries":["SELECT users","JOIN orders","user_id foreign key"],"hypotheticalSql":"SELECT u.* FROM `ecommerce_db`.`users` u JOIN `ecommerce_db`.`orders` o ON u.id = o.user_id","entities":["users","orders"],"joins":["users → orders"],"metrics":["count"]}',
+      }
 
     // --- Schema index commands ---
     case 'build_schema_index':
@@ -1602,7 +1604,20 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'force_rebuild_schema_index':
       return null
     case 'semantic_search':
-      return []
+      return [
+        {
+          chunkId: 1,
+          chunkKey: 'table:ecommerce_db.users',
+          dbName: 'ecommerce_db',
+          tableName: 'users',
+          chunkType: 'table',
+          ddlText:
+            'CREATE TABLE `ecommerce_db`.`users` (`id` int NOT NULL, `name` varchar(255), `email` varchar(255), PRIMARY KEY (`id`)) -- approximate rows: 15000\n-- Table comment: Registered platform users',
+          refDbName: null,
+          refTableName: null,
+          score: 0.95,
+        },
+      ]
     case 'get_index_status':
       return { status: 'ready' }
     case 'invalidate_schema_index':

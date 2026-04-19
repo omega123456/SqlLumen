@@ -17,14 +17,16 @@ A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://t
 - **AI Assistant** — in-app assistant workflows for SQL tasks and product guidance
 - **Native desktop app** — smaller footprint than typical Electron stacks; bundles via Tauri
 
+> **Upgrade note:** Upgrading to this version triggers a one-time v2 schema index rebuild. The first AI-assisted query after upgrading will take slightly longer while the index is rebuilt with enriched metadata (row counts, table/column comments, FK edge graph).
+
 ## Stack
 
-| Layer        | Technologies                                                                 |
-| ------------ | ---------------------------------------------------------------------------- |
-| Desktop shell | Tauri 2, Rust (async MySQL pool, migrations, export writers)                |
-| UI           | React 19, TypeScript, Vite 8, Zustand, `react-resizable-panels`, Monaco     |
-| Data grid    | `react-data-grid` (via a shared app wrapper)                                |
-| Tests        | Vitest (coverage gates), Rust integration tests (nextest / llvm-cov), Playwright E2E + screenshot baselines |
+| Layer         | Technologies                                                                                                |
+| ------------- | ----------------------------------------------------------------------------------------------------------- |
+| Desktop shell | Tauri 2, Rust (async MySQL pool, migrations, export writers)                                                |
+| UI            | React 19, TypeScript, Vite 8, Zustand, `react-resizable-panels`, Monaco                                     |
+| Data grid     | `react-data-grid` (via a shared app wrapper)                                                                |
+| Tests         | Vitest (coverage gates), Rust integration tests (nextest / llvm-cov), Playwright E2E + screenshot baselines |
 
 ## Requirements
 
@@ -93,25 +95,25 @@ pnpm dev
 
 ## Scripts
 
-| Command                         | Purpose                                                                                                                                                              |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm dev`                      | Vite dev server                                                                                                                                                      |
-| `pnpm build`                    | Typecheck + production frontend build                                                                                                                                |
-| `pnpm preview`                  | Preview the built frontend                                                                                                                                           |
-| `pnpm tauri dev`                | Run the full Tauri app in development                                                                                                                                |
-| `pnpm tauri build`              | Build installable bundles for your OS                                                                                                                                |
-| `pnpm release:tauri-version`    | Interactive release helper: bumps `version` in `src-tauri/tauri.conf.json`, prompts for GitHub release notes (default: `.github/tauri-release-body.md` / same text as CI fallback), runs `pnpm build` (no commit, tag, or push if that fails), then commits, tags `v*`, and pushes branch + tag |
-| `pnpm test`                     | Run Vitest once                                                                                                                                                      |
-| `pnpm test:watch`               | Vitest in watch mode                                                                                                                                                 |
-| `pnpm test:coverage`            | Vitest with coverage thresholds                                                                                                                                      |
-| `pnpm test:rust`                | Rust integration tests via [cargo-nextest](https://nexte.st/) (`cargo sqllumen-test-integration`; targets and flags in `.cargo/config.toml`)                         |
-| `pnpm test:rust:coverage`       | Same tests under [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo sqllumen-llvm-cov`; summary to stdout; artifacts under `src-tauri/target/`)      |
-| `pnpm test:all`                 | Vitest coverage + Rust llvm-cov + Playwright E2E (run after substantive changes)                                                                                     |
-| `pnpm test:e2e`                 | Playwright E2E tests                                                                                                                                                 |
-| `pnpm test:screenshots`         | Playwright visual regression (`e2e/screenshots.spec.ts`) only                                                                                                        |
-| `pnpm lint` / `pnpm lint:fix`   | ESLint                                                                                                                                                               |
-| `pnpm format`                   | Prettier on `src/`                                                                                                                                                   |
-| `pnpm typecheck`                | `tsc --noEmit`                                                                                                                                                       |
+| Command                       | Purpose                                                                                                                                                                                                                                                                                         |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                    | Vite dev server                                                                                                                                                                                                                                                                                 |
+| `pnpm build`                  | Typecheck + production frontend build                                                                                                                                                                                                                                                           |
+| `pnpm preview`                | Preview the built frontend                                                                                                                                                                                                                                                                      |
+| `pnpm tauri dev`              | Run the full Tauri app in development                                                                                                                                                                                                                                                           |
+| `pnpm tauri build`            | Build installable bundles for your OS                                                                                                                                                                                                                                                           |
+| `pnpm release:tauri-version`  | Interactive release helper: bumps `version` in `src-tauri/tauri.conf.json`, prompts for GitHub release notes (default: `.github/tauri-release-body.md` / same text as CI fallback), runs `pnpm build` (no commit, tag, or push if that fails), then commits, tags `v*`, and pushes branch + tag |
+| `pnpm test`                   | Run Vitest once                                                                                                                                                                                                                                                                                 |
+| `pnpm test:watch`             | Vitest in watch mode                                                                                                                                                                                                                                                                            |
+| `pnpm test:coverage`          | Vitest with coverage thresholds                                                                                                                                                                                                                                                                 |
+| `pnpm test:rust`              | Rust integration tests via [cargo-nextest](https://nexte.st/) (`cargo sqllumen-test-integration`; targets and flags in `.cargo/config.toml`)                                                                                                                                                    |
+| `pnpm test:rust:coverage`     | Same tests under [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo sqllumen-llvm-cov`; summary to stdout; artifacts under `src-tauri/target/`)                                                                                                                                |
+| `pnpm test:all`               | Vitest coverage + Rust llvm-cov + Playwright E2E (run after substantive changes)                                                                                                                                                                                                                |
+| `pnpm test:e2e`               | Playwright E2E tests                                                                                                                                                                                                                                                                            |
+| `pnpm test:screenshots`       | Playwright visual regression (`e2e/screenshots.spec.ts`) only                                                                                                                                                                                                                                   |
+| `pnpm lint` / `pnpm lint:fix` | ESLint                                                                                                                                                                                                                                                                                          |
+| `pnpm format`                 | Prettier on `src/`                                                                                                                                                                                                                                                                              |
+| `pnpm typecheck`              | `tsc --noEmit`                                                                                                                                                                                                                                                                                  |
 
 ## GitHub releases (CI)
 

@@ -3,9 +3,11 @@ import { logFrontend } from '../lib/app-log-commands'
 import { sendAiChat, cancelAiStream, listenToAiStream, aiQueryExpand } from '../lib/ai-commands'
 import type { AiMessage as IpcAiMessage } from '../lib/ai-commands'
 import { semanticSearch } from '../lib/schema-index-commands'
+import type { RetrievalHints } from '../lib/schema-index-commands'
 import { useSchemaIndexStore } from './schema-index-store'
 import { useSettingsStore } from './settings-store'
 import { useQueryStore } from './query-store'
+import { useAiFeedbackStore } from './ai-feedback-store'
 import { showErrorToast } from './toast-store'
 
 // ---------------------------------------------------------------------------
@@ -138,26 +140,194 @@ Whenever you reference a table in generated SQL, always use its full database-qu
 
 When writing SQL, prefer clear, readable queries. Format your SQL code in markdown code blocks with the sql language tag.`
 
-/** Note appended when schema DDL is provided to inform the AI of omitted metadata. */
-const SCHEMA_METADATA_NOTE = 'Note: Cardinality statistics are omitted from index metadata.'
+/** Note appended when schema DDL is provided to inform the AI about row count availability. */
+const SCHEMA_METADATA_NOTE =
+  'Note: Approximate row counts are included in the schema metadata where available.'
 
-/** Query expansion system prompt for generating semantic search queries. */
-const QUERY_EXPANSION_SYSTEM_PROMPT = `You are a SQL schema search assistant. Given a user's natural language question about a database, generate exactly 3 short search queries that use SQL vocabulary (table names, column names, SQL keywords, JOIN patterns) to find the most relevant database tables. Think about which tables, columns, and relationships would be needed to answer the question. Output strictly as JSON with no explanation.
+/** Query expansion system prompt for generating semantic search queries with HyDE and entity decomposition. */
+const QUERY_EXPANSION_SYSTEM_PROMPT = `You are a SQL schema search assistant. Given a user's natural language question about a database, generate search queries and analysis to find the most relevant database tables. Output strictly as JSON with no explanation.
 
 When table names are mentioned or implied, prefer database-qualified names when possible so retrieval preserves the database prefix.
-Format: {"queries":["...","...","..."]}
+
+Required JSON format:
+{
+  "queries": ["...", "...", "..."],
+  "hypotheticalSql": "SELECT ... FROM \`db\`.\`table\` ...",
+  "entities": ["table1", "table2"],
+  "joins": ["table1 → table2"],
+  "metrics": ["revenue", "count"]
+}
+
+Fields:
+- queries: 2–3 short search phrases using SQL vocabulary (table names, column names, SQL keywords, JOIN patterns)
+- hypotheticalSql: A hypothetical SQL fragment that would answer the question (used for embedding search, not execution)
+- entities: Table/object names referenced or implied
+- joins: Relationships between entities (use → notation)
+- metrics: Aggregation metrics or computed values referenced
 
 Examples:
 User: "Show me all customers who haven't ordered anything in the last 6 months"
-Output: {"queries":["customers orders LEFT JOIN last_order_date","customers table id name email","orders customer_id created_at date"]}
+Output: {"queries":["customers orders LEFT JOIN last_order_date","customers table id name email","orders customer_id created_at date"],"hypotheticalSql":"SELECT c.* FROM \`db\`.\`customers\` c LEFT JOIN \`db\`.\`orders\` o ON c.id = o.customer_id WHERE o.created_at < DATE_SUB(NOW(), INTERVAL 6 MONTH) OR o.id IS NULL","entities":["customers","orders"],"joins":["customers → orders"],"metrics":["count"]}
 
 User: "What's the total revenue by product category?"
-Output: {"queries":["products categories revenue SUM price","product_categories category_name JOIN products","orders order_items products price quantity amount"]}
-
-User: "List employees and their department managers"
-Output: {"queries":["employees departments manager_id supervisor","employees table id name department_id","departments manager employee hierarchy"]}`
+Output: {"queries":["products categories revenue SUM price","product_categories category_name JOIN products","orders order_items products price quantity amount"],"hypotheticalSql":"SELECT pc.name, SUM(oi.price * oi.quantity) as revenue FROM \`db\`.\`product_categories\` pc JOIN \`db\`.\`products\` p ON pc.id = p.category_id JOIN \`db\`.\`order_items\` oi ON p.id = oi.product_id GROUP BY pc.name","entities":["products","product_categories","order_items","orders"],"joins":["product_categories → products","products → order_items"],"metrics":["revenue","sum","price","quantity"]}`
 
 const SCHEMA_USAGE_INSTRUCTION = `Retrieved tables only:\n- Use only tables that are present in the retrieved schema below.\n- Never make up or reference any table that is not in the retrieved schema.\n- Always use database-qualified table names in generated SQL (\`db\`.\`table\`).`
+
+// ---------------------------------------------------------------------------
+// Table extraction helper (shared by hint assembly)
+// ---------------------------------------------------------------------------
+
+const TABLE_NAME_REGEX =
+  /(?:from|join|into|update|table|references)\s+((?:`[^`]+`|[a-z_]\w*)(?:\.(?:`[^`]+`|[a-z_]\w*))?)/gi
+
+/**
+ * Extract `{dbName, tableName}` pairs from a SQL string using a simple regex.
+ * Returns unqualified tables with dbName = '' (best-effort).
+ */
+export function extractTablesFromSql(sql: string): Array<{ dbName: string; tableName: string }> {
+  const results: Array<{ dbName: string; tableName: string }> = []
+  const seen = new Set<string>()
+  let match: RegExpExecArray | null
+  TABLE_NAME_REGEX.lastIndex = 0
+  while ((match = TABLE_NAME_REGEX.exec(sql)) !== null) {
+    const raw = match[1]
+    const parts = raw.split('.').map((p) => p.replace(/`/g, '').trim())
+    let dbName = ''
+    let tableName = ''
+    if (parts.length === 2) {
+      dbName = parts[0]
+      tableName = parts[1]
+    } else if (parts.length === 1) {
+      tableName = parts[0]
+    }
+    if (!tableName) continue
+    const key = `${dbName}.${tableName}`.toLowerCase()
+    if (!seen.has(key)) {
+      seen.add(key)
+      results.push({ dbName, tableName })
+    }
+  }
+  return results
+}
+
+// ---------------------------------------------------------------------------
+// Expansion cache — small Map-based LRU per tab
+// ---------------------------------------------------------------------------
+
+/** LRU cache of expansion results, keyed by tab ID. Uses Map insertion order. */
+const expansionCaches = new Map<string, Map<string, string[]>>()
+const EXPANSION_CACHE_SIZE = 16
+
+function getExpansionCacheKey(
+  model: string,
+  userMessage: string,
+  conversationContext: string,
+  attachedSql: string
+): string {
+  // FNV-1a hash for a compact, collision-resistant cache key
+  const raw = `${model}|${userMessage}|${conversationContext}|${attachedSql}`
+  let hash = 2166136261
+  for (let i = 0; i < raw.length; i++) {
+    hash ^= raw.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+function lookupExpansionCache(tabId: string, key: string): string[] | null {
+  const cache = expansionCaches.get(tabId)
+  if (!cache) return null
+  const value = cache.get(key)
+  if (value === undefined) return null
+  // Move to end (most recently used)
+  cache.delete(key)
+  cache.set(key, value)
+  return value
+}
+
+function storeExpansionCache(tabId: string, key: string, queries: string[]): void {
+  let cache = expansionCaches.get(tabId)
+  if (!cache) {
+    cache = new Map()
+    expansionCaches.set(tabId, cache)
+  }
+  // Delete first to refresh insertion order if key already exists
+  cache.delete(key)
+  cache.set(key, queries)
+  // Evict oldest (first entry) if over capacity
+  if (cache.size > EXPANSION_CACHE_SIZE) {
+    const oldest = cache.keys().next().value
+    if (oldest !== undefined) cache.delete(oldest)
+  }
+}
+
+function clearExpansionCache(tabId: string): void {
+  expansionCaches.delete(tabId)
+}
+
+/**
+ * Parse the structured expansion response with a multi-level fallback chain:
+ * 1. Full structured (queries + hypotheticalSql + entities/joins/metrics)
+ * 2. Flat queries-only
+ * 3. Original user message
+ */
+function parseExpansionResponse(
+  text: string,
+  userMessage: string,
+  hydeEnabled: boolean,
+  maxQueries: number
+): string[] {
+  try {
+    const parsed = JSON.parse(text)
+    const allQueries: string[] = [userMessage]
+
+    // Extract queries array
+    if (parsed && Array.isArray(parsed.queries) && parsed.queries.length > 0) {
+      for (const q of parsed.queries) {
+        if (typeof q === 'string') {
+          const trimmed = q.trim()
+          if (trimmed.length > 0) allQueries.push(trimmed)
+        }
+      }
+    }
+
+    // HyDE: add hypothetical SQL fragment as another search query
+    if (
+      hydeEnabled &&
+      typeof parsed.hypotheticalSql === 'string' &&
+      parsed.hypotheticalSql.trim().length > 0
+    ) {
+      allQueries.push(parsed.hypotheticalSql.trim())
+    }
+
+    // Entity + relationship decomposition: flatten into additional search strings
+    if (Array.isArray(parsed.entities) && parsed.entities.length > 0) {
+      const entityStr = parsed.entities.filter((e: unknown) => typeof e === 'string').join(' ')
+      if (entityStr.trim().length > 0) allQueries.push(entityStr.trim())
+    }
+
+    if (Array.isArray(parsed.joins) && parsed.joins.length > 0) {
+      const joinStr = parsed.joins.filter((j: unknown) => typeof j === 'string').join(' ')
+      if (joinStr.trim().length > 0) allQueries.push(joinStr.trim())
+    }
+
+    if (Array.isArray(parsed.metrics) && parsed.metrics.length > 0) {
+      const metricsStr = parsed.metrics.filter((m: unknown) => typeof m === 'string').join(' ')
+      if (metricsStr.trim().length > 0) allQueries.push(metricsStr.trim())
+    }
+
+    // Dedup and cap
+    return Array.from(new Set(allQueries)).slice(0, maxQueries)
+  } catch {
+    // JSON parse failed — return original message only
+    logFrontend(
+      'debug',
+      `[ai-store] expansion response JSON parse failed — falling back to original query`
+    )
+    return [userMessage]
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Store
@@ -172,6 +342,8 @@ export const useAiStore = create<AiState>()((set, get) => {
     set((state) => ({
       tabs: { ...state.tabs, [tabId]: fresh },
     }))
+    // Clear stale expansion cache when a tab is freshly created
+    clearExpansionCache(tabId)
     return fresh
   }
 
@@ -234,7 +406,7 @@ export const useAiStore = create<AiState>()((set, get) => {
    * Retrieve schema context via the vector retrieval pipeline.
    *
    * 1. Wait for schema index if building
-   * 2. Expand user query into 3 search queries via aiQueryExpand
+   * 2. Expand user query via aiQueryExpand (HyDE + entity decomposition + conversation context)
    * 3. Perform semantic search
    * 4. Assemble DDL context from results
    */
@@ -282,50 +454,85 @@ export const useAiStore = create<AiState>()((set, get) => {
         if (!get().tabs[tabId]) return ''
       }
 
-      // Query expansion — get 3 search queries
+      // Build conversation context from last ~4 turns
+      const tabState = get().tabs[tabId]
+      let conversationContext = ''
+      if (tabState) {
+        const recentMessages = tabState.messages
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .slice(-8) // last 4 turns = 8 messages max
+          .map((m) => `${m.role}: ${m.content.slice(0, 200)}`)
+        if (recentMessages.length > 0) {
+          conversationContext = recentMessages.join('\n')
+        }
+      }
+
+      // Include attached SQL context if present
+      const attachedSql = tabState?.attachedContext?.sql ?? ''
+
+      // Query expansion — get search queries with HyDE and entity decomposition
       let queries: string[] = [userMessage]
       try {
         const getSetting = useSettingsStore.getState().getSetting
         const endpoint = getSetting('ai.endpoint')
         const model = getSetting('ai.model')
+        const hydeEnabled = getSetting('ai.retrieval.hydeEnabled') !== 'false'
+        const maxQueries = parseInt(getSetting('ai.retrieval.expansionMaxQueries') || '8', 10)
+        const effectiveMaxQueries = Math.min(
+          isNaN(maxQueries) || maxQueries <= 0 ? 8 : maxQueries,
+          10
+        )
 
         logFrontend(
           'debug',
-          `[ai-store] query expansion — endpoint=${endpoint ? '[set]' : '[unset]'} model=${model || '[unset]'}`
+          `[ai-store] query expansion — endpoint=${endpoint ? '[set]' : '[unset]'} model=${model || '[unset]'} hyde=${hydeEnabled}`
         )
 
         if (endpoint && model) {
-          const result = await aiQueryExpand({
-            endpoint,
+          // Check expansion cache first
+          const cacheKey = getExpansionCacheKey(
             model,
-            systemPrompt: QUERY_EXPANSION_SYSTEM_PROMPT,
             userMessage,
-          })
+            conversationContext,
+            attachedSql
+          )
+          const cached = lookupExpansionCache(tabId, cacheKey)
 
-          logFrontend('debug', `[ai-store] query expansion raw response: ${result.text}`)
+          if (cached) {
+            queries = cached
+            logFrontend('debug', `[ai-store] query expansion cache hit — ${queries.length} queries`)
+          } else {
+            // Build the user message for expansion, including attached SQL
+            let expandUserMessage = userMessage
+            if (attachedSql) {
+              expandUserMessage = `Context SQL:\n\`\`\`sql\n${attachedSql}\n\`\`\`\n\nQuestion: ${userMessage}`
+            }
 
-          // Parse JSON response
-          const parsed = JSON.parse(result.text)
-          if (
-            parsed &&
-            Array.isArray(parsed.queries) &&
-            parsed.queries.length > 0 &&
-            parsed.queries.every((q: unknown) => typeof q === 'string')
-          ) {
-            const normalizedExpandedQueries = parsed.queries
-              .map((query: string) => query.trim())
-              .filter((query: string) => query.length > 0)
+            const result = await aiQueryExpand({
+              endpoint,
+              model,
+              systemPrompt: QUERY_EXPANSION_SYSTEM_PROMPT,
+              userMessage: expandUserMessage,
+              conversationContext: conversationContext || undefined,
+            })
 
-            queries = Array.from(new Set([userMessage, ...normalizedExpandedQueries])).slice(0, 4)
+            logFrontend('debug', `[ai-store] query expansion raw response: ${result.text}`)
+
+            // Parse structured JSON response with fallback chain
+            queries = parseExpansionResponse(
+              result.text,
+              userMessage,
+              hydeEnabled,
+              effectiveMaxQueries
+            )
+
             logFrontend(
               'debug',
               `[ai-store] query expansion succeeded — transformedQueries=${JSON.stringify(queries)}`
             )
-          } else {
-            logFrontend(
-              'debug',
-              `[ai-store] query expansion response did not contain valid queries array — falling back to original message`
-            )
+
+            // Cache the result
+            storeExpansionCache(tabId, cacheKey, queries)
           }
         } else {
           logFrontend(
@@ -346,8 +553,74 @@ export const useAiStore = create<AiState>()((set, get) => {
         `[ai-store] invoking semantic search — sessionId=${sessionId} queryCount=${queries.length} queries=${JSON.stringify(queries)}`
       )
 
+      // ── Assemble retrieval hints ──────────────────────────────────────
+      const hints: RetrievalHints = {
+        recentTables: [],
+        editorTables: [],
+        acceptedTables: [],
+      }
+
+      try {
+        const recentQueryWindow = parseInt(
+          useSettingsStore.getState().getSetting('ai.retrieval.recentQueryWindow') || '20',
+          10
+        )
+        const effectiveWindow =
+          isNaN(recentQueryWindow) || recentQueryWindow <= 0 ? 20 : recentQueryWindow
+
+        // Editor tables — from attached SQL context
+        if (attachedSql) {
+          const editorTables = extractTablesFromSql(attachedSql)
+          hints.editorTables = editorTables
+        }
+
+        // Accepted tables — from feedback store
+        const feedbackEntries = useAiFeedbackStore.getState().getAcceptedTables(sessionId)
+        hints.acceptedTables = feedbackEntries.map((e) => ({
+          dbName: e.dbName,
+          tableName: e.tableName,
+          weight: e.weight,
+        }))
+
+        // Recent tables — placeholder: scan last N queries from query store history
+        // We use a simple regex to find table names from recent queries
+        const queryTab = useQueryStore.getState().tabs
+        const allQueries: string[] = []
+        for (const tab of Object.values(queryTab)) {
+          if (tab.content && tab.content.trim()) {
+            allQueries.push(tab.content)
+          }
+        }
+        const recentSlice = allQueries.slice(0, effectiveWindow)
+        const recentTableSet = new Map<string, number>()
+        for (let i = 0; i < recentSlice.length; i++) {
+          const tables = extractTablesFromSql(recentSlice[i])
+          const weight = 1.0 - (i / effectiveWindow) * 0.95 // decay from 1.0 to ~0.05
+          for (const t of tables) {
+            const key = `${t.dbName}.${t.tableName}`
+            if (!recentTableSet.has(key) || (recentTableSet.get(key) ?? 0) < weight) {
+              recentTableSet.set(key, weight)
+            }
+          }
+        }
+        for (const [key, weight] of recentTableSet) {
+          const [dbName, tableName] = key.split('.')
+          if (dbName && tableName) {
+            hints.recentTables.push({ dbName, tableName, weight })
+          }
+        }
+
+        logFrontend(
+          'debug',
+          `[ai-store] assembled hints — recent=${hints.recentTables.length} editor=${hints.editorTables.length} accepted=${hints.acceptedTables.length}`
+        )
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logFrontend('warn', `[ai-store] hint assembly failed (non-fatal): ${msg}`)
+      }
+
       // Semantic search
-      const results = await semanticSearch(sessionId, queries)
+      const results = await semanticSearch(sessionId, queries, hints)
 
       logFrontend(
         'debug',
@@ -362,14 +635,61 @@ export const useAiStore = create<AiState>()((set, get) => {
         )}`
       )
 
-      // Assemble DDL from results (deduplicate by chunkKey)
+      // Assemble DDL from results with headers, ordering, and token budget
+      const tokenBudget = parseInt(
+        useSettingsStore.getState().getSetting('ai.retrieval.tokenBudget') || '6000',
+        10
+      )
+      const effectiveBudget = isNaN(tokenBudget) || tokenBudget <= 0 ? 6000 : tokenBudget
+
+      // Deterministic order: tables first, then views, then routines, by score desc
+      const sortedResults = [...results].sort((a, b) => {
+        const typeOrder = (ct: string) =>
+          ct === 'table' ? 0 : ct === 'view' ? 1 : ct === 'fk' ? 3 : 2
+        const aOrder = typeOrder(a.chunkType)
+        const bOrder = typeOrder(b.chunkType)
+        if (aOrder !== bOrder) return aOrder - bOrder
+        return b.score - a.score
+      })
+
       const seen = new Set<string>()
       const ddlParts: string[] = []
-      for (const result of results) {
-        if (!seen.has(result.chunkKey)) {
-          seen.add(result.chunkKey)
-          ddlParts.push(result.ddlText)
+      let runningTokens = 0
+      let droppedCount = 0
+
+      for (const result of sortedResults) {
+        if (seen.has(result.chunkKey)) continue
+        seen.add(result.chunkKey)
+
+        // Build per-chunk header
+        const typeLabel =
+          result.chunkType === 'view'
+            ? 'View'
+            : result.chunkType === 'procedure'
+              ? 'Procedure'
+              : result.chunkType === 'function'
+                ? 'Function'
+                : result.chunkType === 'fk'
+                  ? 'FK'
+                  : 'Table'
+        const header = `## ${typeLabel} \`${result.dbName}\`.\`${result.tableName}\`  (score: ${result.score.toFixed(2)})`
+        const block = `${header}\n${result.ddlText}`
+        const blockTokens = Math.ceil(block.length / 4)
+
+        if (runningTokens + blockTokens > effectiveBudget) {
+          droppedCount++
+          break
         }
+
+        runningTokens += blockTokens
+        ddlParts.push(block)
+      }
+
+      if (droppedCount > 0) {
+        logFrontend(
+          'debug',
+          `[ai-store] token budget: dropped ${droppedCount} chunk(s) exceeding budget of ${effectiveBudget} tokens`
+        )
       }
 
       const ddl = ddlParts.join('\n\n')
@@ -758,6 +1078,9 @@ export const useAiStore = create<AiState>()((set, get) => {
 
     cleanupTab: (tabId) => {
       const tab = get().tabs[tabId]
+
+      // Clear expansion cache for this tab
+      clearExpansionCache(tabId)
 
       // Cancel any in-flight AI request before tearing down the tab
       if (tab?.activeStreamId) {

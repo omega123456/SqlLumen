@@ -6,9 +6,15 @@ export interface AiMessageBubbleProps {
   message: AiMessage
   isStreaming?: boolean
   onTriggerDiff?: (sql: string) => void
+  onSqlAccepted?: (sql: string) => void
 }
 
-export function AiMessageBubble({ message, isStreaming, onTriggerDiff }: AiMessageBubbleProps) {
+export function AiMessageBubble({
+  message,
+  isStreaming,
+  onTriggerDiff,
+  onSqlAccepted,
+}: AiMessageBubbleProps) {
   if (message.role === 'system') {
     return (
       <div className={styles.systemMessage} data-testid="ai-message-system">
@@ -33,6 +39,7 @@ export function AiMessageBubble({ message, isStreaming, onTriggerDiff }: AiMessa
           content={message.content}
           onTriggerDiff={onTriggerDiff}
           showDiffButton={!!onTriggerDiff}
+          onSqlAccepted={onSqlAccepted}
         />
         {isStreaming && <span className={styles.streamingCursor} aria-hidden="true" />}
       </div>

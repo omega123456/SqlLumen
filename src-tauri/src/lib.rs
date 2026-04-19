@@ -178,6 +178,7 @@ pub fn run() {
                     .connect_timeout(std::time::Duration::from_secs(30))
                     .build()
                     .expect("failed to build shared HTTP client"),
+                embedding_cache: crate::schema_index::embeddings_cache::EmbeddingCache::new(),
             };
             app.manage(state);
 

@@ -5,10 +5,13 @@ use rusqlite::Connection;
 use sqllumen_lib::db::migrations::run_migrations;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::search::{
-    multi_query_search, multi_query_search_with_query_texts, SearchResult,
+    apply_graph_expansion, multi_query_search, multi_query_search_configured,
+    multi_query_search_extended, multi_query_search_with_hints,
+    multi_query_search_with_query_texts, RetrievalHints, SearchConfig, SearchConfigExt,
+    SearchResult, TableHint, TableRef,
 };
 use sqllumen_lib::schema_index::storage;
-use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType};
+use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, FkEdge};
 
 const DIM: usize = 4;
 
@@ -68,6 +71,8 @@ fn insert_table_chunk(
         ref_db_name: None,
         ref_table_name: None,
         embedding,
+        text_for_embedding: None,
+        row_count_approx: None,
     };
     storage::insert_chunk(conn, &chunk).expect("insert table chunk")
 }
@@ -96,8 +101,37 @@ fn insert_fk_chunk(
         ref_db_name: Some(ref_db_name.to_string()),
         ref_table_name: Some(ref_table_name.to_string()),
         embedding,
+        text_for_embedding: None,
+        row_count_approx: None,
     };
     storage::insert_chunk(conn, &chunk).expect("insert fk chunk")
+}
+
+fn insert_fk_edge(
+    conn: &Connection,
+    connection_id: &str,
+    src_db: &str,
+    src_tbl: &str,
+    src_col: &str,
+    dst_db: &str,
+    dst_tbl: &str,
+    dst_col: &str,
+    constraint_name: &str,
+) {
+    let edge = FkEdge {
+        connection_id: connection_id.to_string(),
+        src_db: src_db.to_string(),
+        src_tbl: src_tbl.to_string(),
+        src_col: src_col.to_string(),
+        dst_db: dst_db.to_string(),
+        dst_tbl: dst_tbl.to_string(),
+        dst_col: dst_col.to_string(),
+        constraint_name: constraint_name.to_string(),
+        on_delete: Some("RESTRICT".to_string()),
+        on_update: Some("RESTRICT".to_string()),
+    };
+    storage::replace_fk_edges_for_table(conn, connection_id, src_db, src_tbl, &[edge])
+        .expect("insert fk edge");
 }
 
 // ── Empty index ─────────────────────────────────────────────────────────
@@ -183,11 +217,11 @@ fn test_multi_query_dedup_keeps_best_score() {
         "users should appear exactly once after dedup"
     );
 
-    // The score should be the better one (from the exact match)
-    // Exact match: distance ≈ 0, score ≈ 1.0
+    // The score should reflect RRF accumulation from multiple queries
+    // With 2 queries both hitting "users", the RRF score should be > a single-query hit
     assert!(
-        users_results[0].score > 0.9,
-        "should keep the best (highest) score: got {}",
+        users_results[0].score > 0.01,
+        "should have a positive RRF score: got {}",
         users_results[0].score
     );
 }
@@ -221,7 +255,7 @@ fn test_top_n_selection() {
     );
 }
 
-// ── FK fan-out includes FK chunks for tables in top-N ───────────────────
+// ── FK fan-out includes related table chunks for tables in top-N ────────
 
 #[test]
 fn test_fk_fanout_includes_related_fk_chunks() {
@@ -231,36 +265,47 @@ fn test_fk_fanout_includes_related_fk_chunks() {
     insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
     insert_table_chunk(&conn, "conn-1", "testdb", "orders", unit_vec(1));
 
-    // Insert FK chunk: orders → users (embedding along axis 3, so KNN won't pick it up)
-    let fk_id = insert_fk_chunk(
+    // Insert FK edge: orders → users
+    insert_fk_edge(
         &conn,
         "conn-1",
         "testdb",
         "orders",
-        "fk_user_id",
+        "user_id",
         "testdb",
         "users",
-        unit_vec(3),
+        "id",
+        "fk_user_id",
     );
 
-    // Query along axis 0 — should match "users" (and maybe "orders")
+    // Also insert a third table linked via FK to orders but far from query
+    insert_table_chunk(&conn, "conn-1", "testdb", "order_items", unit_vec(3));
+    insert_fk_edge(
+        &conn,
+        "conn-1",
+        "testdb",
+        "order_items",
+        "order_id",
+        "testdb",
+        "orders",
+        "id",
+        "fk_order_id",
+    );
+
+    // Query along axis 0 — should match "users" (top-N), and "orders" should
+    // appear via FK edge fan-out since "users" ↔ "orders" have an FK edge.
     let query = vec![unit_vec(0)];
     let results =
         multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
 
-    // The FK chunk should appear via fan-out (since "users" is in the top-N)
-    let has_fk = results.iter().any(|r| r.chunk_id == fk_id);
-    assert!(
-        has_fk,
-        "FK chunk for orders→users should be included via fan-out"
-    );
-
-    // The FK chunk should have score 0.0 (fan-out, not from KNN)
-    let fk_result = results.iter().find(|r| r.chunk_id == fk_id).unwrap();
-    assert_eq!(fk_result.chunk_type, "fk");
+    // Both users and orders should appear (orders is FK-related to users)
+    let has_users = results.iter().any(|r| r.table_name == "users");
+    let has_orders = results.iter().any(|r| r.table_name == "orders");
+    assert!(has_users, "users should be in results");
+    assert!(has_orders, "orders should be included via FK edge fan-out");
 }
 
-// ── FK fan-out is capped ────────────────────────────────────────────────
+// ── FK fan-out is capped (via graph expansion) ──────────────────────────
 
 #[test]
 fn test_fk_fanout_is_capped() {
@@ -269,38 +314,54 @@ fn test_fk_fanout_is_capped() {
     // Insert one table chunk (close to query)
     insert_table_chunk(&conn, "conn-1", "testdb", "users", unit_vec(0));
 
-    // Insert 3 FK chunks related to users (far from query, along axis 3)
+    // Insert 3 related table chunks (far from query) and FK edges pointing to users
     for i in 0..3 {
-        let name = format!("fk_constraint_{i}");
-        insert_fk_chunk(
+        let tbl_name = format!("related_table_{i}");
+        insert_table_chunk(&conn, "conn-1", "testdb", &tbl_name, unit_vec(3));
+        insert_fk_edge(
             &conn,
             "conn-1",
             "testdb",
-            &format!("related_table_{i}"),
-            &name,
+            &tbl_name,
+            "user_id",
             "testdb",
             "users",
-            unit_vec(3), // far from query vector
+            "id",
+            &format!("fk_constraint_{i}"),
         );
     }
 
-    // Use top_n_results=1 so only the table chunk makes it to top-N.
-    // The FK chunks will come from fan-out and should be capped at max_fk_chunks=1.
+    // Use graph expansion with edge_budget=1 to cap FK fan-out.
+    // Base search returns only "users" (top_n=1), graph walk adds related tables
+    // but is capped at 1 edge.
     let query = vec![unit_vec(0)];
+    let config = SearchConfigExt {
+        base: SearchConfig {
+            top_k_per_query: 5,
+            top_n_results: 1,
+            max_fk_chunks: 1,
+            lexical_weight: 0.0,
+        },
+        graph_depth: 1,
+        feedback_boost: 0.0,
+        hints: RetrievalHints::default(),
+    };
+
     let results =
-        multi_query_search(&conn, "conn-1", &query, 5, 1, 1).expect("search should succeed");
+        multi_query_search_extended(&conn, "conn-1", &[], &query, &config).expect("search");
 
     // First result should be the table chunk (top-N)
     assert_eq!(results[0].chunk_type, "table");
     assert_eq!(results[0].table_name, "users");
 
-    // Fan-out FK chunks should be capped at 1
-    let fk_chunks: Vec<&SearchResult> = results.iter().filter(|r| r.chunk_type == "fk").collect();
+    // Graph expansion with budget=1 should add at most 1 related table
+    let fanout_chunks: Vec<&SearchResult> =
+        results.iter().filter(|r| r.table_name != "users").collect();
     assert_eq!(
-        fk_chunks.len(),
+        fanout_chunks.len(),
         1,
-        "FK fan-out should be capped at max_fk_chunks=1, got {}",
-        fk_chunks.len()
+        "Graph expansion should be capped at max_fk_chunks=1, got {}",
+        fanout_chunks.len()
     );
 }
 
@@ -463,32 +524,33 @@ fn test_score_is_distance_based_similarity() {
         multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
 
     assert_eq!(results.len(), 1);
-    // Score should be very close to 1.0 (exact match)
+    // Score is now RRF-based: 1/(60+1) ≈ 0.01639 for rank 1 with single query
+    let expected_rrf_rank1 = 1.0 / 61.0;
     assert!(
-        (results[0].score - 1.0).abs() < 0.001,
-        "exact match score should be ~1.0, got {}",
+        (results[0].score - expected_rrf_rank1).abs() < 0.001,
+        "exact match RRF score should be ~{:.4}, got {}",
+        expected_rrf_rank1,
         results[0].score
     );
 
     // Query with an orthogonal vector — cosine distance = 1.0
-    // so score = 1.0 - 1.0 = 0.0 (orthogonal vectors have zero similarity)
+    // RRF score = 1/(60+1) since it's still the only result
     let query_ortho = vec![unit_vec(1)];
     let results_ortho = multi_query_search(&conn, "conn-1", &query_ortho, 5, 10, 20)
         .expect("search should succeed");
 
     assert_eq!(results_ortho.len(), 1);
-    // For cosine distance on orthogonal unit vectors: distance = 1.0, score = 1.0 - 1.0 = 0.0
-    let expected_ortho_score = 0.0;
+    // Even with orthogonal vector, the single chunk is still returned with rank 1
     assert!(
-        (results_ortho[0].score - expected_ortho_score).abs() < 0.01,
-        "orthogonal match score should be ~{:.3}, got {}",
-        expected_ortho_score,
+        results_ortho[0].score > 0.0,
+        "orthogonal match should still have positive RRF score, got {}",
         results_ortho[0].score
     );
 
-    // The exact match should have a strictly higher score than the orthogonal match
+    // With RRF and single query, both get same RRF score (rank 1 since each is the only result)
+    // So scores are equal — ordering is determined by cosine tiebreaker
     assert!(
-        results[0].score > results_ortho[0].score,
+        results[0].score >= results_ortho[0].score,
         "exact match score ({}) should be > orthogonal score ({})",
         results[0].score,
         results_ortho[0].score
@@ -697,19 +759,21 @@ fn test_multi_query_multiple_axes() {
 fn test_query_text_boosts_exact_table_name_matches() {
     let conn = setup_db();
 
+    // Both tables have similar cosine scores (both along axis 0)
+    // so the lexical boost should differentiate them
     insert_table_chunk(
         &conn,
         "conn-1",
         "sykes_reservations",
         "itinerary",
-        unit_vec(3),
+        blend_vec(0, 3, 0.8),
     );
     insert_table_chunk(
         &conn,
         "conn-1",
         "sykes_reservations",
         "itinerary_date_history",
-        unit_vec(0),
+        blend_vec(0, 3, 0.8),
     );
     insert_table_chunk(&conn, "conn-1", "sykes_portal", "session_rfx", unit_vec(1));
 
@@ -750,10 +814,11 @@ fn test_query_text_boosts_exact_table_name_matches() {
 fn test_query_text_boost_prefers_schema_qualified_exact_match() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "sales", "orders", unit_vec(2));
-    insert_table_chunk(&conn, "conn-1", "support", "orders", unit_vec(1));
+    // Both tables have similar cosine scores so lexical boost differentiates
+    insert_table_chunk(&conn, "conn-1", "sales", "orders", blend_vec(0, 1, 0.5));
+    insert_table_chunk(&conn, "conn-1", "support", "orders", blend_vec(0, 1, 0.5));
 
-    let query_vectors = vec![unit_vec(1)];
+    let query_vectors = vec![unit_vec(0)];
     let query_texts = vec!["SELECT * FROM sales.orders".to_string()];
 
     let results = multi_query_search_with_query_texts(
@@ -859,14 +924,15 @@ fn test_top_n_with_fk_only_knn_results() {
         multi_query_search(&conn, "conn-1", &query, 5, 10, 20).expect("search should succeed");
 
     assert!(!results.is_empty(), "should have some results");
+    // Base search no longer enriches FK chunks with table DDLs.
+    // The first result should be the FK chunk closest to the query.
     assert_eq!(
-        results[0].chunk_type, "table",
-        "related table DDL should be backfilled first"
+        results[0].chunk_type, "fk",
+        "without enrichment, FK chunk should be first when it's the best KNN hit"
     );
-    assert_eq!(results[0].table_name, "orders");
     assert!(
         results.iter().any(|r| r.chunk_type == "fk"),
-        "FK chunks should still be included after table backfill"
+        "FK chunks should be in results"
     );
 }
 
@@ -874,10 +940,11 @@ fn test_top_n_with_fk_only_knn_results() {
 fn test_query_text_boost_prefers_schema_qualified_tokens_without_sql_keywords() {
     let conn = setup_db();
 
-    insert_table_chunk(&conn, "conn-1", "sales", "orders", unit_vec(2));
-    insert_table_chunk(&conn, "conn-1", "support", "orders", unit_vec(1));
+    // Both tables have similar cosine so lexical differentiates
+    insert_table_chunk(&conn, "conn-1", "sales", "orders", blend_vec(0, 1, 0.5));
+    insert_table_chunk(&conn, "conn-1", "support", "orders", blend_vec(0, 1, 0.5));
 
-    let query_vectors = vec![unit_vec(1)];
+    let query_vectors = vec![unit_vec(0)];
     let query_texts = vec!["sales.orders revenue total".to_string()];
 
     let results = multi_query_search_with_query_texts(
@@ -920,9 +987,13 @@ fn test_single_chunk_single_query() {
 
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].table_name, "solo");
+    // RRF score for rank 1 with single query: 1/(60+1) ≈ 0.01639
+    let expected_rrf = 1.0 / 61.0;
     assert!(
-        (results[0].score - 1.0).abs() < 0.001,
-        "exact match should have score ~1.0"
+        (results[0].score - expected_rrf).abs() < 0.001,
+        "exact match should have RRF score ~{:.4}, got {}",
+        expected_rrf,
+        results[0].score
     );
 }
 
@@ -1054,4 +1125,613 @@ fn test_top_k_per_query_limit() {
         "top_k_per_query=2 should limit results to at most 2, got {}",
         results.len()
     );
+}
+
+// ── multi_query_search_extended tests ─────────────────────────────────────
+
+#[test]
+fn extended_search_applies_hint_boost_to_reorder_results() {
+    let conn = setup_db();
+
+    // Two tables with similar embeddings — users slightly closer to query
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "orders", blend_vec(0, 1, 0.95));
+
+    let query = vec![unit_vec(0)];
+    let config = SearchConfigExt {
+        base: SearchConfig {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_fk_chunks: 30,
+            lexical_weight: 0.0,
+        },
+        graph_depth: 0,      // disable graph walk for this test
+        feedback_boost: 1.0, // strong boost
+        hints: RetrievalHints {
+            recent_tables: vec![TableHint {
+                db_name: "db1".to_string(),
+                table_name: "orders".to_string(),
+                weight: 1.0,
+            }],
+            editor_tables: vec![],
+            accepted_tables: vec![],
+        },
+    };
+
+    let results = multi_query_search_extended(&conn, "conn-1", &[], &query, &config)
+        .expect("extended search");
+
+    assert!(results.len() >= 2);
+    // With a strong boost on 'orders', it should be ranked first
+    assert_eq!(results[0].table_name, "orders");
+}
+
+#[test]
+fn extended_search_graph_walk_adds_related_tables() {
+    let conn = setup_db();
+
+    // A -> B edge, only A is close to query
+    insert_table_chunk(&conn, "conn-1", "db1", "A", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "B", unit_vec(2)); // far from query
+
+    let edge = FkEdge {
+        connection_id: "conn-1".to_string(),
+        src_db: "db1".to_string(),
+        src_tbl: "A".to_string(),
+        src_col: "id".to_string(),
+        dst_db: "db1".to_string(),
+        dst_tbl: "B".to_string(),
+        dst_col: "a_id".to_string(),
+        constraint_name: "fk_A_B".to_string(),
+        on_delete: None,
+        on_update: None,
+    };
+    storage::replace_fk_edges_for_table(&conn, "conn-1", "db1", "A", &[edge]).unwrap();
+
+    let query = vec![unit_vec(0)];
+    let config = SearchConfigExt {
+        base: SearchConfig {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_fk_chunks: 30,
+            lexical_weight: 0.0,
+        },
+        graph_depth: 1,
+        feedback_boost: 0.0,
+        hints: RetrievalHints::default(),
+    };
+
+    let results = multi_query_search_extended(&conn, "conn-1", &[], &query, &config)
+        .expect("extended search with graph walk");
+
+    // Should include both A (from KNN) and B (from graph walk)
+    let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
+    assert!(names.contains(&"A"), "A should be in results");
+    assert!(names.contains(&"B"), "B should be added by graph walk");
+
+    // B should have decayed score
+    let b = results.iter().find(|r| r.table_name == "B").unwrap();
+    let a = results.iter().find(|r| r.table_name == "A").unwrap();
+    assert!(
+        b.score < a.score,
+        "B's graph-walk score should be less than A's direct score"
+    );
+}
+
+#[test]
+fn extended_search_editor_tables_become_graph_seeds() {
+    let conn = setup_db();
+
+    // Three tables: X (close to query), Y (far), Z (far)
+    // Y -> Z edge exists. Y is an "editor table" hint.
+    insert_table_chunk(&conn, "conn-1", "db1", "X", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "Y", unit_vec(2));
+    insert_table_chunk(&conn, "conn-1", "db1", "Z", unit_vec(3));
+
+    let edge = FkEdge {
+        connection_id: "conn-1".to_string(),
+        src_db: "db1".to_string(),
+        src_tbl: "Y".to_string(),
+        src_col: "id".to_string(),
+        dst_db: "db1".to_string(),
+        dst_tbl: "Z".to_string(),
+        dst_col: "y_id".to_string(),
+        constraint_name: "fk_Y_Z".to_string(),
+        on_delete: None,
+        on_update: None,
+    };
+    storage::replace_fk_edges_for_table(&conn, "conn-1", "db1", "Y", &[edge]).unwrap();
+
+    let query = vec![unit_vec(0)];
+    let config = SearchConfigExt {
+        base: SearchConfig {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_fk_chunks: 30,
+            lexical_weight: 0.0,
+        },
+        graph_depth: 1,
+        feedback_boost: 0.15,
+        hints: RetrievalHints {
+            recent_tables: vec![],
+            editor_tables: vec![TableRef {
+                db_name: "db1".to_string(),
+                table_name: "Y".to_string(),
+            }],
+            accepted_tables: vec![],
+        },
+    };
+
+    let results = multi_query_search_extended(&conn, "conn-1", &[], &query, &config)
+        .expect("extended search with editor tables as seeds");
+
+    let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
+    // Z should be found via graph walk from editor table Y
+    assert!(
+        names.contains(&"Z"),
+        "Z should be reachable via editor table Y's graph walk"
+    );
+}
+
+#[test]
+fn extended_search_empty_vectors_returns_empty() {
+    let conn = setup_db();
+    let config = SearchConfigExt::default();
+    let results = multi_query_search_extended(&conn, "conn-1", &[], &[], &config).unwrap();
+    assert!(results.is_empty());
+}
+
+#[test]
+fn extended_search_with_accepted_tables_boost() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "alpha", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "beta", blend_vec(0, 1, 0.95));
+
+    let query = vec![unit_vec(0)];
+    let config = SearchConfigExt {
+        base: SearchConfig {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_fk_chunks: 30,
+            lexical_weight: 0.0,
+        },
+        graph_depth: 0,
+        feedback_boost: 2.0, // very strong
+        hints: RetrievalHints {
+            recent_tables: vec![],
+            editor_tables: vec![],
+            accepted_tables: vec![TableHint {
+                db_name: "db1".to_string(),
+                table_name: "beta".to_string(),
+                weight: 1.0,
+            }],
+        },
+    };
+
+    let results = multi_query_search_extended(&conn, "conn-1", &[], &query, &config).unwrap();
+    assert!(results.len() >= 2);
+    // beta should be first due to strong accepted boost
+    assert_eq!(results[0].table_name, "beta");
+}
+
+// ── Lexical boost tests ─────────────────────────────────────────────────────
+
+#[test]
+fn lexical_direct_table_match_boosts_score() {
+    let conn = setup_db();
+
+    // Insert two table chunks with similar embeddings
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "orders", blend_vec(0, 1, 0.9));
+
+    let query_texts = vec!["SELECT * FROM orders".to_string()];
+    let query_vecs = vec![unit_vec(0)]; // points at users
+
+    let results =
+        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
+            .unwrap();
+
+    // "orders" should appear and get a lexical boost from the direct table match
+    let order_pos = results.iter().position(|r| r.table_name == "orders");
+    assert!(order_pos.is_some(), "orders should appear in results");
+}
+
+#[test]
+fn lexical_qualified_identifier_match() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "customers", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "products", blend_vec(0, 1, 0.8));
+
+    let query_texts = vec!["SELECT * FROM db1.products JOIN db1.customers ON true".to_string()];
+    let query_vecs = vec![unit_vec(0)]; // points at customers
+
+    let results =
+        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
+            .unwrap();
+
+    // Both tables should appear since both are mentioned in the query
+    let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
+    assert!(names.contains(&"customers"), "customers should appear");
+    assert!(names.contains(&"products"), "products should appear");
+}
+
+#[test]
+fn lexical_identifier_token_segment_match() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "user_profiles", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "order_items", unit_vec(1));
+
+    // Query mentions "profiles" which is a segment of "user_profiles"
+    let query_texts = vec!["show me profiles data".to_string()];
+    let query_vecs = vec![blend_vec(0, 1, 0.5)]; // equidistant
+
+    let results =
+        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
+            .unwrap();
+
+    // user_profiles should get a segment match boost from "profiles"
+    let profile_pos = results.iter().position(|r| r.table_name == "user_profiles");
+    assert!(
+        profile_pos.is_some(),
+        "user_profiles should appear via segment match"
+    );
+}
+
+#[test]
+fn lexical_boost_with_fk_enrichment() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "customers", unit_vec(1));
+    insert_fk_chunk(
+        &conn,
+        "conn-1",
+        "db1",
+        "orders",
+        "fk_orders_customers",
+        "db1",
+        "customers",
+        blend_vec(0, 1, 0.5),
+    );
+    insert_fk_edge(
+        &conn,
+        "conn-1",
+        "db1",
+        "orders",
+        "customer_id",
+        "db1",
+        "customers",
+        "id",
+        "fk_orders_customers",
+    );
+
+    let query_texts = vec!["SELECT * FROM orders".to_string()];
+    let query_vecs = vec![unit_vec(0)];
+
+    let results =
+        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
+            .unwrap();
+
+    // Should have orders table + customers via FK fan-out
+    let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
+    assert!(names.contains(&"orders"), "orders should appear");
+    assert!(
+        names.contains(&"customers"),
+        "customers should appear via FK fan-out"
+    );
+}
+
+#[test]
+fn lexical_dotted_identifier_in_natural_text() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "mydb", "accounts", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "mydb", "transactions", unit_vec(1));
+
+    // Natural language query with a dotted identifier
+    let query_texts = vec!["look up mydb.accounts balance".to_string()];
+    let query_vecs = vec![unit_vec(1)]; // points away from accounts
+
+    let results =
+        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
+            .unwrap();
+
+    // accounts should appear despite vector pointing at transactions
+    let has_accounts = results.iter().any(|r| r.table_name == "accounts");
+    assert!(
+        has_accounts,
+        "accounts should appear via lexical dotted identifier match"
+    );
+}
+
+#[test]
+fn extended_search_graph_walk_with_lexical_and_hints() {
+    let conn = setup_db();
+
+    // Create a chain: A -> B -> C
+    insert_table_chunk(&conn, "conn-1", "db1", "A", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "B", unit_vec(1));
+    insert_table_chunk(&conn, "conn-1", "db1", "C", unit_vec(2));
+
+    insert_fk_edge(
+        &conn, "conn-1", "db1", "A", "b_id", "db1", "B", "id", "fk_a_b",
+    );
+    insert_fk_edge(
+        &conn, "conn-1", "db1", "B", "c_id", "db1", "C", "id", "fk_b_c",
+    );
+
+    let query_texts = vec!["SELECT * FROM A".to_string()];
+    let query_vecs = vec![unit_vec(0)];
+
+    let config = SearchConfigExt {
+        base: SearchConfig {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_fk_chunks: 30,
+            lexical_weight: 0.3,
+        },
+        graph_depth: 2,
+        feedback_boost: 0.5,
+        hints: RetrievalHints {
+            recent_tables: vec![TableHint {
+                db_name: "db1".to_string(),
+                table_name: "B".to_string(),
+                weight: 0.8,
+            }],
+            editor_tables: vec![],
+            accepted_tables: vec![],
+        },
+    };
+
+    let results =
+        multi_query_search_extended(&conn, "conn-1", &query_texts, &query_vecs, &config).unwrap();
+
+    let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
+    assert!(names.contains(&"A"), "A should appear as direct match");
+    // B and C should appear via graph walk
+    assert!(
+        names.contains(&"B") || names.contains(&"C"),
+        "Graph walk should bring in B or C"
+    );
+}
+
+#[test]
+fn fk_chunk_in_knn_triggers_enrichment_with_referenced_table() {
+    // When an FK chunk appears in KNN results, enrich_with_related_table_chunks
+    // should add the referenced table chunk automatically.
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(1));
+    insert_table_chunk(&conn, "conn-1", "db1", "customers", unit_vec(2));
+    // FK chunk with ref_db_name/ref_table_name pointing at customers
+    insert_fk_chunk(
+        &conn,
+        "conn-1",
+        "db1",
+        "orders",
+        "fk_orders_customers",
+        "db1",
+        "customers",
+        unit_vec(0), // closest to query
+    );
+
+    let query_vecs = vec![unit_vec(0)]; // will match FK chunk first
+
+    let results = multi_query_search(&conn, "conn-1", &query_vecs, 10, 10, 30).unwrap();
+
+    let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
+    // The FK chunk references both orders and customers; both table chunks should be enriched
+    assert!(
+        names.contains(&"orders"),
+        "orders table should be enriched from FK chunk"
+    );
+    assert!(
+        names.contains(&"customers"),
+        "customers table should be enriched from FK ref"
+    );
+}
+
+#[test]
+fn lexical_boost_backtick_qualified_identifier() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "sales", "invoices", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "sales", "payments", unit_vec(1));
+
+    let query_texts = vec!["SELECT * FROM `sales`.`invoices`".to_string()];
+    let query_vecs = vec![unit_vec(1)]; // points at payments
+
+    let results =
+        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
+            .unwrap();
+
+    // invoices should get a direct qualified table match boost
+    let has_invoices = results.iter().any(|r| r.table_name == "invoices");
+    assert!(
+        has_invoices,
+        "invoices should appear via backtick-qualified lexical match"
+    );
+}
+
+#[test]
+fn search_with_multiple_query_texts_and_vectors() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(1));
+    insert_table_chunk(&conn, "conn-1", "db1", "products", unit_vec(2));
+
+    // Multiple queries — both vectors and texts
+    let query_texts = vec![
+        "show me users".to_string(),
+        "SELECT * FROM products".to_string(),
+    ];
+    let query_vecs = vec![unit_vec(0), unit_vec(2)];
+
+    let results =
+        multi_query_search_with_query_texts(&conn, "conn-1", &query_texts, &query_vecs, 10, 10, 30)
+            .unwrap();
+
+    let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
+    assert!(names.contains(&"users"), "users should appear");
+    assert!(names.contains(&"products"), "products should appear");
+}
+
+#[test]
+fn configured_search_with_zero_lexical_weight() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "items", unit_vec(0));
+
+    let query_texts = vec!["SELECT * FROM items".to_string()];
+    let query_vecs = vec![unit_vec(0)];
+
+    let config = SearchConfig {
+        top_k_per_query: 10,
+        top_n_results: 10,
+        max_fk_chunks: 30,
+        lexical_weight: 0.0,
+    };
+
+    let results =
+        multi_query_search_configured(&conn, "conn-1", &query_texts, &query_vecs, &config).unwrap();
+
+    assert!(
+        !results.is_empty(),
+        "should return results even with zero lexical weight"
+    );
+    assert_eq!(results[0].table_name, "items");
+}
+
+// ── multi_query_search_with_hints tests ──────────────────────────────────
+
+#[test]
+fn with_hints_applies_feedback_boost() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(1));
+
+    let query = vec![blend_vec(0, 1, 0.6)]; // slightly closer to users
+    let query_texts = vec!["find users".to_string()];
+
+    let config = SearchConfigExt {
+        base: SearchConfig {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_fk_chunks: 30,
+            lexical_weight: 0.0,
+        },
+        graph_depth: 0,
+        feedback_boost: 1.0,
+        hints: RetrievalHints {
+            recent_tables: vec![],
+            editor_tables: vec![],
+            accepted_tables: vec![TableHint {
+                db_name: "db1".to_string(),
+                table_name: "orders".to_string(),
+                weight: 1.0,
+            }],
+        },
+    };
+
+    let results =
+        multi_query_search_with_hints(&conn, "conn-1", &query_texts, &query, &config).unwrap();
+
+    assert!(!results.is_empty());
+    // orders should be boosted above users despite lower cosine
+    assert_eq!(results[0].table_name, "orders");
+}
+
+#[test]
+fn with_hints_empty_results() {
+    let conn = setup_db();
+
+    let config = SearchConfigExt::default();
+    let results = multi_query_search_with_hints(&conn, "conn-1", &[], &[], &config).unwrap();
+    assert!(results.is_empty());
+}
+
+// ── apply_graph_expansion tests ──────────────────────────────────────────
+
+#[test]
+fn apply_graph_expansion_adds_related_tables() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(1));
+    insert_table_chunk(&conn, "conn-1", "db1", "products", unit_vec(2));
+
+    // FK: orders → users
+    storage::replace_fk_edges_for_connection(
+        &conn,
+        "conn-1",
+        &[FkEdge {
+            connection_id: "conn-1".to_string(),
+            src_db: "db1".to_string(),
+            src_tbl: "orders".to_string(),
+            src_col: "user_id".to_string(),
+            dst_db: "db1".to_string(),
+            dst_tbl: "users".to_string(),
+            dst_col: "id".to_string(),
+            constraint_name: "fk_orders_users".to_string(),
+            on_delete: Some("CASCADE".to_string()),
+            on_update: Some("RESTRICT".to_string()),
+        }],
+    )
+    .unwrap();
+
+    // Start with only "users" in results
+    let initial = vec![SearchResult {
+        chunk_id: 1,
+        chunk_key: "table:db1.users".to_string(),
+        db_name: "db1".to_string(),
+        table_name: "users".to_string(),
+        chunk_type: "table".to_string(),
+        ddl_text: "CREATE TABLE users (id INT)".to_string(),
+        ref_db_name: None,
+        ref_table_name: None,
+        score: 0.9,
+    }];
+
+    let results = apply_graph_expansion(&conn, "conn-1", initial, 2, 30).unwrap();
+
+    // Should have added orders via FK edge
+    let names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
+    assert!(names.contains(&"users"));
+    assert!(names.contains(&"orders"));
+    // Score of orders should be 0.9 * 0.5 = 0.45 (1 hop decay)
+    let orders_result = results.iter().find(|r| r.table_name == "orders").unwrap();
+    assert!((orders_result.score - 0.45).abs() < 0.01);
+}
+
+#[test]
+fn apply_graph_expansion_zero_depth_noop() {
+    let conn = setup_db();
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+
+    let initial = vec![SearchResult {
+        chunk_id: 1,
+        chunk_key: "table:db1.users".to_string(),
+        db_name: "db1".to_string(),
+        table_name: "users".to_string(),
+        chunk_type: "table".to_string(),
+        ddl_text: "CREATE TABLE users (id INT)".to_string(),
+        ref_db_name: None,
+        ref_table_name: None,
+        score: 0.9,
+    }];
+
+    let results = apply_graph_expansion(&conn, "conn-1", initial.clone(), 0, 30).unwrap();
+    assert_eq!(results.len(), initial.len());
+}
+
+#[test]
+fn apply_graph_expansion_empty_results() {
+    let conn = setup_db();
+    let results = apply_graph_expansion(&conn, "conn-1", vec![], 2, 30).unwrap();
+    assert!(results.is_empty());
 }

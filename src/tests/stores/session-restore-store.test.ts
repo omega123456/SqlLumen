@@ -944,6 +944,147 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
   })
 })
 
+describe('useSessionRestoreStore — connectByProfileId edge cases', () => {
+  it('returns null when openConnection succeeds but no new session ID appears', async () => {
+    const savedState = {
+      version: 1,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 0,
+          tabs: [{ type: 'query-editor', tabId: 'tab-1', sql: 'SELECT 1', label: 'Q' }],
+        },
+      ],
+    }
+
+    mockIPC((cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      switch (cmd) {
+        case 'log_frontend':
+          return undefined
+        case 'get_setting':
+          if (a?.key === 'session.state') return JSON.stringify(savedState)
+          return null
+        case 'list_connections':
+          return [
+            {
+              id: 'profile-1',
+              name: 'Test MySQL',
+              host: '127.0.0.1',
+              port: 3306,
+              username: 'root',
+              hasPassword: true,
+              defaultDatabase: 'testdb',
+              sslEnabled: false,
+              sslCaPath: null,
+              sslCertPath: null,
+              sslKeyPath: null,
+              color: null,
+              groupId: null,
+              readOnly: false,
+              sortOrder: 0,
+              connectTimeoutSecs: 10,
+              keepaliveIntervalSecs: 60,
+              createdAt: '2024-01-01T00:00:00Z',
+              updatedAt: '2024-01-01T00:00:00Z',
+            },
+          ]
+        case 'list_connection_groups':
+          return []
+        case 'open_connection':
+          // Return success but DON'T actually add to activeConnections —
+          // we pre-populate the same sessionId so diffing finds nothing new
+          return { sessionId: 'already-existing', serverVersion: '8.0.0' }
+        default:
+          return null
+      }
+    })
+
+    // Pre-populate activeConnections with the sessionId that open_connection will return,
+    // so the diff logic finds no *new* session ID
+    useConnectionStore.setState({
+      savedConnections: [
+        {
+          id: 'profile-1',
+          name: 'Test MySQL',
+          host: '127.0.0.1',
+          port: 3306,
+          username: 'root',
+          hasPassword: true,
+          defaultDatabase: 'testdb',
+          sslEnabled: false,
+          sslCaPath: null,
+          sslCertPath: null,
+          sslKeyPath: null,
+          color: null,
+          groupId: null,
+          readOnly: false,
+          sortOrder: 0,
+          connectTimeoutSecs: 10,
+          keepaliveIntervalSecs: 60,
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        },
+      ],
+      activeConnections: {
+        'already-existing': {
+          id: 'already-existing',
+          profile: {
+            id: 'profile-1',
+            name: 'Test MySQL',
+            host: '127.0.0.1',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+      },
+    })
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    // The warn about "Could not find new session ID" should have fired (line 241)
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not find new session ID'))
+
+    warnSpy.mockRestore()
+  })
+})
+
+describe('registerCloseHandler', () => {
+  it('returns immediately when __TAURI_INTERNALS__ is absent', async () => {
+    const { registerCloseHandler } = await import('../../stores/session-restore-store')
+    // In jsdom, __TAURI_INTERNALS__ is not defined, so canUseTauriWindow returns false
+    await registerCloseHandler()
+    // Should complete without error — covers lines 348-368
+  })
+
+  it('returns immediately when __TAURI_INTERNALS__ is null', async () => {
+    ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = null
+    const { registerCloseHandler } = await import('../../stores/session-restore-store')
+    await registerCloseHandler()
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+    // Covers the null check in canUseTauriWindow
+  })
+})
+
 describe('useSessionRestoreStore — saveSession with schema-info tabs', () => {
   it('serializes schema-info tabs correctly', async () => {
     let savedValue: string | null = null

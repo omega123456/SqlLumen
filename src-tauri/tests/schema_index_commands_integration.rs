@@ -36,6 +36,7 @@ fn test_state() -> AppState {
         session_profile_map: Arc::new(Mutex::new(HashMap::new())),
         session_ref_counts: Arc::new(Mutex::new(HashMap::new())),
         http_client: reqwest::Client::new(),
+        embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
     }
 }
 
@@ -58,6 +59,7 @@ fn test_state_with_vec() -> AppState {
         session_profile_map: Arc::new(Mutex::new(HashMap::new())),
         session_ref_counts: Arc::new(Mutex::new(HashMap::new())),
         http_client: reqwest::Client::new(),
+        embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
     }
 }
 
@@ -425,6 +427,8 @@ async fn list_indexed_tables_returns_chunks() {
             ref_db_name: None,
             ref_table_name: None,
             embedding: vec![0.1, 0.2, 0.3, 0.4],
+            text_for_embedding: None,
+            row_count_approx: None,
         };
         storage::insert_chunk(&conn, &chunk).unwrap();
     }
@@ -760,6 +764,7 @@ async fn semantic_search_no_model_configured() {
         &state,
         "sess-search".to_string(),
         vec!["find users".to_string()],
+        None,
     )
     .await;
 
@@ -782,7 +787,7 @@ async fn semantic_search_empty_queries_returns_empty() {
     // Register session in registry
     register_dummy_session(&state, "sess-search2", "profile-search2");
 
-    let result = semantic_search_impl(&state, "sess-search2".to_string(), vec![]).await;
+    let result = semantic_search_impl(&state, "sess-search2".to_string(), vec![], None).await;
 
     assert!(result.is_ok());
     assert!(result.unwrap().is_empty());
@@ -796,6 +801,7 @@ async fn semantic_search_session_not_found() {
         &state,
         "nonexistent-session".to_string(),
         vec!["find users".to_string()],
+        None,
     )
     .await;
 
@@ -820,6 +826,7 @@ async fn semantic_search_with_queries_hits_coverage_stub() {
         &state,
         "sess-search3".to_string(),
         vec!["find all users".to_string()],
+        None,
     )
     .await;
 
@@ -1046,6 +1053,8 @@ fn force_rebuild_deletes_all_chunks_and_vectors() {
             ref_db_name: None,
             ref_table_name: None,
             embedding: vec![0.1, 0.2, 0.3, 0.4],
+            text_for_embedding: None,
+            row_count_approx: None,
         };
         storage::insert_chunk(&conn, &chunk).unwrap();
 
@@ -1127,6 +1136,8 @@ async fn force_rebuild_wipe_then_early_return_when_no_model() {
             ref_db_name: None,
             ref_table_name: None,
             embedding: vec![0.5, 0.6, 0.7, 0.8],
+            text_for_embedding: None,
+            row_count_approx: None,
         };
         storage::insert_chunk(&conn, &chunk).unwrap();
     }
@@ -1193,6 +1204,8 @@ async fn force_rebuild_wipe_with_model_but_no_endpoint() {
             ref_db_name: None,
             ref_table_name: None,
             embedding: vec![0.1, 0.2, 0.3, 0.4],
+            text_for_embedding: None,
+            row_count_approx: None,
         };
         storage::insert_chunk(&conn, &chunk).unwrap();
 
@@ -1378,6 +1391,8 @@ async fn force_rebuild_no_model_returns_ok() {
             ref_db_name: None,
             ref_table_name: None,
             embedding: vec![0.1, 0.2, 0.3, 0.4],
+            text_for_embedding: None,
+            row_count_approx: None,
         };
         storage::insert_chunk(&conn, &chunk).unwrap();
     }
@@ -1597,6 +1612,8 @@ async fn list_indexed_tables_returns_fk_chunks_too() {
             ref_db_name: None,
             ref_table_name: None,
             embedding: vec![0.1, 0.2, 0.3, 0.4],
+            text_for_embedding: None,
+            row_count_approx: None,
         };
         storage::insert_chunk(&conn, &table_chunk).unwrap();
 
@@ -1613,6 +1630,8 @@ async fn list_indexed_tables_returns_fk_chunks_too() {
             ref_db_name: Some("mydb".to_string()),
             ref_table_name: Some("users".to_string()),
             embedding: vec![0.5, 0.6, 0.7, 0.8],
+            text_for_embedding: None,
+            row_count_approx: None,
         };
         storage::insert_chunk(&conn, &fk_chunk).unwrap();
     }
