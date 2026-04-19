@@ -870,6 +870,7 @@ async fn query_expand_returns_timeout_message_after_retry_timeout() {
         model: "test-model".to_string(),
         system_prompt: "system".to_string(),
         user_message: "user".to_string(),
+        conversation_context: None,
     };
 
     let result = ai_query_expand_impl(&state, req).await;

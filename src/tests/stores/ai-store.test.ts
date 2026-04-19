@@ -1778,7 +1778,6 @@ describe('useAiStore', () => {
     })
 
     it('falls back to original message on malformed JSON', async () => {
-      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       mockAiQueryExpand.mockResolvedValueOnce({ text: '{broken json' })
 
       useAiStore.getState().sendMessage('tab-bad', 'conn-1', 'my question', {})
@@ -1815,7 +1814,9 @@ describe('useAiStore', () => {
       // Simulate an assistant response
       const streamId = getTab('tab-ctx')!.activeStreamId!
       useAiStore.getState().onStreamChunk('tab-ctx', streamId, 'Hi there!')
-      useAiStore.getState().onStreamDone('tab-ctx', streamId)
+      useAiStore.getState().onStreamDone('tab-ctx', streamId, {
+        transport: 'chat_completions',
+      })
 
       // Clear the mock and send a follow-up
       mockAiQueryExpand.mockClear()
@@ -1864,7 +1865,9 @@ describe('useAiStore', () => {
 
       // Simulate stream done
       const streamId = getTab('tab-cache')!.activeStreamId!
-      useAiStore.getState().onStreamDone('tab-cache', streamId)
+      useAiStore.getState().onStreamDone('tab-cache', streamId, {
+        transport: 'chat_completions',
+      })
 
       // Clear conversation so context is the same on second call
       useAiStore.getState().clearConversation('tab-cache')

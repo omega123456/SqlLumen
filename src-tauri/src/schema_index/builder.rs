@@ -2099,7 +2099,6 @@ async fn fetch_all_user_views(
     pool: &sqlx::MySqlPool,
 ) -> Result<Vec<(String, String, String)>, String> {
     use crate::mysql::schema_queries::safe_identifier;
-    use sqlx::Row;
 
     let rows = sqlx::query(
         "SELECT TABLE_SCHEMA, TABLE_NAME \
@@ -2160,7 +2159,6 @@ async fn fetch_all_user_routines(
     pool: &sqlx::MySqlPool,
 ) -> Result<Vec<(String, String, String, String)>, String> {
     use crate::mysql::schema_queries::safe_identifier;
-    use sqlx::Row;
 
     let rows = sqlx::query(
         "SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE \
@@ -2225,7 +2223,6 @@ async fn fetch_create_table(
     table: &str,
 ) -> Result<String, String> {
     use crate::mysql::schema_queries::safe_identifier;
-    use sqlx::Row;
 
     let safe_db = safe_identifier(database)?;
     let safe_table = safe_identifier(table)?;
