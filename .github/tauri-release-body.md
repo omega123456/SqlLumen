@@ -1,1 +1,1 @@
-Added Ai assistant and semantic search 
+See the release assets to download installers for Windows and macOS.
