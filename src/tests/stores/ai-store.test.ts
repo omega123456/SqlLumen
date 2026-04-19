@@ -4,6 +4,19 @@ import { useAiStore } from '../../stores/ai-store'
 import type { TabAiState } from '../../stores/ai-store'
 import { useQueryStore } from '../../stores/query-store'
 import type { TabStatus } from '../../stores/query-store'
+import { useAiFeedbackStore } from '../../stores/ai-feedback-store'
+
+const defaultSettings: Record<string, string> = {
+  'ai.endpoint': 'http://localhost:11434/v1',
+  'ai.model': 'llama3',
+  'ai.temperature': '0.3',
+  'ai.maxTokens': '2048',
+  'ai.embeddingModel': '',
+  'ai.retrieval.hydeEnabled': 'true',
+  'ai.retrieval.expansionMaxQueries': '8',
+}
+
+let mockSettings: Record<string, string> = { ...defaultSettings }
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -81,18 +94,7 @@ vi.mock('../../stores/toast-store', () => ({
 vi.mock('../../stores/settings-store', () => ({
   useSettingsStore: {
     getState: () => ({
-      getSetting: (key: string) => {
-        const defaults: Record<string, string> = {
-          'ai.endpoint': 'http://localhost:11434/v1',
-          'ai.model': 'llama3',
-          'ai.temperature': '0.3',
-          'ai.maxTokens': '2048',
-          'ai.embeddingModel': '',
-          'ai.retrieval.hydeEnabled': 'true',
-          'ai.retrieval.expansionMaxQueries': '8',
-        }
-        return defaults[key] ?? ''
-      },
+      getSetting: (key: string) => mockSettings[key] ?? '',
     }),
     subscribe: vi.fn(),
   },
@@ -114,7 +116,9 @@ function getTab(tabId: string): TabAiState | undefined {
 
 beforeEach(() => {
   useAiStore.setState(INITIAL_STATE)
+  useAiFeedbackStore.setState({ entries: [] })
   useQueryStore.setState({ tabs: {} })
+  mockSettings = { ...defaultSettings }
   vi.clearAllMocks()
   mockSendAiChat.mockResolvedValue(undefined)
   mockCancelAiStream.mockResolvedValue(undefined)
@@ -495,6 +499,55 @@ describe('useAiStore', () => {
       expect(getTab('tab-1')!.retrievedSchemaDdl).toContain('CREATE TABLE `testdb`.`orders`')
     })
 
+    it('does not reuse schema context when retrieval hints change for the same prompt', async () => {
+      mockIndexStatus = {
+        status: 'ready',
+        tablesDone: 1,
+        tablesTotal: 1,
+        lastBuildTimestamp: 1234,
+      }
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
+
+      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer')
+      useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
+        transport: 'chat_completions',
+      })
+
+      useAiFeedbackStore
+        .getState()
+        .recordAccepted('conn-1', [{ dbName: 'testdb', tableName: 'orders' }])
+
+      mockSemanticSearch.mockResolvedValueOnce([
+        {
+          chunkId: 2,
+          chunkKey: 'testdb.orders:table',
+          dbName: 'testdb',
+          tableName: 'orders',
+          chunkType: 'table',
+          ddlText: 'CREATE TABLE `testdb`.`orders` (`id` INT, `user_id` INT);',
+          refDbName: null,
+          refTableName: null,
+          score: 0.99,
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      expect(mockSemanticSearch).toHaveBeenCalledTimes(2)
+      expect(getTab('tab-1')!.retrievedSchemaDdl).toContain('CREATE TABLE `testdb`.`orders`')
+    })
+
     it('does not reuse schema context across tabs on the same connection', async () => {
       mockIndexStatus = {
         status: 'ready',
@@ -620,9 +673,6 @@ describe('useAiStore', () => {
     })
 
     it('does not reuse previousResponseId when the endpoint changes', async () => {
-      const { useSettingsStore } = await import('../../stores/settings-store')
-      const originalGetState = useSettingsStore.getState
-
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
 
       await vi.waitFor(() => {
@@ -635,13 +685,7 @@ describe('useAiStore', () => {
         transport: 'responses',
       })
 
-      vi.spyOn(useSettingsStore, 'getState').mockImplementation(() => ({
-        ...originalGetState(),
-        getSetting: (key: string) => {
-          if (key === 'ai.endpoint') return 'http://localhost:8080/v1'
-          return originalGetState().getSetting(key)
-        },
-      }))
+      mockSettings['ai.endpoint'] = 'http://localhost:8080/v1'
 
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
 
@@ -1790,16 +1834,45 @@ describe('useAiStore', () => {
       expect(queries).toEqual(['my question'])
     })
 
-    it('disables HyDE when setting is false', async () => {
-      // Override the settings mock for this test — we need to set hydeEnabled to false.
-      // The mockAiQueryExpand returns hypotheticalSql, but it should not be included.
-      // We can't easily re-mock useSettingsStore per test, so we test indirectly
-      // by checking the expansion prompt still passes through.
-      // Instead, test with a response that has hypotheticalSql but hydeEnabled checked elsewhere.
-      // This is covered by the parseExpansionResponse function behavior — tested via the
-      // full structured test above. The setting gates the hydeEnabled boolean parameter.
-      // For a targeted test, we'd need to refactor the settings mock. Covered by integration.
-      expect(true).toBe(true) // Placeholder — the function is tested through full flow
+    it('re-parses cached expansion responses with the current HyDE setting on cache hit', async () => {
+      mockAiQueryExpand.mockResolvedValueOnce({
+        text: JSON.stringify({
+          queries: ['flat query 1'],
+          hypotheticalSql: 'SELECT * FROM cached_hyde_table',
+          entities: ['cached_hyde_table'],
+          joins: [],
+          metrics: [],
+        }),
+      })
+
+      useAiStore.getState().sendMessage('tab-hyde-cache', 'conn-1', 'cacheable prompt', {})
+
+      await vi.waitFor(() => {
+        expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
+      })
+
+      expect(mockSemanticSearch.mock.calls[0][1]).toContain('SELECT * FROM cached_hyde_table')
+
+      useAiStore
+        .getState()
+        .onStreamDone('tab-hyde-cache', getTab('tab-hyde-cache')!.activeStreamId!, {
+          transport: 'chat_completions',
+        })
+      useAiStore.getState().clearConversation('tab-hyde-cache')
+
+      mockAiQueryExpand.mockClear()
+      mockSemanticSearch.mockClear()
+
+      mockSettings['ai.retrieval.hydeEnabled'] = 'false'
+
+      useAiStore.getState().sendMessage('tab-hyde-cache', 'conn-1', 'cacheable prompt', {})
+
+      await vi.waitFor(() => {
+        expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
+      })
+
+      expect(mockAiQueryExpand).not.toHaveBeenCalled()
+      expect(mockSemanticSearch.mock.calls[0][1]).not.toContain('SELECT * FROM cached_hyde_table')
     })
   })
 
@@ -1902,6 +1975,120 @@ describe('useAiStore', () => {
       await vi.waitFor(() => {
         expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
       })
+    })
+
+    it('does not cache malformed expansion fallbacks and retries expansion on the next identical prompt', async () => {
+      mockAiQueryExpand.mockResolvedValueOnce({ text: '{broken json' })
+
+      useAiStore.getState().sendMessage('tab-bad-cache', 'conn-1', 'same prompt', {})
+
+      await vi.waitFor(() => {
+        expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
+      })
+
+      expect(mockSemanticSearch.mock.calls[0][1]).toEqual(['same prompt'])
+
+      useAiStore
+        .getState()
+        .onStreamDone('tab-bad-cache', getTab('tab-bad-cache')!.activeStreamId!, {
+          transport: 'chat_completions',
+        })
+      useAiStore.getState().clearConversation('tab-bad-cache')
+
+      mockAiQueryExpand.mockClear()
+      mockSemanticSearch.mockClear()
+
+      mockAiQueryExpand.mockResolvedValueOnce({
+        text: JSON.stringify({
+          queries: ['better expansion'],
+          hypotheticalSql: '',
+          entities: [],
+          joins: [],
+          metrics: [],
+        }),
+      })
+
+      useAiStore.getState().sendMessage('tab-bad-cache', 'conn-1', 'same prompt', {})
+
+      await vi.waitFor(() => {
+        expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
+      })
+
+      expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
+      expect(mockSemanticSearch.mock.calls[0][1]).toEqual(['same prompt', 'better expansion'])
+    })
+
+    it('does not cache JSON-valid but invalid-shaped expansion responses', async () => {
+      mockAiQueryExpand.mockResolvedValueOnce({ text: '{}' })
+
+      useAiStore.getState().sendMessage('tab-invalid-shape-cache', 'conn-1', 'same prompt', {})
+
+      await vi.waitFor(() => {
+        expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
+      })
+
+      expect(mockSemanticSearch.mock.calls[0][1]).toEqual(['same prompt'])
+
+      useAiStore
+        .getState()
+        .onStreamDone(
+          'tab-invalid-shape-cache',
+          getTab('tab-invalid-shape-cache')!.activeStreamId!,
+          {
+            transport: 'chat_completions',
+          }
+        )
+      useAiStore.getState().clearConversation('tab-invalid-shape-cache')
+
+      mockAiQueryExpand.mockClear()
+      mockSemanticSearch.mockClear()
+
+      mockAiQueryExpand.mockResolvedValueOnce({
+        text: JSON.stringify({
+          queries: ['recovered expansion'],
+          hypotheticalSql: '',
+          entities: [],
+          joins: [],
+          metrics: [],
+        }),
+      })
+
+      useAiStore.getState().sendMessage('tab-invalid-shape-cache', 'conn-1', 'same prompt', {})
+
+      await vi.waitFor(() => {
+        expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
+      })
+
+      expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
+      expect(mockSemanticSearch.mock.calls[0][1]).toEqual(['same prompt', 'recovered expansion'])
+    })
+
+    it('treats endpoint changes as a cache miss', async () => {
+      useAiStore.getState().sendMessage('tab-endpoint-cache', 'conn-1', 'cache test', {})
+
+      await vi.waitFor(() => {
+        expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
+      })
+
+      useAiStore
+        .getState()
+        .onStreamDone('tab-endpoint-cache', getTab('tab-endpoint-cache')!.activeStreamId!, {
+          transport: 'chat_completions',
+        })
+      useAiStore.getState().clearConversation('tab-endpoint-cache')
+
+      mockSettings['ai.endpoint'] = 'http://localhost:8080/v1'
+
+      mockAiQueryExpand.mockClear()
+      mockSemanticSearch.mockClear()
+
+      useAiStore.getState().sendMessage('tab-endpoint-cache', 'conn-1', 'cache test', {})
+
+      await vi.waitFor(() => {
+        expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
+      })
+
+      expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
     })
   })
 })

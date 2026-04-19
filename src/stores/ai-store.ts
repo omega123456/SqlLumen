@@ -45,7 +45,7 @@ export interface TabAiState {
   lastRetrievalTimestamp: number
   /** Schema-index build timestamp that produced the currently cached DDL. */
   schemaContextBuildTimestamp: number
-  /** Stable key derived from the semantic-retrieval query set. */
+  /** Stable key derived from the semantic-retrieval inputs (queries + hints). */
   schemaContextQueryKey: string
   /** System prompt used for the last successfully completed response chain. */
   lastCompletedSystemPrompt: string
@@ -215,12 +215,47 @@ function buildSystemPrompt(schemaDdl: string): string {
   return `${AI_SYSTEM_PROMPT}\n\n${SCHEMA_USAGE_INSTRUCTION}\n\n${SCHEMA_METADATA_NOTE}\n\nDatabase schema:\n${schemaDdl}`
 }
 
-function normaliseSchemaQueryKey(queries: string[]): string {
-  return JSON.stringify(
-    Array.from(
-      new Set(queries.map((query) => query.trim()).filter((query) => query.length > 0))
-    ).sort()
-  )
+function normaliseSchemaQueryKey(queries: string[], hints?: RetrievalHints): string {
+  const normalisedQueries = Array.from(
+    new Set(queries.map((query) => query.trim()).filter((query) => query.length > 0))
+  ).sort()
+
+  if (!hints) {
+    return JSON.stringify(normalisedQueries)
+  }
+
+  const normaliseWeightedTables = (
+    tables: Array<{ dbName: string; tableName: string; weight: number }>
+  ) =>
+    tables
+      .map((table) => ({
+        dbName: table.dbName.trim(),
+        tableName: table.tableName.trim(),
+        weight: Number(table.weight.toFixed(2)),
+      }))
+      .sort(
+        (a, b) =>
+          a.dbName.localeCompare(b.dbName) ||
+          a.tableName.localeCompare(b.tableName) ||
+          b.weight - a.weight
+      )
+
+  const normaliseTableRefs = (tables: Array<{ dbName: string; tableName: string }>) =>
+    tables
+      .map((table) => ({
+        dbName: table.dbName.trim(),
+        tableName: table.tableName.trim(),
+      }))
+      .sort((a, b) => a.dbName.localeCompare(b.dbName) || a.tableName.localeCompare(b.tableName))
+
+  return JSON.stringify({
+    queries: normalisedQueries,
+    hints: {
+      recentTables: normaliseWeightedTables(hints.recentTables),
+      editorTables: normaliseTableRefs(hints.editorTables),
+      acceptedTables: normaliseWeightedTables(hints.acceptedTables),
+    },
+  })
 }
 
 function shouldReuseResponseChain(
@@ -282,27 +317,33 @@ export function extractTablesFromSql(sql: string): Array<{ dbName: string; table
 // Expansion cache — small Map-based LRU per tab
 // ---------------------------------------------------------------------------
 
+interface ExpansionCacheEntry {
+  responseText: string
+}
+
 /** LRU cache of expansion results, keyed by tab ID. Uses Map insertion order. */
-const expansionCaches = new Map<string, Map<string, string[]>>()
+const expansionCaches = new Map<string, Map<string, ExpansionCacheEntry>>()
 const EXPANSION_CACHE_SIZE = 16
 
 function getExpansionCacheKey(
+  sessionId: string,
+  endpoint: string,
   model: string,
   userMessage: string,
   conversationContext: string,
   attachedSql: string
 ): string {
-  // FNV-1a hash for a compact, collision-resistant cache key
-  const raw = `${model}|${userMessage}|${conversationContext}|${attachedSql}`
-  let hash = 2166136261
-  for (let i = 0; i < raw.length; i++) {
-    hash ^= raw.charCodeAt(i)
-    hash = Math.imul(hash, 16777619)
-  }
-  return (hash >>> 0).toString(36)
+  return JSON.stringify({
+    sessionId,
+    endpoint,
+    model,
+    userMessage,
+    conversationContext,
+    attachedSql,
+  })
 }
 
-function lookupExpansionCache(tabId: string, key: string): string[] | null {
+function lookupExpansionCache(tabId: string, key: string): ExpansionCacheEntry | null {
   const cache = expansionCaches.get(tabId)
   if (!cache) return null
   const value = cache.get(key)
@@ -313,7 +354,16 @@ function lookupExpansionCache(tabId: string, key: string): string[] | null {
   return value
 }
 
-function storeExpansionCache(tabId: string, key: string, queries: string[]): void {
+function deleteExpansionCacheEntry(tabId: string, key: string): void {
+  const cache = expansionCaches.get(tabId)
+  if (!cache) return
+  cache.delete(key)
+  if (cache.size === 0) {
+    expansionCaches.delete(tabId)
+  }
+}
+
+function storeExpansionCache(tabId: string, key: string, responseText: string): void {
   let cache = expansionCaches.get(tabId)
   if (!cache) {
     cache = new Map()
@@ -321,7 +371,7 @@ function storeExpansionCache(tabId: string, key: string, queries: string[]): voi
   }
   // Delete first to refresh insertion order if key already exists
   cache.delete(key)
-  cache.set(key, queries)
+  cache.set(key, { responseText })
   // Evict oldest (first entry) if over capacity
   if (cache.size > EXPANSION_CACHE_SIZE) {
     const oldest = cache.keys().next().value
@@ -344,55 +394,108 @@ function parseExpansionResponse(
   userMessage: string,
   hydeEnabled: boolean,
   maxQueries: number
-): string[] {
+): { queries: string[]; isCacheable: boolean } {
   try {
-    const parsed = JSON.parse(text)
+    const parsed: unknown = JSON.parse(text)
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+      logFrontend(
+        'debug',
+        `[ai-store] expansion response had invalid JSON shape — falling back to original query`
+      )
+      return {
+        queries: [userMessage],
+        isCacheable: false,
+      }
+    }
+
+    const payload = parsed as Record<string, unknown>
+    const hasRecognisedField = ['queries', 'hypotheticalSql', 'entities', 'joins', 'metrics'].some(
+      (field) => field in payload
+    )
+
+    if (!hasRecognisedField) {
+      logFrontend(
+        'debug',
+        `[ai-store] expansion response missing structured fields — falling back to original query`
+      )
+      return {
+        queries: [userMessage],
+        isCacheable: false,
+      }
+    }
+
     const allQueries: string[] = [userMessage]
+    const appendTrimmedQuery = (value: unknown): void => {
+      if (typeof value !== 'string') return
+      const trimmed = value.trim()
+      if (trimmed.length > 0) {
+        allQueries.push(trimmed)
+      }
+    }
+
+    const appendJoinedField = (value: unknown): void => {
+      if (!Array.isArray(value)) return
+      const joined = value
+        .filter((item: unknown): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0)
+        .join(' ')
+      if (joined.length > 0) {
+        allQueries.push(joined)
+      }
+    }
 
     // Extract queries array
-    if (parsed && Array.isArray(parsed.queries) && parsed.queries.length > 0) {
-      for (const q of parsed.queries) {
-        if (typeof q === 'string') {
-          const trimmed = q.trim()
-          if (trimmed.length > 0) allQueries.push(trimmed)
-        }
+    if (Array.isArray(payload.queries) && payload.queries.length > 0) {
+      for (const q of payload.queries) {
+        appendTrimmedQuery(q)
       }
     }
 
     // HyDE: add hypothetical SQL fragment as another search query
     if (
       hydeEnabled &&
-      typeof parsed.hypotheticalSql === 'string' &&
-      parsed.hypotheticalSql.trim().length > 0
+      typeof payload.hypotheticalSql === 'string' &&
+      payload.hypotheticalSql.trim().length > 0
     ) {
-      allQueries.push(parsed.hypotheticalSql.trim())
+      appendTrimmedQuery(payload.hypotheticalSql)
     }
 
     // Entity + relationship decomposition: flatten into additional search strings
-    if (Array.isArray(parsed.entities) && parsed.entities.length > 0) {
-      const entityStr = parsed.entities.filter((e: unknown) => typeof e === 'string').join(' ')
-      if (entityStr.trim().length > 0) allQueries.push(entityStr.trim())
-    }
-
-    if (Array.isArray(parsed.joins) && parsed.joins.length > 0) {
-      const joinStr = parsed.joins.filter((j: unknown) => typeof j === 'string').join(' ')
-      if (joinStr.trim().length > 0) allQueries.push(joinStr.trim())
-    }
-
-    if (Array.isArray(parsed.metrics) && parsed.metrics.length > 0) {
-      const metricsStr = parsed.metrics.filter((m: unknown) => typeof m === 'string').join(' ')
-      if (metricsStr.trim().length > 0) allQueries.push(metricsStr.trim())
-    }
+    appendJoinedField(payload.entities)
+    appendJoinedField(payload.joins)
+    appendJoinedField(payload.metrics)
 
     // Dedup and cap
-    return Array.from(new Set(allQueries)).slice(0, maxQueries)
+    const dedupedQueries = Array.from(new Set(allQueries)).slice(0, maxQueries)
+    const trimmedUserMessage = userMessage.trim()
+    const hasDerivedExpansion = dedupedQueries.some((query) => query.trim() !== trimmedUserMessage)
+
+    if (!hasDerivedExpansion) {
+      logFrontend(
+        'debug',
+        `[ai-store] expansion response produced no usable derived queries — falling back to original query`
+      )
+      return {
+        queries: [userMessage],
+        isCacheable: false,
+      }
+    }
+
+    return {
+      queries: dedupedQueries,
+      isCacheable: true,
+    }
   } catch {
     // JSON parse failed — return original message only
     logFrontend(
       'debug',
       `[ai-store] expansion response JSON parse failed — falling back to original query`
     )
-    return [userMessage]
+    return {
+      queries: [userMessage],
+      isCacheable: false,
+    }
   }
 }
 
@@ -603,6 +706,8 @@ export const useAiStore = create<AiState>()((set, get) => {
         if (endpoint && model) {
           // Check expansion cache first
           const cacheKey = getExpansionCacheKey(
+            sessionId,
+            endpoint,
             model,
             userMessage,
             conversationContext,
@@ -611,7 +716,24 @@ export const useAiStore = create<AiState>()((set, get) => {
           const cached = lookupExpansionCache(tabId, cacheKey)
 
           if (cached) {
-            queries = cached
+            const cachedParse = parseExpansionResponse(
+              cached.responseText,
+              userMessage,
+              hydeEnabled,
+              effectiveMaxQueries
+            )
+
+            if (cachedParse.isCacheable) {
+              queries = cachedParse.queries
+            } else {
+              deleteExpansionCacheEntry(tabId, cacheKey)
+              queries = [userMessage]
+              logFrontend(
+                'warn',
+                `[ai-store] query expansion cache entry was invalid and has been evicted`
+              )
+            }
+
             logFrontend('debug', `[ai-store] query expansion cache hit — ${queries.length} queries`)
           } else {
             // Build the user message for expansion, including attached SQL
@@ -631,20 +753,29 @@ export const useAiStore = create<AiState>()((set, get) => {
             logFrontend('debug', `[ai-store] query expansion raw response: ${result.text}`)
 
             // Parse structured JSON response with fallback chain
-            queries = parseExpansionResponse(
+            const parsedExpansion = parseExpansionResponse(
               result.text,
               userMessage,
               hydeEnabled,
               effectiveMaxQueries
             )
+            queries = parsedExpansion.queries
 
             logFrontend(
               'debug',
               `[ai-store] query expansion succeeded — transformedQueries=${JSON.stringify(queries)}`
             )
 
-            // Cache the result
-            storeExpansionCache(tabId, cacheKey, queries)
+            // Cache only successfully parsed structured responses so malformed output
+            // does not poison follow-up retrieval.
+            if (parsedExpansion.isCacheable) {
+              storeExpansionCache(tabId, cacheKey, result.text)
+            } else {
+              logFrontend(
+                'debug',
+                `[ai-store] query expansion cache skipped — malformed expansion response`
+              )
+            }
           }
         } else {
           logFrontend(
@@ -658,18 +789,6 @@ export const useAiStore = create<AiState>()((set, get) => {
         logFrontend('warn', `[ai-store] Query expansion fallback: ${msg}`)
         logFrontend('debug', `[ai-store] falling back to original query: "${userMessage}"`)
       }
-
-      schemaQueryKey = normaliseSchemaQueryKey(queries)
-
-      const cachedSchemaDdl = getCachedSchemaContext(schemaQueryKey)
-      if (cachedSchemaDdl != null) {
-        return cachedSchemaDdl
-      }
-
-      logFrontend(
-        'debug',
-        `[ai-store] invoking semantic search — sessionId=${sessionId} queryCount=${queries.length} queries=${JSON.stringify(queries)}`
-      )
 
       // ── Assemble retrieval hints ──────────────────────────────────────
       const hints: RetrievalHints = {
@@ -736,6 +855,18 @@ export const useAiStore = create<AiState>()((set, get) => {
         const msg = err instanceof Error ? err.message : String(err)
         logFrontend('warn', `[ai-store] hint assembly failed (non-fatal): ${msg}`)
       }
+
+      schemaQueryKey = normaliseSchemaQueryKey(queries, hints)
+
+      const cachedSchemaDdl = getCachedSchemaContext(schemaQueryKey)
+      if (cachedSchemaDdl != null) {
+        return cachedSchemaDdl
+      }
+
+      logFrontend(
+        'debug',
+        `[ai-store] invoking semantic search — sessionId=${sessionId} queryCount=${queries.length} queries=${JSON.stringify(queries)}`
+      )
 
       // Semantic search
       const results = await semanticSearch(sessionId, queries, hints)
