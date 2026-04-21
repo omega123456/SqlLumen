@@ -39,10 +39,13 @@ pub async fn get_processlist_impl(
         .get_pool(session_id)
         .ok_or_else(|| format!("Connection '{session_id}' not found"))?;
 
-    let rows = sqlx::raw_sql("SHOW FULL PROCESSLIST")
+    let sql = "SHOW FULL PROCESSLIST";
+    crate::mysql::query_log::log_outgoing_sql(sql);
+    let rows = sqlx::raw_sql(sql)
         .fetch_all(&pool)
         .await
         .map_err(|e| format!("Failed to fetch process list: {e}"))?;
+    crate::mysql::query_log::log_mysql_rows(&rows);
 
     let mut result = Vec::with_capacity(rows.len());
 
@@ -107,13 +110,18 @@ pub async fn kill_queries_impl(
     let mut results = Vec::with_capacity(ids.len());
     for id in ids {
         let sql = format!("KILL QUERY {id}");
+        crate::mysql::query_log::log_outgoing_sql(&sql);
         match sqlx::query(&sql).execute(&pool).await {
-            Ok(_) => results.push(KillResult {
-                id,
-                success: true,
-                error: None,
-            }),
+            Ok(result) => {
+                crate::mysql::query_log::log_execute_result(&result);
+                results.push(KillResult {
+                    id,
+                    success: true,
+                    error: None,
+                });
+            }
             Err(e) => {
+                crate::mysql::query_log::log_execute_error(&e);
                 tracing::warn!(id, error = %e, "Failed to kill query");
                 results.push(KillResult {
                     id,

@@ -8,6 +8,7 @@
 
 mod common;
 
+use common::log_capture::LogCaptureGuard;
 use common::mock_mysql_server::{
     MockCell, MockColumnDef, MockMySqlServer, MockQueryStep,
 };
@@ -235,6 +236,24 @@ async fn test_get_processlist_query_error_bubbles_up() {
     assert!(error.contains("Failed to fetch process list"));
 }
 
+#[tokio::test]
+async fn test_get_processlist_emits_query_debug_logs() {
+    common::ensure_fake_backend_once();
+    let state = common::test_app_state();
+    let capture = LogCaptureGuard::start();
+    let server = MockMySqlServer::start_script(processlist_steps()).await;
+
+    register_session_direct(&state, "coverage-session", server.port, false).await;
+
+    get_processlist_impl(&state, "coverage-session")
+        .await
+        .expect("should fetch process list");
+
+    let logs = capture.contents();
+    assert!(logs.contains("SHOW FULL PROCESSLIST"));
+    assert!(logs.contains("mysql outgoing query"));
+}
+
 #[cfg(not(coverage))]
 #[tokio::test]
 async fn test_kill_queries_read_only() {
@@ -297,6 +316,24 @@ async fn test_kill_queries_mixed_success_and_error() {
     assert_eq!(results[1].id, 99);
     assert!(results[1].success);
     assert!(results[1].error.is_none());
+}
+
+#[tokio::test]
+async fn test_kill_queries_emits_query_debug_logs() {
+    common::ensure_fake_backend_once();
+    let state = common::test_app_state();
+    let capture = LogCaptureGuard::start();
+    let server = MockMySqlServer::start_script(processlist_steps()).await;
+
+    register_session_direct(&state, "coverage-session", server.port, false).await;
+
+    kill_queries_impl(&state, "coverage-session", vec![42])
+        .await
+        .expect("kill should succeed");
+
+    let logs = capture.contents();
+    assert!(logs.contains("KILL QUERY 42"));
+    assert!(logs.contains("mysql outgoing query"));
 }
 
 #[cfg(not(coverage))]

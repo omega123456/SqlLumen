@@ -57,6 +57,7 @@ pnpm typecheck          # tsc --noEmit
 - **No fixed delays > 5 s** in any test. Use condition-based waiting (Playwright auto-wait, `waitFor`, `findBy*`, polling).
 - **Never add `istanbul`/`c8` ignore comments or widen `exclude` lists** to hide coverage gaps without explicit user approval naming what to exclude.
 - **Package manager: `pnpm` only.** Do not use npm or yarn.
+- **Every new MySQL query path must use the shared query logger wrappers.** Before executing SQL, call `src-tauri/src/mysql/query_log.rs` helpers (at minimum `log_outgoing_sql`; plus row/execute/error helpers as applicable) so all new query traffic appears in debug logs.
 
 ---
 
