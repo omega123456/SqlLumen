@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DdlPanel } from '../../../components/schema-info/DdlPanel'
-import { tokenizeSql } from '../../../lib/sql-tokenizer'
 import type { TableMetadata } from '../../../types/schema'
 
 // Mock writeClipboardText
@@ -75,12 +74,10 @@ describe('DdlPanel', () => {
     const user = userEvent.setup()
     mockWriteClipboard.mockRejectedValueOnce(new Error('clipboard denied'))
 
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     render(<DdlPanel ddl="CREATE VIEW `v` AS SELECT 1" objectType="view" />)
 
     await user.click(screen.getByText('Copy SQL'))
     expect(mockShowErrorToast).toHaveBeenCalledWith('Copy failed', 'clipboard denied')
-    consoleErrorSpy.mockRestore()
   })
 
   it('shows MetadataCard for tables', () => {
@@ -138,6 +135,40 @@ describe('DdlPanel', () => {
     expect(identSpans.some((s) => s.textContent === '`users`')).toBe(true)
   })
 
+  it('highlights routine DDL keywords and data types for schema-only views', () => {
+    const ddl =
+      'CREATE FUNCTION `fn_total`(order_id BIGINT) RETURNS DECIMAL(10,2) DETERMINISTIC\nBEGIN\n  RETURN 0.00;\nEND'
+
+    const { container } = render(<DdlPanel ddl={ddl} objectType="function" />)
+
+    const spans = Array.from(container.querySelectorAll('span'))
+    const keywordTexts = spans
+      .filter((span) => span.className.includes('keyword'))
+      .map((span) => span.textContent)
+    const typeTexts = spans
+      .filter((span) => span.className.includes('type'))
+      .map((span) => span.textContent)
+
+    expect(keywordTexts).toEqual(
+      expect.arrayContaining([
+        'CREATE',
+        'FUNCTION',
+        'RETURNS',
+        'DETERMINISTIC',
+        'BEGIN',
+        'RETURN',
+        'END',
+      ])
+    )
+    expect(typeTexts).toEqual(expect.arrayContaining(['BIGINT', 'DECIMAL']))
+  })
+
+  it('uses the same label text format as table DDL preview', () => {
+    render(<DdlPanel ddl="CREATE PROCEDURE p() BEGIN END" objectType="procedure" />)
+
+    expect(screen.getByText('<> DDL')).toBeInTheDocument()
+  })
+
   it('no dangerouslySetInnerHTML used', () => {
     const { container } = render(<DdlPanel ddl="SELECT * FROM `t`" objectType="view" />)
 
@@ -159,41 +190,5 @@ describe('DdlPanel', () => {
 
     expect(screen.queryByText('Columns Definition')).not.toBeInTheDocument()
     expect(screen.queryByTestId('columns-panel')).not.toBeInTheDocument()
-  })
-})
-
-describe('tokenizeSql', () => {
-  it('tokenizes keywords correctly', () => {
-    const tokens = tokenizeSql('CREATE TABLE')
-    expect(tokens).toEqual([
-      { type: 'keyword', text: 'CREATE' },
-      { type: 'plain', text: ' ' },
-      { type: 'keyword', text: 'TABLE' },
-    ])
-  })
-
-  it('tokenizes backtick identifiers', () => {
-    const tokens = tokenizeSql('`users`')
-    expect(tokens).toEqual([{ type: 'identifier', text: '`users`' }])
-  })
-
-  it('tokenizes string literals', () => {
-    const tokens = tokenizeSql("'hello'")
-    expect(tokens).toEqual([{ type: 'string', text: "'hello'" }])
-  })
-
-  it('tokenizes comments', () => {
-    const tokens = tokenizeSql('-- this is a comment')
-    expect(tokens).toEqual([{ type: 'comment', text: '-- this is a comment' }])
-  })
-
-  it('tokenizes block comments', () => {
-    const tokens = tokenizeSql('/* block */')
-    expect(tokens).toEqual([{ type: 'comment', text: '/* block */' }])
-  })
-
-  it('tokenizes numbers', () => {
-    const tokens = tokenizeSql('123')
-    expect(tokens).toEqual([{ type: 'number', text: '123' }])
   })
 })

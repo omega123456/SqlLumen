@@ -57,4 +57,29 @@ describe('SqlSyntaxHighlighter', () => {
     const nodes = SqlSyntaxHighlighter.highlightSql('FOOBAR')
     expect(nodes).toEqual(['FOOBAR'])
   })
+
+  it('highlights function DDL keywords and data types', () => {
+    const nodes = SqlSyntaxHighlighter.highlightSql(
+      'CREATE FUNCTION `fn_total`(order_id BIGINT) RETURNS DECIMAL(10,2) DETERMINISTIC BEGIN RETURN 0 END'
+    )
+
+    const html = nodes
+      .map((node) => {
+        if (typeof node === 'string') {
+          return node
+        }
+        if (isValidElement(node)) {
+          return `${node.props.children}:${(node.props as { className?: string }).className ?? ''}`
+        }
+        return ''
+      })
+      .join(' ')
+
+    expect(html).toContain('CREATE:keyword')
+    expect(html).toContain('FUNCTION:keyword')
+    expect(html).toContain('RETURNS:keyword')
+    expect(html).toContain('DETERMINISTIC:keyword')
+    expect(html).toContain('BIGINT:type')
+    expect(html).toContain('DECIMAL:type')
+  })
 })

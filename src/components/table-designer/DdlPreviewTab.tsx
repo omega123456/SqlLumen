@@ -2,6 +2,7 @@ import { Copy } from '@phosphor-icons/react'
 import { useMemo } from 'react'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { SqlSyntaxHighlighter } from '../../lib/sql-syntax-highlighter'
+import sqlHighlightStyles from '../../styles/sql-syntax-highlight.module.css'
 import { showErrorToast, showSuccessToast } from '../../stores/toast-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { Button } from '../common/Button'
@@ -22,10 +23,10 @@ export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
   const highlightedSql = useMemo(
     () =>
       SqlSyntaxHighlighter.highlightSql(ddl, {
-        keyword: styles.keyword,
-        identifier: styles.identifier,
-        type: styles.type,
-        string: styles.string,
+        keyword: sqlHighlightStyles.keyword,
+        identifier: sqlHighlightStyles.identifier,
+        type: sqlHighlightStyles.type,
+        string: sqlHighlightStyles.string,
       }),
     [ddl]
   )

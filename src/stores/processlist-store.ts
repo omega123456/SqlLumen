@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { ProcessRow, KillResult } from '../lib/processlist-commands'
 import { getProcesslist, killQueries } from '../lib/processlist-commands'
+import { getProcessListRefreshTimestamp } from '../lib/processlist-time'
 import { showErrorToast } from './toast-store'
 import { logFrontend } from '../lib/app-log-commands'
 
@@ -84,7 +85,7 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
         },
         lastRefreshedAtByConnection: {
           ...get().lastRefreshedAtByConnection,
-          [connectionId]: Date.now(),
+          [connectionId]: getProcessListRefreshTimestamp(),
         },
         isFetchingByConnection: {
           ...get().isFetchingByConnection,

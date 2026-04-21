@@ -275,7 +275,7 @@ export function ObjectBrowser({
   }, [])
 
   // ---------------------------------------------------------------------------
-  // Double-click handler — uses node.databaseName (Simplification 5)
+  // Object activation handler — uses node.databaseName (Simplification 5)
   // ---------------------------------------------------------------------------
 
   const handleActivateNode = useCallback(

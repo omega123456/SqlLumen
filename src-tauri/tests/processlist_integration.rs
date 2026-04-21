@@ -9,9 +9,7 @@
 mod common;
 
 use common::log_capture::LogCaptureGuard;
-use common::mock_mysql_server::{
-    MockCell, MockColumnDef, MockMySqlServer, MockQueryStep,
-};
+use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
 use opensrv_mysql::{ColumnFlags, ColumnType};
 #[cfg(not(coverage))]
 use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
@@ -170,7 +168,6 @@ async fn test_get_processlist_returns_rows() {
     let state = common::test_app_state();
 
     let server = MockMySqlServer::start_script(processlist_steps()).await;
-
     let session_id = open_session(&state, server.port, false).await;
     let rows = get_processlist_impl(&state, &session_id)
         .await
@@ -354,4 +351,35 @@ async fn test_kill_queries_returns_results() {
     assert!(results[0].success);
     assert_eq!(results[1].id, 99);
     assert!(results[1].success);
+}
+
+#[tokio::test]
+async fn test_kill_queries_records_per_id_failures() {
+    common::ensure_fake_backend_once();
+    let state = common::test_app_state();
+
+    let server = MockMySqlServer::start_script(vec![MockQueryStep {
+        query: "KILL QUERY 99",
+        columns: vec![],
+        rows: vec![],
+        error: Some((opensrv_mysql::ErrorKind::ER_UNKNOWN_ERROR, b"cannot kill 99")),
+    }])
+    .await;
+    register_session_direct(&state, "coverage-session", server.port, false).await;
+
+    let results = kill_queries_impl(&state, "coverage-session", vec![42, 99])
+        .await
+        .expect("kill queries should return per-id results");
+
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].id, 42);
+    assert!(results[0].success);
+    assert_eq!(results[0].error, None);
+
+    assert_eq!(results[1].id, 99);
+    assert!(!results[1].success);
+    assert!(results[1]
+        .error
+        .as_deref()
+        .is_some_and(|message| message.contains("cannot kill 99")));
 }

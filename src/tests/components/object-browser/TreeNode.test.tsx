@@ -191,6 +191,41 @@ describe('TreeNode', () => {
     expect(toggleExpand).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['view', false],
+    ['procedure', false],
+    ['function', false],
+  ] as const)(
+    'single-clicking a %s row activates it without toggling expansion',
+    async (nodeType, hasChildren) => {
+      const user = userEvent.setup()
+      const node = makeTreeNode({
+        id: makeNodeId(nodeType, 'testdb', `sample_${nodeType}`),
+        label: `sample_${nodeType}`,
+        type: nodeType,
+        hasChildren,
+        isLoaded: true,
+      })
+      setNodes({ [node.id]: node })
+
+      const toggleExpand = vi.fn()
+      const onActivate = vi.fn()
+      useSchemaStore.setState({ toggleExpand })
+
+      render(
+        <div role="tree">
+          <TreeNode nodeId={node.id} connectionId={CONN_ID} level={0} onActivate={onActivate} />
+        </div>
+      )
+
+      await user.click(screen.getByRole('treeitem'))
+
+      expect(onActivate).toHaveBeenCalledTimes(1)
+      expect(onActivate).toHaveBeenCalledWith(node.id)
+      expect(toggleExpand).not.toHaveBeenCalled()
+    }
+  )
+
   it('shows loading spinner when node is in loadingNodes', () => {
     const node = makeTreeNode({ hasChildren: true })
     setNodes({ [node.id]: node }, { loading: new Set([node.id]) })
@@ -429,6 +464,68 @@ describe('TreeNode', () => {
     expect(onActivate).toHaveBeenCalledWith(node.id)
   })
 
+  it.each(['trigger', 'event'] as const)(
+    'double-click activates %s nodes that still open on double-click',
+    async (nodeType) => {
+      const user = userEvent.setup()
+      const node = makeTreeNode({
+        id: makeNodeId(nodeType, 'testdb', `sample_${nodeType}`),
+        label: `sample_${nodeType}`,
+        type: nodeType,
+        hasChildren: false,
+        isLoaded: true,
+      })
+      setNodes({ [node.id]: node })
+      const onActivate = vi.fn()
+
+      render(
+        <div role="tree">
+          <TreeNode nodeId={node.id} connectionId={CONN_ID} level={0} onActivate={onActivate} />
+        </div>
+      )
+
+      await user.dblClick(screen.getByRole('treeitem'))
+
+      expect(onActivate).toHaveBeenCalledTimes(1)
+      expect(onActivate).toHaveBeenCalledWith(node.id)
+    }
+  )
+
+  it.each(['trigger', 'event'] as const)(
+    'keyboard Enter activates %s nodes without toggling expansion',
+    async (nodeType) => {
+      const user = userEvent.setup()
+      const node = makeTreeNode({
+        id: makeNodeId(nodeType, 'testdb', `sample_${nodeType}`),
+        label: `sample_${nodeType}`,
+        type: nodeType,
+        hasChildren: false,
+        isLoaded: true,
+      })
+      setNodes({ [node.id]: node })
+
+      const toggleExpand = vi.fn()
+      const selectNode = vi.fn()
+      const onActivate = vi.fn()
+      useSchemaStore.setState({ toggleExpand, selectNode })
+
+      render(
+        <div role="tree">
+          <TreeNode nodeId={node.id} connectionId={CONN_ID} level={0} onActivate={onActivate} />
+        </div>
+      )
+
+      const treeItem = screen.getByRole('treeitem')
+      treeItem.focus()
+      await user.keyboard('{Enter}')
+
+      expect(selectNode).toHaveBeenCalledWith(node.id, CONN_ID)
+      expect(onActivate).toHaveBeenCalledTimes(1)
+      expect(onActivate).toHaveBeenCalledWith(node.id)
+      expect(toggleExpand).not.toHaveBeenCalled()
+    }
+  )
+
   it('double-clicking a table row triggers open only once', async () => {
     const user = userEvent.setup()
     const node = makeTreeNode()
@@ -446,5 +543,69 @@ describe('TreeNode', () => {
 
     expect(onActivate).toHaveBeenCalledTimes(1)
     expect(onActivate).toHaveBeenCalledWith(node.id)
+  })
+
+  it('keyboard ArrowDown focuses the next visible tree item', async () => {
+    const user = userEvent.setup()
+    const firstNode = makeTreeNode({
+      id: makeNodeId('table', 'testdb', 'users'),
+      label: 'users',
+      hasChildren: false,
+      isLoaded: true,
+    })
+    const secondNode = makeTreeNode({
+      id: makeNodeId('view', 'testdb', 'active_users'),
+      label: 'active_users',
+      type: 'view',
+      hasChildren: false,
+      isLoaded: true,
+    })
+    setNodes({ [firstNode.id]: firstNode, [secondNode.id]: secondNode })
+
+    render(
+      <div role="tree">
+        <TreeNode nodeId={firstNode.id} connectionId={CONN_ID} level={0} isFirstVisible />
+        <TreeNode nodeId={secondNode.id} connectionId={CONN_ID} level={0} />
+      </div>
+    )
+
+    const [firstTreeItem, secondTreeItem] = screen.getAllByRole('treeitem')
+    firstTreeItem.focus()
+
+    await user.keyboard('{ArrowDown}')
+
+    expect(secondTreeItem).toHaveFocus()
+  })
+
+  it('keyboard ArrowUp focuses the previous visible tree item', async () => {
+    const user = userEvent.setup()
+    const firstNode = makeTreeNode({
+      id: makeNodeId('table', 'testdb', 'users'),
+      label: 'users',
+      hasChildren: false,
+      isLoaded: true,
+    })
+    const secondNode = makeTreeNode({
+      id: makeNodeId('view', 'testdb', 'active_users'),
+      label: 'active_users',
+      type: 'view',
+      hasChildren: false,
+      isLoaded: true,
+    })
+    setNodes({ [firstNode.id]: firstNode, [secondNode.id]: secondNode })
+
+    render(
+      <div role="tree">
+        <TreeNode nodeId={firstNode.id} connectionId={CONN_ID} level={0} isFirstVisible />
+        <TreeNode nodeId={secondNode.id} connectionId={CONN_ID} level={0} />
+      </div>
+    )
+
+    const [firstTreeItem, secondTreeItem] = screen.getAllByRole('treeitem')
+    secondTreeItem.focus()
+
+    await user.keyboard('{ArrowUp}')
+
+    expect(firstTreeItem).toHaveFocus()
   })
 })

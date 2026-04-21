@@ -27,6 +27,27 @@ const EMPTY_NODES: Record<string, TreeNodeData> = {}
 /** Stable empty expanded-nodes set when connection state is absent. */
 const EMPTY_EXPANDED_NODES = new Set<string>()
 
+const SINGLE_CLICK_ACTIVATABLE_NODE_TYPES = new Set<NodeType>([
+  'table',
+  'view',
+  'procedure',
+  'function',
+])
+
+const DOUBLE_CLICK_ACTIVATABLE_NODE_TYPES = new Set<NodeType>(['trigger', 'event'])
+
+function isSingleClickActivatableNodeType(type: NodeType): boolean {
+  return SINGLE_CLICK_ACTIVATABLE_NODE_TYPES.has(type)
+}
+
+function isDoubleClickActivatableNodeType(type: NodeType): boolean {
+  return DOUBLE_CLICK_ACTIVATABLE_NODE_TYPES.has(type)
+}
+
+function isKeyboardActivatableNodeType(type: NodeType): boolean {
+  return isSingleClickActivatableNodeType(type) || isDoubleClickActivatableNodeType(type)
+}
+
 function getEffectiveFilterMatchIds(
   nodeId: string,
   filterMatchIds: Set<string> | undefined,
@@ -291,7 +312,7 @@ export function TreeNode({
   const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
     selectCurrentNode()
 
-    if (node.type === 'table') {
+    if (isSingleClickActivatableNodeType(node.type)) {
       if (e.detail === 1) {
         activateNode()
       }
@@ -314,7 +335,7 @@ export function TreeNode({
   }
 
   const handleDoubleClick = () => {
-    if (node.type !== 'table') {
+    if (isDoubleClickActivatableNodeType(node.type)) {
       activateNode()
     }
   }
@@ -323,7 +344,7 @@ export function TreeNode({
     switch (e.key) {
       case 'Enter':
         selectCurrentNode()
-        if (node.type === 'table') {
+        if (isKeyboardActivatableNodeType(node.type)) {
           activateNode()
         } else if (hasChildren) {
           toggleExpand(nodeId, connectionId)

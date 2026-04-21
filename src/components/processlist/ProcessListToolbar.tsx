@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowCounterClockwise, StopCircle } from '@phosphor-icons/react'
 import { useProcessListStore } from '../../stores/processlist-store'
+import { formatProcessListRefreshTime } from '../../lib/processlist-time'
 import { useConnectionStore } from '../../stores/connection-store'
 import { Dropdown } from '../common/Dropdown'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
@@ -22,11 +23,6 @@ const INTERVAL_OPTIONS = [
   { label: '10s', value: '10000' },
   { label: '30s', value: '30000' },
 ]
-
-function formatTime(ts: number): string {
-  const d = new Date(ts)
-  return d.toLocaleTimeString('en-GB', { hour12: false })
-}
 
 function truncateSql(sql: string | null): string {
   if (!sql) return '(no active query)'
@@ -211,7 +207,7 @@ export function ProcessListToolbar({
 
         {lastRefreshedAt !== null && (
           <span className={styles.meta} data-testid="processlist-last-updated">
-            Last updated: {formatTime(lastRefreshedAt)}
+            Last updated: {formatProcessListRefreshTime(lastRefreshedAt)}
           </span>
         )}
       </div>

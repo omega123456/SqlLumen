@@ -1,0 +1,15 @@
+.keyword {
+  color: var(--primary);
+}
+
+.identifier {
+  color: var(--tertiary);
+}
+
+.type {
+  color: var(--secondary);
+}
+
+.string {
+  color: var(--secondary);
+}

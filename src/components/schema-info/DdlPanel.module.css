@@ -22,27 +22,3 @@
 .ddlOnly {
   width: 100%;
 }
-
-/* Syntax highlighting classes */
-.keyword {
-  color: var(--secondary);
-  font-weight: 600;
-}
-
-.string {
-  color: var(--error);
-}
-
-.identifier {
-  color: var(--primary);
-}
-
-.comment {
-  color: var(--on-surface-variant);
-  opacity: 0.6;
-  font-style: italic;
-}
-
-.number {
-  color: var(--tertiary);
-}

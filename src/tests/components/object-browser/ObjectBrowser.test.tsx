@@ -957,6 +957,86 @@ describe('ObjectBrowser', () => {
     })
   })
 
+  it.each([
+    ['view', 'user_stats', 'table-data', 'view'],
+    ['procedure', 'sp_test', 'schema-info', 'procedure'],
+    ['function', 'fn_test', 'schema-info', 'function'],
+  ] as const)(
+    'single-clicking a %s node opens the expected workspace tab',
+    async (nodeType, objectName, expectedTabType, expectedObjectType) => {
+      const user = userEvent.setup()
+      setupConnectedState()
+
+      const nodeId = makeNodeId(nodeType, 'ecommerce_db', objectName)
+      const categoryId = makeNodeId('category', 'ecommerce_db', nodeType)
+      const databaseId = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+
+      const nodes: Record<string, TreeNodeType> = {
+        [databaseId]: {
+          id: databaseId,
+          label: 'ecommerce_db',
+          type: 'database',
+          parentId: null,
+          hasChildren: true,
+          isLoaded: true,
+        },
+        [categoryId]: {
+          id: categoryId,
+          label: `${nodeType[0].toUpperCase()}${nodeType.slice(1)}s`,
+          type: 'category',
+          parentId: databaseId,
+          hasChildren: true,
+          isLoaded: true,
+          metadata: { categoryType: nodeType, databaseName: 'ecommerce_db' },
+        },
+        [nodeId]: {
+          id: nodeId,
+          label: objectName,
+          type: nodeType,
+          parentId: categoryId,
+          hasChildren: false,
+          isLoaded: true,
+          metadata: { databaseName: 'ecommerce_db' },
+        },
+      }
+
+      useSchemaStore.setState({
+        connectionStates: {
+          [CONN_ID]: {
+            nodes,
+            childIdsByParentId: buildChildIndex(nodes),
+            expandedNodes: new Set([databaseId, categoryId]),
+            loadingNodes: new Set(),
+            selectedNodeId: null,
+            filterText: '',
+            loadGeneration: 0,
+          },
+        },
+      })
+
+      render(
+        <ObjectBrowser
+          connectionId={CONN_ID}
+          favouritesOpen={false}
+          onToggleFavourites={() => {}}
+        />
+      )
+
+      await user.click(screen.getByText(objectName))
+
+      const state = useWorkspaceStore.getState()
+      const tabs = state.tabsByConnection[CONN_ID]
+      expect(tabs).toHaveLength(1)
+      expect(tabs[0]).toMatchObject({
+        type: expectedTabType,
+        label: objectName,
+        objectType: expectedObjectType,
+        objectName,
+        databaseName: 'ecommerce_db',
+      })
+    }
+  )
+
   it('selecting a database node switches the active session database', async () => {
     const user = userEvent.setup()
     setupConnectedState()
