@@ -3,6 +3,55 @@ import { render, screen } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { MarkdownRenderer } from '../../../components/ai-panel/markdown-renderer'
 
+vi.mock('../../../components/ai-panel/AiCodeBlock', () => ({
+  AiCodeBlock: ({
+    language,
+    onTriggerDiff,
+    showDiffButton,
+    children,
+  }: {
+    language?: string
+    onTriggerDiff?: (sql: string) => void
+    showDiffButton?: boolean
+    children: unknown
+  }) => (
+    <div data-testid="ai-code-block" data-language={language ?? ''}>
+      <span data-testid="ai-code-children">{String(children)}</span>
+      <span data-testid="ai-code-has-diff">{String(Boolean(onTriggerDiff))}</span>
+      <span data-testid="ai-code-show-diff">{String(Boolean(showDiffButton))}</span>
+    </div>
+  ),
+}))
+
+vi.mock('react-markdown', async () => {
+  const React = await import('react')
+  return {
+    default: ({
+      children,
+      components,
+    }: {
+      children: string
+      components?: {
+        code?: (props: { className?: string; children?: React.ReactNode }) => React.ReactNode
+      }
+    }) => {
+      const codeMatch = /^```(\w+)\n([\s\S]*?)\n```$/m.exec(children)
+      if (codeMatch && components?.code) {
+        return React.createElement(
+          'div',
+          { 'data-testid': 'markdown' },
+          components.code({
+            className: `language-${codeMatch[1]}`,
+            children: codeMatch[2],
+          })
+        )
+      }
+
+      return React.createElement('div', { 'data-testid': 'markdown' }, children)
+    },
+  }
+})
+
 function setupMockIPC() {
   mockIPC((cmd) => {
     if (cmd === 'log_frontend') return undefined
@@ -65,5 +114,21 @@ describe('MarkdownRenderer', () => {
   it('renders without showDiffButton', () => {
     render(<MarkdownRenderer content="test" showDiffButton={false} />)
     expect(screen.getByTestId('markdown-renderer')).toBeInTheDocument()
+  })
+
+  it('renders fenced code blocks through AiCodeBlock with extracted language and props', () => {
+    const onTriggerDiff = vi.fn()
+    render(
+      <MarkdownRenderer
+        content={'```sql\nSELECT 1\n```'}
+        onTriggerDiff={onTriggerDiff}
+        showDiffButton={true}
+      />
+    )
+
+    expect(screen.getByTestId('ai-code-block')).toBeInTheDocument()
+    expect(screen.getByTestId('ai-code-block')).toHaveAttribute('data-language', 'sql')
+    expect(screen.getByTestId('ai-code-has-diff')).toHaveTextContent('true')
+    expect(screen.getByTestId('ai-code-show-diff')).toHaveTextContent('true')
   })
 })

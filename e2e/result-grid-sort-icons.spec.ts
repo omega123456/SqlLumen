@@ -1,26 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-
-const APP_READY_MS = 5_000
-
-async function waitForApp(page: Page) {
-  await page.goto('/', { waitUntil: 'load', timeout: APP_READY_MS })
-  await expect(page.getByTestId('app-layout')).toBeVisible({ timeout: APP_READY_MS })
-}
-
-async function connectToSample(page: Page) {
-  await page.getByRole('button', { name: 'New Connection' }).first().click()
-  await expect(page.getByTestId('connection-dialog')).toBeVisible()
-  await page
-    .getByTestId('connection-dialog')
-    .getByRole('button', { name: /Sample MySQL/ })
-    .click()
-  await page
-    .getByTestId('connection-dialog')
-    .getByRole('button', { name: 'Connect', exact: true })
-    .click()
-  await expect(page.getByTestId('connection-dialog')).toBeHidden()
-  await expect(page.getByTestId('object-browser')).toBeVisible()
-}
+import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
 
 async function openQueryEditorWithResults(page: Page) {
   await connectToSample(page)

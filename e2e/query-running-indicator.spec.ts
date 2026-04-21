@@ -1,49 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { APP_READY_MS, waitForApp } from './helpers'
-
-async function dismissAllToasts(page: Page) {
-  for (let i = 0; i < 8; i++) {
-    const btn = page.getByTestId('toast-dismiss').first()
-    if (!(await btn.isVisible().catch(() => false))) {
-      break
-    }
-    await btn.click()
-  }
-}
-
-async function openConnectionManager(page: Page) {
-  const btn = page.getByRole('button', { name: 'New Connection' }).first()
-  const dialog = page.getByTestId('connection-dialog')
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (!(await dialog.isVisible())) await btn.click()
-
-    try {
-      await expect(dialog).toBeVisible({ timeout: 3_000 })
-      break
-    } catch (error) {
-      if (attempt === 1) throw error
-    }
-  }
-
-  await expect(dialog.getByText('Sample MySQL')).toBeVisible({ timeout: APP_READY_MS })
-}
-
-async function connectToSample(page: Page) {
-  await openConnectionManager(page)
-  await page
-    .getByTestId('connection-dialog')
-    .getByRole('button', { name: /Sample MySQL/ })
-    .click()
-  await page
-    .getByTestId('connection-dialog')
-    .getByRole('button', { name: 'Connect', exact: true })
-    .click()
-  await expect(page.getByTestId('connection-dialog')).toBeHidden()
-  await expect(page.getByTestId('object-browser')).toBeVisible()
-  await expect(page.getByTestId('object-browser').getByText('ecommerce_db')).toBeVisible()
-  await dismissAllToasts(page)
-}
+import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
 
 async function openQueryEditorTab(page: Page) {
   await connectToSample(page)

@@ -1,10 +1,16 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
-import { APP_READY_MS, getColumnIndexByName, waitForApp } from './helpers'
+import {
+  APP_READY_MS,
+  connectToSample,
+  dismissAllToasts,
+  getColumnIndexByName,
+  openConnectionManager,
+  selectSampleConnection,
+  waitForApp,
+  waitForAutocomplete,
+} from './helpers'
 
 const themes = ['light', 'dark'] as const
-const AUTOCOMPLETE_OPEN_RETRIES = 4
-const AUTOCOMPLETE_OPEN_TIMEOUT_MS = 1_500
-const AUTOCOMPLETE_RETRY_DELAY_MS = 300
 const SCREENSHOT_TEST_TIMEOUT_MS = 25_000
 
 async function ensureTheme(page: Page, theme: 'light' | 'dark') {
@@ -16,16 +22,6 @@ async function ensureTheme(page: Page, theme: 'light' | 'dark') {
     await page.getByTestId('theme-toggle').click()
   }
   throw new Error(`Could not apply theme "${theme}"`)
-}
-
-async function dismissAllToasts(page: Page) {
-  for (let i = 0; i < 8; i++) {
-    const btn = page.getByTestId('toast-dismiss').first()
-    if (!(await btn.isVisible().catch(() => false))) {
-      break
-    }
-    await btn.click()
-  }
 }
 
 async function getUnionClip(page: Page, locators: Locator[], padding = 8) {
@@ -61,26 +57,6 @@ async function getUnionClip(page: Page, locators: Locator[], padding = 8) {
   }
 }
 
-async function openConnectionManager(page: Page) {
-  const btn = page.getByRole('button', { name: 'New Connection' }).first()
-  const dialog = page.getByTestId('connection-dialog')
-
-  // The click → Zustand update → React effect → showModal() chain can be delayed
-  // under load.  Retry the click once if the dialog doesn't appear promptly.
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (!(await dialog.isVisible())) await btn.click()
-
-    try {
-      await expect(dialog).toBeVisible({ timeout: 3_000 })
-      break
-    } catch (error) {
-      if (attempt === 1) throw error
-    }
-  }
-
-  await expect(dialog.getByText('Sample MySQL')).toBeVisible({ timeout: APP_READY_MS })
-}
-
 /** Stacked toasts aligned with `.agent/design/toast_notifications_*` copy — for visual regression only. */
 async function showDesignReferenceToasts(page: Page) {
   await page.evaluate(() => {
@@ -96,24 +72,6 @@ async function showDesignReferenceToasts(page: Page) {
     showError('Authentication Error', 'Invalid credentials for user: admin@localhost')
     showSuccess('Query Executed', 'Successfully retrieved 450 rows in 12ms.')
   })
-}
-
-async function connectToSample(page: Page) {
-  await openConnectionManager(page)
-  await page
-    .getByTestId('connection-dialog')
-    .getByRole('button', { name: /Sample MySQL/ })
-    .click()
-  await page
-    .getByTestId('connection-dialog')
-    .getByRole('button', { name: 'Connect', exact: true })
-    .click()
-  await expect(page.getByTestId('connection-dialog')).toBeHidden()
-  // Wait for the object browser to load databases
-  await expect(page.getByTestId('object-browser')).toBeVisible()
-  await expect(page.getByTestId('object-browser').getByText('ecommerce_db')).toBeVisible()
-  /* Dismiss success toasts so visual baselines stay stable */
-  await dismissAllToasts(page)
 }
 
 /**
@@ -236,34 +194,6 @@ async function enableAiViaStore(page: Page) {
       pendingChanges: {},
     }))
   })
-}
-
-async function waitForAutocomplete(page: Page, expectedText?: string) {
-  const suggestWidget = page.locator('.suggest-widget.visible')
-  await page.waitForTimeout(300)
-
-  for (let attempt = 0; attempt < AUTOCOMPLETE_OPEN_RETRIES; attempt++) {
-    await page.keyboard.press('Control+Space')
-
-    const isVisible = await expect(suggestWidget)
-      .toBeVisible({ timeout: AUTOCOMPLETE_OPEN_TIMEOUT_MS })
-      .then(() => true)
-      .catch(() => false)
-
-    if (!isVisible) {
-      await page.waitForTimeout(AUTOCOMPLETE_RETRY_DELAY_MS)
-      continue
-    }
-
-    const text = (await suggestWidget.textContent()) ?? ''
-    if (!text.includes('Loading...') && (!expectedText || text.includes(expectedText))) {
-      return suggestWidget
-    }
-
-    await page.waitForTimeout(AUTOCOMPLETE_RETRY_DELAY_MS)
-  }
-
-  return suggestWidget
 }
 
 /** Open a query editor tab, set multi-statement SQL, execute all, and wait for multi-result tabs. */
@@ -468,7 +398,7 @@ async function openOrdersTableDataTab(page: Page) {
 
 /** Connect and activate the Process List tab. */
 async function openProcessListTab(page: Page) {
-  await connectToSample(page)
+  await connectToSample(page, { dismissToasts: true })
   // Click the Process List workspace tab to activate it
   const tabStrip = page.getByTestId('workspace-tabs')
   await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
@@ -477,6 +407,38 @@ async function openProcessListTab(page: Page) {
   // Wait for at least one data row to render
   await expect(page.getByTestId('processlist-grid').locator('.rdg-row').first()).toBeVisible({
     timeout: APP_READY_MS,
+  })
+
+  await page.evaluate(() => {
+    const processListStore = (window as unknown as Record<string, unknown>)
+      .__processListStore__ as {
+      setState: (
+        updater: (state: {
+          lastRefreshedAtByConnection: Record<string, number | null>
+          isFetchingByConnection: Record<string, boolean>
+          refreshIntervalMsByConnection: Record<string, number>
+        }) => {
+          lastRefreshedAtByConnection: Record<string, number | null>
+          isFetchingByConnection: Record<string, boolean>
+          refreshIntervalMsByConnection: Record<string, number>
+        }
+      ) => void
+    }
+
+    processListStore.setState((state) => ({
+      lastRefreshedAtByConnection: {
+        ...state.lastRefreshedAtByConnection,
+        'session-playwright-1': Date.UTC(2025, 0, 1, 12, 34, 56),
+      },
+      isFetchingByConnection: {
+        ...state.isFetchingByConnection,
+        'session-playwright-1': false,
+      },
+      refreshIntervalMsByConnection: {
+        ...state.refreshIntervalMsByConnection,
+        'session-playwright-1': 0,
+      },
+    }))
   })
 }
 
@@ -559,8 +521,16 @@ async function resetChromeScrollPositions(page: Page) {
     if (objectBrowser instanceof HTMLElement) {
       objectBrowser.scrollTop = 0
     }
+
+    const activeElement = document.activeElement
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur()
+    }
+
     window.scrollTo(0, 0)
   })
+
+  await page.mouse.move(0, 0)
 }
 
 for (const theme of themes) {
@@ -638,10 +608,7 @@ for (const theme of themes) {
 
     test('TestConnectionResult — after successful test', async ({ page }) => {
       await openConnectionManager(page)
-      await page
-        .getByTestId('connection-dialog')
-        .getByRole('button', { name: /Sample MySQL/ })
-        .click()
+      await selectSampleConnection(page.getByTestId('connection-dialog'))
       await page
         .getByTestId('connection-dialog')
         .getByRole('button', { name: 'Test Connection' })
@@ -2284,7 +2251,6 @@ for (const theme of themes) {
         if (el && el instanceof HTMLElement) el.blur()
       })
       await resetChromeScrollPositions(page)
-      await page.mouse.move(0, 0)
       await expect(page.getByTestId('confirm-dialog-panel')).toHaveScreenshot(
         `settings-dialog-ai-force-reindex-confirm-${theme}.png`,
         { animations: 'disabled' }

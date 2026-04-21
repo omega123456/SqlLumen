@@ -1,11 +1,7 @@
-import { test, expect, type Locator, type Page } from '@playwright/test'
-import { APP_READY_MS, waitForApp } from './helpers'
+import { test, expect, type Page } from '@playwright/test'
+import { APP_READY_MS, connectToSample, waitForApp, waitForAutocomplete } from './helpers'
 
 const SUGGESTION_SETTLE_MS = 500
-const AUTOCOMPLETE_OPEN_RETRIES = 3
-const AUTOCOMPLETE_OPEN_TIMEOUT_MS = 1_500
-const AUTOCOMPLETE_READY_RETRIES = 5
-const AUTOCOMPLETE_RETRY_DELAY_MS = 300
 const EDITOR_CLICK_POSITION = { x: 160, y: 40 } as const
 
 function trackSqlParserConsoleErrors(page: Page) {
@@ -75,44 +71,6 @@ const MALFORMED_SCHEMA_METADATA = {
   },
 }
 
-async function openConnectionManager(page: Page) {
-  const btn = page.getByRole('button', { name: 'New Connection' }).first()
-  const dialog = page.getByTestId('connection-dialog')
-
-  // The click → Zustand update → React effect → showModal() chain can be delayed
-  // under load.  Retry the click once if the dialog doesn't appear promptly.
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (!(await dialog.isVisible())) await btn.click()
-
-    try {
-      await expect(dialog).toBeVisible({ timeout: 3_000 })
-      break
-    } catch (error) {
-      if (attempt === 1) throw error
-    }
-  }
-
-  await expect(dialog.getByText('Sample MySQL')).toBeVisible({ timeout: APP_READY_MS })
-}
-
-async function connectToSample(page: Page) {
-  await openConnectionManager(page)
-  const dialog = page.getByTestId('connection-dialog')
-  const sampleRow = dialog.getByRole('button', { name: /Sample MySQL/ })
-  await expect(sampleRow).toBeVisible({ timeout: APP_READY_MS })
-  await sampleRow.scrollIntoViewIfNeeded()
-  // List rows can keep Playwright's actionability "stable" check pending; DOM click still runs React handlers.
-  await sampleRow.evaluate((el) => {
-    ;(el as HTMLElement).click()
-  })
-  const connectBtn = dialog.getByRole('button', { name: 'Connect', exact: true })
-  await expect(connectBtn).toBeEnabled({ timeout: APP_READY_MS })
-  await connectBtn.click()
-  await expect(page.getByTestId('connection-dialog')).toBeHidden({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('object-browser')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('status-bar')).toContainText('Connected', { timeout: APP_READY_MS })
-}
-
 async function openQueryEditorTab(page: Page) {
   await connectToSample(page)
   await page.getByTestId('new-query-tab-button').click()
@@ -157,88 +115,12 @@ async function typeQuery(page: Page, sql: string) {
   await waitForQueryContent(page, sql)
 }
 
-async function readSuggestionLabels(suggestWidget: Locator) {
-  return suggestWidget
-    .locator('.monaco-list-row')
-    .evaluateAll((rows) =>
-      rows
-        .map((row) => (row.getAttribute('aria-label') ?? row.textContent ?? '').trim())
-        .filter((label) => label.length > 0)
-    )
-}
-
-/** Short timeout used when re-focusing Monaco during retries (editor is already loaded). */
-const REFOCUS_TIMEOUT_MS = 2_000
-
 async function openAutocomplete(
   page: Page,
   expectedText?: string,
   options: { allowNoWidget?: boolean } = {}
-): Promise<ReturnType<Page['locator']> | null> {
-  const suggestWidget = page.locator('.suggest-widget.visible')
-  let lastLabels: string[] = []
-
-  // Let Monaco parse the typed trigger (e.g. `valid_db.`) before requesting suggestions.
-  await page.waitForTimeout(300)
-  const widgetAlreadyVisible = await suggestWidget.isVisible().catch(() => false)
-
-  if (!widgetAlreadyVisible) {
-    await focusMonacoEditor(page)
-    await page.keyboard.press('Control+Space').catch(() => undefined)
-  }
-
-  for (let attempt = 0; attempt < AUTOCOMPLETE_OPEN_RETRIES; attempt++) {
-    if (page.isClosed()) {
-      throw new Error('Browser closed while waiting for autocomplete results')
-    }
-
-    const isVisible = await suggestWidget
-      .waitFor({ state: 'visible', timeout: AUTOCOMPLETE_OPEN_TIMEOUT_MS })
-      .then(() => true)
-      .catch(() => false)
-
-    if (!isVisible) {
-      await focusMonacoEditor(page, REFOCUS_TIMEOUT_MS)
-      await page.keyboard.press('Control+Space').catch(() => undefined)
-      await page.waitForTimeout(AUTOCOMPLETE_RETRY_DELAY_MS)
-      continue
-    }
-
-    for (let readyAttempt = 0; readyAttempt < AUTOCOMPLETE_READY_RETRIES; readyAttempt++) {
-      if (page.isClosed()) {
-        throw new Error('Browser closed while waiting for autocomplete results')
-      }
-
-      const stillVisible = await suggestWidget.isVisible().catch(() => false)
-      if (!stillVisible) {
-        break
-      }
-
-      lastLabels = await readSuggestionLabels(suggestWidget)
-      const labelsText = lastLabels.join(' ')
-      const isLoading = labelsText.includes('Loading...')
-      const hasExpectedText =
-        !expectedText || lastLabels.some((label) => label.includes(expectedText))
-
-      if (!isLoading && hasExpectedText) {
-        return suggestWidget
-      }
-
-      await page.waitForTimeout(AUTOCOMPLETE_RETRY_DELAY_MS)
-    }
-
-    await page.keyboard.press('Escape').catch(() => undefined)
-    await focusMonacoEditor(page, REFOCUS_TIMEOUT_MS)
-    await page.keyboard.press('Control+Space').catch(() => undefined)
-  }
-
-  if (options.allowNoWidget) {
-    return null
-  }
-
-  throw new Error(
-    `Autocomplete did not become ready${lastLabels.length ? ` (last labels: ${lastLabels.join(' | ')})` : ''}`
-  )
+) {
+  return waitForAutocomplete(page, expectedText, options)
 }
 
 async function selectDatabaseInObjectBrowser(page: Page, databaseName: string) {

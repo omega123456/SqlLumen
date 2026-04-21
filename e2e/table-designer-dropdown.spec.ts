@@ -1,48 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-
-const APP_READY_MS = 5_000
-
-async function waitForApp(page: Page) {
-  await page.goto('/', { waitUntil: 'load', timeout: APP_READY_MS })
-  await expect(page.getByTestId('app-layout')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('status-bar')).toContainText('Ready', { timeout: APP_READY_MS })
-}
-
-async function openConnectionManager(page: Page) {
-  const button = page.getByRole('button', { name: 'New Connection' }).first()
-  const dialog = page.getByTestId('connection-dialog')
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    if (!(await dialog.isVisible())) {
-      await button.click()
-    }
-
-    try {
-      await expect(dialog).toBeVisible({ timeout: 3_000 })
-      break
-    } catch (error) {
-      if (attempt === 1) {
-        throw error
-      }
-    }
-  }
-
-  await expect(dialog.getByText('Sample MySQL')).toBeVisible({ timeout: APP_READY_MS })
-}
-
-async function connectToSample(page: Page) {
-  await openConnectionManager(page)
-  await page
-    .getByTestId('connection-dialog')
-    .getByRole('button', { name: /Sample MySQL/ })
-    .click()
-  await page
-    .getByTestId('connection-dialog')
-    .getByRole('button', { name: 'Connect', exact: true })
-    .click()
-  await expect(page.getByTestId('connection-dialog')).toBeHidden()
-  await expect(page.getByTestId('object-browser')).toBeVisible({ timeout: APP_READY_MS })
-}
+import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
 
 async function openTableDesignerTab(page: Page) {
   await connectToSample(page)

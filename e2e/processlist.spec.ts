@@ -1,27 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { APP_READY_MS, waitForApp } from './helpers'
-
-async function connectToSample(page: import('@playwright/test').Page) {
-  const btn = page.getByRole('button', { name: 'New Connection' }).first()
-  const dialog = page.getByTestId('connection-dialog')
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (!(await dialog.isVisible())) await btn.click()
-    try {
-      await expect(dialog).toBeVisible({ timeout: 3_000 })
-      break
-    } catch (error) {
-      if (attempt === 1) throw error
-    }
-  }
-
-  await expect(dialog.getByText('Sample MySQL')).toBeVisible({ timeout: APP_READY_MS })
-  await dialog.getByRole('button', { name: /Sample MySQL/ }).click()
-  await dialog.getByRole('button', { name: 'Connect', exact: true }).click()
-  await expect(dialog).toBeHidden()
-  await expect(page.getByTestId('object-browser')).toBeVisible()
-  await expect(page.getByTestId('object-browser').getByText('ecommerce_db')).toBeVisible()
-}
+import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
 
 test.describe('Process List tab', () => {
   test.beforeEach(async ({ page }) => {

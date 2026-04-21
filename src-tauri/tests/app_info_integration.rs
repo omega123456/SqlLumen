@@ -1,6 +1,9 @@
 mod common;
 
 use sqllumen_lib::commands::app_info::{get_app_info_impl, AppInfo};
+use std::sync::Mutex;
+
+static RUST_LOG_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_get_app_info_without_app_handle() {
@@ -22,6 +25,7 @@ fn test_get_app_info_without_app_handle() {
 
 #[test]
 fn test_rust_log_override_detection() {
+    let _guard = RUST_LOG_LOCK.lock().expect("RUST_LOG lock");
     // Save original state
     let original = std::env::var("RUST_LOG").ok();
 
@@ -44,6 +48,8 @@ fn test_rust_log_override_detection() {
     // Restore original
     if let Some(val) = original {
         std::env::set_var("RUST_LOG", val);
+    } else {
+        std::env::remove_var("RUST_LOG");
     }
 }
 

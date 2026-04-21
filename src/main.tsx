@@ -65,6 +65,7 @@ async function init() {
     const { useImportDialogStore } = await import('./stores/import-dialog-store')
     const { useAiStore } = await import('./stores/ai-store')
     const { useSchemaIndexStore } = await import('./stores/schema-index-store')
+    const { useProcessListStore } = await import('./stores/processlist-store')
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
     ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
     ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore
@@ -75,6 +76,7 @@ async function init() {
     ;(window as unknown as Record<string, unknown>).__importDialogStore__ = useImportDialogStore
     ;(window as unknown as Record<string, unknown>).__aiStore__ = useAiStore
     ;(window as unknown as Record<string, unknown>).__schemaIndexStore__ = useSchemaIndexStore
+    ;(window as unknown as Record<string, unknown>).__processListStore__ = useProcessListStore
     ;(window as unknown as Record<string, unknown>).__settingsStore__ = useSettingsStore
   }
 
