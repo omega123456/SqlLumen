@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { ProcessListToolbar } from '../../../components/processlist/ProcessListToolbar'
@@ -58,37 +58,41 @@ beforeEach(() => {
     status: 'connected',
     serverVersion: '8.0.35',
   }
-  useConnectionStore.setState({
-    activeConnections: { 'conn-1': conn },
-    activeTabId: 'conn-1',
+  act(() => {
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': conn },
+      activeTabId: 'conn-1',
+    })
   })
 
-  useProcessListStore.setState({
-    rowsByConnection: {
-      'conn-1': [
-        {
-          id: 10,
-          user: 'root',
-          host: 'localhost',
-          db: 'test',
-          command: 'Query',
-          time: 5,
-          state: 'running',
-          info: 'SELECT 1',
-        },
-      ],
-    },
-    lastRefreshedAtByConnection: { 'conn-1': Date.now() },
-    selectedIdsByConnection: {},
-    refreshIntervalMsByConnection: { 'conn-1': 5000 },
-    isConfirmDialogOpenByConnection: {},
-    isSummaryDialogOpenByConnection: {},
-    sortColumnByConnection: {},
-    lastErrorToastAtByConnection: {},
-    fetchErrorByConnection: {},
-    isFetchingByConnection: {},
-    fetchGenerationByConnection: {},
-    hasFetchedByConnection: {},
+  act(() => {
+    useProcessListStore.setState({
+      rowsByConnection: {
+        'conn-1': [
+          {
+            id: 10,
+            user: 'root',
+            host: 'localhost',
+            db: 'test',
+            command: 'Query',
+            time: 5,
+            state: 'running',
+            info: 'SELECT 1',
+          },
+        ],
+      },
+      lastRefreshedAtByConnection: { 'conn-1': Date.now() },
+      selectedIdsByConnection: {},
+      refreshIntervalMsByConnection: { 'conn-1': 5000 },
+      isConfirmDialogOpenByConnection: {},
+      isSummaryDialogOpenByConnection: {},
+      sortColumnByConnection: {},
+      lastErrorToastAtByConnection: {},
+      fetchErrorByConnection: {},
+      isFetchingByConnection: {},
+      fetchGenerationByConnection: {},
+      hasFetchedByConnection: {},
+    })
   })
 })
 
@@ -112,7 +116,9 @@ describe('ProcessListToolbar', () => {
       status: 'connected',
       serverVersion: '8.0.35',
     }
-    useConnectionStore.setState({ activeConnections: { 'conn-1': conn } })
+    act(() => {
+      useConnectionStore.setState({ activeConnections: { 'conn-1': conn } })
+    })
 
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
 
@@ -122,8 +128,9 @@ describe('ProcessListToolbar', () => {
 
   it('calls onRefresh when refresh button is clicked', async () => {
     const onRefresh = vi.fn()
+    const user = userEvent.setup()
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={onRefresh} />)
-    await userEvent.click(screen.getByTestId('processlist-refresh-button'))
+    await user.click(screen.getByTestId('processlist-refresh-button'))
     expect(onRefresh).toHaveBeenCalledTimes(1)
   })
 
@@ -133,8 +140,10 @@ describe('ProcessListToolbar', () => {
   })
 
   it('enables kill button when rows are selected', () => {
-    useProcessListStore.setState({
-      selectedIdsByConnection: { 'conn-1': new Set([10]) },
+    act(() => {
+      useProcessListStore.setState({
+        selectedIdsByConnection: { 'conn-1': new Set([10]) },
+      })
     })
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
     expect(screen.getByTestId('processlist-kill-button')).not.toBeDisabled()
@@ -147,17 +156,21 @@ describe('ProcessListToolbar', () => {
       status: 'connected',
       serverVersion: '8.0.35',
     }
-    useConnectionStore.setState({ activeConnections: { 'conn-1': conn } })
-    useProcessListStore.setState({
-      selectedIdsByConnection: { 'conn-1': new Set([10]) },
+    act(() => {
+      useConnectionStore.setState({ activeConnections: { 'conn-1': conn } })
+      useProcessListStore.setState({
+        selectedIdsByConnection: { 'conn-1': new Set([10]) },
+      })
     })
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
     expect(screen.getByTestId('processlist-kill-button')).toBeDisabled()
   })
 
   it('shows Kill N when N processes are selected', () => {
-    useProcessListStore.setState({
-      selectedIdsByConnection: { 'conn-1': new Set([10]) },
+    act(() => {
+      useProcessListStore.setState({
+        selectedIdsByConnection: { 'conn-1': new Set([10]) },
+      })
     })
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
     expect(screen.getByTestId('processlist-kill-button')).toHaveTextContent('Kill 1 Query')
@@ -169,9 +182,11 @@ describe('ProcessListToolbar', () => {
   })
 
   it('opens confirm dialog and shows truncated SQL on kill click', async () => {
-    useProcessListStore.setState({
-      selectedIdsByConnection: { 'conn-1': new Set([10]) },
-      isConfirmDialogOpenByConnection: { 'conn-1': true },
+    act(() => {
+      useProcessListStore.setState({
+        selectedIdsByConnection: { 'conn-1': new Set([10]) },
+        isConfirmDialogOpenByConnection: { 'conn-1': true },
+      })
     })
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
     // The confirm dialog should be open and show the process ID with truncated SQL
@@ -181,15 +196,19 @@ describe('ProcessListToolbar', () => {
   })
 
   it('handles kill error with toast and logging', async () => {
-    useProcessListStore.setState({
-      selectedIdsByConnection: { 'conn-1': new Set([10]) },
-      isConfirmDialogOpenByConnection: { 'conn-1': true },
+    act(() => {
+      useProcessListStore.setState({
+        selectedIdsByConnection: { 'conn-1': new Set([10]) },
+        isConfirmDialogOpenByConnection: { 'conn-1': true },
+      })
     })
 
     // Override killSelectedProcesses to throw
     const originalKill = useProcessListStore.getState().killSelectedProcesses
-    useProcessListStore.setState({
-      killSelectedProcesses: vi.fn().mockRejectedValue(new Error('Connection lost')),
+    act(() => {
+      useProcessListStore.setState({
+        killSelectedProcesses: vi.fn().mockRejectedValue(new Error('Connection lost')),
+      })
     })
 
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
@@ -206,13 +225,17 @@ describe('ProcessListToolbar', () => {
     expect(mockShowErrorToast).toHaveBeenCalledWith('Kill failed', 'Connection lost')
 
     // Restore
-    useProcessListStore.setState({ killSelectedProcesses: originalKill })
+    act(() => {
+      useProcessListStore.setState({ killSelectedProcesses: originalKill })
+    })
   })
 
   it('shows success toast and summary dialog after successful kill and clears selection on dismiss', async () => {
-    useProcessListStore.setState({
-      selectedIdsByConnection: { 'conn-1': new Set([10]) },
-      isConfirmDialogOpenByConnection: { 'conn-1': true },
+    act(() => {
+      useProcessListStore.setState({
+        selectedIdsByConnection: { 'conn-1': new Set([10]) },
+        isConfirmDialogOpenByConnection: { 'conn-1': true },
+      })
     })
 
     mockIPC((cmd) => {
@@ -246,9 +269,11 @@ describe('ProcessListToolbar', () => {
   })
 
   it('shows warning toast when kill returns failures', async () => {
-    useProcessListStore.setState({
-      selectedIdsByConnection: { 'conn-1': new Set([10]) },
-      isConfirmDialogOpenByConnection: { 'conn-1': true },
+    act(() => {
+      useProcessListStore.setState({
+        selectedIdsByConnection: { 'conn-1': new Set([10]) },
+        isConfirmDialogOpenByConnection: { 'conn-1': true },
+      })
     })
 
     mockIPC((cmd) => {
@@ -271,33 +296,35 @@ describe('ProcessListToolbar', () => {
   })
 
   it('shows both success and warning toasts for mixed kill results', async () => {
-    useProcessListStore.setState({
-      rowsByConnection: {
-        'conn-1': [
-          {
-            id: 10,
-            user: 'root',
-            host: 'localhost',
-            db: 'test',
-            command: 'Query',
-            time: 5,
-            state: 'running',
-            info: 'SELECT 1',
-          },
-          {
-            id: 11,
-            user: 'app',
-            host: 'localhost',
-            db: 'test',
-            command: 'Query',
-            time: 1,
-            state: 'running',
-            info: 'SELECT 2',
-          },
-        ],
-      },
-      selectedIdsByConnection: { 'conn-1': new Set([10, 11]) },
-      isConfirmDialogOpenByConnection: { 'conn-1': true },
+    act(() => {
+      useProcessListStore.setState({
+        rowsByConnection: {
+          'conn-1': [
+            {
+              id: 10,
+              user: 'root',
+              host: 'localhost',
+              db: 'test',
+              command: 'Query',
+              time: 5,
+              state: 'running',
+              info: 'SELECT 1',
+            },
+            {
+              id: 11,
+              user: 'app',
+              host: 'localhost',
+              db: 'test',
+              command: 'Query',
+              time: 1,
+              state: 'running',
+              info: 'SELECT 2',
+            },
+          ],
+        },
+        selectedIdsByConnection: { 'conn-1': new Set([10, 11]) },
+        isConfirmDialogOpenByConnection: { 'conn-1': true },
+      })
     })
 
     mockIPC((cmd) => {

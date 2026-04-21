@@ -157,6 +157,10 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
 - Test files mirror source: `src/components/Foo.tsx` → `src/tests/components/Foo.test.tsx`.
 - Setup file `src/tests/setup.ts` provides: `mockIPC` for Tauri IPC, Monaco mocks, jsdom polyfills (ResizeObserver, matchMedia, HTMLDialogElement). A missing mock throws `[vitest] Unmocked Tauri IPC command: <cmd>` — add new commands to the `mockIPC` handler in each test.
 - After `render`, use `waitFor` / `findBy*` for async-mounted state; do not assert synchronously right after render.
+- Avoid React `act(...)` warnings in every test run:
+  - Use `const user = userEvent.setup()` and await interactions (`await user.click(...)`) instead of fire-and-forget interaction calls.
+  - Wrap direct external store mutations (`useXStore.setState(...)`) in `act(() => { ... })` whenever components from that store may be mounted.
+  - If mount effects schedule async updates, wait for the resulting UI/store state with `waitFor` before the test exits.
 - When a test drives an error path that logs to the console, spy and mock it: `vi.spyOn(console, 'error').mockImplementation(() => {})` and call `mockRestore()` in `afterEach`/`finally`. Still assert on observable behavior (UI, toasts, etc.).
 - Tests ship alongside features in the same change set — not deferred.
 

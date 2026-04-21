@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
@@ -241,8 +241,10 @@ describe('QueryEditorTab — AI sidebar open state (Monaco layout)', () => {
     })
     mockLayout.mockClear()
 
-    useAiStore.setState({
-      tabs: { 'tab-1': emptyAiTabState({ isPanelOpen: true }) },
+    act(() => {
+      useAiStore.setState({
+        tabs: { 'tab-1': emptyAiTabState({ isPanelOpen: true }) },
+      })
     })
 
     await waitFor(() => {

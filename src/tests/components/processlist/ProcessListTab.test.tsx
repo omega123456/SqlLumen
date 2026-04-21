@@ -78,7 +78,7 @@ function setupStore() {
     fetchErrorByConnection: {},
     isFetchingByConnection: {},
     fetchGenerationByConnection: {},
-    hasFetchedByConnection: {},
+    hasFetchedByConnection: { 'conn-1': true },
   })
 
   const conn: ActiveConnection = {
@@ -112,6 +112,9 @@ describe('ProcessListTab', () => {
   })
 
   it('fetches process list on first activation', async () => {
+    useProcessListStore.setState({
+      hasFetchedByConnection: { 'conn-1': false },
+    })
     render(<ProcessListTab connectionId="conn-1" sessionId="conn-1" isActive={true} />)
     await waitFor(() => {
       const rows = useProcessListStore.getState().rowsByConnection['conn-1']
@@ -133,6 +136,7 @@ describe('ProcessListTab', () => {
         // Pre-populate rows so we don't depend on async fetch
         rowsByConnection: { 'conn-1': MOCK_ROWS },
         lastRefreshedAtByConnection: { 'conn-1': Date.now() },
+        hasFetchedByConnection: { 'conn-1': false },
       })
 
       const fetchSpy = vi.fn()
@@ -163,6 +167,7 @@ describe('ProcessListTab', () => {
         isConfirmDialogOpenByConnection: { 'conn-1': true },
         rowsByConnection: { 'conn-1': MOCK_ROWS },
         lastRefreshedAtByConnection: { 'conn-1': Date.now() },
+        hasFetchedByConnection: { 'conn-1': false },
       })
 
       const fetchSpy = vi.fn()

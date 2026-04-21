@@ -75,7 +75,11 @@ export function ProcessListToolbar({
 
     return () => {
       isMountedRef.current = false
-      setSummaryDialogOpen(connectionId, false)
+      const isSummaryDialogOpen =
+        useProcessListStore.getState().isSummaryDialogOpenByConnection[connectionId] ?? false
+      if (isSummaryDialogOpen) {
+        setSummaryDialogOpen(connectionId, false)
+      }
     }
   }, [connectionId, setSummaryDialogOpen])
 

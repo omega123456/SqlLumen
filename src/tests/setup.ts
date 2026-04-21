@@ -279,10 +279,11 @@ vi.mock('@monaco-editor/react', async () => {
         getModifiedEditor: vi.fn(() => mockModifiedEditor),
       }
 
-      // Schedule so the component has mounted when onMount fires
-      if (onMount) {
-        setTimeout(() => onMount(editorRef), 0)
-      }
+      React.useEffect(() => {
+        if (onMount) {
+          onMount(editorRef)
+        }
+      }, [onMount])
 
       return React.createElement('div', {
         ref: (el: HTMLDivElement | null) => {
