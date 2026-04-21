@@ -1,0 +1,9 @@
+.popover {
+  position: fixed;
+  max-width: 480px;
+  max-height: 320px;
+  z-index: 1001;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}

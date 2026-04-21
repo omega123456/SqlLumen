@@ -1454,6 +1454,76 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'cancel_import':
       return null
 
+    // --- Process List ---
+    case 'get_processlist':
+      return [
+        {
+          id: 1,
+          user: 'root',
+          host: 'localhost:3306',
+          db: 'ecommerce_db',
+          command: 'Query',
+          time: 0,
+          state: 'executing',
+          info: "SELECT * FROM users WHERE status = 'active'",
+        },
+        {
+          id: 2,
+          user: 'appuser',
+          host: '10.0.0.5:49152',
+          db: 'ecommerce_db',
+          command: 'Sleep',
+          time: 120,
+          state: '',
+          info: null,
+        },
+        {
+          id: 3,
+          user: 'repl_user',
+          host: '10.0.0.10:52000',
+          db: null,
+          command: 'Binlog Dump',
+          time: 86400,
+          state: 'Master has sent all binlog to slave',
+          info: null,
+        },
+        {
+          id: 4,
+          user: 'appuser',
+          host: '10.0.0.5:49200',
+          db: 'analytics_db',
+          command: 'Query',
+          time: 5,
+          state: 'Sending data',
+          info: 'SELECT COUNT(*) FROM events WHERE created_at > NOW() - INTERVAL 1 DAY',
+        },
+        {
+          id: 5,
+          user: 'admin',
+          host: 'localhost:3307',
+          db: 'ecommerce_db',
+          command: 'Query',
+          time: 42,
+          state: 'Sorting result',
+          info: 'SELECT o.*, u.name FROM orders o JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 1000',
+        },
+        {
+          id: 6,
+          user: 'root',
+          host: 'localhost',
+          db: null,
+          command: 'Daemon',
+          time: 0,
+          state: 'Waiting for next activation',
+          info: null,
+        },
+      ]
+
+    case 'kill_queries': {
+      const ids = (args as Record<string, unknown>)?.ids as number[] | undefined
+      return (ids ?? []).map((id: number) => ({ id, success: true, error: null }))
+    }
+
     // --- Query History & Favorites (Phase 9.3) ---
     case 'list_history':
       return {

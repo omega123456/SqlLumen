@@ -13,6 +13,8 @@ export interface ConfirmDialogProps {
   error?: string | null
   /** Warning text below the message. Defaults to "This action cannot be undone." Pass `null` to hide. */
   warningText?: string | null
+  /** When true, prevent dismissal via Cancel button, Escape key, and backdrop click. */
+  nonDismissible?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
@@ -26,6 +28,7 @@ export function ConfirmDialog({
   isLoading = false,
   error,
   warningText,
+  nonDismissible = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -37,6 +40,7 @@ export function ConfirmDialog({
       maxWidth={420}
       testId="confirm-dialog"
       ariaLabel={title}
+      nonDismissible={nonDismissible}
     >
       <h2 className={styles.title}>
         <span className={styles.titleIcon}>
@@ -44,7 +48,7 @@ export function ConfirmDialog({
         </span>
         {title}
       </h2>
-      <p className={styles.message}>{message}</p>
+      <div className={styles.message}>{message}</div>
       {resolvedWarning !== null && <p className={styles.warning}>{resolvedWarning}</p>}
       {error && (
         <div className={styles.error} data-testid="confirm-dialog-error">
@@ -52,7 +56,12 @@ export function ConfirmDialog({
         </div>
       )}
       <div className={styles.actions}>
-        <Button variant="secondary" onClick={onCancel} data-testid="confirm-cancel-button">
+        <Button
+          variant="secondary"
+          onClick={onCancel}
+          disabled={nonDismissible}
+          data-testid="confirm-cancel-button"
+        >
           Cancel
         </Button>
         <Button

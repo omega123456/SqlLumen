@@ -20,6 +20,7 @@ import { useQueryStore } from './query-store'
 import { useTableDataStore } from './table-data-store'
 import { useObjectEditorStore } from './object-editor-store'
 import { useSchemaIndexStore } from './schema-index-store'
+import { useProcessListStore } from './processlist-store'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { invalidateCache } from '../components/query-editor/schema-metadata-cache'
 import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
@@ -116,6 +117,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         error: null,
       }))
       useWorkspaceStore.getState().openHistoryTab(result.sessionId, false)
+      useWorkspaceStore.getState().openProcessListTab(result.sessionId)
       showSuccessToast('Connected', profile.name)
 
       // Register session for schema index and trigger initial build (fire-and-forget)
@@ -211,6 +213,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       useSchemaStore.getState().clearConnectionState(id)
       useWorkspaceStore.getState().clearConnectionTabs(id)
       useSchemaIndexStore.getState().unregisterSession(id)
+      useProcessListStore.getState().resetConnection(id)
       invalidateCache(id)
       invalidateRoutineCache(id)
 

@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "allow-get-processlist"
+description = "Enables the get_processlist command without any pre-configured scope."
+commands.allow = ["get_processlist"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-kill-queries"
+description = "Enables the kill_queries command without any pre-configured scope."
+commands.allow = ["kill_queries"]
+commands.deny = []

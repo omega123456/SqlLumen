@@ -53,6 +53,7 @@ export type TabType =
   | 'table-designer'
   | 'object-editor'
   | 'history'
+  | 'processlist'
 
 export type DesignerSubTab = 'columns' | 'indexes' | 'fks' | 'properties' | 'ddl'
 
@@ -115,6 +116,11 @@ export interface HistoryTab extends WorkspaceTabBase {
   type: 'history'
 }
 
+/** A process list tab (shows active MySQL processes). */
+export interface ProcessListTab extends WorkspaceTabBase {
+  type: 'processlist'
+}
+
 /** Union of all workspace tab variants. */
 export type WorkspaceTab =
   | SchemaInfoTab
@@ -123,6 +129,7 @@ export type WorkspaceTab =
   | TableDesignerTab
   | ObjectEditorTab
   | HistoryTab
+  | ProcessListTab
 
 /** Distributive Omit — works correctly on union types. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

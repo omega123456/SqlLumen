@@ -8,6 +8,7 @@ pub mod frontend_log;
 pub mod history;
 pub mod mysql;
 pub mod object_editor;
+pub mod processlist;
 pub mod query;
 pub mod query_history_bridge;
 pub mod schema;

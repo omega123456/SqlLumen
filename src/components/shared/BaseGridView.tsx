@@ -143,12 +143,15 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     rowKeyGetter: rowKeyGetterProp,
     getRowClass: getRowClassProp,
     isModifiedCell,
+    applyReadOnlyCellStyles = true,
     autoSizeConfig,
     showReadOnlyHeaders,
     testId,
     onCellDoubleClick,
     onRowClick,
     highlightColumnKey,
+    prefixColumns,
+    suffixColumns,
   } = props
 
   const gridRef = useRef<DataGridHandle | null>(null)
@@ -338,7 +341,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   const rdgColumns: readonly Column<GridRow>[] = useMemo(() => {
     const pkColumnNames = columns.filter((c) => c.isPrimaryKey).map((c) => c.key)
 
-    return columns.map((col) => {
+    const dataColumns = columns.map((col) => {
       const colWidth = autoColumnWidths[col.key] ?? getDefaultColumnWidth(col.dataType)
 
       const baseCellClass = getGridCellClass(col.key, col.dataType, pkColumnNames)
@@ -348,7 +351,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
 
         if (col.editable) {
           classes.push('rdg-editable-cell')
-        } else {
+        } else if (applyReadOnlyCellStyles) {
           classes.push('rdg-readonly-cell')
         }
 
@@ -421,7 +424,25 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
 
       return baseProps as Column<GridRow>
     })
-  }, [columns, autoColumnWidths, onSortChange, showReadOnlyHeaders, highlightColumnKey])
+
+    let result = dataColumns as Column<GridRow>[]
+    if (prefixColumns && prefixColumns.length > 0) {
+      result = [...prefixColumns, ...result]
+    }
+    if (suffixColumns && suffixColumns.length > 0) {
+      result = [...result, ...suffixColumns]
+    }
+    return result
+  }, [
+    columns,
+    autoColumnWidths,
+    applyReadOnlyCellStyles,
+    onSortChange,
+    showReadOnlyHeaders,
+    highlightColumnKey,
+    prefixColumns,
+    suffixColumns,
+  ])
 
   const handleCellClick = useCallback(
     async (args: CellMouseArgs<GridRow>, event: CellMouseEvent) => {
@@ -470,7 +491,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
       }
 
       if (onRowClick) {
-        onRowClick(args.row)
+        onRowClick(args.row, args.column.key)
       }
     },
     [getRestoreTarget, onCellClickGuard, onRowClick, setTrackedSelectedCell]

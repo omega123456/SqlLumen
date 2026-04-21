@@ -336,3 +336,135 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
     saveCurrentRowSpy.mockRestore()
   })
 })
+
+describe('useConnectionStore — Process List integration', () => {
+  function setupActiveConnection() {
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': {
+          id: 'session-1',
+          profile: {
+            id: 'profile-1',
+            name: 'Test Connection',
+            host: 'localhost',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+      },
+      activeTabId: 'session-1',
+    })
+  }
+
+  it('closeConnection resets processlist store state', async () => {
+    setupActiveConnection()
+    // Open processlist tab and set some state
+    useWorkspaceStore.getState().openProcessListTab('session-1')
+
+    const { useProcessListStore } = await import('../../stores/processlist-store')
+    useProcessListStore.setState({
+      rowsByConnection: {
+        'session-1': [
+          {
+            id: 1,
+            user: 'root',
+            host: 'localhost',
+            db: 'test',
+            command: 'Query',
+            time: 10,
+            state: 'executing',
+            info: 'SELECT 1',
+          },
+        ],
+      },
+      selectedIdsByConnection: { 'session-1': new Set([1]) },
+    })
+
+    await useConnectionStore.getState().closeConnection('session-1')
+
+    expect(useProcessListStore.getState().rowsByConnection['session-1']).toBeUndefined()
+    expect(useProcessListStore.getState().selectedIdsByConnection['session-1']).toBeUndefined()
+  })
+})
+
+describe('useConnectionStore — openConnection creates default workspace tabs', () => {
+  it('opens History tab at index 0 and Process List tab at index 1', async () => {
+    // Set up a saved connection profile
+    useConnectionStore.setState({
+      savedConnections: [
+        {
+          id: 'profile-1',
+          name: 'Test Connection',
+          host: 'localhost',
+          port: 3306,
+          username: 'root',
+          hasPassword: true,
+          defaultDatabase: 'testdb',
+          sslEnabled: false,
+          sslCaPath: null,
+          sslCertPath: null,
+          sslKeyPath: null,
+          color: null,
+          groupId: null,
+          readOnly: false,
+          sortOrder: 0,
+          connectTimeoutSecs: 10,
+          keepaliveIntervalSecs: 60,
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        },
+      ],
+    })
+
+    // Mock IPC to return a session
+    mockIPC((cmd) => {
+      switch (cmd) {
+        case 'open_connection':
+          return { sessionId: 'session-1', serverVersion: '8.0.0' }
+        case 'close_connection':
+          return null
+        case 'evict_results':
+          return null
+        case 'log_frontend':
+          return undefined
+        case 'build_schema_index':
+          return undefined
+        case 'get_index_status':
+          return { status: 'ready' }
+        case 'invalidate_schema_index':
+          return undefined
+        case 'semantic_search':
+          return []
+        case 'list_indexed_tables':
+          return []
+        default:
+          return null
+      }
+    })
+
+    await useConnectionStore.getState().openConnection('profile-1')
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['session-1']
+    expect(tabs).toBeDefined()
+    expect(tabs!.length).toBeGreaterThanOrEqual(2)
+    expect(tabs![0].type).toBe('history')
+    expect(tabs![1].type).toBe('processlist')
+  })
+})

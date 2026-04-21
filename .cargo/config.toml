@@ -127,6 +127,8 @@ sqllumen-test-integration = [
   "graph_bfs_integration",
   "--test",
   "retrieval_hints_integration",
+  "--test",
+  "processlist_integration",
 ]
 
 sqllumen-llvm-cov = [
@@ -255,6 +257,8 @@ sqllumen-llvm-cov = [
   "graph_bfs_integration",
   "--test",
   "retrieval_hints_integration",
+  "--test",
+  "processlist_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",

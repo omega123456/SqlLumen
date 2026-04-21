@@ -116,4 +116,26 @@ describe('ConfirmDialog', () => {
     render(<ConfirmDialog {...defaultProps} error={null} />)
     expect(screen.queryByTestId('confirm-dialog-error')).not.toBeInTheDocument()
   })
+
+  it('nonDismissible disables Cancel button', () => {
+    render(<ConfirmDialog {...defaultProps} nonDismissible />)
+    expect(screen.getByTestId('confirm-cancel-button')).toBeDisabled()
+  })
+
+  it('nonDismissible prevents Escape key dismissal', async () => {
+    const user = userEvent.setup()
+    const onCancel = vi.fn()
+    render(<ConfirmDialog {...defaultProps} nonDismissible onCancel={onCancel} />)
+    await user.keyboard('{Escape}')
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
+  it('nonDismissible prevents backdrop click dismissal', async () => {
+    const user = userEvent.setup()
+    const onCancel = vi.fn()
+    render(<ConfirmDialog {...defaultProps} nonDismissible onCancel={onCancel} />)
+    const backdrop = screen.getByTestId('confirm-dialog')
+    await user.click(backdrop)
+    expect(onCancel).not.toHaveBeenCalled()
+  })
 })

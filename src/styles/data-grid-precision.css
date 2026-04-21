@@ -80,6 +80,16 @@
   border-left: 2px solid var(--result-grid-row-selected-accent) !important;
 }
 
+.rdg-precision .rdg-row-precision-selected .rdg-cell {
+  background-color: var(--result-grid-row-selected-bg) !important;
+}
+
+/* Ensure read-only cells in selected rows inherit selected styling */
+.rdg-precision .rdg-row-precision-selected .rdg-readonly-cell {
+  background-color: var(--result-grid-row-selected-bg) !important;
+  opacity: 1 !important;
+}
+
 /* ---------- Body cells ---------- */
 .rdg-precision .rdg-cell {
   font-family: var(--font-mono);
@@ -390,6 +400,14 @@
 .rdg-precision .rdg-empty-rows-view {
   color: var(--on-surface-variant);
   font-size: 13px;
+}
+
+/* Checkbox column cell — centered with comfortable spacing */
+.rdg-precision .rdg-checkbox-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
 }
 
 /* ==========================================================================

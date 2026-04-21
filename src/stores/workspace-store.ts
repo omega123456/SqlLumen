@@ -6,6 +6,7 @@ import type {
   TableDesignerTab,
   ObjectEditorTab,
   HistoryTab,
+  ProcessListTab,
   EditableObjectType,
   DistributiveOmit,
 } from '../types/schema'
@@ -51,6 +52,7 @@ interface WorkspaceState {
   openTab: (tab: OpenableTab) => void
   openQueryTab: (connectionId: string, label?: string) => string
   openHistoryTab: (connectionId: string, activate?: boolean) => void
+  openProcessListTab: (connectionId: string) => void
   closeTab: (connectionId: string, tabId: string) => void
   forceCloseTab: (connectionId: string, tabId: string) => void
   setActiveTab: (connectionId: string, tabId: string) => void
@@ -279,6 +281,36 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     }))
   },
 
+  // ------ openProcessListTab (singleton per connection) ------
+
+  openProcessListTab: (connectionId: string) => {
+    const tabs = get().tabsByConnection[connectionId] || []
+
+    // Reuse existing processlist tab if one exists
+    const existing = tabs.find((t) => t.type === 'processlist')
+    if (existing) return
+
+    const newTab: ProcessListTab = {
+      id: `processlist-${connectionId}`,
+      type: 'processlist',
+      label: 'Process List',
+      connectionId,
+    }
+
+    // Insert after the history tab if present, otherwise at position 0
+    const historyIdx = tabs.findIndex((t) => t.type === 'history')
+    const insertIdx = historyIdx >= 0 ? historyIdx + 1 : 0
+    const newTabs = [...tabs]
+    newTabs.splice(insertIdx, 0, newTab)
+
+    set((state) => ({
+      tabsByConnection: {
+        ...state.tabsByConnection,
+        [connectionId]: newTabs,
+      },
+    }))
+  },
+
   // ------ closeTab ------
 
   closeTab: (connectionId: string, tabId: string) => {
@@ -289,8 +321,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
     const closingTab = tabs[idx]
 
-    // History tabs are not closable
-    if (closingTab.type === 'history') return
+    // History and processlist tabs are not closable
+    if (closingTab.type === 'history' || closingTab.type === 'processlist') return
 
     if (closingTab.type === 'table-data') {
       const tableDataState = useTableDataStore.getState().tabs[tabId]
@@ -467,8 +499,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
     const closingTab = tabs[idx]
 
-    // History tabs are not closable
-    if (closingTab.type === 'history') return
+    // History and processlist tabs are not closable
+    if (closingTab.type === 'history' || closingTab.type === 'processlist') return
 
     if (closingTab.type === 'table-data') {
       useTableDataStore.getState().cleanupTab(tabId)

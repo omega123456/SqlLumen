@@ -305,6 +305,8 @@ pub fn run() {
             commands::schema_index::get_index_status,
             commands::schema_index::invalidate_schema_index,
             commands::schema_index::list_indexed_tables,
+            commands::processlist::get_processlist,
+            commands::processlist::kill_queries,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

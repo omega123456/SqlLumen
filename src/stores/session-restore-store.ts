@@ -195,9 +195,10 @@ function serializeTab(
         type: 'history',
         tabId: tab.id,
       }
-    // table-designer and object-editor are NOT serialized
+    // table-designer, object-editor, and processlist are NOT serialized
     case 'table-designer':
     case 'object-editor':
+    case 'processlist':
       return null
     default:
       return null
@@ -324,6 +325,9 @@ async function restoreConnectionTabs(
         const allTabs = useWorkspaceStore.getState().tabsByConnection[sessionId] ?? []
         const created = allTabs.find((t) => t.type === 'history')
         restoredTabId = created?.id ?? null
+
+        // Ensure processlist tab is also created for restored connections
+        workspaceStore.openProcessListTab(sessionId)
         break
       }
     }

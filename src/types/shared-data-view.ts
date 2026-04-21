@@ -10,7 +10,7 @@
  */
 
 import type { ReactNode } from 'react'
-import type { RowsChangeData } from 'react-data-grid'
+import type { Column, RowsChangeData } from 'react-data-grid'
 import type { ForeignKeyColumnInfo, TableDataColumnMeta } from './schema'
 
 // ---------------------------------------------------------------------------
@@ -126,6 +126,7 @@ export interface BaseGridViewProps {
   rowKeyGetter?: (row: Record<string, unknown>) => string
   getRowClass?: (row: Record<string, unknown>) => string | undefined
   isModifiedCell?: (rowData: Record<string, unknown>, columnKey: string) => boolean
+  applyReadOnlyCellStyles?: boolean
   autoSizeConfig?: AutoSizeConfig
   showReadOnlyHeaders?: boolean
   testId?: string
@@ -138,10 +139,22 @@ export interface BaseGridViewProps {
 
   // General-purpose interaction callbacks
   onCellDoubleClick?: (rowData: Record<string, unknown>, columnKey: string) => void
-  onRowClick?: (rowData: Record<string, unknown>) => void
+  onRowClick?: (rowData: Record<string, unknown>, columnKey?: string) => void
 
   // Column highlight (e.g. FK lookup dialog highlights the referenced column)
   highlightColumnKey?: string
+
+  /**
+   * Raw react-data-grid columns to prepend before the auto-generated data columns.
+   * Useful for adding selection checkboxes or other prefix columns.
+   */
+  prefixColumns?: ReadonlyArray<Column<Record<string, unknown>>>
+
+  /**
+   * Raw react-data-grid columns to append after the auto-generated data columns.
+   * Useful for adding custom action or display columns at the end.
+   */
+  suffixColumns?: ReadonlyArray<Column<Record<string, unknown>>>
 }
 
 // ---------------------------------------------------------------------------

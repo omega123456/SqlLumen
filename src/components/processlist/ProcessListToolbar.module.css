@@ -1,0 +1,163 @@
+/* ProcessListToolbar — aligned with TableDataToolbar styling */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 24px;
+  background: var(--surface-container);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+:global([data-theme='light']) .toolbar {
+  height: 48px;
+  background: var(--surface-container-high);
+}
+
+/* Sections */
+.leftSection {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rightSection {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Divider */
+.divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(var(--outline-variant-rgb), 0.12);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* Icon-only toolbar button (Refresh) — matches TableDataToolbar */
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.iconButton:hover:not(:disabled) {
+  color: var(--primary);
+  background: rgba(var(--primary-rgb), 0.06);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Toolbar button — matches TableDataToolbar */
+.toolbarButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.toolbarButton:hover:not(:disabled) {
+  color: var(--primary);
+  border-color: rgba(var(--primary-rgb), 0.35);
+  background: rgba(var(--primary-rgb), 0.06);
+}
+
+.toolbarButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Danger variant for Kill button */
+.toolbarButtonDanger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(var(--error-rgb), 0.3);
+  background: transparent;
+  color: var(--error);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.toolbarButtonDanger:hover:not(:disabled) {
+  background: rgba(var(--error-rgb), 0.08);
+  border-color: var(--error);
+}
+
+.toolbarButtonDanger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Meta text (last updated timestamp) */
+.meta {
+  font-size: 12px;
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Read-only badge — matches TableDataToolbar */
+.readonlyBadge {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  background: var(--td-readonly-badge-bg);
+  color: var(--td-readonly-badge-text);
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}

@@ -466,6 +466,20 @@ async function openOrdersTableDataTab(page: Page) {
   })
 }
 
+/** Connect and activate the Process List tab. */
+async function openProcessListTab(page: Page) {
+  await connectToSample(page)
+  // Click the Process List workspace tab to activate it
+  const tabStrip = page.getByTestId('workspace-tabs')
+  await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
+  await tabStrip.getByText('Process List').click()
+  await expect(page.getByTestId('processlist-grid')).toBeVisible({ timeout: APP_READY_MS })
+  // Wait for at least one data row to render
+  await expect(page.getByTestId('processlist-grid').locator('.rdg-row').first()).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+}
+
 async function openTableDesignerTab(page: Page) {
   await connectToSample(page)
 
@@ -2558,6 +2572,76 @@ for (const theme of themes) {
     //    layout engine and are not exposed via data-testid attributes.
     // Visual verification of CodeLens should be done via the Tauri desktop
     // build using the MCP testing workflow described in mcp_testing.md.
+
+    // --- Process List screenshots ---
+
+    test('ProcessListTab — grid with data', async ({ page }) => {
+      await openProcessListTab(page)
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('processlist-grid')).toHaveScreenshot(
+        `processlist-grid-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('ProcessListTab — selected row highlight', async ({ page }) => {
+      await openProcessListTab(page)
+      const firstRow = page.getByTestId('processlist-grid').locator('.rdg-row').first()
+      await firstRow.locator('input[type="checkbox"]').click()
+      await expect(firstRow).toHaveClass(/rdg-row-precision-selected/)
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('processlist-grid')).toHaveScreenshot(
+        `processlist-grid-selected-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('full app layout — process list tab', async ({ page }) => {
+      await openProcessListTab(page)
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('app-layout')).toHaveScreenshot(
+        `app-full-layout-processlist-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('ProcessListTab — kill confirmation dialog', async ({ page }) => {
+      await openProcessListTab(page)
+      // Select first two rows by clicking checkboxes
+      const grid = page.getByTestId('processlist-grid')
+      const rows = grid.locator('.rdg-row')
+      // Click the checkbox in the first row
+      await rows.nth(0).locator('input[type="checkbox"]').click()
+      await rows.nth(1).locator('input[type="checkbox"]').click()
+      // Click the Kill button to open confirm dialog
+      await page.getByTestId('processlist-kill-button').click()
+      await expect(page.getByTestId('confirm-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('confirm-dialog')).toHaveScreenshot(
+        `processlist-kill-confirm-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('ProcessListTab — info cell popover', async ({ page }) => {
+      await openProcessListTab(page)
+      const grid = page.getByTestId('processlist-grid')
+      // Scroll the grid to the right to ensure the Info column is visible
+      const rdgElement = grid.locator('.rdg')
+      await rdgElement.evaluate((el) => {
+        el.scrollLeft = el.scrollWidth
+      })
+      // Wait for the info cell to appear after scroll
+      const infoCell = grid.getByTestId('processlist-info-cell').first()
+      await infoCell.waitFor({ state: 'visible', timeout: APP_READY_MS })
+      await infoCell.click()
+      await expect(page.getByTestId('info-cell-popover')).toBeVisible({ timeout: APP_READY_MS })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('info-cell-popover')).toHaveScreenshot(
+        `processlist-info-popover-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
   })
 }
 

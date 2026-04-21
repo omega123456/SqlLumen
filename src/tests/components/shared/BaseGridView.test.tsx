@@ -1152,6 +1152,25 @@ describe('BaseGridView', () => {
     expect(colDefs[0].cellClass({ avatar: null })).not.toContain('rdg-editable-cell')
   })
 
+  it('cellClass skips rdg-readonly-cell when applyReadOnlyCellStyles is false', () => {
+    const cols = [makeColumn('avatar', 'blob', { editable: false })]
+    render(
+      <BaseGridView
+        columns={cols}
+        rows={[{ avatar: null }]}
+        editState={null}
+        applyReadOnlyCellStyles={false}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{
+      key: string
+      cellClass: (row: Record<string, unknown>) => string
+    }>
+    expect(colDefs[0].cellClass({ avatar: null })).not.toContain('rdg-readonly-cell')
+  })
+
   it('cellClass includes rdg-modified-cell when isModifiedCell returns true', () => {
     const isModifiedCell = vi.fn().mockReturnValue(true)
     const editState: RowEditState = {
@@ -1630,7 +1649,7 @@ describe('BaseGridView', () => {
       )
     })
 
-    expect(onRowClick).toHaveBeenCalledWith(testRows[0])
+    expect(onRowClick).toHaveBeenCalledWith(testRows[0], 'name')
     // Should NOT call preventGridDefault when guard is absent
     expect(mockPrevent).not.toHaveBeenCalled()
   })
@@ -1839,5 +1858,35 @@ describe('BaseGridView', () => {
     // FK header takes precedence — should NOT have rdg-readonly-cell headerCellClass
     expect(colDefs[0].renderHeaderCell).toBeDefined()
     expect(colDefs[0].headerCellClass).toBeUndefined()
+  })
+
+  it('prepends prefixColumns before data columns', () => {
+    const cols = [makeColumn('name', 'VARCHAR')]
+    const prefixCol = { key: '__check__', name: '', width: 40 }
+
+    render(
+      <BaseGridView
+        columns={cols}
+        rows={[{ name: 'Alice' }]}
+        editState={null}
+        prefixColumns={[prefixCol]}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{ key: string }>
+    expect(colDefs[0].key).toBe('__check__')
+    expect(colDefs[1].key).toBe('name')
+  })
+
+  it('works without prefixColumns (backward compatible)', () => {
+    const cols = [makeColumn('id', 'INT')]
+
+    render(<BaseGridView columns={cols} rows={[{ id: 1 }]} editState={null} />)
+
+    const props = getLatestGridProps()
+    const colDefs = props.columns as Array<{ key: string }>
+    expect(colDefs[0].key).toBe('id')
+    expect(colDefs.length).toBe(1)
   })
 })

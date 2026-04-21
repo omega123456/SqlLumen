@@ -61,6 +61,20 @@ describe('data-grid-precision editing styles', () => {
     expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.rdg-new-row/)
   })
 
+  it('overrides readonly-cell styling inside selected rows', () => {
+    expect(dataGridPrecisionCss).toMatch(
+      /\.rdg-precision \.rdg-row-precision-selected \.rdg-readonly-cell[\s\S]*?opacity:\s*1\s*!important/
+    )
+    expect(dataGridPrecisionCss).toMatch(
+      /\.rdg-precision \.rdg-row-precision-selected \.rdg-readonly-cell[\s\S]*?background-color:.*result-grid-row-selected-bg.*!important/
+    )
+  })
+
+  it('has checkbox cell centering styles', () => {
+    expect(dataGridPrecisionCss).toMatch(/\.rdg-precision \.rdg-checkbox-cell/)
+    expect(dataGridPrecisionCss).toMatch(/\.rdg-checkbox-cell[\s\S]*?justify-content:\s*center/)
+  })
+
   it('does not contain deprecated class names', () => {
     // Old table-data specific class names should be removed
     expect(dataGridPrecisionCss).not.toMatch(/\.rdg-precision \.td-editing-row\b/)

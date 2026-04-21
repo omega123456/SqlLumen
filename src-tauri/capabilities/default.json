@@ -94,6 +94,8 @@
     "allow-force-rebuild-schema-index",
     "allow-list-indexed-tables",
     "dialog:allow-save",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "allow-get-processlist",
+    "allow-kill-queries"
   ]
 }

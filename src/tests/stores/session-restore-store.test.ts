@@ -488,6 +488,11 @@ describe('useSessionRestoreStore — restoreSession', () => {
     expect(queryState).toBeDefined()
     expect(queryState.content).toBe('SELECT * FROM users')
     expect(queryState.cursorPosition).toEqual({ lineNumber: 2, column: 5 })
+
+    // Process List tab should be auto-created for the restored connection
+    const processlistTab = workspaceTabs.find((t) => t.type === 'processlist')
+    expect(processlistTab).toBeDefined()
+    expect(processlistTab!.label).toBe('Process List')
   })
 
   it('does nothing when session restore is disabled', async () => {

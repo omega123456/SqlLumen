@@ -11,6 +11,7 @@ import { WorkspaceAiResizableRow } from './WorkspaceAiResizableRow'
 import { TableDesignerTab as TableDesignerTabComponent } from '../table-designer/TableDesignerTab'
 import { ObjectEditorTab as ObjectEditorTabComponent } from '../object-editor/ObjectEditorTab'
 import { HistoryTab as HistoryTabComponent } from '../history/HistoryTab'
+import ProcessListTabComponent from '../processlist/ProcessListTab'
 import type {
   WorkspaceTab,
   SchemaInfoTab as SchemaInfoTabType,
@@ -71,6 +72,14 @@ export function WorkspaceArea() {
       )}
       {activeTab?.type === 'history' && (
         <HistoryTabComponent key={activeTab.id} tab={activeTab as HistoryTabType} />
+      )}
+      {activeTab?.type === 'processlist' && (
+        <ProcessListTabComponent
+          key={activeTab.id}
+          connectionId={activeTab.connectionId}
+          sessionId={activeTab.connectionId}
+          isActive={true}
+        />
       )}
       {/* Tabs exist but none active */}
       {tabs.length > 0 && !activeTab && (
