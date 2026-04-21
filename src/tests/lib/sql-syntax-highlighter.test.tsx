@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { isValidElement } from 'react'
+import type { ReactElement } from 'react'
 import { SqlSyntaxHighlighter } from '../../lib/sql-syntax-highlighter'
+
+type HighlightNodeProps = {
+  className?: string
+  children?: string
+}
+
+function getHighlightProps(node: ReactElement<unknown>): HighlightNodeProps {
+  return node.props as HighlightNodeProps
+}
 
 describe('SqlSyntaxHighlighter', () => {
   it('highlights keywords, identifiers, types, and strings', () => {
@@ -14,7 +24,7 @@ describe('SqlSyntaxHighlighter', () => {
           return node
         }
         if (isValidElement(node)) {
-          return (node.props as { className?: string }).className ?? ''
+          return getHighlightProps(node).className ?? ''
         }
         return ''
       })
@@ -39,7 +49,7 @@ describe('SqlSyntaxHighlighter', () => {
 
     const classNames = nodes
       .filter((node) => isValidElement(node))
-      .map((node) => (node.props as { className?: string }).className ?? '')
+      .map((node) => getHighlightProps(node).className ?? '')
       .join(' ')
 
     expect(classNames).toContain('kwLocal keyword')
@@ -69,7 +79,8 @@ describe('SqlSyntaxHighlighter', () => {
           return node
         }
         if (isValidElement(node)) {
-          return `${node.props.children}:${(node.props as { className?: string }).className ?? ''}`
+          const props = getHighlightProps(node)
+          return `${props.children ?? ''}:${props.className ?? ''}`
         }
         return ''
       })
