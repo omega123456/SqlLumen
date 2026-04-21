@@ -9,6 +9,7 @@ import {
   _resetQueryTabCounter,
 } from '../../../stores/workspace-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
+import { useObjectEditorStore } from '../../../stores/object-editor-store'
 
 beforeEach(() => {
   useWorkspaceStore.setState({
@@ -16,6 +17,7 @@ beforeEach(() => {
     activeTabByConnection: {},
   })
   useTableDesignerStore.setState({ tabs: {} })
+  useObjectEditorStore.setState({ tabs: {} })
   _resetTabIdCounter()
   _resetQueryTabCounter()
 })
@@ -150,6 +152,86 @@ describe('WorkspaceTabs', () => {
     ).toBe(true)
   })
 
+  it('middle-click on Process List tab does not close it', async () => {
+    useWorkspaceStore.getState().openProcessListTab('conn-1')
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const processListTab = tabs.find((t) => t.type === 'processlist')
+    expect(processListTab).toBeDefined()
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    await act(async () => {
+      dispatchAuxClick(screen.getByTestId(`workspace-tab-${processListTab!.id}`))
+    })
+
+    expect(
+      useWorkspaceStore.getState().tabsByConnection['conn-1'].some((t) => t.type === 'processlist')
+    ).toBe(true)
+  })
+
+  it('shows icons for History and Process List tabs', () => {
+    useWorkspaceStore.getState().openHistoryTab('conn-1', false)
+    useWorkspaceStore.getState().openProcessListTab('conn-1')
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    expect(screen.getByTestId('workspace-tab-icon-history')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-tab-icon-processlist')).toBeInTheDocument()
+  })
+
+  it('shows distinct icons for other tab types', () => {
+    useWorkspaceStore.getState().openTab({
+      type: 'schema-info',
+      label: 'orders',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+    useWorkspaceStore.getState().openTab({
+      type: 'table-designer',
+      label: 'users (design)',
+      connectionId: 'conn-1',
+      mode: 'alter',
+      databaseName: 'mydb',
+      objectName: 'users',
+    })
+    useWorkspaceStore.getState().openTab({
+      type: 'object-editor',
+      label: 'Stored Procedure: my_proc',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'my_proc',
+      objectType: 'procedure',
+      mode: 'alter',
+    })
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    expect(screen.getByTestId('workspace-tab-icon-schema-info')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-tab-icon-table-data')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-tab-icon-query-editor')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-tab-icon-table-designer')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-tab-icon-object-editor-procedure')).toBeInTheDocument()
+  })
+
   it('shows correct tab labels', () => {
     useWorkspaceStore.getState().openTab({
       type: 'table-data',
@@ -236,5 +318,94 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs connectionId="conn-1" />)
 
     expect(screen.getByTestId(`workspace-tab-${tabId}`)).toHaveTextContent('users ●')
+  })
+
+  it('shows dirty indicator on object-editor tabs when content changes', () => {
+    useWorkspaceStore.getState().openTab({
+      type: 'object-editor',
+      label: 'Stored Procedure: my_proc',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'my_proc',
+      objectType: 'procedure',
+      mode: 'alter',
+    })
+
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    useObjectEditorStore.setState({
+      tabs: {
+        [tabId]: {
+          connectionId: 'conn-1',
+          database: 'mydb',
+          objectName: 'my_proc',
+          objectType: 'procedure',
+          mode: 'alter',
+          content: 'SELECT 2',
+          originalContent: 'SELECT 1',
+          isLoading: false,
+          isSaving: false,
+          error: null,
+          pendingNavigationAction: null,
+          savedObjectName: null,
+        },
+      },
+    })
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    expect(screen.getByTestId(`workspace-tab-${tabId}`)).toHaveTextContent('Stored Procedure: my_proc ●')
+  })
+
+  it('does not show dirty indicator for object-editor tabs without editor state', () => {
+    useWorkspaceStore.getState().openTab({
+      type: 'object-editor',
+      label: 'Stored Procedure: my_proc',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'my_proc',
+      objectType: 'procedure',
+      mode: 'alter',
+    })
+
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    expect(screen.getByTestId(`workspace-tab-${tabId}`)).not.toHaveTextContent('●')
+  })
+
+  it('does not show dirty indicator when object-editor content is unchanged', () => {
+    useWorkspaceStore.getState().openTab({
+      type: 'object-editor',
+      label: 'Stored Procedure: my_proc',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'my_proc',
+      objectType: 'procedure',
+      mode: 'alter',
+    })
+
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    useObjectEditorStore.setState({
+      tabs: {
+        [tabId]: {
+          connectionId: 'conn-1',
+          database: 'mydb',
+          objectName: 'my_proc',
+          objectType: 'procedure',
+          mode: 'alter',
+          content: 'SELECT 1',
+          originalContent: 'SELECT 1',
+          isLoading: false,
+          isSaving: false,
+          error: null,
+          pendingNavigationAction: null,
+          savedObjectName: null,
+        },
+      },
+    })
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    expect(screen.getByTestId(`workspace-tab-${tabId}`)).not.toHaveTextContent('●')
   })
 })

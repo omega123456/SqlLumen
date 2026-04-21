@@ -8,19 +8,21 @@
 
 mod common;
 
-#[cfg(not(coverage))]
 use common::mock_mysql_server::{
     MockCell, MockColumnDef, MockMySqlServer, MockQueryStep,
 };
-#[cfg(not(coverage))]
 use opensrv_mysql::{ColumnFlags, ColumnType};
 #[cfg(not(coverage))]
 use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
 #[cfg(not(coverage))]
 use sqllumen_lib::commands::mysql::open_connection_impl;
 use sqllumen_lib::commands::processlist::{get_processlist_impl, kill_queries_impl};
-#[cfg(not(coverage))]
-use sqllumen_lib::state::AppState;
+use sqllumen_lib::{
+    mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams},
+    state::AppState,
+};
+use sqlx::mysql::MySqlPoolOptions;
+use tokio_util::sync::CancellationToken;
 
 #[cfg(not(coverage))]
 fn save_input(port: u16) -> SaveConnectionInput {
@@ -52,7 +54,6 @@ fn save_input_read_only(port: u16) -> SaveConnectionInput {
     }
 }
 
-#[cfg(not(coverage))]
 fn processlist_steps() -> Vec<MockQueryStep> {
     vec![MockQueryStep {
         query: "SHOW FULL PROCESSLIST",
@@ -126,6 +127,41 @@ async fn open_session(state: &AppState, port: u16, read_only: bool) -> String {
     result.session_id
 }
 
+async fn register_session_direct(state: &AppState, session_id: &str, port: u16, read_only: bool) {
+    let pool = MySqlPoolOptions::new()
+        .max_connections(1)
+        .connect(&format!("mysql://root@127.0.0.1:{port}/mysql"))
+        .await
+        .expect("should connect to mock mysql server");
+
+    let entry = RegistryEntry {
+        pool,
+        session_id: session_id.to_string(),
+        profile_id: "profile-test".to_string(),
+        status: ConnectionStatus::Connected,
+        server_version: "8.0.36-mock".to_string(),
+        cancellation_token: CancellationToken::new(),
+        connection_params: StoredConnectionParams {
+            profile_id: "profile-test".to_string(),
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "root".to_string(),
+            has_password: false,
+            keychain_ref: None,
+            default_database: Some("mysql".to_string()),
+            ssl_enabled: false,
+            ssl_ca_path: None,
+            ssl_cert_path: None,
+            ssl_key_path: None,
+            connect_timeout_secs: 10,
+            keepalive_interval_secs: 60,
+        },
+        read_only,
+    };
+
+    state.registry.insert(session_id.to_string(), entry);
+}
+
 #[cfg(not(coverage))]
 #[tokio::test]
 async fn test_get_processlist_returns_rows() {
@@ -158,6 +194,47 @@ async fn test_get_processlist_invalid_session() {
     assert!(result.unwrap_err().contains("not found"));
 }
 
+#[tokio::test]
+async fn test_get_processlist_returns_rows_under_coverage_mode() {
+    common::ensure_fake_backend_once();
+    let state = common::test_app_state();
+    let server = MockMySqlServer::start_script(processlist_steps()).await;
+
+    register_session_direct(&state, "coverage-session", server.port, false).await;
+
+    let rows = get_processlist_impl(&state, "coverage-session")
+        .await
+        .expect("should fetch process list");
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, 42);
+    assert_eq!(rows[0].user, "root");
+    assert_eq!(rows[0].command, "Query");
+}
+
+#[tokio::test]
+async fn test_get_processlist_query_error_bubbles_up() {
+    common::ensure_fake_backend_once();
+    let state = common::test_app_state();
+    let server = MockMySqlServer::start_script(vec![MockQueryStep {
+        query: "SHOW FULL PROCESSLIST",
+        columns: vec![],
+        rows: vec![],
+        error: Some((
+            opensrv_mysql::ErrorKind::ER_UNKNOWN_ERROR,
+            b"simulated processlist failure",
+        )),
+    }])
+    .await;
+
+    register_session_direct(&state, "coverage-session", server.port, false).await;
+
+    let error = get_processlist_impl(&state, "coverage-session")
+        .await
+        .expect_err("should return process list error");
+    assert!(error.contains("Failed to fetch process list"));
+}
+
 #[cfg(not(coverage))]
 #[tokio::test]
 async fn test_kill_queries_read_only() {
@@ -179,6 +256,47 @@ async fn test_kill_queries_invalid_session() {
     let result = kill_queries_impl(&state, "nonexistent", vec![1]).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("not found"));
+}
+
+#[tokio::test]
+async fn test_kill_queries_read_only_under_coverage_mode() {
+    common::ensure_fake_backend_once();
+    let state = common::test_app_state();
+    let server = MockMySqlServer::start_script(processlist_steps()).await;
+
+    register_session_direct(&state, "coverage-session", server.port, true).await;
+
+    let error = kill_queries_impl(&state, "coverage-session", vec![42])
+        .await
+        .expect_err("read-only session should reject kill");
+    assert!(error.contains("read-only"));
+}
+
+#[tokio::test]
+async fn test_kill_queries_mixed_success_and_error() {
+    common::ensure_fake_backend_once();
+    let state = common::test_app_state();
+    let server = MockMySqlServer::start_script(vec![MockQueryStep {
+        query: "KILL QUERY 42",
+        columns: vec![],
+        rows: vec![],
+        error: Some((opensrv_mysql::ErrorKind::ER_UNKNOWN_ERROR, b"cannot kill query 42")),
+    }])
+    .await;
+
+    register_session_direct(&state, "coverage-session", server.port, false).await;
+
+    let results = kill_queries_impl(&state, "coverage-session", vec![42, 99])
+        .await
+        .expect("kill queries should complete");
+
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].id, 42);
+    assert!(!results[0].success);
+    assert!(results[0].error.is_some());
+    assert_eq!(results[1].id, 99);
+    assert!(results[1].success);
+    assert!(results[1].error.is_none());
 }
 
 #[cfg(not(coverage))]

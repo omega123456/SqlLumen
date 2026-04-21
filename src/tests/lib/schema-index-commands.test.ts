@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import {
   buildSchemaIndex,
+  forceRebuildSchemaIndex,
   semanticSearch,
   getIndexStatus,
   invalidateSchemaIndex,
@@ -21,6 +22,8 @@ beforeEach(() => {
 
     switch (cmd) {
       case 'build_schema_index':
+        return undefined
+      case 'force_rebuild_schema_index':
         return undefined
       case 'semantic_search':
         return [
@@ -67,6 +70,14 @@ describe('schema-index-commands', () => {
     it('invokes build_schema_index with correct sessionId', async () => {
       await buildSchemaIndex('session-123')
       expect(lastInvokedCmd).toBe('build_schema_index')
+      expect(lastInvokedArgs?.sessionId).toBe('session-123')
+    })
+  })
+
+  describe('forceRebuildSchemaIndex', () => {
+    it('invokes force_rebuild_schema_index with correct sessionId', async () => {
+      await forceRebuildSchemaIndex('session-123')
+      expect(lastInvokedCmd).toBe('force_rebuild_schema_index')
       expect(lastInvokedArgs?.sessionId).toBe('session-123')
     })
   })

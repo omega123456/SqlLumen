@@ -121,6 +121,20 @@ describe('processlist-store', () => {
       expect(showErrorToast).not.toHaveBeenCalled()
     })
 
+    it('normalizes non-Error throw values on manual fetch failure', async () => {
+      mockIPC((cmd) => {
+        if (cmd === 'get_processlist') {
+          throw 'plain-error'
+        }
+        return null
+      })
+
+      await useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
+
+      expect(showErrorToast).toHaveBeenCalledWith('Failed to fetch process list', 'plain-error')
+      expect(useProcessListStore.getState().fetchErrorByConnection[CONN]).toBe('plain-error')
+    })
+
     it('skips overlapping fetches', async () => {
       let callCount = 0
       mockIPC((cmd) => {
@@ -281,6 +295,27 @@ describe('processlist-store', () => {
 
       // Rows should NOT be written since generation mismatched
       expect(useProcessListStore.getState().rowsByConnection[CONN]).toBeUndefined()
+    })
+
+    it('discards stale fetch errors after resetConnection', async () => {
+      let rejectIpc: ((reason?: unknown) => void) | null = null
+      mockIPC((cmd) => {
+        if (cmd === 'get_processlist') {
+          return new Promise<ProcessRow[]>((_, reject) => {
+            rejectIpc = reject
+          })
+        }
+        return null
+      })
+
+      const fetchPromise = useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
+      useProcessListStore.getState().resetConnection(CONN)
+
+      rejectIpc!('stale-failure')
+      await fetchPromise
+
+      expect(useProcessListStore.getState().fetchErrorByConnection[CONN]).toBeUndefined()
+      expect(showErrorToast).not.toHaveBeenCalled()
     })
   })
 })
