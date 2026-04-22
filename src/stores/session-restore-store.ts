@@ -11,6 +11,7 @@ import { useConnectionStore } from './connection-store'
 import { useWorkspaceStore } from './workspace-store'
 import { useQueryStore } from './query-store'
 import { showErrorToast } from './toast-store'
+import { logFrontend } from '../lib/app-log-commands'
 import type {
   SessionState,
   SessionConnectionState,
@@ -18,6 +19,38 @@ import type {
 } from '../lib/session-restore-commands'
 import { saveSessionState, loadSessionState } from '../lib/session-restore-commands'
 import type { WorkspaceTab } from '../types/schema'
+
+export const SESSION_AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000
+
+interface CloseRequestedEvent {
+  preventDefault: () => void
+}
+
+interface SessionPersistenceWindow {
+  onCloseRequested: (
+    handler: (event: CloseRequestedEvent) => Promise<void> | void
+  ) => Promise<unknown>
+  destroy: () => Promise<void>
+}
+
+interface SaveSessionOptions {
+  throwOnError?: boolean
+}
+
+type LoadTauriWindowApi = () => Promise<{ getCurrentWindow: () => SessionPersistenceWindow }>
+
+const defaultLoadTauriWindowApi: LoadTauriWindowApi = async () => import('@tauri-apps/api/window')
+
+let autoSaveIntervalId: number | null = null
+let closeHandlerRegistered = false
+let saveSessionInFlight: Promise<void> | null = null
+let saveSessionRequestId = 0
+let saveSessionCompletedRequestId = 0
+const saveSessionWaiters = new Map<
+  number,
+  { resolve: () => void; reject: (error: Error) => void }
+>()
+let loadTauriWindowApi: LoadTauriWindowApi = defaultLoadTauriWindowApi
 
 // ---------------------------------------------------------------------------
 // Store
@@ -30,7 +63,7 @@ interface SessionRestoreState {
   restoreError: string | null
 
   // Actions
-  saveSession: () => Promise<void>
+  saveSession: (options?: SaveSessionOptions) => Promise<void>
   restoreSession: () => Promise<void>
   isEnabled: () => boolean
 }
@@ -43,17 +76,28 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
     return useSettingsStore.getState().getSetting('session.restore') === 'true'
   },
 
-  saveSession: async (): Promise<void> => {
+  saveSession: async (options?: SaveSessionOptions): Promise<void> => {
     if (!get().isEnabled()) {
       return
     }
 
-    try {
-      const state = buildSessionState()
-      await saveSessionState(state)
-    } catch (e) {
-      console.error('[session-restore] Failed to save session state:', e)
+    const requestId = ++saveSessionRequestId
+    const waitForSave = new Promise<void>((resolve, reject) => {
+      saveSessionWaiters.set(requestId, { resolve, reject })
+    })
+
+    if (!saveSessionInFlight) {
+      saveSessionInFlight = runSaveSessionQueue().finally(() => {
+        saveSessionInFlight = null
+      })
     }
+
+    if (options?.throwOnError) {
+      await waitForSave
+      return
+    }
+
+    await waitForSave.catch(() => {})
   },
 
   restoreSession: async (): Promise<void> => {
@@ -72,7 +116,6 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
     try {
       const state = await loadSessionState()
       if (!state || state.connections.length === 0) {
-        set({ isRestoring: false })
         return
       }
 
@@ -90,20 +133,20 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
           await restoreConnectionTabs(sessionId, connState)
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e)
-          console.error(
-            `[session-restore] Failed to restore connection ${connState.profileId}:`,
-            msg
+          logFrontend(
+            'error',
+            `[session-restore] Failed to restore connection ${connState.profileId}: ${msg}`
           )
           showErrorToast('Session restore failed', `Could not reconnect: ${msg}`)
         }
       }
-
-      set({ isRestoring: false })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      console.error('[session-restore] Failed to restore session:', msg)
-      set({ isRestoring: false, restoreError: msg })
+      logFrontend('error', `[session-restore] Failed to restore session: ${msg}`)
+      set({ restoreError: msg })
       showErrorToast('Session restore failed', msg)
+    } finally {
+      set({ isRestoring: false })
     }
   },
 }))
@@ -115,6 +158,42 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
 /**
  * Build the session state snapshot from the current stores.
  */
+async function runSaveSessionQueue(): Promise<void> {
+  while (saveSessionCompletedRequestId < saveSessionRequestId) {
+    const requestId = saveSessionRequestId
+    let error: Error | null = null
+
+    try {
+      const state = buildSessionState()
+      await saveSessionState(state)
+    } catch (e) {
+      error = e instanceof Error ? e : new Error(String(e))
+      const msg = error.message
+      logFrontend('error', `[session-restore] Failed to save session state: ${msg}`)
+    }
+
+    saveSessionCompletedRequestId = requestId
+
+    for (const completedRequestId of [...saveSessionWaiters.keys()].sort((a, b) => a - b)) {
+      if (completedRequestId > requestId) {
+        continue
+      }
+
+      const waiter = saveSessionWaiters.get(completedRequestId)
+      if (!waiter) {
+        continue
+      }
+
+      saveSessionWaiters.delete(completedRequestId)
+      if (error) {
+        waiter.reject(error)
+      } else {
+        waiter.resolve()
+      }
+    }
+  }
+}
+
 function buildSessionState(): SessionState {
   const connectionStore = useConnectionStore.getState()
   const workspaceStore = useWorkspaceStore.getState()
@@ -216,7 +295,10 @@ async function connectByProfileId(profileId: string): Promise<string | null> {
   // Check if the profile exists in saved connections
   const profile = store.savedConnections.find((c) => c.id === profileId)
   if (!profile) {
-    console.warn(`[session-restore] Profile ${profileId} not found in saved connections, skipping`)
+    logFrontend(
+      'warn',
+      `[session-restore] Profile ${profileId} not found in saved connections, skipping`
+    )
     return null
   }
 
@@ -239,7 +321,7 @@ async function connectByProfileId(profileId: string): Promise<string | null> {
   }
 
   // Shouldn't happen, but guard against it
-  console.warn(`[session-restore] Could not find new session ID for profile ${profileId}`)
+  logFrontend('warn', `[session-restore] Could not find new session ID for profile ${profileId}`)
   return null
 }
 
@@ -321,7 +403,7 @@ async function restoreConnectionTabs(
         break
       }
       case 'history': {
-        workspaceStore.openHistoryTab(sessionId)
+        workspaceStore.openHistoryTab(sessionId, false)
         const allTabs = useWorkspaceStore.getState().tabsByConnection[sessionId] ?? []
         const created = allTabs.find((t) => t.type === 'history')
         restoredTabId = created?.id ?? null
@@ -359,8 +441,35 @@ function canUseTauriWindow(): boolean {
   )
 }
 
+function registerAutoSaveInterval(): void {
+  if (typeof window === 'undefined' || autoSaveIntervalId != null) {
+    return
+  }
+
+  autoSaveIntervalId = window.setInterval(() => {
+    void useSessionRestoreStore.getState().saveSession()
+  }, SESSION_AUTOSAVE_INTERVAL_MS)
+}
+
+export function _resetSessionPersistenceForTests(): void {
+  if (autoSaveIntervalId != null && typeof window !== 'undefined') {
+    window.clearInterval(autoSaveIntervalId)
+  }
+  autoSaveIntervalId = null
+  closeHandlerRegistered = false
+  saveSessionInFlight = null
+  saveSessionRequestId = 0
+  saveSessionCompletedRequestId = 0
+  saveSessionWaiters.clear()
+  loadTauriWindowApi = defaultLoadTauriWindowApi
+}
+
+export function _setLoadTauriWindowApiForTests(loader: LoadTauriWindowApi): void {
+  loadTauriWindowApi = loader
+}
+
 /**
- * Register the window close handler that saves session state before exiting.
+ * Register periodic autosave and the window close handler that saves session state before exiting.
  * Must be called after settings are loaded.
  *
  * Uses dynamic import of `@tauri-apps/api/window` to avoid issues in
@@ -371,20 +480,31 @@ export async function registerCloseHandler(): Promise<void> {
     return
   }
 
+  registerAutoSaveInterval()
+
+  if (closeHandlerRegistered) {
+    return
+  }
+
   try {
-    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    const { getCurrentWindow } = await loadTauriWindowApi()
     const appWindow = getCurrentWindow()
 
     await appWindow.onCloseRequested(async (event) => {
       event.preventDefault()
       try {
-        await useSessionRestoreStore.getState().saveSession()
+        await useSessionRestoreStore.getState().saveSession({ throwOnError: true })
       } catch (e) {
-        console.error('[session-restore] Error saving session on close:', e)
+        const msg = e instanceof Error ? e.message : String(e)
+        showErrorToast('Session save failed', 'Could not save the current session before closing.')
+        logFrontend('error', `[session-restore] Error saving session on close: ${msg}`)
+        return
       }
       await appWindow.destroy()
     })
+    closeHandlerRegistered = true
   } catch (e) {
-    console.warn('[session-restore] Failed to register close handler:', e)
+    const msg = e instanceof Error ? e.message : String(e)
+    logFrontend('warn', `[session-restore] Failed to register close handler: ${msg}`)
   }
 }

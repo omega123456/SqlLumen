@@ -3,7 +3,13 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
-import { useSessionRestoreStore } from '../../stores/session-restore-store'
+import {
+  _setLoadTauriWindowApiForTests,
+  _resetSessionPersistenceForTests,
+  registerCloseHandler,
+  SESSION_AUTOSAVE_INTERVAL_MS,
+  useSessionRestoreStore,
+} from '../../stores/session-restore-store'
 import { useConnectionStore, _resetListenersSetup } from '../../stores/connection-store'
 import {
   useWorkspaceStore,
@@ -102,11 +108,15 @@ beforeEach(() => {
   _resetTabIdCounter()
   _resetQueryTabCounter()
   _resetListenersSetup()
+  _resetSessionPersistenceForTests()
 
   setupDefaultIpc()
 })
 
 afterEach(() => {
+  _resetSessionPersistenceForTests()
+  vi.useRealTimers()
+  delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
   vi.restoreAllMocks()
 })
 
@@ -552,15 +562,11 @@ describe('useSessionRestoreStore — restoreSession', () => {
       }
     })
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
     await useSessionRestoreStore.getState().restoreSession()
 
     // Should not crash
     expect(useSessionRestoreStore.getState().isRestoring).toBe(false)
     expect(Object.keys(useConnectionStore.getState().activeConnections)).toHaveLength(0)
-
-    warnSpy.mockRestore()
   })
 
   it('handles connection failure with error toast gracefully', async () => {
@@ -616,16 +622,12 @@ describe('useSessionRestoreStore — restoreSession', () => {
       }
     })
 
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
     await useSessionRestoreStore.getState().restoreSession()
 
     // Should not crash — isRestoring should be false
     expect(useSessionRestoreStore.getState().isRestoring).toBe(false)
     // No connections should be open
     expect(Object.keys(useConnectionStore.getState().activeConnections)).toHaveLength(0)
-
-    errorSpy.mockRestore()
   })
 
   it('does not open duplicate connections when called twice concurrently (StrictMode guard)', async () => {
@@ -951,6 +953,8 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
 
 describe('useSessionRestoreStore — connectByProfileId edge cases', () => {
   it('returns null when openConnection succeeds but no new session ID appears', async () => {
+    const frontendLogs: Array<{ level?: unknown; message?: unknown }> = []
+
     const savedState = {
       version: 1,
       connections: [
@@ -966,6 +970,10 @@ describe('useSessionRestoreStore — connectByProfileId edge cases', () => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
+          frontendLogs.push({
+            level: a?.level,
+            message: a?.message,
+          })
           return undefined
         case 'get_setting':
           if (a?.key === 'session.state') return JSON.stringify(savedState)
@@ -1062,20 +1070,17 @@ describe('useSessionRestoreStore — connectByProfileId edge cases', () => {
       },
     })
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
     await useSessionRestoreStore.getState().restoreSession()
 
-    // The warn about "Could not find new session ID" should have fired (line 241)
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not find new session ID'))
-
-    warnSpy.mockRestore()
+    expect(frontendLogs).toContainEqual({
+      level: 'warn',
+      message: expect.stringContaining('Could not find new session ID'),
+    })
   })
 })
 
 describe('registerCloseHandler', () => {
   it('returns immediately when __TAURI_INTERNALS__ is absent', async () => {
-    const { registerCloseHandler } = await import('../../stores/session-restore-store')
     // In jsdom, __TAURI_INTERNALS__ is not defined, so canUseTauriWindow returns false
     await registerCloseHandler()
     // Should complete without error — covers lines 348-368
@@ -1083,10 +1088,330 @@ describe('registerCloseHandler', () => {
 
   it('returns immediately when __TAURI_INTERNALS__ is null', async () => {
     ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = null
-    const { registerCloseHandler } = await import('../../stores/session-restore-store')
     await registerCloseHandler()
-    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
     // Covers the null check in canUseTauriWindow
+  })
+
+  it('auto-saves the current session every 5 minutes', async () => {
+    vi.useFakeTimers()
+
+    let saveCount = 0
+
+    mockIPC((cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'set_setting' && a?.key === 'session.state') {
+        saveCount++
+        return null
+      }
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': {
+          id: 'session-1',
+          profile: {
+            id: 'profile-1',
+            name: 'Test MySQL',
+            host: '127.0.0.1',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+      },
+    })
+    useWorkspaceStore.getState().openQueryTab('session-1', 'Autosaved Query')
+
+    await registerCloseHandler()
+    await registerCloseHandler()
+
+    await vi.advanceTimersByTimeAsync(SESSION_AUTOSAVE_INTERVAL_MS - 1)
+    expect(saveCount).toBe(0)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(saveCount).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(SESSION_AUTOSAVE_INTERVAL_MS)
+    expect(saveCount).toBe(2)
+  })
+
+  it('saves the current session before destroying the window on close', async () => {
+    let saveCount = 0
+    let closeHandler: ((event: { preventDefault: () => void }) => Promise<void> | void) | null =
+      null
+    const destroy = vi.fn(async () => undefined)
+
+    _setLoadTauriWindowApiForTests(async () => ({
+      getCurrentWindow: () => ({
+        onCloseRequested: async (
+          handler: (event: { preventDefault: () => void }) => Promise<void> | void
+        ) => {
+          closeHandler = handler
+        },
+        destroy,
+      }),
+    }))
+
+    mockIPC((cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'set_setting' && a?.key === 'session.state') {
+        saveCount++
+        return null
+      }
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': {
+          id: 'session-1',
+          profile: {
+            id: 'profile-1',
+            name: 'Test MySQL',
+            host: '127.0.0.1',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+      },
+    })
+    useWorkspaceStore.getState().openQueryTab('session-1', 'Close Save Query')
+    ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = (
+      window as Window & { __TAURI_INTERNALS__?: unknown }
+    ).__TAURI_INTERNALS__ ?? { invoke: vi.fn() }
+
+    await registerCloseHandler()
+
+    expect(closeHandler).not.toBeNull()
+
+    const preventDefault = vi.fn()
+    if (!closeHandler) {
+      throw new Error('Expected close handler to be registered')
+    }
+    const invokeCloseHandler: (event: { preventDefault: () => void }) => Promise<void> | void =
+      closeHandler
+    await invokeCloseHandler({ preventDefault })
+
+    expect(preventDefault).toHaveBeenCalledTimes(1)
+    expect(saveCount).toBe(1)
+    expect(destroy).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not destroy the window when close-time session save fails', async () => {
+    let closeHandler: ((event: { preventDefault: () => void }) => Promise<void> | void) | null =
+      null
+    const destroy = vi.fn(async () => undefined)
+
+    _setLoadTauriWindowApiForTests(async () => ({
+      getCurrentWindow: () => ({
+        onCloseRequested: async (
+          handler: (event: { preventDefault: () => void }) => Promise<void> | void
+        ) => {
+          closeHandler = handler
+        },
+        destroy,
+      }),
+    }))
+
+    mockIPC((cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'set_setting' && a?.key === 'session.state') {
+        throw new Error('Disk full')
+      }
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': {
+          id: 'session-1',
+          profile: {
+            id: 'profile-1',
+            name: 'Test MySQL',
+            host: '127.0.0.1',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+      },
+    })
+    useWorkspaceStore.getState().openQueryTab('session-1', 'Close Save Query')
+    ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = (
+      window as Window & { __TAURI_INTERNALS__?: unknown }
+    ).__TAURI_INTERNALS__ ?? { invoke: vi.fn() }
+
+    await registerCloseHandler()
+
+    if (!closeHandler) {
+      throw new Error('Expected close handler to be registered')
+    }
+    const invokeCloseHandler: (event: { preventDefault: () => void }) => Promise<void> | void =
+      closeHandler
+
+    await invokeCloseHandler({ preventDefault: vi.fn() })
+
+    expect(destroy).not.toHaveBeenCalled()
+  })
+
+  it('persists the latest snapshot on close when an autosave is already in flight', async () => {
+    vi.useFakeTimers()
+
+    const savedStates: Array<{ connections: Array<{ tabs: Array<{ sql?: string }> }> }> = []
+    let resolveFirstSave: (() => void) | null = null
+    let saveCount = 0
+    let closeHandler: ((event: { preventDefault: () => void }) => Promise<void> | void) | null =
+      null
+    const destroy = vi.fn(async () => undefined)
+
+    _setLoadTauriWindowApiForTests(async () => ({
+      getCurrentWindow: () => ({
+        onCloseRequested: async (
+          handler: (event: { preventDefault: () => void }) => Promise<void> | void
+        ) => {
+          closeHandler = handler
+        },
+        destroy,
+      }),
+    }))
+
+    mockIPC((cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'set_setting' && a?.key === 'session.state') {
+        saveCount++
+        savedStates.push(
+          JSON.parse(String(a.value)) as { connections: Array<{ tabs: Array<{ sql?: string }> }> }
+        )
+        if (saveCount === 1) {
+          return new Promise((resolve) => {
+            resolveFirstSave = () => resolve(null)
+          })
+        }
+        return null
+      }
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': {
+          id: 'session-1',
+          profile: {
+            id: 'profile-1',
+            name: 'Test MySQL',
+            host: '127.0.0.1',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+      },
+    })
+
+    const tabId = useWorkspaceStore.getState().openQueryTab('session-1', 'Close Save Query')
+    useQueryStore.getState().setContent(tabId, 'SELECT 1')
+    ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = (
+      window as Window & { __TAURI_INTERNALS__?: unknown }
+    ).__TAURI_INTERNALS__ ?? { invoke: vi.fn() }
+
+    await registerCloseHandler()
+
+    await vi.advanceTimersByTimeAsync(SESSION_AUTOSAVE_INTERVAL_MS)
+    expect(saveCount).toBe(1)
+
+    useQueryStore.getState().setContent(tabId, 'SELECT 2')
+
+    if (!closeHandler) {
+      throw new Error('Expected close handler to be registered')
+    }
+    const invokeCloseHandler: (event: { preventDefault: () => void }) => Promise<void> | void =
+      closeHandler
+
+    const closePromise = Promise.resolve(invokeCloseHandler({ preventDefault: vi.fn() }))
+    expect(destroy).not.toHaveBeenCalled()
+
+    if (!resolveFirstSave) {
+      throw new Error('Expected first save to be pending')
+    }
+    const releaseFirstSave: () => void = resolveFirstSave
+    releaseFirstSave()
+
+    await closePromise
+
+    expect(saveCount).toBe(2)
+    expect(savedStates[0].connections[0].tabs[0].sql).toBe('SELECT 1')
+    expect(savedStates[1].connections[0].tabs[0].sql).toBe('SELECT 2')
+    expect(destroy).toHaveBeenCalledTimes(1)
   })
 })
 

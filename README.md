@@ -13,7 +13,7 @@ A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://t
 - **Schema information** — columns, indexes, foreign keys, DDL, and stats-style panels where supported
 - **Import / export** — data and SQL-oriented workflows (e.g. CSV, JSON, XLSX, SQL dump paths—see in-app dialogs)
 - **History & favorites** — query history and saved snippets/favorites
-- **Settings** — general, editor, and results preferences; theme (light / dark / system) persisted locally
+- **Settings** — general, editor, and results preferences; theme (light / dark / system) persisted locally; current workspace session restored on relaunch and auto-saved on close / every 5 minutes when enabled
 - **AI Assistant** — in-app assistant workflows for SQL tasks and product guidance, with longer local-model timeouts (~5+ minutes for generation), same-tab schema-context reuse, and OpenAI-compatible Responses API chaining with automatic chat-completions fallback to maximize prompt-cache reuse on follow-up requests where supported
 - **Native desktop app** — smaller footprint than typical Electron stacks; bundles via Tauri
 
