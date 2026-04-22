@@ -181,8 +181,9 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   getSetting: (key: string): string => {
     const state = get()
-    // Pending takes precedence over loaded, which takes precedence over default
-    if (key in state.pendingChanges) return state.pendingChanges[key]
+    // Only committed (saved) values — pending changes are excluded so that
+    // subscribers (e.g. schema-index-store) don't react until save() is called.
+    // UI form fields should use the useSettingValue() hook instead.
     if (key in state.settings) return state.settings[key]
     return SETTINGS_DEFAULTS[key] ?? ''
   },

@@ -105,13 +105,45 @@ describe('useSettingsStore', () => {
   })
 
   describe('getSetting', () => {
-    it('returns pending value over loaded value over default', () => {
+    it('returns committed value even when pending change exists', () => {
       useSettingsStore.setState({
         settings: { theme: 'dark' },
         pendingChanges: { theme: 'light' },
       })
 
-      expect(useSettingsStore.getState().getSetting('theme')).toBe('light')
+      // getSetting ignores pending changes — only committed values
+      expect(useSettingsStore.getState().getSetting('theme')).toBe('dark')
+    })
+
+    it('getSetting returns committed value before save (not pending)', () => {
+      useSettingsStore.setState({
+        settings: { 'ai.embeddingModel': 'old-model' },
+        pendingChanges: {},
+        isDirty: false,
+      })
+
+      useSettingsStore.getState().setPendingChange('ai.embeddingModel', 'new-model')
+
+      // getSetting should return committed value, not pending
+      expect(useSettingsStore.getState().getSetting('ai.embeddingModel')).toBe('old-model')
+    })
+
+    it('subscription does not fire with new value on setPendingChange before save', () => {
+      useSettingsStore.setState({
+        settings: { 'ai.embeddingModel': 'old-model' },
+        pendingChanges: {},
+        isDirty: false,
+      })
+
+      const subscriber = vi.fn()
+      useSettingsStore.subscribe((state) => {
+        subscriber(state.getSetting('ai.embeddingModel'))
+      })
+
+      useSettingsStore.getState().setPendingChange('ai.embeddingModel', 'new-model')
+
+      // Subscriber should NOT see 'new-model' — getSetting excludes pending
+      expect(subscriber).not.toHaveBeenCalledWith('new-model')
     })
 
     it('returns loaded value when no pending change', () => {
@@ -342,10 +374,11 @@ describe('useSettingsStore', () => {
 
     it('ai.retrieval.* keys map to the ai section', () => {
       useSettingsStore.getState().setPendingChange('ai.retrieval.topN', '5')
-      expect(useSettingsStore.getState().getSetting('ai.retrieval.topN')).toBe('5')
+      expect(useSettingsStore.getState().pendingChanges['ai.retrieval.topN']).toBe('5')
 
       useSettingsStore.getState().resetSection('ai')
-      expect(useSettingsStore.getState().getSetting('ai.retrieval.topN')).toBe('12')
+      // resetSection overwrites pending with defaults for all ai.* keys
+      expect(useSettingsStore.getState().pendingChanges['ai.retrieval.topN']).toBe('12')
     })
   })
 })
