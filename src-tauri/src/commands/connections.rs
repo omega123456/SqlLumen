@@ -209,6 +209,16 @@ pub fn delete_connection_impl(state: &AppState, id: &str) -> Result<(), String> 
         id,
         keychain_ref.as_deref(),
     ));
+
+    // Clean up AI memories for this connection profile
+    if let Err(e) = crate::ai_memory::storage::delete_memories_for_connection(&conn, id) {
+        tracing::warn!(
+            connection_id = id,
+            error = %e,
+            "failed to delete AI memories for connection during deletion"
+        );
+    }
+
     match connections::delete_connection(&conn, id) {
         Ok(()) => Ok(()),
         Err(error) => Err(error.to_string()),

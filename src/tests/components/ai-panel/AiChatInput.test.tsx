@@ -6,6 +6,7 @@ import { AiChatInput } from '../../../components/ai-panel/AiChatInput'
 import { useAiStore } from '../../../stores/ai-store'
 import type { TabAiState } from '../../../stores/ai-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
+import * as slashCommandsModule from '../../../lib/slash-commands'
 
 function setupMockIPC() {
   mockIPC((cmd) => {
@@ -17,6 +18,8 @@ function setupMockIPC() {
     if (cmd === 'get_all_settings') return {}
     if (cmd === 'ai_chat') return undefined
     if (cmd === 'ai_cancel') return undefined
+    if (cmd === 'save_memory')
+      return { id: 'mem-1', sessionId: 'conn-1', content: '', embedding: null, createdAt: '' }
     throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
   })
 }
@@ -380,5 +383,161 @@ describe('AiChatInput', () => {
     await waitFor(() => {
       expect(textarea.value).toBe('Explain this query')
     })
+  })
+
+  // -----------------------------------------------------------------------
+  // Slash command dropdown integration
+  // -----------------------------------------------------------------------
+
+  it('typing "/" shows the slash command dropdown', async () => {
+    const user = userEvent.setup()
+    render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+    const textarea = screen.getByTestId('ai-chat-textarea')
+    await user.type(textarea, '/')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('slash-command-dropdown')).toBeInTheDocument()
+    })
+  })
+
+  it('typing "/rem" filters to /remember', async () => {
+    const user = userEvent.setup()
+    render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+    const textarea = screen.getByTestId('ai-chat-textarea')
+    await user.type(textarea, '/rem')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('slash-command-dropdown')).toBeInTheDocument()
+      expect(screen.getByTestId('slash-command-item-remember')).toBeInTheDocument()
+    })
+  })
+
+  it('ArrowDown highlights first item in dropdown', async () => {
+    const user = userEvent.setup()
+    render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+    const textarea = screen.getByTestId('ai-chat-textarea')
+    await user.type(textarea, '/')
+    await waitFor(() => {
+      expect(screen.getByTestId('slash-command-dropdown')).toBeInTheDocument()
+    })
+
+    await user.keyboard('{ArrowDown}')
+
+    await waitFor(() => {
+      const item = screen.getByTestId('slash-command-item-remember')
+      expect(item.getAttribute('aria-selected')).toBe('true')
+    })
+  })
+
+  it('Enter with highlighted item selects command (fills input)', async () => {
+    const user = userEvent.setup()
+    render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+    const textarea = screen.getByTestId('ai-chat-textarea') as HTMLTextAreaElement
+    await user.type(textarea, '/')
+    await waitFor(() => {
+      expect(screen.getByTestId('slash-command-dropdown')).toBeInTheDocument()
+    })
+
+    await user.keyboard('{ArrowDown}')
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => {
+      expect(textarea.value).toBe('/remember ')
+      expect(screen.queryByTestId('slash-command-dropdown')).not.toBeInTheDocument()
+    })
+  })
+
+  it('Escape dismisses dropdown but keeps "/" in input', async () => {
+    const user = userEvent.setup()
+    render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+    const textarea = screen.getByTestId('ai-chat-textarea') as HTMLTextAreaElement
+    await user.type(textarea, '/')
+    await waitFor(() => {
+      expect(screen.getByTestId('slash-command-dropdown')).toBeInTheDocument()
+    })
+
+    await user.keyboard('{Escape}')
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('slash-command-dropdown')).not.toBeInTheDocument()
+    })
+    expect(textarea.value).toBe('/')
+  })
+
+  it('submitting "/remember some text" calls execute, not sendMessage', async () => {
+    const user = userEvent.setup()
+    const sendMessageSpy = vi.fn()
+    const originalSendMessage = useAiStore.getState().sendMessage
+    useAiStore.setState({ sendMessage: sendMessageSpy })
+
+    const executeSpy = vi.fn().mockResolvedValue(undefined)
+    const originalExecute = slashCommandsModule.SLASH_COMMANDS[0].execute
+    slashCommandsModule.SLASH_COMMANDS[0].execute = executeSpy
+
+    render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+    const textarea = screen.getByTestId('ai-chat-textarea') as HTMLTextAreaElement
+    await user.type(textarea, '/remember orders_v2 holds data')
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => {
+      expect(executeSpy).toHaveBeenCalledWith('orders_v2 holds data', 'conn-1')
+    })
+    expect(sendMessageSpy).not.toHaveBeenCalled()
+
+    slashCommandsModule.SLASH_COMMANDS[0].execute = originalExecute
+    useAiStore.setState({ sendMessage: originalSendMessage })
+  })
+
+  it('regular messages still send normally', async () => {
+    const user = userEvent.setup()
+    const sendMessageSpy = vi.fn()
+    const originalSendMessage = useAiStore.getState().sendMessage
+    useAiStore.setState({ sendMessage: sendMessageSpy })
+
+    render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+    const textarea = screen.getByTestId('ai-chat-textarea')
+    await user.type(textarea, 'SELECT * FROM users')
+    await user.keyboard('{Enter}')
+
+    expect(sendMessageSpy).toHaveBeenCalledWith('tab-1', 'conn-1', 'SELECT * FROM users', {})
+
+    useAiStore.setState({ sendMessage: originalSendMessage })
+  })
+
+  it('dropdown does not appear for "/" typed mid-sentence', async () => {
+    const user = userEvent.setup()
+    render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+    const textarea = screen.getByTestId('ai-chat-textarea')
+    await user.type(textarea, 'hello /remember')
+
+    expect(screen.queryByTestId('slash-command-dropdown')).not.toBeInTheDocument()
+  })
+
+  it('/remember with empty args shows error via execute', async () => {
+    const user = userEvent.setup()
+    const sendMessageSpy = vi.fn()
+    const originalSendMessage = useAiStore.getState().sendMessage
+    useAiStore.setState({ sendMessage: sendMessageSpy })
+
+    render(<AiChatInput tabId="tab-1" connectionId="conn-1" />)
+
+    const textarea = screen.getByTestId('ai-chat-textarea')
+    await user.type(textarea, '/remember')
+    await user.keyboard('{Enter}')
+
+    // The execute function throws for empty args; sendMessage should not be called
+    await waitFor(() => {
+      expect(sendMessageSpy).not.toHaveBeenCalled()
+    })
+
+    useAiStore.setState({ sendMessage: originalSendMessage })
   })
 })

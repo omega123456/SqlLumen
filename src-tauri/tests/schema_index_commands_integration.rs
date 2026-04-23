@@ -449,7 +449,7 @@ fn list_indexed_tables_session_not_in_registry() {
 
     let result = list_indexed_tables_impl(&state, "unknown-session".to_string());
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("not found in registry"));
+    assert!(result.unwrap_err().contains("not found"));
 }
 
 // ── Session ref count and build tracking ────────────────────────────────────

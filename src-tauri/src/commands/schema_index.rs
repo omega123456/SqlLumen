@@ -47,16 +47,9 @@ pub struct IndexErrorPayload {
     pub error: String,
 }
 
-// ── Helper: resolve session_id → profile_id via registry ────────────────────
+use super::helpers::resolve_session_profile;
 
-fn resolve_profile_id(state: &AppState, session_id: &str) -> Result<String, String> {
-    state
-        .registry
-        .get_profile_id(session_id)
-        .ok_or_else(|| format!("Session '{session_id}' not found in registry"))
-}
-
-/// Read a setting from the SQLite DB, returning empty string if not set.
+// ── Helper: read settings ───────────────────────────────────────────────────
 fn read_setting(
     db: &std::sync::Arc<Mutex<rusqlite::Connection>>,
     key: &str,
@@ -78,7 +71,7 @@ pub async fn force_rebuild_schema_index_impl(
     state: &AppState,
     session_id: String,
 ) -> Result<(), String> {
-    let profile_id = resolve_profile_id(state, &session_id)?;
+    let profile_id = resolve_session_profile(state, &session_id)?;
 
     // Check if session is already registered (avoid inflating ref count on repeated force rebuilds)
     let already_registered = {
@@ -262,7 +255,7 @@ pub async fn force_rebuild_schema_index_impl(
     state: &AppState,
     session_id: String,
 ) -> Result<(), String> {
-    let profile_id = resolve_profile_id(state, &session_id)?;
+    let profile_id = resolve_session_profile(state, &session_id)?;
 
     // Cancel any in-flight build for this profile
     {
@@ -304,7 +297,7 @@ pub async fn build_schema_index_impl(
     state: &AppState,
     session_id: String,
 ) -> Result<(), String> {
-    let profile_id = resolve_profile_id(state, &session_id)?;
+    let profile_id = resolve_session_profile(state, &session_id)?;
 
     // Check if session is already registered (avoid inflating ref count on repeated builds)
     let already_registered = {
@@ -476,7 +469,7 @@ pub async fn build_schema_index_impl(
 
 #[cfg(coverage)]
 pub async fn build_schema_index_impl(state: &AppState, session_id: String) -> Result<(), String> {
-    let profile_id = resolve_profile_id(state, &session_id)?;
+    let profile_id = resolve_session_profile(state, &session_id)?;
 
     // Check if session is already registered (avoid inflating ref count on repeated builds)
     let already_registered = {
@@ -542,7 +535,7 @@ pub async fn semantic_search_impl(
     queries: Vec<String>,
     hints: Option<RetrievalHints>,
 ) -> Result<Vec<SearchResult>, String> {
-    let profile_id = resolve_profile_id(state, &session_id)?;
+    let profile_id = resolve_session_profile(state, &session_id)?;
 
     tracing::debug!(
         session_id = %session_id,
@@ -737,7 +730,7 @@ pub async fn semantic_search_impl(
     queries: Vec<String>,
     hints: Option<RetrievalHints>,
 ) -> Result<Vec<SearchResult>, String> {
-    let _profile_id = resolve_profile_id(state, &session_id)?;
+    let _profile_id = resolve_session_profile(state, &session_id)?;
     let _ = hints;
 
     tracing::debug!(
@@ -870,7 +863,7 @@ pub async fn invalidate_schema_index_impl(
     session_id: String,
     tables: Vec<String>,
 ) -> Result<(), String> {
-    let profile_id = resolve_profile_id(state, &session_id)?;
+    let profile_id = resolve_session_profile(state, &session_id)?;
 
     let embedding_model = read_setting(&state.db, "ai.embeddingModel")?;
     let endpoint = read_setting(&state.db, "ai.endpoint")?;
@@ -969,7 +962,7 @@ pub async fn invalidate_schema_index_impl(
     session_id: String,
     tables: Vec<String>,
 ) -> Result<(), String> {
-    let _profile_id = resolve_profile_id(state, &session_id)?;
+    let _profile_id = resolve_session_profile(state, &session_id)?;
     let _ = tables;
     Ok(())
 }
@@ -979,7 +972,7 @@ pub fn list_indexed_tables_impl(
     state: &AppState,
     session_id: String,
 ) -> Result<Vec<IndexedTableInfo>, String> {
-    let profile_id = resolve_profile_id(state, &session_id)?;
+    let profile_id = resolve_session_profile(state, &session_id)?;
 
     let conn = state.db.lock().map_err(|e| format!("DB lock error: {e}"))?;
 

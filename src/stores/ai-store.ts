@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { logFrontend } from '../lib/app-log-commands'
 import { sendAiChat, cancelAiStream, listenToAiStream, aiQueryExpand } from '../lib/ai-commands'
+import { searchMemories } from '../lib/ai-memory-commands'
 import type { AiMessage as IpcAiMessage } from '../lib/ai-commands'
 import { semanticSearch } from '../lib/schema-index-commands'
 import type { RetrievalHints } from '../lib/schema-index-commands'
@@ -207,12 +208,20 @@ Output: {"queries":["products categories revenue SUM price","product_categories 
 
 const SCHEMA_USAGE_INSTRUCTION = `Retrieved tables only:\n- Use only tables that are present in the retrieved schema below.\n- Never make up or reference any table that is not in the retrieved schema.\n- Always use database-qualified table names in generated SQL (\`db\`.\`table\`).`
 
-function buildSystemPrompt(schemaDdl: string): string {
-  if (!schemaDdl) {
-    return AI_SYSTEM_PROMPT
+function buildSystemPrompt(schemaDdl: string, memoryText?: string): string {
+  const parts: string[] = [AI_SYSTEM_PROMPT]
+
+  if (memoryText) {
+    parts.push(memoryText)
   }
 
-  return `${AI_SYSTEM_PROMPT}\n\n${SCHEMA_USAGE_INSTRUCTION}\n\n${SCHEMA_METADATA_NOTE}\n\nDatabase schema:\n${schemaDdl}`
+  if (schemaDdl) {
+    parts.push(
+      `${SCHEMA_USAGE_INSTRUCTION}\n\n${SCHEMA_METADATA_NOTE}\n\nDatabase schema:\n${schemaDdl}`
+    )
+  }
+
+  return parts.join('\n\n')
 }
 
 function normaliseSchemaQueryKey(queries: string[], hints?: RetrievalHints): string {
@@ -324,6 +333,7 @@ interface ExpansionCacheEntry {
 /** LRU cache of expansion results, keyed by tab ID. Uses Map insertion order. */
 const expansionCaches = new Map<string, Map<string, ExpansionCacheEntry>>()
 const EXPANSION_CACHE_SIZE = 16
+const MEMORY_TOKEN_BUDGET = 500 // reserved tokens for memories in prompt
 
 function getExpansionCacheKey(
   sessionId: string,
@@ -600,7 +610,7 @@ export const useAiStore = create<AiState>()((set, get) => {
     tabId: string,
     sessionId: string,
     userMessage: string
-  ): Promise<string> {
+  ): Promise<{ schemaDdl: string; memoryText: string | null }> {
     try {
       logFrontend(
         'debug',
@@ -666,7 +676,58 @@ export const useAiStore = create<AiState>()((set, get) => {
           `[ai-store] done waiting for index — waited=${waited}ms finalStatus=${postWaitStatus?.status ?? 'unknown'}`
         )
         patchTab(tabId, { isWaitingForIndex: false })
-        if (!get().tabs[tabId]) return ''
+        if (!get().tabs[tabId]) return { schemaDdl: '', memoryText: null }
+      }
+
+      // ── Retrieve memories ─────────────────────────────────────────────
+      let memories: Array<{ content: string }> = []
+      let memoryBlock: string | null = null
+      try {
+        logFrontend(
+          'debug',
+          `[ai-store] searching memories for context — sessionId=${sessionId} query="${userMessage}"`
+        )
+        const memoryResults = await searchMemories({
+          sessionId,
+          query: userMessage,
+          k: 5,
+        })
+        memories = memoryResults
+        logFrontend(
+          'debug',
+          `[ai-store] memory search returned ${memories.length} result(s) — sessionId=${sessionId}`
+        )
+        if (memories.length > 0) {
+          // Build memory lines until we approach the token budget
+          const memLines: string[] = []
+          let usedTokens = 0
+          const headerTokens = Math.ceil('## User Notes (from memory)\n'.length / 4)
+          usedTokens += headerTokens
+          for (const mem of memories) {
+            const line = `- ${mem.content}`
+            const lineTokens = Math.ceil(line.length / 4)
+            if (usedTokens + lineTokens > MEMORY_TOKEN_BUDGET) break
+            memLines.push(line)
+            usedTokens += lineTokens
+          }
+          memoryBlock =
+            memLines.length > 0 ? `## User Notes (from memory)\n${memLines.join('\n')}` : null
+          logFrontend(
+            'debug',
+            `[ai-store] memory retrieval complete — retrieved=${memories.length} includedInPrompt=${memLines.length} budgetTokens=${MEMORY_TOKEN_BUDGET}`
+          )
+          memories.forEach((mem, i) => {
+            const included = i < memLines.length
+            logFrontend(
+              'debug',
+              `[ai-store] memory[${i}] ${included ? 'included' : 'dropped (budget)'} — "${mem.content}"`
+            )
+          })
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logFrontend('debug', `[ai-store] memory retrieval failed (non-fatal) — error="${msg}"`)
+        logFrontend('warn', `[ai-store] Memory retrieval failed (non-fatal): ${msg}`)
       }
 
       // Build conversation context from last ~4 turns
@@ -679,6 +740,15 @@ export const useAiStore = create<AiState>()((set, get) => {
           .map((m) => `${m.role}: ${m.content.slice(0, 200)}`)
         if (recentMessages.length > 0) {
           conversationContext = recentMessages.join('\n')
+        }
+        // Augment with memory content for better query expansion
+        if (memories.length > 0) {
+          const memoryNotes = memories.map((m) => m.content).join('\n')
+          conversationContext += `\n\nUser notes:\n${memoryNotes}`
+          logFrontend(
+            'debug',
+            `[ai-store] query expansion augmented with ${memories.length} memory note(s) — notes="${memoryNotes.replace(/\n/g, ' | ')}"`
+          )
         }
       }
 
@@ -858,9 +928,13 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       schemaQueryKey = normaliseSchemaQueryKey(queries, hints)
 
-      const cachedSchemaDdl = getCachedSchemaContext(schemaQueryKey)
+      // Include memory count in the cache key so that saving/deleting memories
+      // invalidates the cached schema context (memories affect the system prompt).
+      const memoryCacheKey = `${schemaQueryKey}:mem=${memories.length}`
+
+      const cachedSchemaDdl = getCachedSchemaContext(memoryCacheKey)
       if (cachedSchemaDdl != null) {
-        return cachedSchemaDdl
+        return { schemaDdl: cachedSchemaDdl, memoryText: memoryBlock }
       }
 
       logFrontend(
@@ -890,6 +964,9 @@ export const useAiStore = create<AiState>()((set, get) => {
         10
       )
       const effectiveBudget = isNaN(tokenBudget) || tokenBudget <= 0 ? 6000 : tokenBudget
+
+      // Deduct fixed memory token reserve from the schema token budget
+      const schemaBudget = Math.max(effectiveBudget - MEMORY_TOKEN_BUDGET, 0)
 
       // Deterministic order: tables first, then views, then routines, by score desc
       const sortedResults = [...results].sort((a, b) => {
@@ -925,7 +1002,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         const block = `${header}\n${result.ddlText}`
         const blockTokens = Math.ceil(block.length / 4)
 
-        if (runningTokens + blockTokens > effectiveBudget) {
+        if (runningTokens + blockTokens > schemaBudget) {
           droppedCount++
           break
         }
@@ -957,7 +1034,7 @@ export const useAiStore = create<AiState>()((set, get) => {
           retrievedSchemaDdl: ddl,
           lastRetrievalTimestamp: retrievalTimestamp,
           schemaContextBuildTimestamp,
-          schemaContextQueryKey: schemaQueryKey,
+          schemaContextQueryKey: memoryCacheKey,
         })
       }
 
@@ -973,7 +1050,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         `[ai-store] retrieveSchemaContext complete — ddl ${ddl.length > 0 ? `injected (${ddl.length} chars)` : 'empty (no schema context)'}`
       )
 
-      return ddl
+      return { schemaDdl: ddl, memoryText: memoryBlock }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       logFrontend('error', `[ai-store] Schema retrieval failed: ${msg}`)
@@ -981,7 +1058,7 @@ export const useAiStore = create<AiState>()((set, get) => {
       if (get().tabs[tabId]) {
         patchTab(tabId, { isWaitingForIndex: false })
       }
-      return ''
+      return { schemaDdl: '', memoryText: null }
     }
   }
 
@@ -1040,7 +1117,11 @@ export const useAiStore = create<AiState>()((set, get) => {
       const startStream = async () => {
         try {
           // Retrieve schema context via the vector pipeline
-          const schemaDdl = await retrieveSchemaContext(tabId, connectionId, message)
+          const { schemaDdl, memoryText } = await retrieveSchemaContext(
+            tabId,
+            connectionId,
+            message
+          )
           if (!get().tabs[tabId]) return // tab was cleaned up while waiting
 
           // Guard: schema retrieval is async; abort if stream was cancelled before we got here
@@ -1050,7 +1131,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
           // Build and upsert system message with retrieved schema
           const previousSystemPrompt = getCurrentSystemPrompt(tabId)
-          const nextSystemPrompt = buildSystemPrompt(schemaDdl)
+          const nextSystemPrompt = buildSystemPrompt(schemaDdl, memoryText ?? undefined)
 
           if (previousSystemPrompt && previousSystemPrompt !== nextSystemPrompt) {
             resetResponseChain(tabId)

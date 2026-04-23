@@ -7,6 +7,8 @@ import './lib/monaco-worker-setup'
 import './styles/global.css'
 import App from './App'
 import { useSettingsStore } from './stores/settings-store'
+import { useConnectionStore } from './stores/connection-store'
+import { initAiMemoryStore } from './stores/ai-memory-store'
 
 // Use locally-installed monaco-editor instead of CDN.
 // This ensures our MonacoEnvironment.getWorker setup is used and the
@@ -66,6 +68,7 @@ async function init() {
     const { useAiStore } = await import('./stores/ai-store')
     const { useSchemaIndexStore } = await import('./stores/schema-index-store')
     const { useProcessListStore } = await import('./stores/processlist-store')
+    const { useAiMemoryStore } = await import('./stores/ai-memory-store')
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
     ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
     ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore
@@ -78,6 +81,7 @@ async function init() {
     ;(window as unknown as Record<string, unknown>).__schemaIndexStore__ = useSchemaIndexStore
     ;(window as unknown as Record<string, unknown>).__processListStore__ = useProcessListStore
     ;(window as unknown as Record<string, unknown>).__settingsStore__ = useSettingsStore
+    ;(window as unknown as Record<string, unknown>).__aiMemoryStore__ = useAiMemoryStore
   }
 
   // Load all settings before rendering so stores/components can read them
@@ -103,6 +107,12 @@ async function init() {
   import('./stores/session-restore-store').then(({ registerCloseHandler }) => {
     void registerCloseHandler()
   })
+
+  // Hydrate saved connections early so AI memory and other stores can use them
+  void useConnectionStore.getState().fetchSavedConnections()
+
+  // Bootstrap AI memory store (event listeners + model-change subscription)
+  initAiMemoryStore()
 
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>

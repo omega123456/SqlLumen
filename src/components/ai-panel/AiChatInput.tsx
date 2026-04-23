@@ -2,9 +2,14 @@ import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from 're
 import { PaperPlaneRight, Stop, X } from '@phosphor-icons/react'
 import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
+import { filterCommands, findCommand } from '../../lib/slash-commands'
+import { showErrorToast } from '../../stores/toast-store'
+import { logFrontend } from '../../lib/app-log-commands'
 import { Textarea } from '../common/Textarea'
 import { Button } from '../common/Button'
 import { IconButton } from '../common/IconButton'
+import { SlashCommandDropdown } from './SlashCommandDropdown'
+import type { SlashCommand } from '../../lib/slash-commands'
 import styles from './AiChatInput.module.css'
 
 const MIN_TEXTAREA_HEIGHT_PX = 36
@@ -32,6 +37,9 @@ export function AiChatInput({
   placeholder: externalPlaceholder,
 }: AiChatInputProps) {
   const [value, setValue] = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [filteredCmds, setFilteredCmds] = useState<SlashCommand[]>([])
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isGenerating = useAiStore((s) => s.tabs[tabId]?.isGenerating ?? false)
   const attachedContext = useAiStore((s) => s.tabs[tabId]?.attachedContext ?? null)
@@ -86,23 +94,96 @@ export function AiChatInput({
     adjustHeight()
   }, [value, adjustHeight])
 
-  const handleSend = useCallback(() => {
-    const trimmed = value.trim()
-    if (!trimmed || !connectionId || !canSend) {
-      return
+  const updateDropdown = useCallback((text: string) => {
+    if (text.startsWith('/') && !text.includes(' ')) {
+      const prefix = text.slice(1)
+      const cmds = filterCommands(prefix)
+      setFilteredCmds(cmds)
+      setShowDropdown(cmds.length > 0)
+      setHighlightedIndex(-1)
+    } else {
+      setShowDropdown(false)
+      setFilteredCmds([])
+      setHighlightedIndex(-1)
     }
+  }, [])
 
-    useAiStore.getState().sendMessage(tabId, connectionId, trimmed, {})
-    setValue('')
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const newValue = e.target.value
+      setValue(newValue)
+      updateDropdown(newValue)
+    },
+    [updateDropdown]
+  )
 
-    // Reset textarea height after clearing
+  const selectCommand = useCallback((cmd: SlashCommand) => {
+    const newValue = `/${cmd.name} `
+    setValue(newValue)
+    setShowDropdown(false)
+    setFilteredCmds([])
+    setHighlightedIndex(-1)
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (el) {
+        el.focus()
+        el.setSelectionRange(newValue.length, newValue.length)
+      }
+    })
+  }, [])
+
+  const resetHeight = useCallback(() => {
     requestAnimationFrame(() => {
       const el = textareaRef.current
       if (el) {
         el.style.height = `${MIN_TEXTAREA_HEIGHT_PX}px`
       }
     })
-  }, [value, connectionId, canSend, tabId])
+  }, [])
+
+  const handleSend = useCallback(() => {
+    const trimmed = value.trim()
+    if (!trimmed || !canSend) {
+      return
+    }
+
+    // Check for slash command
+    const slashMatch = trimmed.match(/^\/(\S+)\s*(.*)$/)
+    if (slashMatch) {
+      const [, cmdName, cmdArgs] = slashMatch
+      const cmd = findCommand(cmdName)
+      if (cmd) {
+        if (!connectionId) {
+          showErrorToast('No active connection')
+          return
+        }
+        const savedValue = value
+        cmd
+          .execute(cmdArgs, connectionId)
+          .then(() => {
+            setValue('')
+            resetHeight()
+          })
+          .catch((err: unknown) => {
+            // Restore input on failure
+            setValue(savedValue)
+            logFrontend(
+              'warn',
+              `[AiChatInput] slash command /${cmdName} rejected: ${err instanceof Error ? err.message : String(err)}`
+            )
+          })
+        return
+      }
+    }
+
+    if (!connectionId) {
+      return
+    }
+
+    useAiStore.getState().sendMessage(tabId, connectionId, trimmed, {})
+    setValue('')
+    resetHeight()
+  }, [value, connectionId, canSend, tabId, resetHeight])
 
   const handleCancel = useCallback(() => {
     useAiStore.getState().cancelStream(tabId)
@@ -110,12 +191,39 @@ export function AiChatInput({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (showDropdown) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setHighlightedIndex((prev) => (prev < filteredCmds.length - 1 ? prev + 1 : 0))
+          return
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filteredCmds.length - 1))
+          return
+        }
+        if (e.key === 'Enter' && !e.shiftKey && highlightedIndex >= 0) {
+          e.preventDefault()
+          selectCommand(filteredCmds[highlightedIndex])
+          return
+        }
+        if (e.key === 'Tab' && highlightedIndex >= 0) {
+          e.preventDefault()
+          selectCommand(filteredCmds[highlightedIndex])
+          return
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setShowDropdown(false)
+          return
+        }
+      }
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
         handleSend()
       }
     },
-    [handleSend]
+    [showDropdown, filteredCmds, highlightedIndex, selectCommand, handleSend]
   )
 
   const handleRemoveContext = useCallback(() => {
@@ -125,6 +233,14 @@ export function AiChatInput({
   return (
     <div className={styles.container} data-testid="ai-chat-input">
       <div className={styles.textareaWrapper}>
+        {showDropdown && (
+          <SlashCommandDropdown
+            commands={filteredCmds}
+            highlightedIndex={highlightedIndex}
+            onSelect={selectCommand}
+            onHighlightChange={setHighlightedIndex}
+          />
+        )}
         {attachedContext && (
           <div className={styles.contextChip} data-testid="ai-context-chip">
             <span className={styles.contextChipText} title={attachedContext.sql}>
@@ -149,8 +265,16 @@ export function AiChatInput({
           variant="bare"
           className={styles.textarea}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={handleChange}
           onKeyDown={handleKeyDown}
+          role={showDropdown ? 'combobox' : undefined}
+          aria-expanded={showDropdown ? true : undefined}
+          aria-controls={showDropdown ? 'slash-command-listbox' : undefined}
+          aria-activedescendant={
+            showDropdown && highlightedIndex >= 0
+              ? `slash-cmd-${filteredCmds[highlightedIndex]?.name}`
+              : undefined
+          }
           placeholder={
             externalPlaceholder
               ? externalPlaceholder

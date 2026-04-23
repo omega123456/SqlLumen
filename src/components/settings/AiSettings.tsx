@@ -11,6 +11,7 @@ import { listAiModels } from '../../lib/ai-commands'
 import type { AiModelInfo } from '../../lib/ai-commands'
 import { ChatCircleText, Database, Check } from '@phosphor-icons/react'
 import type { Icon } from '@phosphor-icons/react'
+import { AiMemoriesSettings } from './AiMemoriesSettings'
 import styles from './AiSettings.module.css'
 
 // ---------------------------------------------------------------------------
@@ -495,6 +496,8 @@ export function AiSettings() {
           ))}
         </SettingsSection>
       </div>
+
+      <AiMemoriesSettings />
 
       <ConfirmDialog
         isOpen={reindexConfirmOpen}

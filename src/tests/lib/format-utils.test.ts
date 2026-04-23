@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { formatTableTimestamp, formatShortDate } from '../../lib/format-utils'
+import {
+  formatTableTimestamp,
+  formatShortDate,
+  formatFromEpochSeconds,
+} from '../../lib/format-utils'
 
 describe('formatTableTimestamp', () => {
   it('formats a valid ISO timestamp', () => {
@@ -58,6 +62,31 @@ describe('formatShortDate', () => {
     })
     try {
       expect(formatShortDate('bad-input')).toBe('bad-input')
+    } finally {
+      vi.mocked(globalThis.Date).mockRestore()
+    }
+  })
+})
+
+describe('formatFromEpochSeconds', () => {
+  it('formats a valid epoch-seconds timestamp', () => {
+    const result = formatFromEpochSeconds(1750000000)
+    expect(result).toBeTruthy()
+    expect(result).toContain('2025')
+  })
+
+  it('formats epoch zero', () => {
+    const result = formatFromEpochSeconds(0)
+    expect(result).toBeTruthy()
+    expect(result).toContain('1970')
+  })
+
+  it('returns string of number when Date constructor throws', () => {
+    vi.spyOn(globalThis, 'Date').mockImplementation(() => {
+      throw new RangeError('Invalid time value')
+    })
+    try {
+      expect(formatFromEpochSeconds(12345)).toBe('12345')
     } finally {
       vi.mocked(globalThis.Date).mockRestore()
     }

@@ -241,7 +241,7 @@ describe('AiSettings', () => {
     const maxTokensInput = screen.getByTestId('settings-ai-max-tokens') as HTMLInputElement
 
     expect(tempInput.value).toBe('0.3')
-    expect(maxTokensInput.value).toBe('2048')
+    expect(maxTokensInput.value).toBe('32000')
   })
 
   it('reset section restores AI defaults', () => {
@@ -267,7 +267,7 @@ describe('AiSettings', () => {
     expect(state.pendingChanges['ai.model']).toBe('')
     expect(state.pendingChanges['ai.embeddingModel']).toBe('')
     expect(state.pendingChanges['ai.temperature']).toBe('0.3')
-    expect(state.pendingChanges['ai.maxTokens']).toBe('2048')
+    expect(state.pendingChanges['ai.maxTokens']).toBe('32000')
     expect(state.isDirty).toBe(true)
   })
 

@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react'
 import { useAiStore, extractTablesFromSql } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useAiFeedbackStore } from '../../stores/ai-feedback-store'
+import { useAiMemoryStore } from '../../stores/ai-memory-store'
+import { useConnectionStore } from '../../stores/connection-store'
 import { AiPanelHeader } from './AiPanelHeader'
 import { AiChatMessages } from './AiChatMessages'
 import { AiChatInput } from './AiChatInput'
@@ -25,6 +27,13 @@ export interface AiPanelProps {
 export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
   const [suggestionText, setSuggestionText] = useState<string | undefined>(undefined)
   const isWaitingForIndex = useAiStore((s) => s.tabs[tabId]?.isWaitingForIndex ?? false)
+  const profileId = useConnectionStore(
+    (s) => (connectionId ? s.activeConnections[connectionId]?.profile?.id : undefined) ?? null
+  )
+  const reembedStatus = useAiMemoryStore((s) =>
+    profileId ? s.reembedStatus[profileId] : undefined
+  )
+  const isReembedding = reembedStatus?.status === 'running'
 
   const aiEnabled = useSettingsStore(
     (s) => (s.pendingChanges['ai.enabled'] ?? s.settings['ai.enabled'] ?? 'false') === 'true'
@@ -81,6 +90,11 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
       {isWaitingForIndex && (
         <div className={styles.indexWaiting} data-testid="ai-index-waiting">
           Waiting for schema index...
+        </div>
+      )}
+      {isReembedding && reembedStatus && reembedStatus.total > 0 && (
+        <div className={styles.indexWaiting} data-testid="ai-memory-reembed-banner">
+          Re-embedding memories... {reembedStatus.done}/{reembedStatus.total}
         </div>
       )}
       <AiChatMessages

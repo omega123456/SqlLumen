@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { AiPanel } from '../../../components/ai-panel/AiPanel'
 import { useAiStore } from '../../../stores/ai-store'
 import type { TabAiState } from '../../../stores/ai-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
+import { useAiMemoryStore } from '../../../stores/ai-memory-store'
+import { useConnectionStore } from '../../../stores/connection-store'
 
 function setupMockIPC() {
   mockIPC((cmd) => {
@@ -344,5 +346,75 @@ describe('AiPanel — setup required state', () => {
       expect(screen.queryByTestId('ai-setup-required')).not.toBeInTheDocument()
     })
     expect(screen.getByTestId('ai-chat-messages')).toBeInTheDocument()
+  })
+})
+
+describe('AiPanel — re-embedding banner', () => {
+  beforeEach(() => {
+    // Set up connection store so conn-1 session maps to profile-1
+    useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: {
+            id: 'profile-1',
+            name: 'Test',
+            host: 'localhost',
+            port: 3306,
+            username: 'root',
+            defaultDatabase: '',
+            color: null,
+            group: null,
+          } as never,
+          sessionDatabase: 'testdb',
+          serverVersion: '8.0',
+        } as never,
+      },
+    })
+  })
+
+  it('does not show re-embedding banner when status is idle', () => {
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.queryByTestId('ai-memory-reembed-banner')).not.toBeInTheDocument()
+  })
+
+  it('shows re-embedding banner when status is running', () => {
+    act(() => {
+      useAiMemoryStore.setState({
+        reembedStatus: {
+          'profile-1': { status: 'running', done: 3, total: 10 },
+        },
+      })
+    })
+
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    const banner = screen.getByTestId('ai-memory-reembed-banner')
+    expect(banner).toBeInTheDocument()
+    expect(banner.textContent).toContain('3/10')
+  })
+
+  it('banner disappears when status returns to idle', async () => {
+    act(() => {
+      useAiMemoryStore.setState({
+        reembedStatus: {
+          'profile-1': { status: 'running', done: 5, total: 5 },
+        },
+      })
+    })
+
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('ai-memory-reembed-banner')).toBeInTheDocument()
+
+    act(() => {
+      useAiMemoryStore.setState({
+        reembedStatus: {
+          'profile-1': { status: 'idle', done: 0, total: 0 },
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('ai-memory-reembed-banner')).not.toBeInTheDocument()
+    })
   })
 })

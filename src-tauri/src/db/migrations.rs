@@ -36,6 +36,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "008_schema_index_segment_df",
         include_str!("../../migrations/008_schema_index_segment_df.sql"),
     ),
+    (
+        "009_ai_memory",
+        include_str!("../../migrations/009_ai_memory.sql"),
+    ),
 ];
 
 /// Run all pending migrations on the given connection.

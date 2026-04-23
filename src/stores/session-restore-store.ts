@@ -18,6 +18,7 @@ import type {
   SessionTabState,
 } from '../lib/session-restore-commands'
 import { saveSessionState, loadSessionState } from '../lib/session-restore-commands'
+import { hasTauriApis } from '../lib/tauri-env'
 import type { WorkspaceTab } from '../types/schema'
 
 export const SESSION_AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000
@@ -430,17 +431,6 @@ async function restoreConnectionTabs(
 // Close handler registration
 // ---------------------------------------------------------------------------
 
-/** Tauri's window APIs require injected internals; absent in jsdom / Vitest / plain Vite. */
-function canUseTauriWindow(): boolean {
-  if (typeof window === 'undefined') {
-    return false
-  }
-  return (
-    '__TAURI_INTERNALS__' in window &&
-    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ != null
-  )
-}
-
 function registerAutoSaveInterval(): void {
   if (typeof window === 'undefined' || autoSaveIntervalId != null) {
     return
@@ -476,7 +466,7 @@ export function _setLoadTauriWindowApiForTests(loader: LoadTauriWindowApi): void
  * environments without Tauri internals (Vitest, plain Vite).
  */
 export async function registerCloseHandler(): Promise<void> {
-  if (!canUseTauriWindow()) {
+  if (!hasTauriApis()) {
     return
   }
 

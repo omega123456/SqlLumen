@@ -1,0 +1,29 @@
+[[permission]]
+identifier = "allow-save-memory"
+description = "Enables the save_memory command."
+commands.allow = ["save_memory"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-list-memories"
+description = "Enables the list_memories command."
+commands.allow = ["list_memories"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-delete-memory"
+description = "Enables the delete_memory command."
+commands.allow = ["delete_memory"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-search-memories"
+description = "Enables the search_memories command."
+commands.allow = ["search_memories"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-reembed-memories"
+description = "Enables the reembed_memories command."
+commands.allow = ["reembed_memories"]
+commands.deny = []

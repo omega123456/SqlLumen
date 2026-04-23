@@ -24,3 +24,16 @@ export function formatShortDate(iso: string): string {
     return iso
   }
 }
+
+/** Formats a Unix epoch-seconds timestamp as a short date with year (e.g., "Jun 15, 2025"). */
+export function formatFromEpochSeconds(ts: number): string {
+  try {
+    return new Date(ts * 1000).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  } catch {
+    return String(ts)
+  }
+}

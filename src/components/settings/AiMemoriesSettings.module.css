@@ -1,0 +1,72 @@
+/* AiMemoriesSettings — memory management per connection */
+
+.emptyState {
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+  text-align: center;
+  padding: 24px 16px;
+}
+
+.accordion {
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md, 6px);
+  overflow: hidden;
+}
+
+.accordion + .accordion {
+  margin-top: 8px;
+}
+
+.accordionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  cursor: pointer;
+  background: var(--surface-secondary, var(--surface));
+  border: none;
+  width: 100%;
+  font-size: var(--type-size-sm);
+  font-family: var(--font-body);
+  color: var(--on-surface);
+  user-select: none;
+}
+
+.accordionHeader:hover {
+  background: var(--surface-hover, var(--surface-secondary));
+}
+
+.accordionBody {
+  border-top: 1px solid var(--outline-variant);
+  padding: 8px 0;
+}
+
+.memoryItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 14px;
+}
+
+.memoryContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.memoryText {
+  font-size: var(--type-size-sm);
+  color: var(--on-surface);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.memoryDate {
+  font-size: var(--type-size-xs, 11px);
+  color: var(--on-surface-variant);
+  margin-top: 2px;
+}
+
+.memoryActions {
+  flex-shrink: 0;
+  padding-top: 2px;
+}

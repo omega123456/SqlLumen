@@ -2381,6 +2381,222 @@ for (const theme of themes) {
       })
     })
 
+    test('AI panel — slash command dropdown', async ({ page }) => {
+      await openQueryEditorTab(page)
+      await enableAiViaStore(page)
+      await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('ai-sidebar-expand').click()
+      await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Type "/" into the chat input to trigger slash command dropdown
+      const textarea = page.getByTestId('ai-chat-textarea')
+      await textarea.fill('/')
+
+      // Wait for slash command dropdown to appear
+      await expect(page.getByTestId('slash-command-dropdown')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('ai-panel')).toHaveScreenshot(
+        `ai-panel-slash-command-dropdown-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('AI panel — re-embedding progress banner', async ({ page }) => {
+      await openQueryEditorTab(page)
+      await enableAiViaStore(page)
+      await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('ai-sidebar-expand').click()
+      await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Inject re-embedding status into the ai-memory store
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__aiMemoryStore__ as {
+          setState: (
+            updater: (state: {
+              reembedStatus: Record<string, { status: string; done: number; total: number }>
+            }) => Record<string, unknown>
+          ) => void
+        }
+        store.setState((state) => ({
+          reembedStatus: {
+            ...state.reembedStatus,
+            'conn-playwright-1': { status: 'running', done: 3, total: 8 },
+          },
+        }))
+      })
+
+      await expect(page.getByTestId('ai-memory-reembed-banner')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('ai-panel')).toHaveScreenshot(
+        `ai-panel-reembed-progress-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('SettingsDialog — AI Memories section (with memories)', async ({ page }) => {
+      // Set up mock memories data before opening settings
+      await page.evaluate(() => {
+        ;(window as unknown as Record<string, unknown>).__mockMemoriesData__ = [
+          {
+            id: 1,
+            connectionId: 'conn-playwright-1',
+            content: 'The users table uses soft deletes via the deleted_at column',
+            createdAt: 1704067200,
+            source: 'manual',
+          },
+          {
+            id: 2,
+            connectionId: 'conn-playwright-1',
+            content: 'Always use UTC timestamps for created_at and updated_at',
+            createdAt: 1704153600,
+            source: 'manual',
+          },
+        ]
+        // Ensure savedConnections is populated so AiMemoriesSettings can find profiles
+        const connStore = (window as unknown as Record<string, unknown>).__connectionStore__ as {
+          setState: (partial: Record<string, unknown>) => void
+        }
+        connStore.setState({
+          savedConnections: [
+            {
+              id: 'conn-playwright-1',
+              name: 'Sample MySQL',
+              host: '127.0.0.1',
+              port: 3306,
+              username: 'appuser',
+              hasPassword: true,
+              defaultDatabase: 'ecommerce_db',
+              sslEnabled: false,
+              sslCaPath: null,
+              sslCertPath: null,
+              sslKeyPath: null,
+              color: '#2563eb',
+              groupId: null,
+              readOnly: false,
+              sortOrder: 0,
+              connectTimeoutSecs: 10,
+              keepaliveIntervalSecs: 60,
+              createdAt: '2025-01-01T00:00:00.000Z',
+              updatedAt: '2025-01-01T00:00:00.000Z',
+            },
+          ],
+        })
+      })
+
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-ai').click()
+      await expect(page.getByTestId('settings-ai')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Enable AI so the memories section renders
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__settingsStore__ as {
+          setState: (
+            updater: (state: {
+              settings: Record<string, string>
+              pendingChanges: Record<string, string>
+            }) => Record<string, unknown>
+          ) => void
+        }
+        store.setState((state) => ({
+          settings: {
+            ...state.settings,
+            'ai.enabled': 'true',
+            'ai.endpoint': 'http://localhost:11434/v1',
+            'ai.model': 'codellama',
+            'ai.embeddingModel': 'nomic-embed-text',
+          },
+          pendingChanges: {},
+        }))
+      })
+
+      // Wait for the memories settings section to load
+      await expect(page.getByTestId('ai-memories-settings')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Expand the connection accordion to show memories
+      const accordionBtn = page
+        .getByTestId('ai-memories-settings')
+        .locator('button')
+        .filter({ hasText: 'Sample MySQL' })
+      await expect(accordionBtn).toBeVisible({ timeout: APP_READY_MS })
+      await accordionBtn.click()
+
+      // Wait for memory items to be visible
+      await expect(page.getByTestId('ai-memory-item-1')).toBeVisible({ timeout: APP_READY_MS })
+
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
+        `settings-dialog-ai-memories-${theme}.png`,
+        { animations: 'disabled' }
+      )
+
+      // Clean up
+      await page.evaluate(() => {
+        delete (window as unknown as Record<string, unknown>).__mockMemoriesData__
+      })
+    })
+
+    test('SettingsDialog — AI Memories section (empty state)', async ({ page }) => {
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-ai').click()
+      await expect(page.getByTestId('settings-ai')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Enable AI so the memories section renders
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__settingsStore__ as {
+          setState: (
+            updater: (state: {
+              settings: Record<string, string>
+              pendingChanges: Record<string, string>
+            }) => Record<string, unknown>
+          ) => void
+        }
+        store.setState((state) => ({
+          settings: {
+            ...state.settings,
+            'ai.enabled': 'true',
+            'ai.endpoint': 'http://localhost:11434/v1',
+            'ai.model': 'codellama',
+            'ai.embeddingModel': 'nomic-embed-text',
+          },
+          pendingChanges: {},
+        }))
+      })
+
+      // Wait for the memories settings section with empty state
+      await expect(page.getByTestId('ai-memories-settings')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('ai-memories-empty-state')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
+        `settings-dialog-ai-memories-empty-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('AI workspace rail — visible when AI enabled', async ({ page }) => {
       await openQueryEditorTab(page)
       await enableAiViaStore(page)

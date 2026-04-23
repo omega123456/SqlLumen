@@ -1695,6 +1695,32 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'list_indexed_tables':
       return []
 
+    // --- AI Memory commands ---
+    case 'save_memory':
+      return {
+        id: 1,
+        connectionId: 'conn-playwright-1',
+        content: String((args as Record<string, unknown>)?.content ?? ''),
+        createdAt: Math.floor(Date.now() / 1000),
+        source: 'manual',
+      }
+    case 'list_memories': {
+      // Support mock memories override for screenshots
+      if (
+        typeof window !== 'undefined' &&
+        (window as unknown as Record<string, unknown>).__mockMemoriesData__
+      ) {
+        return (window as unknown as Record<string, unknown>).__mockMemoriesData__
+      }
+      return []
+    }
+    case 'delete_memory':
+      return null
+    case 'search_memories':
+      return []
+    case 'reembed_memories':
+      return null
+
     default:
       return null
   }

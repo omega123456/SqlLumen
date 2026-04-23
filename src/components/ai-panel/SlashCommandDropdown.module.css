@@ -1,0 +1,51 @@
+.dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: 100%;
+  min-width: 200px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 10;
+  margin-bottom: var(--space-xs);
+  padding: var(--space-sm) 0;
+  background: var(--ui-dropdown-panel-bg);
+  border-radius: var(--ui-dropdown-panel-radius);
+  box-shadow: var(--ui-dropdown-panel-shadow);
+  backdrop-filter: var(--ui-dropdown-panel-backdrop-filter);
+  opacity: 1;
+  animation: fadeIn 100ms ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+}
+
+.item:hover,
+.itemHighlighted {
+  background: var(--ui-dropdown-option-hover-bg);
+}
+
+.commandName {
+  font-weight: 600;
+  color: var(--on-surface);
+  font-size: var(--type-size-md);
+}
+
+.commandDescription {
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-meta);
+}

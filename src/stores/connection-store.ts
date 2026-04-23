@@ -24,19 +24,9 @@ import { useProcessListStore } from './processlist-store'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { invalidateCache } from '../components/query-editor/schema-metadata-cache'
 import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
+import { hasTauriApis } from '../lib/tauri-env'
 
 let listenersSetup = false
-
-/** Tauri’s `listen()` requires injected internals; absent in jsdom / Vitest / plain Vite. */
-function canUseTauriEventListen(): boolean {
-  if (typeof window === 'undefined') {
-    return false
-  }
-  return (
-    '__TAURI_INTERNALS__' in window &&
-    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ != null
-  )
-}
 
 /** Reset the listeners flag — for testing only */
 export function _resetListenersSetup() {
@@ -379,7 +369,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     if (listenersSetup) return undefined
     listenersSetup = true
 
-    if (!canUseTauriEventListen()) {
+    if (!hasTauriApis()) {
       return undefined
     }
 

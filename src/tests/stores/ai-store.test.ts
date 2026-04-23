@@ -62,6 +62,12 @@ vi.mock('../../lib/schema-index-commands', () => ({
   listIndexedTables: vi.fn().mockResolvedValue([]),
 }))
 
+const mockSearchMemories = vi.fn().mockResolvedValue([])
+
+vi.mock('../../lib/ai-memory-commands', () => ({
+  searchMemories: (...args: unknown[]) => mockSearchMemories(...args),
+}))
+
 let mockIndexStatus: {
   status: string
   tablesDone: number
@@ -145,6 +151,7 @@ beforeEach(() => {
     tablesTotal: 0,
     lastBuildTimestamp: Date.now(),
   }
+  mockSearchMemories.mockResolvedValue([])
 
   mockIPC((cmd) => {
     if (cmd === 'log_frontend') return undefined
@@ -158,6 +165,7 @@ beforeEach(() => {
     if (cmd === 'get_index_status') return { status: 'ready' }
     if (cmd === 'invalidate_schema_index') return undefined
     if (cmd === 'list_indexed_tables') return []
+    if (cmd === 'search_memories') return []
     if (cmd === 'ai_query_expand')
       return {
         text: '{"queries":["search query 1","search query 2","search query 3"],"hypotheticalSql":"SELECT * FROM users","entities":["users","orders"],"joins":["users → orders"],"metrics":["count"]}',
@@ -2089,6 +2097,174 @@ describe('useAiStore', () => {
       })
 
       expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('memory retrieval integration', () => {
+    it('calls searchMemories before query expansion', async () => {
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 1,
+          connectionId: 'conn-1',
+          content: 'Users table has email column',
+          createdAt: 1000,
+          source: 'manual',
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-mem', 'conn-1', 'Show users', {})
+
+      await vi.waitFor(() => {
+        expect(mockSearchMemories).toHaveBeenCalledTimes(1)
+      })
+
+      expect(mockSearchMemories).toHaveBeenCalledWith({
+        sessionId: 'conn-1',
+        query: 'Show users',
+        k: 5,
+      })
+
+      await vi.waitFor(() => {
+        expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
+      })
+
+      // Memory should be called before expansion
+      const memoryCallOrder = mockSearchMemories.mock.invocationCallOrder[0]
+      const expandCallOrder = mockAiQueryExpand.mock.invocationCallOrder[0]
+      expect(memoryCallOrder).toBeLessThan(expandCallOrder)
+    })
+
+    it('includes memory content in system prompt as User Notes block', async () => {
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 1,
+          connectionId: 'conn-1',
+          content: 'The users table stores customer data',
+          createdAt: 1000,
+          source: 'manual',
+        },
+        {
+          id: 2,
+          connectionId: 'conn-1',
+          content: 'Orders use soft deletes',
+          createdAt: 2000,
+          source: 'manual',
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-mem-prompt', 'conn-1', 'Show users', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const tab = getTab('tab-mem-prompt')!
+      const systemMsg = tab.messages.find((m) => m.role === 'system')
+      expect(systemMsg).toBeDefined()
+      expect(systemMsg!.content).toContain('## User Notes (from memory)')
+      expect(systemMsg!.content).toContain('- The users table stores customer data')
+      expect(systemMsg!.content).toContain('- Orders use soft deletes')
+    })
+
+    it('memory text appears before schema DDL in system prompt', async () => {
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 1,
+          connectionId: 'conn-1',
+          content: 'Note about users',
+          createdAt: 1000,
+          source: 'manual',
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-mem-order', 'conn-1', 'Show users', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const tab = getTab('tab-mem-order')!
+      const systemMsg = tab.messages.find((m) => m.role === 'system')!
+      const memoryIdx = systemMsg.content.indexOf('## User Notes (from memory)')
+      const schemaIdx = systemMsg.content.indexOf('Database schema:')
+      expect(memoryIdx).toBeGreaterThan(-1)
+      expect(schemaIdx).toBeGreaterThan(-1)
+      expect(memoryIdx).toBeLessThan(schemaIdx)
+    })
+
+    it('failed memory retrieval does not prevent message sending', async () => {
+      mockSearchMemories.mockRejectedValueOnce(new Error('Memory search failed'))
+
+      useAiStore.getState().sendMessage('tab-mem-fail', 'conn-1', 'Show users', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      // Should still work, just without memory
+      const tab = getTab('tab-mem-fail')!
+      const systemMsg = tab.messages.find((m) => m.role === 'system')
+      expect(systemMsg).toBeDefined()
+      expect(systemMsg!.content).not.toContain('## User Notes (from memory)')
+    })
+
+    it('no memory section when no memories exist', async () => {
+      mockSearchMemories.mockResolvedValueOnce([])
+
+      useAiStore.getState().sendMessage('tab-mem-empty', 'conn-1', 'Show users', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const tab = getTab('tab-mem-empty')!
+      const systemMsg = tab.messages.find((m) => m.role === 'system')
+      expect(systemMsg).toBeDefined()
+      expect(systemMsg!.content).not.toContain('## User Notes (from memory)')
+    })
+
+    it('memory text is not stored in retrievedSchemaDdl', async () => {
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 1,
+          connectionId: 'conn-1',
+          content: 'Important note',
+          createdAt: 1000,
+          source: 'manual',
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-mem-cache', 'conn-1', 'Show users', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const tab = getTab('tab-mem-cache')!
+      expect(tab.retrievedSchemaDdl).not.toContain('User Notes')
+      expect(tab.retrievedSchemaDdl).not.toContain('Important note')
+    })
+
+    it('augments query expansion context with memory content', async () => {
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 1,
+          connectionId: 'conn-1',
+          content: 'Customers are in the crm database',
+          createdAt: 1000,
+          source: 'manual',
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-mem-expand', 'conn-1', 'Show customers', {})
+
+      await vi.waitFor(() => {
+        expect(mockAiQueryExpand).toHaveBeenCalledTimes(1)
+      })
+
+      const expandCall = mockAiQueryExpand.mock.calls[0][0]
+      expect(expandCall.conversationContext).toContain('User notes:')
+      expect(expandCall.conversationContext).toContain('Customers are in the crm database')
     })
   })
 })

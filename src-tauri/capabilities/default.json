@@ -96,6 +96,11 @@
     "dialog:allow-save",
     "dialog:allow-open",
     "allow-get-processlist",
-    "allow-kill-queries"
+    "allow-kill-queries",
+    "allow-save-memory",
+    "allow-list-memories",
+    "allow-delete-memory",
+    "allow-search-memories",
+    "allow-reembed-memories"
   ]
 }

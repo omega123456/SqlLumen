@@ -359,7 +359,7 @@ describe('useSettingsStore', () => {
       expect(SETTINGS_DEFAULTS['ai.retrieval.fkFanoutCap']).toBe('30')
       expect(SETTINGS_DEFAULTS['ai.retrieval.lexicalWeight']).toBe('0.2')
       expect(SETTINGS_DEFAULTS['ai.retrieval.rerankEnabled']).toBe('false')
-      expect(SETTINGS_DEFAULTS['ai.retrieval.tokenBudget']).toBe('6000')
+      expect(SETTINGS_DEFAULTS['ai.retrieval.tokenBudget']).toBe('30000')
       expect(SETTINGS_DEFAULTS['ai.retrieval.embedRichText']).toBe('true')
       expect(SETTINGS_DEFAULTS['ai.retrieval.hydeEnabled']).toBe('true')
       expect(SETTINGS_DEFAULTS['ai.retrieval.expansionMaxQueries']).toBe('8')
@@ -368,7 +368,7 @@ describe('useSettingsStore', () => {
     it('getSetting returns defaults for ai.retrieval.* keys when not set', () => {
       const { getSetting } = useSettingsStore.getState()
       expect(getSetting('ai.retrieval.topKPerQuery')).toBe('20')
-      expect(getSetting('ai.retrieval.tokenBudget')).toBe('6000')
+      expect(getSetting('ai.retrieval.tokenBudget')).toBe('30000')
       expect(getSetting('ai.retrieval.rerankEnabled')).toBe('false')
     })
 

@@ -9,6 +9,7 @@ import {
 } from '../lib/schema-index-commands'
 import { logFrontend } from '../lib/app-log-commands'
 import { useSettingsStore } from './settings-store'
+import { hasTauriApis } from '../lib/tauri-env'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,19 +70,6 @@ function createDefaultConnectionIndexState(): ConnectionIndexState {
 }
 
 // ---------------------------------------------------------------------------
-// Tauri event listener detection
-// ---------------------------------------------------------------------------
-
-/** Tauri's `listen()` requires injected internals; absent in jsdom / Vitest / plain Vite. */
-function canUseTauriEventListen(): boolean {
-  if (typeof window === 'undefined') return false
-  return (
-    '__TAURI_INTERNALS__' in window &&
-    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ != null
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Shared helper for event handlers
 // ---------------------------------------------------------------------------
 
@@ -114,7 +102,7 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
   let listenersInitialized = false
 
   function initEventListeners(): void {
-    if (listenersInitialized || !canUseTauriEventListen()) return
+    if (listenersInitialized || !hasTauriApis()) return
     listenersInitialized = true
 
     listen<{

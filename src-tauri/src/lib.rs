@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod ai_memory;
 pub mod commands;
 pub mod credentials;
 pub mod db;
@@ -307,6 +308,11 @@ pub fn run() {
             commands::schema_index::list_indexed_tables,
             commands::processlist::get_processlist,
             commands::processlist::kill_queries,
+            commands::ai_memory::save_memory,
+            commands::ai_memory::list_memories,
+            commands::ai_memory::delete_memory,
+            commands::ai_memory::search_memories,
+            commands::ai_memory::reembed_memories,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
