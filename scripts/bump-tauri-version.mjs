@@ -7,6 +7,7 @@ import * as readline from 'node:readline/promises'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..')
 const tauriConfPath = path.join(repoRoot, 'src-tauri', 'tauri.conf.json')
+const cargoTomlPath = path.join(repoRoot, 'src-tauri', 'Cargo.toml')
 const releaseBodyRelative = '.github/tauri-release-body.md'
 const releaseBodyPath = path.join(repoRoot, releaseBodyRelative)
 
@@ -24,6 +25,53 @@ function parseSemver(s) {
 
 function versionToGitTag(version) {
   return `v${version}`
+}
+
+/** @returns {string | null} */
+function getCargoPackageVersion(cargoTomlText) {
+  const lines = cargoTomlText.split(/\r?\n/)
+  let inPackage = false
+  for (const line of lines) {
+    const sec = /^\s*\[([^\]]+)\]\s*$/.exec(line)
+    if (sec) {
+      inPackage = sec[1].trim() === 'package'
+      continue
+    }
+    if (inPackage) {
+      const m = /^\s*version\s*=\s*"([^"]*)"/.exec(line)
+      if (m) {
+        return m[1]
+      }
+    }
+  }
+  return null
+}
+
+/** @returns {string} */
+function setCargoPackageVersion(cargoTomlText, newVersion) {
+  const lines = cargoTomlText.split(/\r?\n/)
+  const eol = cargoTomlText.includes('\r\n') ? '\r\n' : '\n'
+  let inPackage = false
+  let replaced = false
+  const out = []
+  for (const line of lines) {
+    const sec = /^\s*\[([^\]]+)\]\s*$/.exec(line)
+    if (sec) {
+      inPackage = sec[1].trim() === 'package'
+      out.push(line)
+      continue
+    }
+    if (inPackage && /^\s*version\s*=\s*"/.test(line)) {
+      out.push(line.replace(/^(\s*version\s*=\s*")[^"]*(".*)$/, `$1${newVersion}$2`))
+      replaced = true
+      continue
+    }
+    out.push(line)
+  }
+  if (!replaced) {
+    throw new Error(`Could not find [package] version = "..." in ${cargoTomlPath}`)
+  }
+  return out.join(eol)
 }
 
 function bumpSemver(current, kind) {
@@ -110,6 +158,26 @@ async function main() {
     process.exit(1)
   }
 
+  let cargoRaw
+  try {
+    cargoRaw = readFileSync(cargoTomlPath, 'utf8')
+  } catch {
+    console.error(`[bump-tauri-version] Could not read ${cargoTomlPath}`)
+    process.exit(1)
+  }
+  const cargoPkgVersion = getCargoPackageVersion(cargoRaw)
+  if (!cargoPkgVersion) {
+    console.error(
+      `[bump-tauri-version] Missing [package] version = "..." in ${path.relative(repoRoot, cargoTomlPath)}`
+    )
+    process.exit(1)
+  }
+  if (cargoPkgVersion !== current) {
+    console.warn(
+      `[bump-tauri-version] Note: Cargo.toml [package] version is "${cargoPkgVersion}" but tauri.conf.json is "${current}". Both will be set to the new version.`
+    )
+  }
+
   let releaseBodyPreviousRaw = null
   let releaseBodyPreviousExisted = false
   try {
@@ -124,6 +192,7 @@ async function main() {
 
   try {
     console.log(`Current version in src-tauri/tauri.conf.json: ${current}`)
+    console.log(`Current [package] version in src-tauri/Cargo.toml: ${cargoPkgVersion}`)
     console.log('')
     console.log('How much to bump?')
     console.log('  1 = major (X.0.0)')
@@ -167,10 +236,13 @@ async function main() {
     const releaseNotes = await readReleaseNotes(rl)
 
     conf.version = next
+    const cargoUpdated = setCargoPackageVersion(cargoRaw, next)
     writeFileSync(tauriConfPath, `${JSON.stringify(conf, null, 2)}\n`, 'utf8')
+    writeFileSync(cargoTomlPath, cargoUpdated, 'utf8')
     writeFileSync(releaseBodyPath, `${releaseNotes}\n`, 'utf8')
     console.log('')
     console.log(`Updated ${path.relative(repoRoot, tauriConfPath)} to ${next}.`)
+    console.log(`Updated ${path.relative(repoRoot, cargoTomlPath)} [package] version to ${next}.`)
     console.log(`Updated ${releaseBodyRelative} for GitHub Actions release body.`)
 
     console.log('')
@@ -179,6 +251,7 @@ async function main() {
       runProductionBuild()
     } catch {
       writeFileSync(tauriConfPath, raw, 'utf8')
+      writeFileSync(cargoTomlPath, cargoRaw, 'utf8')
       if (releaseBodyPreviousExisted && releaseBodyPreviousRaw !== null) {
         writeFileSync(releaseBodyPath, releaseBodyPreviousRaw, 'utf8')
       } else {
@@ -189,12 +262,12 @@ async function main() {
         }
       }
       console.error(
-        '[bump-tauri-version] Build failed; restored previous tauri.conf.json and release body file. No commit, tag, or push.'
+        '[bump-tauri-version] Build failed; restored previous tauri.conf.json, Cargo.toml, and release body file. No commit, tag, or push.'
       )
       process.exit(1)
     }
 
-    runGit(['add', 'src-tauri/tauri.conf.json', releaseBodyRelative])
+    runGit(['add', 'src-tauri/tauri.conf.json', 'src-tauri/Cargo.toml', releaseBodyRelative])
     runGit(['commit', '-m', `chore: bump version to ${next}`])
     runGit(['tag', gitTag])
     console.log(`Created tag ${gitTag}.`)
