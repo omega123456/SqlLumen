@@ -1603,7 +1603,7 @@ mod stream_integration {
     }
 
     #[tokio::test]
-    async fn responses_api_request_maps_system_role_to_developer_without_previous_response_id() {
+    async fn responses_api_request_keeps_system_role_without_previous_response_id() {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
@@ -1611,7 +1611,7 @@ mod stream_integration {
             .and(body_partial_json(serde_json::json!({
                 "input": [
                     {
-                        "role": "developer",
+                        "role": "system",
                         "content": "You are helpful"
                     },
                     {
@@ -1680,7 +1680,7 @@ mod stream_integration {
                 "previous_response_id": "resp_prev",
                 "input": [
                     {
-                        "role": "developer",
+                        "role": "system",
                         "content": "You are helpful"
                     },
                     {
@@ -1762,13 +1762,13 @@ mod stream_integration {
     }
 
     #[tokio::test]
-    async fn falls_back_to_chat_completions_when_responses_rejects_role_value() {
+    async fn falls_back_to_chat_completions_when_responses_rejects_system_role_value() {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
             .and(path("/v1/responses"))
             .respond_with(
-                ResponseTemplate::new(400).set_body_string("Invalid value for 'role': developer"),
+                ResponseTemplate::new(400).set_body_string("Invalid value for 'role': system"),
             )
             .expect(1)
             .mount(&server)

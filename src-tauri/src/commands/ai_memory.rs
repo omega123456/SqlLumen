@@ -1,6 +1,8 @@
 use std::time::Instant;
 
-use crate::ai_memory::{read_embedding_config, reembed, search, storage, types::AiMemory};
+use crate::ai_memory::{read_embedding_config, storage, types::AiMemory};
+#[cfg(not(coverage))]
+use crate::ai_memory::{reembed, search};
 use crate::schema_index::embeddings;
 use crate::state::AppState;
 use super::helpers::resolve_session_profile;

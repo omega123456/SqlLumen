@@ -32,6 +32,7 @@ export function AiChatMessages({
   const [internalSuggestion, setInternalSuggestion] = useState('')
 
   const hasAttachedContext = useAiStore((s) => s.tabs[tabId]?.attachedContext != null)
+  const visibleMessages = messages.filter((message) => !(message.role === 'system' && message.kind))
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -39,7 +40,7 @@ export function AiChatMessages({
     if (el && typeof el.scrollIntoView === 'function') {
       el.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [messages])
+  }, [visibleMessages])
 
   const handleRetry = useCallback(() => {
     if (!connectionId) return
@@ -68,13 +69,13 @@ export function AiChatMessages({
 
   // Determine which is the last assistant message for streaming indicator
   const lastAssistantIdx = (() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') return i
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      if (visibleMessages[i].role === 'assistant') return i
     }
     return -1
   })()
 
-  const showWelcome = messages.length === 0 && !error
+  const showWelcome = visibleMessages.length === 0 && !error
 
   return (
     <div
@@ -88,12 +89,12 @@ export function AiChatMessages({
 
       {error && <AiErrorBanner error={error} onRetry={connectionId ? handleRetry : undefined} />}
 
-      {messages.map((msg, idx) => {
+      {visibleMessages.map((msg, idx) => {
         const isLastAssistant = idx === lastAssistantIdx
         const isStreamingMessage = isLastAssistant && isGenerating
 
         // Spacing: 16px between different senders, 8px between same sender
-        const prevMsg = idx > 0 ? messages[idx - 1] : null
+        const prevMsg = idx > 0 ? visibleMessages[idx - 1] : null
         const sameSender = prevMsg && prevMsg.role === msg.role
         const spacingClass = sameSender ? styles.sameSenderGap : styles.differentSenderGap
 

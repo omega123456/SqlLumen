@@ -20,6 +20,7 @@ export interface AiMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: number
+  kind?: 'schema-context' | 'attached-context'
 }
 
 export interface AttachedContext {
@@ -56,10 +57,14 @@ export interface TabAiState {
   lastCompletedEndpoint: string
   /** Model used for the last reusable response chain. */
   lastCompletedModel: string
+  /** Prompt-only context signature used for the last reusable response chain. */
+  lastCompletedPromptContextSignature: string
   /** Endpoint used by the currently active AI request. */
   activeRequestEndpoint: string
   /** Model used by the currently active AI request. */
   activeRequestModel: string
+  /** Prompt-only context signature used by the currently active AI request. */
+  activeRequestPromptContextSignature: string
   /** True once the current stream has produced visible assistant output. */
   activeStreamHasAssistantOutput: boolean
   /** True while waiting for the schema index to finish building. */
@@ -90,8 +95,10 @@ function createDefaultTabAiState(): TabAiState {
     lastCompletedTransport: null,
     lastCompletedEndpoint: '',
     lastCompletedModel: '',
+    lastCompletedPromptContextSignature: '',
     activeRequestEndpoint: '',
     activeRequestModel: '',
+    activeRequestPromptContextSignature: '',
     activeStreamHasAssistantOutput: false,
     isWaitingForIndex: false,
     connectionId: null,
@@ -166,9 +173,11 @@ const AI_SYSTEM_PROMPT = `You are an expert SQL assistant integrated into a data
 - Debug SQL issues and suggest fixes
 - Answer general SQL and database questions
 
-You have access to the current database schema below. Always write SQL that is compatible with MySQL/MariaDB syntax.
+The application may inject additional hidden system messages containing relevant schema or SQL context. Treat the most recent such context as authoritative for the current turn.
 
-Use ONLY tables that appear in the retrieved schema context. Never invent, infer, assume, or reference tables that were not retrieved by semantic search.
+Always write SQL that is compatible with MySQL/MariaDB syntax.
+
+When schema context is provided, use ONLY tables that appear in that retrieved schema context. Never invent, infer, assume, or reference tables that were not retrieved by semantic search.
 
 Whenever you reference a table in generated SQL, always use its full database-qualified name (for example, \`database_name\`.\`table_name\`).
 
@@ -206,22 +215,21 @@ Output: {"queries":["customers orders LEFT JOIN last_order_date","customers tabl
 User: "What's the total revenue by product category?"
 Output: {"queries":["products categories revenue SUM price","product_categories category_name JOIN products","orders order_items products price quantity amount"],"hypotheticalSql":"SELECT pc.name, SUM(oi.price * oi.quantity) as revenue FROM \`db\`.\`product_categories\` pc JOIN \`db\`.\`products\` p ON pc.id = p.category_id JOIN \`db\`.\`order_items\` oi ON p.id = oi.product_id GROUP BY pc.name","entities":["products","product_categories","order_items","orders"],"joins":["product_categories → products","products → order_items"],"metrics":["revenue","sum","price","quantity"]}`
 
-const SCHEMA_USAGE_INSTRUCTION = `Retrieved tables only:\n- Use only tables that are present in the retrieved schema below.\n- Never make up or reference any table that is not in the retrieved schema.\n- Always use database-qualified table names in generated SQL (\`db\`.\`table\`).`
+const SCHEMA_USAGE_INSTRUCTION = `Retrieved tables only:\n- Use only tables that are present in the retrieved schema below.\n- Never make up or reference any table that is not in the retrieved schema.\n- Always use database-qualified table names in generated SQL (\`db\`.\`table\`).\n- If multiple schema-context messages exist, the most recent one overrides earlier schema context.`
 
-function buildSystemPrompt(schemaDdl: string, memoryText?: string): string {
-  const parts: string[] = [AI_SYSTEM_PROMPT]
-
+function buildSystemPrompt(memoryText?: string | null): string {
   if (memoryText) {
-    parts.push(memoryText)
+    return `${AI_SYSTEM_PROMPT}\n\n${memoryText}`
   }
+  return AI_SYSTEM_PROMPT
+}
 
-  if (schemaDdl) {
-    parts.push(
-      `${SCHEMA_USAGE_INSTRUCTION}\n\n${SCHEMA_METADATA_NOTE}\n\nDatabase schema:\n${schemaDdl}`
-    )
-  }
+function buildSchemaContextMessage(schemaDdl: string): string {
+  return `${SCHEMA_USAGE_INSTRUCTION}\n\n${SCHEMA_METADATA_NOTE}\n\nDatabase schema:\n${schemaDdl}`
+}
 
-  return parts.join('\n\n')
+function buildAttachedContextMessage(sql: string): string {
+  return `The following SQL statement is the context for this conversation:\n\n\`\`\`sql\n${sql}\n\`\`\``
 }
 
 function normaliseSchemaQueryKey(queries: string[], hints?: RetrievalHints): string {
@@ -281,7 +289,20 @@ function shouldReuseResponseChain(
     tab.lastCompletedTransport === 'responses' &&
     tab.lastCompletedSystemPrompt === systemPrompt &&
     tab.lastCompletedEndpoint === endpoint &&
-    tab.lastCompletedModel === model
+    tab.lastCompletedModel === model &&
+    tab.lastCompletedPromptContextSignature === buildPromptContextSignature(tab.messages)
+  )
+}
+
+function isPromptOnlyContextMessage(message: AiMessage): boolean {
+  return message.kind === 'schema-context' || message.kind === 'attached-context'
+}
+
+function buildPromptContextSignature(messages: AiMessage[]): string {
+  return JSON.stringify(
+    messages
+      .filter(isPromptOnlyContextMessage)
+      .map((message) => ({ role: message.role, content: message.content, kind: message.kind }))
   )
 }
 
@@ -558,7 +579,9 @@ export const useAiStore = create<AiState>()((set, get) => {
     const currentTab = get().tabs[tabId]
     if (!currentTab) return
 
-    const existingIdx = currentTab.messages.findIndex((m) => m.role === 'system')
+    const existingIdx = currentTab.messages.findIndex(
+      (m) => m.role === 'system' && !isPromptOnlyContextMessage(m)
+    )
     if (existingIdx >= 0) {
       // Update existing system message content (replace, not stack)
       const updatedMessages = [...currentTab.messages]
@@ -583,7 +606,94 @@ export const useAiStore = create<AiState>()((set, get) => {
   }
 
   function getCurrentSystemPrompt(tabId: string): string {
-    return get().tabs[tabId]?.messages.find((message) => message.role === 'system')?.content ?? ''
+    return (
+      get().tabs[tabId]?.messages.find(
+        (message) => message.role === 'system' && !isPromptOnlyContextMessage(message)
+      )?.content ?? ''
+    )
+  }
+
+  function upsertPromptOnlyContextMessages(
+    tabId: string,
+    userMessageId: string,
+    contextMessages: Array<Pick<AiMessage, 'role' | 'content' | 'kind'>>
+  ): void {
+    const currentTab = get().tabs[tabId]
+    if (!currentTab || contextMessages.length === 0) return
+
+    const nextMessages = [...currentTab.messages]
+    const userIndex = nextMessages.findIndex((message) => message.id === userMessageId)
+    if (userIndex < 0) return
+
+    let changed = false
+
+    for (const contextMessage of contextMessages) {
+      if (!contextMessage.kind) continue
+
+      const matchingIndices = nextMessages.reduce<number[]>((indices, message, index) => {
+        if (message.kind === contextMessage.kind) {
+          indices.push(index)
+        }
+        return indices
+      }, [])
+
+      const [primaryIndex, ...duplicateIndices] = matchingIndices
+
+      for (const duplicateIndex of duplicateIndices.reverse()) {
+        nextMessages.splice(duplicateIndex, 1)
+        changed = true
+      }
+
+      if (primaryIndex !== undefined) {
+        const existingMessage = nextMessages[primaryIndex]
+        if (
+          existingMessage.role === contextMessage.role &&
+          existingMessage.content === contextMessage.content
+        ) {
+          continue
+        }
+
+        nextMessages[primaryIndex] = {
+          ...existingMessage,
+          role: contextMessage.role,
+          content: contextMessage.content,
+          timestamp: Date.now(),
+          kind: contextMessage.kind,
+        }
+        changed = true
+        continue
+      }
+
+      nextMessages.splice(userIndex, 0, {
+        id: crypto.randomUUID(),
+        role: contextMessage.role,
+        content: contextMessage.content,
+        timestamp: Date.now(),
+        kind: contextMessage.kind,
+      })
+      changed = true
+    }
+
+    if (changed) {
+      patchTab(tabId, { messages: nextMessages })
+    }
+  }
+
+  function removePromptOnlyContextMessages(
+    tabId: string,
+    kinds: Array<NonNullable<AiMessage['kind']>>
+  ): void {
+    const currentTab = get().tabs[tabId]
+    if (!currentTab || kinds.length === 0) return
+
+    const kindSet = new Set(kinds)
+    const nextMessages = currentTab.messages.filter(
+      (message) => !(message.kind && kindSet.has(message.kind))
+    )
+
+    if (nextMessages.length !== currentTab.messages.length) {
+      patchTab(tabId, { messages: nextMessages })
+    }
   }
 
   function resetResponseChain(tabId: string): void {
@@ -595,6 +705,7 @@ export const useAiStore = create<AiState>()((set, get) => {
       lastCompletedTransport: null,
       lastCompletedEndpoint: '',
       lastCompletedModel: '',
+      lastCompletedPromptContextSignature: '',
     })
   }
 
@@ -735,7 +846,9 @@ export const useAiStore = create<AiState>()((set, get) => {
       let conversationContext = ''
       if (tabState) {
         const recentMessages = tabState.messages
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .filter(
+            (m) => (m.role === 'user' || m.role === 'assistant') && !isPromptOnlyContextMessage(m)
+          )
           .slice(-8) // last 4 turns = 8 messages max
           .map((m) => `${m.role}: ${m.content.slice(0, 200)}`)
         if (recentMessages.length > 0) {
@@ -1129,15 +1242,46 @@ export const useAiStore = create<AiState>()((set, get) => {
             return
           }
 
-          // Build and upsert system message with retrieved schema
+          // Keep the base system prompt stable so provider-side prefix caching can
+          // reuse the long conversation prefix across follow-up requests.
           const previousSystemPrompt = getCurrentSystemPrompt(tabId)
-          const nextSystemPrompt = buildSystemPrompt(schemaDdl, memoryText ?? undefined)
+          const nextSystemPrompt = buildSystemPrompt(memoryText)
 
           if (previousSystemPrompt && previousSystemPrompt !== nextSystemPrompt) {
             resetResponseChain(tabId)
           }
 
           upsertSystemMessage(tabId, nextSystemPrompt)
+
+          if (!schemaDdl) {
+            removePromptOnlyContextMessages(tabId, ['schema-context'])
+            resetResponseChain(tabId)
+          }
+
+          if (!attachedContext) {
+            removePromptOnlyContextMessages(tabId, ['attached-context'])
+          }
+
+          upsertPromptOnlyContextMessages(tabId, userMessage.id, [
+            ...(schemaDdl
+              ? [
+                  {
+                    role: 'system' as const,
+                    content: buildSchemaContextMessage(schemaDdl),
+                    kind: 'schema-context' as const,
+                  },
+                ]
+              : []),
+            ...(attachedContext
+              ? [
+                  {
+                    role: 'system' as const,
+                    content: buildAttachedContextMessage(attachedContext.sql),
+                    kind: 'attached-context' as const,
+                  },
+                ]
+              : []),
+          ])
 
           if (!get().tabs[tabId]) return // tab was cleaned up
 
@@ -1168,9 +1312,14 @@ export const useAiStore = create<AiState>()((set, get) => {
           const temperature = settings.temperature ?? parseFloat(getSetting('ai.temperature'))
           const maxTokens = settings.maxTokens ?? parseInt(getSetting('ai.maxTokens'), 10)
 
+          const requestPromptContextSignature = buildPromptContextSignature(
+            get().tabs[tabId]?.messages ?? []
+          )
+
           patchTab(tabId, {
             activeRequestEndpoint: endpoint,
             activeRequestModel: model,
+            activeRequestPromptContextSignature: requestPromptContextSignature,
           })
 
           // Build IPC messages from the current conversation
@@ -1181,17 +1330,6 @@ export const useAiStore = create<AiState>()((set, get) => {
             role: m.role,
             content: m.content,
           }))
-
-          // Inject attached SQL context as a separate message before the user's prompt
-          if (attachedContext) {
-            const contextMessage: IpcAiMessage = {
-              role: 'user',
-              content: `The following SQL statement is the context for this conversation:\n\n\`\`\`sql\n${attachedContext.sql}\n\`\`\``,
-            }
-            // Insert the context message just before the last user message
-            const lastUserIdx = ipcMessages.length - 1
-            ipcMessages.splice(lastUserIdx, 0, contextMessage)
-          }
 
           // Start the stream
           await sendAiChat({
@@ -1250,8 +1388,10 @@ export const useAiStore = create<AiState>()((set, get) => {
         lastCompletedTransport: null,
         lastCompletedEndpoint: '',
         lastCompletedModel: '',
+        lastCompletedPromptContextSignature: '',
         activeRequestEndpoint: '',
         activeRequestModel: '',
+        activeRequestPromptContextSignature: '',
         activeStreamHasAssistantOutput: false,
       })
 
@@ -1275,7 +1415,9 @@ export const useAiStore = create<AiState>()((set, get) => {
       if (!tab) return
 
       // Find the last user message
-      const lastUserMessage = [...tab.messages].reverse().find((m) => m.role === 'user')
+      const lastUserMessage = [...tab.messages]
+        .reverse()
+        .find((m) => m.role === 'user' && !isPromptOnlyContextMessage(m))
       if (!lastUserMessage) return
 
       // Remove the last user message and any assistant messages after it
@@ -1290,8 +1432,10 @@ export const useAiStore = create<AiState>()((set, get) => {
         lastCompletedTransport: null,
         lastCompletedEndpoint: '',
         lastCompletedModel: '',
+        lastCompletedPromptContextSignature: '',
         activeRequestEndpoint: '',
         activeRequestModel: '',
+        activeRequestPromptContextSignature: '',
         activeStreamHasAssistantOutput: false,
       })
 
@@ -1350,13 +1494,19 @@ export const useAiStore = create<AiState>()((set, get) => {
         activeStreamId: null,
         previousResponseId: canReuseResponsesChain ? (info.responseId ?? null) : null,
         lastCompletedSystemPrompt: canReuseResponsesChain
-          ? (tab.messages.find((message) => message.role === 'system')?.content ?? '')
+          ? (tab.messages.find(
+              (message) => message.role === 'system' && !isPromptOnlyContextMessage(message)
+            )?.content ?? '')
           : '',
         lastCompletedTransport: info.transport ?? null,
         lastCompletedEndpoint: canReuseResponsesChain ? tab.activeRequestEndpoint : '',
         lastCompletedModel: canReuseResponsesChain ? tab.activeRequestModel : '',
+        lastCompletedPromptContextSignature: canReuseResponsesChain
+          ? tab.activeRequestPromptContextSignature
+          : '',
         activeRequestEndpoint: '',
         activeRequestModel: '',
+        activeRequestPromptContextSignature: '',
         activeStreamHasAssistantOutput: false,
       })
 
@@ -1383,8 +1533,10 @@ export const useAiStore = create<AiState>()((set, get) => {
         lastCompletedTransport: null,
         lastCompletedEndpoint: '',
         lastCompletedModel: '',
+        lastCompletedPromptContextSignature: '',
         activeRequestEndpoint: '',
         activeRequestModel: '',
+        activeRequestPromptContextSignature: '',
         activeStreamHasAssistantOutput: false,
       })
 
@@ -1429,6 +1581,17 @@ export const useAiStore = create<AiState>()((set, get) => {
     setAttachedContext: (tabId, context) => {
       ensureTab(tabId)
       patchTab(tabId, { attachedContext: context })
+
+      const currentTab = get().tabs[tabId]
+      const currentAttachedMessage = currentTab?.messages.find(
+        (message) => message.kind === 'attached-context'
+      )
+
+      if (currentAttachedMessage?.content !== buildAttachedContextMessage(context.sql)) {
+        resetResponseChain(tabId)
+      }
+
+      removePromptOnlyContextMessages(tabId, ['attached-context'])
     },
 
     // ------ clearAttachedContext ------
@@ -1436,6 +1599,8 @@ export const useAiStore = create<AiState>()((set, get) => {
     clearAttachedContext: (tabId) => {
       ensureTab(tabId)
       patchTab(tabId, { attachedContext: null })
+      removePromptOnlyContextMessages(tabId, ['attached-context'])
+      resetResponseChain(tabId)
     },
 
     // ------ clearConversation ------
@@ -1470,8 +1635,10 @@ export const useAiStore = create<AiState>()((set, get) => {
         lastCompletedTransport: null,
         lastCompletedEndpoint: '',
         lastCompletedModel: '',
+        lastCompletedPromptContextSignature: '',
         activeRequestEndpoint: '',
         activeRequestModel: '',
+        activeRequestPromptContextSignature: '',
         activeStreamHasAssistantOutput: false,
       })
 

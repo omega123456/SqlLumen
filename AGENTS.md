@@ -55,6 +55,7 @@ pnpm typecheck          # tsc --noEmit
 - **`pnpm test:all` must be fully green before you are done.** Fix every failure regardless of whether you think your diff caused it — including pre-existing failures, unrelated suites, and screenshot baselines.
 - **Never lower coverage thresholds.** 90% lines/functions/statements for both TypeScript (Vitest v8) and Rust (llvm-cov `--fail-under-*`). Improve tests instead.
 - **No fixed delays > 5 s** in any test. Use condition-based waiting (Playwright auto-wait, `waitFor`, `findBy*`, polling).
+- **Each individual test must complete in under 2 seconds.** Refactor slow tests to remove unnecessary setup and waiting.
 - **Never add `istanbul`/`c8` ignore comments or widen `exclude` lists** to hide coverage gaps without explicit user approval naming what to exclude.
 - **Package manager: `pnpm` only.** Do not use npm or yarn.
 - **Every new MySQL query path must use the shared query logger wrappers.** Before executing SQL, call `src-tauri/src/mysql/query_log.rs` helpers (at minimum `log_outgoing_sql`; plus row/execute/error helpers as applicable) so all new query traffic appears in debug logs.

@@ -149,6 +149,7 @@ struct OpenConnectionPayloadDto {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct OpenConnectionResultDto {
     session_id: String,
     server_version: String,
@@ -156,6 +157,7 @@ struct OpenConnectionResultDto {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct ColumnMetaDto {
     name: String,
     data_type: String,
@@ -163,6 +165,7 @@ struct ColumnMetaDto {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 struct ExecuteQueryResultDto {
     query_id: String,
     columns: Vec<ColumnMetaDto>,

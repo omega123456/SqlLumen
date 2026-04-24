@@ -1,13 +1,20 @@
 //! Tauri commands for schema index operations — build, search, status, invalidation, listing.
 
 use crate::db::settings;
-use crate::schema_index::{builder, embeddings, rerank, search, storage, types::BuildConfig};
-use crate::schema_index::search::{RetrievalHints, SearchConfigExt};
+use crate::schema_index::{search, storage};
+use crate::schema_index::search::RetrievalHints;
 use crate::state::AppState;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
+
+#[cfg(not(coverage))]
+use crate::schema_index::{builder, embeddings, rerank, types::BuildConfig};
+#[cfg(not(coverage))]
+use chrono::Utc;
+#[cfg(not(coverage))]
 use tokio_util::sync::CancellationToken;
+#[cfg(not(coverage))]
+use crate::schema_index::search::SearchConfigExt;
 
 #[cfg(not(coverage))]
 use tauri::{Emitter, State};

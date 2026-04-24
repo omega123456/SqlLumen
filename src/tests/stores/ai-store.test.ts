@@ -5,6 +5,7 @@ import type { TabAiState } from '../../stores/ai-store'
 import { useQueryStore } from '../../stores/query-store'
 import type { TabStatus } from '../../stores/query-store'
 import { useAiFeedbackStore } from '../../stores/ai-feedback-store'
+import { logFrontend } from '../../lib/app-log-commands'
 
 const defaultSettings: Record<string, string> = {
   'ai.endpoint': 'http://localhost:11434/v1',
@@ -387,22 +388,30 @@ describe('useAiStore', () => {
 
       await vi.waitFor(() => {
         const tab = getTab('tab-1')!
-        expect(tab.messages.length).toBe(2) // system + user
+        expect(tab.messages.length).toBe(3) // base system + schema context + user
       })
 
       const tab = getTab('tab-1')!
       expect(tab.messages[0].role).toBe('system')
-      expect(tab.messages[0].content).toContain(
+      const baseSystemMessage = tab.messages.find(
+        (message) => message.role === 'system' && !message.kind
+      )
+      const schemaContextMessage = tab.messages.find((message) => message.kind === 'schema-context')
+
+      expect(baseSystemMessage).toBeDefined()
+      expect(baseSystemMessage!.content).toContain(
         'You are an expert SQL assistant integrated into a database client'
       )
-      expect(tab.messages[0].content).toContain(
-        'Use ONLY tables that appear in the retrieved schema context'
+      expect(baseSystemMessage!.content).toContain(
+        'additional hidden system messages containing relevant schema or SQL context'
       )
-      expect(tab.messages[0].content).toContain('Always use database-qualified table names')
-      expect(tab.messages[0].content).toContain('Database schema:')
-      expect(tab.messages[0].content).toContain('CREATE TABLE `testdb`.`users`')
-      expect(tab.messages[1].role).toBe('user')
-      expect(tab.messages[1].content).toBe('First message')
+      expect(baseSystemMessage!.content).toContain('always use its full database-qualified name')
+      expect(schemaContextMessage).toBeDefined()
+      expect(schemaContextMessage!.content).toContain('Database schema:')
+      expect(schemaContextMessage!.content).toContain('CREATE TABLE `testdb`.`users`')
+      const userMessages = tab.messages.filter((message) => message.role === 'user')
+      expect(userMessages).toHaveLength(1)
+      expect(userMessages[0].content).toBe('First message')
     })
 
     it('includes dbName in semantic search debug logging payload', async () => {
@@ -611,6 +620,44 @@ describe('useAiStore', () => {
       expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBe('resp_abc')
     })
 
+    it('keeps the leading prompt prefix stable across follow-up messages with unchanged context', async () => {
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const firstMessages = mockSendAiChat.mock.calls[0][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      const firstStreamId = getTab('tab-1')!.activeStreamId!
+      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Hello back')
+      useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
+        responseId: 'resp_cache',
+        transport: 'responses',
+      })
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      const secondMessages = mockSendAiChat.mock.calls[1][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages)
+      expect(secondMessages[secondMessages.length - 1]).toEqual({
+        role: 'user',
+        content: 'Follow up',
+      })
+      expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBe('resp_cache')
+    })
+
     it('does not reuse previousResponseId when schema context changes for a new prompt', async () => {
       mockIndexStatus = {
         status: 'ready',
@@ -731,7 +778,7 @@ describe('useAiStore', () => {
       // First message
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First', {})
       await vi.waitFor(() => {
-        expect(getTab('tab-1')!.messages.length).toBe(2) // system + user
+        expect(getTab('tab-1')!.messages.length).toBe(3) // base system + schema context + user
       })
 
       // Second message — system message should be updated, not duplicated
@@ -741,7 +788,7 @@ describe('useAiStore', () => {
       })
 
       const tab = getTab('tab-1')!
-      const systemMessages = tab.messages.filter((m) => m.role === 'system')
+      const systemMessages = tab.messages.filter((m) => m.role === 'system' && !m.kind)
       expect(systemMessages).toHaveLength(1) // Only one system message
     })
 
@@ -757,12 +804,49 @@ describe('useAiStore', () => {
 
       const tab = getTab('tab-1')!
       expect(tab.messages[0].role).toBe('system')
-      expect(tab.messages[0].content).toContain(
+      const baseSystemMessage = tab.messages.find(
+        (message) => message.role === 'system' && !message.kind
+      )
+      expect(baseSystemMessage).toBeDefined()
+      expect(baseSystemMessage!.content).toContain(
         'You are an expert SQL assistant integrated into a database client'
       )
       // No schema DDL section
-      expect(tab.messages[0].content).not.toContain('Database schema:')
+      expect(baseSystemMessage!.content).not.toContain('Database schema:')
       expect(tab.messages[1].role).toBe('user')
+    })
+
+    it('clears hidden schema context and response reuse when a follow-up retrieval returns empty', async () => {
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const firstStreamId = getTab('tab-1')!.activeStreamId!
+      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Hello back')
+      useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
+        responseId: 'resp_schema_clear',
+        transport: 'responses',
+      })
+
+      mockSemanticSearch.mockResolvedValueOnce([])
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Unrelated follow up', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      const secondMessages = mockSendAiChat.mock.calls[1][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      expect(secondMessages.some((message) => message.content.includes('Database schema:'))).toBe(
+        false
+      )
+      expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBeNull()
     })
 
     it('sets error state when sendAiChat fails', async () => {
@@ -888,10 +972,10 @@ describe('useAiStore', () => {
       })
 
       const params = mockSendAiChat.mock.calls[0][0]
-      // Should have: system, context-user, user messages
+      // Should have: base system, schema context, attached context, user messages
       const contextMsg = params.messages.find(
         (m: { role: string; content: string }) =>
-          m.role === 'user' && m.content.includes('SELECT * FROM users WHERE id = 1')
+          m.role === 'system' && m.content.includes('SELECT * FROM users WHERE id = 1')
       )
       expect(contextMsg).toBeDefined()
       expect(contextMsg.content).toContain('The following SQL statement is the context')
@@ -927,6 +1011,46 @@ describe('useAiStore', () => {
       expect(getTab('tab-1')!.attachedContext).toBeNull()
     })
 
+    it('clearing attached context removes hidden attached-context prompt messages and resets reuse', async () => {
+      const context = {
+        sql: 'SELECT * FROM users',
+        range: { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 20 },
+      }
+      useAiStore.getState().setAttachedContext('tab-1', context)
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Explain this query', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const firstStreamId = getTab('tab-1')!.activeStreamId!
+      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Sure')
+      useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
+        responseId: 'resp_attached_clear',
+        transport: 'responses',
+      })
+
+      useAiStore.getState().clearAttachedContext('tab-1')
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      const secondMessages = mockSendAiChat.mock.calls[1][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      expect(
+        secondMessages.some((message) =>
+          message.content.includes('The following SQL statement is the context')
+        )
+      ).toBe(false)
+      expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBeNull()
+    })
+
     it('does not inject context message when no context is attached', async () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'General question', {})
 
@@ -937,7 +1061,7 @@ describe('useAiStore', () => {
       const params = mockSendAiChat.mock.calls[0][0]
       const contextMsg = params.messages.find(
         (m: { role: string; content: string }) =>
-          m.role === 'user' && m.content.includes('The following SQL statement is the context')
+          m.role === 'system' && m.content.includes('The following SQL statement is the context')
       )
       expect(contextMsg).toBeUndefined()
     })
@@ -1015,6 +1139,7 @@ describe('useAiStore', () => {
       expect(systemMsg).toBeDefined()
       // Since retrieval failed, schema DDL should be empty
       expect(systemMsg!.content).not.toContain('Database schema:')
+      expect(tab.messages.find((message) => message.kind === 'schema-context')).toBeUndefined()
     })
   })
 
@@ -1353,6 +1478,24 @@ describe('useAiStore', () => {
       expect(tab.previousResponseId).toBeNull()
       expect(tab.isPanelOpen).toBe(true) // preserved
     })
+
+    it('restores tab status and logs when active stream cancel fails', async () => {
+      mockCancelAiStream.mockRejectedValueOnce(new Error('cancel failed'))
+      useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+      useQueryStore.getState().setTabStatus('tab-1', 'running')
+      useAiStore.getState().setAiReviewing('tab-1')
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      useAiStore.getState().clearConversation('tab-1')
+      await Promise.resolve()
+
+      expect(mockCancelAiStream).toHaveBeenCalledTimes(1)
+      expect(logFrontend).toHaveBeenCalledWith(
+        'warn',
+        expect.stringContaining('AI cancel during clearConversation failed:')
+      )
+      expect(useQueryStore.getState().tabs['tab-1']?.tabStatus).toBe('running')
+    })
   })
 
   describe('error management', () => {
@@ -1507,14 +1650,14 @@ describe('useAiStore', () => {
       const params = mockSendAiChat.mock.calls[0][0]
       const contextMsg = params.messages.find(
         (m: { role: string; content: string }) =>
-          m.role === 'user' && m.content.includes('The following SQL statement is the context')
+          m.role === 'system' && m.content.includes('The following SQL statement is the context')
       )
       expect(contextMsg).toBeDefined()
       expect(contextMsg.content).toContain('SELECT id, name FROM users WHERE active = 1')
       expect(contextMsg.content).not.toContain('SELECT * FROM users')
     })
 
-    it('proves stale context: without re-calling setAttachedContext, sendMessage injects original SQL', async () => {
+    it('uses the current attached context SQL when sending a message', async () => {
       const originalRange = { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 20 }
       useAiStore.getState().setAttachedContext('tab-1', {
         sql: 'SELECT * FROM users',
@@ -1530,10 +1673,56 @@ describe('useAiStore', () => {
       const params = mockSendAiChat.mock.calls[0][0]
       const contextMsg = params.messages.find(
         (m: { role: string; content: string }) =>
-          m.role === 'user' && m.content.includes('The following SQL statement is the context')
+          m.role === 'system' && m.content.includes('The following SQL statement is the context')
       )
       expect(contextMsg).toBeDefined()
       expect(contextMsg.content).toContain('SELECT * FROM users')
+    })
+
+    it('reuses the same attached-context prompt prefix on follow-up messages until the context changes', async () => {
+      const range = { startLineNumber: 1, endLineNumber: 1, startColumn: 1, endColumn: 20 }
+      useAiStore.getState().setAttachedContext('tab-1', {
+        sql: 'SELECT * FROM users',
+        range,
+      })
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Explain this query', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const firstMessages = mockSendAiChat.mock.calls[0][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      const firstStreamId = getTab('tab-1')!.activeStreamId!
+      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Sure')
+      useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
+        responseId: 'resp_attached',
+        transport: 'responses',
+      })
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Add an ORDER BY', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      const secondMessages = mockSendAiChat.mock.calls[1][0].messages as Array<{
+        role: string
+        content: string
+      }>
+      expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages)
+
+      const attachedContextMessages = secondMessages.filter(
+        (message) =>
+          message.role === 'system' &&
+          message.content.includes('The following SQL statement is the context')
+      )
+      expect(attachedContextMessages).toHaveLength(1)
+      expect(attachedContextMessages[0].content).toContain('SELECT * FROM users')
     })
   })
 
@@ -2159,14 +2348,14 @@ describe('useAiStore', () => {
       })
 
       const tab = getTab('tab-mem-prompt')!
-      const systemMsg = tab.messages.find((m) => m.role === 'system')
+      const systemMsg = tab.messages.find((m) => m.role === 'system' && !m.kind)
       expect(systemMsg).toBeDefined()
       expect(systemMsg!.content).toContain('## User Notes (from memory)')
       expect(systemMsg!.content).toContain('- The users table stores customer data')
       expect(systemMsg!.content).toContain('- Orders use soft deletes')
     })
 
-    it('memory text appears before schema DDL in system prompt', async () => {
+    it('memory text appears before schema DDL in the outbound message list', async () => {
       mockSearchMemories.mockResolvedValueOnce([
         {
           id: 1,
@@ -2184,12 +2373,11 @@ describe('useAiStore', () => {
       })
 
       const tab = getTab('tab-mem-order')!
-      const systemMsg = tab.messages.find((m) => m.role === 'system')!
-      const memoryIdx = systemMsg.content.indexOf('## User Notes (from memory)')
-      const schemaIdx = systemMsg.content.indexOf('Database schema:')
-      expect(memoryIdx).toBeGreaterThan(-1)
-      expect(schemaIdx).toBeGreaterThan(-1)
-      expect(memoryIdx).toBeLessThan(schemaIdx)
+      const baseSystem = tab.messages.find((m) => m.role === 'system' && !m.kind)!
+      const schemaContext = tab.messages.find((m) => m.kind === 'schema-context')!
+      expect(baseSystem.content).toContain('## User Notes (from memory)')
+      expect(schemaContext.content).toContain('Database schema:')
+      expect(tab.messages.indexOf(baseSystem)).toBeLessThan(tab.messages.indexOf(schemaContext))
     })
 
     it('failed memory retrieval does not prevent message sending', async () => {
@@ -2203,7 +2391,7 @@ describe('useAiStore', () => {
 
       // Should still work, just without memory
       const tab = getTab('tab-mem-fail')!
-      const systemMsg = tab.messages.find((m) => m.role === 'system')
+      const systemMsg = tab.messages.find((m) => m.role === 'system' && !m.kind)
       expect(systemMsg).toBeDefined()
       expect(systemMsg!.content).not.toContain('## User Notes (from memory)')
     })
@@ -2218,7 +2406,7 @@ describe('useAiStore', () => {
       })
 
       const tab = getTab('tab-mem-empty')!
-      const systemMsg = tab.messages.find((m) => m.role === 'system')
+      const systemMsg = tab.messages.find((m) => m.role === 'system' && !m.kind)
       expect(systemMsg).toBeDefined()
       expect(systemMsg!.content).not.toContain('## User Notes (from memory)')
     })

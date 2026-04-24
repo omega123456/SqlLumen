@@ -62,6 +62,20 @@ describe('AiMessageBubble', () => {
     expect(bubble).toHaveTextContent('Schema context loaded')
   })
 
+  it('renders prompt-only system context messages the same way', () => {
+    render(
+      <AiMessageBubble
+        message={makeMessage({
+          role: 'system',
+          kind: 'attached-context',
+          content: 'The following SQL statement is the context:\n\n```sql\nSELECT 1\n```',
+        })}
+      />
+    )
+
+    expect(screen.getByTestId('ai-message-system')).toHaveTextContent('Schema context loaded')
+  })
+
   it('shows streaming cursor when isStreaming is true on assistant message', () => {
     render(
       <AiMessageBubble

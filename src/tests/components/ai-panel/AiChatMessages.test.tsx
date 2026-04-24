@@ -38,8 +38,10 @@ function emptyTabState(overrides?: Partial<TabAiState>): TabAiState {
     lastCompletedTransport: null,
     lastCompletedEndpoint: '',
     lastCompletedModel: '',
+    lastCompletedPromptContextSignature: '',
     activeRequestEndpoint: '',
     activeRequestModel: '',
+    activeRequestPromptContextSignature: '',
     activeStreamHasAssistantOutput: false,
     isWaitingForIndex: false,
     connectionId: null,
@@ -136,6 +138,40 @@ describe('AiChatMessages', () => {
     render(<AiChatMessages tabId="tab-1" />)
     expect(screen.getByTestId('ai-message-system')).toBeInTheDocument()
     expect(screen.getByText('Schema context loaded')).toBeInTheDocument()
+  })
+
+  it('hides prompt-only context system messages from the visible transcript', () => {
+    useAiStore.setState({
+      tabs: {
+        'tab-1': emptyTabState({
+          messages: [
+            {
+              id: 'm1',
+              role: 'system',
+              content: 'Base system prompt',
+              timestamp: 1,
+            },
+            {
+              id: 'm2',
+              role: 'system',
+              kind: 'schema-context',
+              content: 'Database schema:\nCREATE TABLE ...',
+              timestamp: 2,
+            },
+            {
+              id: 'm3',
+              role: 'user',
+              content: 'Hello AI',
+              timestamp: 3,
+            },
+          ],
+        }),
+      },
+    })
+
+    render(<AiChatMessages tabId="tab-1" />)
+    expect(screen.getAllByTestId('ai-message-system')).toHaveLength(1)
+    expect(screen.getByTestId('ai-message-user')).toBeInTheDocument()
   })
 
   it('does not show welcome state when messages exist', () => {

@@ -7,23 +7,36 @@
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
-use std::time::Instant;
+use std::sync::OnceLock;
 
+#[cfg(not(coverage))]
+use std::sync::Mutex;
+#[cfg(not(coverage))]
+use std::time::Instant;
+#[cfg(not(coverage))]
 use chrono::Utc;
+#[cfg(not(coverage))]
 use tokio_util::sync::CancellationToken;
 
+#[cfg(not(coverage))]
 use super::embeddings;
+#[cfg(not(coverage))]
 use super::storage;
 use super::types::{
-    BuildConfig, BuildPhase, BuildProgress, BuildResult, ChunkInsert, ChunkType, FkEdge, FkInput,
-    IndexMeta, IndexStatus, ProgressCallback, TableDdlInput,
+    ChunkType, FkEdge, FkInput, TableDdlInput,
+};
+#[cfg(not(coverage))]
+use super::types::{
+    BuildConfig, BuildPhase, BuildProgress, BuildResult, ChunkInsert, IndexMeta, IndexStatus,
+    ProgressCallback,
 };
 
 /// Maximum number of texts per embedding batch.
+#[cfg(not(coverage))]
 const EMBED_BATCH_SIZE: usize = 32;
 
 /// Number of chunks to commit in a single SQLite transaction.
+#[cfg(not(coverage))]
 const SQLITE_COMMIT_BATCH: usize = 20;
 
 // ── Pure helper functions ────────────────────────────────────────────────
@@ -1597,6 +1610,7 @@ async fn handle_model_change(
 /// A pending chunk awaiting embedding — replaces the anonymous 10-field tuple
 /// that was previously threaded through `build_index` / `rebuild_tables`.
 #[derive(Debug, Clone)]
+#[cfg(not(coverage))]
 pub(crate) struct PendingChunk {
     pub chunk_key: String,
     pub ddl_text: String,
@@ -1797,6 +1811,7 @@ pub fn generate_all_chunks_with_row_counts(
 // ── MySQL fetch helpers (excluded from coverage builds) ──────────────────
 
 /// MySQL system schemas that should never be indexed.
+#[cfg(not(coverage))]
 const SYSTEM_SCHEMAS: &[&str] = &["information_schema", "mysql", "performance_schema", "sys"];
 
 /// Concurrency for parallel `SHOW CREATE TABLE` fetches. Must stay at or below

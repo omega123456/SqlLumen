@@ -1,17 +1,25 @@
 //! Integration tests for `fetch_schema_metadata_full_impl` and the bulk
 //! foreign-key / index query coverage stubs.
 
+#[cfg(coverage)]
 use rusqlite::Connection;
+#[cfg(coverage)]
 use sqllumen_lib::mysql::query_executor::fetch_schema_metadata_full_impl;
+#[cfg(coverage)]
 use sqllumen_lib::mysql::registry::{
     ConnectionRegistry, ConnectionStatus, RegistryEntry, StoredConnectionParams,
 };
+#[cfg(coverage)]
 use sqllumen_lib::state::AppState;
+#[cfg(coverage)]
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+#[cfg(coverage)]
 use std::sync::{Arc, Mutex};
 
+#[cfg(coverage)]
 mod common;
 
+#[cfg(coverage)]
 fn test_state() -> AppState {
     common::ensure_fake_backend_once();
     let conn = Connection::open_in_memory().expect("should open in-memory db");
@@ -34,6 +42,7 @@ fn test_state() -> AppState {
     }
 }
 
+#[cfg(coverage)]
 fn dummy_lazy_pool() -> sqlx::MySqlPool {
     let opts = MySqlConnectOptions::new()
         .host("127.0.0.1")
@@ -43,6 +52,7 @@ fn dummy_lazy_pool() -> sqlx::MySqlPool {
     MySqlPoolOptions::new().connect_lazy_with(opts)
 }
 
+#[cfg(coverage)]
 fn dummy_stored_params(profile_id: &str) -> StoredConnectionParams {
     StoredConnectionParams {
         profile_id: profile_id.to_string(),
@@ -61,6 +71,7 @@ fn dummy_stored_params(profile_id: &str) -> StoredConnectionParams {
     }
 }
 
+#[cfg(coverage)]
 fn register_lazy_pool(state: &AppState, connection_id: &str) {
     let entry = RegistryEntry {
         pool: dummy_lazy_pool(),

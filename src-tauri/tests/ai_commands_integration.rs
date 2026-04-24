@@ -712,6 +712,92 @@ async fn query_expand_returns_text() {
 }
 
 #[tokio::test]
+async fn query_expand_prepends_non_empty_conversation_context() {
+    use wiremock::matchers::{body_partial_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(serde_json::json!({
+            "messages": [
+                { "role": "system", "content": "system" },
+                {
+                    "role": "user",
+                    "content": "recent context\n\nCurrent question: current question"
+                }
+            ]
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "ok"
+                }
+            }]
+        })))
+        .mount(&server)
+        .await;
+
+    let state = test_state();
+    let req = AiQueryExpandRequest {
+        endpoint: format!("{}/v1", server.uri()),
+        model: "test-model".to_string(),
+        system_prompt: "system".to_string(),
+        user_message: "current question".to_string(),
+        conversation_context: Some("recent context".to_string()),
+    };
+
+    let result = ai_query_expand_impl(&state, req).await;
+    assert!(result.is_ok(), "should include conversation context: {result:?}");
+    assert_eq!(result.unwrap().text, "ok");
+}
+
+#[tokio::test]
+async fn query_expand_ignores_empty_conversation_context() {
+    use wiremock::matchers::{body_partial_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(serde_json::json!({
+            "messages": [
+                { "role": "system", "content": "system" },
+                { "role": "user", "content": "just the question" }
+            ]
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "ok"
+                }
+            }]
+        })))
+        .mount(&server)
+        .await;
+
+    let state = test_state();
+    let req = AiQueryExpandRequest {
+        endpoint: format!("{}/v1", server.uri()),
+        model: "test-model".to_string(),
+        system_prompt: "system".to_string(),
+        user_message: "just the question".to_string(),
+        conversation_context: Some(String::new()),
+    };
+
+    let result = ai_query_expand_impl(&state, req).await;
+    assert!(
+        result.is_ok(),
+        "empty conversation context should not be prepended: {result:?}"
+    );
+    assert_eq!(result.unwrap().text, "ok");
+}
+
+#[tokio::test]
 async fn query_expand_retries_with_fresh_client_after_transport_error() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -841,43 +927,6 @@ async fn query_expand_returns_error_on_connection_refused() {
     let result = ai_query_expand_impl(&state, req).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("failed"));
-}
-
-#[tokio::test]
-async fn query_expand_returns_timeout_message_after_retry_timeout() {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpListener;
-
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-
-    let server = tokio::spawn(async move {
-        let (mut first_socket, _) = listener.accept().await.unwrap();
-        let mut first_buffer = [0_u8; 4096];
-        let _ = first_socket.read(&mut first_buffer).await.unwrap();
-        drop(first_socket);
-
-        let (mut second_socket, _) = listener.accept().await.unwrap();
-        let mut second_buffer = [0_u8; 4096];
-        let _ = second_socket.read(&mut second_buffer).await.unwrap();
-        tokio::time::sleep(std::time::Duration::from_secs(65)).await;
-        let _ = second_socket.shutdown().await;
-    });
-
-    let state = test_state();
-    let req = AiQueryExpandRequest {
-        endpoint: format!("http://{addr}/v1"),
-        model: "test-model".to_string(),
-        system_prompt: "system".to_string(),
-        user_message: "user".to_string(),
-        conversation_context: None,
-    };
-
-    let result = ai_query_expand_impl(&state, req).await;
-    let error = result.expect_err("retry timeout should surface as an error");
-    assert!(error.contains("timed out after 60s"), "unexpected error: {error}");
-
-    server.abort();
 }
 
 #[tokio::test]

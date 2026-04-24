@@ -143,14 +143,8 @@ impl From<&IpcMessage> for ApiMessage {
 
 impl From<&IpcMessage> for ResponsesInputItem {
     fn from(msg: &IpcMessage) -> Self {
-        let role = if msg.role == "system" {
-            "developer".to_string()
-        } else {
-            msg.role.clone()
-        };
-
         Self {
-            role,
+            role: msg.role.clone(),
             content: msg.content.clone(),
         }
     }
