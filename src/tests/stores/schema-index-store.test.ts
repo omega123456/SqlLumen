@@ -302,6 +302,36 @@ describe('useSchemaIndexStore', () => {
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].status).toBe('not_configured')
     })
+
+    it('should NOT call buildSchemaIndex for a second session when the same profile already has a completed build', async () => {
+      useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
+      await vi.waitFor(() => {
+        expect(mockGetIndexStatus).toHaveBeenCalledWith('session-1')
+      })
+      await useSchemaIndexStore.getState().triggerBuild('session-1')
+      useSchemaIndexStore.getState()._handleComplete('profile-1')
+      mockBuildSchemaIndex.mockClear()
+      mockGetIndexStatus.mockClear()
+      useSchemaIndexStore.getState().registerSession('session-2', 'profile-1')
+      await vi.waitFor(() => {
+        expect(mockGetIndexStatus).toHaveBeenCalledWith('session-2')
+      })
+      await useSchemaIndexStore.getState().triggerBuild('session-2')
+      expect(mockBuildSchemaIndex).not.toHaveBeenCalled()
+    })
+
+    it('should NOT call buildSchemaIndex for concurrent sessions to the same profile', async () => {
+      useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
+      useSchemaIndexStore.getState().registerSession('session-2', 'profile-1')
+      await vi.waitFor(() => {
+        expect(mockGetIndexStatus).toHaveBeenCalledTimes(2)
+      })
+      mockBuildSchemaIndex.mockClear()
+      const p1 = useSchemaIndexStore.getState().triggerBuild('session-1')
+      const p2 = useSchemaIndexStore.getState().triggerBuild('session-2')
+      await Promise.all([p1, p2])
+      expect(mockBuildSchemaIndex).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('triggerInvalidation', () => {

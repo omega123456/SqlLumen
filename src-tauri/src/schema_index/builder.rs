@@ -100,11 +100,18 @@ pub fn compact_ddl_for_llm(create_table_sql: &str) -> String {
     static CHARSET_REGEX: OnceLock<Regex> = OnceLock::new();
     static COLLATE_REGEX: OnceLock<Regex> = OnceLock::new();
     static WHITESPACE_REGEX2: OnceLock<Regex> = OnceLock::new();
+    static ROW_COUNT_COMMENT_REGEX: OnceLock<Regex> = OnceLock::new();
+
+    // Strip any previously appended row-count annotation so hashing is stable on round-trip
+    let re_row_count = ROW_COUNT_COMMENT_REGEX.get_or_init(|| {
+        Regex::new(r"(?m)\n?--\s*approximate rows:\s*\d+\s*$").expect("valid regex")
+    });
+    let text = re_row_count.replace_all(create_table_sql, "");
 
     let re_auto_inc = AUTO_INCREMENT_REGEX.get_or_init(|| {
         Regex::new(r"(?i)\s*AUTO_INCREMENT\s*=\s*\d+").expect("valid regex")
     });
-    let text = re_auto_inc.replace_all(create_table_sql, "");
+    let text = re_auto_inc.replace_all(&text, "");
 
     let re_engine = ENGINE_REGEX.get_or_init(|| {
         Regex::new(r"(?i)\bENGINE\s*=\s*\S+").expect("valid regex")
@@ -1780,10 +1787,10 @@ pub fn generate_all_chunks_with_row_counts(
         // Table chunk: compact DDL (preserving comments for LLM) with optional row count annotation
         let compacted = compact_ddl_for_llm(raw_ddl);
         let mut compacted = normalize_table_ddl(&input.db_name, &input.table_name, &compacted);
+        let hash = compute_hash(&compacted);
         if let Some(count) = row_count {
             compacted = format!("{compacted}\n-- approximate rows: {count}");
         }
-        let hash = compute_hash(&compacted);
         let key = table_chunk_key(&input.db_name, &input.table_name);
 
         table_chunks.push(GeneratedTableChunk {

@@ -955,3 +955,142 @@ fn test_compact_ddl_with_semicolon() {
         "Trailing semicolon should be stripped, got: {result}"
     );
 }
+
+// ── Row count fluctuation should NOT invalidate ddl_hash ─────────────────
+
+#[test]
+fn test_ddl_hash_stable_when_row_count_fluctuates() {
+    // Hypothesis: ddl_hash includes the approximate row count annotation,
+    // so two builds with different TABLE_ROWS but identical DDL produce
+    // different hashes, causing unnecessary re-embedding.
+    //
+    // If the code is correct, the hash should be the same regardless of
+    // row count fluctuation (row count is display-only metadata, not schema).
+    use std::collections::HashMap;
+
+    let ddl = "CREATE TABLE `mydb`.`users` (\n  `id` int NOT NULL,\n  `name` varchar(255)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+    let input = TableDdlInput {
+        db_name: "mydb".to_string(),
+        table_name: "users".to_string(),
+        create_table_sql: ddl.to_string(),
+    };
+
+    let mut row_counts_a: HashMap<(String, String), i64> = HashMap::new();
+    row_counts_a.insert(("mydb".to_string(), "users".to_string()), 1000);
+
+    let mut row_counts_b: HashMap<(String, String), i64> = HashMap::new();
+    row_counts_b.insert(("mydb".to_string(), "users".to_string()), 1042);
+
+    let (chunks_a, _) =
+        builder::generate_all_chunks_with_row_counts(&[input.clone()], &row_counts_a);
+    let (chunks_b, _) =
+        builder::generate_all_chunks_with_row_counts(&[input.clone()], &row_counts_b);
+
+    assert_eq!(
+        chunks_a[0].ddl_hash, chunks_b[0].ddl_hash,
+        "ddl_hash must be stable when only the approximate row count changes.\n\
+         Hash A (rows=1000): {}\n\
+         Hash B (rows=1042): {}\n\
+         DDL A: {}\n\
+         DDL B: {}",
+        chunks_a[0].ddl_hash, chunks_b[0].ddl_hash, chunks_a[0].ddl_text, chunks_b[0].ddl_text,
+    );
+}
+
+#[test]
+fn test_diff_chunks_skips_reembedding_when_only_row_count_fluctuates() {
+    // Simulate two consecutive builds where the DDL is identical but
+    // InnoDB's TABLE_ROWS estimate fluctuated between queries.
+    // diff_chunks should report zero chunks needing re-embedding.
+    use std::collections::HashMap;
+
+    let ddl = "CREATE TABLE `shop`.`orders` (\n  `id` int NOT NULL,\n  `total` decimal(10,2)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+    let input = TableDdlInput {
+        db_name: "shop".to_string(),
+        table_name: "orders".to_string(),
+        create_table_sql: ddl.to_string(),
+    };
+
+    // First build: TABLE_ROWS = 5000
+    let mut rc1: HashMap<(String, String), i64> = HashMap::new();
+    rc1.insert(("shop".to_string(), "orders".to_string()), 5000);
+    let (chunks1, _) = builder::generate_all_chunks_with_row_counts(&[input.clone()], &rc1);
+    let stored_hashes: Vec<(String, String)> = chunks1
+        .iter()
+        .map(|c| (c.chunk_key.clone(), c.ddl_hash.clone()))
+        .collect();
+
+    // Second build: TABLE_ROWS = 5123 (InnoDB estimate fluctuation)
+    let mut rc2: HashMap<(String, String), i64> = HashMap::new();
+    rc2.insert(("shop".to_string(), "orders".to_string()), 5123);
+    let (chunks2, _) = builder::generate_all_chunks_with_row_counts(&[input.clone()], &rc2);
+    let new_chunks: Vec<(String, String, String)> = chunks2
+        .iter()
+        .map(|c| (c.chunk_key.clone(), c.ddl_text.clone(), c.ddl_hash.clone()))
+        .collect();
+
+    let (needs_embed, to_delete) = builder::diff_chunks(&stored_hashes, &new_chunks);
+
+    assert!(
+        needs_embed.is_empty(),
+        "No tables should need re-embedding when only row count fluctuates, \
+         but diff_chunks returned {} keys needing embed: {:?}",
+        needs_embed.len(),
+        needs_embed,
+    );
+    assert!(
+        to_delete.is_empty(),
+        "No tables should be deleted when only row count fluctuates"
+    );
+}
+
+// ── Round-trip hash stability (reuse path) ──────────────────────────────
+
+#[test]
+fn test_reuse_roundtrip_hash_stability() {
+    // Simulates the reuse path: the stored ddl_text (which contains
+    // "-- approximate rows: N") is fed back as create_table_sql into
+    // generate_all_chunks_with_row_counts. The resulting ddl_hash must
+    // match the originally stored ddl_hash.
+    use std::collections::HashMap;
+
+    let original_ddl = "CREATE TABLE `mydb`.`users` (\n  `id` int NOT NULL,\n  `name` varchar(255)\n) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+    let input = TableDdlInput {
+        db_name: "mydb".to_string(),
+        table_name: "users".to_string(),
+        create_table_sql: original_ddl.to_string(),
+    };
+
+    let mut row_counts: HashMap<(String, String), i64> = HashMap::new();
+    row_counts.insert(("mydb".to_string(), "users".to_string()), 500);
+
+    // First pass: generate chunk from raw DDL
+    let (chunks_v1, _) = builder::generate_all_chunks_with_row_counts(&[input], &row_counts);
+    let original_hash = &chunks_v1[0].ddl_hash;
+    let stored_ddl_text = &chunks_v1[0].ddl_text;
+
+    // Verify the stored ddl_text contains the row-count annotation
+    assert!(
+        stored_ddl_text.contains("-- approximate rows: 500"),
+        "ddl_text should contain row-count annotation, got: {stored_ddl_text}"
+    );
+
+    // Second pass: simulate reuse — feed stored ddl_text back as input DDL
+    let reused_input = TableDdlInput {
+        db_name: "mydb".to_string(),
+        table_name: "users".to_string(),
+        create_table_sql: stored_ddl_text.clone(),
+    };
+    let (chunks_v2, _) = builder::generate_all_chunks_with_row_counts(&[reused_input], &row_counts);
+    let roundtrip_hash = &chunks_v2[0].ddl_hash;
+
+    assert_eq!(
+        original_hash, roundtrip_hash,
+        "Hash must be stable on round-trip through the reuse path.\n\
+         Original hash:   {original_hash}\n\
+         Round-trip hash: {roundtrip_hash}\n\
+         Original ddl_text: {stored_ddl_text}\n\
+         Round-trip ddl_text: {}",
+        chunks_v2[0].ddl_text,
+    );
+}

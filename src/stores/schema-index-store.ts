@@ -252,8 +252,34 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
 
     triggerBuild: async (sessionId) => {
       const state = get()
-      if (!state.sessionToProfile[sessionId]) {
+      const profileId = state.sessionToProfile[sessionId]
+      if (!profileId) {
         return
+      }
+
+      // Profile-level deduplication: if any sibling session for the same
+      // profile is already 'building' or 'ready', skip the build and just
+      // mirror the existing status to this session.
+      const siblingSessionIds = state.profileToSessions[profileId] ?? []
+      for (const sid of siblingSessionIds) {
+        if (sid === sessionId) continue
+        const siblingConn = state.connections[sid]
+        if (siblingConn && (siblingConn.status === 'building' || siblingConn.status === 'ready')) {
+          set((s) => ({
+            connections: {
+              ...s.connections,
+              [sessionId]: {
+                ...(s.connections[sessionId] ?? createDefaultConnectionIndexState()),
+                status: siblingConn.status,
+                phase: siblingConn.phase,
+                tablesDone: siblingConn.tablesDone,
+                tablesTotal: siblingConn.tablesTotal,
+                lastBuildTimestamp: siblingConn.lastBuildTimestamp,
+              },
+            },
+          }))
+          return
+        }
       }
 
       set((s) => ({
