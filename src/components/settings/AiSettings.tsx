@@ -113,6 +113,7 @@ export function AiSettings() {
   const embeddingModel = useSettingValue('ai.embeddingModel')
   const temperature = useSettingValue('ai.temperature')
   const maxTokens = useSettingValue('ai.maxTokens')
+  const enableReasoning = useSettingValue('ai.enableReasoning') !== 'false'
 
   // Retrieval settings
   const topKPerQuery = useSettingValue('ai.retrieval.topKPerQuery')
@@ -349,6 +350,14 @@ export function AiSettings() {
               style={{ width: 120 }}
             />
           </div>
+          <SettingsToggle
+            label="Enable reasoning / thinking"
+            description="When enabled, the AI's chain-of-thought reasoning is shown in a collapsible block above each response. Disable to hide reasoning output entirely."
+            checked={enableReasoning}
+            onChange={(checked) => setPendingChange('ai.enableReasoning', String(checked))}
+            disabled={!aiEnabled}
+            data-testid="settings-ai-enable-reasoning"
+          />
         </SettingsSection>
 
         <SettingsSection

@@ -29,6 +29,7 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'ai.embeddingModel': '',
   'ai.temperature': '0.3',
   'ai.maxTokens': '32000',
+  'ai.enableReasoning': 'true',
   'ai.retrieval.topKPerQuery': '20',
   'ai.retrieval.topN': '12',
   'ai.retrieval.fkFanoutCap': '30',
@@ -93,6 +94,7 @@ interface SettingsState {
   discard: () => void
   resetSection: (section: SettingsSection) => void
   getSetting: (key: string) => string
+  getEffectiveSetting: (key: string) => string
   setActiveSection: (section: SettingsSection) => void
   openDialog: (section?: string) => void
   closeDialog: () => void
@@ -184,6 +186,13 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     // Only committed (saved) values — pending changes are excluded so that
     // subscribers (e.g. schema-index-store) don't react until save() is called.
     // UI form fields should use the useSettingValue() hook instead.
+    if (key in state.settings) return state.settings[key]
+    return SETTINGS_DEFAULTS[key] ?? ''
+  },
+
+  getEffectiveSetting: (key: string): string => {
+    const state = get()
+    if (key in state.pendingChanges) return state.pendingChanges[key]
     if (key in state.settings) return state.settings[key]
     return SETTINGS_DEFAULTS[key] ?? ''
   },

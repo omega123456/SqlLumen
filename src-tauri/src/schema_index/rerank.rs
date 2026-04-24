@@ -70,6 +70,7 @@ pub async fn rerank_with_llm(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
+        "reasoning_effort": "none",
         "temperature": 0.0,
         "max_tokens": 512
     });

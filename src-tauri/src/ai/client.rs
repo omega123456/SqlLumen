@@ -5,7 +5,7 @@
 
 use crate::ai::types::{
     parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiResponsesRequest,
-    ResponsesInputItem, SseParsed, StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
+    ChunkKind, ResponsesInputItem, SseParsed, StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
 };
 use futures::StreamExt;
 use std::time::Duration;
@@ -47,11 +47,11 @@ pub fn normalise_to_chat_completions_url(base_url: &str) -> String {
     crate::ai::url::normalise_openai_url(base_url, "chat/completions")
 }
 
-fn should_use_responses_api(request: &AiChatRequest) -> bool {
-    request.prefer_responses_api
+pub fn should_use_responses_api(request: &AiChatRequest) -> bool {
+    request.prefer_responses_api && request.enable_reasoning
 }
 
-fn should_fallback_from_responses_status(status: reqwest::StatusCode, body: &str) -> bool {
+pub fn should_fallback_from_responses_status(status: reqwest::StatusCode, body: &str) -> bool {
     if matches!(
         status,
         reqwest::StatusCode::NOT_FOUND
@@ -92,12 +92,48 @@ fn should_fallback_from_responses_status(status: reqwest::StatusCode, body: &str
         "unknown field `stream`",
         "unknown field `max_output_tokens`",
         "unknown field \"max_output_tokens\"",
+        "unknown field `reasoning`",
+        "unknown field \"reasoning\"",
+        "unknown field `summary`",
+        "unknown field \"summary\"",
+        "unknown field `effort`",
+        "unknown field \"effort\"",
+        "reasoning.effort",
+        "reasoning.summary",
+        "invalid value for 'reasoning'",
+        "invalid value for 'reasoning.effort'",
+        "invalid value for 'reasoning.summary'",
     ]
     .iter()
     .any(|needle| normalized_body.contains(needle))
 }
 
-fn extract_responses_error_message(json: &serde_json::Value) -> Option<String> {
+pub fn should_retry_chat_without_reasoning(status: reqwest::StatusCode, body: &str) -> bool {
+    if !matches!(
+        status,
+        reqwest::StatusCode::BAD_REQUEST
+            | reqwest::StatusCode::UNPROCESSABLE_ENTITY
+            | reqwest::StatusCode::UNSUPPORTED_MEDIA_TYPE
+    ) {
+        return false;
+    }
+
+    let normalized_body = body.to_ascii_lowercase();
+    [
+        "reasoning_effort",
+        "unknown field `reasoning_effort`",
+        "unknown field \"reasoning_effort\"",
+        "unknown parameter: reasoning_effort",
+        "unknown parameter 'reasoning_effort'",
+        "unsupported parameter: reasoning_effort",
+        "invalid value for 'reasoning_effort'",
+        "reasoning effort",
+    ]
+    .iter()
+    .any(|needle| normalized_body.contains(needle))
+}
+
+pub fn extract_responses_error_message(json: &serde_json::Value) -> Option<String> {
     if let Some(message) = json.get("error").and_then(|error| {
         error
             .get("message")
@@ -112,14 +148,199 @@ fn extract_responses_error_message(json: &serde_json::Value) -> Option<String> {
         .map(ToString::to_string)
 }
 
-fn extract_responses_delta_text(json: &serde_json::Value) -> String {
+pub fn extract_responses_delta_text(json: &serde_json::Value) -> String {
     json.get("delta")
         .and_then(|v| v.as_str())
         .map(ToString::to_string)
         .unwrap_or_default()
 }
 
-fn extract_responses_final_text(json: &serde_json::Value) -> String {
+pub fn extract_reasoning_text_from_parts(parts: &[serde_json::Value]) -> String {
+    let mut text = String::new();
+
+    for part in parts {
+        let part_type = part.get("type").and_then(|v| v.as_str());
+        if matches!(part_type, Some("summary_text") | Some("reasoning_text")) {
+            if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
+                text.push_str(value);
+            }
+        }
+    }
+
+    text
+}
+
+pub fn extract_reasoning_text_from_item(item: &serde_json::Value) -> String {
+    if item.get("type").and_then(|v| v.as_str()) != Some("reasoning") {
+        return String::new();
+    }
+
+    let mut text = String::new();
+
+    if let Some(summary) = item.get("summary").and_then(|v| v.as_array()) {
+        text.push_str(&extract_reasoning_text_from_parts(summary));
+    }
+
+    if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
+        for part in content {
+            let part_type = part.get("type").and_then(|v| v.as_str());
+            if matches!(part_type, Some("summary_text") | Some("reasoning_text") | Some("text"))
+            {
+                if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
+                    text.push_str(value);
+                }
+            }
+        }
+    }
+
+    text
+}
+
+pub fn extract_responses_reasoning_text(json: &serde_json::Value) -> String {
+    let mut text = String::new();
+
+    if let Some(delta) = json.get("delta").and_then(|v| v.as_str()) {
+        text.push_str(delta);
+    }
+
+    if let Some(part) = json.get("part") {
+        if let Some(part_type) = part.get("type").and_then(|v| v.as_str()) {
+            if matches!(part_type, "summary_text" | "reasoning_text") {
+                if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
+                    text.push_str(value);
+                }
+            }
+        }
+    }
+
+    if let Some(item) = json.get("item") {
+        text.push_str(&extract_reasoning_text_from_item(item));
+    }
+
+    if let Some(output) = json.get("output").and_then(|v| v.as_array()) {
+        for item in output {
+            text.push_str(&extract_reasoning_text_from_item(item));
+        }
+    }
+
+    if let Some(response) = json.get("response") {
+        if let Some(output) = response.get("output").and_then(|v| v.as_array()) {
+            for item in output {
+                text.push_str(&extract_reasoning_text_from_item(item));
+            }
+        }
+    }
+
+    text
+}
+
+fn should_treat_content_part_as_visible_text(json: &serde_json::Value) -> bool {
+    json.get("item_id")
+        .and_then(|value| value.as_str())
+        .map(|item_id| !item_id.starts_with("rs_"))
+        .unwrap_or(true)
+}
+
+fn extract_text_from_response_part(part: &serde_json::Value, allowed_types: &[&str]) -> String {
+    let part_type = part.get("type").and_then(|v| v.as_str());
+    if part_type.is_some_and(|value| allowed_types.contains(&value)) {
+        return part
+            .get("text")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string)
+            .unwrap_or_default();
+    }
+
+    String::new()
+}
+
+fn extract_text_from_message_item(item: &serde_json::Value) -> String {
+    if item.get("type").and_then(|v| v.as_str()) == Some("reasoning") {
+        return String::new();
+    }
+
+    let mut text = String::new();
+
+    if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
+        for part in content {
+            if let Some(value) = part.as_str() {
+                text.push_str(value);
+                continue;
+            }
+
+            text.push_str(&extract_text_from_response_part(part, &["output_text", "text"]));
+        }
+    }
+
+    text
+}
+
+pub fn extract_responses_reasoning_text_for_event(
+    event_type: Option<&str>,
+    json: &serde_json::Value,
+    already_streamed_reasoning: bool,
+) -> String {
+    match event_type {
+        Some("response.reasoning_summary_text.delta") | Some("response.reasoning_text.delta") => {
+            extract_responses_delta_text(json)
+        }
+        Some("response.reasoning_summary_text.done") | Some("response.reasoning_text.done") => {
+            if already_streamed_reasoning {
+                String::new()
+            } else {
+                json.get("text")
+                    .and_then(|v| v.as_str())
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| extract_responses_reasoning_text(json))
+            }
+        }
+        Some("response.reasoning_summary_part.added") | Some("response.content_part.added") => json
+            .get("part")
+            .map(|part| extract_text_from_response_part(part, &["summary_text", "reasoning_text"]))
+            .unwrap_or_default(),
+        Some("response.reasoning_summary_part.done")
+        | Some("response.content_part.done")
+        | Some("response.output_item.done")
+        | Some("response.completed") if !already_streamed_reasoning => {
+            extract_responses_reasoning_text(json)
+        }
+        _ => String::new(),
+    }
+}
+
+pub fn extract_responses_content_text_for_event(
+    event_type: Option<&str>,
+    json: &serde_json::Value,
+    already_streamed_output: bool,
+) -> String {
+    match event_type {
+        Some("response.output_text.delta") => extract_responses_delta_text(json),
+        Some("response.content_part.added") if should_treat_content_part_as_visible_text(json) => json
+            .get("part")
+            .map(|part| extract_text_from_response_part(part, &["output_text", "text"]))
+            .unwrap_or_default(),
+        Some("response.output_text.done") if !already_streamed_output => json
+            .get("text")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string)
+            .unwrap_or_default(),
+        Some("response.content_part.done")
+            if !already_streamed_output && should_treat_content_part_as_visible_text(json) =>
+        {
+            json.get("part")
+                .map(|part| extract_text_from_response_part(part, &["output_text", "text"]))
+                .unwrap_or_default()
+        }
+        Some("response.output_item.done") if !already_streamed_output => json
+            .get("item")
+            .map(extract_text_from_message_item)
+            .unwrap_or_default(),
+        Some("response.completed") if !already_streamed_output => extract_responses_final_text(json),
+        _ => String::new(),
+    }
+}
+
+pub fn extract_responses_final_text(json: &serde_json::Value) -> String {
     let mut text = String::new();
 
     if let Some(content) = json.get("content") {
@@ -148,6 +369,10 @@ fn extract_responses_final_text(json: &serde_json::Value) -> String {
     if let Some(response) = json.get("response") {
         if let Some(output) = response.get("output").and_then(|v| v.as_array()) {
             for item in output {
+                // Skip reasoning output items — they are not answer text
+                if item.get("type").and_then(|v| v.as_str()) == Some("reasoning") {
+                    continue;
+                }
                 if let Some(content_parts) = item.get("content").and_then(|v| v.as_array()) {
                     for part in content_parts {
                         if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
@@ -161,6 +386,10 @@ fn extract_responses_final_text(json: &serde_json::Value) -> String {
 
     if let Some(output) = json.get("output").and_then(|v| v.as_array()) {
         for item in output {
+            // Skip reasoning output items — they are not answer text
+            if item.get("type").and_then(|v| v.as_str()) == Some("reasoning") {
+                continue;
+            }
             if let Some(content_parts) = item.get("content").and_then(|v| v.as_array()) {
                 for part in content_parts {
                     if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
@@ -174,34 +403,84 @@ fn extract_responses_final_text(json: &serde_json::Value) -> String {
     text
 }
 
-fn is_responses_completion_event(event_type: Option<&str>) -> bool {
+pub fn is_responses_completion_event(event_type: Option<&str>) -> bool {
     matches!(
         event_type,
         Some("response.completed")
             | Some("response.output_text.done")
             | Some("response.output_text.delta")
             | Some("response.created")
+            | Some("response.reasoning_summary_text.delta")
+            | Some("response.reasoning_summary_text.done")
+            | Some("response.reasoning_summary_part.added")
+            | Some("response.reasoning_summary_part.done")
+            | Some("response.reasoning_text.delta")
+            | Some("response.reasoning_text.done")
+            | Some("response.output_item.added")
+            | Some("response.output_item.done")
+            | Some("response.content_part.added")
+            | Some("response.content_part.done")
     )
 }
 
-fn is_responses_failure_event(event_type: Option<&str>) -> bool {
+/// Emit a stream chunk event, reducing boilerplate at each call site.
+fn emit_chunk<R: Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    stream_id: &str,
+    content: String,
+    kind: ChunkKind,
+) {
+    let _ = app_handle.emit(
+        "ai-stream-chunk",
+        StreamChunkEvent {
+            stream_id: stream_id.to_string(),
+            content,
+            kind,
+        },
+    );
+}
+
+/// Flush a buffer if non-empty, emitting a chunk event and resetting it.
+fn flush_buffer<R: Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    stream_id: &str,
+    buffer: &mut String,
+    kind: ChunkKind,
+) {
+    if !buffer.is_empty() {
+        emit_chunk(app_handle, stream_id, std::mem::take(buffer), kind);
+    }
+}
+
+/// Flush both thinking and content buffers (thinking first).
+fn flush_both_buffers<R: Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    stream_id: &str,
+    thinking_buffer: &mut String,
+    content_buffer: &mut String,
+) {
+    flush_buffer(app_handle, stream_id, thinking_buffer, ChunkKind::Thinking);
+    flush_buffer(app_handle, stream_id, content_buffer, ChunkKind::Content);
+}
+
+pub fn is_responses_failure_event(event_type: Option<&str>) -> bool {
     matches!(event_type, Some("response.failed") | Some("error"))
 }
 
-fn merge_responses_event_type<'a>(
+pub fn merge_responses_event_type<'a>(
     sse_event_type: Option<&'a str>,
     json: &'a serde_json::Value,
 ) -> Option<&'a str> {
     sse_event_type.or_else(|| json.get("type").and_then(|v| v.as_str()))
 }
 
-fn is_chat_completions_style_payload(json: &serde_json::Value) -> bool {
+pub fn is_chat_completions_style_payload(json: &serde_json::Value) -> bool {
     json.get("choices")
         .and_then(|choices| choices.as_array())
         .is_some_and(|choices| !choices.is_empty())
 }
 
-fn responses_input_items(request: &AiChatRequest) -> Vec<ResponsesInputItem> {
+pub fn responses_input_items(request: &AiChatRequest) -> Vec<ResponsesInputItem> {
     if request.previous_response_id.is_none() {
         let mut items = Vec::with_capacity(request.messages.len());
         for message in &request.messages {
@@ -322,6 +601,9 @@ async fn stream_chat_inner<R: Runtime>(
         temperature: request.temperature,
         max_tokens: request.max_tokens,
         stream: true,
+        reasoning_effort: Some(
+            if request.enable_reasoning { "medium" } else { "none" }.to_string(),
+        ),
     };
 
     // Create the HTTP client
@@ -336,16 +618,25 @@ async fn stream_chat_inner<R: Runtime>(
 
     let chat_url = normalise_to_chat_completions_url(&request.endpoint);
 
+    async fn send_chat_request(
+        client: &reqwest::Client,
+        chat_url: &str,
+        api_request: &ApiChatRequest,
+        cancellation_token: &CancellationToken,
+    ) -> Result<reqwest::Response, String> {
+        tokio::select! {
+            biased;
+            _ = cancellation_token.cancelled() => {
+                Err("Stream cancelled".to_string())
+            }
+            result = client.post(chat_url).json(api_request).send() => {
+                result.map_err(|e| format!("HTTP request failed: {e}"))
+            }
+        }
+    }
+
     // Send the request, racing against cancellation
-    let response = tokio::select! {
-        biased;
-        _ = cancellation_token.cancelled() => {
-            return Err("Stream cancelled".to_string());
-        }
-        result = client.post(&chat_url).json(&api_request).send() => {
-            result.map_err(|e| format!("HTTP request failed: {e}"))?
-        }
-    };
+    let mut response = send_chat_request(&client, &chat_url, &api_request, cancellation_token).await?;
 
     // Check HTTP status
     let status = response.status();
@@ -354,29 +645,72 @@ async fn stream_chat_inner<R: Runtime>(
             Ok(body) => body,
             Err(_) => "<failed to read body>".to_string(),
         };
-        return Err(format!("HTTP {status}: {body}"));
+
+        if api_request.reasoning_effort.is_some() && should_retry_chat_without_reasoning(status, &body) {
+            if !request.enable_reasoning {
+                return Err(format!(
+                    "Provider rejected reasoning disable parameter reasoning_effort=none; cannot safely disable thinking for this endpoint/model. HTTP {status}: {body}"
+                ));
+            }
+
+            tracing::warn!(
+                endpoint = %request.endpoint,
+                model = %request.model,
+                status = %status,
+                "chat completions endpoint rejected reasoning_effort; retrying without it"
+            );
+
+            let retry_request = ApiChatRequest {
+                reasoning_effort: None,
+                ..api_request.clone()
+            };
+            response = send_chat_request(&client, &chat_url, &retry_request, cancellation_token).await?;
+
+            let retry_status = response.status();
+            if !retry_status.is_success() {
+                let retry_body = match response.text().await {
+                    Ok(body) => body,
+                    Err(_) => "<failed to read body>".to_string(),
+                };
+                return Err(format!("HTTP {retry_status}: {retry_body}"));
+            }
+        } else {
+            return Err(format!("HTTP {status}: {body}"));
+        }
     }
 
     // Stream the response body
     let mut byte_stream = response.bytes_stream();
     let mut buffer = String::new();
+    let mut thinking_buffer = String::new();
     let mut line_buffer = String::new();
     let mut last_flush = Instant::now();
+
+    /// Accumulate reasoning fields from a parsed chunk into the thinking buffer
+    /// when reasoning is enabled.
+    fn accumulate_thinking(
+        chunk: &crate::ai::types::ApiStreamChunk,
+        thinking_buffer: &mut String,
+        enable_reasoning: bool,
+    ) {
+        if !enable_reasoning {
+            return;
+        }
+        for choice in &chunk.choices {
+            if let Some(text) = &choice.delta.reasoning_content {
+                thinking_buffer.push_str(text);
+            }
+            if let Some(text) = &choice.delta.thinking {
+                thinking_buffer.push_str(text);
+            }
+        }
+    }
 
     loop {
         let chunk_result = tokio::select! {
             biased;
             _ = cancellation_token.cancelled() => {
-                // Flush any remaining buffer before returning
-                if !buffer.is_empty() {
-                    let _ = app_handle.emit(
-                        "ai-stream-chunk",
-                        StreamChunkEvent {
-                            stream_id: stream_id.clone(),
-                            content: std::mem::take(&mut buffer),
-                        },
-                    );
-                }
+                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                 return Err("Stream cancelled".to_string());
             }
             chunk = byte_stream.next() => chunk,
@@ -394,36 +728,31 @@ async fn stream_chat_inner<R: Runtime>(
 
                     match parse_sse_line(&line) {
                         Ok(SseParsed::Chunk(chunk)) => {
+                            accumulate_thinking(&chunk, &mut thinking_buffer, request.enable_reasoning);
                             for choice in &chunk.choices {
                                 if let Some(content) = &choice.delta.content {
-                                    buffer.push_str(content);
+                                    let reasoning_text = choice
+                                        .delta
+                                        .reasoning_content
+                                        .as_deref()
+                                        .or(choice.delta.thinking.as_deref());
+                                    let is_reasoning_dup = request.enable_reasoning
+                                        && reasoning_text.is_some_and(|text| text == content);
+                                    if !is_reasoning_dup {
+                                        buffer.push_str(content);
+                                    }
                                 }
                             }
 
-                            // Flush buffer at ~50ms intervals
-                            if !buffer.is_empty() && last_flush.elapsed() >= FLUSH_INTERVAL {
-                                let _ = app_handle.emit(
-                                    "ai-stream-chunk",
-                                    StreamChunkEvent {
-                                        stream_id: stream_id.clone(),
-                                        content: std::mem::take(&mut buffer),
-                                    },
-                                );
+                            // Flush buffers at ~50ms intervals
+                            if last_flush.elapsed() >= FLUSH_INTERVAL {
+                                flush_buffer(app_handle, stream_id, &mut thinking_buffer, ChunkKind::Thinking);
+                                flush_buffer(app_handle, stream_id, &mut buffer, ChunkKind::Content);
                                 last_flush = Instant::now();
                             }
                         }
                         Ok(SseParsed::Done) => {
-                            // Flush remaining buffer
-                            if !buffer.is_empty() {
-                                let _ = app_handle.emit(
-                                    "ai-stream-chunk",
-                                    StreamChunkEvent {
-                                        stream_id: stream_id.clone(),
-                                        content: std::mem::take(&mut buffer),
-                                    },
-                                );
-                            }
-
+                            flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                             let _ = app_handle.emit(
                                 "ai-stream-done",
                                 StreamDoneEvent {
@@ -439,22 +768,14 @@ async fn stream_chat_inner<R: Runtime>(
                         }
                         Err(e) => {
                             tracing::error!(stream_id = %stream_id, error = %e, "SSE parse error");
-                            // Flush any accumulated content before error
-                            if !buffer.is_empty() {
-                                let _ = app_handle.emit(
-                                    "ai-stream-chunk",
-                                    StreamChunkEvent {
-                                        stream_id: stream_id.clone(),
-                                        content: std::mem::take(&mut buffer),
-                                    },
-                                );
-                            }
+                            flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                             return Err(e);
                         }
                     }
                 }
             }
             Some(Err(e)) => {
+                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                 return Err(format!("Stream read error: {e}"));
             }
             None => {
@@ -463,23 +784,24 @@ async fn stream_chat_inner<R: Runtime>(
                     let remaining = std::mem::take(&mut line_buffer);
                     match parse_sse_line(&remaining) {
                         Ok(SseParsed::Chunk(chunk)) => {
+                            accumulate_thinking(&chunk, &mut thinking_buffer, request.enable_reasoning);
                             for choice in &chunk.choices {
                                 if let Some(content) = &choice.delta.content {
-                                    buffer.push_str(content);
+                                    let reasoning_text = choice
+                                        .delta
+                                        .reasoning_content
+                                        .as_deref()
+                                        .or(choice.delta.thinking.as_deref());
+                                    let is_reasoning_dup = request.enable_reasoning
+                                        && reasoning_text.is_some_and(|text| text == content);
+                                    if !is_reasoning_dup {
+                                        buffer.push_str(content);
+                                    }
                                 }
                             }
                         }
                         Ok(SseParsed::Done) => {
-                            // Flush remaining buffer before done
-                            if !buffer.is_empty() {
-                                let _ = app_handle.emit(
-                                    "ai-stream-chunk",
-                                    StreamChunkEvent {
-                                        stream_id: stream_id.clone(),
-                                        content: std::mem::take(&mut buffer),
-                                    },
-                                );
-                            }
+                            flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                             let _ = app_handle.emit(
                                 "ai-stream-done",
                                 StreamDoneEvent {
@@ -495,30 +817,14 @@ async fn stream_chat_inner<R: Runtime>(
                         }
                         Err(e) => {
                             tracing::error!(stream_id = %stream_id, error = %e, "SSE parse error on residual buffer");
-                            if !buffer.is_empty() {
-                                let _ = app_handle.emit(
-                                    "ai-stream-chunk",
-                                    StreamChunkEvent {
-                                        stream_id: stream_id.clone(),
-                                        content: std::mem::take(&mut buffer),
-                                    },
-                                );
-                            }
+                            flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                             return Err(e);
                         }
                     }
                 }
 
                 // Stream ended without [DONE] — flush and emit done anyway
-                if !buffer.is_empty() {
-                    let _ = app_handle.emit(
-                        "ai-stream-chunk",
-                        StreamChunkEvent {
-                            stream_id: stream_id.clone(),
-                            content: std::mem::take(&mut buffer),
-                        },
-                    );
-                }
+                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                 let _ = app_handle.emit(
                     "ai-stream-done",
                     StreamDoneEvent {
@@ -546,7 +852,37 @@ async fn stream_responses_completion<R: Runtime>(
         max_output_tokens: request.max_tokens,
         stream: true,
         previous_response_id: request.previous_response_id.clone(),
+        reasoning: Some(crate::ai::types::ReasoningConfig {
+            effort: if request.enable_reasoning {
+                "medium".to_string()
+            } else {
+                "none".to_string()
+            },
+            summary: if request.enable_reasoning {
+                Some("auto".to_string())
+            } else {
+                None
+            },
+        }),
+        reasoning_effort: None,
     };
+
+    async fn send_responses_request(
+        client: &reqwest::Client,
+        responses_url: &str,
+        api_request: &ApiResponsesRequest,
+        cancellation_token: &CancellationToken,
+    ) -> Result<reqwest::Response, ResponsesStreamError> {
+        tokio::select! {
+            biased;
+            _ = cancellation_token.cancelled() => {
+                Err(ResponsesStreamError::new("Stream cancelled", false))
+            }
+            result = client.post(responses_url).json(api_request).send() => {
+                result.map_err(|e| ResponsesStreamError::new(format!("HTTP request failed: {e}"), true))
+            }
+        }
+    }
 
     let client = match reqwest::Client::builder()
         .connect_timeout(CONNECT_TIMEOUT)
@@ -564,15 +900,7 @@ async fn stream_responses_completion<R: Runtime>(
 
     let responses_url = crate::ai::url::normalise_to_responses_url(&request.endpoint);
 
-    let response = tokio::select! {
-        biased;
-        _ = cancellation_token.cancelled() => {
-            return Err(ResponsesStreamError::new("Stream cancelled", false));
-        }
-        result = client.post(&responses_url).json(&api_request).send() => {
-            result.map_err(|e| ResponsesStreamError::new(format!("HTTP request failed: {e}"), true))?
-        }
-    };
+    let mut response = send_responses_request(&client, &responses_url, &api_request, cancellation_token).await?;
 
     let status = response.status();
     if !status.is_success() {
@@ -580,35 +908,57 @@ async fn stream_responses_completion<R: Runtime>(
             Ok(body) => body,
             Err(_) => "<failed to read body>".to_string(),
         };
-        return Err(ResponsesStreamError::new(
-            format!("HTTP {status}: {body}"),
-            status.is_server_error() || should_fallback_from_responses_status(status, &body),
-        ));
+
+        if should_fallback_from_responses_status(status, &body) {
+            tracing::warn!(
+                endpoint = %request.endpoint,
+                model = %request.model,
+                status = %status,
+                "responses endpoint rejected reasoning config; retrying without reasoning"
+            );
+
+            let retry_request = ApiResponsesRequest {
+                reasoning: None,
+                ..api_request.clone()
+            };
+
+            response = send_responses_request(&client, &responses_url, &retry_request, cancellation_token).await?;
+            let retry_status = response.status();
+            if !retry_status.is_success() {
+                let retry_body = match response.text().await {
+                    Ok(body) => body,
+                    Err(_) => "<failed to read body>".to_string(),
+                };
+                return Err(ResponsesStreamError::new(
+                    format!("HTTP {retry_status}: {retry_body}"),
+                    retry_status.is_server_error() || should_fallback_from_responses_status(retry_status, &retry_body),
+                ));
+            }
+        } else {
+            return Err(ResponsesStreamError::new(
+                format!("HTTP {status}: {body}"),
+                status.is_server_error() || should_fallback_from_responses_status(status, &body),
+            ));
+        }
     }
 
     let mut byte_stream = response.bytes_stream();
     let mut line_buffer = String::new();
     let mut buffer = String::new();
+    let mut thinking_buffer = String::new();
     let mut last_flush = Instant::now();
     let mut response_id: Option<String> = None;
     let mut saw_response_completed = false;
     let mut saw_valid_responses_payload = false;
     let mut current_event_type: Option<String> = None;
     let mut saw_streamed_output_text = false;
+    let mut saw_streamed_reasoning = false;
 
     loop {
         let chunk_result = tokio::select! {
             biased;
             _ = cancellation_token.cancelled() => {
-                if !buffer.is_empty() {
-                    let _ = app_handle.emit(
-                        "ai-stream-chunk",
-                        StreamChunkEvent {
-                            stream_id: stream_id.clone(),
-                            content: std::mem::take(&mut buffer),
-                        },
-                    );
-                }
+                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                 return Err(ResponsesStreamError::new("Stream cancelled", false));
             }
             chunk = byte_stream.next() => chunk,
@@ -680,45 +1030,52 @@ async fn stream_responses_completion<R: Runtime>(
                             }
                         }
 
-                        let text_to_append = if event_type == Some("response.output_text.delta") {
-                            extract_responses_delta_text(&json)
-                        } else if saw_streamed_output_text {
-                            String::new()
+                        let reasoning_text = if request.enable_reasoning {
+                            extract_responses_reasoning_text_for_event(
+                                event_type,
+                                &json,
+                                saw_streamed_reasoning,
+                            )
                         } else {
-                            extract_responses_final_text(&json)
+                            String::new()
                         };
+
+                        if !reasoning_text.is_empty() && request.enable_reasoning {
+                            thinking_buffer.push_str(&reasoning_text);
+                            saw_streamed_reasoning = true;
+                            saw_valid_responses_payload = true;
+                        }
 
                         if matches!(
                             event_type,
-                            Some("response.output_text.delta") | Some("response.output_text.done")
-                        ) && !text_to_append.is_empty()
-                        {
+                            Some("response.reasoning_summary_text.done")
+                                | Some("response.reasoning_summary_part.done")
+                                | Some("response.reasoning_text.done")
+                        ) {
+                            saw_valid_responses_payload = true;
+                            flush_buffer(app_handle, stream_id, &mut thinking_buffer, ChunkKind::Thinking);
+                        }
+
+                        let text_to_append = extract_responses_content_text_for_event(
+                            event_type,
+                            &json,
+                            saw_streamed_output_text,
+                        );
+
+                        if !text_to_append.is_empty() {
                             saw_streamed_output_text = true;
                         }
 
                         buffer.push_str(&text_to_append);
 
-                        if !buffer.is_empty() && last_flush.elapsed() >= FLUSH_INTERVAL {
-                            let _ = app_handle.emit(
-                                "ai-stream-chunk",
-                                StreamChunkEvent {
-                                    stream_id: stream_id.clone(),
-                                    content: std::mem::take(&mut buffer),
-                                },
-                            );
+                        if last_flush.elapsed() >= FLUSH_INTERVAL {
+                            flush_buffer(app_handle, stream_id, &mut thinking_buffer, ChunkKind::Thinking);
+                            flush_buffer(app_handle, stream_id, &mut buffer, ChunkKind::Content);
                             last_flush = Instant::now();
                         }
 
                         if event_type == Some("response.completed") {
-                            if !buffer.is_empty() {
-                                let _ = app_handle.emit(
-                                    "ai-stream-chunk",
-                                    StreamChunkEvent {
-                                        stream_id: stream_id.clone(),
-                                        content: std::mem::take(&mut buffer),
-                                    },
-                                );
-                            }
+                            flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                             emit_responses_done(app_handle, stream_id, response_id.clone());
                             return Ok(());
                         }
@@ -728,6 +1085,7 @@ async fn stream_responses_completion<R: Runtime>(
                 }
             }
             Some(Err(e)) => {
+                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                 return Err(ResponsesStreamError::new(
                     format!("Stream read error: {e}"),
                     !saw_valid_responses_payload,
@@ -781,13 +1139,25 @@ async fn stream_responses_completion<R: Runtime>(
                         }
                     }
 
-                    let text_to_append = if event_type == Some("response.output_text.delta") {
-                        extract_responses_delta_text(&json)
-                    } else if saw_streamed_output_text {
-                        String::new()
+                    let reasoning_text = if request.enable_reasoning {
+                        extract_responses_reasoning_text_for_event(
+                            event_type,
+                            &json,
+                            saw_streamed_reasoning,
+                        )
                     } else {
-                        extract_responses_final_text(&json)
+                        String::new()
                     };
+
+                    if !reasoning_text.is_empty() && request.enable_reasoning {
+                        thinking_buffer.push_str(&reasoning_text);
+                    }
+
+                    let text_to_append = extract_responses_content_text_for_event(
+                        event_type,
+                        &json,
+                        saw_streamed_output_text,
+                    );
 
                     buffer.push_str(&text_to_append);
 
@@ -803,15 +1173,7 @@ async fn stream_responses_completion<R: Runtime>(
                     ));
                 }
 
-                if !buffer.is_empty() {
-                    let _ = app_handle.emit(
-                        "ai-stream-chunk",
-                        StreamChunkEvent {
-                            stream_id: stream_id.clone(),
-                            content: std::mem::take(&mut buffer),
-                        },
-                    );
-                }
+                flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                 emit_responses_done(app_handle, stream_id, response_id);
                 return Ok(());
             }

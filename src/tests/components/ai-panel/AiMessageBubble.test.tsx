@@ -130,4 +130,53 @@ describe('AiMessageBubble', () => {
     render(<AiMessageBubble message={makeMessage({ role: 'user', content: longText })} />)
     expect(screen.getByTestId('ai-message-user')).toHaveTextContent(longText)
   })
+
+  it('renders ThinkingBlock when assistant message has thinkingContent', () => {
+    render(
+      <AiMessageBubble
+        message={makeMessage({
+          role: 'assistant',
+          content: 'The answer is 42.',
+          thinkingContent: 'Let me reason about this...',
+        })}
+      />
+    )
+    expect(screen.getByTestId('thinking-block')).toBeInTheDocument()
+  })
+
+  it('does NOT render ThinkingBlock when assistant message has no thinkingContent', () => {
+    render(
+      <AiMessageBubble message={makeMessage({ role: 'assistant', content: 'Simple answer.' })} />
+    )
+    expect(screen.queryByTestId('thinking-block')).not.toBeInTheDocument()
+  })
+
+  it('passes isStreaming=true to ThinkingBlock when streaming and no content yet', () => {
+    render(
+      <AiMessageBubble
+        message={makeMessage({
+          role: 'assistant',
+          content: '',
+          thinkingContent: 'Thinking...',
+        })}
+        isStreaming={true}
+      />
+    )
+    // ThinkingBlock with isStreaming=true shows "Thinking…" label
+    expect(screen.getByTestId('thinking-block-header')).toHaveTextContent('Thinking…')
+  })
+
+  it('passes isStreaming=true to ThinkingBlock even when content has started arriving', () => {
+    render(
+      <AiMessageBubble
+        message={makeMessage({
+          role: 'assistant',
+          content: 'The answer is',
+          thinkingContent: 'Thinking...',
+        })}
+        isStreaming={true}
+      />
+    )
+    expect(screen.getByTestId('thinking-block-header')).toHaveTextContent('Thinking…')
+  })
 })

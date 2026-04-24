@@ -89,6 +89,48 @@ async fn test_rerank_invalid_endpoint_fallback() {
     assert_eq!(results[0].chunk_id, 1);
 }
 
+#[tokio::test]
+async fn test_rerank_disables_reasoning_on_request() {
+    use wiremock::matchers::{body_partial_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .and(body_partial_json(serde_json::json!({
+            "reasoning_effort": "none"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": "{\"ranked\":[2,1]}"
+                }
+            }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = reqwest::Client::new();
+    let candidates = vec![
+        make_result(1, "users", 0.9),
+        make_result(2, "orders", 0.8),
+    ];
+
+    let results = sqllumen_lib::schema_index::rerank::rerank_with_llm(
+        candidates,
+        "find orders",
+        &client,
+        &server.uri(),
+        "test-model",
+    )
+    .await;
+
+    assert_eq!(results[0].chunk_id, 2);
+    assert_eq!(results[1].chunk_id, 1);
+}
+
 #[test]
 fn test_search_result_clone_and_fields() {
     let r = make_result(42, "users", 0.95);

@@ -1,0 +1,62 @@
+/* ThinkingBlock — collapsible reasoning/thinking display */
+
+.container {
+  border: 1px solid var(--ai-panel-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-sm);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  cursor: pointer;
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-sm);
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.header:hover {
+  background: rgba(var(--on-surface-rgb), 0.04);
+}
+
+.headerLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex: 1;
+}
+
+.content {
+  background: var(--ai-code-block-bg);
+  padding: var(--space-sm) var(--space-md);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.contentHidden {
+  display: none;
+}
+
+.pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: var(--type-size-xs);
+  line-height: 1.5;
+  color: var(--on-surface-variant);
+}
+
+/* Streaming blinking cursor — matches AiMessageBubble */
+.streamingCursor {
+  composes: streamingCursor from './streaming-cursor.module.css';
+}

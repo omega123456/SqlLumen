@@ -286,6 +286,28 @@ describe('AiSettings', () => {
     expect(screen.getByText('Max tokens')).toBeInTheDocument()
   })
 
+  it('renders the reasoning toggle checked by default', () => {
+    render(<AiSettings />)
+    const toggle = screen.getByTestId('settings-ai-enable-reasoning')
+    expect(toggle).toBeInTheDocument()
+    const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
+    expect(checkbox).not.toBeNull()
+    expect(checkbox.checked).toBe(true)
+  })
+
+  it('toggling reasoning off calls setPendingChange with false', async () => {
+    const user = userEvent.setup()
+    // Enable AI first so the reasoning toggle is not disabled
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
+    })
+    render(<AiSettings />)
+    const toggle = screen.getByTestId('settings-ai-enable-reasoning')
+    const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
+    await user.click(checkbox)
+    expect(useSettingsStore.getState().pendingChanges['ai.enableReasoning']).toBe('false')
+  })
+
   it('applies disabled visual class when AI is off', () => {
     render(<AiSettings />)
     const aiContainer = screen.getByTestId('settings-ai')

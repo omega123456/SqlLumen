@@ -207,6 +207,38 @@ test.describe('AI Assistant', () => {
     })
   })
 
+  test('Thinking block — AI response with reasoning shows ThinkingBlock', async ({ page }) => {
+    await openQueryEditorTab(page)
+    await openAiPanel(page)
+
+    // Enable thinking mock
+    await page.evaluate(() => {
+      ;(window as unknown as Record<string, unknown>).__mockAiThinking__ = true
+    })
+
+    // Send a message
+    const textarea = page.getByTestId('ai-chat-textarea')
+    await textarea.fill('Explain the users table')
+    await page.getByTestId('ai-send-button').click()
+
+    // Wait for thinking block to appear
+    await expect(page.getByTestId('thinking-block')).toBeVisible({ timeout: APP_READY_MS })
+
+    // Wait for the full response to finish
+    await expect(page.getByTestId('ai-message-assistant')).toContainText(
+      'This query filters for active users',
+      { timeout: APP_READY_MS }
+    )
+
+    // ThinkingBlock should show "Reasoning" label (collapsed after streaming ends)
+    await expect(page.getByTestId('thinking-block-header')).toContainText('Reasoning')
+
+    // Clean up
+    await page.evaluate(() => {
+      delete (window as unknown as Record<string, unknown>).__mockAiThinking__
+    })
+  })
+
   test('Schema retrieval — DDL contains approximate rows and table comment', async ({ page }) => {
     await openQueryEditorTab(page)
     await openAiPanel(page)

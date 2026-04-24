@@ -2345,6 +2345,48 @@ for (const theme of themes) {
       )
     })
 
+    test('AI panel — with thinking block', async ({ page }) => {
+      await openQueryEditorTab(page)
+      await enableAiViaStore(page)
+      await expect(page.getByTestId('ai-sidebar-expand')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('ai-sidebar-expand').click()
+      await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: APP_READY_MS })
+
+      // Enable thinking mock to get a ThinkingBlock in the response
+      await page.evaluate(() => {
+        ;(window as unknown as Record<string, unknown>).__mockAiThinking__ = true
+      })
+
+      // Send a message and wait for full response
+      const thinkTextarea = page.getByTestId('ai-chat-textarea')
+      await thinkTextarea.fill('Explain the users table')
+      await page.getByTestId('ai-send-button').click()
+
+      // Wait for the AI response to finish streaming (ThinkingBlock auto-collapses)
+      await expect(page.getByTestId('ai-message-assistant')).toContainText(
+        'This query filters for active users',
+        { timeout: APP_READY_MS }
+      )
+      await expect(page.getByTestId('thinking-block')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('thinking-block-header')).toContainText('Reasoning')
+
+      // Clean up thinking mock
+      await page.evaluate(() => {
+        delete (window as unknown as Record<string, unknown>).__mockAiThinking__
+      })
+
+      // Blur and screenshot
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('ai-panel')).toHaveScreenshot(
+        `ai-panel-with-thinking-block-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('AI panel — error state', async ({ page }) => {
       await openQueryEditorTab(page)
       await enableAiViaStore(page)

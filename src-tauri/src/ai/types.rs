@@ -24,6 +24,8 @@ pub struct AiChatRequest {
     pub previous_response_id: Option<String>,
     #[serde(default = "default_true")]
     pub prefer_responses_api: bool,
+    #[serde(default = "default_true")]
+    pub enable_reasoning: bool,
 }
 
 fn default_true() -> bool {
@@ -49,6 +51,10 @@ pub struct ApiChatRequest {
     pub temperature: f64,
     pub max_tokens: u32,
     pub stream: bool,
+    /// Controls extended thinking / reasoning on the LLM side.
+    /// Values: `"high"`, `"medium"`, `"low"` when enabled; omitted when disabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 /// Input item for the OpenAI-compatible Responses API.
@@ -57,6 +63,14 @@ pub struct ApiChatRequest {
 pub struct ResponsesInputItem {
     pub role: String,
     pub content: String,
+}
+
+/// Helper struct for the nested `reasoning` object in the Responses API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReasoningConfig {
+    pub effort: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
 }
 
 /// The request body sent to the OpenAI-compatible `/v1/responses` endpoint.
@@ -70,6 +84,14 @@ pub struct ApiResponsesRequest {
     pub stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_response_id: Option<String>,
+    /// Controls extended thinking / reasoning on the LLM side.
+    /// Serialized as `{ "reasoning": { "effort": "medium" } }` per the Responses API spec.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<ReasoningConfig>,
+    /// Convenience field for constructing the request — maps to `reasoning`.
+    /// Skipped during serialization; use `reasoning` for the wire format.
+    #[serde(skip)]
+    pub reasoning_effort: Option<String>,
 }
 
 /// The delta object inside an SSE stream choice.
@@ -77,6 +99,10 @@ pub struct ApiResponsesRequest {
 #[serde(rename_all = "snake_case")]
 pub struct ApiStreamDelta {
     pub content: Option<String>,
+    #[serde(default)]
+    pub reasoning_content: Option<String>,
+    #[serde(default)]
+    pub thinking: Option<String>,
 }
 
 /// A single choice in an SSE stream chunk.
@@ -95,12 +121,23 @@ pub struct ApiStreamChunk {
 
 // ── Tauri event payload types (camelCase) ──────────────────────────────────
 
+/// Discriminates between normal response tokens and reasoning/thinking tokens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ChunkKind {
+    #[default]
+    Content,
+    Thinking,
+}
+
 /// Payload emitted for each buffered chunk of streamed tokens.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamChunkEvent {
     pub stream_id: String,
     pub content: String,
+    #[serde(default)]
+    pub kind: ChunkKind,
 }
 
 /// Payload emitted when the stream completes successfully.

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { logFrontend } from '../lib/app-log-commands'
 import { sendAiChat, cancelAiStream, listenToAiStream, aiQueryExpand } from '../lib/ai-commands'
 import { searchMemories } from '../lib/ai-memory-commands'
-import type { AiMessage as IpcAiMessage } from '../lib/ai-commands'
+import type { AiMessage as IpcAiMessage, AiChunkKind } from '../lib/ai-commands'
 import { semanticSearch } from '../lib/schema-index-commands'
 import type { RetrievalHints } from '../lib/schema-index-commands'
 import { useSchemaIndexStore } from './schema-index-store'
@@ -21,6 +21,7 @@ export interface AiMessage {
   content: string
   timestamp: number
   kind?: 'schema-context' | 'attached-context'
+  thinkingContent?: string
 }
 
 export interface AttachedContext {
@@ -128,7 +129,7 @@ interface AiState {
   ) => void
 
   // Stream lifecycle
-  onStreamChunk: (tabId: string, streamId: string, content: string) => void
+  onStreamChunk: (tabId: string, streamId: string, content: string, kind: AiChunkKind) => void
   onStreamDone: (
     tabId: string,
     streamId: string,
@@ -530,6 +531,23 @@ function parseExpansionResponse(
   }
 }
 
+function getAiSetting(key: string): string {
+  const settingsState = useSettingsStore.getState() as {
+    getEffectiveSetting?: (settingKey: string) => string
+    getSetting?: (settingKey: string) => string
+  }
+
+  if (typeof settingsState.getEffectiveSetting === 'function') {
+    return settingsState.getEffectiveSetting(key)
+  }
+
+  if (typeof settingsState.getSetting === 'function') {
+    return settingsState.getSetting(key)
+  }
+
+  return ''
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -871,11 +889,10 @@ export const useAiStore = create<AiState>()((set, get) => {
       // Query expansion — get search queries with HyDE and entity decomposition
       let queries: string[] = [userMessage]
       try {
-        const getSetting = useSettingsStore.getState().getSetting
-        const endpoint = getSetting('ai.endpoint')
-        const model = getSetting('ai.model')
-        const hydeEnabled = getSetting('ai.retrieval.hydeEnabled') !== 'false'
-        const maxQueries = parseInt(getSetting('ai.retrieval.expansionMaxQueries') || '8', 10)
+        const endpoint = getAiSetting('ai.endpoint')
+        const model = getAiSetting('ai.model')
+        const hydeEnabled = getAiSetting('ai.retrieval.hydeEnabled') !== 'false'
+        const maxQueries = parseInt(getAiSetting('ai.retrieval.expansionMaxQueries') || '8', 10)
         const effectiveMaxQueries = Math.min(
           isNaN(maxQueries) || maxQueries <= 0 ? 8 : maxQueries,
           10
@@ -982,7 +999,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       try {
         const recentQueryWindow = parseInt(
-          useSettingsStore.getState().getSetting('ai.retrieval.recentQueryWindow') || '20',
+          getAiSetting('ai.retrieval.recentQueryWindow') || '20',
           10
         )
         const effectiveWindow =
@@ -1072,10 +1089,7 @@ export const useAiStore = create<AiState>()((set, get) => {
       )
 
       // Assemble DDL from results with headers, ordering, and token budget
-      const tokenBudget = parseInt(
-        useSettingsStore.getState().getSetting('ai.retrieval.tokenBudget') || '6000',
-        10
-      )
+      const tokenBudget = parseInt(getAiSetting('ai.retrieval.tokenBudget') || '6000', 10)
       const effectiveBudget = isNaN(tokenBudget) || tokenBudget <= 0 ? 6000 : tokenBudget
 
       // Deduct fixed memory token reserve from the schema token budget
@@ -1173,6 +1187,48 @@ export const useAiStore = create<AiState>()((set, get) => {
       }
       return { schemaDdl: '', memoryText: null }
     }
+  }
+
+  function applyChunkToMessages(
+    messages: AiMessage[],
+    content: string,
+    kind: AiChunkKind
+  ): AiMessage[] {
+    const updated = [...messages]
+    const last = updated[updated.length - 1]
+
+    if (kind === 'thinking') {
+      if (last?.role === 'assistant') {
+        updated[updated.length - 1] = {
+          ...last,
+          thinkingContent: (last.thinkingContent ?? '') + content,
+        }
+      } else {
+        updated.push({
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: '',
+          thinkingContent: content,
+          timestamp: Date.now(),
+        })
+      }
+    } else {
+      if (last?.role === 'assistant') {
+        updated[updated.length - 1] = {
+          ...last,
+          content: last.content + content,
+        }
+      } else {
+        updated.push({
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content,
+          timestamp: Date.now(),
+        })
+      }
+    }
+
+    return updated
   }
 
   return {
@@ -1287,7 +1343,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
           // Set up event listeners for this stream
           const unlisten = await listenToAiStream(streamId, {
-            onChunk: (content) => get().onStreamChunk(tabId, streamId, content),
+            onChunk: (content, kind) => get().onStreamChunk(tabId, streamId, content, kind),
             onDone: (info) => get().onStreamDone(tabId, streamId, info),
             onError: (error) => get().onStreamError(tabId, streamId, error),
           })
@@ -1306,11 +1362,11 @@ export const useAiStore = create<AiState>()((set, get) => {
           get().setUnlisten(tabId, unlisten)
 
           // Read AI settings from the settings store
-          const getSetting = useSettingsStore.getState().getSetting
-          const endpoint = getSetting('ai.endpoint')
-          const model = settings.model ?? getSetting('ai.model')
-          const temperature = settings.temperature ?? parseFloat(getSetting('ai.temperature'))
-          const maxTokens = settings.maxTokens ?? parseInt(getSetting('ai.maxTokens'), 10)
+          const endpoint = getAiSetting('ai.endpoint')
+          const model = settings.model ?? getAiSetting('ai.model')
+          const temperature = settings.temperature ?? parseFloat(getAiSetting('ai.temperature'))
+          const maxTokens = settings.maxTokens ?? parseInt(getAiSetting('ai.maxTokens'), 10)
+          const enableReasoning = getAiSetting('ai.enableReasoning') !== 'false'
 
           const requestPromptContextSignature = buildPromptContextSignature(
             get().tabs[tabId]?.messages ?? []
@@ -1348,6 +1404,7 @@ export const useAiStore = create<AiState>()((set, get) => {
               ? (get().tabs[tabId]?.previousResponseId ?? null)
               : null,
             preferResponsesApi: true,
+            enableReasoning,
           })
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : String(err)
@@ -1445,35 +1502,18 @@ export const useAiStore = create<AiState>()((set, get) => {
 
     // ------ onStreamChunk ------
 
-    onStreamChunk: (tabId, streamId, content) => {
+    onStreamChunk: (tabId, streamId, content, kind) => {
       // Stale-stream guard: ignore events from a previous stream that was superseded
       const tab = get().tabs[tabId]
       if (!tab || tab.activeStreamId !== streamId) return
 
-      const messages = [...tab.messages]
-      const lastMessage = messages[messages.length - 1]
-
-      if (lastMessage && lastMessage.role === 'assistant') {
-        // Append to existing assistant message
-        messages[messages.length - 1] = {
-          ...lastMessage,
-          content: lastMessage.content + content,
-        }
-      } else {
-        // Create a new assistant message
-        messages.push({
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content,
-          timestamp: Date.now(),
-        })
-      }
+      const messages = applyChunkToMessages(tab.messages, content, kind)
 
       patchTab(tabId, {
         messages,
         isGenerating: true,
         activeStreamId: streamId,
-        activeStreamHasAssistantOutput: true,
+        ...(kind !== 'thinking' && { activeStreamHasAssistantOutput: true }),
       })
     },
 

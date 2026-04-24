@@ -1,8 +1,19 @@
 //! Integration tests for AI types serialization/deserialization and SSE line parsing.
 
 use sqllumen_lib::ai::types::{
-    parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiStreamChunk,
-    IpcMessage, SseParsed, StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
+    parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiResponsesRequest,
+    ApiStreamChunk, ChunkKind, IpcMessage, ReasoningConfig, SseParsed,
+    StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
+};
+use sqllumen_lib::ai::client::{
+    extract_responses_content_text_for_event,
+    extract_reasoning_text_from_item, extract_reasoning_text_from_parts,
+    extract_responses_delta_text, extract_responses_error_message, extract_responses_final_text,
+    extract_responses_reasoning_text, extract_responses_reasoning_text_for_event,
+    is_chat_completions_style_payload,
+    is_responses_completion_event, is_responses_failure_event, merge_responses_event_type,
+    responses_input_items, should_fallback_from_responses_status,
+    should_retry_chat_without_reasoning, should_use_responses_api,
 };
 
 // ── IPC type serialization (camelCase) ────────────────────────────────────
@@ -41,9 +52,10 @@ fn ai_chat_request_serializes_to_camel_case() {
         temperature: 0.7,
         max_tokens: 1024,
         stream_id: "abc-123".to_string(),
-        previous_response_id: Some("resp_prev".to_string()),
-        prefer_responses_api: true,
-    };
+            previous_response_id: Some("resp_prev".to_string()),
+            prefer_responses_api: true,
+            enable_reasoning: true,
+        };
     let json = serde_json::to_value(&req).unwrap();
     assert!(
         json["maxTokens"].is_number(),
@@ -54,6 +66,7 @@ fn ai_chat_request_serializes_to_camel_case() {
     assert_eq!(json["streamId"], "abc-123");
     assert_eq!(json["previousResponseId"], "resp_prev");
     assert_eq!(json["preferResponsesApi"], true);
+    assert_eq!(json["enableReasoning"], true);
     // snake_case keys should NOT exist
     assert!(json.get("max_tokens").is_none());
     assert!(json.get("stream_id").is_none());
@@ -119,6 +132,7 @@ fn api_chat_request_serializes_to_snake_case() {
         temperature: 0.5,
         max_tokens: 512,
         stream: true,
+        reasoning_effort: None,
     };
     let json = serde_json::to_value(&req).unwrap();
     assert!(
@@ -177,6 +191,7 @@ fn stream_chunk_event_serializes_to_camel_case() {
     let evt = StreamChunkEvent {
         stream_id: "s1".to_string(),
         content: "token".to_string(),
+        kind: ChunkKind::Content,
     };
     let json = serde_json::to_value(&evt).unwrap();
     assert_eq!(json["streamId"], "s1");
@@ -408,6 +423,7 @@ mod stream_integration {
             stream_id: stream_id.to_string(),
             previous_response_id: None,
             prefer_responses_api: true,
+            enable_reasoning: true,
         }
     }
 
@@ -1241,7 +1257,7 @@ mod stream_integration {
         Mock::given(method("POST"))
             .and(path("/v1/responses"))
             .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
-            .expect(1)
+            .expect(2)
             .mount(&server)
             .await;
 
@@ -1284,7 +1300,7 @@ mod stream_integration {
                 ResponseTemplate::new(400)
                     .set_body_string("Unknown parameter: previous_response_id"),
             )
-            .expect(1)
+            .expect(2)
             .mount(&server)
             .await;
 
@@ -1342,6 +1358,7 @@ mod stream_integration {
             stream_id: "stream-followup-fallback".to_string(),
             previous_response_id: Some("resp_prev".to_string()),
             prefer_responses_api: true,
+            enable_reasoning: true,
         };
 
         let result = stream_chat_completion(app.handle(), request, token).await;
@@ -1596,6 +1613,7 @@ mod stream_integration {
             stream_id: "stream-followup".to_string(),
             previous_response_id: Some("resp_prev".to_string()),
             prefer_responses_api: true,
+            enable_reasoning: true,
         };
 
         let result = stream_chat_completion(app.handle(), request, token).await;
@@ -1664,6 +1682,7 @@ mod stream_integration {
             stream_id: "stream-full-history".to_string(),
             previous_response_id: None,
             prefer_responses_api: true,
+            enable_reasoning: true,
         };
 
         let result = stream_chat_completion(app.handle(), request, token).await;
@@ -1733,6 +1752,7 @@ mod stream_integration {
             stream_id: "stream-replayed-history".to_string(),
             previous_response_id: Some("resp_prev".to_string()),
             prefer_responses_api: true,
+            enable_reasoning: true,
         };
 
         let result = stream_chat_completion(app.handle(), request, token).await;
@@ -1770,7 +1790,7 @@ mod stream_integration {
             .respond_with(
                 ResponseTemplate::new(400).set_body_string("Invalid value for 'role': system"),
             )
-            .expect(1)
+            .expect(2)
             .mount(&server)
             .await;
 
@@ -1807,7 +1827,7 @@ mod stream_integration {
         Mock::given(method("POST"))
             .and(path("/v1/responses"))
             .respond_with(ResponseTemplate::new(400).set_body_string("unknown field \"input\""))
-            .expect(1)
+            .expect(2)
             .mount(&server)
             .await;
 
@@ -1835,6 +1855,122 @@ mod stream_integration {
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(result.is_ok(), "unknown input field failures should fall back to chat completions");
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_chat_completions_when_responses_rejects_reasoning_field() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(ResponseTemplate::new(400).set_body_string("unknown field \"reasoning\""))
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"fallback reasoning\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let token = CancellationToken::new();
+        let request = sample_request("stream-responses-fallback-reasoning", &format!("{}/v1", server.uri()));
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "reasoning validation failures should fall back to chat completions");
+    }
+
+    #[tokio::test]
+    async fn chat_completions_retries_without_reasoning_effort_when_unsupported() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "reasoning_effort": "medium"
+            })))
+            .respond_with(
+                ResponseTemplate::new(400)
+                    .set_body_string("unknown parameter: reasoning_effort"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"retry ok\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let endpoint = format!("{}/v1/chat/completions", server.uri());
+        let mut request = sample_request("stream-chat-retry-no-reasoning", &endpoint);
+        request.prefer_responses_api = false;
+        request.enable_reasoning = true;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "chat completions should retry without reasoning_effort");
+    }
+
+    #[tokio::test]
+    async fn responses_content_part_text_is_not_treated_as_reasoning() {
+        let server = MockServer::start().await;
+        let sse_body = [
+            "event: response.content_part.added\n",
+            "data: {\"type\":\"response.content_part.added\",\"part\":{\"type\":\"text\",\"text\":\"assistant text\"}}\n",
+            "\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_content_part\"}}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let mut request = sample_request("stream-responses-content-part-text", &format!("{}/v1", server.uri()));
+        request.enable_reasoning = true;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "generic content-part text should not be treated as reasoning");
     }
 
     #[tokio::test]
@@ -1974,6 +2110,308 @@ mod stream_integration {
     }
 
     #[tokio::test]
+    async fn chat_completions_emits_thinking_chunk_for_reasoning_content() {
+        let server = MockServer::start().await;
+        let sse_body = [
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"let me think\",\"content\":null}}]}\n",
+            "\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n",
+            "\n",
+            "data: [DONE]\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let endpoint = format!("{}/v1/chat/completions", server.uri());
+        let mut request = sample_request("stream-reasoning-content", &endpoint);
+        request.enable_reasoning = true;
+        request.prefer_responses_api = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "stream with reasoning_content should complete successfully");
+    }
+
+    #[tokio::test]
+    async fn chat_completions_emits_thinking_chunk_for_thinking_field() {
+        let server = MockServer::start().await;
+        let sse_body = [
+            "data: {\"choices\":[{\"delta\":{\"thinking\":\"step by step\",\"content\":null}}]}\n",
+            "\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"result\"}}]}\n",
+            "\n",
+            "data: [DONE]\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let endpoint = format!("{}/v1/chat/completions", server.uri());
+        let mut request = sample_request("stream-thinking-field", &endpoint);
+        request.enable_reasoning = true;
+        request.prefer_responses_api = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "stream with thinking field should complete successfully");
+    }
+
+    #[tokio::test]
+    async fn chat_completions_suppresses_thinking_when_reasoning_disabled() {
+        let server = MockServer::start().await;
+        let sse_body = [
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"hidden thought\",\"content\":null}}]}\n",
+            "\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"visible\"}}]}\n",
+            "\n",
+            "data: [DONE]\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let endpoint = format!("{}/v1/chat/completions", server.uri());
+        let mut request = sample_request("stream-no-reasoning", &endpoint);
+        request.enable_reasoning = false;
+        request.prefer_responses_api = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "stream with reasoning disabled should complete without thinking chunks");
+    }
+
+    #[tokio::test]
+    async fn responses_api_emits_thinking_chunk_for_reasoning_summary() {
+        let server = MockServer::start().await;
+        let sse_body = [
+            "event: response.reasoning_summary_text.delta\n",
+            "data: {\"type\":\"response.reasoning_summary_text.delta\",\"delta\":\"thinking...\"}\n",
+            "\n",
+            "event: response.reasoning_summary_text.done\n",
+            "data: {\"type\":\"response.reasoning_summary_text.done\"}\n",
+            "\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"answer\"}\n",
+            "\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_reasoning\"}}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let mut request = sample_request("stream-responses-reasoning", &format!("{}/v1", server.uri()));
+        request.enable_reasoning = true;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "responses stream with reasoning summary should complete successfully");
+    }
+
+    #[tokio::test]
+    async fn responses_api_emits_thinking_chunk_for_reasoning_text_events() {
+        let server = MockServer::start().await;
+        let sse_body = [
+            "event: response.reasoning_text.delta\n",
+            "data: {\"type\":\"response.reasoning_text.delta\",\"delta\":\"thinking...\"}\n",
+            "\n",
+            "event: response.reasoning_text.done\n",
+            "data: {\"type\":\"response.reasoning_text.done\"}\n",
+            "\n",
+            "event: response.output_text.delta\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"answer\"}\n",
+            "\n",
+            "event: response.completed\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_reasoning_text\"}}\n",
+            "\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let mut request = sample_request("stream-responses-reasoning-text", &format!("{}/v1", server.uri()));
+        request.enable_reasoning = true;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "responses stream with reasoning text should complete successfully");
+    }
+
+    #[tokio::test]
+    async fn reasoning_disabled_uses_chat_completions_and_sends_reasoning_effort_none() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("should not be called"))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "reasoning_effort": "none"
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"visible\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let mut request = sample_request("stream-responses-no-reasoning", &format!("{}/v1", server.uri()));
+        request.enable_reasoning = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "reasoning disabled should use chat completions without thinking");
+    }
+
+    #[tokio::test]
+    async fn reasoning_disabled_from_base_endpoint_avoids_responses_retry_path() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("should not be called"))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "reasoning_effort": "none"
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"visible\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let mut request = sample_request("stream-responses-retry-disable", &format!("{}/v1", server.uri()));
+        request.enable_reasoning = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "reasoning disabled should avoid responses and use chat completions directly");
+    }
+
+    #[tokio::test]
+    async fn reasoning_disabled_errors_when_provider_rejects_reasoning_effort_none() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("should not be called"))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "reasoning_effort": "none"
+            })))
+            .respond_with(
+                ResponseTemplate::new(400)
+                    .set_body_string("unknown parameter: reasoning_effort"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let mut request = sample_request(
+            "stream-responses-disable-unsupported",
+            &format!("{}/v1", server.uri()),
+        );
+        request.enable_reasoning = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(
+            result.is_err(),
+            "reasoning disabled should fail if the provider cannot honor reasoning_effort none"
+        );
+        assert!(
+            result
+                .expect_err("request should fail when disable is unsupported")
+                .contains("cannot safely disable thinking"),
+            "error should explain that provider-side reasoning cannot be safely disabled"
+        );
+    }
+
+    #[tokio::test]
     async fn responses_api_stream_surfaces_string_error_failure() {
         let server = MockServer::start().await;
 
@@ -2005,4 +2443,570 @@ mod stream_integration {
             "request failed"
         );
     }
+}
+
+// ── ChunkKind / reasoning field tests ─────────────────────────────────────
+
+#[test]
+fn stream_chunk_event_thinking_kind_serializes_correctly() {
+    use sqllumen_lib::ai::types::{ChunkKind, StreamChunkEvent};
+    let evt = StreamChunkEvent {
+        stream_id: "s1".to_string(),
+        content: "reasoning step".to_string(),
+        kind: ChunkKind::Thinking,
+    };
+    let json = serde_json::to_string(&evt).unwrap();
+    assert!(
+        json.contains("\"kind\":\"thinking\""),
+        "expected thinking kind in JSON: {json}"
+    );
+}
+
+#[test]
+fn stream_chunk_event_default_kind_serializes_as_content() {
+    use sqllumen_lib::ai::types::{ChunkKind, StreamChunkEvent};
+    let evt = StreamChunkEvent {
+        stream_id: "s1".to_string(),
+        content: "normal".to_string(),
+        kind: ChunkKind::default(),
+    };
+    let json = serde_json::to_string(&evt).unwrap();
+    assert!(
+        json.contains("\"kind\":\"content\""),
+        "expected content kind in JSON: {json}"
+    );
+}
+
+#[test]
+fn api_stream_delta_with_reasoning_content_deserializes() {
+    use sqllumen_lib::ai::types::ApiStreamDelta;
+    let json = serde_json::json!({
+        "content": null,
+        "reasoning_content": "let me think..."
+    });
+    let delta: ApiStreamDelta = serde_json::from_value(json).unwrap();
+    assert_eq!(delta.reasoning_content.as_deref(), Some("let me think..."));
+    assert_eq!(delta.content, None);
+    assert_eq!(delta.thinking, None);
+}
+
+#[test]
+fn api_stream_delta_with_thinking_field_deserializes() {
+    use sqllumen_lib::ai::types::ApiStreamDelta;
+    let json = serde_json::json!({
+        "content": null,
+        "thinking": "step by step..."
+    });
+    let delta: ApiStreamDelta = serde_json::from_value(json).unwrap();
+    assert_eq!(delta.thinking.as_deref(), Some("step by step..."));
+    assert_eq!(delta.content, None);
+    assert_eq!(delta.reasoning_content, None);
+}
+
+#[test]
+fn api_stream_delta_without_reasoning_fields_deserializes() {
+    use sqllumen_lib::ai::types::ApiStreamDelta;
+    let json = serde_json::json!({
+        "content": "hello"
+    });
+    let delta: ApiStreamDelta = serde_json::from_value(json).unwrap();
+    assert_eq!(delta.content.as_deref(), Some("hello"));
+    assert_eq!(delta.reasoning_content, None);
+    assert_eq!(delta.thinking, None);
+}
+
+#[test]
+fn ai_chat_request_enable_reasoning_serializes() {
+    let req = AiChatRequest {
+        messages: vec![],
+        endpoint: "http://localhost".to_string(),
+        model: "m".to_string(),
+        temperature: 0.7,
+        max_tokens: 100,
+        stream_id: "s".to_string(),
+        previous_response_id: None,
+        prefer_responses_api: true,
+        enable_reasoning: false,
+    };
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["enableReasoning"], false);
+}
+
+#[test]
+fn ai_chat_request_enable_reasoning_defaults_to_true() {
+    let json = serde_json::json!({
+        "messages": [],
+        "endpoint": "http://localhost",
+        "model": "m",
+        "temperature": 0.7,
+        "maxTokens": 100,
+        "streamId": "s"
+    });
+    let req: AiChatRequest = serde_json::from_value(json).unwrap();
+    assert!(req.enable_reasoning);
+}
+
+#[test]
+fn api_chat_request_has_reasoning_field_when_enabled() {
+    let req = ApiChatRequest {
+        model: "test".to_string(),
+        messages: vec![],
+        temperature: 0.7,
+        max_tokens: 100,
+        stream: true,
+        reasoning_effort: Some("medium".to_string()),
+    };
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["reasoning_effort"], "medium");
+}
+
+#[test]
+fn api_chat_request_omits_reasoning_field_when_disabled() {
+    let req = ApiChatRequest {
+        model: "test".to_string(),
+        messages: vec![],
+        temperature: 0.7,
+        max_tokens: 100,
+        stream: true,
+        reasoning_effort: Some("none".to_string()),
+    };
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["reasoning_effort"], "none");
+}
+
+#[test]
+fn api_responses_request_has_reasoning_field_when_enabled() {
+    let req = ApiResponsesRequest {
+        model: "test".to_string(),
+        input: vec![],
+        temperature: 0.7,
+        max_output_tokens: 100,
+        stream: true,
+        previous_response_id: None,
+        reasoning_effort: Some("medium".to_string()),
+        reasoning: Some(ReasoningConfig {
+            effort: "medium".to_string(),
+            summary: Some("auto".to_string()),
+        }),
+    };
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["reasoning"]["effort"], "medium");
+    assert_eq!(json["reasoning"]["summary"], "auto");
+}
+
+#[test]
+fn api_responses_request_serializes_reasoning_as_nested_object() {
+    // The OpenAI Responses API expects reasoning config as:
+    //   { "reasoning": { "effort": "medium" } }
+    // NOT as a flat top-level field:
+    //   { "reasoning_effort": "medium" }
+    let req = ApiResponsesRequest {
+        model: "test".to_string(),
+        input: vec![],
+        temperature: 0.7,
+        max_output_tokens: 100,
+        stream: true,
+        previous_response_id: None,
+        reasoning_effort: Some("medium".to_string()),
+        reasoning: Some(ReasoningConfig {
+            effort: "medium".to_string(),
+            summary: Some("auto".to_string()),
+        }),
+    };
+    let json = serde_json::to_value(&req).unwrap();
+
+    // Must have nested reasoning object
+    let reasoning = json
+        .get("reasoning")
+        .expect("expected 'reasoning' key in serialized ApiResponsesRequest");
+    assert_eq!(
+        reasoning.get("effort").and_then(|v| v.as_str()),
+        Some("medium"),
+        "expected reasoning.effort = 'medium'"
+    );
+
+    // Must NOT have flat reasoning_effort
+    assert!(
+        json.get("reasoning_effort").is_none(),
+        "flat 'reasoning_effort' field should not exist; Responses API needs nested 'reasoning' object"
+    );
+}
+
+#[test]
+fn api_responses_request_omits_reasoning_field_when_disabled() {
+    let req = ApiResponsesRequest {
+        model: "test".to_string(),
+        input: vec![],
+        temperature: 0.7,
+        max_output_tokens: 100,
+        stream: true,
+        previous_response_id: None,
+        reasoning_effort: None,
+        reasoning: None,
+    };
+    let json = serde_json::to_value(&req).unwrap();
+    assert!(json.get("reasoning_effort").is_none());
+    assert!(json.get("reasoning").is_none());
+}
+
+#[test]
+fn should_use_responses_api_respects_request_flag() {
+    let mut req = AiChatRequest {
+        messages: vec![],
+        endpoint: "http://localhost".to_string(),
+        model: "m".to_string(),
+        temperature: 0.7,
+        max_tokens: 100,
+        stream_id: "s".to_string(),
+        previous_response_id: None,
+        prefer_responses_api: true,
+        enable_reasoning: true,
+    };
+    assert!(should_use_responses_api(&req));
+    req.prefer_responses_api = false;
+    assert!(!should_use_responses_api(&req));
+    req.prefer_responses_api = true;
+    req.enable_reasoning = false;
+    assert!(!should_use_responses_api(&req));
+}
+
+#[test]
+fn responses_status_fallback_recognizes_reasoning_errors() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "unknown field \"reasoning\""
+    ));
+    assert!(!should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "validation failed"
+    ));
+}
+
+#[test]
+fn chat_retry_without_reasoning_matches_supported_errors() {
+    assert!(should_retry_chat_without_reasoning(
+        reqwest::StatusCode::BAD_REQUEST,
+        "unknown parameter: reasoning_effort"
+    ));
+    assert!(!should_retry_chat_without_reasoning(
+        reqwest::StatusCode::BAD_REQUEST,
+        "unknown parameter: temperature"
+    ));
+}
+
+#[test]
+fn responses_error_message_extracts_nested_and_top_level_messages() {
+    let nested = serde_json::json!({ "error": { "message": "nested" } });
+    assert_eq!(extract_responses_error_message(&nested).as_deref(), Some("nested"));
+
+    let top_level = serde_json::json!({ "message": "top" });
+    assert_eq!(extract_responses_error_message(&top_level).as_deref(), Some("top"));
+}
+
+#[test]
+fn responses_delta_text_defaults_to_empty() {
+    assert_eq!(extract_responses_delta_text(&serde_json::json!({ "delta": "hi" })), "hi");
+    assert_eq!(extract_responses_delta_text(&serde_json::json!({})), "");
+}
+
+#[test]
+fn reasoning_text_helpers_extract_only_reasoning_content() {
+    let parts = vec![
+        serde_json::json!({ "type": "summary_text", "text": "sum" }),
+        serde_json::json!({ "type": "text", "text": "ignore" }),
+        serde_json::json!({ "type": "reasoning_text", "text": "reason" }),
+    ];
+    assert_eq!(extract_reasoning_text_from_parts(&parts), "sumreason");
+
+    let reasoning_item = serde_json::json!({
+        "type": "reasoning",
+        "summary": [{ "type": "summary_text", "text": "summary" }],
+        "content": [
+            { "type": "text", "text": "content" },
+            { "type": "reasoning_text", "text": "detail" }
+        ]
+    });
+    assert_eq!(extract_reasoning_text_from_item(&reasoning_item), "summarycontentdetail");
+
+    let non_reasoning_item = serde_json::json!({
+        "type": "message",
+        "content": [{ "type": "text", "text": "assistant" }]
+    });
+    assert_eq!(extract_reasoning_text_from_item(&non_reasoning_item), "");
+}
+
+#[test]
+fn responses_reasoning_text_extracts_from_delta_part_and_output_items() {
+    let json = serde_json::json!({
+        "delta": "delta",
+        "part": { "type": "reasoning_text", "text": "part" },
+        "item": {
+            "type": "reasoning",
+            "content": [{ "type": "text", "text": "item" }]
+        },
+        "output": [{
+            "type": "reasoning",
+            "summary": [{ "type": "summary_text", "text": "output" }]
+        }],
+        "response": {
+            "output": [{
+                "type": "reasoning",
+                "content": [{ "type": "reasoning_text", "text": "response" }]
+            }]
+        }
+    });
+
+    assert_eq!(
+        extract_responses_reasoning_text(&json),
+        "deltapartitemoutputresponse"
+    );
+}
+
+#[test]
+fn responses_reasoning_text_for_event_uses_done_text_only_as_fallback() {
+    let done_json = serde_json::json!({
+        "text": "full reasoning"
+    });
+
+    assert_eq!(
+        extract_responses_reasoning_text_for_event(
+            Some("response.reasoning_text.done"),
+            &done_json,
+            false,
+        ),
+        "full reasoning"
+    );
+    assert_eq!(
+        extract_responses_reasoning_text_for_event(
+            Some("response.reasoning_text.done"),
+            &done_json,
+            true,
+        ),
+        ""
+    );
+}
+
+#[test]
+fn responses_reasoning_text_for_completed_does_not_use_top_level_answer_text() {
+    let completed_json = serde_json::json!({
+        "text": "assistant answer",
+        "response": {
+            "output": [
+                {
+                    "type": "reasoning",
+                    "content": [{ "type": "reasoning_text", "text": "reasoning only" }]
+                },
+                {
+                    "type": "message",
+                    "content": [{ "type": "output_text", "text": "assistant answer" }]
+                }
+            ]
+        }
+    });
+
+    assert_eq!(
+        extract_responses_reasoning_text_for_event(
+            Some("response.completed"),
+            &completed_json,
+            false,
+        ),
+        "reasoning only"
+    );
+}
+
+#[test]
+fn responses_content_text_for_event_skips_reasoning_events() {
+    let reasoning_done_json = serde_json::json!({
+        "text": "reasoning should stay hidden"
+    });
+
+    assert_eq!(
+        extract_responses_content_text_for_event(
+            Some("response.reasoning_text.done"),
+            &reasoning_done_json,
+            false,
+        ),
+        ""
+    );
+
+    let message_done_json = serde_json::json!({
+        "item": {
+            "type": "message",
+            "content": [{ "type": "output_text", "text": "assistant answer" }]
+        }
+    });
+
+    assert_eq!(
+        extract_responses_content_text_for_event(
+            Some("response.output_item.done"),
+            &message_done_json,
+            false,
+        ),
+        "assistant answer"
+    );
+    assert_eq!(
+        extract_responses_content_text_for_event(
+            Some("response.output_item.done"),
+            &message_done_json,
+            true,
+        ),
+        ""
+    );
+
+    let reasoning_item_done_json = serde_json::json!({
+        "item": {
+            "type": "reasoning",
+            "content": [{ "type": "reasoning_text", "text": "hidden" }]
+        }
+    });
+
+    assert_eq!(
+        extract_responses_content_text_for_event(
+            Some("response.output_item.done"),
+            &reasoning_item_done_json,
+            false,
+        ),
+        ""
+    );
+
+    let reasoning_part_done_json = serde_json::json!({
+        "part": {
+            "type": "reasoning_text",
+            "text": "still hidden"
+        }
+    });
+
+    assert_eq!(
+        extract_responses_content_text_for_event(
+            Some("response.content_part.done"),
+            &reasoning_part_done_json,
+            false,
+        ),
+        ""
+    );
+
+    let visible_text_part_json = serde_json::json!({
+        "item_id": "msg_123",
+        "part": {
+            "type": "text",
+            "text": "assistant text"
+        }
+    });
+
+    assert_eq!(
+        extract_responses_content_text_for_event(
+            Some("response.content_part.added"),
+            &visible_text_part_json,
+            false,
+        ),
+        "assistant text"
+    );
+
+    let reasoning_text_part_json = serde_json::json!({
+        "item_id": "rs_123",
+        "part": {
+            "type": "text",
+            "text": "should stay hidden"
+        }
+    });
+
+    assert_eq!(
+        extract_responses_content_text_for_event(
+            Some("response.content_part.added"),
+            &reasoning_text_part_json,
+            false,
+        ),
+        ""
+    );
+}
+
+#[test]
+fn responses_final_text_skips_reasoning_items_and_collects_text() {
+    let json = serde_json::json!({
+        "content": [{ "text": "content" }],
+        "text": "top",
+        "output": [
+            { "type": "reasoning", "content": [{ "text": "ignore" }] },
+            { "type": "message", "content": [{ "text": "output" }] }
+        ],
+        "response": {
+            "output": [
+                { "type": "reasoning", "content": [{ "text": "ignore2" }] },
+                { "type": "message", "content": [{ "text": "response" }] }
+            ]
+        }
+    });
+
+    assert_eq!(extract_responses_final_text(&json), "contenttopresponseoutput");
+}
+
+#[test]
+fn responses_event_helpers_classify_events() {
+    assert!(is_responses_completion_event(Some("response.reasoning_text.delta")));
+    assert!(is_responses_completion_event(Some("response.output_item.done")));
+    assert!(!is_responses_completion_event(Some("response.failed")));
+
+    assert!(is_responses_failure_event(Some("response.failed")));
+    assert!(is_responses_failure_event(Some("error")));
+    assert!(!is_responses_failure_event(Some("response.completed")));
+}
+
+#[test]
+fn merge_responses_event_type_prefers_sse_then_json_type() {
+    let json = serde_json::json!({ "type": "response.output_text.delta" });
+    assert_eq!(
+        merge_responses_event_type(Some("response.created"), &json),
+        Some("response.created")
+    );
+    assert_eq!(
+        merge_responses_event_type(None, &json),
+        Some("response.output_text.delta")
+    );
+}
+
+#[test]
+fn detects_chat_completions_style_payload() {
+    assert!(is_chat_completions_style_payload(&serde_json::json!({
+        "choices": [{ "delta": { "content": "hi" } }]
+    })));
+    assert!(!is_chat_completions_style_payload(&serde_json::json!({
+        "output": []
+    })));
+}
+
+#[test]
+fn responses_input_items_use_incremental_history_for_follow_ups() {
+    let request = AiChatRequest {
+        messages: vec![
+            IpcMessage {
+                role: "system".to_string(),
+                content: "sys".to_string(),
+            },
+            IpcMessage {
+                role: "user".to_string(),
+                content: "hello".to_string(),
+            },
+            IpcMessage {
+                role: "assistant".to_string(),
+                content: "hi".to_string(),
+            },
+            IpcMessage {
+                role: "user".to_string(),
+                content: "follow up".to_string(),
+            },
+        ],
+        endpoint: "http://localhost".to_string(),
+        model: "m".to_string(),
+        temperature: 0.7,
+        max_tokens: 100,
+        stream_id: "s".to_string(),
+        previous_response_id: Some("resp_prev".to_string()),
+        prefer_responses_api: true,
+        enable_reasoning: true,
+    };
+
+    let items = responses_input_items(&request);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].role, "user");
+    assert_eq!(items[0].content, "follow up");
 }

@@ -120,6 +120,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'ai.embeddingModel': '',
         'ai.temperature': '0.3',
         'ai.maxTokens': '2048',
+        'ai.enableReasoning': 'false',
       }
       if (key in AI_DEFAULTS) return AI_DEFAULTS[key]
       return null
@@ -150,6 +151,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'ai.embeddingModel': '',
         'ai.temperature': '0.3',
         'ai.maxTokens': '2048',
+        'ai.enableReasoning': 'false',
       }
 
     case 'log_frontend':
@@ -1629,6 +1631,32 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         return null
       }
 
+      // Support thinking/reasoning simulation for Playwright tests
+      if (
+        typeof window !== 'undefined' &&
+        (window as unknown as Record<string, unknown>).__mockAiThinking__
+      ) {
+        const thinkingText = 'Let me analyze the database schema and find the best approach...'
+        let delay = 10
+        // Emit thinking chunk
+        setTimeout(() => {
+          emitMockEvent('ai-stream-chunk', { streamId, content: thinkingText, kind: 'thinking' })
+        }, delay)
+        delay += 20
+        // Then emit normal content chunks
+        const chunks = AI_MOCK_RESPONSE.match(/[\s\S]{1,20}/g) ?? [AI_MOCK_RESPONSE]
+        for (const chunk of chunks) {
+          setTimeout(() => {
+            emitMockEvent('ai-stream-chunk', { streamId, content: chunk, kind: 'content' })
+          }, delay)
+          delay += 10
+        }
+        setTimeout(() => {
+          emitMockEvent('ai-stream-done', { streamId })
+        }, delay)
+        return null
+      }
+
       // Break the response into chunks and emit them asynchronously.
       // Use [\s\S] instead of . so newlines are preserved in chunks —
       // . does not match \n by default, which would strip the newlines
@@ -1637,7 +1665,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       let delay = 10
       for (const chunk of chunks) {
         setTimeout(() => {
-          emitMockEvent('ai-stream-chunk', { streamId, content: chunk })
+          emitMockEvent('ai-stream-chunk', { streamId, content: chunk, kind: 'content' })
         }, delay)
         delay += 10
       }

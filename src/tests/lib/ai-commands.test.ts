@@ -71,6 +71,7 @@ describe('sendAiChat', () => {
         streamId: params.streamId,
         previousResponseId: 'resp_prev',
         preferResponsesApi: true,
+        enableReasoning: true,
       },
     })
   })
@@ -151,8 +152,9 @@ describe('listenToAiStream', () => {
   })
 
   it('filters events by streamId — matching stream calls onChunk', async () => {
-    let chunkHandler: ((event: { payload: { streamId: string; content: string } }) => void) | null =
-      null
+    let chunkHandler:
+      | ((event: { payload: { streamId: string; content: string; kind?: string } }) => void)
+      | null = null
 
     mockListen.mockImplementation((eventName: string, handler: unknown) => {
       if (eventName === 'ai-stream-chunk') {
@@ -166,12 +168,13 @@ describe('listenToAiStream', () => {
 
     // Matching streamId
     chunkHandler!({ payload: { streamId: 'stream-aaa', content: 'hello' } })
-    expect(callbacks.onChunk).toHaveBeenCalledWith('hello')
+    expect(callbacks.onChunk).toHaveBeenCalledWith('hello', 'content')
   })
 
   it('filters events by streamId — mismatched stream does not call onChunk', async () => {
-    let chunkHandler: ((event: { payload: { streamId: string; content: string } }) => void) | null =
-      null
+    let chunkHandler:
+      | ((event: { payload: { streamId: string; content: string; kind?: string } }) => void)
+      | null = null
 
     mockListen.mockImplementation((eventName: string, handler: unknown) => {
       if (eventName === 'ai-stream-chunk') {
@@ -244,6 +247,45 @@ describe('listenToAiStream', () => {
     // Non-matching
     errorHandler!({ payload: { streamId: 'stream-nope', error: 'nope' } })
     expect(callbacks.onError).toHaveBeenCalledTimes(1) // still 1
+  })
+
+  it('passes kind=thinking to onChunk when event has kind=thinking', async () => {
+    let chunkHandler:
+      | ((event: { payload: { streamId: string; content: string; kind?: string } }) => void)
+      | null = null
+
+    mockListen.mockImplementation((eventName: string, handler: unknown) => {
+      if (eventName === 'ai-stream-chunk') {
+        chunkHandler = handler as typeof chunkHandler
+      }
+      return Promise.resolve(vi.fn())
+    })
+
+    const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }
+    await listenToAiStream('stream-think', callbacks)
+
+    chunkHandler!({
+      payload: { streamId: 'stream-think', content: 'reasoning...', kind: 'thinking' },
+    })
+    expect(callbacks.onChunk).toHaveBeenCalledWith('reasoning...', 'thinking')
+  })
+
+  it('defaults kind to content when event has no kind field', async () => {
+    let chunkHandler: ((event: { payload: { streamId: string; content: string } }) => void) | null =
+      null
+
+    mockListen.mockImplementation((eventName: string, handler: unknown) => {
+      if (eventName === 'ai-stream-chunk') {
+        chunkHandler = handler as typeof chunkHandler
+      }
+      return Promise.resolve(vi.fn())
+    })
+
+    const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }
+    await listenToAiStream('stream-noKind', callbacks)
+
+    chunkHandler!({ payload: { streamId: 'stream-noKind', content: 'hello' } })
+    expect(callbacks.onChunk).toHaveBeenCalledWith('hello', 'content')
   })
 })
 

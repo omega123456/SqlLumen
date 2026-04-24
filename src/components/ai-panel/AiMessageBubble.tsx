@@ -1,4 +1,5 @@
 import { MarkdownRenderer } from './markdown-renderer'
+import { ThinkingBlock } from './ThinkingBlock'
 import type { AiMessage } from '../../stores/ai-store'
 import styles from './AiMessageBubble.module.css'
 
@@ -34,6 +35,9 @@ export function AiMessageBubble({
   // assistant
   return (
     <div className={styles.assistantBubble} data-testid="ai-message-assistant">
+      {message.thinkingContent && (
+        <ThinkingBlock content={message.thinkingContent} isStreaming={isStreaming} />
+      )}
       <div className={styles.markdownBody}>
         <MarkdownRenderer
           content={message.content}

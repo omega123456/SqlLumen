@@ -222,6 +222,7 @@ pub async fn ai_query_expand_impl(
             { "role": "system", "content": req.system_prompt },
             { "role": "user", "content": effective_user_message },
         ],
+        "reasoning_effort": "none",
         "stream": false,
     });
 

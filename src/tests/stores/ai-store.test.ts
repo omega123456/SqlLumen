@@ -12,12 +12,14 @@ const defaultSettings: Record<string, string> = {
   'ai.model': 'llama3',
   'ai.temperature': '0.3',
   'ai.maxTokens': '2048',
+  'ai.enableReasoning': 'true',
   'ai.embeddingModel': '',
   'ai.retrieval.hydeEnabled': 'true',
   'ai.retrieval.expansionMaxQueries': '8',
 }
 
 let mockSettings: Record<string, string> = { ...defaultSettings }
+let mockPendingChanges: Record<string, string> = {}
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -102,6 +104,9 @@ vi.mock('../../stores/settings-store', () => ({
   useSettingsStore: {
     getState: () => ({
       getSetting: (key: string) => mockSettings[key] ?? '',
+      getEffectiveSetting: (key: string) => mockPendingChanges[key] ?? mockSettings[key] ?? '',
+      pendingChanges: mockPendingChanges,
+      settings: mockSettings,
     }),
     subscribe: vi.fn(),
   },
@@ -126,6 +131,7 @@ beforeEach(() => {
   useAiFeedbackStore.setState({ entries: [] })
   useQueryStore.setState({ tabs: {} })
   mockSettings = { ...defaultSettings }
+  mockPendingChanges = {}
   vi.clearAllMocks()
   mockSendAiChat.mockResolvedValue(undefined)
   mockCancelAiStream.mockResolvedValue(undefined)
@@ -256,6 +262,35 @@ describe('useAiStore', () => {
       expect(params.model).toBe('gpt-4')
       expect(params.temperature).toBe(0.7)
       expect(params.maxTokens).toBe(4096)
+    })
+
+    it('uses pending reasoning setting when building AI requests', async () => {
+      mockSettings['ai.enableReasoning'] = 'true'
+      mockPendingChanges['ai.enableReasoning'] = 'false'
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const params = mockSendAiChat.mock.calls[0][0]
+      expect(params.enableReasoning).toBe(false)
+    })
+
+    it('uses pending endpoint and model settings when building AI requests', async () => {
+      mockPendingChanges['ai.endpoint'] = 'http://pending.example/v1'
+      mockPendingChanges['ai.model'] = 'gemma-pending'
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const params = mockSendAiChat.mock.calls[0][0]
+      expect(params.endpoint).toBe('http://pending.example/v1')
+      expect(params.model).toBe('gemma-pending')
     })
 
     it('stores the unlisten function from listenToAiStream', async () => {
@@ -458,7 +493,9 @@ describe('useAiStore', () => {
 
       expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
 
-      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer', 'content')
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -487,7 +524,9 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer', 'content')
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -532,7 +571,9 @@ describe('useAiStore', () => {
 
       expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
 
-      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer', 'content')
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -581,7 +622,9 @@ describe('useAiStore', () => {
 
       expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
 
-      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer', 'content')
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -603,7 +646,7 @@ describe('useAiStore', () => {
       })
 
       const firstStreamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Hello back')
+      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Hello back', 'content')
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_abc',
         transport: 'responses',
@@ -633,7 +676,7 @@ describe('useAiStore', () => {
       }>
 
       const firstStreamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Hello back')
+      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Hello back', 'content')
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_cache',
         transport: 'responses',
@@ -672,7 +715,9 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back', 'content')
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_abc',
         transport: 'responses',
@@ -710,7 +755,9 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back', 'content')
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_abc',
         transport: 'responses',
@@ -734,7 +781,9 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back', 'content')
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_abc',
         transport: 'responses',
@@ -758,7 +807,9 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Hello back', 'content')
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_conversation',
         transport: 'responses',
@@ -824,7 +875,7 @@ describe('useAiStore', () => {
       })
 
       const firstStreamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Hello back')
+      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Hello back', 'content')
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_schema_clear',
         transport: 'responses',
@@ -885,7 +936,7 @@ describe('useAiStore', () => {
 
     it('stream listeners call store onStreamChunk/onDone/onError', async () => {
       let capturedCallbacks: {
-        onChunk: (content: string) => void
+        onChunk: (content: string, kind: string) => void
         onDone: (info: {
           responseId?: string | null
           transport?: 'chat_completions' | 'responses'
@@ -907,8 +958,8 @@ describe('useAiStore', () => {
       })
 
       // Simulate streaming chunks
-      capturedCallbacks!.onChunk('Hello ')
-      capturedCallbacks!.onChunk('world!')
+      capturedCallbacks!.onChunk('Hello ', 'content')
+      capturedCallbacks!.onChunk('world!', 'content')
 
       const tab1 = getTab('tab-1')!
       const assistantMsg = tab1.messages.find((m) => m.role === 'assistant')
@@ -924,7 +975,7 @@ describe('useAiStore', () => {
 
     it('stream listeners continue to accumulate tokens when no UI is subscribed (store ownership)', async () => {
       let capturedCallbacks: {
-        onChunk: (content: string) => void
+        onChunk: (content: string, kind: string) => void
         onDone: (info: {
           responseId?: string | null
           transport?: 'chat_completions' | 'responses'
@@ -947,9 +998,9 @@ describe('useAiStore', () => {
 
       // No UI subscription — just the store's internal callbacks
       // Simulate streaming several chunks
-      capturedCallbacks!.onChunk('Token1 ')
-      capturedCallbacks!.onChunk('Token2 ')
-      capturedCallbacks!.onChunk('Token3')
+      capturedCallbacks!.onChunk('Token1 ', 'content')
+      capturedCallbacks!.onChunk('Token2 ', 'content')
+      capturedCallbacks!.onChunk('Token3', 'content')
 
       // Read state directly (no React subscriber needed)
       const tab = getTab('tab-1')!
@@ -1025,7 +1076,7 @@ describe('useAiStore', () => {
       })
 
       const firstStreamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Sure')
+      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Sure', 'content')
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_attached_clear',
         transport: 'responses',
@@ -1157,7 +1208,9 @@ describe('useAiStore', () => {
 
     it('clears previousResponseId when cancelling an in-flight stream', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
-      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Response')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Response', 'content')
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_keep',
         transport: 'responses',
@@ -1221,7 +1274,7 @@ describe('useAiStore', () => {
       // Set up a tab with an active stream so the chunk is not rejected
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Hello')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Hello', 'content')
       const tab = getTab('tab-1')!
       const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
       expect(assistantMsg).toBeDefined()
@@ -1233,8 +1286,8 @@ describe('useAiStore', () => {
     it('appends to existing assistant message', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Hello')
-      useAiStore.getState().onStreamChunk('tab-1', streamId, ' world')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Hello', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, ' world', 'content')
       const tab = getTab('tab-1')!
       const assistantMsgs = tab.messages.filter((m) => m.role === 'assistant')
       expect(assistantMsgs).toHaveLength(1)
@@ -1244,7 +1297,7 @@ describe('useAiStore', () => {
     it('creates new assistant message after a user message', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Response')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Response', 'content')
       const tab = getTab('tab-1')!
       const userMsg = tab.messages.find((m) => m.role === 'user')
       const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
@@ -1255,7 +1308,9 @@ describe('useAiStore', () => {
 
     it('ignores chunks with a stale streamId', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
-      useAiStore.getState().onStreamChunk('tab-1', 'stale-stream-id', 'Should be ignored')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', 'stale-stream-id', 'Should be ignored', 'content')
       const tab = getTab('tab-1')!
       const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
       expect(assistantMsg).toBeUndefined()
@@ -1263,8 +1318,53 @@ describe('useAiStore', () => {
 
     it('ignores chunks for non-existent tab', () => {
       // Should not throw
-      useAiStore.getState().onStreamChunk('nonexistent', 'stream-1', 'chunk')
+      useAiStore.getState().onStreamChunk('nonexistent', 'stream-1', 'chunk', 'content')
       expect(getTab('nonexistent')).toBeUndefined()
+    })
+
+    it('routes thinking chunks to thinkingContent, not content', () => {
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      const streamId = getTab('tab-1')!.activeStreamId!
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'reasoning...', 'thinking')
+      const tab = getTab('tab-1')!
+      const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
+      expect(assistantMsg).toBeDefined()
+      expect(assistantMsg!.thinkingContent).toBe('reasoning...')
+      expect(assistantMsg!.content).toBe('')
+    })
+
+    it('appends thinking chunks to thinkingContent without affecting content', () => {
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      const streamId = getTab('tab-1')!.activeStreamId!
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'think1', 'thinking')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'think2', 'thinking')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'visible', 'content')
+      const tab = getTab('tab-1')!
+      const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
+      expect(assistantMsg!.thinkingContent).toBe('think1think2')
+      expect(assistantMsg!.content).toBe('visible')
+    })
+
+    it('content chunks do not affect thinkingContent', () => {
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      const streamId = getTab('tab-1')!.activeStreamId!
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'hello', 'content')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, ' world', 'content')
+      const tab = getTab('tab-1')!
+      const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
+      expect(assistantMsg!.content).toBe('hello world')
+      expect(assistantMsg!.thinkingContent).toBeUndefined()
+    })
+
+    it('thinking chunk before any content creates assistant message with empty content and non-empty thinkingContent', () => {
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
+      const streamId = getTab('tab-1')!.activeStreamId!
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'let me think', 'thinking')
+      const tab = getTab('tab-1')!
+      const assistantMsg = tab.messages.find((m) => m.role === 'assistant')
+      expect(assistantMsg).toBeDefined()
+      expect(assistantMsg!.content).toBe('')
+      expect(assistantMsg!.thinkingContent).toBe('let me think')
     })
   })
 
@@ -1272,7 +1372,7 @@ describe('useAiStore', () => {
     it('sets isGenerating to false and clears activeStreamId', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'chunk')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'chunk', 'content')
       useAiStore.getState().onStreamDone('tab-1', streamId, { transport: 'chat_completions' })
       const tab = getTab('tab-1')!
       expect(tab.isGenerating).toBe(false)
@@ -1294,7 +1394,7 @@ describe('useAiStore', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
       const streamId = getTab('tab-1')!.activeStreamId!
 
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Answer')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'Answer', 'content')
 
       useAiStore.getState().onStreamDone('tab-1', streamId, {
         responseId: 'resp_999',
@@ -1323,7 +1423,7 @@ describe('useAiStore', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
       const firstStreamId = getTab('tab-1')!.activeStreamId!
 
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Answer')
+      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Answer', 'content')
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_999',
         transport: 'responses',
@@ -1360,7 +1460,7 @@ describe('useAiStore', () => {
     it('sets isGenerating to false, sets error, clears activeStreamId', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
       const streamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', streamId, 'chunk')
+      useAiStore.getState().onStreamChunk('tab-1', streamId, 'chunk', 'content')
       useAiStore.getState().onStreamError('tab-1', streamId, 'Connection failed')
       const tab = getTab('tab-1')!
       expect(tab.isGenerating).toBe(false)
@@ -1370,7 +1470,9 @@ describe('useAiStore', () => {
 
     it('clears previousResponseId on stream error', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hi', {})
-      useAiStore.getState().onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer')
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-1', getTab('tab-1')!.activeStreamId!, 'Answer', 'content')
       useAiStore.getState().onStreamDone('tab-1', getTab('tab-1')!.activeStreamId!, {
         responseId: 'resp_previous',
         transport: 'responses',
@@ -1698,7 +1800,7 @@ describe('useAiStore', () => {
       }>
 
       const firstStreamId = getTab('tab-1')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Sure')
+      useAiStore.getState().onStreamChunk('tab-1', firstStreamId, 'Sure', 'content')
       useAiStore.getState().onStreamDone('tab-1', firstStreamId, {
         responseId: 'resp_attached',
         transport: 'responses',
@@ -2083,7 +2185,7 @@ describe('useAiStore', () => {
 
       // Simulate an assistant response
       const streamId = getTab('tab-ctx')!.activeStreamId!
-      useAiStore.getState().onStreamChunk('tab-ctx', streamId, 'Hi there!')
+      useAiStore.getState().onStreamChunk('tab-ctx', streamId, 'Hi there!', 'content')
       useAiStore.getState().onStreamDone('tab-ctx', streamId, {
         transport: 'chat_completions',
       })

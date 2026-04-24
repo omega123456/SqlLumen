@@ -6,6 +6,8 @@ import { logFrontend } from './app-log-commands'
 // Types
 // ---------------------------------------------------------------------------
 
+export type AiChunkKind = 'content' | 'thinking'
+
 export interface AiMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -20,6 +22,7 @@ export interface AiChatParams {
   streamId: string
   previousResponseId?: string | null
   preferResponsesApi?: boolean
+  enableReasoning?: boolean
 }
 
 export interface AiStreamDoneInfo {
@@ -28,7 +31,7 @@ export interface AiStreamDoneInfo {
 }
 
 export interface AiStreamCallbacks {
-  onChunk: (content: string) => void
+  onChunk: (content: string, kind: AiChunkKind) => void
   onDone: (info: AiStreamDoneInfo) => void
   onError: (error: string) => void
 }
@@ -46,6 +49,7 @@ export interface AiModelInfo {
 interface StreamChunkPayload {
   streamId: string
   content: string
+  kind?: AiChunkKind
 }
 
 interface StreamDonePayload {
@@ -78,6 +82,7 @@ export async function sendAiChat(params: AiChatParams): Promise<void> {
       streamId: params.streamId,
       previousResponseId: params.previousResponseId ?? null,
       preferResponsesApi: params.preferResponsesApi ?? true,
+      enableReasoning: params.enableReasoning ?? true,
     },
   })
 }
@@ -102,7 +107,7 @@ export async function listenToAiStream(
 ): Promise<() => void> {
   const unlistenChunk = await listen<StreamChunkPayload>('ai-stream-chunk', (event) => {
     if (event.payload.streamId === streamId) {
-      callbacks.onChunk(event.payload.content)
+      callbacks.onChunk(event.payload.content, event.payload.kind ?? 'content')
     }
   })
 

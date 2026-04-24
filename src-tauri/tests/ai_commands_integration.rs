@@ -45,6 +45,7 @@ fn sample_request(stream_id: &str, endpoint: &str) -> AiChatRequest {
         stream_id: stream_id.to_string(),
         previous_response_id: None,
         prefer_responses_api: true,
+        enable_reasoning: true,
     }
 }
 
@@ -709,6 +710,45 @@ async fn query_expand_returns_text() {
     assert!(result.is_ok(), "should succeed: {:?}", result);
     let response = result.unwrap();
     assert_eq!(response.text, "SELECT * FROM users WHERE active = 1");
+}
+
+#[tokio::test]
+async fn query_expand_disables_reasoning_on_request() {
+    use wiremock::matchers::{body_partial_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(body_partial_json(serde_json::json!({
+            "reasoning_effort": "none",
+            "stream": false
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "ok"
+                }
+            }]
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let state = test_state();
+    let req = AiQueryExpandRequest {
+        endpoint: format!("{}/v1", server.uri()),
+        model: "test-model".to_string(),
+        system_prompt: "You are a SQL assistant.".to_string(),
+        user_message: "Find active users".to_string(),
+        conversation_context: None,
+    };
+
+    let result = ai_query_expand_impl(&state, req).await;
+    assert!(result.is_ok(), "query expansion should send reasoning_effort none");
+    assert_eq!(result.unwrap().text, "ok");
 }
 
 #[tokio::test]
