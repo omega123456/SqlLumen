@@ -20,6 +20,7 @@ import { showErrorToast, showSuccessToast, showWarningToast } from '../stores/to
 import { useQueryStore } from '../stores/query-store'
 import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
 import { invalidateCache as invalidateSchemaMetadataCache } from '../components/query-editor/schema-metadata-cache'
+import { logFrontend } from '../lib/app-log-commands'
 import type { EditableObjectType } from '../types/schema'
 
 const RENAME_DB_WARNING =
@@ -398,9 +399,10 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         invalidateSchemaIndex(connectionId, [`${db}.${prev}`])
           .then(() => buildSchemaIndex(connectionId))
           .catch((err) => {
-            console.error(
-              '[useObjectBrowserActions] schema index rebuild after rename failed',
-              err instanceof Error ? err.message : String(err)
+            const message = err instanceof Error ? err.message : String(err)
+            logFrontend(
+              'warn',
+              `[useObjectBrowserActions] schema index rebuild after rename failed: ${message}`
             )
           })
       } catch (err) {

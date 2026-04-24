@@ -401,7 +401,6 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         })
         .catch((error: unknown) => {
           const errorMessage = error instanceof Error ? error.message : String(error)
-          console.warn('[table-data-store] FK metadata fetch failed:', error)
           logFrontend('warn', 'FK metadata fetch failed: ' + errorMessage)
           // Leave foreignKeys as [] — do NOT set error on the tab
         })

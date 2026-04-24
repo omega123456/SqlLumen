@@ -5,6 +5,10 @@ import {
   formatFromEpochSeconds,
 } from '../../lib/format-utils'
 
+function throwOnDateConstruction(this: unknown): Date {
+  throw new RangeError('Invalid time value')
+}
+
 describe('formatTableTimestamp', () => {
   it('formats a valid ISO timestamp', () => {
     const result = formatTableTimestamp('2025-06-15T10:30:00Z')
@@ -26,9 +30,7 @@ describe('formatTableTimestamp', () => {
   })
 
   it('returns original string when Date constructor throws', () => {
-    vi.spyOn(globalThis, 'Date').mockImplementation(() => {
-      throw new RangeError('Invalid time value')
-    })
+    vi.spyOn(globalThis, 'Date').mockImplementation(throwOnDateConstruction)
     try {
       expect(formatTableTimestamp('2025-01-01T00:00:00Z')).toBe('2025-01-01T00:00:00Z')
     } finally {
@@ -57,9 +59,7 @@ describe('formatShortDate', () => {
   })
 
   it('returns original string when Date constructor throws', () => {
-    vi.spyOn(globalThis, 'Date').mockImplementation(() => {
-      throw new RangeError('Invalid time value')
-    })
+    vi.spyOn(globalThis, 'Date').mockImplementation(throwOnDateConstruction)
     try {
       expect(formatShortDate('bad-input')).toBe('bad-input')
     } finally {
@@ -82,9 +82,7 @@ describe('formatFromEpochSeconds', () => {
   })
 
   it('returns string of number when Date constructor throws', () => {
-    vi.spyOn(globalThis, 'Date').mockImplementation(() => {
-      throw new RangeError('Invalid time value')
-    })
+    vi.spyOn(globalThis, 'Date').mockImplementation(throwOnDateConstruction)
     try {
       expect(formatFromEpochSeconds(12345)).toBe('12345')
     } finally {

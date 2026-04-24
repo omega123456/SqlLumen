@@ -216,9 +216,9 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
         })
         .catch((err) => {
           const msg = err instanceof Error ? err.message : String(err)
-          console.error(
-            `[schema-index-store] Failed to get initial index status for ${sessionId}:`,
-            msg
+          logFrontend(
+            'warn',
+            `[schema-index-store] Failed to get initial index status for ${sessionId}: ${msg}`
           )
         })
     },

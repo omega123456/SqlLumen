@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useSchemaIndexStore } from '../../stores/schema-index-store'
+import { logFrontend } from '../../lib/app-log-commands'
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -127,14 +128,13 @@ describe('useSchemaIndexStore', () => {
     })
 
     it('handles getIndexStatus failure gracefully on registration', async () => {
-      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       mockGetIndexStatus.mockRejectedValueOnce(new Error('Status check failed'))
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
 
       await vi.waitFor(() => {
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[schema-index-store] Failed to get initial index status'),
-          expect.any(String)
+        expect(logFrontend).toHaveBeenCalledWith(
+          'warn',
+          expect.stringContaining('[schema-index-store] Failed to get initial index status')
         )
       })
 
