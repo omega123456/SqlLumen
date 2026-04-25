@@ -2658,12 +2658,9 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
       })
 
-      useAiStore.getState().onStreamChunk(
-        'tab-cum',
-        getTab('tab-cum')!.activeStreamId!,
-        'Answer',
-        'content'
-      )
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-cum', getTab('tab-cum')!.activeStreamId!, 'Answer', 'content')
       useAiStore.getState().onStreamDone('tab-cum', getTab('tab-cum')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2755,12 +2752,9 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore.getState().onStreamChunk(
-        'tab-retry2',
-        getTab('tab-retry2')!.activeStreamId!,
-        'A1',
-        'content'
-      )
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-retry2', getTab('tab-retry2')!.activeStreamId!, 'A1', 'content')
       useAiStore.getState().onStreamDone('tab-retry2', getTab('tab-retry2')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2881,12 +2875,9 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore.getState().onStreamChunk(
-        'tab-md',
-        getTab('tab-md')!.activeStreamId!,
-        'A1',
-        'content'
-      )
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-md', getTab('tab-md')!.activeStreamId!, 'A1', 'content')
       useAiStore.getState().onStreamDone('tab-md', getTab('tab-md')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2904,12 +2895,9 @@ describe('useAiStore', () => {
 
       expect(getTab('tab-md')!.messages.filter((m) => m.kind === 'memory-context')).toHaveLength(1)
 
-      useAiStore.getState().onStreamChunk(
-        'tab-md',
-        getTab('tab-md')!.activeStreamId!,
-        'A2',
-        'content'
-      )
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-md', getTab('tab-md')!.activeStreamId!, 'A2', 'content')
       useAiStore.getState().onStreamDone('tab-md', getTab('tab-md')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2930,6 +2918,216 @@ describe('useAiStore', () => {
     })
   })
 
+  describe('chat-completions prompt prefix stability', () => {
+    /**
+     * Helper: complete the current stream for a tab using chat_completions transport.
+     */
+    function completeCurrentStream(
+      tabId: string,
+      content = 'Answer',
+      transport: 'chat_completions' | 'responses' = 'chat_completions'
+    ): void {
+      const tab = getTab(tabId)!
+      const streamId = tab.activeStreamId!
+      useAiStore.getState().onStreamChunk(tabId, streamId, content, 'content')
+      useAiStore.getState().onStreamDone(tabId, streamId, { transport })
+    }
+
+    it('preserves first request as exact prefix when second turn has unchanged retrieval', async () => {
+      mockIndexStatus = {
+        status: 'ready',
+        tablesDone: 1,
+        tablesTotal: 1,
+        lastBuildTimestamp: 1234,
+      }
+
+      // ── Turn 1 ──
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const firstMessages = mockSendAiChat.mock.calls[0][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      completeCurrentStream('tab-1', 'First answer')
+
+      // ── Turn 2: same chunk key returned by semantic search ──
+      // Default mock already returns testdb.users:table (same as turn 1)
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      const secondMessages = mockSendAiChat.mock.calls[1][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      // The first request's messages must be an exact prefix of the second request
+      expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages)
+
+      // No new schema-context message should be added (dedup — same chunk key)
+      const schemaContextMessages = getTab('tab-1')!.messages.filter(
+        (m) => m.kind === 'schema-context'
+      )
+      expect(schemaContextMessages).toHaveLength(1)
+
+      // After the prefix: assistant message, then new user message
+      expect(secondMessages[firstMessages.length]).toEqual({
+        role: 'assistant',
+        content: 'First answer',
+      })
+      expect(secondMessages[secondMessages.length - 1]).toEqual({
+        role: 'user',
+        content: 'Follow up',
+      })
+    })
+
+    it('preserves first request as exact prefix when second turn retrieves a new schema chunk', async () => {
+      mockIndexStatus = {
+        status: 'ready',
+        tablesDone: 1,
+        tablesTotal: 1,
+        lastBuildTimestamp: 1234,
+      }
+
+      // ── Turn 1 ──
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const firstMessages = mockSendAiChat.mock.calls[0][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      completeCurrentStream('tab-1', 'First answer')
+
+      // ── Turn 2: different chunk key ──
+      mockSemanticSearch.mockResolvedValueOnce([
+        {
+          chunkId: 2,
+          chunkKey: 'testdb.orders:table',
+          dbName: 'testdb',
+          tableName: 'orders',
+          chunkType: 'table',
+          ddlText: 'CREATE TABLE `testdb`.`orders` (`id` INT, `user_id` INT);',
+          refDbName: null,
+          refTableName: null,
+          score: 0.91,
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Show me orders', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      const secondMessages = mockSendAiChat.mock.calls[1][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      // First request messages must be an exact prefix of the second request
+      expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages)
+
+      // After the prefix: assistant message at index firstMessages.length
+      expect(secondMessages[firstMessages.length]).toEqual({
+        role: 'assistant',
+        content: 'First answer',
+      })
+
+      // New orders schema-context message appears after the assistant and before the second user message
+      const afterPrefix = secondMessages.slice(firstMessages.length)
+      const ordersContextIdx = afterPrefix.findIndex(
+        (m) => m.role === 'system' && m.content.includes('CREATE TABLE `testdb`.`orders`')
+      )
+      expect(ordersContextIdx).toBeGreaterThan(0) // after assistant
+
+      // The final message is the second user message
+      expect(secondMessages[secondMessages.length - 1]).toEqual({
+        role: 'user',
+        content: 'Show me orders',
+      })
+
+      // The old users schema-context content is still present and unchanged
+      expect(secondMessages.some((m) => m.content.includes('CREATE TABLE `testdb`.`users`'))).toBe(
+        true
+      )
+    })
+
+    it('preserves first request as exact prefix when second turn appends novel memory context', async () => {
+      mockIndexStatus = {
+        status: 'ready',
+        tablesDone: 1,
+        tablesTotal: 1,
+        lastBuildTimestamp: 1234,
+      }
+
+      // ── Turn 1: no memories ──
+      mockSearchMemories.mockResolvedValueOnce([])
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const firstMessages = mockSendAiChat.mock.calls[0][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      completeCurrentStream('tab-1', 'First answer')
+
+      // ── Turn 2: novel memory returned ──
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 99,
+          connectionId: 'conn-1',
+          content: 'The users table stores customer data',
+          createdAt: 1000,
+          source: 'manual',
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Follow up', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      const secondMessages = mockSendAiChat.mock.calls[1][0].messages as Array<{
+        role: string
+        content: string
+      }>
+
+      // First request messages must be an exact prefix of the second request
+      expect(secondMessages.slice(0, firstMessages.length)).toEqual(firstMessages)
+
+      // Memory-context message appears after the assistant ('First answer') and before the second user message
+      const afterPrefix = secondMessages.slice(firstMessages.length)
+      const assistantIdx = afterPrefix.findIndex(
+        (m) => m.role === 'assistant' && m.content === 'First answer'
+      )
+      const memoryIdx = afterPrefix.findIndex(
+        (m) => m.role === 'system' && m.content.includes('User Notes')
+      )
+      const userIdx = afterPrefix.findIndex((m) => m.role === 'user' && m.content === 'Follow up')
+
+      expect(assistantIdx).toBeGreaterThanOrEqual(0)
+      expect(memoryIdx).toBeGreaterThan(assistantIdx)
+      expect(userIdx).toBeGreaterThan(memoryIdx)
+    })
+  })
+
   describe('system prompt immutability across turns', () => {
     it('system prompt is byte-for-byte identical and never duplicated across 3 turns', async () => {
       useAiStore.getState().sendMessage('tab-spi', 'conn-1', 'Turn 1', {})
@@ -2941,12 +3139,9 @@ describe('useAiStore', () => {
       expect(sysContent).toHaveLength(1)
       const content1 = sysContent[0].content
 
-      useAiStore.getState().onStreamChunk(
-        'tab-spi',
-        getTab('tab-spi')!.activeStreamId!,
-        'A',
-        'content'
-      )
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-spi', getTab('tab-spi')!.activeStreamId!, 'A', 'content')
       useAiStore.getState().onStreamDone('tab-spi', getTab('tab-spi')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2960,12 +3155,9 @@ describe('useAiStore', () => {
       expect(sys2).toHaveLength(1)
       expect(sys2[0].content).toBe(content1)
 
-      useAiStore.getState().onStreamChunk(
-        'tab-spi',
-        getTab('tab-spi')!.activeStreamId!,
-        'B',
-        'content'
-      )
+      useAiStore
+        .getState()
+        .onStreamChunk('tab-spi', getTab('tab-spi')!.activeStreamId!, 'B', 'content')
       useAiStore.getState().onStreamDone('tab-spi', getTab('tab-spi')!.activeStreamId!, {
         transport: 'chat_completions',
       })

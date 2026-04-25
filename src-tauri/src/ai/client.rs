@@ -52,29 +52,79 @@ pub fn should_use_responses_api(request: &AiChatRequest) -> bool {
     request.prefer_responses_api && request.enable_reasoning
 }
 
+/// Canonical reasoning-off fields. Returns the three values used to disable
+/// reasoning across both typed (`ApiChatRequest`) and JSON-body callers.
+fn reasoning_off_fields() -> (&'static str, bool, ChatTemplateKwargs) {
+    (
+        "none",
+        false,
+        ChatTemplateKwargs {
+            enable_thinking: false,
+        },
+    )
+}
+
 fn chat_reasoning_compat_fields(enable_reasoning: bool) -> (Option<bool>, Option<ChatTemplateKwargs>) {
     if enable_reasoning {
         return (None, None);
     }
 
-    (
-        Some(false),
-        Some(ChatTemplateKwargs {
-            enable_thinking: false,
-        }),
-    )
+    let (_effort, enable_thinking, kwargs) = reasoning_off_fields();
+    (Some(enable_thinking), Some(kwargs))
 }
 
 pub fn apply_reasoning_off_compatibility(body: &mut serde_json::Map<String, serde_json::Value>) {
+    let (effort, enable_thinking, _kwargs) = reasoning_off_fields();
     body.insert(
         "reasoning_effort".to_string(),
-        serde_json::Value::String("none".to_string()),
+        serde_json::Value::String(effort.to_string()),
     );
-    body.insert("enable_thinking".to_string(), serde_json::Value::Bool(false));
+    body.insert("enable_thinking".to_string(), serde_json::Value::Bool(enable_thinking));
     body.insert(
         "chat_template_kwargs".to_string(),
-        serde_json::json!({ "enable_thinking": false }),
+        serde_json::json!({ "enable_thinking": enable_thinking }),
     );
+    apply_no_think_to_json_messages(body);
+}
+
+/// Append `/no_think` to content unless it already contains the directive as a
+/// standalone whitespace-delimited token.
+pub fn append_no_think_directive(content: &str) -> String {
+    if content.split_whitespace().any(|token| token == "/no_think") {
+        return content.to_string();
+    }
+    format!("{content}\n\n/no_think")
+}
+
+/// Find the last user message in a slice and append the `/no_think` directive.
+pub fn apply_no_think_to_last_user_message(messages: &mut [ApiMessage]) {
+    if let Some(msg) = messages.iter_mut().rev().find(|m| m.role == "user") {
+        msg.content = append_no_think_directive(&msg.content);
+    }
+}
+
+/// Apply `/no_think` to the last user message in a JSON body's `messages` array.
+///
+/// No-op if `messages` is missing, not an array, or has no user message with
+/// string content.
+pub fn apply_no_think_to_json_messages(body: &mut serde_json::Map<String, serde_json::Value>) {
+    let messages = match body.get_mut("messages").and_then(|v| v.as_array_mut()) {
+        Some(arr) => arr,
+        None => return,
+    };
+
+    if let Some(msg) = messages
+        .iter_mut()
+        .rev()
+        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+    {
+        if let Some(obj) = msg.as_object_mut() {
+            if let Some(content) = obj.get("content").and_then(|c| c.as_str()) {
+                let updated = append_no_think_directive(content);
+                obj.insert("content".to_string(), serde_json::Value::String(updated));
+            }
+        }
+    }
 }
 
 pub fn should_fallback_from_responses_status(status: reqwest::StatusCode, body: &str) -> bool {
@@ -623,7 +673,7 @@ async fn stream_chat_inner<R: Runtime>(
         chat_reasoning_compat_fields(request.enable_reasoning);
 
     // Build the API request body
-    let api_request = ApiChatRequest {
+    let mut api_request = ApiChatRequest {
         model: request.model.clone(),
         messages: request.messages.iter().map(ApiMessage::from).collect(),
         temperature: request.temperature,
@@ -635,6 +685,10 @@ async fn stream_chat_inner<R: Runtime>(
         enable_thinking,
         chat_template_kwargs,
     };
+
+    if !request.enable_reasoning {
+        apply_no_think_to_last_user_message(&mut api_request.messages);
+    }
 
     // Create the HTTP client
     let client = match reqwest::Client::builder()
@@ -869,6 +923,122 @@ async fn stream_chat_inner<R: Runtime>(
     }
 }
 
+/// Outcome of processing a single Responses SSE `data:` payload.
+enum ResponsesPayloadOutcome {
+    /// Continue reading the stream.
+    Continue,
+    /// `response.completed` seen — stream is done.
+    Done,
+}
+
+/// Shared state mutated by [`process_responses_payload`].
+struct ResponsesStreamState {
+    response_id: Option<String>,
+    saw_valid_responses_payload: bool,
+    saw_streamed_output_text: bool,
+    saw_streamed_reasoning: bool,
+}
+
+/// Process a single Responses `data:` JSON payload, updating shared buffers/flags.
+///
+/// Returns `Done` when `response.completed` is seen, `Continue` otherwise.
+/// Errors are returned as `ResponsesStreamError`.
+fn process_responses_payload<R: Runtime>(
+    json: &serde_json::Value,
+    event_type: Option<&str>,
+    enable_reasoning: bool,
+    stream_id: &str,
+    app_handle: &tauri::AppHandle<R>,
+    thinking_buffer: &mut String,
+    content_buffer: &mut String,
+    last_flush: &mut Instant,
+    state: &mut ResponsesStreamState,
+) -> Result<ResponsesPayloadOutcome, ResponsesStreamError> {
+    if is_chat_completions_style_payload(json) {
+        return Err(ResponsesStreamError::new(
+            "Responses endpoint returned chat-completions-style stream payload",
+            true,
+        ));
+    }
+
+    let event_type = merge_responses_event_type(event_type, json);
+
+    if let Some(message) = extract_responses_error_message(json) {
+        if is_responses_failure_event(event_type) {
+            return Err(ResponsesStreamError::new(message, false));
+        }
+    }
+
+    if is_responses_completion_event(event_type)
+        || extract_responses_error_message(json).is_some()
+        || json.get("response").is_some()
+        || json.get("response_id").is_some()
+    {
+        state.saw_valid_responses_payload = true;
+    }
+
+    if let Some(id) = json
+        .get("response")
+        .and_then(|r| r.get("id"))
+        .and_then(|v| v.as_str())
+    {
+        state.response_id = Some(id.to_string());
+    } else if let Some(id) = json.get("response_id").and_then(|v| v.as_str()) {
+        state.response_id = Some(id.to_string());
+    } else if let Some(id) = json.get("id").and_then(|v| v.as_str()) {
+        if id.starts_with("resp_") {
+            state.response_id = Some(id.to_string());
+        }
+    }
+
+    let reasoning_text = if enable_reasoning {
+        extract_responses_reasoning_text_for_event(event_type, json, state.saw_streamed_reasoning)
+    } else {
+        String::new()
+    };
+
+    if !reasoning_text.is_empty() && enable_reasoning {
+        thinking_buffer.push_str(&reasoning_text);
+        state.saw_streamed_reasoning = true;
+        state.saw_valid_responses_payload = true;
+    }
+
+    if matches!(
+        event_type,
+        Some("response.reasoning_summary_text.done")
+            | Some("response.reasoning_summary_part.done")
+            | Some("response.reasoning_text.done")
+    ) {
+        state.saw_valid_responses_payload = true;
+        flush_buffer(app_handle, stream_id, thinking_buffer, ChunkKind::Thinking);
+    }
+
+    let text_to_append = extract_responses_content_text_for_event(
+        event_type,
+        json,
+        state.saw_streamed_output_text,
+    );
+
+    if !text_to_append.is_empty() {
+        state.saw_streamed_output_text = true;
+    }
+
+    content_buffer.push_str(&text_to_append);
+
+    if last_flush.elapsed() >= FLUSH_INTERVAL {
+        flush_buffer(app_handle, stream_id, thinking_buffer, ChunkKind::Thinking);
+        flush_buffer(app_handle, stream_id, content_buffer, ChunkKind::Content);
+        *last_flush = Instant::now();
+    }
+
+    if event_type == Some("response.completed") {
+        flush_both_buffers(app_handle, stream_id, thinking_buffer, content_buffer);
+        return Ok(ResponsesPayloadOutcome::Done);
+    }
+
+    Ok(ResponsesPayloadOutcome::Continue)
+}
+
 async fn stream_responses_completion<R: Runtime>(
     app_handle: &tauri::AppHandle<R>,
     request: &AiChatRequest,
@@ -977,12 +1147,14 @@ async fn stream_responses_completion<R: Runtime>(
     let mut buffer = String::new();
     let mut thinking_buffer = String::new();
     let mut last_flush = Instant::now();
-    let mut response_id: Option<String> = None;
+    let mut stream_state = ResponsesStreamState {
+        response_id: None,
+        saw_valid_responses_payload: false,
+        saw_streamed_output_text: false,
+        saw_streamed_reasoning: false,
+    };
     let mut saw_response_completed = false;
-    let mut saw_valid_responses_payload = false;
     let mut current_event_type: Option<String> = None;
-    let mut saw_streamed_output_text = false;
-    let mut saw_streamed_reasoning = false;
 
     loop {
         let chunk_result = tokio::select! {
@@ -1018,96 +1190,26 @@ async fn stream_responses_completion<R: Runtime>(
                             .map_err(|e| {
                                 ResponsesStreamError::new(
                                     format!("Failed to parse SSE JSON: {e}"),
-                                    !saw_valid_responses_payload,
+                                    !stream_state.saw_valid_responses_payload,
                                 )
                             })?;
 
-                        if is_chat_completions_style_payload(&json) {
-                            return Err(ResponsesStreamError::new(
-                                "Responses endpoint returned chat-completions-style stream payload",
-                                true,
-                            ));
-                        }
-
-                        let event_type =
-                            merge_responses_event_type(current_event_type.as_deref(), &json);
-
-                        if let Some(message) = extract_responses_error_message(&json) {
-                            if is_responses_failure_event(event_type) {
-                                return Err(ResponsesStreamError::new(message, false));
-                            }
-                        }
-
-                        if is_responses_completion_event(event_type)
-                            || extract_responses_error_message(&json).is_some()
-                            || json.get("response").is_some()
-                            || json.get("response_id").is_some()
-                        {
-                            saw_valid_responses_payload = true;
-                        }
-
-                        if let Some(id) = json
-                            .get("response")
-                            .and_then(|r| r.get("id"))
-                            .and_then(|v| v.as_str())
-                        {
-                            response_id = Some(id.to_string());
-                        } else if let Some(id) = json.get("response_id").and_then(|v| v.as_str()) {
-                            response_id = Some(id.to_string());
-                        } else if let Some(id) = json.get("id").and_then(|v| v.as_str()) {
-                            if id.starts_with("resp_") {
-                                response_id = Some(id.to_string());
-                            }
-                        }
-
-                        let reasoning_text = if request.enable_reasoning {
-                            extract_responses_reasoning_text_for_event(
-                                event_type,
-                                &json,
-                                saw_streamed_reasoning,
-                            )
-                        } else {
-                            String::new()
-                        };
-
-                        if !reasoning_text.is_empty() && request.enable_reasoning {
-                            thinking_buffer.push_str(&reasoning_text);
-                            saw_streamed_reasoning = true;
-                            saw_valid_responses_payload = true;
-                        }
-
-                        if matches!(
-                            event_type,
-                            Some("response.reasoning_summary_text.done")
-                                | Some("response.reasoning_summary_part.done")
-                                | Some("response.reasoning_text.done")
-                        ) {
-                            saw_valid_responses_payload = true;
-                            flush_buffer(app_handle, stream_id, &mut thinking_buffer, ChunkKind::Thinking);
-                        }
-
-                        let text_to_append = extract_responses_content_text_for_event(
-                            event_type,
+                        match process_responses_payload(
                             &json,
-                            saw_streamed_output_text,
-                        );
-
-                        if !text_to_append.is_empty() {
-                            saw_streamed_output_text = true;
-                        }
-
-                        buffer.push_str(&text_to_append);
-
-                        if last_flush.elapsed() >= FLUSH_INTERVAL {
-                            flush_buffer(app_handle, stream_id, &mut thinking_buffer, ChunkKind::Thinking);
-                            flush_buffer(app_handle, stream_id, &mut buffer, ChunkKind::Content);
-                            last_flush = Instant::now();
-                        }
-
-                        if event_type == Some("response.completed") {
-                            flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
-                            emit_responses_done(app_handle, stream_id, response_id.clone());
-                            return Ok(());
+                            current_event_type.as_deref(),
+                            request.enable_reasoning,
+                            stream_id,
+                            app_handle,
+                            &mut thinking_buffer,
+                            &mut buffer,
+                            &mut last_flush,
+                            &mut stream_state,
+                        )? {
+                            ResponsesPayloadOutcome::Done => {
+                                emit_responses_done(app_handle, stream_id, stream_state.response_id.clone());
+                                return Ok(());
+                            }
+                            ResponsesPayloadOutcome::Continue => {}
                         }
 
                         current_event_type = None;
@@ -1118,7 +1220,7 @@ async fn stream_responses_completion<R: Runtime>(
                 flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
                 return Err(ResponsesStreamError::new(
                     format!("Stream read error: {e}"),
-                    !saw_valid_responses_payload,
+                    !stream_state.saw_valid_responses_payload,
                 ))
             }
             None => {
@@ -1128,83 +1230,37 @@ async fn stream_responses_completion<R: Runtime>(
                         .map_err(|e| {
                             ResponsesStreamError::new(
                                 format!("Failed to parse SSE JSON: {e}"),
-                                !saw_valid_responses_payload,
+                                !stream_state.saw_valid_responses_payload,
                             )
                         })?;
 
-                    if is_chat_completions_style_payload(&json) {
-                        return Err(ResponsesStreamError::new(
-                            "Responses endpoint returned chat-completions-style stream payload",
-                            true,
-                        ));
-                    }
-
-                    let event_type = merge_responses_event_type(current_event_type.as_deref(), &json);
-
-                    if let Some(message) = extract_responses_error_message(&json) {
-                        if is_responses_failure_event(event_type) {
-                            return Err(ResponsesStreamError::new(message, false));
-                        }
-                    }
-
-                    if is_responses_completion_event(event_type)
-                        || extract_responses_error_message(&json).is_some()
-                        || json.get("response").is_some()
-                        || json.get("response_id").is_some()
-                    {
-                        saw_valid_responses_payload = true;
-                    }
-
-                    if let Some(id) = json
-                        .get("response")
-                        .and_then(|r| r.get("id"))
-                        .and_then(|v| v.as_str())
-                    {
-                        response_id = Some(id.to_string());
-                    } else if let Some(id) = json.get("response_id").and_then(|v| v.as_str()) {
-                        response_id = Some(id.to_string());
-                    } else if let Some(id) = json.get("id").and_then(|v| v.as_str()) {
-                        if id.starts_with("resp_") {
-                            response_id = Some(id.to_string());
-                        }
-                    }
-
-                    let reasoning_text = if request.enable_reasoning {
-                        extract_responses_reasoning_text_for_event(
-                            event_type,
-                            &json,
-                            saw_streamed_reasoning,
-                        )
-                    } else {
-                        String::new()
-                    };
-
-                    if !reasoning_text.is_empty() && request.enable_reasoning {
-                        thinking_buffer.push_str(&reasoning_text);
-                    }
-
-                    let text_to_append = extract_responses_content_text_for_event(
-                        event_type,
+                    match process_responses_payload(
                         &json,
-                        saw_streamed_output_text,
-                    );
-
-                    buffer.push_str(&text_to_append);
-
-                    if event_type == Some("response.completed") {
-                        saw_response_completed = true;
+                        current_event_type.as_deref(),
+                        request.enable_reasoning,
+                        stream_id,
+                        app_handle,
+                        &mut thinking_buffer,
+                        &mut buffer,
+                        &mut last_flush,
+                        &mut stream_state,
+                    )? {
+                        ResponsesPayloadOutcome::Done => {
+                            saw_response_completed = true;
+                        }
+                        ResponsesPayloadOutcome::Continue => {}
                     }
                 }
 
                 if !saw_response_completed {
                     return Err(ResponsesStreamError::new(
                         "Responses stream ended before response.completed",
-                        !saw_valid_responses_payload,
+                        !stream_state.saw_valid_responses_payload,
                     ));
                 }
 
                 flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
-                emit_responses_done(app_handle, stream_id, response_id);
+                emit_responses_done(app_handle, stream_id, stream_state.response_id);
                 return Ok(());
             }
         }

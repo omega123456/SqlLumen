@@ -492,6 +492,32 @@ function getAiSetting(key: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Reusable state-reset fragments (reduce patchTab duplication)
+// ---------------------------------------------------------------------------
+
+/** Fields to clear when an active request/stream finishes or is abandoned. */
+function activeRequestResetFragment(): Partial<TabAiState> {
+  return {
+    isGenerating: false,
+    activeStreamId: null,
+    activeRequestEndpoint: '',
+    activeRequestModel: '',
+    activeStreamHasAssistantOutput: false,
+  }
+}
+
+/** Fields to clear when the response chain is invalidated. */
+function responseChainResetFragment(): Partial<TabAiState> {
+  return {
+    previousResponseId: null,
+    lastCompletedSystemPrompt: '',
+    lastCompletedTransport: null,
+    lastCompletedEndpoint: '',
+    lastCompletedModel: '',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
@@ -667,14 +693,7 @@ export const useAiStore = create<AiState>()((set, get) => {
 
   function resetResponseChain(tabId: string): void {
     if (!get().tabs[tabId]) return
-
-    patchTab(tabId, {
-      previousResponseId: null,
-      lastCompletedSystemPrompt: '',
-      lastCompletedTransport: null,
-      lastCompletedEndpoint: '',
-      lastCompletedModel: '',
-    })
+    patchTab(tabId, responseChainResetFragment())
   }
 
   /**
@@ -1022,10 +1041,7 @@ export const useAiStore = create<AiState>()((set, get) => {
       const perTurnSchemaBudget = Math.max(effectiveBudget - MEMORY_TOKEN_BUDGET, 0)
 
       // Cumulative budget
-      const cumulativeBudget = Math.max(
-        CUMULATIVE_SCHEMA_TOKEN_BUDGET_DEFAULT,
-        effectiveBudget
-      )
+      const cumulativeBudget = Math.max(CUMULATIVE_SCHEMA_TOKEN_BUDGET_DEFAULT, effectiveBudget)
       const existingCumulativeTokens = get().tabs[tabId]?.cumulativeSchemaTokens ?? 0
       const remainingCumulativeBudget = Math.max(cumulativeBudget - existingCumulativeTokens, 0)
 
@@ -1162,6 +1178,131 @@ export const useAiStore = create<AiState>()((set, get) => {
     return updated
   }
 
+  /**
+   * Apply current-turn context messages: retrieve schema/memory, insert context
+   * messages before the user message, and update dedup indices.
+   */
+  async function applyCurrentTurnContext(
+    tabId: string,
+    connectionId: string,
+    userMessage: string,
+    userMessageId: string,
+    attachedContext: AttachedContext | null
+  ): Promise<void> {
+    const { schemaDdl, novelChunkKeys, novelDdlTokens, novelMemories, novelMemoryText } =
+      await retrieveSchemaContext(tabId, connectionId, userMessage)
+    if (!get().tabs[tabId]) return
+
+    // Insert base system prompt (first turn only — no-op on subsequent turns)
+    ensureBaseSystemPrompt(tabId, AI_SYSTEM_PROMPT)
+
+    // Append schema-context message if novel chunks exist
+    if (schemaDdl && novelChunkKeys.length > 0) {
+      appendContextMessage(tabId, userMessageId, {
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: schemaDdl,
+        timestamp: Date.now(),
+        kind: 'schema-context',
+        chunkKeys: novelChunkKeys,
+      })
+    }
+
+    // Append memory-context message if novel memories exist
+    if (novelMemoryText && novelMemories.length > 0) {
+      appendContextMessage(tabId, userMessageId, {
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: novelMemoryText,
+        timestamp: Date.now(),
+        kind: 'memory-context',
+        memoryIds: novelMemories.map((m) => m.id),
+      })
+    }
+
+    // Attached-context (mutable, unchanged behavior)
+    if (!attachedContext) {
+      removePromptOnlyContextMessages(tabId, ['attached-context'])
+    }
+
+    if (attachedContext) {
+      upsertPromptOnlyContextMessages(tabId, userMessageId, [
+        {
+          role: 'system' as const,
+          content: buildAttachedContextMessage(attachedContext.sql),
+          kind: 'attached-context' as const,
+        },
+      ])
+    }
+
+    // Update dedup indices
+    if (novelChunkKeys.length > 0 || novelMemories.length > 0) {
+      const currentTabState = get().tabs[tabId]
+      if (currentTabState) {
+        const newChunkKeys = { ...currentTabState.providedChunkKeys }
+        for (const key of novelChunkKeys) {
+          newChunkKeys[key] = true
+        }
+        const newMemoryIds = { ...currentTabState.providedMemoryIds }
+        for (const mem of novelMemories) {
+          newMemoryIds[String(mem.id)] = true
+        }
+        patchTab(tabId, {
+          providedChunkKeys: newChunkKeys,
+          cumulativeSchemaTokens: currentTabState.cumulativeSchemaTokens + novelDdlTokens,
+          providedMemoryIds: newMemoryIds,
+        })
+      }
+    }
+  }
+
+  /**
+   * Build the `sendAiChat` payload from current tab state and settings.
+   */
+  function buildSendAiChatPayload(
+    tabId: string,
+    streamId: string,
+    settings: { temperature?: number; maxTokens?: number; model?: string }
+  ): Parameters<typeof sendAiChat>[0] {
+    const endpoint = getAiSetting('ai.endpoint')
+    const model = settings.model ?? getAiSetting('ai.model')
+    const temperature = settings.temperature ?? parseFloat(getAiSetting('ai.temperature'))
+    const maxTokens = settings.maxTokens ?? parseInt(getAiSetting('ai.maxTokens'), 10)
+    const enableReasoning = getAiSetting('ai.enableReasoning') !== 'false'
+    const preferResponsesApi = getAiSetting('ai.preferResponsesApi') === 'true'
+
+    patchTab(tabId, {
+      activeRequestEndpoint: endpoint,
+      activeRequestModel: model,
+    })
+
+    const currentMessages = get().tabs[tabId]?.messages ?? []
+    const currentSystemPrompt = getCurrentSystemPrompt(tabId)
+    const ipcMessages: IpcAiMessage[] = currentMessages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }))
+
+    return {
+      messages: ipcMessages,
+      endpoint,
+      model,
+      temperature: isNaN(temperature) ? 0.3 : temperature,
+      maxTokens: isNaN(maxTokens) ? 2048 : maxTokens,
+      streamId,
+      previousResponseId: shouldReuseResponseChain(
+        get().tabs[tabId],
+        currentSystemPrompt,
+        endpoint,
+        model
+      )
+        ? (get().tabs[tabId]?.previousResponseId ?? null)
+        : null,
+      preferResponsesApi,
+      enableReasoning,
+    }
+  }
+
   return {
     tabs: {},
 
@@ -1216,78 +1357,19 @@ export const useAiStore = create<AiState>()((set, get) => {
       // Async IPC flow — fire-and-forget from the synchronous action
       const startStream = async () => {
         try {
-          // Retrieve schema context via the vector pipeline
-          const { schemaDdl, novelChunkKeys, novelDdlTokens, novelMemories, novelMemoryText } =
-            await retrieveSchemaContext(tabId, connectionId, message)
-          if (!get().tabs[tabId]) return // tab was cleaned up while waiting
+          // Retrieve schema context and insert context messages
+          await applyCurrentTurnContext(
+            tabId,
+            connectionId,
+            message,
+            userMessage.id,
+            attachedContext
+          )
+          if (!get().tabs[tabId]) return
 
           // Guard: schema retrieval is async; abort if stream was cancelled before we got here
           if (get().tabs[tabId]?.activeStreamId !== streamId || !get().tabs[tabId]?.isGenerating) {
             return
-          }
-
-          // Insert base system prompt (first turn only — no-op on subsequent turns)
-          ensureBaseSystemPrompt(tabId, AI_SYSTEM_PROMPT)
-
-          // Append schema-context message if novel chunks exist
-          if (schemaDdl && novelChunkKeys.length > 0) {
-            const schemaMsg: AiMessage = {
-              id: crypto.randomUUID(),
-              role: 'system',
-              content: schemaDdl,
-              timestamp: Date.now(),
-              kind: 'schema-context',
-              chunkKeys: novelChunkKeys,
-            }
-            appendContextMessage(tabId, userMessage.id, schemaMsg)
-          }
-
-          // Append memory-context message if novel memories exist
-          if (novelMemoryText && novelMemories.length > 0) {
-            const memMsg: AiMessage = {
-              id: crypto.randomUUID(),
-              role: 'system',
-              content: novelMemoryText,
-              timestamp: Date.now(),
-              kind: 'memory-context',
-              memoryIds: novelMemories.map((m) => m.id),
-            }
-            appendContextMessage(tabId, userMessage.id, memMsg)
-          }
-
-          // Attached-context (mutable, unchanged behavior)
-          if (!attachedContext) {
-            removePromptOnlyContextMessages(tabId, ['attached-context'])
-          }
-
-          if (attachedContext) {
-            upsertPromptOnlyContextMessages(tabId, userMessage.id, [
-              {
-                role: 'system' as const,
-                content: buildAttachedContextMessage(attachedContext.sql),
-                kind: 'attached-context' as const,
-              },
-            ])
-          }
-
-          // Update dedup indices
-          if (novelChunkKeys.length > 0 || novelMemories.length > 0) {
-            const currentTabState = get().tabs[tabId]
-            if (currentTabState) {
-              const newChunkKeys = { ...currentTabState.providedChunkKeys }
-              for (const key of novelChunkKeys) {
-                newChunkKeys[key] = true
-              }
-              const newMemoryIds = { ...currentTabState.providedMemoryIds }
-              for (const mem of novelMemories) {
-                newMemoryIds[String(mem.id)] = true
-              }
-              patchTab(tabId, {
-                providedChunkKeys: newChunkKeys,
-                cumulativeSchemaTokens: currentTabState.cumulativeSchemaTokens + novelDdlTokens,
-                providedMemoryIds: newMemoryIds,
-              })
-            }
           }
 
           if (!get().tabs[tabId]) return // tab was cleaned up
@@ -1312,47 +1394,9 @@ export const useAiStore = create<AiState>()((set, get) => {
 
           get().setUnlisten(tabId, unlisten)
 
-          // Read AI settings from the settings store
-          const endpoint = getAiSetting('ai.endpoint')
-          const model = settings.model ?? getAiSetting('ai.model')
-          const temperature = settings.temperature ?? parseFloat(getAiSetting('ai.temperature'))
-          const maxTokens = settings.maxTokens ?? parseInt(getAiSetting('ai.maxTokens'), 10)
-          const enableReasoning = getAiSetting('ai.enableReasoning') !== 'false'
-          const preferResponsesApi = getAiSetting('ai.preferResponsesApi') === 'true'
-
-          patchTab(tabId, {
-            activeRequestEndpoint: endpoint,
-            activeRequestModel: model,
-          })
-
-          // Build IPC messages from the current conversation
-          const currentMessages = get().tabs[tabId]?.messages ?? []
-          const currentSystemPrompt = getCurrentSystemPrompt(tabId)
-
-          const ipcMessages: IpcAiMessage[] = currentMessages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          }))
-
-          // Start the stream
-          await sendAiChat({
-            messages: ipcMessages,
-            endpoint,
-            model,
-            temperature: isNaN(temperature) ? 0.3 : temperature,
-            maxTokens: isNaN(maxTokens) ? 2048 : maxTokens,
-            streamId,
-            previousResponseId: shouldReuseResponseChain(
-              get().tabs[tabId],
-              currentSystemPrompt,
-              endpoint,
-              model
-            )
-              ? (get().tabs[tabId]?.previousResponseId ?? null)
-              : null,
-            preferResponsesApi,
-            enableReasoning,
-          })
+          // Build and send the AI chat payload
+          const payload = buildSendAiChatPayload(tabId, streamId, settings)
+          await sendAiChat(payload)
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : String(err)
           logFrontend('error', `[ai-store] AI chat failed: ${errorMsg}`)
@@ -1362,8 +1406,7 @@ export const useAiStore = create<AiState>()((set, get) => {
             callUnlistenSafely(tabId, get().tabs[tabId])
 
             patchTab(tabId, {
-              isGenerating: false,
-              activeStreamId: null,
+              ...activeRequestResetFragment(),
               error: errorMsg,
             })
             // Restore the editor lock on failure
@@ -1385,16 +1428,8 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       // Update state immediately
       patchTab(tabId, {
-        isGenerating: false,
-        activeStreamId: null,
-        previousResponseId: null,
-        lastCompletedSystemPrompt: '',
-        lastCompletedTransport: null,
-        lastCompletedEndpoint: '',
-        lastCompletedModel: '',
-        activeRequestEndpoint: '',
-        activeRequestModel: '',
-        activeStreamHasAssistantOutput: false,
+        ...activeRequestResetFragment(),
+        ...responseChainResetFragment(),
       })
 
       // Restore the editor lock
@@ -1480,16 +1515,10 @@ export const useAiStore = create<AiState>()((set, get) => {
       }
 
       patchTab(tabId, {
+        ...activeRequestResetFragment(),
+        ...responseChainResetFragment(),
         messages: remainingMessages,
         error: null,
-        previousResponseId: null,
-        lastCompletedSystemPrompt: '',
-        lastCompletedTransport: null,
-        lastCompletedEndpoint: '',
-        lastCompletedModel: '',
-        activeRequestEndpoint: '',
-        activeRequestModel: '',
-        activeStreamHasAssistantOutput: false,
         providedChunkKeys: newChunkKeys,
         providedMemoryIds: newMemoryIds,
         cumulativeSchemaTokens: newCumulativeTokens,
@@ -1529,8 +1558,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         (info.responseId?.trim().length ?? 0) > 0
 
       patchTab(tabId, {
-        isGenerating: false,
-        activeStreamId: null,
+        ...activeRequestResetFragment(),
         previousResponseId: canReuseResponsesChain ? (info.responseId ?? null) : null,
         lastCompletedSystemPrompt: canReuseResponsesChain
           ? (tab.messages.find(
@@ -1540,9 +1568,6 @@ export const useAiStore = create<AiState>()((set, get) => {
         lastCompletedTransport: info.transport ?? null,
         lastCompletedEndpoint: canReuseResponsesChain ? tab.activeRequestEndpoint : '',
         lastCompletedModel: canReuseResponsesChain ? tab.activeRequestModel : '',
-        activeRequestEndpoint: '',
-        activeRequestModel: '',
-        activeStreamHasAssistantOutput: false,
       })
 
       // Tear down event listeners now that the stream is complete
@@ -1560,17 +1585,9 @@ export const useAiStore = create<AiState>()((set, get) => {
       if (!tab || tab.activeStreamId !== streamId) return
 
       patchTab(tabId, {
-        isGenerating: false,
+        ...activeRequestResetFragment(),
+        ...responseChainResetFragment(),
         error,
-        activeStreamId: null,
-        previousResponseId: null,
-        lastCompletedSystemPrompt: '',
-        lastCompletedTransport: null,
-        lastCompletedEndpoint: '',
-        lastCompletedModel: '',
-        activeRequestEndpoint: '',
-        activeRequestModel: '',
-        activeStreamHasAssistantOutput: false,
       })
 
       // Tear down event listeners now that the stream has errored
@@ -1655,21 +1672,13 @@ export const useAiStore = create<AiState>()((set, get) => {
       }
 
       patchTab(tabId, {
+        ...activeRequestResetFragment(),
+        ...responseChainResetFragment(),
         messages: [],
         error: null,
-        isGenerating: false,
-        activeStreamId: null,
-        previousResponseId: null,
         providedChunkKeys: {},
         cumulativeSchemaTokens: 0,
         providedMemoryIds: {},
-        lastCompletedSystemPrompt: '',
-        lastCompletedTransport: null,
-        lastCompletedEndpoint: '',
-        lastCompletedModel: '',
-        activeRequestEndpoint: '',
-        activeRequestModel: '',
-        activeStreamHasAssistantOutput: false,
       })
 
       if (hadActiveStream) {

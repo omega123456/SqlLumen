@@ -6,6 +6,7 @@ use sqllumen_lib::ai::types::{
     StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
 };
 use sqllumen_lib::ai::client::{
+    append_no_think_directive, apply_reasoning_off_compatibility,
     extract_responses_content_text_for_event,
     extract_reasoning_text_from_item, extract_reasoning_text_from_parts,
     extract_responses_delta_text, extract_responses_error_message, extract_responses_final_text,
@@ -2300,7 +2301,12 @@ mod stream_integration {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(body_partial_json(serde_json::json!({
-                "reasoning_effort": "none"
+                "reasoning_effort": "none",
+                "enable_thinking": false,
+                "chat_template_kwargs": { "enable_thinking": false },
+                "messages": [
+                    { "role": "user", "content": "Hello\n\n/no_think" }
+                ]
             })))
             .respond_with(
                 ResponseTemplate::new(200)
@@ -2341,7 +2347,12 @@ mod stream_integration {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(body_partial_json(serde_json::json!({
-                "reasoning_effort": "none"
+                "reasoning_effort": "none",
+                "enable_thinking": false,
+                "chat_template_kwargs": { "enable_thinking": false },
+                "messages": [
+                    { "role": "user", "content": "Hello\n\n/no_think" }
+                ]
             })))
             .respond_with(
                 ResponseTemplate::new(200)
@@ -2382,7 +2393,12 @@ mod stream_integration {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(body_partial_json(serde_json::json!({
-                "reasoning_effort": "none"
+                "reasoning_effort": "none",
+                "enable_thinking": false,
+                "chat_template_kwargs": { "enable_thinking": false },
+                "messages": [
+                    { "role": "user", "content": "Hello\n\n/no_think" }
+                ]
             })))
             .respond_with(
                 ResponseTemplate::new(400)
@@ -2411,6 +2427,45 @@ mod stream_integration {
                 .contains("cannot safely disable thinking"),
             "error should explain that provider-side reasoning cannot be safely disabled"
         );
+    }
+
+    #[tokio::test]
+    async fn reasoning_enabled_does_not_append_no_think_to_user_message() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "reasoning_effort": "medium",
+                "messages": [
+                    { "role": "user", "content": "Hello" }
+                ]
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let endpoint = format!("{}/v1/chat/completions", server.uri());
+        let mut request = sample_request("stream-reasoning-enabled-no-nothink", &endpoint);
+        request.enable_reasoning = true;
+        request.prefer_responses_api = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok(), "reasoning enabled should not append /no_think");
     }
 
     #[tokio::test]
@@ -3019,4 +3074,75 @@ fn responses_input_items_use_incremental_history_for_follow_ups() {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].role, "user");
     assert_eq!(items[0].content, "follow up");
+}
+
+// ── /no_think directive helpers ───────────────────────────────────────────
+
+#[test]
+fn append_no_think_directive_appends_to_plain_prompt() {
+    let result = append_no_think_directive("Tell me about cats");
+    assert_eq!(result, "Tell me about cats\n\n/no_think");
+}
+
+#[test]
+fn append_no_think_directive_does_not_duplicate_existing_directive() {
+    let content = "Tell me about cats\n\n/no_think";
+    let result = append_no_think_directive(content);
+    assert_eq!(result, content);
+
+    // Also works when /no_think is embedded mid-text
+    let mid = "Please /no_think respond";
+    let result2 = append_no_think_directive(mid);
+    assert_eq!(result2, mid);
+}
+
+#[test]
+fn apply_reasoning_off_compatibility_appends_no_think_to_last_user_message() {
+    let mut body = serde_json::Map::new();
+    body.insert(
+        "messages".to_string(),
+        serde_json::json!([
+            { "role": "system", "content": "You are helpful" },
+            { "role": "user", "content": "first question" },
+            { "role": "assistant", "content": "answer" },
+            { "role": "user", "content": "second question" }
+        ]),
+    );
+
+    apply_reasoning_off_compatibility(&mut body);
+
+    // Standard fields still present
+    assert_eq!(body["reasoning_effort"], "none");
+    assert_eq!(body["enable_thinking"], false);
+
+    // Only the last user message should have /no_think
+    let messages = body["messages"].as_array().unwrap();
+    assert_eq!(messages[1]["content"], "first question");
+    assert_eq!(messages[3]["content"], "second question\n\n/no_think");
+}
+
+#[test]
+fn apply_reasoning_off_compatibility_ignores_missing_or_non_string_messages() {
+    // No messages key at all — should not panic
+    let mut body = serde_json::Map::new();
+    apply_reasoning_off_compatibility(&mut body);
+    assert_eq!(body["reasoning_effort"], "none");
+
+    // Messages with non-string content — should not panic
+    let mut body2 = serde_json::Map::new();
+    body2.insert(
+        "messages".to_string(),
+        serde_json::json!([
+            { "role": "user", "content": 42 }
+        ]),
+    );
+    apply_reasoning_off_compatibility(&mut body2);
+    // content stays unchanged (non-string)
+    assert_eq!(body2["messages"][0]["content"], 42);
+
+    // Empty messages array — should not panic
+    let mut body3 = serde_json::Map::new();
+    body3.insert("messages".to_string(), serde_json::json!([]));
+    apply_reasoning_off_compatibility(&mut body3);
+    assert!(body3["messages"].as_array().unwrap().is_empty());
 }

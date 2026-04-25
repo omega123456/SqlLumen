@@ -751,6 +751,51 @@ async fn query_expand_disables_reasoning_on_request() {
     let result = ai_query_expand_impl(&state, req).await;
     assert!(result.is_ok(), "query expansion should send reasoning_effort none");
     assert_eq!(result.unwrap().text, "ok");
+
+    // Verify the actual request body contained /no_think in the last user message
+    // but NOT in the system prompt. We replay via a second request to a capturing mock.
+    let server2 = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{ "message": { "role": "assistant", "content": "ok2" } }]
+            })),
+        )
+        .mount(&server2)
+        .await;
+
+    let state2 = test_state();
+    let req2 = AiQueryExpandRequest {
+        endpoint: format!("{}/v1", server2.uri()),
+        model: "test-model".to_string(),
+        system_prompt: "You are a SQL assistant.".to_string(),
+        user_message: "Find active users".to_string(),
+        conversation_context: None,
+    };
+
+    let _ = ai_query_expand_impl(&state2, req2).await;
+
+    // Check captured requests
+    let requests = server2.received_requests().await.unwrap();
+    assert!(!requests.is_empty(), "should have received at least one request");
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let messages = body["messages"].as_array().unwrap();
+
+    // System prompt (messages[0]) should NOT contain /no_think
+    let system_content = messages[0]["content"].as_str().unwrap();
+    assert!(
+        !system_content.contains("/no_think"),
+        "system prompt should not contain /no_think, got: {system_content}"
+    );
+
+    // Last user message should contain /no_think
+    let user_content = messages[1]["content"].as_str().unwrap();
+    assert!(
+        user_content.ends_with("/no_think"),
+        "last user message should end with /no_think, got: {user_content}"
+    );
 }
 
 #[tokio::test]
@@ -767,7 +812,7 @@ async fn query_expand_prepends_non_empty_conversation_context() {
                 { "role": "system", "content": "system" },
                 {
                     "role": "user",
-                    "content": "recent context\n\nCurrent question: current question"
+                    "content": "recent context\n\nCurrent question: current question\n\n/no_think"
                 }
             ]
         })))
@@ -808,7 +853,7 @@ async fn query_expand_ignores_empty_conversation_context() {
         .and(body_partial_json(serde_json::json!({
             "messages": [
                 { "role": "system", "content": "system" },
-                { "role": "user", "content": "just the question" }
+                { "role": "user", "content": "just the question\n\n/no_think" }
             ]
         })))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({

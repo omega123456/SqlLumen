@@ -131,6 +131,18 @@ async fn test_rerank_disables_reasoning_on_request() {
 
     assert_eq!(results[0].chunk_id, 2);
     assert_eq!(results[1].chunk_id, 1);
+
+    // Verify the request body had /no_think in the last user message
+    let requests = server.received_requests().await.unwrap();
+    assert!(!requests.is_empty());
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let messages = body["messages"].as_array().unwrap();
+    let last_user = messages.iter().rev().find(|m| m["role"] == "user").unwrap();
+    let user_content = last_user["content"].as_str().unwrap();
+    assert!(
+        user_content.ends_with("/no_think"),
+        "last user message should end with /no_think, got: {user_content}"
+    );
 }
 
 #[test]
