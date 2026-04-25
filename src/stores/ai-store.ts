@@ -20,8 +20,15 @@ export interface AiMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: number
-  kind?: 'schema-context' | 'attached-context'
+  kind?: 'schema-context' | 'attached-context' | 'memory-context'
   thinkingContent?: string
+  chunkKeys?: string[]
+  memoryIds?: number[]
+}
+
+interface AiMemory {
+  id: number
+  content: string
 }
 
 export interface AttachedContext {
@@ -42,14 +49,12 @@ export interface TabAiState {
   attachedContext: AttachedContext | null
   isPanelOpen: boolean
   error: string | null
-  /** DDL retrieved from vector search for the current retrieval. */
-  retrievedSchemaDdl: string
-  /** Timestamp of the last successful schema retrieval. */
-  lastRetrievalTimestamp: number
-  /** Schema-index build timestamp that produced the currently cached DDL. */
-  schemaContextBuildTimestamp: number
-  /** Stable key derived from the semantic-retrieval inputs (queries + hints). */
-  schemaContextQueryKey: string
+  /** Dedup index: chunk keys already provided in schema-context messages. */
+  providedChunkKeys: Record<string, true>
+  /** Running token count for cumulative schema budget. */
+  cumulativeSchemaTokens: number
+  /** Dedup index: memory IDs already provided in memory-context messages. */
+  providedMemoryIds: Record<string, true>
   /** System prompt used for the last successfully completed response chain. */
   lastCompletedSystemPrompt: string
   /** Transport that produced the last reusable response chain. */
@@ -58,14 +63,10 @@ export interface TabAiState {
   lastCompletedEndpoint: string
   /** Model used for the last reusable response chain. */
   lastCompletedModel: string
-  /** Prompt-only context signature used for the last reusable response chain. */
-  lastCompletedPromptContextSignature: string
   /** Endpoint used by the currently active AI request. */
   activeRequestEndpoint: string
   /** Model used by the currently active AI request. */
   activeRequestModel: string
-  /** Prompt-only context signature used by the currently active AI request. */
-  activeRequestPromptContextSignature: string
   /** True once the current stream has produced visible assistant output. */
   activeStreamHasAssistantOutput: boolean
   /** True while waiting for the schema index to finish building. */
@@ -88,18 +89,15 @@ function createDefaultTabAiState(): TabAiState {
     attachedContext: null,
     isPanelOpen: false,
     error: null,
-    retrievedSchemaDdl: '',
-    lastRetrievalTimestamp: 0,
-    schemaContextBuildTimestamp: 0,
-    schemaContextQueryKey: '',
+    providedChunkKeys: {},
+    cumulativeSchemaTokens: 0,
+    providedMemoryIds: {},
     lastCompletedSystemPrompt: '',
     lastCompletedTransport: null,
     lastCompletedEndpoint: '',
     lastCompletedModel: '',
-    lastCompletedPromptContextSignature: '',
     activeRequestEndpoint: '',
     activeRequestModel: '',
-    activeRequestPromptContextSignature: '',
     activeStreamHasAssistantOutput: false,
     isWaitingForIndex: false,
     connectionId: null,
@@ -174,21 +172,57 @@ const AI_SYSTEM_PROMPT = `You are an expert SQL assistant integrated into a data
 - Debug SQL issues and suggest fixes
 - Answer general SQL and database questions
 
-The application may inject additional hidden system messages containing relevant schema or SQL context. Treat the most recent such context as authoritative for the current turn.
+The application may inject additional hidden system messages containing relevant schema or SQL context.
+
+Schema context is cumulative across the conversation: all schema-context messages in this conversation are authoritative and should be used together. When the same table appears in multiple schema-context messages, the most recent version takes precedence.
+
+Retrieved tables only:
+- Use only tables that are present in the retrieved schema context.
+- Never make up or reference any table that is not in the retrieved schema.
+- Always use database-qualified table names in generated SQL (\`db\`.\`table\`).
+
+Note: Approximate row counts are included in the schema metadata where available.
+
+User notes (memories) may also appear in separate memory-context messages throughout the conversation. Use them to inform your responses.
 
 Always write SQL that is compatible with MySQL/MariaDB syntax.
-
-When schema context is provided, use ONLY tables that appear in that retrieved schema context. Never invent, infer, assume, or reference tables that were not retrieved by semantic search.
 
 Whenever you reference a table in generated SQL, always use its full database-qualified name (for example, \`database_name\`.\`table_name\`).
 
 When writing SQL, prefer clear, readable queries. Format your SQL code in markdown code blocks with the sql language tag.`
 
-/** Note appended when schema DDL is provided to inform the AI about row count availability. */
-const SCHEMA_METADATA_NOTE =
-  'Note: Approximate row counts are included in the schema metadata where available.'
+/** Cumulative token budget default for all schema-context messages in a conversation. */
+const CUMULATIVE_SCHEMA_TOKEN_BUDGET_DEFAULT = 30000
 
-/** Query expansion system prompt for generating semantic search queries with HyDE and entity decomposition. */
+function buildAttachedContextMessage(sql: string): string {
+  return `The following SQL statement is the context for this conversation:\n\n\`\`\`sql\n${sql}\n\`\`\``
+}
+
+function shouldReuseResponseChain(
+  tab: TabAiState | undefined,
+  systemPrompt: string | undefined,
+  endpoint: string,
+  model: string
+): boolean {
+  if (!tab?.previousResponseId || !systemPrompt) {
+    return false
+  }
+
+  return (
+    tab.lastCompletedTransport === 'responses' &&
+    tab.lastCompletedSystemPrompt === systemPrompt &&
+    tab.lastCompletedEndpoint === endpoint &&
+    tab.lastCompletedModel === model
+  )
+}
+
+function isPromptOnlyContextMessage(message: AiMessage): boolean {
+  return (
+    message.kind === 'schema-context' ||
+    message.kind === 'attached-context' ||
+    message.kind === 'memory-context'
+  )
+}
 const QUERY_EXPANSION_SYSTEM_PROMPT = `You are a SQL schema search assistant. Given a user's natural language question about a database, generate search queries and analysis to find the most relevant database tables. Output strictly as JSON with no explanation.
 
 When table names are mentioned or implied, prefer database-qualified names when possible so retrieval preserves the database prefix.
@@ -215,97 +249,6 @@ Output: {"queries":["customers orders LEFT JOIN last_order_date","customers tabl
 
 User: "What's the total revenue by product category?"
 Output: {"queries":["products categories revenue SUM price","product_categories category_name JOIN products","orders order_items products price quantity amount"],"hypotheticalSql":"SELECT pc.name, SUM(oi.price * oi.quantity) as revenue FROM \`db\`.\`product_categories\` pc JOIN \`db\`.\`products\` p ON pc.id = p.category_id JOIN \`db\`.\`order_items\` oi ON p.id = oi.product_id GROUP BY pc.name","entities":["products","product_categories","order_items","orders"],"joins":["product_categories → products","products → order_items"],"metrics":["revenue","sum","price","quantity"]}`
-
-const SCHEMA_USAGE_INSTRUCTION = `Retrieved tables only:\n- Use only tables that are present in the retrieved schema below.\n- Never make up or reference any table that is not in the retrieved schema.\n- Always use database-qualified table names in generated SQL (\`db\`.\`table\`).\n- If multiple schema-context messages exist, the most recent one overrides earlier schema context.`
-
-function buildSystemPrompt(memoryText?: string | null): string {
-  if (memoryText) {
-    return `${AI_SYSTEM_PROMPT}\n\n${memoryText}`
-  }
-  return AI_SYSTEM_PROMPT
-}
-
-function buildSchemaContextMessage(schemaDdl: string): string {
-  return `${SCHEMA_USAGE_INSTRUCTION}\n\n${SCHEMA_METADATA_NOTE}\n\nDatabase schema:\n${schemaDdl}`
-}
-
-function buildAttachedContextMessage(sql: string): string {
-  return `The following SQL statement is the context for this conversation:\n\n\`\`\`sql\n${sql}\n\`\`\``
-}
-
-function normaliseSchemaQueryKey(queries: string[], hints?: RetrievalHints): string {
-  const normalisedQueries = Array.from(
-    new Set(queries.map((query) => query.trim()).filter((query) => query.length > 0))
-  ).sort()
-
-  if (!hints) {
-    return JSON.stringify(normalisedQueries)
-  }
-
-  const normaliseWeightedTables = (
-    tables: Array<{ dbName: string; tableName: string; weight: number }>
-  ) =>
-    tables
-      .map((table) => ({
-        dbName: table.dbName.trim(),
-        tableName: table.tableName.trim(),
-        weight: Number(table.weight.toFixed(2)),
-      }))
-      .sort(
-        (a, b) =>
-          a.dbName.localeCompare(b.dbName) ||
-          a.tableName.localeCompare(b.tableName) ||
-          b.weight - a.weight
-      )
-
-  const normaliseTableRefs = (tables: Array<{ dbName: string; tableName: string }>) =>
-    tables
-      .map((table) => ({
-        dbName: table.dbName.trim(),
-        tableName: table.tableName.trim(),
-      }))
-      .sort((a, b) => a.dbName.localeCompare(b.dbName) || a.tableName.localeCompare(b.tableName))
-
-  return JSON.stringify({
-    queries: normalisedQueries,
-    hints: {
-      recentTables: normaliseWeightedTables(hints.recentTables),
-      editorTables: normaliseTableRefs(hints.editorTables),
-      acceptedTables: normaliseWeightedTables(hints.acceptedTables),
-    },
-  })
-}
-
-function shouldReuseResponseChain(
-  tab: TabAiState | undefined,
-  systemPrompt: string | undefined,
-  endpoint: string,
-  model: string
-): boolean {
-  if (!tab?.previousResponseId || !systemPrompt) {
-    return false
-  }
-
-  return (
-    tab.lastCompletedTransport === 'responses' &&
-    tab.lastCompletedSystemPrompt === systemPrompt &&
-    tab.lastCompletedEndpoint === endpoint &&
-    tab.lastCompletedModel === model &&
-    tab.lastCompletedPromptContextSignature === buildPromptContextSignature(tab.messages)
-  )
-}
-
-function isPromptOnlyContextMessage(message: AiMessage): boolean {
-  return message.kind === 'schema-context' || message.kind === 'attached-context'
-}
-
-function buildPromptContextSignature(messages: AiMessage[]): string {
-  return JSON.stringify(
-    messages
-      .filter(isPromptOnlyContextMessage)
-      .map((message) => ({ role: message.role, content: message.content, kind: message.kind }))
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Table extraction helper (shared by hint assembly)
@@ -589,11 +532,9 @@ export const useAiStore = create<AiState>()((set, get) => {
   }
 
   /**
-   * Replace or insert the system message in the tab's conversation.
-   * If a system message already exists, update its content.
-   * If not, prepend a new one.
+   * Insert the base system prompt once. No-op if a system prompt already exists.
    */
-  function upsertSystemMessage(tabId: string, systemContent: string): void {
+  function ensureBaseSystemPrompt(tabId: string, systemContent: string): void {
     const currentTab = get().tabs[tabId]
     if (!currentTab) return
 
@@ -601,26 +542,36 @@ export const useAiStore = create<AiState>()((set, get) => {
       (m) => m.role === 'system' && !isPromptOnlyContextMessage(m)
     )
     if (existingIdx >= 0) {
-      // Update existing system message content (replace, not stack)
-      const updatedMessages = [...currentTab.messages]
-      updatedMessages[existingIdx] = {
-        ...updatedMessages[existingIdx],
-        content: systemContent,
-        timestamp: Date.now(),
-      }
-      patchTab(tabId, { messages: updatedMessages })
-    } else {
-      // Prepend new system message
-      const systemMessage: AiMessage = {
-        id: crypto.randomUUID(),
-        role: 'system',
-        content: systemContent,
-        timestamp: Date.now(),
-      }
-      patchTab(tabId, {
-        messages: [systemMessage, ...currentTab.messages],
-      })
+      // System prompt already exists — do nothing (immutable)
+      return
     }
+
+    // Prepend new system message
+    const systemMessage: AiMessage = {
+      id: crypto.randomUUID(),
+      role: 'system',
+      content: systemContent,
+      timestamp: Date.now(),
+    }
+    patchTab(tabId, {
+      messages: [systemMessage, ...currentTab.messages],
+    })
+  }
+
+  /**
+   * Append a context message before the user message at the given ID.
+   * Always inserts; never searches/replaces.
+   */
+  function appendContextMessage(tabId: string, userMessageId: string, message: AiMessage): void {
+    const currentTab = get().tabs[tabId]
+    if (!currentTab) return
+
+    const nextMessages = [...currentTab.messages]
+    const userIndex = nextMessages.findIndex((m) => m.id === userMessageId)
+    if (userIndex < 0) return
+
+    nextMessages.splice(userIndex, 0, message)
+    patchTab(tabId, { messages: nextMessages })
   }
 
   function getCurrentSystemPrompt(tabId: string): string {
@@ -723,7 +674,6 @@ export const useAiStore = create<AiState>()((set, get) => {
       lastCompletedTransport: null,
       lastCompletedEndpoint: '',
       lastCompletedModel: '',
-      lastCompletedPromptContextSignature: '',
     })
   }
 
@@ -731,49 +681,28 @@ export const useAiStore = create<AiState>()((set, get) => {
    * Retrieve schema context via the vector retrieval pipeline.
    *
    * 1. Wait for schema index if building
-   * 2. Expand user query via aiQueryExpand (HyDE + entity decomposition + conversation context)
-   * 3. Perform semantic search
-   * 4. Assemble DDL context from results
+   * 2. Retrieve memories (all used for query expansion; only novel IDs for context)
+   * 3. Expand user query via aiQueryExpand
+   * 4. Perform semantic search
+   * 5. Cross-turn dedup + cumulative budget enforcement
+   * 6. Return novel DDL + novel memory data
    */
   async function retrieveSchemaContext(
     tabId: string,
     sessionId: string,
     userMessage: string
-  ): Promise<{ schemaDdl: string; memoryText: string | null }> {
+  ): Promise<{
+    schemaDdl: string
+    novelChunkKeys: string[]
+    novelDdlTokens: number
+    novelMemories: AiMemory[]
+    novelMemoryText: string | null
+  }> {
     try {
       logFrontend(
         'debug',
         `[ai-store] retrieveSchemaContext start — tabId=${tabId} sessionId=${sessionId} userQuery="${userMessage}"`
       )
-
-      let schemaQueryKey = ''
-
-      const getCachedSchemaContext = (queryKey: string) => {
-        const indexStatus = useSchemaIndexStore.getState().getStatusForSession(sessionId)
-        const currentTab = get().tabs[tabId]
-        const cachedDdl = currentTab?.retrievedSchemaDdl
-        const cachedTimestamp = currentTab?.lastRetrievalTimestamp ?? 0
-
-        if (
-          indexStatus?.status === 'ready' &&
-          cachedDdl &&
-          cachedTimestamp > 0 &&
-          indexStatus.lastBuildTimestamp > 0 &&
-          currentTab.schemaContextBuildTimestamp === indexStatus.lastBuildTimestamp &&
-          currentTab.schemaContextQueryKey === queryKey &&
-          currentTab?.connectionId === sessionId &&
-          currentTab.messages.some((message) => message.role === 'assistant')
-        ) {
-          logFrontend(
-            'debug',
-            `[ai-store] reusing tab schema context — tabId=${tabId} sessionId=${sessionId} buildTs=${indexStatus.lastBuildTimestamp} ddlChars=${cachedDdl.length}`
-          )
-
-          return cachedDdl
-        }
-
-        return null
-      }
 
       // Check index status — if building, wait for it
       const indexState = useSchemaIndexStore.getState().getStatusForSession(sessionId)
@@ -805,12 +734,18 @@ export const useAiStore = create<AiState>()((set, get) => {
           `[ai-store] done waiting for index — waited=${waited}ms finalStatus=${postWaitStatus?.status ?? 'unknown'}`
         )
         patchTab(tabId, { isWaitingForIndex: false })
-        if (!get().tabs[tabId]) return { schemaDdl: '', memoryText: null }
+        if (!get().tabs[tabId])
+          return {
+            schemaDdl: '',
+            novelChunkKeys: [],
+            novelDdlTokens: 0,
+            novelMemories: [],
+            novelMemoryText: null,
+          }
       }
 
       // ── Retrieve memories ─────────────────────────────────────────────
-      let memories: Array<{ content: string }> = []
-      let memoryBlock: string | null = null
+      let allMemories: AiMemory[] = []
       try {
         logFrontend(
           'debug',
@@ -821,42 +756,44 @@ export const useAiStore = create<AiState>()((set, get) => {
           query: userMessage,
           k: 5,
         })
-        memories = memoryResults
+        allMemories = memoryResults
         logFrontend(
           'debug',
-          `[ai-store] memory search returned ${memories.length} result(s) — sessionId=${sessionId}`
+          `[ai-store] memory search returned ${allMemories.length} result(s) — sessionId=${sessionId}`
         )
-        if (memories.length > 0) {
-          // Build memory lines until we approach the token budget
-          const memLines: string[] = []
-          let usedTokens = 0
-          const headerTokens = Math.ceil('## User Notes (from memory)\n'.length / 4)
-          usedTokens += headerTokens
-          for (const mem of memories) {
-            const line = `- ${mem.content}`
-            const lineTokens = Math.ceil(line.length / 4)
-            if (usedTokens + lineTokens > MEMORY_TOKEN_BUDGET) break
-            memLines.push(line)
-            usedTokens += lineTokens
-          }
-          memoryBlock =
-            memLines.length > 0 ? `## User Notes (from memory)\n${memLines.join('\n')}` : null
-          logFrontend(
-            'debug',
-            `[ai-store] memory retrieval complete — retrieved=${memories.length} includedInPrompt=${memLines.length} budgetTokens=${MEMORY_TOKEN_BUDGET}`
-          )
-          memories.forEach((mem, i) => {
-            const included = i < memLines.length
-            logFrontend(
-              'debug',
-              `[ai-store] memory[${i}] ${included ? 'included' : 'dropped (budget)'} — "${mem.content}"`
-            )
-          })
-        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         logFrontend('debug', `[ai-store] memory retrieval failed (non-fatal) — error="${msg}"`)
         logFrontend('warn', `[ai-store] Memory retrieval failed (non-fatal): ${msg}`)
+      }
+
+      // Dedup memories by ID (only novel ones produce memory-context messages)
+      const currentTab = get().tabs[tabId]
+      const existingMemoryIds = currentTab?.providedMemoryIds ?? {}
+      const novelMemories = allMemories.filter((mem) => !existingMemoryIds[String(mem.id)])
+
+      // Build novel memory text
+      let novelMemoryText: string | null = null
+      const includedMemories: AiMemory[] = []
+      if (novelMemories.length > 0) {
+        const memLines: string[] = []
+        let usedTokens = 0
+        const headerTokens = Math.ceil('## User Notes (from memory)\n'.length / 4)
+        usedTokens += headerTokens
+        for (const mem of novelMemories) {
+          const line = `- ${mem.content}`
+          const lineTokens = Math.ceil(line.length / 4)
+          if (usedTokens + lineTokens > MEMORY_TOKEN_BUDGET) break
+          memLines.push(line)
+          includedMemories.push(mem)
+          usedTokens += lineTokens
+        }
+        novelMemoryText =
+          memLines.length > 0 ? `## User Notes (from memory)\n${memLines.join('\n')}` : null
+        logFrontend(
+          'debug',
+          `[ai-store] memory retrieval complete — total=${allMemories.length} novel=${novelMemories.length} included=${memLines.length} budgetTokens=${MEMORY_TOKEN_BUDGET}`
+        )
       }
 
       // Build conversation context from last ~4 turns
@@ -872,13 +809,13 @@ export const useAiStore = create<AiState>()((set, get) => {
         if (recentMessages.length > 0) {
           conversationContext = recentMessages.join('\n')
         }
-        // Augment with memory content for better query expansion
-        if (memories.length > 0) {
-          const memoryNotes = memories.map((m) => m.content).join('\n')
+        // Augment with ALL memory content for better query expansion (not just novel)
+        if (allMemories.length > 0) {
+          const memoryNotes = allMemories.map((m) => m.content).join('\n')
           conversationContext += `\n\nUser notes:\n${memoryNotes}`
           logFrontend(
             'debug',
-            `[ai-store] query expansion augmented with ${memories.length} memory note(s) — notes="${memoryNotes.replace(/\n/g, ' | ')}"`
+            `[ai-store] query expansion augmented with ${allMemories.length} memory note(s) — notes="${memoryNotes.replace(/\n/g, ' | ')}"`
           )
         }
       }
@@ -1056,17 +993,6 @@ export const useAiStore = create<AiState>()((set, get) => {
         logFrontend('warn', `[ai-store] hint assembly failed (non-fatal): ${msg}`)
       }
 
-      schemaQueryKey = normaliseSchemaQueryKey(queries, hints)
-
-      // Include memory count in the cache key so that saving/deleting memories
-      // invalidates the cached schema context (memories affect the system prompt).
-      const memoryCacheKey = `${schemaQueryKey}:mem=${memories.length}`
-
-      const cachedSchemaDdl = getCachedSchemaContext(memoryCacheKey)
-      if (cachedSchemaDdl != null) {
-        return { schemaDdl: cachedSchemaDdl, memoryText: memoryBlock }
-      }
-
       logFrontend(
         'debug',
         `[ai-store] invoking semantic search — sessionId=${sessionId} queryCount=${queries.length} queries=${JSON.stringify(queries)}`
@@ -1092,8 +1018,19 @@ export const useAiStore = create<AiState>()((set, get) => {
       const tokenBudget = parseInt(getAiSetting('ai.retrieval.tokenBudget') || '6000', 10)
       const effectiveBudget = isNaN(tokenBudget) || tokenBudget <= 0 ? 6000 : tokenBudget
 
-      // Deduct fixed memory token reserve from the schema token budget
-      const schemaBudget = Math.max(effectiveBudget - MEMORY_TOKEN_BUDGET, 0)
+      // Deduct fixed memory token reserve from the per-turn schema token budget
+      const perTurnSchemaBudget = Math.max(effectiveBudget - MEMORY_TOKEN_BUDGET, 0)
+
+      // Cumulative budget
+      const cumulativeBudget = Math.max(
+        CUMULATIVE_SCHEMA_TOKEN_BUDGET_DEFAULT,
+        effectiveBudget
+      )
+      const existingCumulativeTokens = get().tabs[tabId]?.cumulativeSchemaTokens ?? 0
+      const remainingCumulativeBudget = Math.max(cumulativeBudget - existingCumulativeTokens, 0)
+
+      // Cross-turn dedup: filter out already-provided chunk keys
+      const existingChunkKeys = get().tabs[tabId]?.providedChunkKeys ?? {}
 
       // Deterministic order: tables first, then views, then routines, by score desc
       const sortedResults = [...results].sort((a, b) => {
@@ -1107,41 +1044,43 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       const seen = new Set<string>()
       const ddlParts: string[] = []
+      const novelChunkKeys: string[] = []
       let runningTokens = 0
       let droppedCount = 0
 
       for (const result of sortedResults) {
+        // Intra-turn dedup (existing)
         if (seen.has(result.chunkKey)) continue
         seen.add(result.chunkKey)
 
-        // Build per-chunk header
-        const typeLabel =
-          result.chunkType === 'view'
-            ? 'View'
-            : result.chunkType === 'procedure'
-              ? 'Procedure'
-              : result.chunkType === 'function'
-                ? 'Function'
-                : result.chunkType === 'fk'
-                  ? 'FK'
-                  : 'Table'
-        const header = `## ${typeLabel} \`${result.dbName}\`.\`${result.tableName}\`  (score: ${result.score.toFixed(2)})`
-        const block = `${header}\n${result.ddlText}`
+        // Cross-turn dedup
+        if (existingChunkKeys[result.chunkKey]) continue
+
+        // Raw DDL only — no per-chunk headers or score annotations
+        const block = result.ddlText
         const blockTokens = Math.ceil(block.length / 4)
 
-        if (runningTokens + blockTokens > schemaBudget) {
+        // Per-turn budget
+        if (runningTokens + blockTokens > perTurnSchemaBudget && runningTokens > 0) {
+          droppedCount++
+          break
+        }
+
+        // Cumulative budget
+        if (runningTokens + blockTokens > remainingCumulativeBudget) {
           droppedCount++
           break
         }
 
         runningTokens += blockTokens
         ddlParts.push(block)
+        novelChunkKeys.push(result.chunkKey)
       }
 
       if (droppedCount > 0) {
         logFrontend(
           'debug',
-          `[ai-store] token budget: dropped ${droppedCount} chunk(s) exceeding budget of ${effectiveBudget} tokens`
+          `[ai-store] token budget: dropped ${droppedCount} chunk(s) exceeding budget`
         )
       }
 
@@ -1149,35 +1088,21 @@ export const useAiStore = create<AiState>()((set, get) => {
 
       logFrontend(
         'debug',
-        `[ai-store] DDL assembly complete — uniqueChunks=${ddlParts.length} totalCharsInDdl=${ddl.length}`
+        `[ai-store] DDL assembly complete — novelChunks=${ddlParts.length} totalCharsInDdl=${ddl.length}`
       )
-
-      // Update tab state (only if tab still exists — it may have been cleaned up)
-      const retrievalTimestamp = Date.now()
-      const latestIndexState = useSchemaIndexStore.getState().getStatusForSession(sessionId)
-      const schemaContextBuildTimestamp = latestIndexState?.lastBuildTimestamp ?? 0
-      if (get().tabs[tabId]) {
-        patchTab(tabId, {
-          retrievedSchemaDdl: ddl,
-          lastRetrievalTimestamp: retrievalTimestamp,
-          schemaContextBuildTimestamp,
-          schemaContextQueryKey: memoryCacheKey,
-        })
-      }
-
-      if (ddl) {
-        logFrontend(
-          'debug',
-          `[ai-store] cached schema context on tab — tabId=${tabId} sessionId=${sessionId} buildTs=${schemaContextBuildTimestamp} ddlChars=${ddl.length}`
-        )
-      }
 
       logFrontend(
         'debug',
         `[ai-store] retrieveSchemaContext complete — ddl ${ddl.length > 0 ? `injected (${ddl.length} chars)` : 'empty (no schema context)'}`
       )
 
-      return { schemaDdl: ddl, memoryText: memoryBlock }
+      return {
+        schemaDdl: ddl,
+        novelChunkKeys,
+        novelDdlTokens: runningTokens,
+        novelMemories: includedMemories,
+        novelMemoryText,
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       logFrontend('error', `[ai-store] Schema retrieval failed: ${msg}`)
@@ -1185,7 +1110,13 @@ export const useAiStore = create<AiState>()((set, get) => {
       if (get().tabs[tabId]) {
         patchTab(tabId, { isWaitingForIndex: false })
       }
-      return { schemaDdl: '', memoryText: null }
+      return {
+        schemaDdl: '',
+        novelChunkKeys: [],
+        novelDdlTokens: 0,
+        novelMemories: [],
+        novelMemoryText: null,
+      }
     }
   }
 
@@ -1286,11 +1217,8 @@ export const useAiStore = create<AiState>()((set, get) => {
       const startStream = async () => {
         try {
           // Retrieve schema context via the vector pipeline
-          const { schemaDdl, memoryText } = await retrieveSchemaContext(
-            tabId,
-            connectionId,
-            message
-          )
+          const { schemaDdl, novelChunkKeys, novelDdlTokens, novelMemories, novelMemoryText } =
+            await retrieveSchemaContext(tabId, connectionId, message)
           if (!get().tabs[tabId]) return // tab was cleaned up while waiting
 
           // Guard: schema retrieval is async; abort if stream was cancelled before we got here
@@ -1298,46 +1226,69 @@ export const useAiStore = create<AiState>()((set, get) => {
             return
           }
 
-          // Keep the base system prompt stable so provider-side prefix caching can
-          // reuse the long conversation prefix across follow-up requests.
-          const previousSystemPrompt = getCurrentSystemPrompt(tabId)
-          const nextSystemPrompt = buildSystemPrompt(memoryText)
+          // Insert base system prompt (first turn only — no-op on subsequent turns)
+          ensureBaseSystemPrompt(tabId, AI_SYSTEM_PROMPT)
 
-          if (previousSystemPrompt && previousSystemPrompt !== nextSystemPrompt) {
-            resetResponseChain(tabId)
+          // Append schema-context message if novel chunks exist
+          if (schemaDdl && novelChunkKeys.length > 0) {
+            const schemaMsg: AiMessage = {
+              id: crypto.randomUUID(),
+              role: 'system',
+              content: schemaDdl,
+              timestamp: Date.now(),
+              kind: 'schema-context',
+              chunkKeys: novelChunkKeys,
+            }
+            appendContextMessage(tabId, userMessage.id, schemaMsg)
           }
 
-          upsertSystemMessage(tabId, nextSystemPrompt)
-
-          if (!schemaDdl) {
-            removePromptOnlyContextMessages(tabId, ['schema-context'])
-            resetResponseChain(tabId)
+          // Append memory-context message if novel memories exist
+          if (novelMemoryText && novelMemories.length > 0) {
+            const memMsg: AiMessage = {
+              id: crypto.randomUUID(),
+              role: 'system',
+              content: novelMemoryText,
+              timestamp: Date.now(),
+              kind: 'memory-context',
+              memoryIds: novelMemories.map((m) => m.id),
+            }
+            appendContextMessage(tabId, userMessage.id, memMsg)
           }
 
+          // Attached-context (mutable, unchanged behavior)
           if (!attachedContext) {
             removePromptOnlyContextMessages(tabId, ['attached-context'])
           }
 
-          upsertPromptOnlyContextMessages(tabId, userMessage.id, [
-            ...(schemaDdl
-              ? [
-                  {
-                    role: 'system' as const,
-                    content: buildSchemaContextMessage(schemaDdl),
-                    kind: 'schema-context' as const,
-                  },
-                ]
-              : []),
-            ...(attachedContext
-              ? [
-                  {
-                    role: 'system' as const,
-                    content: buildAttachedContextMessage(attachedContext.sql),
-                    kind: 'attached-context' as const,
-                  },
-                ]
-              : []),
-          ])
+          if (attachedContext) {
+            upsertPromptOnlyContextMessages(tabId, userMessage.id, [
+              {
+                role: 'system' as const,
+                content: buildAttachedContextMessage(attachedContext.sql),
+                kind: 'attached-context' as const,
+              },
+            ])
+          }
+
+          // Update dedup indices
+          if (novelChunkKeys.length > 0 || novelMemories.length > 0) {
+            const currentTabState = get().tabs[tabId]
+            if (currentTabState) {
+              const newChunkKeys = { ...currentTabState.providedChunkKeys }
+              for (const key of novelChunkKeys) {
+                newChunkKeys[key] = true
+              }
+              const newMemoryIds = { ...currentTabState.providedMemoryIds }
+              for (const mem of novelMemories) {
+                newMemoryIds[String(mem.id)] = true
+              }
+              patchTab(tabId, {
+                providedChunkKeys: newChunkKeys,
+                cumulativeSchemaTokens: currentTabState.cumulativeSchemaTokens + novelDdlTokens,
+                providedMemoryIds: newMemoryIds,
+              })
+            }
+          }
 
           if (!get().tabs[tabId]) return // tab was cleaned up
 
@@ -1368,14 +1319,9 @@ export const useAiStore = create<AiState>()((set, get) => {
           const maxTokens = settings.maxTokens ?? parseInt(getAiSetting('ai.maxTokens'), 10)
           const enableReasoning = getAiSetting('ai.enableReasoning') !== 'false'
 
-          const requestPromptContextSignature = buildPromptContextSignature(
-            get().tabs[tabId]?.messages ?? []
-          )
-
           patchTab(tabId, {
             activeRequestEndpoint: endpoint,
             activeRequestModel: model,
-            activeRequestPromptContextSignature: requestPromptContextSignature,
           })
 
           // Build IPC messages from the current conversation
@@ -1445,10 +1391,8 @@ export const useAiStore = create<AiState>()((set, get) => {
         lastCompletedTransport: null,
         lastCompletedEndpoint: '',
         lastCompletedModel: '',
-        lastCompletedPromptContextSignature: '',
         activeRequestEndpoint: '',
         activeRequestModel: '',
-        activeRequestPromptContextSignature: '',
         activeStreamHasAssistantOutput: false,
       })
 
@@ -1477,23 +1421,77 @@ export const useAiStore = create<AiState>()((set, get) => {
         .find((m) => m.role === 'user' && !isPromptOnlyContextMessage(m))
       if (!lastUserMessage) return
 
-      // Remove the last user message and any assistant messages after it
       const lastUserIndex = tab.messages.lastIndexOf(lastUserMessage)
-      const messagesUpToLastUser = tab.messages.slice(0, lastUserIndex)
+
+      // Scan backwards from the user message to find contiguous context messages
+      // from the same turn (schema-context, memory-context). Skip attached-context.
+      const contextKinds = new Set<string>(['schema-context', 'memory-context', 'attached-context'])
+      let scanIdx = lastUserIndex - 1
+      const indicesToRemove: number[] = []
+      while (scanIdx >= 0) {
+        const msg = tab.messages[scanIdx]
+        if (msg.kind && contextKinds.has(msg.kind)) {
+          if (msg.kind === 'schema-context' || msg.kind === 'memory-context') {
+            indicesToRemove.push(scanIdx)
+          }
+          // Skip attached-context without removing or stopping
+          scanIdx--
+        } else {
+          break // hit a non-context message (user or assistant)
+        }
+      }
+
+      // Collect chunk keys and memory IDs from removed context messages
+      const removedChunkKeys: string[] = []
+      const removedMemoryIds: number[] = []
+      for (const idx of indicesToRemove) {
+        const msg = tab.messages[idx]
+        if (msg.kind === 'schema-context' && msg.chunkKeys) {
+          removedChunkKeys.push(...msg.chunkKeys)
+        }
+        if (msg.kind === 'memory-context' && msg.memoryIds) {
+          removedMemoryIds.push(...msg.memoryIds)
+        }
+      }
+
+      // Remove: context messages + user message + everything after
+      const removeSet = new Set(indicesToRemove)
+      const remainingMessages = tab.messages.filter(
+        (_, idx) => !removeSet.has(idx) && idx < lastUserIndex
+      )
+
+      // Update dedup indices
+      const newChunkKeys = { ...tab.providedChunkKeys }
+      for (const key of removedChunkKeys) {
+        delete newChunkKeys[key]
+      }
+      const newMemoryIds = { ...tab.providedMemoryIds }
+      for (const memId of removedMemoryIds) {
+        delete newMemoryIds[String(memId)]
+      }
+
+      // Recompute cumulativeSchemaTokens from remaining schema-context messages
+      let newCumulativeTokens = 0
+      for (const msg of remainingMessages) {
+        if (msg.kind === 'schema-context') {
+          newCumulativeTokens += Math.ceil(msg.content.length / 4)
+        }
+      }
 
       patchTab(tabId, {
-        messages: messagesUpToLastUser,
+        messages: remainingMessages,
         error: null,
         previousResponseId: null,
         lastCompletedSystemPrompt: '',
         lastCompletedTransport: null,
         lastCompletedEndpoint: '',
         lastCompletedModel: '',
-        lastCompletedPromptContextSignature: '',
         activeRequestEndpoint: '',
         activeRequestModel: '',
-        activeRequestPromptContextSignature: '',
         activeStreamHasAssistantOutput: false,
+        providedChunkKeys: newChunkKeys,
+        providedMemoryIds: newMemoryIds,
+        cumulativeSchemaTokens: newCumulativeTokens,
       })
 
       // Re-send the message
@@ -1541,12 +1539,8 @@ export const useAiStore = create<AiState>()((set, get) => {
         lastCompletedTransport: info.transport ?? null,
         lastCompletedEndpoint: canReuseResponsesChain ? tab.activeRequestEndpoint : '',
         lastCompletedModel: canReuseResponsesChain ? tab.activeRequestModel : '',
-        lastCompletedPromptContextSignature: canReuseResponsesChain
-          ? tab.activeRequestPromptContextSignature
-          : '',
         activeRequestEndpoint: '',
         activeRequestModel: '',
-        activeRequestPromptContextSignature: '',
         activeStreamHasAssistantOutput: false,
       })
 
@@ -1573,10 +1567,8 @@ export const useAiStore = create<AiState>()((set, get) => {
         lastCompletedTransport: null,
         lastCompletedEndpoint: '',
         lastCompletedModel: '',
-        lastCompletedPromptContextSignature: '',
         activeRequestEndpoint: '',
         activeRequestModel: '',
-        activeRequestPromptContextSignature: '',
         activeStreamHasAssistantOutput: false,
       })
 
@@ -1667,18 +1659,15 @@ export const useAiStore = create<AiState>()((set, get) => {
         isGenerating: false,
         activeStreamId: null,
         previousResponseId: null,
-        retrievedSchemaDdl: '',
-        lastRetrievalTimestamp: 0,
-        schemaContextBuildTimestamp: 0,
-        schemaContextQueryKey: '',
+        providedChunkKeys: {},
+        cumulativeSchemaTokens: 0,
+        providedMemoryIds: {},
         lastCompletedSystemPrompt: '',
         lastCompletedTransport: null,
         lastCompletedEndpoint: '',
         lastCompletedModel: '',
-        lastCompletedPromptContextSignature: '',
         activeRequestEndpoint: '',
         activeRequestModel: '',
-        activeRequestPromptContextSignature: '',
         activeStreamHasAssistantOutput: false,
       })
 

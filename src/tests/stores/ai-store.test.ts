@@ -440,9 +440,9 @@ describe('useAiStore', () => {
       expect(baseSystemMessage!.content).toContain(
         'additional hidden system messages containing relevant schema or SQL context'
       )
-      expect(baseSystemMessage!.content).toContain('always use its full database-qualified name')
+      expect(baseSystemMessage!.content).toContain('database-qualified name')
       expect(schemaContextMessage).toBeDefined()
-      expect(schemaContextMessage!.content).toContain('Database schema:')
+      expect(schemaContextMessage!.content).toContain('CREATE TABLE `testdb`.`users`')
       expect(schemaContextMessage!.content).toContain('CREATE TABLE `testdb`.`users`')
       const userMessages = tab.messages.filter((message) => message.role === 'user')
       expect(userMessages).toHaveLength(1)
@@ -464,20 +464,20 @@ describe('useAiStore', () => {
       )
     })
 
-    it('updates retrievedSchemaDdl on the tab after retrieval', async () => {
+    it('updates providedChunkKeys on the tab after retrieval', async () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
 
       await vi.waitFor(() => {
         const tab = getTab('tab-1')!
-        expect(tab.retrievedSchemaDdl).toBeTruthy()
+        expect(Object.keys(tab.providedChunkKeys).length).toBeGreaterThan(0)
       })
 
       const tab = getTab('tab-1')!
-      expect(tab.retrievedSchemaDdl).toContain('CREATE TABLE `testdb`.`users`')
-      expect(tab.lastRetrievalTimestamp).toBeGreaterThan(0)
+      expect(tab.providedChunkKeys['testdb.users:table']).toBe(true)
+      expect(tab.cumulativeSchemaTokens).toBeGreaterThan(0)
     })
 
-    it('reuses cached schema context within the same tab when the retrieval query set matches', async () => {
+    it('deduplicates schema context on second turn with same chunk keys', async () => {
       mockIndexStatus = {
         status: 'ready',
         tablesDone: 1,
@@ -500,17 +500,23 @@ describe('useAiStore', () => {
         transport: 'chat_completions',
       })
 
+      // Second turn with same results — should still search but no new schema-context
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
       })
 
-      expect(mockSemanticSearch).toHaveBeenCalledTimes(1)
-      expect(getTab('tab-1')!.retrievedSchemaDdl).toContain('CREATE TABLE `testdb`.`users`')
+      // Semantic search runs every turn
+      expect(mockSemanticSearch).toHaveBeenCalledTimes(2)
+      // Only 1 schema-context message (from first turn) — second turn's results are all dupes
+      const schemaContextMessages = getTab('tab-1')!.messages.filter(
+        (m) => m.kind === 'schema-context'
+      )
+      expect(schemaContextMessages).toHaveLength(1)
     })
 
-    it('does not reuse schema context for an unrelated later prompt in the same tab', async () => {
+    it('appends a new schema-context message when second turn retrieves different tables', async () => {
       mockIndexStatus = {
         status: 'ready',
         tablesDone: 1,
@@ -552,10 +558,15 @@ describe('useAiStore', () => {
       })
 
       expect(mockSemanticSearch).toHaveBeenCalledTimes(2)
-      expect(getTab('tab-1')!.retrievedSchemaDdl).toContain('CREATE TABLE `testdb`.`orders`')
+      // Should have 2 schema-context messages — one from each turn
+      const schemaContextMessages = getTab('tab-1')!.messages.filter(
+        (m) => m.kind === 'schema-context'
+      )
+      expect(schemaContextMessages).toHaveLength(2)
+      expect(schemaContextMessages[1].content).toContain('CREATE TABLE `testdb`.`orders`')
     })
 
-    it('does not reuse schema context when retrieval hints change for the same prompt', async () => {
+    it('appends schema-context when retrieval hints change for the same prompt', async () => {
       mockIndexStatus = {
         status: 'ready',
         tablesDone: 1,
@@ -603,10 +614,14 @@ describe('useAiStore', () => {
       })
 
       expect(mockSemanticSearch).toHaveBeenCalledTimes(2)
-      expect(getTab('tab-1')!.retrievedSchemaDdl).toContain('CREATE TABLE `testdb`.`orders`')
+      const schemaContextMessages = getTab('tab-1')!.messages.filter(
+        (m) => m.kind === 'schema-context'
+      )
+      expect(schemaContextMessages).toHaveLength(2)
+      expect(schemaContextMessages[1].content).toContain('CREATE TABLE `testdb`.`orders`')
     })
 
-    it('does not reuse schema context across tabs on the same connection', async () => {
+    it('always runs semantic search on each turn even across tabs', async () => {
       mockIndexStatus = {
         status: 'ready',
         tablesDone: 1,
@@ -701,7 +716,7 @@ describe('useAiStore', () => {
       expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBe('resp_cache')
     })
 
-    it('does not reuse previousResponseId when schema context changes for a new prompt', async () => {
+    it('reuses previousResponseId when new schema context is appended (cumulative model)', async () => {
       mockIndexStatus = {
         status: 'ready',
         tablesDone: 1,
@@ -744,8 +759,8 @@ describe('useAiStore', () => {
       })
 
       expect(mockSemanticSearch).toHaveBeenCalledTimes(2)
-      expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBeNull()
-      expect(getTab('tab-1')!.retrievedSchemaDdl).toContain('CREATE TABLE `testdb`.`orders`')
+      // With cumulative schema context, response chain IS reused (only append, no mutation)
+      expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBe('resp_abc')
     })
 
     it('does not reuse previousResponseId when the model changes', async () => {
@@ -825,14 +840,14 @@ describe('useAiStore', () => {
       expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBeNull()
     })
 
-    it('replaces system message on subsequent sends (does not stack)', async () => {
+    it('system prompt is immutable — same content on turn 1 and turn 2', async () => {
       // First message
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First', {})
       await vi.waitFor(() => {
         expect(getTab('tab-1')!.messages.length).toBe(3) // base system + schema context + user
       })
 
-      // Second message — system message should be updated, not duplicated
+      // Second message — system message should never be modified after first turn
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Second', {})
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
@@ -867,7 +882,7 @@ describe('useAiStore', () => {
       expect(tab.messages[1].role).toBe('user')
     })
 
-    it('clears hidden schema context and response reuse when a follow-up retrieval returns empty', async () => {
+    it('preserves old schema context and reuses response chain when follow-up retrieval returns empty', async () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
 
       await vi.waitFor(() => {
@@ -894,10 +909,12 @@ describe('useAiStore', () => {
         content: string
       }>
 
-      expect(secondMessages.some((message) => message.content.includes('Database schema:'))).toBe(
-        false
-      )
-      expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBeNull()
+      // Old schema context from turn 1 is preserved (cumulative)
+      expect(
+        secondMessages.some((message) => message.content.includes('CREATE TABLE `testdb`.`users`'))
+      ).toBe(true)
+      // Response chain is reused since messages are only appended
+      expect(mockSendAiChat.mock.calls[1][0].previousResponseId).toBe('resp_schema_clear')
     })
 
     it('sets error state when sendAiChat fails', async () => {
@@ -1947,7 +1964,7 @@ describe('useAiStore', () => {
   })
 
   describe('context assembly — headers and token budget', () => {
-    it('formats DDL with per-chunk headers including db.table and score', async () => {
+    it('formats DDL as raw DDL without per-chunk headers or scores', async () => {
       mockSemanticSearch.mockResolvedValueOnce([
         {
           chunkId: 1,
@@ -1976,13 +1993,18 @@ describe('useAiStore', () => {
       useAiStore.getState().sendMessage('tab-hdr', 'conn-1', 'show tables', {})
 
       await vi.waitFor(() => {
-        expect(getTab('tab-hdr')?.retrievedSchemaDdl?.length).toBeGreaterThan(0)
+        const schemaMsg = getTab('tab-hdr')?.messages.find((m) => m.kind === 'schema-context')
+        expect(schemaMsg).toBeDefined()
       })
 
-      const ddl = getTab('tab-hdr')!.retrievedSchemaDdl
-      expect(ddl).toContain('## Table `testdb`.`users`  (score: 0.91)')
-      expect(ddl).toContain('## View `testdb`.`orders_view`  (score: 0.72)')
-      expect(ddl).toContain('CREATE TABLE `testdb`.`users` (id INT);')
+      const schemaMsg = getTab('tab-hdr')!.messages.find((m) => m.kind === 'schema-context')!
+      // Raw DDL only — no headers, no scores, no "Database schema:" wrapper
+      expect(schemaMsg.content).not.toContain('## Table')
+      expect(schemaMsg.content).not.toContain('## View')
+      expect(schemaMsg.content).not.toContain('score:')
+      expect(schemaMsg.content).not.toContain('Database schema:')
+      expect(schemaMsg.content).toContain('CREATE TABLE `testdb`.`users` (id INT);')
+      expect(schemaMsg.content).toContain('CREATE VIEW orders_view AS SELECT 1;')
     })
 
     it('enforces token budget — all chunks fit under default budget', async () => {
@@ -2015,12 +2037,15 @@ describe('useAiStore', () => {
       useAiStore.getState().sendMessage('tab-budget', 'conn-1', 'show all', {})
 
       await vi.waitFor(() => {
-        expect(getTab('tab-budget')?.retrievedSchemaDdl?.length).toBeGreaterThan(0)
+        const schemaMsg = getTab('tab-budget')?.messages.find((m) => m.kind === 'schema-context')
+        expect(schemaMsg).toBeDefined()
       })
 
-      const ddl = getTab('tab-budget')!.retrievedSchemaDdl
-      expect(ddl).toContain('`db`.`a`')
-      expect(ddl).toContain('`db`.`b`')
+      const ddl = getTab('tab-budget')!.messages.find((m) => m.kind === 'schema-context')!.content
+      expect(ddl).toContain('X')
+      // Both chunks should be present (both fit in budget)
+      const parts = ddl.split('\n\n')
+      expect(parts.length).toBeGreaterThanOrEqual(2)
     })
 
     it('sorts results: tables first, then views, then routines', async () => {
@@ -2063,13 +2088,14 @@ describe('useAiStore', () => {
       useAiStore.getState().sendMessage('tab-sort', 'conn-1', 'show', {})
 
       await vi.waitFor(() => {
-        expect(getTab('tab-sort')?.retrievedSchemaDdl?.length).toBeGreaterThan(0)
+        const schemaMsg = getTab('tab-sort')?.messages.find((m) => m.kind === 'schema-context')
+        expect(schemaMsg).toBeDefined()
       })
 
-      const ddl = getTab('tab-sort')!.retrievedSchemaDdl
-      const tableIdx = ddl.indexOf('Table `db`.`users`')
-      const viewIdx = ddl.indexOf('View `db`.`vw`')
-      const procIdx = ddl.indexOf('Procedure `db`.`proc1`')
+      const ddl = getTab('tab-sort')!.messages.find((m) => m.kind === 'schema-context')!.content
+      const tableIdx = ddl.indexOf('TABLE users')
+      const viewIdx = ddl.indexOf('VIEW vw')
+      const procIdx = ddl.indexOf('PROCEDURE proc1')
 
       expect(tableIdx).toBeLessThan(viewIdx)
       expect(viewIdx).toBeLessThan(procIdx)
@@ -2425,7 +2451,7 @@ describe('useAiStore', () => {
       expect(memoryCallOrder).toBeLessThan(expandCallOrder)
     })
 
-    it('includes memory content in system prompt as User Notes block', async () => {
+    it('includes memory content in a separate memory-context message', async () => {
       mockSearchMemories.mockResolvedValueOnce([
         {
           id: 1,
@@ -2450,14 +2476,17 @@ describe('useAiStore', () => {
       })
 
       const tab = getTab('tab-mem-prompt')!
-      const systemMsg = tab.messages.find((m) => m.role === 'system' && !m.kind)
-      expect(systemMsg).toBeDefined()
-      expect(systemMsg!.content).toContain('## User Notes (from memory)')
-      expect(systemMsg!.content).toContain('- The users table stores customer data')
-      expect(systemMsg!.content).toContain('- Orders use soft deletes')
+      const memMsg = tab.messages.find((m) => m.kind === 'memory-context')
+      expect(memMsg).toBeDefined()
+      expect(memMsg!.content).toContain('## User Notes (from memory)')
+      expect(memMsg!.content).toContain('- The users table stores customer data')
+      expect(memMsg!.content).toContain('- Orders use soft deletes')
+      // Base system prompt should NOT contain memory
+      const baseSystem = tab.messages.find((m) => m.role === 'system' && !m.kind)
+      expect(baseSystem!.content).not.toContain('User Notes')
     })
 
-    it('memory text appears before schema DDL in the outbound message list', async () => {
+    it('schema-context appears before memory-context in message list', async () => {
       mockSearchMemories.mockResolvedValueOnce([
         {
           id: 1,
@@ -2475,11 +2504,11 @@ describe('useAiStore', () => {
       })
 
       const tab = getTab('tab-mem-order')!
-      const baseSystem = tab.messages.find((m) => m.role === 'system' && !m.kind)!
       const schemaContext = tab.messages.find((m) => m.kind === 'schema-context')!
-      expect(baseSystem.content).toContain('## User Notes (from memory)')
-      expect(schemaContext.content).toContain('Database schema:')
-      expect(tab.messages.indexOf(baseSystem)).toBeLessThan(tab.messages.indexOf(schemaContext))
+      const memContext = tab.messages.find((m) => m.kind === 'memory-context')!
+      expect(schemaContext.content).toContain('CREATE TABLE')
+      expect(memContext.content).toContain('User Notes')
+      expect(tab.messages.indexOf(schemaContext)).toBeLessThan(tab.messages.indexOf(memContext))
     })
 
     it('failed memory retrieval does not prevent message sending', async () => {
@@ -2491,14 +2520,13 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      // Should still work, just without memory
+      // Should still work, just without memory-context
       const tab = getTab('tab-mem-fail')!
-      const systemMsg = tab.messages.find((m) => m.role === 'system' && !m.kind)
-      expect(systemMsg).toBeDefined()
-      expect(systemMsg!.content).not.toContain('## User Notes (from memory)')
+      const memMsg = tab.messages.find((m) => m.kind === 'memory-context')
+      expect(memMsg).toBeUndefined()
     })
 
-    it('no memory section when no memories exist', async () => {
+    it('no memory-context message when no memories exist', async () => {
       mockSearchMemories.mockResolvedValueOnce([])
 
       useAiStore.getState().sendMessage('tab-mem-empty', 'conn-1', 'Show users', {})
@@ -2508,12 +2536,11 @@ describe('useAiStore', () => {
       })
 
       const tab = getTab('tab-mem-empty')!
-      const systemMsg = tab.messages.find((m) => m.role === 'system' && !m.kind)
-      expect(systemMsg).toBeDefined()
-      expect(systemMsg!.content).not.toContain('## User Notes (from memory)')
+      const memMsg = tab.messages.find((m) => m.kind === 'memory-context')
+      expect(memMsg).toBeUndefined()
     })
 
-    it('memory text is not stored in retrievedSchemaDdl', async () => {
+    it('memory content is in memory-context message, not in schema-context', async () => {
       mockSearchMemories.mockResolvedValueOnce([
         {
           id: 1,
@@ -2531,8 +2558,14 @@ describe('useAiStore', () => {
       })
 
       const tab = getTab('tab-mem-cache')!
-      expect(tab.retrievedSchemaDdl).not.toContain('User Notes')
-      expect(tab.retrievedSchemaDdl).not.toContain('Important note')
+      const schemaMsg = tab.messages.find((m) => m.kind === 'schema-context')
+      if (schemaMsg) {
+        expect(schemaMsg.content).not.toContain('User Notes')
+        expect(schemaMsg.content).not.toContain('Important note')
+      }
+      const memMsg = tab.messages.find((m) => m.kind === 'memory-context')
+      expect(memMsg).toBeDefined()
+      expect(memMsg!.content).toContain('Important note')
     })
 
     it('augments query expansion context with memory content', async () => {
@@ -2555,6 +2588,351 @@ describe('useAiStore', () => {
       const expandCall = mockAiQueryExpand.mock.calls[0][0]
       expect(expandCall.conversationContext).toContain('User notes:')
       expect(expandCall.conversationContext).toContain('Customers are in the crm database')
+    })
+  })
+
+  describe('cross-turn cumulative token budget enforcement', () => {
+    it('stops appending schema-context once cumulative budget is exhausted across turns', async () => {
+      const largeDdl = 'X'.repeat(50000) // ~12500 tokens per chunk
+
+      mockSemanticSearch.mockResolvedValueOnce([
+        {
+          chunkId: 1,
+          chunkKey: 'db.a:table',
+          dbName: 'db',
+          tableName: 'a',
+          chunkType: 'table',
+          ddlText: largeDdl,
+          refDbName: null,
+          refTableName: null,
+          score: 0.9,
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-cum', 'conn-1', 'Turn 1', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const tab1 = getTab('tab-cum')!
+      expect(tab1.cumulativeSchemaTokens).toBeGreaterThan(0)
+      expect(tab1.messages.filter((m) => m.kind === 'schema-context')).toHaveLength(1)
+
+      useAiStore.getState().onStreamChunk('tab-cum', tab1.activeStreamId!, 'Answer')
+      useAiStore.getState().onStreamDone('tab-cum', tab1.activeStreamId!, {
+        transport: 'chat_completions',
+      })
+
+      mockSemanticSearch.mockResolvedValueOnce([
+        {
+          chunkId: 2,
+          chunkKey: 'db.b:table',
+          dbName: 'db',
+          tableName: 'b',
+          chunkType: 'table',
+          ddlText: largeDdl,
+          refDbName: null,
+          refTableName: null,
+          score: 0.85,
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-cum', 'conn-1', 'Turn 2', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      useAiStore.getState().onStreamChunk('tab-cum', getTab('tab-cum')!.activeStreamId!, 'Answer')
+      useAiStore.getState().onStreamDone('tab-cum', getTab('tab-cum')!.activeStreamId!, {
+        transport: 'chat_completions',
+      })
+
+      mockSemanticSearch.mockResolvedValueOnce([
+        {
+          chunkId: 3,
+          chunkKey: 'db.c:table',
+          dbName: 'db',
+          tableName: 'c',
+          chunkType: 'table',
+          ddlText: largeDdl,
+          refDbName: null,
+          refTableName: null,
+          score: 0.8,
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-cum', 'conn-1', 'Turn 3', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(3)
+      })
+
+      const tabFinal = getTab('tab-cum')!
+      const allSchemaContexts = tabFinal.messages.filter((m) => m.kind === 'schema-context')
+      expect(allSchemaContexts.length).toBeLessThanOrEqual(2)
+      expect(tabFinal.cumulativeSchemaTokens).toBeLessThanOrEqual(30000)
+    })
+  })
+
+  describe('clearConversation resets all dedup indices', () => {
+    it('resets providedChunkKeys, providedMemoryIds, and cumulativeSchemaTokens', async () => {
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 1,
+          connectionId: 'conn-1',
+          content: 'A memory',
+          createdAt: 1000,
+          source: 'manual',
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-clr', 'conn-1', 'Hello', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const tabBefore = getTab('tab-clr')!
+      expect(Object.keys(tabBefore.providedChunkKeys).length).toBeGreaterThan(0)
+      expect(tabBefore.cumulativeSchemaTokens).toBeGreaterThan(0)
+      expect(Object.keys(tabBefore.providedMemoryIds).length).toBeGreaterThan(0)
+
+      useAiStore.getState().clearConversation('tab-clr')
+
+      const tabAfter = getTab('tab-clr')!
+      expect(tabAfter.providedChunkKeys).toEqual({})
+      expect(tabAfter.providedMemoryIds).toEqual({})
+      expect(tabAfter.cumulativeSchemaTokens).toBe(0)
+    })
+  })
+
+  describe('retryLastMessage removes contiguous context and adjusts dedup indices', () => {
+    it('removes turn 2 context and preserves turn 1 indices', async () => {
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 1,
+          connectionId: 'conn-1',
+          content: 'Memory turn 1',
+          createdAt: 1000,
+          source: 'manual',
+        },
+      ])
+      mockSemanticSearch.mockResolvedValueOnce([
+        {
+          chunkId: 1,
+          chunkKey: 'db.t1:table',
+          dbName: 'db',
+          tableName: 't1',
+          chunkType: 'table',
+          ddlText: 'CREATE TABLE t1 (id INT);',
+          refDbName: null,
+          refTableName: null,
+          score: 0.9,
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-retry2', 'conn-1', 'Turn 1', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      useAiStore.getState().onStreamChunk('tab-retry2', getTab('tab-retry2')!.activeStreamId!, 'A1')
+      useAiStore.getState().onStreamDone('tab-retry2', getTab('tab-retry2')!.activeStreamId!, {
+        transport: 'chat_completions',
+      })
+
+      const tokenAfterTurn1 = getTab('tab-retry2')!.cumulativeSchemaTokens
+      expect(tokenAfterTurn1).toBeGreaterThan(0)
+
+      mockSearchMemories.mockResolvedValueOnce([
+        {
+          id: 2,
+          connectionId: 'conn-1',
+          content: 'Memory turn 2',
+          createdAt: 2000,
+          source: 'manual',
+        },
+      ])
+      mockSemanticSearch.mockResolvedValueOnce([
+        {
+          chunkId: 2,
+          chunkKey: 'db.t2:table',
+          dbName: 'db',
+          tableName: 't2',
+          chunkType: 'table',
+          ddlText: 'CREATE TABLE t2 (id INT);',
+          refDbName: null,
+          refTableName: null,
+          score: 0.85,
+        },
+      ])
+
+      useAiStore.getState().sendMessage('tab-retry2', 'conn-1', 'Turn 2', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      const tabBefore = getTab('tab-retry2')!
+      expect(tabBefore.providedChunkKeys['db.t2:table']).toBe(true)
+      expect(tabBefore.providedMemoryIds['2']).toBe(true)
+      const tokenAfterTurn2 = tabBefore.cumulativeSchemaTokens
+      expect(tokenAfterTurn2).toBeGreaterThan(tokenAfterTurn1)
+
+      // Mock empty results for the retry's sendMessage call so no new context is added
+      mockSemanticSearch.mockResolvedValueOnce([])
+      mockSearchMemories.mockResolvedValueOnce([])
+
+      useAiStore.getState().retryLastMessage('tab-retry2', 'conn-1', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(3)
+      })
+
+      const tabAfter = getTab('tab-retry2')!
+
+      // === Turn-1 keys/IDs still present ===
+      expect(tabAfter.providedChunkKeys['db.t1:table']).toBe(true)
+      expect(tabAfter.providedMemoryIds['1']).toBe(true)
+
+      // === Turn-2 chunk keys ABSENT from providedChunkKeys ===
+      expect(tabAfter.providedChunkKeys['db.t2:table']).toBeUndefined()
+
+      // === Turn-2 memory IDs ABSENT from providedMemoryIds ===
+      expect(tabAfter.providedMemoryIds['2']).toBeUndefined()
+
+      // Verify via the messages sent to sendAiChat on call 3 (the retry)
+      const retryParams = mockSendAiChat.mock.calls[2][0]
+      const retryMessages = retryParams.messages as Array<{
+        role: string
+        content: string
+      }>
+
+      // Messages before the retry's user message should not contain turn-2 context
+      const lastUserIdx = retryMessages.map((m) => m.role).lastIndexOf('user')
+      const historyBeforeRetryUser = retryMessages.slice(0, lastUserIdx)
+
+      // === Turn-2 schema-context message ABSENT ===
+      const turn2SchemaInHistory = historyBeforeRetryUser.filter((m) =>
+        m.content.includes('CREATE TABLE t2')
+      )
+      expect(turn2SchemaInHistory).toHaveLength(0)
+
+      // === Turn-2 memory-context message ABSENT ===
+      const turn2MemoryInHistory = historyBeforeRetryUser.filter((m) =>
+        m.content.includes('Memory turn 2')
+      )
+      expect(turn2MemoryInHistory).toHaveLength(0)
+
+      // === Turn-1 context still present in history ===
+      const turn1SchemaInHistory = historyBeforeRetryUser.filter((m) =>
+        m.content.includes('CREATE TABLE t1')
+      )
+      expect(turn1SchemaInHistory.length).toBeGreaterThan(0)
+
+      const turn1MemoryInHistory = historyBeforeRetryUser.filter((m) =>
+        m.content.includes('Memory turn 1')
+      )
+      expect(turn1MemoryInHistory.length).toBeGreaterThan(0)
+      expect(turn1MemoryInHistory.length).toBeGreaterThan(0)
+
+      // === cumulativeSchemaTokens dropped from turn-2 level ===
+      // After rollback (before retry re-adds), tokens should equal turn-1 level.
+      // === cumulativeSchemaTokens dropped after rollback ===
+      // With empty semantic search results for the retry, no new schema tokens are added,
+      // so cumulativeSchemaTokens should be back to turn-1 level (less than after turn 2).
+      expect(tabAfter.cumulativeSchemaTokens).toBeLessThan(tokenAfterTurn2)
+    })
+  })
+
+  describe('memory-context append-only with ID-based dedup', () => {
+    it('deduplicates memories by ID across turns and only appends novel ones', async () => {
+      const memories = [
+        { id: 1, connectionId: 'conn-1', content: 'Note 1', createdAt: 1000, source: 'manual' },
+        { id: 2, connectionId: 'conn-1', content: 'Note 2', createdAt: 2000, source: 'manual' },
+        { id: 3, connectionId: 'conn-1', content: 'Note 3', createdAt: 3000, source: 'manual' },
+      ]
+
+      mockSearchMemories.mockResolvedValueOnce(memories)
+      useAiStore.getState().sendMessage('tab-md', 'conn-1', 'Turn 1', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      useAiStore.getState().onStreamChunk('tab-md', getTab('tab-md')!.activeStreamId!, 'A1')
+      useAiStore.getState().onStreamDone('tab-md', getTab('tab-md')!.activeStreamId!, {
+        transport: 'chat_completions',
+      })
+
+      const mc1 = getTab('tab-md')!.messages.filter((m) => m.kind === 'memory-context')
+      expect(mc1).toHaveLength(1)
+      expect(mc1[0].memoryIds).toEqual([1, 2, 3])
+
+      // Turn 2: same IDs — no new memory-context
+      mockSearchMemories.mockResolvedValueOnce(memories)
+      useAiStore.getState().sendMessage('tab-md', 'conn-1', 'Turn 2', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      expect(getTab('tab-md')!.messages.filter((m) => m.kind === 'memory-context')).toHaveLength(1)
+
+      useAiStore.getState().onStreamChunk('tab-md', getTab('tab-md')!.activeStreamId!, 'A2')
+      useAiStore.getState().onStreamDone('tab-md', getTab('tab-md')!.activeStreamId!, {
+        transport: 'chat_completions',
+      })
+
+      // Turn 3: novel ID 4
+      mockSearchMemories.mockResolvedValueOnce([
+        ...memories,
+        { id: 4, connectionId: 'conn-1', content: 'Note 4', createdAt: 4000, source: 'manual' },
+      ])
+      useAiStore.getState().sendMessage('tab-md', 'conn-1', 'Turn 3', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(3)
+      })
+
+      const mc3 = getTab('tab-md')!.messages.filter((m) => m.kind === 'memory-context')
+      expect(mc3).toHaveLength(2)
+      expect(mc3[1].memoryIds).toEqual([4])
+    })
+  })
+
+  describe('system prompt immutability across turns', () => {
+    it('system prompt is byte-for-byte identical and never duplicated across 3 turns', async () => {
+      useAiStore.getState().sendMessage('tab-spi', 'conn-1', 'Turn 1', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const sysContent = getTab('tab-spi')!.messages.filter((m) => m.role === 'system' && !m.kind)
+      expect(sysContent).toHaveLength(1)
+      const content1 = sysContent[0].content
+
+      useAiStore.getState().onStreamChunk('tab-spi', getTab('tab-spi')!.activeStreamId!, 'A')
+      useAiStore.getState().onStreamDone('tab-spi', getTab('tab-spi')!.activeStreamId!, {
+        transport: 'chat_completions',
+      })
+
+      useAiStore.getState().sendMessage('tab-spi', 'conn-1', 'Turn 2', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(2)
+      })
+
+      const sys2 = getTab('tab-spi')!.messages.filter((m) => m.role === 'system' && !m.kind)
+      expect(sys2).toHaveLength(1)
+      expect(sys2[0].content).toBe(content1)
+
+      useAiStore.getState().onStreamChunk('tab-spi', getTab('tab-spi')!.activeStreamId!, 'B')
+      useAiStore.getState().onStreamDone('tab-spi', getTab('tab-spi')!.activeStreamId!, {
+        transport: 'chat_completions',
+      })
+
+      useAiStore.getState().sendMessage('tab-spi', 'conn-1', 'Turn 3', {})
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(3)
+      })
+
+      const sys3 = getTab('tab-spi')!.messages.filter((m) => m.role === 'system' && !m.kind)
+      // System prompt should never be modified after first turn
+      expect(sys3).toHaveLength(1)
+      expect(sys3[0].content).toBe(content1)
     })
   })
 })

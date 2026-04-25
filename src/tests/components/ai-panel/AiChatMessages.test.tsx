@@ -30,18 +30,15 @@ function emptyTabState(overrides?: Partial<TabAiState>): TabAiState {
     attachedContext: null,
     isPanelOpen: true,
     error: null,
-    retrievedSchemaDdl: '',
-    lastRetrievalTimestamp: 0,
-    schemaContextBuildTimestamp: 0,
-    schemaContextQueryKey: '',
+    providedChunkKeys: {},
+    cumulativeSchemaTokens: 0,
+    providedMemoryIds: {},
     lastCompletedSystemPrompt: '',
     lastCompletedTransport: null,
     lastCompletedEndpoint: '',
     lastCompletedModel: '',
-    lastCompletedPromptContextSignature: '',
     activeRequestEndpoint: '',
     activeRequestModel: '',
-    activeRequestPromptContextSignature: '',
     activeStreamHasAssistantOutput: false,
     isWaitingForIndex: false,
     connectionId: null,
@@ -311,6 +308,43 @@ describe('AiChatMessages', () => {
     await user.click(chips[0])
 
     expect(onSuggestionFill).toHaveBeenCalledWith('Explain this query step by step')
+  })
+
+  it('hides memory-context messages from the visible transcript', () => {
+    useAiStore.setState({
+      tabs: {
+        'tab-1': emptyTabState({
+          messages: [
+            {
+              id: 'm1',
+              role: 'system',
+              content: 'Base system prompt',
+              timestamp: 1,
+            },
+            {
+              id: 'm2',
+              role: 'system',
+              kind: 'memory-context',
+              content: '## User Notes (from memory)\n- Secret memory content',
+              timestamp: 2,
+              memoryIds: [1],
+            },
+            {
+              id: 'm3',
+              role: 'user',
+              content: 'Hello AI',
+              timestamp: 3,
+            },
+          ],
+        }),
+      },
+    })
+
+    render(<AiChatMessages tabId="tab-1" />)
+    // Only the base system message should be visible, not the memory-context
+    expect(screen.getAllByTestId('ai-message-system')).toHaveLength(1)
+    expect(screen.queryByText('Secret memory content')).not.toBeInTheDocument()
+    expect(screen.getByTestId('ai-message-user')).toBeInTheDocument()
   })
 
   it('shows streaming cursor on last assistant message during generation', () => {
