@@ -64,16 +64,20 @@ pub async fn rerank_with_llm(
         "Question: \"{question}\"\nCandidates: {candidates_json}"
     );
 
-    let request_body = serde_json::json!({
+    let mut request_body_obj = serde_json::json!({
         "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        "reasoning_effort": "none",
         "temperature": 0.0,
         "max_tokens": 512
-    });
+    })
+    .as_object()
+    .cloned()
+    .unwrap_or_default();
+    crate::ai::client::apply_reasoning_off_compatibility(&mut request_body_obj);
+    let request_body = serde_json::Value::Object(request_body_obj);
 
     let url = format!(
         "{}/chat/completions",

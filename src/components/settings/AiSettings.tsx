@@ -114,6 +114,7 @@ export function AiSettings() {
   const temperature = useSettingValue('ai.temperature')
   const maxTokens = useSettingValue('ai.maxTokens')
   const enableReasoning = useSettingValue('ai.enableReasoning') !== 'false'
+  const preferResponsesApi = useSettingValue('ai.preferResponsesApi') === 'true'
 
   // Retrieval settings
   const topKPerQuery = useSettingValue('ai.retrieval.topKPerQuery')
@@ -359,6 +360,14 @@ export function AiSettings() {
             onChange={(checked) => setPendingChange('ai.enableReasoning', String(checked))}
             disabled={!aiEnabled}
             data-testid="settings-ai-enable-reasoning"
+          />
+          <SettingsToggle
+            label="Use Responses API when reasoning is enabled"
+            description="Off by default for better local provider compatibility and prompt cache reuse. Turn on only if your endpoint supports the Responses API well."
+            checked={preferResponsesApi}
+            onChange={(checked) => setPendingChange('ai.preferResponsesApi', String(checked))}
+            disabled={!aiEnabled}
+            data-testid="settings-ai-prefer-responses-api"
           />
         </SettingsSection>
 

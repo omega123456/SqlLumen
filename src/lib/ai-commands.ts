@@ -81,7 +81,7 @@ export async function sendAiChat(params: AiChatParams): Promise<void> {
       maxTokens: params.maxTokens,
       streamId: params.streamId,
       previousResponseId: params.previousResponseId ?? null,
-      preferResponsesApi: params.preferResponsesApi ?? true,
+      preferResponsesApi: params.preferResponsesApi ?? false,
       enableReasoning: params.enableReasoning ?? true,
     },
   })

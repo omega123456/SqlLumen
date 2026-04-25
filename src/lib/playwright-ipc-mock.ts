@@ -121,6 +121,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'ai.temperature': '0.3',
         'ai.maxTokens': '2048',
         'ai.enableReasoning': 'false',
+        'ai.preferResponsesApi': 'false',
       }
       if (key in AI_DEFAULTS) return AI_DEFAULTS[key]
       return null
@@ -152,6 +153,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'ai.temperature': '0.3',
         'ai.maxTokens': '2048',
         'ai.enableReasoning': 'false',
+        'ai.preferResponsesApi': 'false',
       }
 
     case 'log_frontend':

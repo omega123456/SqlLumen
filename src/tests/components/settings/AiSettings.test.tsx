@@ -295,6 +295,15 @@ describe('AiSettings', () => {
     expect(checkbox.checked).toBe(true)
   })
 
+  it('renders prefer responses api toggle unchecked by default', () => {
+    render(<AiSettings />)
+    const toggle = screen.getByTestId('settings-ai-prefer-responses-api')
+    expect(toggle).toBeInTheDocument()
+    const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
+    expect(checkbox).not.toBeNull()
+    expect(checkbox.checked).toBe(false)
+  })
+
   it('toggling reasoning off calls setPendingChange with false', async () => {
     const user = userEvent.setup()
     // Enable AI first so the reasoning toggle is not disabled
@@ -306,6 +315,18 @@ describe('AiSettings', () => {
     const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
     await user.click(checkbox)
     expect(useSettingsStore.getState().pendingChanges['ai.enableReasoning']).toBe('false')
+  })
+
+  it('toggling prefer responses api on calls setPendingChange with true', async () => {
+    const user = userEvent.setup()
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
+    })
+    render(<AiSettings />)
+    const toggle = screen.getByTestId('settings-ai-prefer-responses-api')
+    const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
+    await user.click(checkbox)
+    expect(useSettingsStore.getState().pendingChanges['ai.preferResponsesApi']).toBe('true')
   })
 
   it('applies disabled visual class when AI is off', () => {

@@ -216,15 +216,19 @@ pub async fn ai_query_expand_impl(
         _ => req.user_message.clone(),
     };
 
-    let body = serde_json::json!({
+    let mut body_obj = serde_json::json!({
         "model": req.model,
         "messages": [
             { "role": "system", "content": req.system_prompt },
             { "role": "user", "content": effective_user_message },
         ],
-        "reasoning_effort": "none",
         "stream": false,
-    });
+    })
+    .as_object()
+    .cloned()
+    .unwrap_or_default();
+    crate::ai::client::apply_reasoning_off_compatibility(&mut body_obj);
+    let body = serde_json::Value::Object(body_obj);
 
     let response = match send_query_expand_request(&state.http_client, &req.endpoint, &body).await {
         Ok(response) => response,

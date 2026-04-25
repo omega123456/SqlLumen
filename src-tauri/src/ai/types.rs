@@ -22,7 +22,7 @@ pub struct AiChatRequest {
     pub stream_id: String,
     #[serde(default)]
     pub previous_response_id: Option<String>,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub prefer_responses_api: bool,
     #[serde(default = "default_true")]
     pub enable_reasoning: bool,
@@ -55,6 +55,18 @@ pub struct ApiChatRequest {
     /// Values: `"high"`, `"medium"`, `"low"` when enabled; omitted when disabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<String>,
+    /// Compatibility hint for providers that expose Qwen thinking as a top-level field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_thinking: Option<bool>,
+    /// Compatibility hint for providers that expect template kwargs for Qwen thinking.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_template_kwargs: Option<ChatTemplateKwargs>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ChatTemplateKwargs {
+    pub enable_thinking: bool,
 }
 
 /// Input item for the OpenAI-compatible Responses API.

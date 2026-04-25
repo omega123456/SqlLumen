@@ -723,6 +723,8 @@ async fn query_expand_disables_reasoning_on_request() {
         .and(path("/v1/chat/completions"))
         .and(body_partial_json(serde_json::json!({
             "reasoning_effort": "none",
+            "enable_thinking": false,
+            "chat_template_kwargs": { "enable_thinking": false },
             "stream": false
         })))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({

@@ -93,7 +93,7 @@ fn ai_chat_request_deserializes_from_camel_case() {
 }
 
 #[test]
-fn ai_chat_request_defaults_prefer_responses_api_to_true() {
+fn ai_chat_request_defaults_prefer_responses_api_to_false() {
     let json = serde_json::json!({
         "messages": [{"role": "user", "content": "hello"}],
         "endpoint": "http://localhost:11434/v1/chat/completions",
@@ -105,7 +105,7 @@ fn ai_chat_request_defaults_prefer_responses_api_to_true() {
 
     let req: AiChatRequest = serde_json::from_value(json).unwrap();
     assert_eq!(req.previous_response_id, None);
-    assert!(req.prefer_responses_api);
+    assert!(!req.prefer_responses_api);
 }
 
 // ── API type serialization (snake_case) ───────────────────────────────────
@@ -133,6 +133,8 @@ fn api_chat_request_serializes_to_snake_case() {
         max_tokens: 512,
         stream: true,
         reasoning_effort: None,
+        enable_thinking: None,
+        chat_template_kwargs: None,
     };
     let json = serde_json::to_value(&req).unwrap();
     assert!(
@@ -2555,6 +2557,8 @@ fn api_chat_request_has_reasoning_field_when_enabled() {
         max_tokens: 100,
         stream: true,
         reasoning_effort: Some("medium".to_string()),
+        enable_thinking: None,
+        chat_template_kwargs: None,
     };
     let json = serde_json::to_value(&req).unwrap();
     assert_eq!(json["reasoning_effort"], "medium");
@@ -2569,9 +2573,15 @@ fn api_chat_request_omits_reasoning_field_when_disabled() {
         max_tokens: 100,
         stream: true,
         reasoning_effort: Some("none".to_string()),
+        enable_thinking: Some(false),
+        chat_template_kwargs: Some(sqllumen_lib::ai::types::ChatTemplateKwargs {
+            enable_thinking: false,
+        }),
     };
     let json = serde_json::to_value(&req).unwrap();
     assert_eq!(json["reasoning_effort"], "none");
+    assert_eq!(json["enable_thinking"], false);
+    assert_eq!(json["chat_template_kwargs"]["enable_thinking"], false);
 }
 
 #[test]

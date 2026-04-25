@@ -1318,6 +1318,7 @@ export const useAiStore = create<AiState>()((set, get) => {
           const temperature = settings.temperature ?? parseFloat(getAiSetting('ai.temperature'))
           const maxTokens = settings.maxTokens ?? parseInt(getAiSetting('ai.maxTokens'), 10)
           const enableReasoning = getAiSetting('ai.enableReasoning') !== 'false'
+          const preferResponsesApi = getAiSetting('ai.preferResponsesApi') === 'true'
 
           patchTab(tabId, {
             activeRequestEndpoint: endpoint,
@@ -1349,7 +1350,7 @@ export const useAiStore = create<AiState>()((set, get) => {
             )
               ? (get().tabs[tabId]?.previousResponseId ?? null)
               : null,
-            preferResponsesApi: true,
+            preferResponsesApi,
             enableReasoning,
           })
         } catch (err) {

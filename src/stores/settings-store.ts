@@ -30,6 +30,7 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'ai.temperature': '0.3',
   'ai.maxTokens': '32000',
   'ai.enableReasoning': 'true',
+  'ai.preferResponsesApi': 'false',
   'ai.retrieval.topKPerQuery': '20',
   'ai.retrieval.topN': '12',
   'ai.retrieval.fkFanoutCap': '30',

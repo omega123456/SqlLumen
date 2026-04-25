@@ -5,7 +5,8 @@
 
 use crate::ai::types::{
     parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiResponsesRequest,
-    ChunkKind, ResponsesInputItem, SseParsed, StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
+    ChatTemplateKwargs, ChunkKind, ResponsesInputItem, SseParsed, StreamChunkEvent,
+    StreamDoneEvent, StreamErrorEvent,
 };
 use futures::StreamExt;
 use std::time::Duration;
@@ -49,6 +50,31 @@ pub fn normalise_to_chat_completions_url(base_url: &str) -> String {
 
 pub fn should_use_responses_api(request: &AiChatRequest) -> bool {
     request.prefer_responses_api && request.enable_reasoning
+}
+
+fn chat_reasoning_compat_fields(enable_reasoning: bool) -> (Option<bool>, Option<ChatTemplateKwargs>) {
+    if enable_reasoning {
+        return (None, None);
+    }
+
+    (
+        Some(false),
+        Some(ChatTemplateKwargs {
+            enable_thinking: false,
+        }),
+    )
+}
+
+pub fn apply_reasoning_off_compatibility(body: &mut serde_json::Map<String, serde_json::Value>) {
+    body.insert(
+        "reasoning_effort".to_string(),
+        serde_json::Value::String("none".to_string()),
+    );
+    body.insert("enable_thinking".to_string(), serde_json::Value::Bool(false));
+    body.insert(
+        "chat_template_kwargs".to_string(),
+        serde_json::json!({ "enable_thinking": false }),
+    );
 }
 
 pub fn should_fallback_from_responses_status(status: reqwest::StatusCode, body: &str) -> bool {
@@ -593,6 +619,8 @@ async fn stream_chat_inner<R: Runtime>(
     cancellation_token: &CancellationToken,
 ) -> Result<(), String> {
     let stream_id = &request.stream_id;
+    let (enable_thinking, chat_template_kwargs) =
+        chat_reasoning_compat_fields(request.enable_reasoning);
 
     // Build the API request body
     let api_request = ApiChatRequest {
@@ -604,6 +632,8 @@ async fn stream_chat_inner<R: Runtime>(
         reasoning_effort: Some(
             if request.enable_reasoning { "medium" } else { "none" }.to_string(),
         ),
+        enable_thinking,
+        chat_template_kwargs,
     };
 
     // Create the HTTP client

@@ -13,6 +13,7 @@ const defaultSettings: Record<string, string> = {
   'ai.temperature': '0.3',
   'ai.maxTokens': '2048',
   'ai.enableReasoning': 'true',
+  'ai.preferResponsesApi': 'false',
   'ai.embeddingModel': '',
   'ai.retrieval.hydeEnabled': 'true',
   'ai.retrieval.expansionMaxQueries': '8',
@@ -241,6 +242,7 @@ describe('useAiStore', () => {
       expect(params.model).toBe('llama3')
       expect(params.temperature).toBe(0.3)
       expect(params.maxTokens).toBe(2048)
+      expect(params.preferResponsesApi).toBe(false)
       expect(params.streamId).toBeTruthy()
       expect(params.messages).toEqual(
         expect.arrayContaining([expect.objectContaining({ role: 'user', content: 'Hello' })])
@@ -276,6 +278,20 @@ describe('useAiStore', () => {
 
       const params = mockSendAiChat.mock.calls[0][0]
       expect(params.enableReasoning).toBe(false)
+    })
+
+    it('uses pending responses transport setting when building AI requests', async () => {
+      mockSettings['ai.preferResponsesApi'] = 'false'
+      mockPendingChanges['ai.preferResponsesApi'] = 'true'
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const params = mockSendAiChat.mock.calls[0][0]
+      expect(params.preferResponsesApi).toBe(true)
     })
 
     it('uses pending endpoint and model settings when building AI requests', async () => {

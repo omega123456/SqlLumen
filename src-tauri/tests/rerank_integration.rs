@@ -99,7 +99,9 @@ async fn test_rerank_disables_reasoning_on_request() {
     Mock::given(method("POST"))
         .and(path("/chat/completions"))
         .and(body_partial_json(serde_json::json!({
-            "reasoning_effort": "none"
+            "reasoning_effort": "none",
+            "enable_thinking": false,
+            "chat_template_kwargs": { "enable_thinking": false }
         })))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "choices": [{

@@ -90,6 +90,24 @@ describe('sendAiChat', () => {
       })
     ).rejects.toThrow('AI service unavailable')
   })
+
+  it('defaults preferResponsesApi to false when omitted', async () => {
+    await sendAiChat({
+      messages: [{ role: 'user', content: 'Hello' }],
+      endpoint: 'http://localhost:11434/v1',
+      model: 'llama3',
+      temperature: 0.3,
+      maxTokens: 256,
+      streamId: 'stream-defaults',
+    })
+
+    expect(mockInvoke).toHaveBeenCalledWith('ai_chat', {
+      request: expect.objectContaining({
+        preferResponsesApi: false,
+        enableReasoning: true,
+      }),
+    })
+  })
 })
 
 describe('cancelAiStream', () => {
