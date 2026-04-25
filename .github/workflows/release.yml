@@ -7,21 +7,10 @@ on:
       - 'v*'
 
 jobs:
-  publish-tauri:
+  publish-tauri-macos-arm:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            args: '--target aarch64-apple-darwin'
-          - platform: macos-latest
-            args: '--target x86_64-apple-darwin'
-          - platform: windows-latest
-            args: ''
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +27,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: aarch64-apple-darwin
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -78,4 +67,127 @@ jobs:
           uploadUpdaterJson: false
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
-          args: ${{ matrix.args }}
+          args: --target aarch64-apple-darwin
+
+  publish-tauri-macos-x64:
+    needs: publish-tauri-macos-arm
+    permissions:
+      contents: write
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'pnpm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          cache-on-failure: true
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Multiline body for tauri-action; keep fallback string in sync with scripts/bump-tauri-version.mjs
+      - name: Read release body for tauri-action
+        id: release_body
+        shell: bash
+        run: |
+          delim="TAURI_RELEASE_BODY_${GITHUB_SHA}"
+          {
+            echo "body<<${delim}"
+            if [ -f .github/tauri-release-body.md ]; then
+              cat .github/tauri-release-body.md
+            else
+              printf '%s\n' "See the release assets to download installers for Windows and macOS."
+            fi
+            echo "${delim}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: pnpm tauri
+          tagName: v__VERSION__
+          releaseName: SqlLumen v__VERSION__
+          releaseBody: ${{ steps.release_body.outputs.body }}
+          releaseDraft: false
+          prerelease: false
+          uploadUpdaterJson: false
+          # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
+          assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
+          args: --target x86_64-apple-darwin
+
+  publish-tauri-windows:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'pnpm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          cache-on-failure: true
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Multiline body for tauri-action; keep fallback string in sync with scripts/bump-tauri-version.mjs
+      - name: Read release body for tauri-action
+        id: release_body
+        shell: bash
+        run: |
+          delim="TAURI_RELEASE_BODY_${GITHUB_SHA}"
+          {
+            echo "body<<${delim}"
+            if [ -f .github/tauri-release-body.md ]; then
+              cat .github/tauri-release-body.md
+            else
+              printf '%s\n' "See the release assets to download installers for Windows and macOS."
+            fi
+            echo "${delim}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: pnpm tauri
+          tagName: v__VERSION__
+          releaseName: SqlLumen v__VERSION__
+          releaseBody: ${{ steps.release_body.outputs.body }}
+          releaseDraft: false
+          prerelease: false
+          uploadUpdaterJson: false
+          # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
+          assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
+          args: ''
