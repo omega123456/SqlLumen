@@ -12,6 +12,34 @@
   color: var(--on-surface-variant);
 }
 
+.compactFieldGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.compactField {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.compactFieldInput {
+  width: 100%;
+  max-width: 180px;
+}
+
+@media (max-width: 900px) {
+  .compactField {
+    flex-basis: 100%;
+  }
+
+  .compactFieldInput {
+    max-width: 100%;
+  }
+}
+
 /* Model listing section */
 
 .modelListSection {

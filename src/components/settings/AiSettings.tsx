@@ -317,38 +317,40 @@ export function AiSettings() {
         </SettingsSection>
 
         <SettingsSection title="Generation" description="Control how the AI generates responses.">
-          <div>
-            <label htmlFor="settings-ai-temperature" className={styles.fieldLabel}>
-              Temperature
-            </label>
-            <TextInput
-              id="settings-ai-temperature"
-              type="number"
-              min={0}
-              max={2}
-              step="0.1"
-              value={temperature}
-              onChange={(e) => setPendingChange('ai.temperature', e.target.value)}
-              disabled={!aiEnabled}
-              data-testid="settings-ai-temperature"
-              style={{ width: 120 }}
-            />
-          </div>
-          <div>
-            <label htmlFor="settings-ai-max-tokens" className={styles.fieldLabel}>
-              Max tokens
-            </label>
-            <TextInput
-              id="settings-ai-max-tokens"
-              type="number"
-              min={1}
-              max={128000}
-              value={maxTokens}
-              onChange={(e) => setPendingChange('ai.maxTokens', e.target.value)}
-              disabled={!aiEnabled}
-              data-testid="settings-ai-max-tokens"
-              style={{ width: 120 }}
-            />
+          <div className={styles.compactFieldGrid}>
+            <div className={styles.compactField}>
+              <label htmlFor="settings-ai-temperature" className={styles.fieldLabel}>
+                Temperature
+              </label>
+              <TextInput
+                id="settings-ai-temperature"
+                type="number"
+                min={0}
+                max={2}
+                step="0.1"
+                value={temperature}
+                onChange={(e) => setPendingChange('ai.temperature', e.target.value)}
+                disabled={!aiEnabled}
+                data-testid="settings-ai-temperature"
+                className={styles.compactFieldInput}
+              />
+            </div>
+            <div className={styles.compactField}>
+              <label htmlFor="settings-ai-max-tokens" className={styles.fieldLabel}>
+                Max tokens
+              </label>
+              <TextInput
+                id="settings-ai-max-tokens"
+                type="number"
+                min={1}
+                max={128000}
+                value={maxTokens}
+                onChange={(e) => setPendingChange('ai.maxTokens', e.target.value)}
+                disabled={!aiEnabled}
+                data-testid="settings-ai-max-tokens"
+                className={styles.compactFieldInput}
+              />
+            </div>
           </div>
           <SettingsToggle
             label="Enable reasoning / thinking"
@@ -364,72 +366,74 @@ export function AiSettings() {
           title="AI Retrieval"
           description="Control how schema context is retrieved and ranked for AI queries."
         >
-          {[
-            {
-              settingKey: 'ai.retrieval.topKPerQuery',
-              label: 'Top-K per query',
-              id: 'settings-ai-topk',
-              testId: 'settings-ai-retrieval-topk',
-              min: 1,
-              max: 100,
-              value: topKPerQuery,
-            },
-            {
-              settingKey: 'ai.retrieval.topN',
-              label: 'Top-N results',
-              id: 'settings-ai-topn',
-              testId: 'settings-ai-retrieval-topn',
-              min: 1,
-              max: 100,
-              value: topN,
-            },
-            {
-              settingKey: 'ai.retrieval.fkFanoutCap',
-              label: 'FK fan-out cap',
-              id: 'settings-ai-fk-fanout',
-              testId: 'settings-ai-retrieval-fk-fanout',
-              min: 0,
-              max: 200,
-              value: fkFanoutCap,
-            },
-            {
-              settingKey: 'ai.retrieval.lexicalWeight',
-              label: 'Lexical weight (λ)',
-              id: 'settings-ai-lexical-weight',
-              testId: 'settings-ai-retrieval-lexical-weight',
-              min: 0,
-              max: 2,
-              step: '0.05',
-              value: lexicalWeight,
-            },
-            {
-              settingKey: 'ai.retrieval.tokenBudget',
-              label: 'Token budget',
-              id: 'settings-ai-token-budget',
-              testId: 'settings-ai-retrieval-token-budget',
-              min: 500,
-              max: 100000,
-              value: tokenBudget,
-            },
-          ].map((s) => (
-            <div key={s.settingKey}>
-              <label htmlFor={s.id} className={styles.fieldLabel}>
-                {s.label}
-              </label>
-              <TextInput
-                id={s.id}
-                type="number"
-                min={s.min}
-                max={s.max}
-                step={s.step}
-                value={s.value}
-                onChange={(e) => setPendingChange(s.settingKey, e.target.value)}
-                disabled={!aiEnabled}
-                data-testid={s.testId}
-                style={{ width: 120 }}
-              />
-            </div>
-          ))}
+          <div className={styles.compactFieldGrid}>
+            {[
+              {
+                settingKey: 'ai.retrieval.topKPerQuery',
+                label: 'Top-K per query',
+                id: 'settings-ai-topk',
+                testId: 'settings-ai-retrieval-topk',
+                min: 1,
+                max: 100,
+                value: topKPerQuery,
+              },
+              {
+                settingKey: 'ai.retrieval.topN',
+                label: 'Top-N results',
+                id: 'settings-ai-topn',
+                testId: 'settings-ai-retrieval-topn',
+                min: 1,
+                max: 100,
+                value: topN,
+              },
+              {
+                settingKey: 'ai.retrieval.fkFanoutCap',
+                label: 'FK fan-out cap',
+                id: 'settings-ai-fk-fanout',
+                testId: 'settings-ai-retrieval-fk-fanout',
+                min: 0,
+                max: 200,
+                value: fkFanoutCap,
+              },
+              {
+                settingKey: 'ai.retrieval.lexicalWeight',
+                label: 'Lexical weight (λ)',
+                id: 'settings-ai-lexical-weight',
+                testId: 'settings-ai-retrieval-lexical-weight',
+                min: 0,
+                max: 2,
+                step: '0.05',
+                value: lexicalWeight,
+              },
+              {
+                settingKey: 'ai.retrieval.tokenBudget',
+                label: 'Token budget',
+                id: 'settings-ai-token-budget',
+                testId: 'settings-ai-retrieval-token-budget',
+                min: 500,
+                max: 100000,
+                value: tokenBudget,
+              },
+            ].map((s) => (
+              <div key={s.settingKey} className={styles.compactField}>
+                <label htmlFor={s.id} className={styles.fieldLabel}>
+                  {s.label}
+                </label>
+                <TextInput
+                  id={s.id}
+                  type="number"
+                  min={s.min}
+                  max={s.max}
+                  step={s.step}
+                  value={s.value}
+                  onChange={(e) => setPendingChange(s.settingKey, e.target.value)}
+                  disabled={!aiEnabled}
+                  data-testid={s.testId}
+                  className={styles.compactFieldInput}
+                />
+              </div>
+            ))}
+          </div>
           <SettingsToggle
             label="LLM re-rank"
             description="Use the chat model to re-rank retrieval results (slower, may improve relevance)."
@@ -446,63 +450,65 @@ export function AiSettings() {
             disabled={!aiEnabled}
             data-testid="settings-ai-retrieval-hyde"
           />
-          {[
-            {
-              settingKey: 'ai.retrieval.expansionMaxQueries',
-              label: 'Max expansion queries',
-              id: 'settings-ai-expansion-max',
-              testId: 'settings-ai-retrieval-expansion-max',
-              min: 2,
-              max: 20,
-              value: expansionMaxQueries,
-            },
-            {
-              settingKey: 'ai.retrieval.graphDepth',
-              label: 'Graph walk depth',
-              id: 'settings-ai-graph-depth',
-              testId: 'settings-ai-retrieval-graph-depth',
-              min: 1,
-              max: 3,
-              value: graphDepth,
-            },
-            {
-              settingKey: 'ai.retrieval.feedbackBoost',
-              label: 'Feedback boost (μ)',
-              id: 'settings-ai-feedback-boost',
-              testId: 'settings-ai-retrieval-feedback-boost',
-              min: 0,
-              max: 1,
-              step: '0.05',
-              value: feedbackBoost,
-            },
-            {
-              settingKey: 'ai.retrieval.recentQueryWindow',
-              label: 'Recent query window',
-              id: 'settings-ai-recent-window',
-              testId: 'settings-ai-retrieval-recent-window',
-              min: 1,
-              max: 100,
-              value: recentQueryWindow,
-            },
-          ].map((s) => (
-            <div key={s.settingKey}>
-              <label htmlFor={s.id} className={styles.fieldLabel}>
-                {s.label}
-              </label>
-              <TextInput
-                id={s.id}
-                type="number"
-                min={s.min}
-                max={s.max}
-                step={s.step}
-                value={s.value}
-                onChange={(e) => setPendingChange(s.settingKey, e.target.value)}
-                disabled={!aiEnabled}
-                data-testid={s.testId}
-                style={{ width: 120 }}
-              />
-            </div>
-          ))}
+          <div className={styles.compactFieldGrid}>
+            {[
+              {
+                settingKey: 'ai.retrieval.expansionMaxQueries',
+                label: 'Max expansion queries',
+                id: 'settings-ai-expansion-max',
+                testId: 'settings-ai-retrieval-expansion-max',
+                min: 2,
+                max: 20,
+                value: expansionMaxQueries,
+              },
+              {
+                settingKey: 'ai.retrieval.graphDepth',
+                label: 'Graph walk depth',
+                id: 'settings-ai-graph-depth',
+                testId: 'settings-ai-retrieval-graph-depth',
+                min: 1,
+                max: 3,
+                value: graphDepth,
+              },
+              {
+                settingKey: 'ai.retrieval.feedbackBoost',
+                label: 'Feedback boost (μ)',
+                id: 'settings-ai-feedback-boost',
+                testId: 'settings-ai-retrieval-feedback-boost',
+                min: 0,
+                max: 1,
+                step: '0.05',
+                value: feedbackBoost,
+              },
+              {
+                settingKey: 'ai.retrieval.recentQueryWindow',
+                label: 'Recent query window',
+                id: 'settings-ai-recent-window',
+                testId: 'settings-ai-retrieval-recent-window',
+                min: 1,
+                max: 100,
+                value: recentQueryWindow,
+              },
+            ].map((s) => (
+              <div key={s.settingKey} className={styles.compactField}>
+                <label htmlFor={s.id} className={styles.fieldLabel}>
+                  {s.label}
+                </label>
+                <TextInput
+                  id={s.id}
+                  type="number"
+                  min={s.min}
+                  max={s.max}
+                  step={s.step}
+                  value={s.value}
+                  onChange={(e) => setPendingChange(s.settingKey, e.target.value)}
+                  disabled={!aiEnabled}
+                  data-testid={s.testId}
+                  className={styles.compactFieldInput}
+                />
+              </div>
+            ))}
+          </div>
         </SettingsSection>
       </div>
 
