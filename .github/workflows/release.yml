@@ -54,7 +54,9 @@ jobs:
             echo "${delim}"
           } >> "${GITHUB_OUTPUT}"
 
-      - uses: tauri-apps/tauri-action@v0
+      - id: tauri_release_first_attempt
+        continue-on-error: true
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -67,57 +69,11 @@ jobs:
           uploadUpdaterJson: false
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
-          args: --target aarch64-apple-darwin
+          args: --target aarch64-apple-darwin --bundles dmg
 
-  publish-tauri-macos-x64:
-    needs: publish-tauri-macos-arm
-    permissions:
-      contents: write
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-          cache: 'pnpm'
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: ./src-tauri -> target
-          cache-on-failure: true
-
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Multiline body for tauri-action; keep fallback string in sync with scripts/bump-tauri-version.mjs
-      - name: Read release body for tauri-action
-        id: release_body
-        shell: bash
-        run: |
-          delim="TAURI_RELEASE_BODY_${GITHUB_SHA}"
-          {
-            echo "body<<${delim}"
-            if [ -f .github/tauri-release-body.md ]; then
-              cat .github/tauri-release-body.md
-            else
-              printf '%s\n' "See the release assets to download installers for Windows and macOS."
-            fi
-            echo "${delim}"
-          } >> "${GITHUB_OUTPUT}"
-
-      - uses: tauri-apps/tauri-action@v0
+      - name: Retry tauri release on transient dmg bundling failure
+        if: steps.tauri_release_first_attempt.outcome == 'failure'
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -130,7 +86,7 @@ jobs:
           uploadUpdaterJson: false
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
-          args: --target x86_64-apple-darwin
+          args: --target aarch64-apple-darwin --bundles dmg
 
   publish-tauri-windows:
     permissions:
@@ -190,4 +146,4 @@ jobs:
           uploadUpdaterJson: false
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
-          args: ''
+          args: --bundles msi
