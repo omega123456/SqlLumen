@@ -2618,7 +2618,7 @@ describe('useAiStore', () => {
       expect(tab1.cumulativeSchemaTokens).toBeGreaterThan(0)
       expect(tab1.messages.filter((m) => m.kind === 'schema-context')).toHaveLength(1)
 
-      useAiStore.getState().onStreamChunk('tab-cum', tab1.activeStreamId!, 'Answer')
+      useAiStore.getState().onStreamChunk('tab-cum', tab1.activeStreamId!, 'Answer', 'content')
       useAiStore.getState().onStreamDone('tab-cum', tab1.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2642,7 +2642,12 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(2)
       })
 
-      useAiStore.getState().onStreamChunk('tab-cum', getTab('tab-cum')!.activeStreamId!, 'Answer')
+      useAiStore.getState().onStreamChunk(
+        'tab-cum',
+        getTab('tab-cum')!.activeStreamId!,
+        'Answer',
+        'content'
+      )
       useAiStore.getState().onStreamDone('tab-cum', getTab('tab-cum')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2734,7 +2739,12 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore.getState().onStreamChunk('tab-retry2', getTab('tab-retry2')!.activeStreamId!, 'A1')
+      useAiStore.getState().onStreamChunk(
+        'tab-retry2',
+        getTab('tab-retry2')!.activeStreamId!,
+        'A1',
+        'content'
+      )
       useAiStore.getState().onStreamDone('tab-retry2', getTab('tab-retry2')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2855,7 +2865,12 @@ describe('useAiStore', () => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      useAiStore.getState().onStreamChunk('tab-md', getTab('tab-md')!.activeStreamId!, 'A1')
+      useAiStore.getState().onStreamChunk(
+        'tab-md',
+        getTab('tab-md')!.activeStreamId!,
+        'A1',
+        'content'
+      )
       useAiStore.getState().onStreamDone('tab-md', getTab('tab-md')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2873,7 +2888,12 @@ describe('useAiStore', () => {
 
       expect(getTab('tab-md')!.messages.filter((m) => m.kind === 'memory-context')).toHaveLength(1)
 
-      useAiStore.getState().onStreamChunk('tab-md', getTab('tab-md')!.activeStreamId!, 'A2')
+      useAiStore.getState().onStreamChunk(
+        'tab-md',
+        getTab('tab-md')!.activeStreamId!,
+        'A2',
+        'content'
+      )
       useAiStore.getState().onStreamDone('tab-md', getTab('tab-md')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2905,7 +2925,12 @@ describe('useAiStore', () => {
       expect(sysContent).toHaveLength(1)
       const content1 = sysContent[0].content
 
-      useAiStore.getState().onStreamChunk('tab-spi', getTab('tab-spi')!.activeStreamId!, 'A')
+      useAiStore.getState().onStreamChunk(
+        'tab-spi',
+        getTab('tab-spi')!.activeStreamId!,
+        'A',
+        'content'
+      )
       useAiStore.getState().onStreamDone('tab-spi', getTab('tab-spi')!.activeStreamId!, {
         transport: 'chat_completions',
       })
@@ -2919,7 +2944,12 @@ describe('useAiStore', () => {
       expect(sys2).toHaveLength(1)
       expect(sys2[0].content).toBe(content1)
 
-      useAiStore.getState().onStreamChunk('tab-spi', getTab('tab-spi')!.activeStreamId!, 'B')
+      useAiStore.getState().onStreamChunk(
+        'tab-spi',
+        getTab('tab-spi')!.activeStreamId!,
+        'B',
+        'content'
+      )
       useAiStore.getState().onStreamDone('tab-spi', getTab('tab-spi')!.activeStreamId!, {
         transport: 'chat_completions',
       })
