@@ -125,6 +125,7 @@ pub fn run() {
     }
 
     builder = builder.plugin(tauri_plugin_clipboard_manager::init());
+    builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
 
     builder = builder.plugin(prevent_default_plugin());
 

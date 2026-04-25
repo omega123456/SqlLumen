@@ -11,4 +11,13 @@ describe('Tauri capabilities', () => {
 
     expect(capability.permissions).toContain('allow-select-database')
   })
+
+  it('enables the window-state plugin for the main window', () => {
+    const capabilityPath = resolve(process.cwd(), 'src-tauri/capabilities/default.json')
+    const capability = JSON.parse(readFileSync(capabilityPath, 'utf8')) as {
+      permissions: string[]
+    }
+
+    expect(capability.permissions).toContain('window-state:default')
+  })
 })

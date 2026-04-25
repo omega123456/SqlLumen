@@ -7,6 +7,7 @@
     "mcp-bridge:default",
     "core:default",
     "core:window:allow-destroy",
+    "window-state:default",
     "clipboard-manager:default",
     "allow-get-setting",
     "allow-set-setting",
