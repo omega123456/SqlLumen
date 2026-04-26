@@ -3,12 +3,18 @@
 //! Sends a POST request and reads the SSE response, emitting Tauri events
 //! for each token chunk, completion, or error.
 
+use crate::ai::local_compat::{
+    CapabilityCache, CapabilityKind, LocalCompatPolicy, ThinkingSanitizer, redact_endpoint,
+    render_raw_transcript, sanitize_thinking_content,
+};
 use crate::ai::types::{
     parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiResponsesRequest,
-    ChatTemplateKwargs, ChunkKind, ResponsesInputItem, SseParsed, StreamChunkEvent,
-    StreamDoneEvent, StreamErrorEvent,
+    ChatTemplateKwargs, ChunkKind, CompletionsRequest, CompletionsResponse,
+    CompletionsStreamChunk, ResponsesInputItem, SseParsed, StreamChunkEvent, StreamDoneEvent,
+    StreamErrorEvent,
 };
 use futures::StreamExt;
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::{Emitter, Runtime};
 use tokio::time::Instant;
@@ -23,6 +29,688 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Overall request timeout (generous for long completions).
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(330);
+
+/// Timeout for the non-streaming completions capability probe.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Shorter probe timeout for the rerank path (2s probe + 4s call = 6s budget).
+pub const RERANK_PROBE_TIMEOUT_SECS: u64 = 2;
+
+/// Instruction prepended to raw transcripts when reasoning is disabled.
+pub const REASONING_OFF_INSTRUCTION: &str =
+    "Do not use chain-of-thought or internal reasoning. Respond directly and concisely.";
+
+/// Stable directive appended to every user message when reasoning is disabled.
+/// Applied uniformly so that multi-turn replays produce byte-identical payloads
+/// for provider prefix-cache reuse.
+pub const REASONING_OFF_DIRECTIVE: &str =
+    "\n[No chain-of-thought. Answer directly.]";
+
+/// Normalize a chat-completions message list for provider-wire stability.
+///
+/// When `reasoning_enabled` is false, appends [`REASONING_OFF_DIRECTIVE`] to
+/// **every** user message (not just the last one), ensuring that historical
+/// turns replay identically on subsequent requests. Duplicate directives are
+/// never accumulated. System and assistant messages are never modified.
+///
+/// When `reasoning_enabled` is true, messages are returned as-is (cloned).
+///
+/// The input slice is never mutated.
+pub fn normalize_chat_payload_for_provider(
+    messages: &[ApiMessage],
+    reasoning_enabled: bool,
+) -> Vec<ApiMessage> {
+    if reasoning_enabled {
+        return messages.to_vec();
+    }
+
+    messages
+        .iter()
+        .map(|msg| {
+            if msg.role == "user" {
+                let mut content = msg.content.clone();
+                // Append REASONING_OFF_DIRECTIVE if not already present
+                if !content.ends_with(REASONING_OFF_DIRECTIVE)
+                    && !content.contains(REASONING_OFF_DIRECTIVE)
+                {
+                    content.push_str(REASONING_OFF_DIRECTIVE);
+                }
+                // Append /no_think if not already present (as standalone token)
+                if !content.split_whitespace().any(|token| token == "/no_think") {
+                    content.push_str("\n\n/no_think");
+                }
+                ApiMessage {
+                    role: msg.role.clone(),
+                    content,
+                }
+            } else {
+                msg.clone()
+            }
+        })
+        .collect()
+}
+
+// ── Compatibility transport decision ──────────────────────────────────────
+
+/// Result of evaluating whether a request should use the raw completions
+/// compatibility transport.
+#[derive(Debug)]
+pub enum CompatDecision {
+    /// Use the raw `/v1/completions` endpoint with the rendered prompt.
+    UseRawCompletions { raw_prompt: String },
+    /// Use the standard chat completions (or responses) transport.
+    UseChatCompletions,
+    /// The endpoint was eligible but completions probe failed; fall back to chat
+    /// and notify the frontend via event.
+    UseChatCompletionsFallback { warning: String },
+}
+
+/// Build an actionable compatibility error message that identifies endpoint,
+/// model, reason, and suggested next action.
+pub fn format_compat_error(endpoint: &str, model: &str, reason: &str) -> String {
+    let safe_endpoint = redact_endpoint(endpoint);
+    format!(
+        "Compatibility error: endpoint=\"{safe_endpoint}\", model=\"{model}\", \
+         reason=\"{reason}\". \
+         Check that your local provider supports /v1/completions for this model."
+    )
+}
+
+/// Decide whether a request should be routed through the raw completions
+/// compatibility transport. Only applicable to local endpoints with reasoning
+/// disabled and not using the Responses API.
+pub async fn determine_compat_transport(
+    request: &AiChatRequest,
+    capability_cache: &CapabilityCache,
+) -> CompatDecision {
+    let using_responses_chaining =
+        request.prefer_responses_api && request.previous_response_id.is_some();
+    if !LocalCompatPolicy::is_eligible(
+        &request.endpoint,
+        request.enable_reasoning,
+        using_responses_chaining,
+    ) {
+        tracing::debug!(
+            endpoint = %request.endpoint,
+            transport = "chat_completions",
+            "AI transport selected"
+        );
+        return CompatDecision::UseChatCompletions;
+    }
+
+    match capability_cache
+        .get(
+            &request.endpoint,
+            &request.model,
+            CapabilityKind::NonStreamingCompletions,
+        )
+        .await
+    {
+        Some(true) => {
+            // Fix 4: If streaming completions is known-negative, fall back to
+            // chat completions rather than attempting raw streaming that will fail.
+            let streaming_cached = capability_cache
+                .get(
+                    &request.endpoint,
+                    &request.model,
+                    CapabilityKind::StreamingCompletions,
+                )
+                .await;
+            if streaming_cached == Some(false) {
+                tracing::warn!(
+                    endpoint = %request.endpoint,
+                    model = %request.model,
+                    "completions probe positive but streaming negative — returning compat error"
+                );
+                return CompatDecision::UseChatCompletionsFallback {
+                    warning: format_compat_error(
+                        &request.endpoint,
+                        &request.model,
+                        "Streaming completions previously failed for this provider. \
+                         Re-enable reasoning or restart the app to retry.",
+                    ),
+                };
+            }
+
+            tracing::info!(
+                endpoint = %request.endpoint,
+                model = %request.model,
+                transport = "raw_completions_compat",
+                "AI transport selected"
+            );
+            tracing::info!(
+                endpoint = %request.endpoint,
+                model = %request.model,
+                "completions capability probe positive"
+            );
+            let raw_prompt =
+                render_raw_transcript(&request.messages, REASONING_OFF_INSTRUCTION);
+            CompatDecision::UseRawCompletions { raw_prompt }
+        }
+        Some(false) => {
+            let reason = "completions_not_supported";
+            tracing::warn!(
+                endpoint = %request.endpoint,
+                model = %request.model,
+                reason = %reason,
+                "completions capability probe negative, compat not available"
+            );
+            let err = format_compat_error(
+                &request.endpoint,
+                &request.model,
+                reason,
+            );
+            tracing::warn!(
+                endpoint = %request.endpoint,
+                model = %request.model,
+                error = %err,
+                "compatibility error surfaced to user"
+            );
+            CompatDecision::UseChatCompletionsFallback { warning: err }
+        }
+        None => {
+            let probe_ok =
+                probe_completions_capability(&request.endpoint, &request.model, request.api_key.as_deref()).await;
+            if probe_ok {
+                capability_cache
+                    .set(
+                        &request.endpoint,
+                        &request.model,
+                        CapabilityKind::NonStreamingCompletions,
+                        true,
+                    )
+                    .await;
+                tracing::info!(
+                    endpoint = %request.endpoint,
+                    model = %request.model,
+                    "completions capability probe positive"
+                );
+                tracing::info!(
+                    endpoint = %request.endpoint,
+                    model = %request.model,
+                    transport = "raw_completions_compat",
+                    "AI transport selected"
+                );
+                let raw_prompt =
+                    render_raw_transcript(&request.messages, REASONING_OFF_INSTRUCTION);
+                CompatDecision::UseRawCompletions { raw_prompt }
+            } else {
+                capability_cache
+                    .set(
+                        &request.endpoint,
+                        &request.model,
+                        CapabilityKind::NonStreamingCompletions,
+                        false,
+                    )
+                    .await;
+                let reason = "completions_not_supported";
+                tracing::warn!(
+                    endpoint = %request.endpoint,
+                    model = %request.model,
+                    reason = %reason,
+                    "completions capability probe negative, compat not available"
+                );
+                let err = format_compat_error(
+                    &request.endpoint,
+                    &request.model,
+                    reason,
+                );
+                tracing::warn!(
+                    endpoint = %request.endpoint,
+                    model = %request.model,
+                    error = %err,
+                    "compatibility error surfaced to user"
+                );
+                CompatDecision::UseChatCompletionsFallback { warning: err }
+            }
+        }
+    }
+}
+
+/// Send a non-streaming request to `/v1/completions` and return the sanitised text.
+///
+/// Used by hidden calls (query expansion, rerank) that always run with reasoning off.
+pub async fn send_non_streaming_completions(
+    endpoint: &str,
+    model: &str,
+    raw_prompt: String,
+    api_key: Option<&str>,
+    timeout_secs: u64,
+) -> Result<String, String> {
+    let url = crate::ai::url::completions_url(endpoint);
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(timeout_secs))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
+
+    let req = CompletionsRequest {
+        model: model.to_string(),
+        prompt: raw_prompt,
+        max_tokens: None,
+        stream: Some(false),
+        stop: Some(vec!["\n\n### User\n".to_string(), "\n\n### Assistant\n".to_string()]),
+    };
+
+    let mut request_builder = client.post(&url).json(&req);
+    if let Some(key) = api_key {
+        if !key.is_empty() {
+            request_builder = request_builder.header("Authorization", format!("Bearer {key}"));
+        }
+    }
+
+    let resp = request_builder
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::warn!("compat non-streaming request error: {e}");
+            format_compat_error(endpoint, model, "Provider request failed. Check provider logs.")
+        })?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp
+            .text()
+            .await
+            .unwrap_or_else(|_| "<failed to read body>".to_string());
+        return Err(format_compat_error(endpoint, model, &format!("HTTP {status}: {body}")));
+    }
+
+    let parsed: CompletionsResponse = resp
+        .json()
+        .await
+        .map_err(|e| format_compat_error(endpoint, model, &format!("parse error: {e}")))?;
+
+    let text = parsed
+        .choices
+        .first()
+        .map(|c| c.text.clone())
+        .unwrap_or_default();
+
+    Ok(sanitize_thinking_content(&text))
+}
+
+/// Run a hidden (non-streaming, reasoning-off) LLM call through the compatibility
+/// policy. Returns the generated text on success, or an error string.
+///
+/// Error `"not_eligible"` means the endpoint is not local and the caller should
+/// fall back to the existing chat-completions path.
+pub async fn run_hidden_compat_call(
+    endpoint: &str,
+    model: &str,
+    messages: &[crate::ai::types::IpcMessage],
+    api_key: Option<&str>,
+    capability_cache: &CapabilityCache,
+    timeout_secs: u64,
+    call_name: &str,
+    probe_timeout_secs: Option<u64>,
+) -> Result<String, String> {
+    use crate::ai::local_compat::is_local_endpoint;
+
+    if !is_local_endpoint(endpoint) {
+        return Err("not_eligible".to_string());
+    }
+
+    let cached = capability_cache
+        .get(endpoint, model, CapabilityKind::NonStreamingCompletions)
+        .await;
+
+    match cached {
+        Some(true) => {
+            tracing::info!(
+                endpoint = %endpoint,
+                model = %model,
+                call_name = %call_name,
+                "hidden compat call: using cached positive capability"
+            );
+            let raw_prompt = render_raw_transcript(messages, REASONING_OFF_INSTRUCTION);
+            send_non_streaming_completions(endpoint, model, raw_prompt, api_key, timeout_secs).await
+        }
+        Some(false) => {
+            tracing::info!(
+                endpoint = %endpoint,
+                model = %model,
+                call_name = %call_name,
+                "hidden compat call: cached negative — immediate fallback"
+            );
+            Err(format_compat_error(endpoint, model, "completions_not_supported"))
+        }
+        None => {
+            let probe_timeout = Duration::from_secs(probe_timeout_secs.unwrap_or(PROBE_TIMEOUT.as_secs()));
+            let probe_ok = probe_completions_capability_with_timeout(endpoint, model, probe_timeout, api_key).await;
+            capability_cache
+                .set(
+                    endpoint,
+                    model,
+                    CapabilityKind::NonStreamingCompletions,
+                    probe_ok,
+                )
+                .await;
+            if probe_ok {
+                tracing::info!(
+                    endpoint = %endpoint,
+                    model = %model,
+                    call_name = %call_name,
+                    "hidden compat call: probe succeeded"
+                );
+                let raw_prompt = render_raw_transcript(messages, REASONING_OFF_INSTRUCTION);
+                send_non_streaming_completions(endpoint, model, raw_prompt, api_key, timeout_secs).await
+            } else {
+                tracing::warn!(
+                    endpoint = %endpoint,
+                    model = %model,
+                    call_name = %call_name,
+                    "hidden compat call: probe failed — immediate fallback"
+                );
+                Err(format_compat_error(endpoint, model, "completions_not_supported"))
+            }
+        }
+    }
+}
+
+/// Send a minimal non-streaming request to `/v1/completions` to check support.
+///
+/// Returns `true` if the endpoint responds with HTTP 200 and a valid
+/// `CompletionsResponse` shape.
+pub async fn probe_completions_capability(endpoint: &str, model: &str, api_key: Option<&str>) -> bool {
+    probe_completions_capability_with_timeout(endpoint, model, PROBE_TIMEOUT, api_key).await
+}
+
+/// Probe with a caller-specified timeout.
+pub async fn probe_completions_capability_with_timeout(
+    endpoint: &str,
+    model: &str,
+    timeout: Duration,
+    api_key: Option<&str>,
+) -> bool {
+    let url = crate::ai::url::completions_url(endpoint);
+    let client = match reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    let req = CompletionsRequest {
+        model: model.to_string(),
+        prompt: "Hello".to_string(),
+        max_tokens: Some(1),
+        stream: Some(false),
+        stop: None,
+    };
+
+    let mut request_builder = client.post(&url).json(&req);
+    if let Some(key) = api_key {
+        if !key.is_empty() {
+            request_builder = request_builder.header("Authorization", format!("Bearer {key}"));
+        }
+    }
+
+    let resp = match request_builder.send().await {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+
+    if !resp.status().is_success() {
+        return false;
+    }
+
+    resp.json::<CompletionsResponse>().await.is_ok()
+}
+
+/// Stream a completion from the raw `/v1/completions` endpoint, emitting Tauri
+/// events that are indistinguishable from the chat completions transport to
+/// the frontend.
+pub async fn send_streaming_completions<R: Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    stream_id: &str,
+    endpoint: &str,
+    model: &str,
+    raw_prompt: String,
+    api_key: Option<&str>,
+    cancellation_token: &CancellationToken,
+    capability_cache: &CapabilityCache,
+) -> Result<(), String> {
+    let url = crate::ai::url::completions_url(endpoint);
+
+    let client = reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
+
+    let req = CompletionsRequest {
+        model: model.to_string(),
+        prompt: raw_prompt,
+        max_tokens: None,
+        stream: Some(true),
+        stop: Some(vec!["\n\n### User\n".to_string(), "\n\n### Assistant\n".to_string()]),
+    };
+
+    let response = tokio::select! {
+        biased;
+        _ = cancellation_token.cancelled() => {
+            return Err("Stream cancelled".to_string());
+        }
+        result = {
+            let mut request_builder = client.post(&url).json(&req);
+            if let Some(key) = api_key {
+                if !key.is_empty() {
+                    request_builder = request_builder.header("Authorization", format!("Bearer {key}"));
+                }
+            }
+            request_builder.send()
+        } => {
+            result.map_err(|e| {
+                tracing::warn!("compat streaming request error: {e}");
+                format_compat_error(endpoint, model, "Provider request failed. Check provider logs.")
+            })?
+        }
+    };
+
+    let status = response.status();
+    if !status.is_success() {
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<failed to read body>".to_string());
+        tracing::warn!(
+            endpoint = %endpoint,
+            model = %model,
+            status = %status,
+            body = %body,
+            "streaming completions request failed"
+        );
+        capability_cache
+            .set(endpoint, model, CapabilityKind::StreamingCompletions, false)
+            .await;
+        return Err(format_compat_error(
+            endpoint,
+            model,
+            "streaming_completions_failed",
+        ));
+    }
+
+    let mut byte_stream = response.bytes_stream();
+    let mut buffer = String::new();
+    let mut line_buffer = String::new();
+    let mut last_flush = Instant::now();
+    let mut thinking_sanitizer = ThinkingSanitizer::new();
+
+    loop {
+        let chunk_result = tokio::select! {
+            biased;
+            _ = cancellation_token.cancelled() => {
+                let _ = thinking_sanitizer.finish();
+                flush_buffer(app_handle, stream_id, &mut buffer, ChunkKind::Content);
+                return Err("Stream cancelled".to_string());
+            }
+            chunk = byte_stream.next() => chunk,
+        };
+
+        match chunk_result {
+            Some(Ok(bytes)) => {
+                let text = String::from_utf8_lossy(&bytes);
+                line_buffer.push_str(&text);
+
+                while let Some(newline_pos) = line_buffer.find('\n') {
+                    let line = line_buffer[..newline_pos].to_string();
+                    line_buffer = line_buffer[newline_pos + 1..].to_string();
+
+                    let trimmed = line.trim();
+                    if trimmed.is_empty()
+                        || trimmed.starts_with(':')
+                        || trimmed.starts_with("event:")
+                    {
+                        continue;
+                    }
+
+                    if let Some(data) = trimmed.strip_prefix("data:") {
+                        let data = data.trim();
+                        if data == "[DONE]" {
+                            let sr = thinking_sanitizer.finish();
+                            if !sr.is_empty() {
+                                buffer.push_str(&sr);
+                            }
+                            flush_buffer(
+                                app_handle,
+                                stream_id,
+                                &mut buffer,
+                                ChunkKind::Content,
+                            );
+                            let _ = app_handle.emit(
+                                "ai-stream-done",
+                                StreamDoneEvent {
+                                    stream_id: stream_id.to_string(),
+                                    response_id: None,
+                                    transport: AiTransport::ChatCompletions,
+                                },
+                            );
+                            return Ok(());
+                        }
+
+                        let chunk: CompletionsStreamChunk =
+                            match serde_json::from_str(data) {
+                                Ok(c) => c,
+                                Err(_e) => {
+                                    flush_buffer(
+                                        app_handle,
+                                        stream_id,
+                                        &mut buffer,
+                                        ChunkKind::Content,
+                                    );
+                                    capability_cache
+                                        .set(
+                                            endpoint,
+                                            model,
+                                            CapabilityKind::StreamingCompletions,
+                                            false,
+                                        )
+                                        .await;
+                                    return Err(format_compat_error(
+                                        endpoint,
+                                        model,
+                                        "streaming_completions_failed",
+                                    ));
+                                }
+                            };
+
+                        for choice in &chunk.choices {
+                            let sanitized = thinking_sanitizer.push(&choice.text);
+                            buffer.push_str(&sanitized);
+                        }
+
+                        if last_flush.elapsed() >= FLUSH_INTERVAL {
+                            flush_buffer(
+                                app_handle,
+                                stream_id,
+                                &mut buffer,
+                                ChunkKind::Content,
+                            );
+                            last_flush = Instant::now();
+                        }
+                    }
+                }
+            }
+            Some(Err(_e)) => {
+                // Flush residual from sanitizer
+                let residual = thinking_sanitizer.finish();
+                if !residual.is_empty() {
+                    buffer.push_str(&residual);
+                }
+                flush_buffer(app_handle, stream_id, &mut buffer, ChunkKind::Content);
+                capability_cache
+                    .set(endpoint, model, CapabilityKind::StreamingCompletions, false)
+                    .await;
+                return Err(format_compat_error(
+                    endpoint,
+                    model,
+                    "streaming_completions_failed",
+                ));
+            }
+            None => {
+                // EOF — handle residual line buffer
+                if !line_buffer.is_empty() {
+                    let trimmed = line_buffer.trim();
+                    if let Some(data) = trimmed.strip_prefix("data:") {
+                        let data = data.trim();
+                        if data == "[DONE]" {
+                            // Fall through to emit done
+                        } else {
+                            match serde_json::from_str::<CompletionsStreamChunk>(data) {
+                                Ok(chunk) => {
+                                    for choice in &chunk.choices {
+                                        let sanitized =
+                                            thinking_sanitizer.push(&choice.text);
+                                        buffer.push_str(&sanitized);
+                                    }
+                                }
+                                Err(_e) => {
+                                    flush_buffer(
+                                        app_handle,
+                                        stream_id,
+                                        &mut buffer,
+                                        ChunkKind::Content,
+                                    );
+                                    capability_cache
+                                        .set(
+                                            endpoint,
+                                            model,
+                                            CapabilityKind::StreamingCompletions,
+                                            false,
+                                        )
+                                        .await;
+                                    return Err(format_compat_error(
+                                        endpoint,
+                                        model,
+                                        "streaming_completions_failed",
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Flush sanitizer residual
+                let sanitizer_residual = thinking_sanitizer.finish();
+                if !sanitizer_residual.is_empty() {
+                    buffer.push_str(&sanitizer_residual);
+                }
+                flush_buffer(app_handle, stream_id, &mut buffer, ChunkKind::Content);
+                let _ = app_handle.emit(
+                    "ai-stream-done",
+                    StreamDoneEvent {
+                        stream_id: stream_id.to_string(),
+                        response_id: None,
+                        transport: AiTransport::ChatCompletions,
+                    },
+                );
+                return Ok(());
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 struct ResponsesStreamError {
@@ -619,26 +1307,87 @@ pub async fn stream_chat_completion<R: Runtime>(
     app_handle: &tauri::AppHandle<R>,
     request: AiChatRequest,
     cancellation_token: CancellationToken,
+    capability_cache: Option<Arc<CapabilityCache>>,
 ) -> Result<(), String> {
     let stream_id = request.stream_id.clone();
     tracing::info!(stream_id = %stream_id, endpoint = %request.endpoint, model = %request.model, "starting AI stream");
 
-    let result = if should_use_responses_api(&request) {
-        match stream_responses_completion(app_handle, &request, &cancellation_token).await {
-            Ok(()) => Ok(()),
-            Err(responses_error) if responses_error.fallback_to_chat_completions => {
-                tracing::warn!(
-                    stream_id = %stream_id,
-                    endpoint = %request.endpoint,
-                    error = %responses_error.message,
-                    "Responses API unavailable or incompatible; falling back to chat completions"
-                );
+    // Evaluate compatibility transport decision
+    let compat = match &capability_cache {
+        Some(cache) => determine_compat_transport(&request, cache).await,
+        None => CompatDecision::UseChatCompletions,
+    };
+
+    let result = match compat {
+        CompatDecision::UseRawCompletions { raw_prompt } => {
+            tracing::info!(
+                stream_id = %stream_id,
+                endpoint = %request.endpoint,
+                model = %request.model,
+                "raw completions compatibility transport selected"
+            );
+            send_streaming_completions(
+                app_handle,
+                &stream_id,
+                &request.endpoint,
+                &request.model,
+                raw_prompt,
+                request.api_key.as_deref(),
+                &cancellation_token,
+                capability_cache.as_ref().expect("cache present when compat selected"),
+            )
+            .await
+        }
+        CompatDecision::UseChatCompletionsFallback { warning } => {
+            tracing::warn!(
+                endpoint = %request.endpoint,
+                model = %request.model,
+                warning = %warning,
+                "completions not supported — falling back to chat completions"
+            );
+            // Emit warning event to frontend
+            let _ = app_handle.emit("ai-compat-fallback", serde_json::json!({
+                "streamId": request.stream_id,
+                "warning": warning,
+            }));
+            // Fall through to normal chat completions
+            if should_use_responses_api(&request) {
+                match stream_responses_completion(app_handle, &request, &cancellation_token).await {
+                    Ok(()) => Ok(()),
+                    Err(responses_error) if responses_error.fallback_to_chat_completions => {
+                        tracing::warn!(
+                            stream_id = %stream_id,
+                            endpoint = %request.endpoint,
+                            error = %responses_error.message,
+                            "Responses API unavailable or incompatible; falling back to chat completions"
+                        );
+                        stream_chat_inner(app_handle, &request, &cancellation_token).await
+                    }
+                    Err(e) => Err(e.message),
+                }
+            } else {
                 stream_chat_inner(app_handle, &request, &cancellation_token).await
             }
-            Err(responses_error) => Err(responses_error.message),
         }
-    } else {
-        stream_chat_inner(app_handle, &request, &cancellation_token).await
+        CompatDecision::UseChatCompletions => {
+            if should_use_responses_api(&request) {
+                match stream_responses_completion(app_handle, &request, &cancellation_token).await {
+                    Ok(()) => Ok(()),
+                    Err(responses_error) if responses_error.fallback_to_chat_completions => {
+                        tracing::warn!(
+                            stream_id = %stream_id,
+                            endpoint = %request.endpoint,
+                            error = %responses_error.message,
+                            "Responses API unavailable or incompatible; falling back to chat completions"
+                        );
+                        stream_chat_inner(app_handle, &request, &cancellation_token).await
+                    }
+                    Err(responses_error) => Err(responses_error.message),
+                }
+            } else {
+                stream_chat_inner(app_handle, &request, &cancellation_token).await
+            }
+        }
     };
 
     match &result {
@@ -673,9 +1422,12 @@ async fn stream_chat_inner<R: Runtime>(
         chat_reasoning_compat_fields(request.enable_reasoning);
 
     // Build the API request body
-    let mut api_request = ApiChatRequest {
+    let raw_messages: Vec<ApiMessage> = request.messages.iter().map(ApiMessage::from).collect();
+    let normalized_messages = normalize_chat_payload_for_provider(&raw_messages, request.enable_reasoning);
+
+    let api_request = ApiChatRequest {
         model: request.model.clone(),
-        messages: request.messages.iter().map(ApiMessage::from).collect(),
+        messages: normalized_messages,
         temperature: request.temperature,
         max_tokens: request.max_tokens,
         stream: true,
@@ -685,10 +1437,6 @@ async fn stream_chat_inner<R: Runtime>(
         enable_thinking,
         chat_template_kwargs,
     };
-
-    if !request.enable_reasoning {
-        apply_no_think_to_last_user_message(&mut api_request.messages);
-    }
 
     // Create the HTTP client
     let client = match reqwest::Client::builder()
@@ -706,6 +1454,7 @@ async fn stream_chat_inner<R: Runtime>(
         client: &reqwest::Client,
         chat_url: &str,
         api_request: &ApiChatRequest,
+        api_key: Option<&str>,
         cancellation_token: &CancellationToken,
     ) -> Result<reqwest::Response, String> {
         tokio::select! {
@@ -713,14 +1462,22 @@ async fn stream_chat_inner<R: Runtime>(
             _ = cancellation_token.cancelled() => {
                 Err("Stream cancelled".to_string())
             }
-            result = client.post(chat_url).json(api_request).send() => {
+            result = {
+                let mut builder = client.post(chat_url).json(api_request);
+                if let Some(key) = api_key {
+                    if !key.is_empty() {
+                        builder = builder.header("Authorization", format!("Bearer {key}"));
+                    }
+                }
+                builder.send()
+            } => {
                 result.map_err(|e| format!("HTTP request failed: {e}"))
             }
         }
     }
 
     // Send the request, racing against cancellation
-    let mut response = send_chat_request(&client, &chat_url, &api_request, cancellation_token).await?;
+    let mut response = send_chat_request(&client, &chat_url, &api_request, request.api_key.as_deref(), cancellation_token).await?;
 
     // Check HTTP status
     let status = response.status();
@@ -748,7 +1505,7 @@ async fn stream_chat_inner<R: Runtime>(
                 reasoning_effort: None,
                 ..api_request.clone()
             };
-            response = send_chat_request(&client, &chat_url, &retry_request, cancellation_token).await?;
+            response = send_chat_request(&client, &chat_url, &retry_request, request.api_key.as_deref(), cancellation_token).await?;
 
             let retry_status = response.status();
             if !retry_status.is_success() {
@@ -823,7 +1580,12 @@ async fn stream_chat_inner<R: Runtime>(
                                     let is_reasoning_dup = request.enable_reasoning
                                         && reasoning_text.is_some_and(|text| text == content);
                                     if !is_reasoning_dup {
-                                        buffer.push_str(content);
+                                        // Defensive: strip leaked thinking wrappers when reasoning is off
+                                        if request.enable_reasoning {
+                                            buffer.push_str(content);
+                                        } else {
+                                            buffer.push_str(&sanitize_thinking_content(content));
+                                        }
                                     }
                                 }
                             }
@@ -879,7 +1641,11 @@ async fn stream_chat_inner<R: Runtime>(
                                     let is_reasoning_dup = request.enable_reasoning
                                         && reasoning_text.is_some_and(|text| text == content);
                                     if !is_reasoning_dup {
-                                        buffer.push_str(content);
+                                        if request.enable_reasoning {
+                                            buffer.push_str(content);
+                                        } else {
+                                            buffer.push_str(&sanitize_thinking_content(content));
+                                        }
                                     }
                                 }
                             }
@@ -1071,6 +1837,7 @@ async fn stream_responses_completion<R: Runtime>(
         client: &reqwest::Client,
         responses_url: &str,
         api_request: &ApiResponsesRequest,
+        api_key: Option<&str>,
         cancellation_token: &CancellationToken,
     ) -> Result<reqwest::Response, ResponsesStreamError> {
         tokio::select! {
@@ -1078,7 +1845,15 @@ async fn stream_responses_completion<R: Runtime>(
             _ = cancellation_token.cancelled() => {
                 Err(ResponsesStreamError::new("Stream cancelled", false))
             }
-            result = client.post(responses_url).json(api_request).send() => {
+            result = {
+                let mut builder = client.post(responses_url).json(api_request);
+                if let Some(key) = api_key {
+                    if !key.is_empty() {
+                        builder = builder.header("Authorization", format!("Bearer {key}"));
+                    }
+                }
+                builder.send()
+            } => {
                 result.map_err(|e| ResponsesStreamError::new(format!("HTTP request failed: {e}"), true))
             }
         }
@@ -1100,7 +1875,7 @@ async fn stream_responses_completion<R: Runtime>(
 
     let responses_url = crate::ai::url::normalise_to_responses_url(&request.endpoint);
 
-    let mut response = send_responses_request(&client, &responses_url, &api_request, cancellation_token).await?;
+    let mut response = send_responses_request(&client, &responses_url, &api_request, request.api_key.as_deref(), cancellation_token).await?;
 
     let status = response.status();
     if !status.is_success() {
@@ -1122,7 +1897,7 @@ async fn stream_responses_completion<R: Runtime>(
                 ..api_request.clone()
             };
 
-            response = send_responses_request(&client, &responses_url, &retry_request, cancellation_token).await?;
+             response = send_responses_request(&client, &responses_url, &retry_request, request.api_key.as_deref(), cancellation_token).await?;
             let retry_status = response.status();
             if !retry_status.is_success() {
                 let retry_body = match response.text().await {

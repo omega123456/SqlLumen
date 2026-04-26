@@ -46,3 +46,8 @@ pub fn normalise_openai_url(base_url: &str, final_segment: &str) -> String {
 pub fn normalise_to_responses_url(base_url: &str) -> String {
     normalise_openai_url(base_url, "responses")
 }
+
+/// Derive the raw `/v1/completions` URL from a chat completions (or any base) URL.
+pub fn completions_url(chat_url: &str) -> String {
+    normalise_openai_url(chat_url, "completions")
+}

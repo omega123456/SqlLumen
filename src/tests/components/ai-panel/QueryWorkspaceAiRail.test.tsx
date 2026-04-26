@@ -84,6 +84,7 @@ describe('QueryWorkspaceAiRail', () => {
           activeStreamHasAssistantOutput: false,
           isWaitingForIndex: false,
           connectionId: null,
+          compatWarning: null,
           _unlisten: null,
         },
       },

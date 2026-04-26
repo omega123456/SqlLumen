@@ -8,12 +8,21 @@
 //! preserved silently.
 
 use super::search::SearchResult;
+use crate::ai::local_compat::CapabilityCache;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+/// Timeout for hidden compat rerank call (seconds).
+const RERANK_COMPAT_TIMEOUT_SECS: u64 = 4;
 
 /// Rerank search results using an LLM cross-encoder.
 ///
 /// Sends the candidate chunk IDs and summaries to the LLM, which returns a
 /// reordered subset. Falls back to the original order on any error.
+///
+/// When a `capability_cache` is provided and the endpoint is local with
+/// completions support, routes through the raw `/v1/completions` path with
+/// reasoning disabled. Otherwise uses the chat completions path.
 ///
 /// # Arguments
 /// * `candidates` — top-N search results to rerank
@@ -21,6 +30,7 @@ use serde::{Deserialize, Serialize};
 /// * `client` — HTTP client for the LLM call
 /// * `endpoint` — base URL for the LLM API
 /// * `model` — model name for the chat completion
+/// * `capability_cache` — optional capability cache for compat routing
 ///
 /// Returns the candidates in re-ranked order, or the original order on failure.
 pub async fn rerank_with_llm(
@@ -29,6 +39,8 @@ pub async fn rerank_with_llm(
     client: &reqwest::Client,
     endpoint: &str,
     model: &str,
+    api_key: Option<&str>,
+    capability_cache: Option<Arc<CapabilityCache>>,
 ) -> Vec<SearchResult> {
     if candidates.is_empty() {
         return candidates;
@@ -64,6 +76,61 @@ pub async fn rerank_with_llm(
         "Question: \"{question}\"\nCandidates: {candidates_json}"
     );
 
+    // Try hidden compat call for local endpoints with completions support
+    if let Some(ref cache) = capability_cache {
+        let ipc_messages = vec![
+            crate::ai::types::IpcMessage {
+                role: "system".to_string(),
+                content: system_prompt.to_string(),
+            },
+            crate::ai::types::IpcMessage {
+                role: "user".to_string(),
+                content: user_prompt.clone(),
+            },
+        ];
+
+        let compat_result = crate::ai::client::run_hidden_compat_call(
+            endpoint,
+            model,
+            &ipc_messages,
+            api_key,
+            cache,
+            RERANK_COMPAT_TIMEOUT_SECS,
+            "rerank",
+            Some(crate::ai::client::RERANK_PROBE_TIMEOUT_SECS),
+        )
+        .await;
+
+        match compat_result {
+            Ok(text) => {
+                let sanitized = crate::ai::local_compat::sanitize_thinking_content(&text);
+                let ranked_ids = parse_rerank_text(&sanitized);
+                match ranked_ids {
+                    Some(ids) if !ids.is_empty() => {
+                        tracing::info!(endpoint = %endpoint, "rerank: compat completions succeeded");
+                        return reorder_by_ids(candidates, &ids);
+                    }
+                    _ => {
+                        tracing::warn!(
+                            endpoint = %endpoint,
+                            text_preview = %text.chars().take(200).collect::<String>(),
+                            "rerank: compat completions returned unparseable response, falling back to original order"
+                        );
+                        return candidates;
+                    }
+                }
+            }
+            Err(ref reason) if reason == "not_eligible" => {
+                // Non-local endpoint — fall through to chat completions path
+            }
+            Err(reason) => {
+                tracing::warn!(endpoint = %endpoint, reason = %reason, "rerank compat failed, falling back to original order");
+                return candidates;
+            }
+        }
+    }
+
+    // Existing chat completions path
     let mut request_body_obj = serde_json::json!({
         "model": model,
         "messages": [
@@ -85,9 +152,13 @@ pub async fn rerank_with_llm(
     );
 
     // 6 second timeout
+    let mut request = client.post(&url).json(&request_body);
+    if let Some(key) = api_key {
+        request = request.bearer_auth(key);
+    }
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(6),
-        client.post(&url).json(&request_body).send(),
+        request.send(),
     )
     .await;
 
@@ -163,9 +234,13 @@ pub fn parse_rerank_response(response_body: &str) -> Option<Vec<i64>> {
         response_body.to_string()
     };
 
-    // Try to parse the content as RerankOutput
+    parse_rerank_text(&content)
+}
+
+/// Parse raw text (from either chat or completions response) to extract ranked chunk IDs.
+pub fn parse_rerank_text(content: &str) -> Option<Vec<i64>> {
     // First try direct parse, then look for JSON in the text
-    if let Ok(output) = serde_json::from_str::<RerankOutput>(&content) {
+    if let Ok(output) = serde_json::from_str::<RerankOutput>(content) {
         return Some(output.ranked);
     }
 

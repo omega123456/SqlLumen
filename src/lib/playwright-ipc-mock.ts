@@ -116,6 +116,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       const AI_DEFAULTS: Record<string, string> = {
         'ai.enabled': 'false',
         'ai.endpoint': '',
+        'ai.apiKey': '',
         'ai.model': '',
         'ai.embeddingModel': '',
         'ai.temperature': '0.3',
@@ -148,6 +149,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'session.state': 'null',
         'ai.enabled': 'false',
         'ai.endpoint': '',
+        'ai.apiKey': '',
         'ai.model': '',
         'ai.embeddingModel': '',
         'ai.temperature': '0.3',

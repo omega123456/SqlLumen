@@ -426,3 +426,76 @@ fn test_group_timestamps_are_iso8601() {
         record.created_at
     );
 }
+
+// ── keychain_ref CRUD ────────────────────────────────────────────────────
+
+#[test]
+fn test_get_keychain_ref_returns_connection_id_initially() {
+    let conn = common::test_db();
+    let data = NewConnectionData {
+        name: "Test".to_string(),
+        host: "localhost".to_string(),
+        port: 3306,
+        username: "root".to_string(),
+        default_database: None,
+        ssl_enabled: false,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        color: None,
+        group_id: None,
+        read_only: false,
+        sort_order: 0,
+        connect_timeout_secs: None,
+        keepalive_interval_secs: None,
+    };
+    let id = connections::insert_connection(&conn, &data).expect("insert");
+    let kr = connections::get_keychain_ref(&conn, &id).expect("get keychain_ref");
+    assert_eq!(kr.as_deref(), Some(id.as_str()));
+}
+
+#[test]
+fn test_set_and_get_keychain_ref() {
+    let conn = common::test_db();
+    let data = NewConnectionData {
+        name: "Test".to_string(),
+        host: "localhost".to_string(),
+        port: 3306,
+        username: "root".to_string(),
+        default_database: None,
+        ssl_enabled: false,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        color: None,
+        group_id: None,
+        read_only: false,
+        sort_order: 0,
+        connect_timeout_secs: None,
+        keepalive_interval_secs: None,
+    };
+    let id = connections::insert_connection(&conn, &data).expect("insert");
+
+    connections::set_keychain_ref(&conn, &id, Some("my-keychain-ref")).expect("set");
+    let kr = connections::get_keychain_ref(&conn, &id).expect("get");
+    assert_eq!(kr.as_deref(), Some("my-keychain-ref"));
+
+    // Clear it
+    connections::set_keychain_ref(&conn, &id, None).expect("clear");
+    let kr2 = connections::get_keychain_ref(&conn, &id).expect("get after clear");
+    assert!(kr2.is_none());
+}
+
+#[test]
+fn test_set_keychain_ref_nonexistent_connection_errors() {
+    let conn = common::test_db();
+    let result = connections::set_keychain_ref(&conn, "nonexistent-id", Some("ref"));
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_get_keychain_ref_nonexistent_connection_returns_none() {
+    let conn = common::test_db();
+    let kr = connections::get_keychain_ref(&conn, "nonexistent-id").expect("get");
+    assert!(kr.is_none());
+}

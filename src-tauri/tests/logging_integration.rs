@@ -163,4 +163,80 @@ fn reload_log_level_from_setting_value_returns_early_for_missing_handle_and_rust
     }
 }
 
+#[test]
+fn parse_log_level_accepts_error() {
+    assert!(parse_log_level_setting("error").is_some());
+    assert!(parse_log_level_setting("ERROR").is_some());
+}
+
+#[test]
+fn reload_log_level_from_setting_value_applies_when_valid_and_no_rust_log() {
+    let _guard = RustLogGuard::remove();
+
+    let subscriber = tracing_subscriber::registry();
+    let (layer, handle) =
+        tracing_subscriber::reload::Layer::new(tracing_subscriber::EnvFilter::new("debug"));
+    let _subscriber = subscriber.with(layer);
+
+    // Should succeed (apply new filter via reload)
+    sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&handle), "warn");
+    // A bogus value should be a no-op
+    sqllumen_lib::logging::reload_log_level_from_setting_value(Some(&handle), "bogus");
+}
+
+#[test]
+fn apply_log_level_from_settings_applies_when_no_rust_log_and_setting_exists() {
+    let _guard = RustLogGuard::remove();
+    let conn = common::test_db();
+    sqllumen_lib::db::settings::set_setting(
+        &conn,
+        sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY,
+        "error",
+    )
+    .expect("set log level setting");
+
+    let subscriber = tracing_subscriber::registry();
+    let (layer, handle) =
+        tracing_subscriber::reload::Layer::new(tracing_subscriber::EnvFilter::new("debug"));
+    let _subscriber = subscriber.with(layer);
+
+    sqllumen_lib::logging::apply_log_level_from_settings(&conn, &handle);
+}
+
+#[test]
+fn apply_log_level_from_settings_noop_when_no_setting() {
+    let _guard = RustLogGuard::remove();
+    let conn = common::test_db();
+    // Don't set any log level setting
+
+    let subscriber = tracing_subscriber::registry();
+    let (layer, handle) =
+        tracing_subscriber::reload::Layer::new(tracing_subscriber::EnvFilter::new("debug"));
+    let _subscriber = subscriber.with(layer);
+
+    sqllumen_lib::logging::apply_log_level_from_settings(&conn, &handle);
+}
+
+#[test]
+fn prune_old_logs_empty_dir_is_noop() {
+    let dir = tempfile::tempdir().unwrap();
+    let today = NaiveDate::from_ymd_opt(2025, 3, 22).unwrap();
+    prune_old_logs(dir.path(), ROLLING_LOG_STEM, today).unwrap();
+}
+
+#[test]
+fn prune_old_logs_multiple_stale_protects_newest_pre_today() {
+    let dir = tempfile::tempdir().unwrap();
+    let today = NaiveDate::from_ymd_opt(2025, 3, 22).unwrap();
+    // All pre-today files are stale (older than 7 days)
+    touch(&dir.path().join("sqllumen.2025-03-01.log"));
+    touch(&dir.path().join("sqllumen.2025-03-05.log"));
+    touch(&dir.path().join("sqllumen.2025-03-10.log"));
+    prune_old_logs(dir.path(), ROLLING_LOG_STEM, today).unwrap();
+    // Should protect the newest pre-today file
+    assert!(dir.path().join("sqllumen.2025-03-10.log").exists());
+    assert!(!dir.path().join("sqllumen.2025-03-01.log").exists());
+    assert!(!dir.path().join("sqllumen.2025-03-05.log").exists());
+}
+
 mod common;

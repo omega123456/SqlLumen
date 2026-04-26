@@ -34,8 +34,23 @@ fn init_logging_and_reload_helpers() {
     let init = sqllumen_lib::logging::init_logging(dir.path()).expect("init logging");
     assert!(!init.rust_log_env_set);
 
-    // Emit a tracing event to exercise BracketLevelFormat::format_event
-    tracing::info!(target: "sqllumen_lib::logging", "logging init integration test event");
+    // Emit tracing events at every level to exercise BracketLevelFormat::format_event
+    // and all match arms of level_ansi_prefix (TRACE, DEBUG, INFO, WARN, ERROR).
+    // Default filter is "info,sqlx=warn", so reload to "trace" first.
+    sqllumen_lib::logging::reload_log_level_from_setting_value(
+        Some(&init.filter_reload),
+        "trace",
+    );
+    tracing::trace!(target: "sqllumen_lib::logging", "logging init integration TRACE event");
+    tracing::debug!(target: "sqllumen_lib::logging", "logging init integration DEBUG event");
+    tracing::info!(target: "sqllumen_lib::logging", "logging init integration INFO event");
+    tracing::warn!(target: "sqllumen_lib::logging", "logging init integration WARN event");
+    tracing::error!(target: "sqllumen_lib::logging", "logging init integration ERROR event");
+    // Restore to info for subsequent operations
+    sqllumen_lib::logging::reload_log_level_from_setting_value(
+        Some(&init.filter_reload),
+        "info",
+    );
 
     let log_files: Vec<_> = std::fs::read_dir(dir.path())
         .expect("read log dir")

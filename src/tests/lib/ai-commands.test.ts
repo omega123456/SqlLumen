@@ -72,6 +72,7 @@ describe('sendAiChat', () => {
         previousResponseId: 'resp_prev',
         preferResponsesApi: true,
         enableReasoning: true,
+        apiKey: null,
       },
     })
   })

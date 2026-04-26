@@ -23,6 +23,7 @@ export interface AiChatParams {
   previousResponseId?: string | null
   preferResponsesApi?: boolean
   enableReasoning?: boolean
+  apiKey?: string
 }
 
 export interface AiStreamDoneInfo {
@@ -83,6 +84,7 @@ export async function sendAiChat(params: AiChatParams): Promise<void> {
       previousResponseId: params.previousResponseId ?? null,
       preferResponsesApi: params.preferResponsesApi ?? false,
       enableReasoning: params.enableReasoning ?? true,
+      apiKey: params.apiKey ?? null,
     },
   })
 }
@@ -164,6 +166,7 @@ export interface AiQueryExpandRequest {
   systemPrompt: string
   userMessage: string
   conversationContext?: string
+  apiKey?: string
 }
 
 export interface AiQueryExpandResponse {

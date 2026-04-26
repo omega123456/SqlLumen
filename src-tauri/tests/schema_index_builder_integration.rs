@@ -1094,3 +1094,269 @@ fn test_reuse_roundtrip_hash_stability() {
         chunks_v2[0].ddl_text,
     );
 }
+
+// ── compact_ddl_for_llm ─────────────────────────────────────────────────
+
+#[test]
+fn test_compact_ddl_for_llm_preserves_comments() {
+    let ddl = "CREATE TABLE `users` (\n  `id` int NOT NULL AUTO_INCREMENT,\n  `name` varchar(255) COMMENT 'Full user name'\n) ENGINE=InnoDB AUTO_INCREMENT=42 DEFAULT CHARSET=utf8mb4 COMMENT='User accounts'";
+    let result = builder::compact_ddl_for_llm(ddl);
+    assert!(
+        result.contains("COMMENT 'Full user name'") || result.contains("COMMENT 'User accounts'"),
+        "Comments should be preserved. Got: {result}"
+    );
+    assert!(
+        !result.contains("ENGINE="),
+        "ENGINE should be stripped. Got: {result}"
+    );
+    assert!(
+        !result.contains("AUTO_INCREMENT=42"),
+        "AUTO_INCREMENT value should be stripped. Got: {result}"
+    );
+}
+
+#[test]
+fn test_compact_ddl_for_llm_strips_row_count_annotation() {
+    let ddl = "CREATE TABLE `t` (`id` int)\n-- approximate rows: 100";
+    let result = builder::compact_ddl_for_llm(ddl);
+    assert!(
+        !result.contains("approximate rows"),
+        "Row count annotation should be stripped. Got: {result}"
+    );
+}
+
+#[test]
+fn test_compact_ddl_for_llm_strips_charset_and_collate() {
+    let ddl = "CREATE TABLE `t` (`id` int) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC";
+    let result = builder::compact_ddl_for_llm(ddl);
+    assert!(
+        !result.contains("CHARSET"),
+        "CHARSET should be stripped. Got: {result}"
+    );
+    assert!(
+        !result.contains("COLLATE"),
+        "COLLATE should be stripped. Got: {result}"
+    );
+    assert!(
+        !result.contains("ROW_FORMAT"),
+        "ROW_FORMAT should be stripped. Got: {result}"
+    );
+}
+
+// ── extract_table_comment ───────────────────────────────────────────────
+
+#[test]
+fn test_extract_table_comment_basic() {
+    let ddl = "CREATE TABLE `users` (\n  `id` int\n) ENGINE=InnoDB COMMENT='User accounts table'";
+    let comment = builder::extract_table_comment(ddl);
+    assert_eq!(comment.as_deref(), Some("User accounts table"));
+}
+
+#[test]
+fn test_extract_table_comment_missing() {
+    let ddl = "CREATE TABLE `users` (\n  `id` int\n) ENGINE=InnoDB";
+    let comment = builder::extract_table_comment(ddl);
+    assert!(comment.is_none());
+}
+
+#[test]
+fn test_extract_table_comment_with_escaped_quotes() {
+    let ddl = r"CREATE TABLE `t` (`id` int) COMMENT='it\\'s escaped'";
+    let comment = builder::extract_table_comment(ddl);
+    assert!(comment.is_some());
+}
+
+// ── extract_column_comments ─────────────────────────────────────────────
+
+#[test]
+fn test_extract_column_comments_basic() {
+    let ddl = "CREATE TABLE `users` (\n  `id` int NOT NULL COMMENT 'Primary key',\n  `name` varchar(255) COMMENT 'Full name'\n)";
+    let comments = builder::extract_column_comments(ddl);
+    assert_eq!(comments.len(), 2);
+    assert_eq!(comments[0].0, "id");
+    assert_eq!(comments[0].1, "Primary key");
+    assert_eq!(comments[1].0, "name");
+    assert_eq!(comments[1].1, "Full name");
+}
+
+#[test]
+fn test_extract_column_comments_none() {
+    let ddl = "CREATE TABLE `t` (\n  `id` int,\n  `name` varchar(255)\n)";
+    let comments = builder::extract_column_comments(ddl);
+    assert!(comments.is_empty());
+}
+
+// ── generate_text_for_embedding ─────────────────────────────────────────
+
+#[test]
+fn test_generate_text_for_embedding_full() {
+    use sqllumen_lib::schema_index::types::FkEdge;
+    let cols = vec![
+        ("id".to_string(), "int".to_string(), None),
+        (
+            "name".to_string(),
+            "varchar(255)".to_string(),
+            Some("User name".to_string()),
+        ),
+    ];
+    let pk = vec!["id".to_string()];
+    let unique = vec!["idx_name".to_string()];
+    let fks = vec![FkEdge {
+        connection_id: "".to_string(),
+        src_db: "mydb".to_string(),
+        src_tbl: "orders".to_string(),
+        src_col: "user_id".to_string(),
+        dst_db: "mydb".to_string(),
+        dst_tbl: "users".to_string(),
+        dst_col: "id".to_string(),
+        constraint_name: "fk_user".to_string(),
+        on_delete: Some("CASCADE".to_string()),
+        on_update: None,
+    }];
+
+    let text = builder::generate_text_for_embedding(
+        "mydb",
+        "orders",
+        Some("Order records"),
+        &cols,
+        &pk,
+        &unique,
+        &fks,
+        Some(5000),
+    );
+    assert!(text.contains("Table `mydb`.`orders`"));
+    assert!(text.contains("Order records"));
+    assert!(text.contains("id (int)"));
+    assert!(text.contains("name (varchar(255), \"User name\")"));
+    assert!(text.contains("Primary key: id"));
+    assert!(text.contains("Unique indexes: idx_name"));
+    assert!(text.contains("Foreign keys:"));
+    assert!(text.contains("[ON DELETE CASCADE]"));
+    assert!(text.contains("Approximate rows: 5000"));
+}
+
+#[test]
+fn test_generate_text_for_embedding_minimal() {
+    let text = builder::generate_text_for_embedding("db", "t", None, &[], &[], &[], &[], None);
+    assert!(text.contains("Table `db`.`t`"));
+    assert!(text.contains("stores t data"));
+    assert!(!text.contains("Columns:"));
+    assert!(!text.contains("Primary key:"));
+}
+
+#[test]
+fn test_generate_text_for_embedding_fk_restrict_not_shown() {
+    use sqllumen_lib::schema_index::types::FkEdge;
+    let fks = vec![FkEdge {
+        connection_id: "".to_string(),
+        src_db: "db".to_string(),
+        src_tbl: "orders".to_string(),
+        src_col: "user_id".to_string(),
+        dst_db: "db".to_string(),
+        dst_tbl: "users".to_string(),
+        dst_col: "id".to_string(),
+        constraint_name: "fk".to_string(),
+        on_delete: Some("RESTRICT".to_string()),
+        on_update: None,
+    }];
+    let text =
+        builder::generate_text_for_embedding("db", "orders", None, &[], &[], &[], &fks, None);
+    assert!(text.contains("Foreign keys:"));
+    assert!(!text.contains("[ON DELETE RESTRICT]")); // RESTRICT is not shown
+}
+
+// ── parse_columns_from_ddl ──────────────────────────────────────────────
+
+#[test]
+fn test_parse_columns_from_ddl_basic() {
+    let ddl = "CREATE TABLE `users` (\n  `id` int NOT NULL AUTO_INCREMENT,\n  `name` varchar(255) DEFAULT NULL COMMENT 'Full name',\n  `age` int unsigned,\n  PRIMARY KEY (`id`)\n)";
+    let cols = builder::parse_columns_from_ddl(ddl);
+    assert_eq!(cols.len(), 3);
+    assert_eq!(cols[0].0, "id");
+    assert_eq!(cols[0].1, "int");
+    assert!(cols[0].2.is_none());
+    assert_eq!(cols[1].0, "name");
+    assert!(cols[1].1.contains("varchar"));
+    assert_eq!(cols[1].2.as_deref(), Some("Full name"));
+    assert_eq!(cols[2].0, "age");
+    assert!(cols[2].1.contains("int"));
+}
+
+#[test]
+fn test_parse_columns_skips_constraint_lines() {
+    let ddl = "CREATE TABLE `t` (\n  `id` int,\n  PRIMARY KEY (`id`),\n  KEY `idx_1` (`id`),\n  UNIQUE KEY `uq_1` (`id`),\n  INDEX `idx_2` (`id`),\n  CONSTRAINT `fk_1` FOREIGN KEY (`id`) REFERENCES `other` (`id`),\n  FULLTEXT KEY `ft_1` (`id`)\n)";
+    let cols = builder::parse_columns_from_ddl(ddl);
+    assert_eq!(cols.len(), 1);
+    assert_eq!(cols[0].0, "id");
+}
+
+// ── parse_pk_from_ddl ───────────────────────────────────────────────────
+
+#[test]
+fn test_parse_pk_from_ddl_single() {
+    let ddl = "CREATE TABLE `t` (\n  `id` int,\n  PRIMARY KEY (`id`)\n)";
+    let pk = builder::parse_pk_from_ddl(ddl);
+    assert_eq!(pk, vec!["id"]);
+}
+
+#[test]
+fn test_parse_pk_from_ddl_composite() {
+    let ddl = "CREATE TABLE `t` (\n  `a` int,\n  `b` int,\n  PRIMARY KEY (`a`, `b`)\n)";
+    let pk = builder::parse_pk_from_ddl(ddl);
+    assert_eq!(pk, vec!["a", "b"]);
+}
+
+#[test]
+fn test_parse_pk_from_ddl_none() {
+    let ddl = "CREATE TABLE `t` (\n  `id` int\n)";
+    let pk = builder::parse_pk_from_ddl(ddl);
+    assert!(pk.is_empty());
+}
+
+// ── parse_unique_indexes_from_ddl ───────────────────────────────────────
+
+#[test]
+fn test_parse_unique_indexes_single() {
+    let ddl = "CREATE TABLE `t` (\n  `email` varchar(255),\n  UNIQUE KEY `idx_email` (`email`)\n)";
+    let unique = builder::parse_unique_indexes_from_ddl(ddl);
+    assert_eq!(unique, vec!["idx_email"]);
+}
+
+#[test]
+fn test_parse_unique_indexes_multiple() {
+    let ddl = "CREATE TABLE `t` (\n  `a` int,\n  `b` int,\n  UNIQUE KEY `uq_a` (`a`),\n  UNIQUE INDEX `uq_b` (`b`)\n)";
+    let unique = builder::parse_unique_indexes_from_ddl(ddl);
+    assert_eq!(unique.len(), 2);
+    assert!(unique.contains(&"uq_a".to_string()));
+    assert!(unique.contains(&"uq_b".to_string()));
+}
+
+#[test]
+fn test_parse_unique_indexes_none() {
+    let ddl = "CREATE TABLE `t` (\n  `id` int,\n  KEY `idx_id` (`id`)\n)";
+    let unique = builder::parse_unique_indexes_from_ddl(ddl);
+    assert!(unique.is_empty());
+}
+
+// ── split_identifier_segments ──────────────────────────────────────────
+
+#[test]
+fn test_split_identifier_segments_basic() {
+    let segs = builder::split_identifier_segments("user_order_items");
+    assert!(segs.contains(&"user".to_string()));
+    assert!(segs.contains(&"order".to_string()));
+    assert!(segs.contains(&"items".to_string()));
+}
+
+#[test]
+fn test_split_identifier_segments_camel_case() {
+    let segs = builder::split_identifier_segments("userOrderItems");
+    // Should split on camelCase boundaries
+    assert!(!segs.is_empty());
+}
+
+#[test]
+fn test_split_identifier_segments_single_word() {
+    let segs = builder::split_identifier_segments("users");
+    assert!(segs.contains(&"users".to_string()));
+}

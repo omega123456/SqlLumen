@@ -13,6 +13,7 @@ use sqllumen_lib::ai::client::{
     extract_responses_reasoning_text, extract_responses_reasoning_text_for_event,
     is_chat_completions_style_payload,
     is_responses_completion_event, is_responses_failure_event, merge_responses_event_type,
+    normalize_chat_payload_for_provider,
     responses_input_items, should_fallback_from_responses_status,
     should_retry_chat_without_reasoning, should_use_responses_api,
 };
@@ -56,6 +57,7 @@ fn ai_chat_request_serializes_to_camel_case() {
             previous_response_id: Some("resp_prev".to_string()),
             prefer_responses_api: true,
             enable_reasoning: true,
+            api_key: None,
         };
     let json = serde_json::to_value(&req).unwrap();
     assert!(
@@ -427,6 +429,7 @@ mod stream_integration {
             previous_response_id: None,
             prefer_responses_api: true,
             enable_reasoning: true,
+            api_key: None,
         }
     }
 
@@ -465,7 +468,7 @@ mod stream_integration {
         let request = sample_request("stream-done-1", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "stream should complete successfully");
     }
 
@@ -497,7 +500,7 @@ mod stream_integration {
         let request = sample_request("stream-eof-1", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "stream should complete on EOF");
     }
 
@@ -523,7 +526,7 @@ mod stream_integration {
         let request = sample_request("stream-no-trailing-nl", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "should parse residual buffer on EOF");
     }
 
@@ -549,7 +552,7 @@ mod stream_integration {
         let request = sample_request("stream-done-no-nl", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "should handle [DONE] in residual buffer");
     }
 
@@ -569,7 +572,7 @@ mod stream_integration {
         let request = sample_request("stream-500", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("HTTP"), "error should mention HTTP: {err}");
@@ -595,7 +598,7 @@ mod stream_integration {
         let request = sample_request("stream-401", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
@@ -612,7 +615,7 @@ mod stream_integration {
         let request = sample_request("stream-refused", "http://127.0.0.1:1/v1/chat/completions");
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
@@ -634,7 +637,7 @@ mod stream_integration {
         // Cancel immediately — should beat any connection attempt
         token.cancel();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("cancelled"));
     }
@@ -664,7 +667,7 @@ mod stream_integration {
         // The mock response body is small and will be fully delivered,
         // so the stream will reach EOF before we could cancel.
         // This exercises the streaming loop and EOF path.
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         // Should complete with Ok (EOF reached)
         assert!(
             result.is_ok(),
@@ -692,7 +695,7 @@ mod stream_integration {
         let request = sample_request("stream-empty", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "empty body should complete successfully");
     }
 
@@ -717,7 +720,7 @@ mod stream_integration {
         let request = sample_request("stream-comments", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok());
     }
 
@@ -752,7 +755,7 @@ mod stream_integration {
         let request = sample_request("stream-empty-delta", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok());
     }
 
@@ -783,7 +786,7 @@ mod stream_integration {
         let request = sample_request("stream-multi-choice", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok());
     }
 
@@ -816,7 +819,7 @@ mod stream_integration {
         let request = sample_request("stream-event-lines", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok());
     }
 
@@ -829,7 +832,7 @@ mod stream_integration {
         let request = sample_request("stream-error-evt", "http://127.0.0.1:1/v1/chat/completions");
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
         // The error event should have been emitted (we can't capture it in mock,
         // but at least the function doesn't panic).
@@ -846,7 +849,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         token.cancel();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("cancelled"));
     }
@@ -873,7 +876,7 @@ mod stream_integration {
         let request = sample_request("stream-bad-json", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
         assert!(
             result.unwrap_err().contains("Failed to parse SSE JSON"),
@@ -904,7 +907,7 @@ mod stream_integration {
         let request = sample_request("stream-bad-residual", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
         assert!(
             result.unwrap_err().contains("Failed to parse SSE JSON"),
@@ -935,7 +938,7 @@ mod stream_integration {
         let request = sample_request("stream-skip-residual", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "comment in residual should be skipped");
     }
 
@@ -969,7 +972,7 @@ mod stream_integration {
         let request = sample_request("stream-flush", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok());
     }
 
@@ -1001,7 +1004,7 @@ mod stream_integration {
         let request = sample_request("stream-flush-err", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Failed to parse SSE JSON"));
     }
@@ -1033,7 +1036,7 @@ mod stream_integration {
         let request = sample_request("stream-flush-done", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok());
     }
 
@@ -1062,7 +1065,7 @@ mod stream_integration {
         let request = sample_request("stream-residual-err-flush", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
     }
 
@@ -1090,7 +1093,7 @@ mod stream_integration {
         let request = sample_request("stream-residual-done-flush", &endpoint);
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(
             result.is_ok(),
             "should flush buffer and complete on residual [DONE]"
@@ -1129,7 +1132,7 @@ mod stream_integration {
         let request = sample_request("stream-responses", &format!("{}/v1/responses", server.uri()));
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "responses stream should complete successfully");
     }
 
@@ -1162,7 +1165,7 @@ mod stream_integration {
         );
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(
             result.is_ok(),
             "responses stream should complete when final data line has no trailing newline"
@@ -1198,7 +1201,7 @@ mod stream_integration {
         );
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err(), "invalid residual JSON should return an error");
         assert!(
             result
@@ -1237,7 +1240,7 @@ mod stream_integration {
         );
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err(), "EOF before response.completed should error");
         assert!(
             result
@@ -1286,7 +1289,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-fallback-404", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "missing responses endpoint should fall back to chat completions");
     }
 
@@ -1362,9 +1365,10 @@ mod stream_integration {
             previous_response_id: Some("resp_prev".to_string()),
             prefer_responses_api: true,
             enable_reasoning: true,
+            api_key: None,
         };
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(
             result.is_ok(),
             "unsupported response chaining should fall back to chat completions"
@@ -1414,7 +1418,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-fallback-shape", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(
             result.is_ok(),
             "chat-completions-shaped responses stream should fall back to chat completions"
@@ -1447,7 +1451,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-failed", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
         assert_eq!(
             result.expect_err("structured response failure should surface as an error"),
@@ -1487,7 +1491,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-event-name", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "event-name-only responses streams should succeed");
     }
 
@@ -1520,7 +1524,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-done-text", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "done-text responses streams should succeed");
     }
 
@@ -1553,7 +1557,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-done-once", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "done text should not be duplicated by completed payloads");
     }
 
@@ -1617,9 +1621,10 @@ mod stream_integration {
             previous_response_id: Some("resp_prev".to_string()),
             prefer_responses_api: true,
             enable_reasoning: true,
+            api_key: None,
         };
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok());
     }
 
@@ -1686,9 +1691,10 @@ mod stream_integration {
             previous_response_id: None,
             prefer_responses_api: true,
             enable_reasoning: true,
+            api_key: None,
         };
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok());
     }
 
@@ -1756,9 +1762,10 @@ mod stream_integration {
             previous_response_id: Some("resp_prev".to_string()),
             prefer_responses_api: true,
             enable_reasoning: true,
+            api_key: None,
         };
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok());
     }
 
@@ -1777,7 +1784,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-bad-request", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_err());
         let error = result.expect_err("generic 400 should be surfaced directly");
         assert!(error.contains("400"));
@@ -1819,7 +1826,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-fallback-role", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "role validation failures should fall back to chat completions");
     }
 
@@ -1856,7 +1863,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-fallback-input", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "unknown input field failures should fall back to chat completions");
     }
 
@@ -1893,7 +1900,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-fallback-reasoning", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "reasoning validation failures should fall back to chat completions");
     }
 
@@ -1939,7 +1946,7 @@ mod stream_integration {
         request.enable_reasoning = true;
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "chat completions should retry without reasoning_effort");
     }
 
@@ -1972,7 +1979,7 @@ mod stream_integration {
         request.enable_reasoning = true;
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "generic content-part text should not be treated as reasoning");
     }
 
@@ -2009,7 +2016,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-fallback-500", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "server errors should fall back to chat completions");
     }
 
@@ -2042,7 +2049,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-output-array", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "nested response.output text should be accepted");
     }
 
@@ -2075,7 +2082,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-top-output-array", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "top-level output text should be accepted");
     }
 
@@ -2105,7 +2112,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-message-failure", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert_eq!(
             result.expect_err("top-level message failures should surface as errors"),
             "request failed"
@@ -2141,7 +2148,7 @@ mod stream_integration {
         request.prefer_responses_api = false;
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "stream with reasoning_content should complete successfully");
     }
 
@@ -2174,7 +2181,7 @@ mod stream_integration {
         request.prefer_responses_api = false;
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "stream with thinking field should complete successfully");
     }
 
@@ -2207,7 +2214,7 @@ mod stream_integration {
         request.prefer_responses_api = false;
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "stream with reasoning disabled should complete without thinking chunks");
     }
 
@@ -2245,7 +2252,7 @@ mod stream_integration {
         request.enable_reasoning = true;
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "responses stream with reasoning summary should complete successfully");
     }
 
@@ -2283,7 +2290,7 @@ mod stream_integration {
         request.enable_reasoning = true;
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "responses stream with reasoning text should complete successfully");
     }
 
@@ -2305,7 +2312,7 @@ mod stream_integration {
                 "enable_thinking": false,
                 "chat_template_kwargs": { "enable_thinking": false },
                 "messages": [
-                    { "role": "user", "content": "Hello\n\n/no_think" }
+                    { "role": "user", "content": "Hello\n[No chain-of-thought. Answer directly.]\n\n/no_think" }
                 ]
             })))
             .respond_with(
@@ -2329,7 +2336,7 @@ mod stream_integration {
         request.enable_reasoning = false;
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "reasoning disabled should use chat completions without thinking");
     }
 
@@ -2351,7 +2358,7 @@ mod stream_integration {
                 "enable_thinking": false,
                 "chat_template_kwargs": { "enable_thinking": false },
                 "messages": [
-                    { "role": "user", "content": "Hello\n\n/no_think" }
+                    { "role": "user", "content": "Hello\n[No chain-of-thought. Answer directly.]\n\n/no_think" }
                 ]
             })))
             .respond_with(
@@ -2375,7 +2382,7 @@ mod stream_integration {
         request.enable_reasoning = false;
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "reasoning disabled should avoid responses and use chat completions directly");
     }
 
@@ -2397,7 +2404,7 @@ mod stream_integration {
                 "enable_thinking": false,
                 "chat_template_kwargs": { "enable_thinking": false },
                 "messages": [
-                    { "role": "user", "content": "Hello\n\n/no_think" }
+                    { "role": "user", "content": "Hello\n[No chain-of-thought. Answer directly.]\n\n/no_think" }
                 ]
             })))
             .respond_with(
@@ -2416,7 +2423,7 @@ mod stream_integration {
         request.enable_reasoning = false;
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(
             result.is_err(),
             "reasoning disabled should fail if the provider cannot honor reasoning_effort none"
@@ -2464,7 +2471,7 @@ mod stream_integration {
         request.prefer_responses_api = false;
         let token = CancellationToken::new();
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert!(result.is_ok(), "reasoning enabled should not append /no_think");
     }
 
@@ -2494,7 +2501,7 @@ mod stream_integration {
         let token = CancellationToken::new();
         let request = sample_request("stream-responses-string-error", &format!("{}/v1", server.uri()));
 
-        let result = stream_chat_completion(app.handle(), request, token).await;
+        let result = stream_chat_completion(app.handle(), request, token, None).await;
         assert_eq!(
             result.expect_err("string error failures should surface as errors"),
             "request failed"
@@ -2584,6 +2591,7 @@ fn ai_chat_request_enable_reasoning_serializes() {
         previous_response_id: None,
         prefer_responses_api: true,
         enable_reasoning: false,
+        api_key: None,
     };
     let json = serde_json::to_value(&req).unwrap();
     assert_eq!(json["enableReasoning"], false);
@@ -2726,6 +2734,7 @@ fn should_use_responses_api_respects_request_flag() {
         previous_response_id: None,
         prefer_responses_api: true,
         enable_reasoning: true,
+        api_key: None,
     };
     assert!(should_use_responses_api(&req));
     req.prefer_responses_api = false;
@@ -3068,6 +3077,7 @@ fn responses_input_items_use_incremental_history_for_follow_ups() {
         previous_response_id: Some("resp_prev".to_string()),
         prefer_responses_api: true,
         enable_reasoning: true,
+        api_key: None,
     };
 
     let items = responses_input_items(&request);
@@ -3145,4 +3155,1847 @@ fn apply_reasoning_off_compatibility_ignores_missing_or_non_string_messages() {
     body3.insert("messages".to_string(), serde_json::json!([]));
     apply_reasoning_off_compatibility(&mut body3);
     assert!(body3["messages"].as_array().unwrap().is_empty());
+}
+
+// ── Compatibility transport routing no-regression tests (Phase 2) ────────
+
+#[cfg(test)]
+mod compat_routing_tests {
+    use sqllumen_lib::ai::client::{
+        determine_compat_transport, stream_chat_completion, CompatDecision,
+        REASONING_OFF_INSTRUCTION,
+    };
+    use sqllumen_lib::ai::local_compat::{CapabilityCache, CapabilityKind, render_raw_transcript};
+    use sqllumen_lib::ai::types::{AiChatRequest, IpcMessage};
+    use std::sync::Arc;
+    use tokio_util::sync::CancellationToken;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        mock_builder()
+            .build(mock_context(noop_assets()))
+            .expect("should build mock app")
+    }
+
+    fn local_request(stream_id: &str, endpoint: &str) -> AiChatRequest {
+        AiChatRequest {
+            messages: vec![IpcMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            }],
+            endpoint: endpoint.to_string(),
+            model: "test-model".to_string(),
+            temperature: 0.7,
+            max_tokens: 100,
+            stream_id: stream_id.to_string(),
+            previous_response_id: None,
+            prefer_responses_api: false,
+            enable_reasoning: false,
+            api_key: None,
+        }
+    }
+
+    /// Reasoning enabled + local endpoint → does NOT route through completions.
+    #[tokio::test]
+    async fn reasoning_enabled_local_does_not_use_compat() {
+        let cache = CapabilityCache::new();
+        let request = AiChatRequest {
+            messages: vec![IpcMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            }],
+            endpoint: "http://localhost:11434/v1".to_string(),
+            model: "test-model".to_string(),
+            temperature: 0.7,
+            max_tokens: 100,
+            stream_id: "compat-reasoning-enabled".to_string(),
+            previous_response_id: None,
+            prefer_responses_api: false,
+            enable_reasoning: true,
+            api_key: None,
+        };
+
+        match determine_compat_transport(&request, &cache).await {
+            CompatDecision::UseChatCompletions => {} // expected
+            other => panic!("Expected UseChatCompletions, got {:?}", other),
+        }
+    }
+
+    /// Responses API (reasoning enabled) → does NOT route through completions.
+    #[tokio::test]
+    async fn responses_api_does_not_use_compat() {
+        let cache = CapabilityCache::new();
+        let request = AiChatRequest {
+            messages: vec![IpcMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            }],
+            endpoint: "http://localhost:11434/v1".to_string(),
+            model: "test-model".to_string(),
+            temperature: 0.7,
+            max_tokens: 100,
+            stream_id: "compat-responses-api".to_string(),
+            previous_response_id: None,
+            prefer_responses_api: true,
+            enable_reasoning: true,
+            api_key: None,
+        };
+
+        match determine_compat_transport(&request, &cache).await {
+            CompatDecision::UseChatCompletions => {} // expected
+            other => panic!("Expected UseChatCompletions, got {:?}", other),
+        }
+    }
+
+    /// Public endpoint (reasoning disabled) → does NOT route through completions.
+    #[tokio::test]
+    async fn public_endpoint_does_not_use_compat() {
+        let cache = CapabilityCache::new();
+        let request = AiChatRequest {
+            messages: vec![IpcMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            }],
+            endpoint: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4".to_string(),
+            temperature: 0.7,
+            max_tokens: 100,
+            stream_id: "compat-public".to_string(),
+            previous_response_id: None,
+            prefer_responses_api: false,
+            enable_reasoning: false,
+            api_key: None,
+        };
+
+        match determine_compat_transport(&request, &cache).await {
+            CompatDecision::UseChatCompletions => {} // expected
+            other => panic!("Expected UseChatCompletions, got {:?}", other),
+        }
+    }
+
+    /// Local endpoint + reasoning disabled + completions capable → routes through completions.
+    #[tokio::test]
+    async fn local_reasoning_disabled_capable_routes_through_completions() {
+        let server = MockServer::start().await;
+
+        // Non-streaming probe endpoint
+        Mock::given(method("POST"))
+            .and(path("/v1/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "id": "cmpl-probe",
+                    "object": "text_completion",
+                    "choices": [{ "text": "ok", "index": 0, "finish_reason": "stop" }]
+                })),
+            )
+            .mount(&server)
+            .await;
+
+        let cache = CapabilityCache::new();
+        let endpoint = format!("{}/v1", server.uri());
+        let request = local_request("compat-capable", &endpoint);
+
+        match determine_compat_transport(&request, &cache).await {
+            CompatDecision::UseRawCompletions { raw_prompt } => {
+                assert!(
+                    raw_prompt.contains("### User\nHello"),
+                    "raw prompt should contain user message: {raw_prompt}"
+                );
+            }
+            other => panic!("Expected UseRawCompletions, got {:?}", other),
+        }
+
+        // Verify positive cache
+        let cached = cache
+            .get(&endpoint, "test-model", CapabilityKind::NonStreamingCompletions)
+            .await;
+        assert_eq!(cached, Some(true));
+    }
+
+    /// Local endpoint + reasoning disabled + completions NOT capable → actionable error.
+    #[tokio::test]
+    async fn local_reasoning_disabled_not_capable_returns_error() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/completions"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+            .mount(&server)
+            .await;
+
+        let cache = CapabilityCache::new();
+        let endpoint = format!("{}/v1", server.uri());
+        let request = local_request("compat-not-capable", &endpoint);
+
+        match determine_compat_transport(&request, &cache).await {
+            CompatDecision::UseChatCompletionsFallback { warning } => {
+                assert!(warning.contains("127.0.0.1"), "error should contain redacted host");
+                assert!(warning.contains("test-model"), "error should contain model");
+                assert!(warning.contains("completions_not_supported"), "error should contain reason");
+            }
+            other => panic!("Expected UseChatCompletionsFallback, got {:?}", other),
+        }
+    }
+
+    /// Full end-to-end: local + reasoning disabled + capable → streams via completions.
+    #[tokio::test]
+    async fn full_compat_stream_via_completions() {
+        let server = MockServer::start().await;
+
+        // Probe endpoint
+        Mock::given(method("POST"))
+            .and(path("/v1/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"text\":\"Hello\",\"index\":0,\"finish_reason\":null}]}\n",
+                            "\n",
+                            "data: {\"choices\":[{\"text\":\" world\",\"index\":0,\"finish_reason\":\"stop\"}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let cache = Arc::new(CapabilityCache::new());
+        let endpoint = format!("{}/v1", server.uri());
+
+        // Pre-seed positive capability so the probe isn't needed
+        cache
+            .set(&endpoint, "test-model", CapabilityKind::NonStreamingCompletions, true)
+            .await;
+
+        let request = local_request("compat-full-stream", &endpoint);
+        let token = CancellationToken::new();
+
+        let result =
+            stream_chat_completion(app.handle(), request, token, Some(cache)).await;
+        assert!(result.is_ok(), "compat streaming should succeed");
+    }
+
+    /// Full end-to-end: local + reasoning disabled + NOT capable → falls back to chat completions.
+    #[tokio::test]
+    async fn full_compat_not_capable_falls_back_to_chat_completions() {
+        let server = MockServer::start().await;
+
+        // completions probe returns 404
+        Mock::given(method("POST"))
+            .and(path("/v1/completions"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+            .mount(&server)
+            .await;
+
+        // chat completions should be called as fallback
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("data: [DONE]\n\n"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let cache = Arc::new(CapabilityCache::new());
+        let endpoint = format!("{}/v1", server.uri());
+        let request = local_request("compat-no-fallback", &endpoint);
+        let token = CancellationToken::new();
+
+        let result =
+            stream_chat_completion(app.handle(), request, token, Some(cache)).await;
+        assert!(result.is_ok(), "should fall back to chat completions silently, got: {:?}", result.err());
+    }
+
+    /// Prefix stability: second turn's raw prompt starts with first turn's prompt exactly.
+    #[test]
+    fn raw_transcript_prefix_stability() {
+        let messages_turn1 = vec![
+            IpcMessage {
+                role: "system".to_string(),
+                content: "You are helpful".to_string(),
+            },
+            IpcMessage {
+                role: "user".to_string(),
+                content: "What is SQL?".to_string(),
+            },
+        ];
+        let prompt1 = render_raw_transcript(&messages_turn1, REASONING_OFF_INSTRUCTION);
+
+        let messages_turn2 = vec![
+            IpcMessage {
+                role: "system".to_string(),
+                content: "You are helpful".to_string(),
+            },
+            IpcMessage {
+                role: "user".to_string(),
+                content: "What is SQL?".to_string(),
+            },
+            IpcMessage {
+                role: "assistant".to_string(),
+                content: "SQL is a query language.".to_string(),
+            },
+            IpcMessage {
+                role: "user".to_string(),
+                content: "Tell me more".to_string(),
+            },
+        ];
+        let prompt2 = render_raw_transcript(&messages_turn2, REASONING_OFF_INSTRUCTION);
+
+        // prompt2 must start with the entirety of prompt1 minus the trailing generation prefix
+        let prompt1_without_gen = prompt1.trim_end_matches("### Assistant\n");
+        assert!(
+            prompt2.starts_with(prompt1_without_gen.trim_end()),
+            "second prompt must build on first prompt prefix.\nprompt1 (no gen):\n{prompt1_without_gen}\nprompt2:\n{prompt2}"
+        );
+    }
+
+    /// Cancellation still works with compat cache provided.
+    #[tokio::test]
+    async fn cancellation_works_with_cache() {
+        let app = mock_app();
+        let cache = Arc::new(CapabilityCache::new());
+        let request = AiChatRequest {
+            messages: vec![IpcMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            }],
+            endpoint: "http://127.0.0.1:1/v1".to_string(),
+            model: "test".to_string(),
+            temperature: 0.7,
+            max_tokens: 100,
+            stream_id: "compat-cancel".to_string(),
+            previous_response_id: None,
+            prefer_responses_api: true,
+            enable_reasoning: true,
+            api_key: None,
+        };
+        let token = CancellationToken::new();
+        token.cancel();
+
+        let result =
+            stream_chat_completion(app.handle(), request, token, Some(cache)).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("cancelled"));
+    }
+}
+
+// ── Chat payload stabilization tests (Phase 4) ──────────────────────────
+
+#[cfg(test)]
+mod chat_stabilization_tests {
+    use sqllumen_lib::ai::client::{
+        normalize_chat_payload_for_provider, REASONING_OFF_DIRECTIVE,
+    };
+    use sqllumen_lib::ai::local_compat::sanitize_thinking_content;
+    use sqllumen_lib::ai::types::ApiMessage;
+
+    fn user(content: &str) -> ApiMessage {
+        ApiMessage { role: "user".to_string(), content: content.to_string() }
+    }
+
+    fn assistant(content: &str) -> ApiMessage {
+        ApiMessage { role: "assistant".to_string(), content: content.to_string() }
+    }
+
+    fn system(content: &str) -> ApiMessage {
+        ApiMessage { role: "system".to_string(), content: content.to_string() }
+    }
+
+    #[test]
+    fn second_turn_replays_directive_consistently() {
+        let messages = vec![
+            system("You are helpful"),
+            user("What is SQL?"),
+            assistant("SQL is a query language."),
+            user("Tell me more"),
+        ];
+
+        let normalized = normalize_chat_payload_for_provider(&messages, false);
+
+        // All user messages should contain BOTH directives
+        assert!(
+            normalized[1].content.contains(REASONING_OFF_DIRECTIVE),
+            "turn 1 user should have REASONING_OFF_DIRECTIVE: {}",
+            normalized[1].content
+        );
+        assert!(
+            normalized[1].content.contains("/no_think"),
+            "turn 1 user should have /no_think: {}",
+            normalized[1].content
+        );
+        assert!(
+            normalized[3].content.contains(REASONING_OFF_DIRECTIVE),
+            "turn 2 user should have REASONING_OFF_DIRECTIVE: {}",
+            normalized[3].content
+        );
+        assert!(
+            normalized[3].content.contains("/no_think"),
+            "turn 2 user should have /no_think: {}",
+            normalized[3].content
+        );
+
+        // System and assistant messages should NOT be modified
+        assert_eq!(normalized[0].content, "You are helpful");
+        assert_eq!(normalized[2].content, "SQL is a query language.");
+    }
+
+    #[test]
+    fn two_turn_last_historical_message_matches_original() {
+        // Turn 1: single user message
+        let turn1_messages = vec![user("What is SQL?")];
+        let turn1_normalized = normalize_chat_payload_for_provider(&turn1_messages, false);
+
+        // Turn 2: turn 1's user msg + assistant + new user msg
+        let turn2_messages = vec![
+            user("What is SQL?"),
+            assistant("SQL is a query language."),
+            user("Tell me more"),
+        ];
+        let turn2_normalized = normalize_chat_payload_for_provider(&turn2_messages, false);
+
+        // The first user message from turn 1 and turn 2 must be byte-identical
+        assert_eq!(
+            turn1_normalized[0].content, turn2_normalized[0].content,
+            "historical user message must be byte-identical across turns.\n\
+             Turn 1: {}\nTurn 2: {}",
+            turn1_normalized[0].content, turn2_normalized[0].content
+        );
+    }
+
+    #[test]
+    fn reasoning_enabled_no_directives_added() {
+        let messages = vec![
+            system("You are helpful"),
+            user("What is SQL?"),
+            assistant("SQL is a query language."),
+            user("Tell me more"),
+        ];
+
+        let normalized = normalize_chat_payload_for_provider(&messages, true);
+
+        // No messages should be modified
+        assert_eq!(normalized[0].content, "You are helpful");
+        assert_eq!(normalized[1].content, "What is SQL?");
+        assert_eq!(normalized[2].content, "SQL is a query language.");
+        assert_eq!(normalized[3].content, "Tell me more");
+    }
+
+    #[test]
+    fn duplicate_directive_not_accumulated() {
+        let already_tagged = format!("What is SQL?{}", REASONING_OFF_DIRECTIVE);
+        let messages = vec![user(&already_tagged)];
+
+        // First normalization
+        let first = normalize_chat_payload_for_provider(&messages, false);
+        // Second normalization (simulating re-normalization)
+        let second = normalize_chat_payload_for_provider(&first, false);
+
+        // Directive should appear exactly once
+        let count = second[0].content.matches(REASONING_OFF_DIRECTIVE).count();
+        assert_eq!(count, 1, "directive should appear exactly once, got: {}", second[0].content);
+    }
+
+    #[test]
+    fn explicit_thinking_wrappers_sanitized_from_stream() {
+        let input = "<think>I reasoned about this</think>Answer here";
+        let output = sanitize_thinking_content(input);
+        assert_eq!(output, "Answer here");
+    }
+
+    #[test]
+    fn provider_prefix_stability_with_history() {
+        // Simulate turn 1: just one user message
+        let turn1_messages = vec![
+            system("You are helpful"),
+            user("What is SQL?"),
+        ];
+        let turn1_normalized = normalize_chat_payload_for_provider(&turn1_messages, false);
+
+        // Simulate turn 2: history includes turn 1 + assistant response + new user message
+        let turn2_messages = vec![
+            system("You are helpful"),
+            user("What is SQL?"),
+            assistant("SQL is a query language."),
+            user("Tell me more"),
+        ];
+        let turn2_normalized = normalize_chat_payload_for_provider(&turn2_messages, false);
+
+        // Turn 1's user message must appear identically in turn 2's payload
+        assert_eq!(
+            turn1_normalized[1].content, turn2_normalized[1].content,
+            "historical user message must be identical across turns"
+        );
+
+        // System message also identical
+        assert_eq!(turn1_normalized[0].content, turn2_normalized[0].content);
+    }
+}
+
+// ── format_compat_error ──────────────────────────────────────────────────
+
+#[test]
+fn format_compat_error_includes_endpoint_model_reason() {
+    use sqllumen_lib::ai::client::format_compat_error;
+    let msg = format_compat_error("http://localhost:1234", "llama3", "completions_not_supported");
+    assert!(msg.contains("localhost:1234"), "redacted endpoint should preserve host:port");
+    assert!(msg.contains("llama3"));
+    assert!(msg.contains("completions_not_supported"));
+    assert!(msg.contains("Compatibility error"));
+}
+
+// ── normalise_to_chat_completions_url ────────────────────────────────────
+
+#[test]
+fn normalise_to_chat_completions_url_appends_path() {
+    use sqllumen_lib::ai::client::normalise_to_chat_completions_url;
+    let url = normalise_to_chat_completions_url("http://localhost:1234");
+    assert!(url.contains("chat/completions"));
+}
+
+#[test]
+fn normalise_to_chat_completions_url_strips_existing_v1() {
+    use sqllumen_lib::ai::client::normalise_to_chat_completions_url;
+    let url = normalise_to_chat_completions_url("http://localhost:1234/v1");
+    assert!(url.contains("chat/completions"));
+    // Should not have double v1
+    assert!(!url.contains("v1/v1"));
+}
+
+// ── apply_no_think_to_last_user_message ──────────────────────────────────
+
+#[test]
+fn apply_no_think_to_last_user_message_appends_directive() {
+    use sqllumen_lib::ai::client::apply_no_think_to_last_user_message;
+    let mut messages = vec![
+        ApiMessage { role: "system".to_string(), content: "You are helpful.".to_string() },
+        ApiMessage { role: "user".to_string(), content: "Hello".to_string() },
+        ApiMessage { role: "assistant".to_string(), content: "Hi there".to_string() },
+        ApiMessage { role: "user".to_string(), content: "How are you?".to_string() },
+    ];
+    apply_no_think_to_last_user_message(&mut messages);
+    assert!(messages[3].content.contains("/no_think"));
+    // First user message should NOT be modified
+    assert!(!messages[1].content.contains("/no_think"));
+}
+
+#[test]
+fn apply_no_think_to_last_user_message_no_user_messages() {
+    use sqllumen_lib::ai::client::apply_no_think_to_last_user_message;
+    let mut messages = vec![
+        ApiMessage { role: "system".to_string(), content: "system".to_string() },
+    ];
+    apply_no_think_to_last_user_message(&mut messages);
+    assert_eq!(messages[0].content, "system");
+}
+
+// ── apply_no_think_to_json_messages ──────────────────────────────────────
+
+#[test]
+fn apply_no_think_to_json_messages_modifies_last_user() {
+    use sqllumen_lib::ai::client::apply_no_think_to_json_messages;
+    let mut body = serde_json::json!({
+        "messages": [
+            { "role": "system", "content": "sys" },
+            { "role": "user", "content": "hello" },
+            { "role": "assistant", "content": "hi" },
+            { "role": "user", "content": "goodbye" }
+        ]
+    }).as_object().cloned().unwrap();
+    apply_no_think_to_json_messages(&mut body);
+    let msgs = body["messages"].as_array().unwrap();
+    assert!(msgs[3]["content"].as_str().unwrap().contains("/no_think"));
+    assert!(!msgs[1]["content"].as_str().unwrap().contains("/no_think"));
+}
+
+#[test]
+fn apply_no_think_to_json_messages_no_messages_key() {
+    use sqllumen_lib::ai::client::apply_no_think_to_json_messages;
+    let mut body = serde_json::json!({ "model": "test" }).as_object().cloned().unwrap();
+    apply_no_think_to_json_messages(&mut body);
+    // Should be a no-op
+    assert!(body.get("messages").is_none());
+}
+
+#[test]
+fn apply_no_think_to_json_messages_non_array_messages() {
+    use sqllumen_lib::ai::client::apply_no_think_to_json_messages;
+    let mut body = serde_json::json!({ "messages": "not an array" }).as_object().cloned().unwrap();
+    apply_no_think_to_json_messages(&mut body);
+    assert_eq!(body["messages"], "not an array");
+}
+
+// ── format_compat_error redacts endpoint (Fix 5) ──────────────────────────
+
+#[test]
+fn format_compat_error_redacts_endpoint() {
+    use sqllumen_lib::ai::client::format_compat_error;
+    let err = format_compat_error("http://localhost:11434/v1/chat/completions?key=secret", "model", "reason");
+    assert!(!err.contains("secret"), "endpoint secrets must be redacted");
+    assert!(err.contains("localhost:11434"), "host should be preserved");
+    assert!(err.contains("model"), "model should appear");
+    assert!(err.contains("reason"), "reason should appear");
+}
+
+// ── determine_compat_transport with streaming-negative (Fix 4) ────────────
+
+#[tokio::test]
+async fn compat_transport_falls_back_when_streaming_cached_negative() {
+    use sqllumen_lib::ai::client::determine_compat_transport;
+    use sqllumen_lib::ai::client::CompatDecision;
+    use sqllumen_lib::ai::local_compat::{CapabilityCache, CapabilityKind};
+    use sqllumen_lib::ai::types::{AiChatRequest, IpcMessage};
+
+    let cache = CapabilityCache::new();
+    // Non-streaming positive, streaming negative
+    cache.set("http://localhost:11434", "m", CapabilityKind::NonStreamingCompletions, true).await;
+    cache.set("http://localhost:11434", "m", CapabilityKind::StreamingCompletions, false).await;
+
+    let request = AiChatRequest {
+        messages: vec![IpcMessage { role: "user".to_string(), content: "hi".to_string() }],
+        endpoint: "http://localhost:11434/v1".to_string(),
+        model: "m".to_string(),
+        temperature: 0.7,
+        max_tokens: 100,
+        stream_id: "test".to_string(),
+        previous_response_id: None,
+        prefer_responses_api: false,
+        enable_reasoning: false,
+        api_key: None,
+    };
+
+    let decision = determine_compat_transport(&request, &cache).await;
+    assert!(matches!(decision, CompatDecision::UseChatCompletionsFallback { .. }),
+        "should return compat fallback when streaming is cached-negative, got: {:?}", decision);
+}
+
+#[tokio::test]
+async fn compat_fallback_when_probe_fails() {
+    use sqllumen_lib::ai::client::{determine_compat_transport, CompatDecision};
+    use sqllumen_lib::ai::local_compat::{CapabilityCache, CapabilityKind};
+    use sqllumen_lib::ai::types::{AiChatRequest, IpcMessage};
+
+    let cache = CapabilityCache::new();
+    // Pre-seed negative capability (probe failed)
+    cache
+        .set(
+            "http://localhost:11434",
+            "qwen2",
+            CapabilityKind::NonStreamingCompletions,
+            false,
+        )
+        .await;
+
+    let request = AiChatRequest {
+        messages: vec![IpcMessage {
+            role: "user".to_string(),
+            content: "hi".to_string(),
+        }],
+        endpoint: "http://localhost:11434/v1".to_string(),
+        model: "qwen2".to_string(),
+        temperature: 0.7,
+        max_tokens: 100,
+        stream_id: "compat-fallback-test".to_string(),
+        previous_response_id: None,
+        prefer_responses_api: false,
+        enable_reasoning: false,
+        api_key: None,
+    };
+
+    let decision = determine_compat_transport(&request, &cache).await;
+    match decision {
+        CompatDecision::UseChatCompletionsFallback { warning } => {
+            assert!(
+                warning.contains("completions_not_supported"),
+                "warning should contain reason: {warning}"
+            );
+        }
+        other => panic!(
+            "Expected UseChatCompletionsFallback, got {:?}",
+            other
+        ),
+    }
+}
+
+// ── is_eligible with using_responses_chaining (Fix 7) ─────────────────────
+
+#[test]
+fn compat_eligible_when_prefer_responses_but_no_chaining() {
+    use sqllumen_lib::ai::local_compat::LocalCompatPolicy;
+    // prefer_responses_api=true but no previous_response_id → not chaining → eligible
+    assert!(LocalCompatPolicy::is_eligible("http://localhost:11434/v1", false, false));
+}
+
+#[test]
+fn compat_not_eligible_when_using_responses_chaining() {
+    use sqllumen_lib::ai::local_compat::LocalCompatPolicy;
+    assert!(!LocalCompatPolicy::is_eligible("http://localhost:11434/v1", false, true));
+}
+
+// ── should_fallback_from_responses_status additional coverage ─────────────
+
+#[test]
+fn responses_fallback_on_not_found() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::NOT_FOUND,
+        "anything"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_method_not_allowed() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::METHOD_NOT_ALLOWED,
+        ""
+    ));
+}
+
+#[test]
+fn responses_fallback_on_not_implemented() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::NOT_IMPLEMENTED,
+        ""
+    ));
+}
+
+#[test]
+fn responses_no_fallback_on_internal_server_error() {
+    assert!(!should_fallback_from_responses_status(
+        reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        "something broke"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_previous_response_id() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "unknown field previous_response_id"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_unknown_parameter() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "Unknown parameter: stream"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_invalid_input_type() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "invalid type for 'input'"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_invalid_role_value() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "invalid value for 'role'"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_unprocessable_entity_with_developer() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        "unknown role: developer"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_instructions() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "unknown field: instructions"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_messages_role() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "messages[0].role is invalid"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_not_supported() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "responses api not supported"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_unrecognized() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "unrecognized endpoint"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_does_not_exist() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "model does not exist"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_no_such_endpoint() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "no such endpoint"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_unknown_field_input() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        r#"unknown field `input`"#
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_unknown_field_input_quoted() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        r#"unknown field "input""#
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_unknown_field_stream() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        r#"unknown field `stream`"#
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_unknown_field_max_output_tokens() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        r#"unknown field `max_output_tokens`"#
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_unknown_field_reasoning() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        r#"unknown field `reasoning`"#
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_unknown_field_summary() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        r#"unknown field `summary`"#
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_with_unknown_field_effort() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        r#"unknown field `effort`"#
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_reasoning_effort_field() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "reasoning.effort is not valid"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_reasoning_summary_field() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "reasoning.summary is not supported"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_invalid_reasoning_value() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "invalid value for 'reasoning'"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_invalid_reasoning_effort_value() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "invalid value for 'reasoning.effort'"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_bad_request_invalid_reasoning_summary_value() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "invalid value for 'reasoning.summary'"
+    ));
+}
+
+#[test]
+fn responses_fallback_on_unsupported_media_type_with_invalid_union() {
+    assert!(should_fallback_from_responses_status(
+        reqwest::StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        "invalid_union"
+    ));
+}
+
+#[test]
+fn responses_no_fallback_on_bad_request_generic_error() {
+    assert!(!should_fallback_from_responses_status(
+        reqwest::StatusCode::BAD_REQUEST,
+        "something else entirely"
+    ));
+}
+
+// ── should_retry_chat_without_reasoning additional coverage ───────────────
+
+#[test]
+fn retry_without_reasoning_on_unknown_field_reasoning_effort_backtick() {
+    assert!(should_retry_chat_without_reasoning(
+        reqwest::StatusCode::BAD_REQUEST,
+        "unknown field `reasoning_effort`"
+    ));
+}
+
+#[test]
+fn retry_without_reasoning_on_unknown_field_reasoning_effort_quoted() {
+    assert!(should_retry_chat_without_reasoning(
+        reqwest::StatusCode::BAD_REQUEST,
+        r#"unknown field "reasoning_effort""#
+    ));
+}
+
+#[test]
+fn retry_without_reasoning_on_unsupported_parameter() {
+    assert!(should_retry_chat_without_reasoning(
+        reqwest::StatusCode::BAD_REQUEST,
+        "unsupported parameter: reasoning_effort"
+    ));
+}
+
+#[test]
+fn retry_without_reasoning_on_invalid_value() {
+    assert!(should_retry_chat_without_reasoning(
+        reqwest::StatusCode::BAD_REQUEST,
+        "invalid value for 'reasoning_effort'"
+    ));
+}
+
+#[test]
+fn retry_without_reasoning_on_unknown_parameter_quoted() {
+    assert!(should_retry_chat_without_reasoning(
+        reqwest::StatusCode::BAD_REQUEST,
+        "unknown parameter 'reasoning_effort'"
+    ));
+}
+
+#[test]
+fn retry_without_reasoning_on_reasoning_effort_generic() {
+    assert!(should_retry_chat_without_reasoning(
+        reqwest::StatusCode::BAD_REQUEST,
+        "Reasoning effort is not supported"
+    ));
+}
+
+#[test]
+fn retry_without_reasoning_on_unprocessable_entity() {
+    assert!(should_retry_chat_without_reasoning(
+        reqwest::StatusCode::UNPROCESSABLE_ENTITY,
+        "reasoning_effort not supported"
+    ));
+}
+
+#[test]
+fn retry_without_reasoning_not_on_server_error() {
+    assert!(!should_retry_chat_without_reasoning(
+        reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+        "reasoning_effort"
+    ));
+}
+
+#[test]
+fn retry_without_reasoning_not_on_unrelated_bad_request() {
+    assert!(!should_retry_chat_without_reasoning(
+        reqwest::StatusCode::BAD_REQUEST,
+        "temperature must be between 0 and 1"
+    ));
+}
+
+// ── normalize_chat_payload_for_provider additional coverage ───────────────
+
+#[test]
+fn normalize_payload_reasoning_enabled_returns_unchanged() {
+    let messages = vec![
+        ApiMessage { role: "user".to_string(), content: "hello".to_string() },
+        ApiMessage { role: "assistant".to_string(), content: "hi".to_string() },
+    ];
+    let result = normalize_chat_payload_for_provider(&messages, true);
+    assert_eq!(result[0].content, "hello");
+    assert_eq!(result[1].content, "hi");
+}
+
+#[test]
+fn normalize_payload_reasoning_disabled_appends_directives_to_user_messages() {
+    let messages = vec![
+        ApiMessage { role: "system".to_string(), content: "sys".to_string() },
+        ApiMessage { role: "user".to_string(), content: "question".to_string() },
+        ApiMessage { role: "assistant".to_string(), content: "answer".to_string() },
+        ApiMessage { role: "user".to_string(), content: "follow-up".to_string() },
+    ];
+    let result = normalize_chat_payload_for_provider(&messages, false);
+    // System and assistant messages unchanged
+    assert_eq!(result[0].content, "sys");
+    assert_eq!(result[2].content, "answer");
+    // User messages get directives
+    assert!(result[1].content.contains("/no_think"));
+    assert!(result[3].content.contains("/no_think"));
+    assert!(result[1].content.contains("[No chain-of-thought"));
+    assert!(result[3].content.contains("[No chain-of-thought"));
+}
+
+#[test]
+fn normalize_payload_does_not_duplicate_existing_directive() {
+    use sqllumen_lib::ai::client::REASONING_OFF_DIRECTIVE;
+    let messages = vec![
+        ApiMessage {
+            role: "user".to_string(),
+            content: format!("hello{REASONING_OFF_DIRECTIVE}"),
+        },
+    ];
+    let result = normalize_chat_payload_for_provider(&messages, false);
+    let count = result[0].content.matches(REASONING_OFF_DIRECTIVE).count();
+    assert_eq!(count, 1, "should not duplicate directive");
+}
+
+#[test]
+fn normalize_payload_does_not_duplicate_no_think() {
+    let messages = vec![
+        ApiMessage {
+            role: "user".to_string(),
+            content: "hello\n\n/no_think".to_string(),
+        },
+    ];
+    let result = normalize_chat_payload_for_provider(&messages, false);
+    let count = result[0].content.matches("/no_think").count();
+    assert_eq!(count, 1, "should not duplicate /no_think");
+}
+
+// ── apply_reasoning_off_compatibility ────────────────────────────────────
+
+#[test]
+fn apply_reasoning_off_sets_all_fields() {
+    let mut body = serde_json::Map::new();
+    body.insert("messages".to_string(), serde_json::json!([
+        {"role": "user", "content": "test"}
+    ]));
+    apply_reasoning_off_compatibility(&mut body);
+    assert_eq!(body["reasoning_effort"], "none");
+    assert_eq!(body["enable_thinking"], false);
+    assert!(body.contains_key("chat_template_kwargs"));
+}
+
+// ── is_responses_failure_event ────────────────────────────────────────────
+
+#[test]
+fn responses_failure_event_recognizes_error() {
+    assert!(is_responses_failure_event(Some("error")));
+}
+
+#[test]
+fn responses_failure_event_recognizes_response_failed() {
+    assert!(is_responses_failure_event(Some("response.failed")));
+}
+
+#[test]
+fn responses_failure_event_rejects_completed() {
+    assert!(!is_responses_failure_event(Some("response.completed")));
+}
+
+#[test]
+fn responses_failure_event_rejects_none() {
+    assert!(!is_responses_failure_event(None));
+}
+
+// ── is_responses_completion_event ─────────────────────────────────────────
+
+#[test]
+fn responses_completion_event_recognizes_done() {
+    assert!(is_responses_completion_event(Some("response.completed")));
+}
+
+#[test]
+fn responses_completion_event_recognizes_output_text_done() {
+    assert!(is_responses_completion_event(Some("response.output_text.done")));
+}
+
+#[test]
+fn responses_completion_event_rejects_error() {
+    assert!(!is_responses_completion_event(Some("error")));
+}
+
+#[test]
+fn responses_completion_event_rejects_none() {
+    assert!(!is_responses_completion_event(None));
+}
+
+// ── extract_responses_delta_text ──────────────────────────────────────────
+
+#[test]
+fn delta_text_from_missing_delta() {
+    let json = serde_json::json!({"type": "response.output_text.delta"});
+    assert_eq!(extract_responses_delta_text(&json), "");
+}
+
+// ── extract_reasoning_text_from_parts ─────────────────────────────────────
+
+#[test]
+fn reasoning_from_parts_with_text_type() {
+    let parts = vec![
+        serde_json::json!({"type": "summary_text", "text": "step 1"}),
+        serde_json::json!({"type": "output_text", "text": "visible"}),
+    ];
+    let result = extract_reasoning_text_from_parts(&parts);
+    assert!(result.contains("step 1"));
+    assert!(!result.contains("visible"));
+}
+
+// ── extract_reasoning_text_from_item ─────────────────────────────────────
+
+#[test]
+fn reasoning_from_item_extracts_summary() {
+    let item = serde_json::json!({
+        "type": "reasoning",
+        "summary": [{"type": "summary_text", "text": "summary here"}]
+    });
+    let result = extract_reasoning_text_from_item(&item);
+    assert!(result.contains("summary here"));
+}
+
+// ── responses_input_items ────────────────────────────────────────────────
+
+#[test]
+fn responses_input_items_first_turn_no_previous_id() {
+    let request = AiChatRequest {
+        messages: vec![
+            IpcMessage { role: "system".to_string(), content: "sys".to_string() },
+            IpcMessage { role: "user".to_string(), content: "hi".to_string() },
+        ],
+        endpoint: "http://localhost".to_string(),
+        model: "m".to_string(),
+        temperature: 0.7,
+        max_tokens: 100,
+        stream_id: "s".to_string(),
+        previous_response_id: None,
+        prefer_responses_api: true,
+        enable_reasoning: true,
+        api_key: None,
+    };
+    let items = responses_input_items(&request);
+    assert!(!items.is_empty());
+}
+
+#[test]
+fn responses_input_items_follow_up_with_previous_id_and_new_user_message() {
+    let request = AiChatRequest {
+        messages: vec![
+            IpcMessage { role: "system".to_string(), content: "sys".to_string() },
+            IpcMessage { role: "user".to_string(), content: "first".to_string() },
+            IpcMessage { role: "assistant".to_string(), content: "answer".to_string() },
+            IpcMessage { role: "user".to_string(), content: "follow-up".to_string() },
+        ],
+        endpoint: "http://localhost".to_string(),
+        model: "m".to_string(),
+        temperature: 0.7,
+        max_tokens: 100,
+        stream_id: "s".to_string(),
+        previous_response_id: Some("resp-123".to_string()),
+        prefer_responses_api: true,
+        enable_reasoning: true,
+        api_key: None,
+    };
+    let items = responses_input_items(&request);
+    // With previous_response_id and a trailing user message,
+    // should have just the new user message as input item
+    assert!(!items.is_empty());
+}
+
+// ── is_chat_completions_style_payload ─────────────────────────────────────
+
+#[test]
+fn detects_chat_completions_by_choices() {
+    let json = serde_json::json!({"choices": [{"delta": {"content": "hi"}}]});
+    assert!(is_chat_completions_style_payload(&json));
+}
+
+#[test]
+fn non_chat_completions_payload() {
+    let json = serde_json::json!({"type": "response.output_text.delta", "delta": "hi"});
+    assert!(!is_chat_completions_style_payload(&json));
+}
+
+// ── merge_responses_event_type ───────────────────────────────────────────
+
+#[test]
+fn merge_event_type_prefers_sse() {
+    let json = serde_json::json!({"type": "response.done"});
+    let result = merge_responses_event_type(Some("response.completed"), &json);
+    assert_eq!(result, Some("response.completed"));
+}
+
+#[test]
+fn merge_event_type_falls_back_to_json() {
+    let json = serde_json::json!({"type": "response.done"});
+    let result = merge_responses_event_type(None, &json);
+    assert_eq!(result, Some("response.done"));
+}
+
+#[test]
+fn merge_event_type_both_none() {
+    let json = serde_json::json!({"data": "something"});
+    let result = merge_responses_event_type(None, &json);
+    assert_eq!(result, None);
+}
+
+// ── extract_responses_final_text additional coverage ─────────────────────
+
+#[test]
+fn final_text_from_output_content_array() {
+    let json = serde_json::json!({
+        "output": [
+            {
+                "type": "message",
+                "content": [{"type": "output_text", "text": "final answer"}]
+            }
+        ]
+    });
+    let result = extract_responses_final_text(&json);
+    assert_eq!(result, "final answer");
+}
+
+#[test]
+fn final_text_from_response_output() {
+    let json = serde_json::json!({
+        "response": {
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": "from response"}]
+                }
+            ]
+        }
+    });
+    let result = extract_responses_final_text(&json);
+    assert_eq!(result, "from response");
+}
+
+#[test]
+fn final_text_ignores_reasoning_items() {
+    let json = serde_json::json!({
+        "output": [
+            {"type": "reasoning", "summary": [{"type": "summary_text", "text": "reasoning"}]},
+            {"type": "message", "content": [{"type": "output_text", "text": "visible"}]}
+        ]
+    });
+    let result = extract_responses_final_text(&json);
+    assert_eq!(result, "visible");
+}
+
+// ── should_use_responses_api ─────────────────────────────────────────────
+
+#[test]
+fn should_use_responses_both_true() {
+    let request = AiChatRequest {
+        messages: vec![],
+        endpoint: "http://localhost".to_string(),
+        model: "m".to_string(),
+        temperature: 0.7,
+        max_tokens: 100,
+        stream_id: "s".to_string(),
+        previous_response_id: None,
+        prefer_responses_api: true,
+        enable_reasoning: true,
+        api_key: None,
+    };
+    assert!(should_use_responses_api(&request));
+}
+
+#[test]
+fn should_not_use_responses_when_reasoning_disabled() {
+    let request = AiChatRequest {
+        messages: vec![],
+        endpoint: "http://localhost".to_string(),
+        model: "m".to_string(),
+        temperature: 0.7,
+        max_tokens: 100,
+        stream_id: "s".to_string(),
+        previous_response_id: None,
+        prefer_responses_api: true,
+        enable_reasoning: false,
+        api_key: None,
+    };
+    assert!(!should_use_responses_api(&request));
+}
+
+#[test]
+fn should_not_use_responses_when_prefer_false() {
+    let request = AiChatRequest {
+        messages: vec![],
+        endpoint: "http://localhost".to_string(),
+        model: "m".to_string(),
+        temperature: 0.7,
+        max_tokens: 100,
+        stream_id: "s".to_string(),
+        previous_response_id: None,
+        prefer_responses_api: false,
+        enable_reasoning: true,
+        api_key: None,
+    };
+    assert!(!should_use_responses_api(&request));
+}
+
+// ── extract_responses_content_text_for_event ──────────────────────────────
+
+#[test]
+fn content_text_for_output_text_delta_event() {
+    let json = serde_json::json!({
+        "type": "response.output_text.delta",
+        "delta": "hello world"
+    });
+    let result = extract_responses_content_text_for_event(Some("response.output_text.delta"), &json, false);
+    assert_eq!(result, "hello world");
+}
+
+#[test]
+fn content_text_for_non_text_event_returns_empty() {
+    let json = serde_json::json!({
+        "type": "response.reasoning_summary_text.delta",
+        "delta": "thinking..."
+    });
+    let result = extract_responses_content_text_for_event(Some("response.reasoning_summary_text.delta"), &json, false);
+    assert_eq!(result, "");
+}
+
+// ── extract_responses_reasoning_text_for_event ───────────────────────────
+
+#[test]
+fn reasoning_text_for_reasoning_delta_event() {
+    let json = serde_json::json!({
+        "type": "response.reasoning_summary_text.delta",
+        "delta": "thinking step"
+    });
+    let result = extract_responses_reasoning_text_for_event(
+        Some("response.reasoning_summary_text.delta"), &json, false
+    );
+    assert_eq!(result, "thinking step");
+}
+
+#[test]
+fn reasoning_text_for_non_reasoning_event_returns_empty() {
+    let json = serde_json::json!({
+        "type": "response.output_text.delta",
+        "delta": "visible"
+    });
+    let result = extract_responses_reasoning_text_for_event(
+        Some("response.output_text.delta"), &json, false
+    );
+    assert_eq!(result, "");
+}
+
+// ── format_compat_error ──────────────────────────────────────────────────
+
+#[test]
+fn format_compat_error_with_port() {
+    use sqllumen_lib::ai::client::format_compat_error;
+    let err = format_compat_error("http://localhost:11434/v1/completions", "llama3", "test_reason");
+    assert!(err.contains("localhost:11434"));
+    assert!(err.contains("llama3"));
+    assert!(err.contains("test_reason"));
+}
+
+#[test]
+fn format_compat_error_without_port() {
+    use sqllumen_lib::ai::client::format_compat_error;
+    let err = format_compat_error("https://api.openai.com/v1", "gpt-4", "not_supported");
+    assert!(err.contains("api.openai.com"));
+    assert!(err.contains("gpt-4"));
+}
+
+// ── extract_responses_error_message additional ───────────────────────────
+
+#[test]
+fn error_message_from_string_error() {
+    let json = serde_json::json!({"error": "simple string error"});
+    let result = extract_responses_error_message(&json);
+    assert_eq!(result.as_deref(), Some("simple string error"));
+}
+
+#[test]
+fn error_message_from_top_level_message() {
+    let json = serde_json::json!({"message": "top level message"});
+    let result = extract_responses_error_message(&json);
+    assert_eq!(result.as_deref(), Some("top level message"));
+}
+
+#[test]
+fn error_message_none_when_missing() {
+    let json = serde_json::json!({"data": "no error"});
+    let result = extract_responses_error_message(&json);
+    assert_eq!(result, None);
+}
+
+// ── apply_no_think_to_json_messages — non-string content branch ──────────
+
+#[test]
+fn apply_no_think_to_json_messages_noop_non_string_content() {
+    use sqllumen_lib::ai::client::apply_no_think_to_json_messages;
+    let mut body = serde_json::json!({
+        "messages": [
+            {"role": "user", "content": 42}
+        ]
+    }).as_object().unwrap().clone();
+    apply_no_think_to_json_messages(&mut body);
+    // Content is a number, should not be modified
+    assert_eq!(body["messages"][0]["content"], serde_json::json!(42));
+}
+
+// ── extract_responses_reasoning_text — additional branches ────────────────
+
+#[test]
+fn extract_reasoning_text_from_item_content_type_text() {
+    use sqllumen_lib::ai::client::extract_reasoning_text_from_item;
+    // The item.content[].type == "text" branch (line 935 in client.rs)
+    let item = serde_json::json!({
+        "type": "reasoning",
+        "content": [{"type": "text", "text": "thinking..."}]
+    });
+    assert_eq!(extract_reasoning_text_from_item(&item), "thinking...");
+}
+
+#[test]
+fn extract_reasoning_text_part_non_matching_type() {
+    use sqllumen_lib::ai::client::extract_responses_reasoning_text;
+    let json = serde_json::json!({
+        "part": {"type": "output_text", "text": "should not extract"}
+    });
+    assert_eq!(extract_responses_reasoning_text(&json), "");
+}
+
+#[test]
+fn extract_reasoning_text_response_output_path() {
+    use sqllumen_lib::ai::client::extract_responses_reasoning_text;
+    let json = serde_json::json!({
+        "response": {
+            "output": [
+                {
+                    "type": "reasoning",
+                    "summary": [{"type": "summary_text", "text": "thought A"}]
+                }
+            ]
+        }
+    });
+    let result = extract_responses_reasoning_text(&json);
+    assert!(result.contains("thought A"));
+}
+
+#[test]
+fn extract_reasoning_text_top_level_output() {
+    use sqllumen_lib::ai::client::extract_responses_reasoning_text;
+    let json = serde_json::json!({
+        "output": [
+            {
+                "type": "reasoning",
+                "summary": [{"type": "summary_text", "text": "top-level thought"}]
+            }
+        ]
+    });
+    let result = extract_responses_reasoning_text(&json);
+    assert!(result.contains("top-level thought"));
+}
+
+// ── extract_responses_final_text — additional branches ────────────────────
+
+#[test]
+fn final_text_content_as_string() {
+    use sqllumen_lib::ai::client::extract_responses_final_text;
+    let json = serde_json::json!({"content": "direct string content"});
+    assert_eq!(extract_responses_final_text(&json), "direct string content");
+}
+
+#[test]
+fn final_text_content_array_with_strings() {
+    use sqllumen_lib::ai::client::extract_responses_final_text;
+    let json = serde_json::json!({"content": ["hello ", "world"]});
+    assert_eq!(extract_responses_final_text(&json), "hello world");
+}
+
+#[test]
+fn final_text_content_non_string_non_array() {
+    use sqllumen_lib::ai::client::extract_responses_final_text;
+    let json = serde_json::json!({"content": 42});
+    assert_eq!(extract_responses_final_text(&json), "");
+}
+
+#[test]
+fn final_text_response_output_with_content_parts() {
+    use sqllumen_lib::ai::client::extract_responses_final_text;
+    let json = serde_json::json!({
+        "response": {
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "text", "text": "answer"}]
+                }
+            ]
+        }
+    });
+    assert_eq!(extract_responses_final_text(&json), "answer");
+}
+
+#[test]
+fn final_text_response_output_skips_reasoning() {
+    use sqllumen_lib::ai::client::extract_responses_final_text;
+    let json = serde_json::json!({
+        "response": {
+            "output": [
+                {"type": "reasoning", "content": [{"text": "skip"}]},
+                {"type": "message", "content": [{"text": "keep"}]}
+            ]
+        }
+    });
+    assert_eq!(extract_responses_final_text(&json), "keep");
+}
+
+#[test]
+fn final_text_top_level_output_with_content_parts() {
+    use sqllumen_lib::ai::client::extract_responses_final_text;
+    let json = serde_json::json!({
+        "output": [
+            {"type": "message", "content": [{"text": "from output"}]}
+        ]
+    });
+    assert_eq!(extract_responses_final_text(&json), "from output");
+}
+
+#[test]
+fn final_text_top_level_output_skips_reasoning() {
+    use sqllumen_lib::ai::client::extract_responses_final_text;
+    let json = serde_json::json!({
+        "output": [
+            {"type": "reasoning", "content": [{"text": "skip"}]},
+            {"type": "message", "content": [{"text": "visible"}]}
+        ]
+    });
+    assert_eq!(extract_responses_final_text(&json), "visible");
+}
+
+// ── extract_responses_content_text_for_event — additional branches ────────
+
+#[test]
+fn content_text_for_event_output_text_done_not_already_streamed() {
+    use sqllumen_lib::ai::client::extract_responses_content_text_for_event;
+    let json = serde_json::json!({"text": "final text"});
+    let result = extract_responses_content_text_for_event(
+        Some("response.output_text.done"), &json, false,
+    );
+    assert_eq!(result, "final text");
+}
+
+#[test]
+fn content_text_for_event_output_text_done_already_streamed() {
+    use sqllumen_lib::ai::client::extract_responses_content_text_for_event;
+    let json = serde_json::json!({"text": "final text"});
+    let result = extract_responses_content_text_for_event(
+        Some("response.output_text.done"), &json, true,
+    );
+    assert_eq!(result, "");
+}
+
+#[test]
+fn content_text_for_event_content_part_done_not_streamed() {
+    use sqllumen_lib::ai::client::extract_responses_content_text_for_event;
+    let json = serde_json::json!({
+        "part": {"type": "output_text", "text": "part done text"}
+    });
+    let result = extract_responses_content_text_for_event(
+        Some("response.content_part.done"), &json, false,
+    );
+    assert_eq!(result, "part done text");
+}
+
+#[test]
+fn content_text_for_event_output_item_done_not_streamed() {
+    use sqllumen_lib::ai::client::extract_responses_content_text_for_event;
+    let json = serde_json::json!({
+        "item": {
+            "type": "message",
+            "content": [{"type": "output_text", "text": "item text"}]
+        }
+    });
+    let result = extract_responses_content_text_for_event(
+        Some("response.output_item.done"), &json, false,
+    );
+    assert_eq!(result, "item text");
+}
+
+#[test]
+fn content_text_for_event_completed_not_streamed() {
+    use sqllumen_lib::ai::client::extract_responses_content_text_for_event;
+    let json = serde_json::json!({"text": "completed text"});
+    let result = extract_responses_content_text_for_event(
+        Some("response.completed"), &json, false,
+    );
+    assert_eq!(result, "completed text");
+}
+
+#[test]
+fn content_text_for_event_content_part_added() {
+    use sqllumen_lib::ai::client::extract_responses_content_text_for_event;
+    let json = serde_json::json!({
+        "part": {"type": "output_text", "text": "added text"}
+    });
+    let result = extract_responses_content_text_for_event(
+        Some("response.content_part.added"), &json, false,
+    );
+    assert_eq!(result, "added text");
+}
+
+// ── extract_responses_reasoning_text_for_event — additional branches ──────
+
+#[test]
+fn reasoning_text_for_event_reasoning_text_delta() {
+    use sqllumen_lib::ai::client::extract_responses_reasoning_text_for_event;
+    let json = serde_json::json!({"delta": "thinking..."});
+    let result = extract_responses_reasoning_text_for_event(
+        Some("response.reasoning_text.delta"), &json, false,
+    );
+    assert_eq!(result, "thinking...");
+}
+
+#[test]
+fn reasoning_text_for_event_reasoning_text_done_not_streamed() {
+    use sqllumen_lib::ai::client::extract_responses_reasoning_text_for_event;
+    let json = serde_json::json!({"text": "full reasoning"});
+    let result = extract_responses_reasoning_text_for_event(
+        Some("response.reasoning_text.done"), &json, false,
+    );
+    assert_eq!(result, "full reasoning");
+}
+
+#[test]
+fn reasoning_text_for_event_reasoning_text_done_already_streamed() {
+    use sqllumen_lib::ai::client::extract_responses_reasoning_text_for_event;
+    let json = serde_json::json!({"text": "full reasoning"});
+    let result = extract_responses_reasoning_text_for_event(
+        Some("response.reasoning_text.done"), &json, true,
+    );
+    assert_eq!(result, "");
+}
+
+#[test]
+fn reasoning_text_for_event_summary_part_added() {
+    use sqllumen_lib::ai::client::extract_responses_reasoning_text_for_event;
+    let json = serde_json::json!({
+        "part": {"type": "summary_text", "text": "summary"}
+    });
+    let result = extract_responses_reasoning_text_for_event(
+        Some("response.reasoning_summary_part.added"), &json, false,
+    );
+    assert_eq!(result, "summary");
+}
+
+#[test]
+fn reasoning_text_for_event_output_item_done_not_streamed() {
+    use sqllumen_lib::ai::client::extract_responses_reasoning_text_for_event;
+    let json = serde_json::json!({
+        "output": [{"type": "reasoning", "summary": [{"type": "summary_text", "text": "thought"}]}]
+    });
+    let result = extract_responses_reasoning_text_for_event(
+        Some("response.output_item.done"), &json, false,
+    );
+    assert!(result.contains("thought"));
+}
+
+#[test]
+fn reasoning_text_for_event_completed_not_streamed() {
+    use sqllumen_lib::ai::client::extract_responses_reasoning_text_for_event;
+    let json = serde_json::json!({
+        "output": [{"type": "reasoning", "summary": [{"type": "summary_text", "text": "done thought"}]}]
+    });
+    let result = extract_responses_reasoning_text_for_event(
+        Some("response.completed"), &json, false,
+    );
+    assert!(result.contains("done thought"));
+}
+
+#[test]
+fn reasoning_text_for_event_completed_already_streamed() {
+    use sqllumen_lib::ai::client::extract_responses_reasoning_text_for_event;
+    let json = serde_json::json!({"delta": "should be empty"});
+    let result = extract_responses_reasoning_text_for_event(
+        Some("response.completed"), &json, true,
+    );
+    assert_eq!(result, "");
+}
+
+// ── normalize_chat_payload_for_provider ─────────────────────────────────
+
+#[test]
+fn normalize_chat_payload_reasoning_enabled_returns_unmodified() {
+    let messages = vec![
+        ApiMessage { role: "system".into(), content: "You are helpful.".into() },
+        ApiMessage { role: "user".into(), content: "Hello".into() },
+    ];
+    let result = normalize_chat_payload_for_provider(&messages, true);
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0].content, "You are helpful.");
+    assert_eq!(result[1].content, "Hello");
+}
+
+#[test]
+fn normalize_chat_payload_reasoning_disabled_appends_directives_to_user() {
+    let messages = vec![
+        ApiMessage { role: "system".into(), content: "Be concise.".into() },
+        ApiMessage { role: "user".into(), content: "What is 2+2?".into() },
+        ApiMessage { role: "assistant".into(), content: "4".into() },
+        ApiMessage { role: "user".into(), content: "And 3+3?".into() },
+    ];
+    let result = normalize_chat_payload_for_provider(&messages, false);
+    assert_eq!(result.len(), 4);
+    // System untouched
+    assert_eq!(result[0].content, "Be concise.");
+    // Both user messages get directives
+    assert!(result[1].content.contains("[No chain-of-thought"));
+    assert!(result[1].content.contains("/no_think"));
+    // Assistant untouched
+    assert_eq!(result[2].content, "4");
+    // Second user also gets directives
+    assert!(result[3].content.contains("[No chain-of-thought"));
+    assert!(result[3].content.contains("/no_think"));
+}
+
+#[test]
+fn normalize_chat_payload_no_double_directive() {
+    use sqllumen_lib::ai::client::REASONING_OFF_DIRECTIVE;
+    let messages = vec![
+        ApiMessage {
+            role: "user".into(),
+            content: format!("Hello{REASONING_OFF_DIRECTIVE}"),
+        },
+    ];
+    let result = normalize_chat_payload_for_provider(&messages, false);
+    // Should NOT have duplicate directive
+    let count = result[0].content.matches("[No chain-of-thought").count();
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn normalize_chat_payload_no_double_no_think() {
+    let messages = vec![
+        ApiMessage {
+            role: "user".into(),
+            content: "Hello\n\n/no_think".into(),
+        },
+    ];
+    let result = normalize_chat_payload_for_provider(&messages, false);
+    let count = result[0].content.matches("/no_think").count();
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn normalize_chat_payload_empty_messages() {
+    let result = normalize_chat_payload_for_provider(&[], false);
+    assert!(result.is_empty());
+}
+
+// ── probe_completions_capability sends Authorization header (Fix 3) ──────
+
+#[cfg(test)]
+mod probe_auth_tests {
+    use sqllumen_lib::ai::client::probe_completions_capability_with_timeout;
+    use std::time::Duration;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn probe_sends_authorization_header_when_api_key_provided() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/completions"))
+            .and(header("Authorization", "Bearer test-secret-key"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "id": "cmpl-probe",
+                    "object": "text_completion",
+                    "choices": [{ "text": "ok", "index": 0, "finish_reason": "stop" }]
+                })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let endpoint = format!("{}/v1", server.uri());
+        let result = probe_completions_capability_with_timeout(
+            &endpoint,
+            "test-model",
+            Duration::from_secs(5),
+            Some("test-secret-key"),
+        )
+        .await;
+        assert!(result, "probe should succeed when Authorization header is sent");
+    }
+
+    #[tokio::test]
+    async fn probe_does_not_send_authorization_header_when_no_api_key() {
+        let server = MockServer::start().await;
+
+        // This mock requires NO Authorization header — if one is sent, it won't match
+        // and will return 404, causing the probe to fail.
+        Mock::given(method("POST"))
+            .and(path("/v1/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "id": "cmpl-probe",
+                    "object": "text_completion",
+                    "choices": [{ "text": "ok", "index": 0, "finish_reason": "stop" }]
+                })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let endpoint = format!("{}/v1", server.uri());
+        let result = probe_completions_capability_with_timeout(
+            &endpoint,
+            "test-model",
+            Duration::from_secs(5),
+            None,
+        )
+        .await;
+        assert!(result, "probe should succeed without api_key");
+    }
 }

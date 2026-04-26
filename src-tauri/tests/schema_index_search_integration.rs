@@ -1735,3 +1735,259 @@ fn apply_graph_expansion_empty_results() {
     let results = apply_graph_expansion(&conn, "conn-1", vec![], 2, 30).unwrap();
     assert!(results.is_empty());
 }
+
+#[test]
+fn apply_graph_expansion_walks_fk_edges() {
+    let conn = setup_db();
+
+    // users → orders (via FK edge)
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(1));
+
+    insert_fk_edge(
+        &conn,
+        "conn-1",
+        "db1",
+        "orders",
+        "user_id",
+        "db1",
+        "users",
+        "id",
+        "fk_orders_users",
+    );
+
+    // Start with orders as the only result, then expand via FK
+    let initial = vec![SearchResult {
+        chunk_id: 2,
+        chunk_key: "table:db1.orders".to_string(),
+        db_name: "db1".to_string(),
+        table_name: "orders".to_string(),
+        chunk_type: "table".to_string(),
+        ddl_text: "CREATE TABLE `orders` (id INT PRIMARY KEY)".to_string(),
+        ref_db_name: None,
+        ref_table_name: None,
+        score: 0.9,
+    }];
+
+    let results = apply_graph_expansion(&conn, "conn-1", initial, 2, 30).unwrap();
+    // Should include orders (original) + users (via FK)
+    assert!(results.len() >= 2);
+    let table_names: Vec<&str> = results.iter().map(|r| r.table_name.as_str()).collect();
+    assert!(table_names.contains(&"orders"));
+    assert!(table_names.contains(&"users"));
+}
+
+#[test]
+fn multi_query_search_extended_with_editor_hints() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(1));
+
+    let config = SearchConfigExt {
+        base: SearchConfig {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_fk_chunks: 30,
+            lexical_weight: 0.2,
+        },
+        graph_depth: 2,
+        feedback_boost: 0.15,
+        hints: RetrievalHints {
+            recent_tables: vec![],
+            editor_tables: vec![TableRef {
+                db_name: "db1".to_string(),
+                table_name: "users".to_string(),
+            }],
+            accepted_tables: vec![],
+        },
+    };
+
+    let query = vec![unit_vec(0)];
+    let results = multi_query_search_extended(&conn, "conn-1", &[], &query, &config).unwrap();
+    assert!(!results.is_empty());
+}
+
+#[test]
+fn multi_query_search_with_hints_applies_feedback_boost() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "orders", unit_vec(1));
+
+    let query = vec![blend_vec(0, 1, 0.5)]; // equidistant to both
+
+    let config = SearchConfigExt {
+        base: SearchConfig {
+            top_k_per_query: 5,
+            top_n_results: 10,
+            max_fk_chunks: 30,
+            lexical_weight: 0.0,
+        },
+        graph_depth: 0,
+        feedback_boost: 1.0, // strong boost
+        hints: RetrievalHints {
+            recent_tables: vec![TableHint {
+                db_name: "db1".to_string(),
+                table_name: "orders".to_string(),
+                weight: 1.0,
+            }],
+            editor_tables: vec![],
+            accepted_tables: vec![TableHint {
+                db_name: "db1".to_string(),
+                table_name: "users".to_string(),
+                weight: 0.5,
+            }],
+        },
+    };
+
+    let results = multi_query_search_with_hints(&conn, "conn-1", &[], &query, &config).unwrap();
+    assert!(results.len() >= 2);
+    // Orders should be boosted to top
+    assert_eq!(results[0].table_name, "orders");
+}
+
+#[test]
+fn multi_query_search_configured_with_lexical_and_segment_df() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "user_profiles", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "order_items", unit_vec(1));
+
+    // Set up segment document frequencies
+    storage::replace_segment_df_for_connection(
+        &conn,
+        "conn-1",
+        &[("user".to_string(), 1), ("order".to_string(), 1)],
+    )
+    .unwrap();
+
+    let query_texts = vec!["SELECT * FROM user_profiles".to_string()];
+    let query_vecs = vec![blend_vec(0, 1, 0.5)];
+
+    let config = SearchConfig {
+        top_k_per_query: 5,
+        top_n_results: 10,
+        max_fk_chunks: 0,
+        lexical_weight: 0.5,
+    };
+
+    let results =
+        multi_query_search_configured(&conn, "conn-1", &query_texts, &query_vecs, &config).unwrap();
+    assert!(!results.is_empty());
+    // user_profiles should be top due to lexical match
+    assert_eq!(results[0].table_name, "user_profiles");
+}
+
+#[test]
+fn multi_query_search_with_dotted_table_identifier() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "products", unit_vec(1));
+
+    let query_texts = vec!["SELECT * FROM db1.users JOIN products".to_string()];
+    let query_vecs = vec![blend_vec(0, 1, 0.5)];
+
+    let config = SearchConfig {
+        top_k_per_query: 5,
+        top_n_results: 10,
+        max_fk_chunks: 0,
+        lexical_weight: 0.5,
+    };
+
+    let results =
+        multi_query_search_configured(&conn, "conn-1", &query_texts, &query_vecs, &config).unwrap();
+    assert!(!results.is_empty());
+}
+
+#[test]
+fn multi_query_search_lexical_fuzzy_plural_match() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "brands", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "categories", unit_vec(1));
+
+    let query_texts = vec!["find all brand".to_string()]; // "brand" should match "brands"
+    let query_vecs = vec![blend_vec(0, 1, 0.5)];
+
+    let config = SearchConfig {
+        top_k_per_query: 5,
+        top_n_results: 10,
+        max_fk_chunks: 0,
+        lexical_weight: 0.5,
+    };
+
+    let results =
+        multi_query_search_configured(&conn, "conn-1", &query_texts, &query_vecs, &config).unwrap();
+    assert!(!results.is_empty());
+    // brands should be boosted by fuzzy plural match
+    assert_eq!(results[0].table_name, "brands");
+}
+
+#[test]
+fn multi_query_search_lexical_prefix_match() {
+    let conn = setup_db();
+
+    insert_table_chunk(&conn, "conn-1", "db1", "rfxtracking", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "settings", unit_vec(1));
+
+    let query_texts = vec!["rfx data".to_string()]; // "rfx" prefix should match "rfxtracking"
+    let query_vecs = vec![blend_vec(0, 1, 0.5)];
+
+    let config = SearchConfig {
+        top_k_per_query: 5,
+        top_n_results: 10,
+        max_fk_chunks: 0,
+        lexical_weight: 0.5,
+    };
+
+    let results =
+        multi_query_search_configured(&conn, "conn-1", &query_texts, &query_vecs, &config).unwrap();
+    assert!(!results.is_empty());
+    assert_eq!(results[0].table_name, "rfxtracking");
+}
+
+#[test]
+fn multi_query_search_cross_db_dedup() {
+    let conn = setup_db();
+
+    // Same table name in two databases
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db2", "users", blend_vec(0, 1, 0.99));
+
+    let query = vec![unit_vec(0)];
+
+    let results = multi_query_search(&conn, "conn-1", &query, 10, 10, 0).unwrap();
+    // Cross-db dedup should keep only one "users" entry (from db1, which is closer)
+    let user_results: Vec<_> = results.iter().filter(|r| r.table_name == "users").collect();
+    assert_eq!(user_results.len(), 1);
+    assert_eq!(user_results[0].db_name, "db1");
+}
+
+#[test]
+fn multi_query_search_db_affinity_boost_with_multiple_dbs() {
+    let conn = setup_db();
+
+    // Multiple tables in db1, one in db2
+    insert_table_chunk(&conn, "conn-1", "db1", "users", unit_vec(0));
+    insert_table_chunk(&conn, "conn-1", "db1", "orders", blend_vec(0, 1, 0.8));
+    insert_table_chunk(&conn, "conn-1", "db2", "products", unit_vec(1));
+
+    let query = vec![blend_vec(0, 1, 0.5)];
+
+    let results = multi_query_search_configured(
+        &conn,
+        "conn-1",
+        &[],
+        &query,
+        &SearchConfig {
+            top_k_per_query: 10,
+            top_n_results: 10,
+            max_fk_chunks: 0,
+            lexical_weight: 0.0,
+        },
+    )
+    .unwrap();
+    assert!(results.len() >= 2);
+}

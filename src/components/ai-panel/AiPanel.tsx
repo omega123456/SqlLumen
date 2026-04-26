@@ -8,6 +8,7 @@ import { AiPanelHeader } from './AiPanelHeader'
 import { AiChatMessages } from './AiChatMessages'
 import { AiChatInput } from './AiChatInput'
 import { AiSetupRequired } from './AiSetupRequired'
+import { AiCompatWarningBanner } from './AiCompatWarningBanner'
 import styles from './AiPanel.module.css'
 
 export interface AiPanelProps {
@@ -27,6 +28,7 @@ export interface AiPanelProps {
 export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
   const [suggestionText, setSuggestionText] = useState<string | undefined>(undefined)
   const isWaitingForIndex = useAiStore((s) => s.tabs[tabId]?.isWaitingForIndex ?? false)
+  const compatWarning = useAiStore((s) => s.tabs[tabId]?.compatWarning ?? null)
   const profileId = useConnectionStore(
     (s) => (connectionId ? s.activeConnections[connectionId]?.profile?.id : undefined) ?? null
   )
@@ -96,6 +98,11 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
         <div className={styles.indexWaiting} data-testid="ai-memory-reembed-banner">
           Re-embedding memories... {reembedStatus.done}/{reembedStatus.total}
         </div>
+      )}
+      {compatWarning && (
+        <AiCompatWarningBanner
+          onDismiss={() => useAiStore.getState().setCompatWarning(tabId, null)}
+        />
       )}
       <AiChatMessages
         tabId={tabId}

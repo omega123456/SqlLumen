@@ -6,6 +6,7 @@ use crate::ai::types::{
     OpenAiModelsApiResponse,
 };
 use crate::state::AppState;
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::Runtime;
 use tokio_util::sync::CancellationToken;
@@ -37,8 +38,10 @@ pub async fn ai_chat_impl<R: Runtime>(
     let ai_requests = state.ai_requests.clone();
     let task_token = token.clone();
 
+    let capability_cache = Arc::clone(&state.capability_cache);
+
     tokio::task::spawn(async move {
-        let _ = stream_chat_completion(&app_handle, request, task_token).await;
+        let _ = stream_chat_completion(&app_handle, request, task_token, Some(capability_cache)).await;
 
         // Clean up the token from state when done (whether success, error, or cancel).
         if let Ok(mut map) = ai_requests.lock() {
@@ -195,10 +198,18 @@ pub async fn list_ai_models(endpoint: String) -> Result<AiModelsResponse, String
 
 // ── Query expansion (non-streaming) ───────────────────────────────────────
 
+/// Timeout for the hidden compat call for query expansion (seconds).
+const QUERY_EXPAND_COMPAT_TIMEOUT_SECS: u64 = 5;
+
 /// Non-streaming chat completion for query expansion.
 ///
 /// Sends a single system+user message pair to the chat completions endpoint
 /// and returns the assistant's response text.
+///
+/// For local endpoints with completions capability, routes through the raw
+/// `/v1/completions` path with reasoning disabled. Falls back to the chat
+/// completions path for non-local endpoints or when the compat transport
+/// is unavailable.
 ///
 /// Uses `state.http_client` first, then retries once with a fresh non-pooled
 /// client if the initial send fails. This avoids intermittent failures from
@@ -216,6 +227,48 @@ pub async fn ai_query_expand_impl(
         _ => req.user_message.clone(),
     };
 
+    // Build IPC messages for the compat call
+    let ipc_messages = vec![
+        crate::ai::types::IpcMessage {
+            role: "system".to_string(),
+            content: req.system_prompt.clone(),
+        },
+        crate::ai::types::IpcMessage {
+            role: "user".to_string(),
+            content: effective_user_message.clone(),
+        },
+    ];
+
+    // Try the hidden compat call for local endpoints
+    let compat_result = crate::ai::client::run_hidden_compat_call(
+        &req.endpoint,
+        &req.model,
+        &ipc_messages,
+        req.api_key.as_deref(),
+        &state.capability_cache,
+        QUERY_EXPAND_COMPAT_TIMEOUT_SECS,
+        "query_expansion",
+        None,
+    )
+    .await;
+
+    match compat_result {
+        Ok(text) => {
+            tracing::info!(endpoint = %req.endpoint, model = %req.model, "query expansion: compat completions succeeded");
+            return Ok(AiQueryExpandResponse { text });
+        }
+        Err(ref reason) if reason == "not_eligible" => {
+            // Non-local endpoint — fall through to chat completions path
+            tracing::debug!(endpoint = %req.endpoint, "query expansion: not compat-eligible, using chat path");
+        }
+        Err(reason) => {
+            // Local endpoint but compat failed — return error (frontend falls back to original query)
+            tracing::warn!(endpoint = %req.endpoint, model = %req.model, reason = %reason, "query_expansion compat failed");
+            return Err(reason);
+        }
+    }
+
+    // Existing chat-completions path (for non-local endpoints)
     let mut body_obj = serde_json::json!({
         "model": req.model,
         "messages": [
@@ -230,7 +283,7 @@ pub async fn ai_query_expand_impl(
     crate::ai::client::apply_reasoning_off_compatibility(&mut body_obj);
     let body = serde_json::Value::Object(body_obj);
 
-    let response = match send_query_expand_request(&state.http_client, &req.endpoint, &body).await {
+    let response = match send_query_expand_request(&state.http_client, &req.endpoint, &body, req.api_key.as_deref()).await {
         Ok(response) => response,
         Err(first_error) => {
             tracing::warn!(
@@ -247,7 +300,7 @@ pub async fn ai_query_expand_impl(
                 .build()
                 .map_err(|e| format!("Failed to create query expand retry client: {e}"))?;
 
-            send_query_expand_request(&retry_client, &req.endpoint, &body)
+            send_query_expand_request(&retry_client, &req.endpoint, &body, req.api_key.as_deref())
                 .await
                 .map_err(|retry_error| {
                     if retry_error.is_timeout() {
@@ -289,14 +342,17 @@ async fn send_query_expand_request(
     client: &reqwest::Client,
     endpoint: &str,
     body: &serde_json::Value,
+    api_key: Option<&str>,
 ) -> Result<reqwest::Response, reqwest::Error> {
     let chat_url = crate::ai::client::normalise_to_chat_completions_url(endpoint);
-    client
+    let mut request = client
         .post(&chat_url)
         .timeout(QUERY_EXPAND_TIMEOUT)
-        .json(body)
-        .send()
-        .await
+        .json(body);
+    if let Some(key) = api_key {
+        request = request.bearer_auth(key);
+    }
+    request.send().await
 }
 
 #[cfg(not(coverage))]

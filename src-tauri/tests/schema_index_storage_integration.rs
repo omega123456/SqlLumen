@@ -4,7 +4,7 @@ use rusqlite::Connection;
 use sqllumen_lib::db::migrations::run_migrations;
 use sqllumen_lib::init_sqlite_vec;
 use sqllumen_lib::schema_index::storage;
-use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, IndexMeta, IndexStatus};
+use sqllumen_lib::schema_index::types::{ChunkInsert, ChunkType, FkEdge, IndexMeta, IndexStatus};
 
 /// Helper: register sqlite-vec, open an in-memory DB, run all migrations, and
 /// create the vec0 virtual table with a test dimension for the given profile.
@@ -956,4 +956,255 @@ fn test_upsert_signatures_empty_batch_is_noop() {
     assert!(storage::get_signatures_for_connection(&conn, "conn-1")
         .expect("read")
         .is_empty());
+}
+
+// ── replace_fk_edges_for_connection ─────────────────────────────────────
+
+#[test]
+fn test_replace_fk_edges_for_connection_inserts_and_replaces() {
+    let conn = setup_db(4);
+    let edges_v1 = vec![FkEdge {
+        connection_id: "conn-1".to_string(),
+        src_db: "db".to_string(),
+        src_tbl: "orders".to_string(),
+        src_col: "user_id".to_string(),
+        dst_db: "db".to_string(),
+        dst_tbl: "users".to_string(),
+        dst_col: "id".to_string(),
+        constraint_name: "fk_orders_users".to_string(),
+        on_delete: Some("CASCADE".to_string()),
+        on_update: None,
+    }];
+    storage::replace_fk_edges_for_connection(&conn, "conn-1", &edges_v1).expect("insert v1");
+    let fetched = storage::get_fk_edges_for_connection(&conn, "conn-1").expect("get");
+    assert_eq!(fetched.len(), 1);
+    assert_eq!(fetched[0].src_tbl, "orders");
+
+    // Replace with different edges
+    let edges_v2 = vec![FkEdge {
+        connection_id: "conn-1".to_string(),
+        src_db: "db".to_string(),
+        src_tbl: "items".to_string(),
+        src_col: "order_id".to_string(),
+        dst_db: "db".to_string(),
+        dst_tbl: "orders".to_string(),
+        dst_col: "id".to_string(),
+        constraint_name: "fk_items_orders".to_string(),
+        on_delete: None,
+        on_update: Some("SET NULL".to_string()),
+    }];
+    storage::replace_fk_edges_for_connection(&conn, "conn-1", &edges_v2).expect("insert v2");
+    let fetched2 = storage::get_fk_edges_for_connection(&conn, "conn-1").expect("get2");
+    assert_eq!(fetched2.len(), 1);
+    assert_eq!(fetched2[0].src_tbl, "items");
+}
+
+// ── count_table_chunks ──────────────────────────────────────────────────
+
+#[test]
+fn test_count_table_chunks_counts_only_table_type() {
+    let conn = setup_db(4);
+    // Insert a table chunk
+    let mut chunk = sample_chunk("conn-1", "testdb.users", 4);
+    chunk.chunk_type = ChunkType::Table;
+    storage::insert_chunk(&conn, &chunk).expect("insert table");
+
+    // Insert an FK chunk
+    let mut fk_chunk = sample_chunk("conn-1", "testdb.orders->users", 4);
+    fk_chunk.chunk_type = ChunkType::Fk;
+    fk_chunk.chunk_key = "testdb.orders->users".to_string();
+    fk_chunk.table_name = "orders".to_string();
+    fk_chunk.ref_db_name = Some("testdb".to_string());
+    fk_chunk.ref_table_name = Some("users".to_string());
+    storage::insert_chunk(&conn, &fk_chunk).expect("insert fk");
+
+    let count = storage::count_table_chunks(&conn, "conn-1").expect("count");
+    assert_eq!(count, 1); // Only the table chunk, not FK
+}
+
+#[test]
+fn test_count_table_chunks_returns_zero_when_empty() {
+    let conn = setup_db(4);
+    let count = storage::count_table_chunks(&conn, "conn-1").expect("count");
+    assert_eq!(count, 0);
+}
+
+// ── segment_df CRUD ─────────────────────────────────────────────────────
+
+#[test]
+fn test_segment_df_roundtrip() {
+    let conn = setup_db(4);
+    let entries = vec![("users".to_string(), 5usize), ("orders".to_string(), 3)];
+    storage::replace_segment_df_for_connection(&conn, "conn-1", &entries).expect("replace");
+    let df = storage::get_segment_df_for_connection(&conn, "conn-1").expect("get");
+    assert_eq!(df.len(), 2);
+    assert_eq!(df["users"], 5);
+    assert_eq!(df["orders"], 3);
+}
+
+#[test]
+fn test_segment_df_replace_clears_old_entries() {
+    let conn = setup_db(4);
+    let entries1 = vec![("old".to_string(), 10usize)];
+    storage::replace_segment_df_for_connection(&conn, "conn-1", &entries1).expect("replace1");
+    let entries2 = vec![("new".to_string(), 20)];
+    storage::replace_segment_df_for_connection(&conn, "conn-1", &entries2).expect("replace2");
+    let df = storage::get_segment_df_for_connection(&conn, "conn-1").expect("get");
+    assert_eq!(df.len(), 1);
+    assert!(!df.contains_key("old"));
+    assert_eq!(df["new"], 20);
+}
+
+#[test]
+fn test_segment_df_empty_for_unknown_connection() {
+    let conn = setup_db(4);
+    let df = storage::get_segment_df_for_connection(&conn, "nonexistent").expect("get");
+    assert!(df.is_empty());
+}
+
+// ── replace_fk_edges_for_table ──────────────────────────────────────────
+
+#[test]
+fn test_replace_fk_edges_for_table_inserts_and_replaces() {
+    let conn = setup_db(4);
+
+    let edges1 = vec![FkEdge {
+        connection_id: "conn-1".into(),
+        src_db: "db1".into(),
+        src_tbl: "orders".into(),
+        src_col: "user_id".into(),
+        dst_db: "db1".into(),
+        dst_tbl: "users".into(),
+        dst_col: "id".into(),
+        constraint_name: "fk_orders_user".into(),
+        on_delete: Some("CASCADE".into()),
+        on_update: Some("NO ACTION".into()),
+    }];
+
+    storage::replace_fk_edges_for_table(&conn, "conn-1", "db1", "orders", &edges1)
+        .expect("insert first batch");
+
+    let all = storage::get_fk_edges_for_connection(&conn, "conn-1").expect("read");
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].dst_tbl, "users");
+
+    // Replace with different edges for the same table
+    let edges2 = vec![FkEdge {
+        connection_id: "conn-1".into(),
+        src_db: "db1".into(),
+        src_tbl: "orders".into(),
+        src_col: "product_id".into(),
+        dst_db: "db1".into(),
+        dst_tbl: "products".into(),
+        dst_col: "id".into(),
+        constraint_name: "fk_orders_product".into(),
+        on_delete: None,
+        on_update: None,
+    }];
+
+    storage::replace_fk_edges_for_table(&conn, "conn-1", "db1", "orders", &edges2)
+        .expect("replace");
+
+    let all2 = storage::get_fk_edges_for_connection(&conn, "conn-1").expect("read2");
+    assert_eq!(all2.len(), 1);
+    assert_eq!(all2[0].dst_tbl, "products");
+    assert_eq!(all2[0].on_delete.as_deref(), Some("RESTRICT"));
+}
+
+#[test]
+fn test_replace_fk_edges_for_table_does_not_affect_other_tables() {
+    let conn = setup_db(4);
+
+    let edges_a = vec![FkEdge {
+        connection_id: "conn-1".into(),
+        src_db: "db1".into(),
+        src_tbl: "orders".into(),
+        src_col: "user_id".into(),
+        dst_db: "db1".into(),
+        dst_tbl: "users".into(),
+        dst_col: "id".into(),
+        constraint_name: "fk_a".into(),
+        on_delete: None,
+        on_update: None,
+    }];
+    let edges_b = vec![FkEdge {
+        connection_id: "conn-1".into(),
+        src_db: "db1".into(),
+        src_tbl: "items".into(),
+        src_col: "order_id".into(),
+        dst_db: "db1".into(),
+        dst_tbl: "orders".into(),
+        dst_col: "id".into(),
+        constraint_name: "fk_b".into(),
+        on_delete: None,
+        on_update: None,
+    }];
+
+    storage::replace_fk_edges_for_table(&conn, "conn-1", "db1", "orders", &edges_a).unwrap();
+    storage::replace_fk_edges_for_table(&conn, "conn-1", "db1", "items", &edges_b).unwrap();
+
+    // Replace orders edges with empty
+    storage::replace_fk_edges_for_table(&conn, "conn-1", "db1", "orders", &[]).unwrap();
+
+    let all = storage::get_fk_edges_for_connection(&conn, "conn-1").expect("read");
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].src_tbl, "items");
+}
+
+// ── delete_all_chunks wipes signatures, fk_edges, and segment_df ────────
+
+#[test]
+fn test_delete_all_chunks_wipes_fk_edges_and_segment_df() {
+    let conn = setup_db(4);
+
+    // Insert FK edges and segment DF
+    let edges = vec![FkEdge {
+        connection_id: "conn-1".into(),
+        src_db: "db1".into(),
+        src_tbl: "orders".into(),
+        src_col: "user_id".into(),
+        dst_db: "db1".into(),
+        dst_tbl: "users".into(),
+        dst_col: "id".into(),
+        constraint_name: "fk_test".into(),
+        on_delete: None,
+        on_update: None,
+    }];
+    storage::replace_fk_edges_for_connection(&conn, "conn-1", &edges).unwrap();
+    storage::replace_segment_df_for_connection(&conn, "conn-1", &[("orders".into(), 5)]).unwrap();
+
+    // Insert a chunk too
+    let chunk = sample_chunk("conn-1", "db1.users:table", 4);
+    storage::insert_chunk(&conn, &chunk).unwrap();
+
+    // Nuke everything
+    storage::delete_all_chunks(&conn, "conn-1").unwrap();
+
+    assert!(storage::get_fk_edges_for_connection(&conn, "conn-1")
+        .unwrap()
+        .is_empty());
+    assert!(storage::get_segment_df_for_connection(&conn, "conn-1")
+        .unwrap()
+        .is_empty());
+    assert!(storage::list_chunks(&conn, "conn-1").unwrap().is_empty());
+}
+
+// ── ensure_vec_schema_version_column is called twice (idempotent) ────────
+
+#[test]
+fn test_upsert_index_meta_twice_is_idempotent() {
+    let conn = setup_db(4);
+    let meta = IndexMeta {
+        connection_id: "conn-1".into(),
+        model_id: "model-a".into(),
+        embedding_dimension: 4,
+        last_build_at: Some("2025-01-01T00:00:00Z".to_string()),
+        status: IndexStatus::Ready,
+        vec_schema_version: Some(2),
+    };
+    storage::upsert_index_meta(&conn, &meta).unwrap();
+    // Second call should succeed without error (ensure_vec_schema_version_column duplicate column path)
+    storage::upsert_index_meta(&conn, &meta).unwrap();
+    let got = storage::get_index_meta(&conn, "conn-1").unwrap().unwrap();
+    assert_eq!(got.model_id, "model-a");
 }

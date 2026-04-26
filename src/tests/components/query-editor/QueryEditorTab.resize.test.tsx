@@ -169,6 +169,7 @@ function emptyAiTabState(overrides: Partial<import('../../../stores/ai-store').T
     activeStreamHasAssistantOutput: false,
     isWaitingForIndex: false,
     connectionId: null,
+    compatWarning: null,
     _unlisten: null,
     ...overrides,
   }

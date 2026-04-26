@@ -182,6 +182,7 @@ pub fn run() {
                     .build()
                     .expect("failed to build shared HTTP client"),
                 embedding_cache: crate::schema_index::embeddings_cache::EmbeddingCache::new(),
+                capability_cache: Arc::new(crate::ai::local_compat::CapabilityCache::new()),
             };
             app.manage(state);
 

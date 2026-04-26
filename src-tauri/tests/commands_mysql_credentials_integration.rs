@@ -84,6 +84,7 @@ fn test_state() -> AppState {
         session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
         http_client: reqwest::Client::new(),
         embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
+        capability_cache: Arc::new(sqllumen_lib::ai::local_compat::CapabilityCache::new()),
     }
 }
 
@@ -113,6 +114,7 @@ fn poisoned_state() -> AppState {
         session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
         http_client: reqwest::Client::new(),
         embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
+        capability_cache: Arc::new(sqllumen_lib::ai::local_compat::CapabilityCache::new()),
     }
 }
 

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { logFrontend } from '../lib/app-log-commands'
 import { sendAiChat, cancelAiStream, listenToAiStream, aiQueryExpand } from '../lib/ai-commands'
+import { listen } from '@tauri-apps/api/event'
 import { searchMemories } from '../lib/ai-memory-commands'
 import type { AiMessage as IpcAiMessage, AiChunkKind } from '../lib/ai-commands'
 import { semanticSearch } from '../lib/schema-index-commands'
@@ -73,6 +74,8 @@ export interface TabAiState {
   isWaitingForIndex: boolean
   /** Connection ID associated with this tab — needed for cross-store status management. */
   connectionId: string | null
+  /** Warning from compat fallback (completions probe failed). */
+  compatWarning: string | null
   _unlisten: (() => void) | null
 }
 
@@ -101,6 +104,7 @@ function createDefaultTabAiState(): TabAiState {
     activeStreamHasAssistantOutput: false,
     isWaitingForIndex: false,
     connectionId: null,
+    compatWarning: null,
     _unlisten: null,
   }
 }
@@ -149,6 +153,7 @@ interface AiState {
   clearConversation: (tabId: string) => void
   setError: (tabId: string, error: string) => void
   clearError: (tabId: string) => void
+  setCompatWarning: (tabId: string, warning: string | null) => void
 
   // Editor lock — AI status management
   /** Lock the editor in 'ai-reviewing' state (e.g. while a diff overlay is open). */
@@ -904,6 +909,7 @@ export const useAiStore = create<AiState>()((set, get) => {
               systemPrompt: QUERY_EXPANSION_SYSTEM_PROMPT,
               userMessage: expandUserMessage,
               conversationContext: conversationContext || undefined,
+              apiKey: getAiSetting('ai.apiKey') || undefined,
             })
 
             logFrontend('debug', `[ai-store] query expansion raw response: ${result.text}`)
@@ -1265,6 +1271,7 @@ export const useAiStore = create<AiState>()((set, get) => {
     settings: { temperature?: number; maxTokens?: number; model?: string }
   ): Parameters<typeof sendAiChat>[0] {
     const endpoint = getAiSetting('ai.endpoint')
+    const apiKey = getAiSetting('ai.apiKey')
     const model = settings.model ?? getAiSetting('ai.model')
     const temperature = settings.temperature ?? parseFloat(getAiSetting('ai.temperature'))
     const maxTokens = settings.maxTokens ?? parseInt(getAiSetting('ai.maxTokens'), 10)
@@ -1300,6 +1307,7 @@ export const useAiStore = create<AiState>()((set, get) => {
         : null,
       preferResponsesApi,
       enableReasoning,
+      apiKey: apiKey || undefined,
     }
   }
 
@@ -1381,18 +1389,33 @@ export const useAiStore = create<AiState>()((set, get) => {
             onError: (error) => get().onStreamError(tabId, streamId, error),
           })
 
-          if (!get().tabs[tabId]) {
+          // Listen for compat fallback warning for this stream
+          const unlistenCompat = await listen<{ streamId: string; warning: string }>(
+            'ai-compat-fallback',
+            (event) => {
+              if (event.payload.streamId === streamId) {
+                get().setCompatWarning(tabId, event.payload.warning)
+              }
+            }
+          )
+
+          const combinedUnlisten = () => {
             unlisten()
+            unlistenCompat()
+          }
+
+          if (!get().tabs[tabId]) {
+            combinedUnlisten()
             return
           }
 
           // Guard: listener setup is async; abort if stream was cancelled in the meantime
           if (get().tabs[tabId]?.activeStreamId !== streamId || !get().tabs[tabId]?.isGenerating) {
-            unlisten()
+            combinedUnlisten()
             return
           }
 
-          get().setUnlisten(tabId, unlisten)
+          get().setUnlisten(tabId, combinedUnlisten)
 
           // Build and send the AI chat payload
           const payload = buildSendAiChatPayload(tabId, streamId, settings)
@@ -1698,6 +1721,13 @@ export const useAiStore = create<AiState>()((set, get) => {
     clearError: (tabId) => {
       ensureTab(tabId)
       patchTab(tabId, { error: null })
+    },
+
+    // ------ setCompatWarning ------
+
+    setCompatWarning: (tabId, warning) => {
+      ensureTab(tabId)
+      patchTab(tabId, { compatWarning: warning })
     },
 
     // ------ setAiReviewing ------

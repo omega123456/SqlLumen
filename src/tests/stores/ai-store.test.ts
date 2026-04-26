@@ -162,22 +162,47 @@ beforeEach(() => {
   mockSearchMemories.mockResolvedValue([])
 
   mockIPC((cmd) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    if (cmd === 'get_setting') return null
-    if (cmd === 'set_setting') return undefined
-    if (cmd === 'get_all_settings') return {}
-    if (cmd === 'build_schema_index') return undefined
-    if (cmd === 'semantic_search') return []
-    if (cmd === 'get_index_status') return { status: 'ready' }
-    if (cmd === 'invalidate_schema_index') return undefined
-    if (cmd === 'list_indexed_tables') return []
-    if (cmd === 'search_memories') return []
-    if (cmd === 'ai_query_expand')
+    if (cmd === 'log_frontend') {
+      return undefined
+    }
+    if (cmd === 'plugin:event|listen') {
+      return () => {}
+    }
+    if (cmd === 'plugin:event|unlisten') {
+      return undefined
+    }
+    if (cmd === 'get_setting') {
+      return null
+    }
+    if (cmd === 'set_setting') {
+      return undefined
+    }
+    if (cmd === 'get_all_settings') {
+      return {}
+    }
+    if (cmd === 'build_schema_index') {
+      return undefined
+    }
+    if (cmd === 'semantic_search') {
+      return []
+    }
+    if (cmd === 'get_index_status') {
+      return { status: 'ready' }
+    }
+    if (cmd === 'invalidate_schema_index') {
+      return undefined
+    }
+    if (cmd === 'list_indexed_tables') {
+      return []
+    }
+    if (cmd === 'search_memories') {
+      return []
+    }
+    if (cmd === 'ai_query_expand') {
       return {
         text: '{"queries":["search query 1","search query 2","search query 3"],"hypotheticalSql":"SELECT * FROM users","entities":["users","orders"],"joins":["users → orders"],"metrics":["count"]}',
       }
+    }
     throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
   })
 })
@@ -266,6 +291,41 @@ describe('useAiStore', () => {
       expect(params.maxTokens).toBe(4096)
     })
 
+    it('disabled-reasoning sends clean visible user content to IPC without provider directives', async () => {
+      mockSettings['ai.enableReasoning'] = 'false'
+
+      useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Explain joins', {})
+
+      await vi.waitFor(() => {
+        expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+      })
+
+      const params = mockSendAiChat.mock.calls[0][0]
+
+      // The IPC payload's user messages must be clean — no provider directives
+      const userMessages = params.messages.filter(
+        (m: { role: string; content: string }) => m.role === 'user'
+      )
+      expect(userMessages).toHaveLength(1)
+      const userContent: string = userMessages[0].content
+      expect(userContent).toBe('Explain joins')
+      expect(userContent).not.toContain('/no_think')
+      expect(userContent).not.toContain('[No chain-of-thought. Answer directly.]')
+      expect(userContent).not.toContain('### User')
+
+      // The visible message in frontend state must be the original text
+      const tab = getTab('tab-1')!
+      const visibleUserMessages = tab.messages.filter((m) => m.role === 'user')
+      expect(visibleUserMessages).toHaveLength(1)
+      expect(visibleUserMessages[0].content).toBe('Explain joins')
+
+      // Non-thinking messages should have no thinkingContent
+      expect(visibleUserMessages[0].thinkingContent).toBeUndefined()
+
+      // enableReasoning should be false in the IPC payload
+      expect(params.enableReasoning).toBe(false)
+    })
+
     it('uses pending reasoning setting when building AI requests', async () => {
       mockSettings['ai.enableReasoning'] = 'true'
       mockPendingChanges['ai.enableReasoning'] = 'false'
@@ -316,7 +376,13 @@ describe('useAiStore', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
 
       await vi.waitFor(() => {
-        expect(getTab('tab-1')!._unlisten).toBe(mockUnlisten)
+        // _unlisten is now a combined wrapper that calls the stream unlisten plus
+        // the compat-fallback event unlisten; assert it is a function and that
+        // invoking it forwards the call to the stream unlisten.
+        const stored = getTab('tab-1')!._unlisten
+        expect(typeof stored).toBe('function')
+        stored!()
+        expect(mockUnlisten).toHaveBeenCalledTimes(1)
       })
     })
 

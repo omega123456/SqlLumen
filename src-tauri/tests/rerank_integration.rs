@@ -2,7 +2,7 @@
 //!
 //! Tests the parsing and reordering logic without a real LLM endpoint.
 
-use sqllumen_lib::schema_index::rerank::{parse_rerank_response, reorder_by_ids};
+use sqllumen_lib::schema_index::rerank::{parse_rerank_response, reorder_by_ids, parse_rerank_text};
 use sqllumen_lib::schema_index::search::SearchResult;
 
 fn make_result(chunk_id: i64, table_name: &str, score: f64) -> SearchResult {
@@ -32,6 +32,8 @@ async fn test_rerank_empty_candidates() {
         &client,
         "http://localhost:99999", // unreachable
         "test-model",
+        None, // api_key
+        None,
     )
     .await;
     assert!(results.is_empty());
@@ -56,6 +58,8 @@ async fn test_rerank_timeout_fallback() {
         &client,
         "http://192.0.2.1:1", // non-routable (RFC 5737)
         "test-model",
+        None, // api_key
+        None,
     )
     .await;
 
@@ -81,6 +85,8 @@ async fn test_rerank_invalid_endpoint_fallback() {
         &client,
         "http://localhost:1", // should fail to connect
         "test-model",
+        None, // api_key
+        None,
     )
     .await;
 
@@ -126,6 +132,8 @@ async fn test_rerank_disables_reasoning_on_request() {
         &client,
         &server.uri(),
         "test-model",
+        None, // api_key
+        None,
     )
     .await;
 
@@ -284,10 +292,159 @@ async fn test_rerank_with_long_ddl_truncation() {
         &client,
         "http://192.0.2.1:1",
         "test-model",
+        None, // api_key
+        None,
     )
     .await;
 
     // Falls back to original order
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].chunk_id, 1);
+}
+
+// ── Hidden compat call tests for rerank ─────────────────────────────────
+
+#[tokio::test]
+async fn rerank_uses_completions_when_capable() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    // Mock the completions probe endpoint
+    Mock::given(method("POST"))
+        .and(path("/v1/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "id": "cmpl-test",
+            "object": "text_completion",
+            "choices": [{ "text": "{\"ranked\": [2, 1]}", "index": 0 }]
+        })))
+        .mount(&server)
+        .await;
+
+    let cache = std::sync::Arc::new(sqllumen_lib::ai::local_compat::CapabilityCache::new());
+    // Pre-seed positive capability so we skip the probe
+    cache.set(
+        &server.uri(),
+        "test-model",
+        sqllumen_lib::ai::local_compat::CapabilityKind::NonStreamingCompletions,
+        true,
+    ).await;
+
+    let client = reqwest::Client::new();
+    let candidates = vec![
+        make_result(1, "users", 0.9),
+        make_result(2, "orders", 0.8),
+    ];
+
+    // wiremock binds to 127.0.0.1 which is_local_endpoint recognises as local
+    let results = sqllumen_lib::schema_index::rerank::rerank_with_llm(
+        candidates,
+        "find orders",
+        &client,
+        &server.uri(),
+        "test-model",
+        None, // api_key
+        Some(cache),
+    )
+    .await;
+
+    // Should be reordered by the completions response
+    assert_eq!(results[0].chunk_id, 2);
+    assert_eq!(results[1].chunk_id, 1);
+}
+
+#[tokio::test]
+async fn rerank_fallback_when_not_capable() {
+    let cache = std::sync::Arc::new(sqllumen_lib::ai::local_compat::CapabilityCache::new());
+    // Pre-seed negative capability
+    cache.set(
+        "http://127.0.0.1:1",
+        "test-model",
+        sqllumen_lib::ai::local_compat::CapabilityKind::NonStreamingCompletions,
+        false,
+    ).await;
+
+    let client = reqwest::Client::new();
+    let candidates = vec![
+        make_result(1, "users", 0.9),
+        make_result(2, "orders", 0.8),
+    ];
+
+    let results = sqllumen_lib::schema_index::rerank::rerank_with_llm(
+        candidates,
+        "find orders",
+        &client,
+        "http://127.0.0.1:1",
+        "test-model",
+        None, // api_key
+        Some(cache),
+    )
+    .await;
+
+    // Falls back to original order (no retry through chat)
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].chunk_id, 1);
+    assert_eq!(results[1].chunk_id, 2);
+}
+
+#[tokio::test]
+async fn rerank_non_local_uses_existing_behavior() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    // Use a wiremock server but pass a "public" endpoint URL
+    let server = MockServer::start().await;
+
+    // This mock should be hit via the chat completions path, not completions
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": "{\"ranked\": [2, 1]}"
+                }
+            }]
+        })))
+        .mount(&server)
+        .await;
+
+    let _cache = std::sync::Arc::new(sqllumen_lib::ai::local_compat::CapabilityCache::new());
+    let client = reqwest::Client::new();
+    let candidates = vec![
+        make_result(1, "users", 0.9),
+        make_result(2, "orders", 0.8),
+    ];
+
+    // Use a non-local looking endpoint that actually redirects to wiremock
+    // Since wiremock uses 127.0.0.1, we need to test with `None` cache to verify existing path
+    let results = sqllumen_lib::schema_index::rerank::rerank_with_llm(
+        candidates,
+        "find orders",
+        &client,
+        &server.uri(),
+        "test-model",
+        None, // api_key
+        None, // No cache → existing chat path
+    )
+    .await;
+
+    assert_eq!(results[0].chunk_id, 2);
+    assert_eq!(results[1].chunk_id, 1);
+}
+
+#[test]
+fn parse_rerank_text_extracts_from_raw_completions_output() {
+    let text = "{\"ranked\": [3, 1, 2]}";
+    let ids = parse_rerank_text(text).unwrap();
+    assert_eq!(ids, vec![3, 1, 2]);
+}
+
+#[test]
+fn parse_rerank_text_handles_thinking_tags() {
+    // After sanitize_thinking_content, thinking tags should be stripped
+    let text = "<think>reasoning here</think>{\"ranked\": [5, 10]}";
+    let sanitized = sqllumen_lib::ai::local_compat::sanitize_thinking_content(text);
+    let ids = parse_rerank_text(&sanitized).unwrap();
+    assert_eq!(ids, vec![5, 10]);
 }

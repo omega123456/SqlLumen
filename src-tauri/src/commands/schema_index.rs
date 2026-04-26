@@ -690,6 +690,8 @@ pub async fn semantic_search_impl(
     if rerank_enabled && !results.is_empty() {
         let chat_model = read_setting(&state.db, "ai.model").unwrap_or_default();
         if !chat_model.is_empty() && !endpoint.is_empty() {
+            let api_key = read_setting(&state.db, "ai.apiKey").unwrap_or_default();
+            let api_key_opt = if api_key.is_empty() { None } else { Some(api_key.as_str()) };
             let original_query = queries.first().cloned().unwrap_or_default();
             tracing::debug!(
                 profile_id = %profile_id,
@@ -702,6 +704,8 @@ pub async fn semantic_search_impl(
                 &state.http_client,
                 &endpoint,
                 &chat_model,
+                api_key_opt,
+                Some(std::sync::Arc::clone(&state.capability_cache)),
             )
             .await;
         }

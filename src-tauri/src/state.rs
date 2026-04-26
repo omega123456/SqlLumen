@@ -107,4 +107,6 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     /// Cache for query embedding vectors (avoids re-embedding identical queries).
     pub embedding_cache: crate::schema_index::embeddings_cache::EmbeddingCache,
+    /// Cache of endpoint+model capability probe results for local compat layer.
+    pub capability_cache: Arc<crate::ai::local_compat::CapabilityCache>,
 }

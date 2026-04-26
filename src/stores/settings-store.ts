@@ -25,6 +25,7 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'session.state': 'null',
   'ai.enabled': 'false',
   'ai.endpoint': '',
+  'ai.apiKey': '',
   'ai.model': '',
   'ai.embeddingModel': '',
   'ai.temperature': '0.3',

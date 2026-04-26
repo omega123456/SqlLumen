@@ -26,6 +26,8 @@ pub struct AiChatRequest {
     pub prefer_responses_api: bool,
     #[serde(default = "default_true")]
     pub enable_reasoning: bool,
+    #[serde(default)]
+    pub api_key: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -178,6 +180,76 @@ pub enum AiTransport {
     Responses,
 }
 
+// ── Provider-facing completions types (for raw /v1/completions compat) ────
+
+/// Request body for the `/v1/completions` endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CompletionsRequest {
+    pub model: String,
+    pub prompt: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<Vec<String>>,
+}
+
+/// A single choice in a non-streaming completions response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CompletionsChoice {
+    pub text: String,
+    pub index: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
+}
+
+/// Non-streaming response from the `/v1/completions` endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CompletionsResponse {
+    pub id: String,
+    pub object: String,
+    pub choices: Vec<CompletionsChoice>,
+}
+
+/// A single choice in a streaming completions chunk.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CompletionsStreamChoice {
+    pub text: String,
+    pub index: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
+}
+
+/// A streaming chunk from the `/v1/completions` endpoint (SSE).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CompletionsStreamChunk {
+    pub choices: Vec<CompletionsStreamChoice>,
+}
+
+/// Which transport was used for a compatibility request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CompatTransport {
+    ChatCompletions,
+    RawCompletionsCompat,
+    ResponsesApi,
+}
+
+/// Internal metadata about a compatibility-mode request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompatibilityMeta {
+    pub transport: CompatTransport,
+    pub endpoint: String,
+    pub model: String,
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /// Convert IPC messages to API messages.
@@ -285,6 +357,9 @@ pub struct AiQueryExpandRequest {
     /// Optional pre-formatted conversation context (last ~4 turns + attached SQL).
     #[serde(default)]
     pub conversation_context: Option<String>,
+    /// Optional API key for authenticated endpoints.
+    #[serde(default)]
+    pub api_key: Option<String>,
 }
 
 /// Response from `ai_query_expand`.

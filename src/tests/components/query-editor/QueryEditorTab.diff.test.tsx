@@ -47,6 +47,7 @@ function emptyAiTabState(overrides: Partial<TabAiState> = {}): TabAiState {
     activeStreamHasAssistantOutput: false,
     isWaitingForIndex: false,
     connectionId: 'conn-1',
+    compatWarning: null,
     _unlisten: null,
     ...overrides,
   }

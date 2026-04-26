@@ -66,6 +66,7 @@ function emptyTabState(overrides?: Partial<TabAiState>): TabAiState {
     activeStreamHasAssistantOutput: false,
     isWaitingForIndex: false,
     connectionId: null,
+    compatWarning: null,
     _unlisten: null,
     ...overrides,
   }
@@ -415,5 +416,39 @@ describe('AiPanel — re-embedding banner', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('ai-memory-reembed-banner')).not.toBeInTheDocument()
     })
+  })
+
+  it('shows compat warning banner when compatWarning is set', () => {
+    act(() => {
+      useAiStore.setState({
+        tabs: { 'tab-1': emptyTabState({ compatWarning: 'some warning' }) },
+      })
+    })
+
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('ai-compat-warning-banner')).toBeInTheDocument()
+  })
+
+  it('dismisses compat warning banner when dismiss is clicked', async () => {
+    const user = userEvent.setup()
+    act(() => {
+      useAiStore.setState({
+        tabs: { 'tab-1': emptyTabState({ compatWarning: 'some warning' }) },
+      })
+    })
+
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('ai-compat-warning-banner')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('ai-compat-warning-dismiss'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('ai-compat-warning-banner')).not.toBeInTheDocument()
+    })
+  })
+
+  it('does not show compat warning banner when compatWarning is null', () => {
+    render(<AiPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.queryByTestId('ai-compat-warning-banner')).not.toBeInTheDocument()
   })
 })
