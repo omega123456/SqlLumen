@@ -28,6 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "copyright": "© 2026 SqlLumen Contributors",
     "shortDescription": "A cross-platform desktop MySQL/MariaDB client",
     "icon": [
@@ -43,9 +44,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://placeholder.example.com/update/{{target}}/{{arch}}/{{current_version}}"
+        "https://github.com/omega123456/SqlLumen/releases/latest/download/latest.json"
       ],
-      "pubkey": ""
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg2MDlBMURDNjJDQjgzQzIKUldUQ2c4dGkzS0VKaG1kR1BpRkR1Yys0V3BCTU1vM0QveEZKdkVIa2t0bktjeFBVUG9KM0s3N3EK"
     }
   }
 }

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Database, CheckCircle, WarningCircle } from '@phosphor-icons/react'
+import { Database, CheckCircle, WarningCircle, ArrowsClockwise } from '@phosphor-icons/react'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { useThemeStore } from '../../stores/theme-store'
 import { useSchemaIndexStore } from '../../stores/schema-index-store'
+import { useSettingsStore } from '../../stores/settings-store'
+import { useUpdateStore } from '../../stores/update-store'
 import { ConnectionStatusIndicator } from './ConnectionStatusIndicator'
 import styles from './StatusBar.module.css'
 
@@ -18,6 +20,8 @@ export function StatusBar() {
   const activeConnections = useConnectionStore((s) => s.activeConnections)
   const connectionTabId = useConnectionStore((s) => s.activeTabId)
   const resolvedTheme = useThemeStore((s) => s.resolvedTheme)
+  const updateStatus = useUpdateStore((s) => s.status)
+  const openSettingsDialog = useSettingsStore((s) => s.openDialog)
 
   // Active workspace tab ID for the current connection
   const activeWorkspaceTabId = useWorkspaceStore((s) =>
@@ -132,10 +136,25 @@ export function StatusBar() {
 
   const indexingLabel = buildIndexingLabel()
 
+  const updateIndicator =
+    updateStatus === 'available' ? (
+      <button
+        type="button"
+        className={styles.updateButton}
+        data-testid="status-bar-update-indicator"
+        aria-label="Update available, click to open update settings"
+        onClick={() => openSettingsDialog('updates')}
+      >
+        <ArrowsClockwise size={12} weight="fill" className={styles.indexingIcon} />
+        <span className={styles.updateButtonText}>Update available</span>
+      </button>
+    ) : null
+
   if (!activeConnection) {
     return (
       <div className={styles.statusBar} data-testid="status-bar">
         <span className={styles.statusText}>Ready</span>
+        <div aria-live="polite">{updateIndicator}</div>
       </div>
     )
   }
@@ -258,6 +277,9 @@ export function StatusBar() {
         </span>
       </div>
       <div className={styles.statusRight}>
+        <span aria-live="polite" aria-atomic="true">
+          {updateIndicator}
+        </span>
         <span className={styles.statusText}>{activeConnection.serverVersion}</span>
       </div>
     </div>

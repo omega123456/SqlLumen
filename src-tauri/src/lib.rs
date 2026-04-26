@@ -118,6 +118,7 @@ pub fn run() {
     let mut builder = tauri::Builder::default();
 
     builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    builder = builder.plugin(tauri_plugin_process::init());
 
     #[cfg(feature = "dialog")]
     {

@@ -6,6 +6,8 @@
   "permissions": [
     "mcp-bridge:default",
     "core:default",
+    "updater:default",
+    "process:default",
     "core:window:allow-destroy",
     "window-state:default",
     "clipboard-manager:default",

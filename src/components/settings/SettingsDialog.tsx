@@ -9,9 +9,11 @@ import { ResultsSettings } from './ResultsSettings'
 import { LoggingSettings } from './LoggingSettings'
 import { ShortcutsSettings } from './ShortcutsSettings'
 import { AiSettings } from './AiSettings'
+import { UpdatesSettings } from './UpdatesSettings'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import { useThemeStore } from '../../stores/theme-store'
+import { useUpdateStore } from '../../stores/update-store'
 import type { SettingsSection } from '../../types/schema'
 import styles from './SettingsDialog.module.css'
 
@@ -50,11 +52,20 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   }, [isOpen, loadSettings, dialogSection, setActiveSection])
 
   const handleSave = useCallback(async () => {
+    const savedKeys = Object.keys(useSettingsStore.getState().pendingChanges)
     await save()
+    const remainingPendingChanges = useSettingsStore.getState().pendingChanges
+    const intervalSaveSucceeded =
+      savedKeys.includes('updates.checkInterval') &&
+      !('updates.checkInterval' in remainingPendingChanges)
 
     // After saving, reload shortcuts into the live shortcut store from the saved settings
     const savedShortcuts = useSettingsStore.getState().getSetting('shortcuts')
     useShortcutStore.getState().loadShortcuts(savedShortcuts)
+
+    if (intervalSaveSucceeded) {
+      await useUpdateStore.getState().restartPeriodicCheck()
+    }
 
     onClose()
   }, [save, onClose])
@@ -103,6 +114,8 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
         return <ShortcutsSettings />
       case 'ai':
         return <AiSettings />
+      case 'updates':
+        return <UpdatesSettings />
     }
   }
 

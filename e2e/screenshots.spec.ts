@@ -2083,6 +2083,88 @@ for (const theme of themes) {
       )
     })
 
+    test('SettingsDialog — Updates section', async ({ page }) => {
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-updates').click()
+      await expect(page.getByTestId('settings-updates')).toBeVisible({ timeout: APP_READY_MS })
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
+        `settings-dialog-updates-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('StatusBar — update indicator visible', async ({ page }) => {
+      await page.evaluate(() => {
+        const updateStore = (window as unknown as Record<string, unknown>).__updateStore__ as {
+          setState: (partial: Record<string, unknown>) => void
+        }
+        updateStore.setState({ status: 'available' })
+      })
+      await expect(page.getByTestId('status-bar')).toHaveScreenshot(
+        `status-bar-update-indicator-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('Updates restart confirmation dialog', async ({ page }) => {
+      await page.evaluate(() => {
+        const updateStore = (window as unknown as Record<string, unknown>).__updateStore__ as {
+          setState: (partial: Record<string, unknown>) => void
+        }
+        const connStore = (window as unknown as Record<string, unknown>).__connectionStore__ as {
+          setState: (partial: Record<string, unknown>) => void
+        }
+        updateStore.setState({ status: 'available', availableVersion: '2.0.0' })
+        connStore.setState({
+          activeConnections: {
+            'session-playwright-1': {
+              id: 'session-playwright-1',
+              profile: {
+                id: 'conn-playwright-1',
+                name: 'Sample MySQL',
+                host: '127.0.0.1',
+                port: 3306,
+                username: 'appuser',
+                hasPassword: true,
+                defaultDatabase: 'ecommerce_db',
+                sslEnabled: false,
+                sslCaPath: null,
+                sslCertPath: null,
+                sslKeyPath: null,
+                color: '#2563eb',
+                groupId: null,
+                readOnly: false,
+                sortOrder: 0,
+                connectTimeoutSecs: 10,
+                keepaliveIntervalSecs: 60,
+                createdAt: '2025-01-01T00:00:00.000Z',
+                updatedAt: '2025-01-01T00:00:00.000Z',
+              },
+              sessionDatabase: 'ecommerce_db',
+              status: 'connected',
+              serverVersion: '8.0.33-mock',
+            },
+          },
+          activeTabId: 'session-playwright-1',
+        })
+      })
+
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-updates').click()
+      await page.getByTestId('updates-download-button').click()
+      await expect(page.getByTestId('confirm-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('confirm-dialog')).toHaveScreenshot(
+        `updates-restart-confirm-dialog-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     // --- History & Favorites screenshots (Phase 9.3) ---
 
     test('HistoryFavoritesTab — split-panel layout', async ({ page }) => {

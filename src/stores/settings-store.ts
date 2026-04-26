@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { getAllSettings, setSetting } from '../lib/tauri-commands'
+import { DEFAULT_UPDATE_INTERVAL } from '../lib/update-intervals'
 import type { SettingsSection } from '../types/schema'
 
 // ---------------------------------------------------------------------------
@@ -21,6 +22,7 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'results.nullDisplay': 'NULL',
   'connection.defaultTimeout': '10',
   'connection.defaultKeepalive': '60',
+  'updates.checkInterval': DEFAULT_UPDATE_INTERVAL,
   shortcuts: '{}',
   'session.state': 'null',
   'ai.enabled': 'false',
@@ -59,6 +61,7 @@ function sectionForKey(key: string): SettingsSection | null {
   if (key.startsWith('log.')) return 'logging'
   if (key === 'shortcuts') return 'shortcuts'
   if (key.startsWith('ai.')) return 'ai'
+  if (key.startsWith('updates.')) return 'updates'
   return null
 }
 

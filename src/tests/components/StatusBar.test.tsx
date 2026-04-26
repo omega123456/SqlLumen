@@ -6,6 +6,9 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useQueryStore } from '../../stores/query-store'
 import { useThemeStore } from '../../stores/theme-store'
 import { useSchemaIndexStore } from '../../stores/schema-index-store'
+import { useSettingsStore } from '../../stores/settings-store'
+import { useUpdateStore } from '../../stores/update-store'
+import userEvent from '@testing-library/user-event'
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
 import type { WorkspaceTab } from '../../types/schema'
 import { makeTabState } from '../helpers/query-test-utils'
@@ -70,12 +73,41 @@ beforeEach(() => {
     profileToSessions: {},
     sessionToProfile: {},
   })
+  useSettingsStore.setState({
+    settings: {},
+    pendingChanges: {},
+    isDirty: false,
+    isLoading: false,
+    activeSection: 'general',
+    isDialogOpen: false,
+    dialogSection: undefined,
+  })
+  useUpdateStore.setState({
+    status: 'idle',
+    availableVersion: null,
+    downloadProgress: 0,
+    errorMessage: null,
+  })
 })
 
 describe('StatusBar', () => {
   it('renders the Ready status text when no connections', () => {
     render(<StatusBar />)
     expect(screen.getByText('Ready')).toBeInTheDocument()
+  })
+
+  it('shows update indicator in ready branch and opens updates settings on click', async () => {
+    const user = userEvent.setup()
+    useUpdateStore.setState({ status: 'available' })
+
+    render(<StatusBar />)
+
+    const indicator = screen.getByTestId('status-bar-update-indicator')
+    expect(indicator).toBeInTheDocument()
+    await user.click(indicator)
+
+    expect(useSettingsStore.getState().isDialogOpen).toBe(true)
+    expect(useSettingsStore.getState().dialogSection).toBe('updates')
   })
 
   it('shows connection name and host:port when connection is active', () => {
@@ -91,6 +123,15 @@ describe('StatusBar', () => {
     expect(screen.getByText(/Test DB/)).toBeInTheDocument()
     expect(screen.getByText(/127\.0\.0\.1/)).toBeInTheDocument()
     expect(screen.getByText(/3306/)).toBeInTheDocument()
+  })
+
+  it('shows update indicator in active connection branch', () => {
+    useUpdateStore.setState({ status: 'available' })
+    setupActiveConnection()
+
+    render(<StatusBar />)
+
+    expect(screen.getByTestId('status-bar-update-indicator')).toBeInTheDocument()
   })
 
   it('shows correct status text for connected state', () => {

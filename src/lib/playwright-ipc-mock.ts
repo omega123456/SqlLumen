@@ -70,6 +70,44 @@ const AI_MOCK_RESPONSE =
 
 // ---------------------------------------------------------------------------
 
+interface PlaywrightUpdateOverride {
+  available?: boolean
+  version?: string
+  currentVersion?: string
+  body?: string | null
+  date?: string | null
+  rawJson?: unknown
+}
+
+function getPlaywrightUpdateOverride(): PlaywrightUpdateOverride | undefined {
+  const w = globalThis as typeof globalThis & {
+    __PLAYWRIGHT_UPDATE_OVERRIDE__?: PlaywrightUpdateOverride
+  }
+
+  return w.__PLAYWRIGHT_UPDATE_OVERRIDE__
+}
+
+function getMockUpdateMetadata(): Record<string, unknown> | null {
+  const override = getPlaywrightUpdateOverride()
+  if (!override?.available) {
+    return null
+  }
+
+  return {
+    rid: 101,
+    currentVersion: override.currentVersion ?? '0.1.0',
+    version: override.version ?? '0.2.0',
+    date: override.date ?? MOCK_TS,
+    body: override.body ?? 'Mock SqlLumen update for Playwright flows.',
+    rawJson: override.rawJson ?? null,
+  }
+}
+
+function emitUpdaterEvent(args: Record<string, unknown> | undefined, payload: unknown): void {
+  const onEvent = args?.onEvent as { onmessage?: (payload: unknown) => void } | undefined
+  onEvent?.onmessage?.(payload)
+}
+
 function getSchemaMetadataOverride(): SchemaMetadataResponse | undefined {
   const w = globalThis as typeof globalThis & {
     __PLAYWRIGHT_SCHEMA_METADATA_OVERRIDE__?: SchemaMetadataResponse
@@ -108,6 +146,28 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       }
       return null
     }
+
+    // --- Tauri plugins: updater/process ---
+    case 'plugin:updater|check':
+      return getMockUpdateMetadata()
+    case 'plugin:updater|download_and_install':
+      emitUpdaterEvent(args, { event: 'Started', data: { contentLength: 100 } })
+      emitUpdaterEvent(args, { event: 'Progress', data: { chunkLength: 50 } })
+      emitUpdaterEvent(args, { event: 'Progress', data: { chunkLength: 50 } })
+      emitUpdaterEvent(args, { event: 'Finished' })
+      return null
+    case 'plugin:updater|download':
+      emitUpdaterEvent(args, { event: 'Started', data: { contentLength: 100 } })
+      emitUpdaterEvent(args, { event: 'Progress', data: { chunkLength: 100 } })
+      emitUpdaterEvent(args, { event: 'Finished' })
+      return 201
+    case 'plugin:updater|install':
+      return null
+    case 'plugin:os|platform':
+      return 'linux'
+    case 'plugin:process|restart':
+    case 'plugin:process|relaunch':
+      return null
 
     // --- Settings ---
     case 'get_setting': {

@@ -1,4 +1,12 @@
-import { GearSix, Code, Table, FileText, Keyboard, Sparkle } from '@phosphor-icons/react'
+import {
+  GearSix,
+  Code,
+  Table,
+  FileText,
+  Keyboard,
+  Sparkle,
+  ArrowsClockwise,
+} from '@phosphor-icons/react'
 import type { SettingsSection } from '../../types/schema'
 import styles from './SettingsSidebar.module.css'
 
@@ -9,6 +17,7 @@ const SECTIONS: { id: SettingsSection; label: string; Icon: typeof GearSix }[] =
   { id: 'logging', label: 'Logging', Icon: FileText },
   { id: 'shortcuts', label: 'Shortcuts', Icon: Keyboard },
   { id: 'ai', label: 'AI', Icon: Sparkle },
+  { id: 'updates', label: 'Updates', Icon: ArrowsClockwise },
 ]
 
 export interface SettingsSidebarProps {

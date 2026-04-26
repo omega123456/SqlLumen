@@ -571,7 +571,14 @@ export interface SaveObjectResponse {
 // Settings types (Phase 9)
 // ---------------------------------------------------------------------------
 
-export type SettingsSection = 'general' | 'editor' | 'results' | 'logging' | 'shortcuts' | 'ai'
+export type SettingsSection =
+  | 'general'
+  | 'editor'
+  | 'results'
+  | 'logging'
+  | 'shortcuts'
+  | 'ai'
+  | 'updates'
 
 export interface ShortcutBinding {
   key: string

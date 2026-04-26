@@ -142,6 +142,67 @@ describe('playwrightIpcMockHandler', () => {
     expect(result).toBeUndefined()
   })
 
+  it('returns null for updater and process plugin commands by default', () => {
+    expect(playwrightIpcMockHandler('plugin:updater|check')).toBeNull()
+    expect(playwrightIpcMockHandler('plugin:os|platform')).toBe('linux')
+    expect(playwrightIpcMockHandler('plugin:process|relaunch')).toBeNull()
+  })
+
+  it('returns update metadata and install command mocks when overridden', () => {
+    ;(
+      globalThis as typeof globalThis & {
+        __PLAYWRIGHT_UPDATE_OVERRIDE__?: { available?: boolean; version?: string }
+      }
+    ).__PLAYWRIGHT_UPDATE_OVERRIDE__ = {
+      available: true,
+      version: '9.9.9',
+    }
+
+    const result = playwrightIpcMockHandler('plugin:updater|check') as {
+      version: string
+      rid: number
+    }
+    expect(result.version).toBe('9.9.9')
+    expect(result.rid).toBe(101)
+
+    const events: unknown[] = []
+    const installResult = playwrightIpcMockHandler('plugin:updater|download_and_install', {
+      onEvent: {
+        onmessage: (payload: unknown) => {
+          events.push(payload)
+        },
+      },
+      rid: 101,
+    })
+
+    expect(installResult).toBeNull()
+    expect(events).toEqual([
+      { event: 'Started', data: { contentLength: 100 } },
+      { event: 'Progress', data: { chunkLength: 50 } },
+      { event: 'Progress', data: { chunkLength: 50 } },
+      { event: 'Finished' },
+    ])
+
+    const downloadResult = playwrightIpcMockHandler('plugin:updater|download', {
+      onEvent: {
+        onmessage: (payload: unknown) => {
+          events.push(payload)
+        },
+      },
+      rid: 101,
+    })
+    expect(downloadResult).toBe(201)
+    expect(
+      playwrightIpcMockHandler('plugin:updater|install', { updateRid: 101, bytesRid: 201 })
+    ).toBeNull()
+
+    delete (
+      globalThis as typeof globalThis & {
+        __PLAYWRIGHT_UPDATE_OVERRIDE__?: { available?: boolean; version?: string }
+      }
+    ).__PLAYWRIGHT_UPDATE_OVERRIDE__
+  })
+
   // --- Multi-query / CALL / re-execute mock handler tests ---
 
   it('returns a MultiQueryResult with 3 results for execute_multi_query', () => {

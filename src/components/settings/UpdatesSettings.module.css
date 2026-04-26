@@ -1,0 +1,97 @@
+.fieldLabel {
+  display: block;
+  margin-bottom: var(--space-xs);
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+}
+
+.versionValue {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-sm);
+  color: var(--on-surface);
+}
+
+.spinningIcon {
+  animation: spin 1s linear infinite;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.statusMessage {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+}
+
+.upToDate {
+  color: var(--tertiary);
+}
+
+.errorMessage {
+  color: var(--error);
+}
+
+.updateCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  background: var(--ui-elevated-surface-bg);
+  border-radius: var(--ui-elevated-surface-radius);
+  box-shadow: var(--ui-elevated-surface-shadow);
+}
+
+.cardTitle {
+  font-size: var(--type-size-md);
+  color: var(--on-surface);
+}
+
+.progressMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+}
+
+.progressTrack {
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  background: var(--surface-container-highest);
+  border-radius: 999px;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: inherit;
+  transition: width 160ms ease;
+}
+
+.confirmList {
+  margin: var(--space-sm) 0 0;
+  padding-left: var(--space-lg);
+}
+
+.confirmList li {
+  margin: 0;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -5,6 +5,7 @@ import { useThemeStore } from './stores/theme-store'
 import { useConnectionStore } from './stores/connection-store'
 import { useSessionRestoreStore } from './stores/session-restore-store'
 import { useShortcutStore } from './stores/shortcut-store'
+import { useUpdateStore } from './stores/update-store'
 import { useSystemTheme } from './hooks/use-system-theme'
 
 // react-data-grid base styles + Precision Studio custom theme
@@ -28,8 +29,10 @@ function App() {
       cleanup = unlisten
     })
     void restoreSession()
+    void useUpdateStore.getState().startPeriodicCheck()
     return () => {
       cleanup?.()
+      useUpdateStore.getState().stopPeriodicCheck()
     }
   }, [initialize, initializeShortcuts, setupEventListeners, restoreSession])
 

@@ -59,6 +59,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: pnpm tauri
           tagName: v__VERSION__
@@ -66,16 +68,18 @@ jobs:
           releaseBody: ${{ steps.release_body.outputs.body }}
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: false
+          uploadUpdaterJson: true
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
-          args: --target aarch64-apple-darwin --bundles dmg
+          args: --target aarch64-apple-darwin --bundles dmg,app
 
       - name: Retry tauri release on transient dmg bundling failure
         if: steps.tauri_release_first_attempt.outcome == 'failure'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: pnpm tauri
           tagName: v__VERSION__
@@ -83,10 +87,10 @@ jobs:
           releaseBody: ${{ steps.release_body.outputs.body }}
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: false
+          uploadUpdaterJson: true
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
-          args: --target aarch64-apple-darwin --bundles dmg
+          args: --target aarch64-apple-darwin --bundles dmg,app
 
   publish-tauri-windows:
     permissions:
@@ -136,6 +140,8 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: pnpm tauri
           tagName: v__VERSION__
@@ -143,7 +149,8 @@ jobs:
           releaseBody: ${{ steps.release_body.outputs.body }}
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: false
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
-          args: --bundles msi
+          args: --bundles msi,nsis

@@ -69,6 +69,7 @@ async function init() {
     const { useSchemaIndexStore } = await import('./stores/schema-index-store')
     const { useProcessListStore } = await import('./stores/processlist-store')
     const { useAiMemoryStore } = await import('./stores/ai-memory-store')
+    const { useUpdateStore } = await import('./stores/update-store')
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
     ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
     ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore
@@ -82,6 +83,7 @@ async function init() {
     ;(window as unknown as Record<string, unknown>).__processListStore__ = useProcessListStore
     ;(window as unknown as Record<string, unknown>).__settingsStore__ = useSettingsStore
     ;(window as unknown as Record<string, unknown>).__aiMemoryStore__ = useAiMemoryStore
+    ;(window as unknown as Record<string, unknown>).__updateStore__ = useUpdateStore
   }
 
   // Load all settings before rendering so stores/components can read them

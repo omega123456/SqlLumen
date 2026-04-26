@@ -192,3 +192,35 @@
   opacity: 0;
   transform: translateX(-4px);
 }
+
+.updateButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-left: var(--space-md);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+[data-theme='dark'] .updateButton {
+  order: 1;
+  margin-left: var(--space-sm);
+}
+
+.updateButtonText {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-xs);
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+[data-theme='light'] .updateButtonText {
+  letter-spacing: 0.05em;
+}
+
+.updateButton:hover .updateButtonText,
+.updateButton:focus-visible .updateButtonText {
+  text-decoration: underline;
+}

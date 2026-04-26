@@ -6,6 +6,7 @@ import { SettingsDialog } from '../../../components/settings/SettingsDialog'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import { useShortcutStore } from '../../../stores/shortcut-store'
 import { useThemeStore } from '../../../stores/theme-store'
+import { useUpdateStore } from '../../../stores/update-store'
 
 /** `settings-general` mounts before `loadSettings()` finishes; wait for IPC-backed store hydration. */
 async function waitForSettingsHydrated() {
@@ -41,6 +42,13 @@ beforeEach(() => {
   })
   useShortcutStore.getState().resetAllShortcuts()
   useThemeStore.setState({ theme: 'light', resolvedTheme: 'light', _previewSnapshot: null })
+  useUpdateStore.setState({
+    status: 'idle',
+    availableVersion: null,
+    downloadProgress: 0,
+    errorMessage: null,
+    restartPeriodicCheck: vi.fn().mockResolvedValue(undefined),
+  })
   document.documentElement.removeAttribute('data-theme')
   setupMockIPC()
 })
@@ -93,6 +101,10 @@ describe('SettingsDialog', () => {
     // Switch to Shortcuts
     await user.click(screen.getByTestId('settings-nav-shortcuts'))
     expect(screen.getByTestId('settings-shortcuts')).toBeInTheDocument()
+
+    // Switch to Updates
+    await user.click(screen.getByTestId('settings-nav-updates'))
+    expect(screen.getByTestId('settings-updates')).toBeInTheDocument()
   })
 
   it('Save button is disabled when not dirty', async () => {
