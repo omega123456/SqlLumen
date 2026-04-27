@@ -79,6 +79,8 @@ fn test_state() -> AppState {
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        compat_strategy_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        compat_strategy_probe_locks: Arc::new(Mutex::new(std::collections::HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
         session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
         session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -108,6 +110,8 @@ fn poisoned_state() -> AppState {
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
         ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        compat_strategy_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        compat_strategy_probe_locks: Arc::new(Mutex::new(std::collections::HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
         session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
         session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -391,7 +395,10 @@ fn credentials_retrieve_password_for_connection_prefers_stored_keychain_ref() {
 
 #[test]
 fn effective_keychain_ref_falls_back_to_connection_id_for_missing_or_empty_ref() {
-    assert_eq!(credentials::effective_keychain_ref("conn-1", None), "conn-1");
+    assert_eq!(
+        credentials::effective_keychain_ref("conn-1", None),
+        "conn-1"
+    );
     assert_eq!(
         credentials::effective_keychain_ref("conn-1", Some("")),
         "conn-1"
@@ -887,14 +894,15 @@ async fn close_connection_impl_decrements_schema_index_ref_count_without_cancell
         .await
         .expect("close should succeed");
 
-    assert!(!build_token.is_cancelled(), "shared profile token should stay active");
     assert!(
-        !state
-            .session_profile_map
-            .lock()
-            .expect("session_profile_map lock should succeed")
-            .contains_key("conn-1")
+        !build_token.is_cancelled(),
+        "shared profile token should stay active"
     );
+    assert!(!state
+        .session_profile_map
+        .lock()
+        .expect("session_profile_map lock should succeed")
+        .contains_key("conn-1"));
     assert_eq!(
         state
             .session_ref_counts
@@ -904,13 +912,11 @@ async fn close_connection_impl_decrements_schema_index_ref_count_without_cancell
             .copied(),
         Some(1)
     );
-    assert!(
-        state
-            .index_build_tokens
-            .lock()
-            .expect("index_build_tokens lock should succeed")
-            .contains_key("profile-1")
-    );
+    assert!(state
+        .index_build_tokens
+        .lock()
+        .expect("index_build_tokens lock should succeed")
+        .contains_key("profile-1"));
 }
 
 #[tokio::test]
@@ -947,28 +953,25 @@ async fn close_connection_impl_cleans_schema_index_tracking_when_last_session_cl
         .await
         .expect("close should succeed");
 
-    assert!(build_token.is_cancelled(), "last profile token should be cancelled");
     assert!(
-        !state
-            .session_profile_map
-            .lock()
-            .expect("session_profile_map lock should succeed")
-            .contains_key("conn-1")
+        build_token.is_cancelled(),
+        "last profile token should be cancelled"
     );
-    assert!(
-        !state
-            .session_ref_counts
-            .lock()
-            .expect("session_ref_counts lock should succeed")
-            .contains_key("profile-1")
-    );
-    assert!(
-        !state
-            .index_build_tokens
-            .lock()
-            .expect("index_build_tokens lock should succeed")
-            .contains_key("profile-1")
-    );
+    assert!(!state
+        .session_profile_map
+        .lock()
+        .expect("session_profile_map lock should succeed")
+        .contains_key("conn-1"));
+    assert!(!state
+        .session_ref_counts
+        .lock()
+        .expect("session_ref_counts lock should succeed")
+        .contains_key("profile-1"));
+    assert!(!state
+        .index_build_tokens
+        .lock()
+        .expect("index_build_tokens lock should succeed")
+        .contains_key("profile-1"));
 }
 
 #[tokio::test]
@@ -990,13 +993,11 @@ async fn close_connection_impl_removes_session_mapping_even_without_ref_count_en
         .await
         .expect("close should succeed");
 
-    assert!(
-        !state
-            .session_profile_map
-            .lock()
-            .expect("session_profile_map lock should succeed")
-            .contains_key("conn-1")
-    );
+    assert!(!state
+        .session_profile_map
+        .lock()
+        .expect("session_profile_map lock should succeed")
+        .contains_key("conn-1"));
 }
 
 #[tokio::test]

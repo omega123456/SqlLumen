@@ -172,6 +172,8 @@ pub fn run() {
                 dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
                 ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                compat_strategy_cache: Arc::new(Mutex::new(std::collections::HashMap::new())),
+                compat_strategy_probe_locks: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),

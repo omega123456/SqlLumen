@@ -359,7 +359,7 @@ fn embedding_to_bytes_produces_correct_output() {
     let embedding = vec![1.0f32, 2.0f32];
     let bytes = embedding_to_bytes(&embedding);
     assert_eq!(bytes.len(), 8); // 2 * 4 bytes
-    // Verify first float
+                                // Verify first float
     let f1 = f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
     assert!((f1 - 1.0).abs() < f32::EPSILON);
     let f2 = f32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);

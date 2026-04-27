@@ -5,10 +5,15 @@ use std::sync::{Arc, Mutex, RwLock};
 use tauri::AppHandle;
 use tokio::sync::RwLock as TokioRwLock;
 
+use crate::ai::chat_compat::StrategyCache;
 use crate::logging::LogFilterReloadHandle;
 use crate::mysql::query_executor::StoredResult;
 use crate::mysql::registry::ConnectionRegistry;
 use tokio_util::sync::CancellationToken;
+
+pub type CompatStrategyCache = Arc<Mutex<StrategyCache>>;
+pub type CompatStrategyProbeLocks =
+    Arc<Mutex<HashMap<(String, String), Arc<tokio::sync::Mutex<()>>>>>;
 
 /// Status of a SQL dump export job.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -97,6 +102,10 @@ pub struct AppState {
     pub import_jobs: Arc<RwLock<HashMap<String, ImportJobProgress>>>,
     /// Cancellation tokens for in-progress AI chat streams, keyed by stream_id.
     pub ai_requests: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    /// Compatibility cache for local reasoning-disable strategies keyed by endpoint+model.
+    pub compat_strategy_cache: CompatStrategyCache,
+    /// Per-endpoint/model async locks to prevent concurrent duplicate probes.
+    pub compat_strategy_probe_locks: CompatStrategyProbeLocks,
     /// Cancellation tokens for in-progress schema index builds, keyed by profile_id.
     pub index_build_tokens: Arc<Mutex<HashMap<String, CancellationToken>>>,
     /// Maps session_id → profile_id for schema index tracking.

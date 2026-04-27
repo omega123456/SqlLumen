@@ -389,12 +389,8 @@ fn cleanup_stale_dump_jobs(jobs: &mut HashMap<String, DumpJobProgress>) {
     jobs.retain(|_, progress| {
         if let Some(completed_at) = progress.completed_at {
             match std::time::SystemTime::now().duration_since(completed_at) {
-                Ok(age) => {
-                    age < DUMP_JOB_STALE_DURATION
-                }
-                Err(_) => {
-                    true
-                }
+                Ok(age) => age < DUMP_JOB_STALE_DURATION,
+                Err(_) => true,
             }
         } else {
             true // Running jobs are always kept
@@ -761,12 +757,8 @@ fn cleanup_stale_import_jobs(jobs: &mut HashMap<String, ImportJobProgress>) {
     jobs.retain(|_, progress| {
         if let Some(completed_at) = progress.completed_at {
             match std::time::SystemTime::now().duration_since(completed_at) {
-                Ok(age) => {
-                    age < IMPORT_JOB_STALE_DURATION
-                }
-                Err(_) => {
-                    true
-                }
+                Ok(age) => age < IMPORT_JOB_STALE_DURATION,
+                Err(_) => true,
             }
         } else {
             true // Running jobs are always kept

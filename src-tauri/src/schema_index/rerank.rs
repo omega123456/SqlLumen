@@ -8,6 +8,15 @@
 //! preserved silently.
 
 use super::search::SearchResult;
+use crate::ai::chat_compat::{
+    is_local_eligible, reasoning_strategy_name, strip_known_hidden_reasoning_markers,
+    ReasoningStrategy,
+};
+use crate::ai::client::{
+    apply_reasoning_off_compatibility_to_latest_user, prepare_local_compat_request,
+};
+use crate::ai::types::IpcMessage;
+use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 
 /// Rerank search results using an LLM cross-encoder.
@@ -24,6 +33,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Returns the candidates in re-ranked order, or the original order on failure.
 pub async fn rerank_with_llm(
+    state: &AppState,
     candidates: Vec<SearchResult>,
     question: &str,
     client: &reqwest::Client,
@@ -40,7 +50,11 @@ pub async fn rerank_with_llm(
         .map(|r| {
             // Truncate text_for_embedding / ddl_text to ~200 chars for the summary
             let summary = if r.ddl_text.len() > 200 {
-                let truncated = r.ddl_text.char_indices().nth(200).map_or(r.ddl_text.as_str(), |(i, _)| &r.ddl_text[..i]);
+                let truncated = r
+                    .ddl_text
+                    .char_indices()
+                    .nth(200)
+                    .map_or(r.ddl_text.as_str(), |(i, _)| &r.ddl_text[..i]);
                 format!("{}…", truncated)
             } else {
                 r.ddl_text.clone()
@@ -60,34 +74,76 @@ pub async fn rerank_with_llm(
         Return JSON {\"ranked\":[chunkId,...]} containing a subset of the input ids \
         in best-first order.";
 
-    let user_prompt = format!(
-        "Question: \"{question}\"\nCandidates: {candidates_json}"
+    let user_prompt = format!("Question: \"{question}\"\nCandidates: {candidates_json}");
+
+    let hidden_messages = vec![
+        IpcMessage {
+            role: "system".to_string(),
+            content: system_prompt.to_string(),
+        },
+        IpcMessage {
+            role: "user".to_string(),
+            content: user_prompt,
+        },
+    ];
+
+    let chat_url = crate::ai::client::normalise_to_chat_completions_url(endpoint);
+    let is_local_endpoint = is_local_eligible(endpoint);
+    let (strategy, provider_messages, reasoning_fields) = if is_local_endpoint {
+        match prepare_local_compat_request(state, client, endpoint, model, hidden_messages.clone()).await {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                tracing::warn!(endpoint = %endpoint, model = %model, error = %error, "rerank compatibility strategy unavailable; preserving original order");
+                return candidates;
+            }
+        }
+    } else {
+        let provider_messages: Vec<crate::ai::types::ApiMessage> = hidden_messages
+            .iter()
+            .map(crate::ai::types::ApiMessage::from)
+            .collect();
+        let mut body = serde_json::json!({
+            "messages": provider_messages,
+        });
+        apply_reasoning_off_compatibility_to_latest_user(
+            body.as_object_mut().expect("messages object"),
+        );
+        if let Some(messages) = body.get("messages").and_then(|v| v.as_array()) {
+            (ReasoningStrategy::StandardFields, serde_json::from_value(serde_json::Value::Array(messages.clone())).unwrap_or_default(), body)
+        } else {
+            (ReasoningStrategy::StandardFields, Vec::new(), body)
+        }
+    };
+
+    tracing::debug!(
+        endpoint = %crate::ai::chat_compat::normalize_endpoint_key(endpoint),
+        model = %model,
+        strategy = reasoning_strategy_name(strategy),
+        "rerank applying reasoning compatibility strategy"
     );
 
     let mut request_body_obj = serde_json::json!({
         "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
+        "messages": provider_messages,
         "temperature": 0.0,
         "max_tokens": 512
     })
     .as_object()
     .cloned()
     .unwrap_or_default();
-    crate::ai::client::apply_reasoning_off_compatibility(&mut request_body_obj);
+    if is_local_endpoint {
+        if let Some(obj) = reasoning_fields.as_object() {
+            request_body_obj.extend(obj.clone());
+        }
+    } else {
+        apply_reasoning_off_compatibility_to_latest_user(&mut request_body_obj);
+    }
     let request_body = serde_json::Value::Object(request_body_obj);
-
-    let url = format!(
-        "{}/chat/completions",
-        endpoint.trim_end_matches('/')
-    );
 
     // 6 second timeout
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(6),
-        client.post(&url).json(&request_body).send(),
+        client.post(&chat_url).json(&request_body).send(),
     )
     .await;
 
@@ -98,7 +154,9 @@ pub async fn rerank_with_llm(
             return candidates;
         }
         Err(_) => {
-            tracing::warn!("rerank_with_llm: request timed out (6s), falling back to original order");
+            tracing::warn!(
+                "rerank_with_llm: request timed out (6s), falling back to original order"
+            );
             return candidates;
         }
     };
@@ -112,15 +170,15 @@ pub async fn rerank_with_llm(
     };
 
     // Parse response: look for {"ranked": [...]} in the assistant message content
-    let ranked_ids = parse_rerank_response(&body);
+    let sanitized_body = strip_known_hidden_reasoning_markers(&body, Some(strategy));
+    let ranked_ids = parse_rerank_response(&sanitized_body);
 
     match ranked_ids {
-        Some(ids) if !ids.is_empty() => {
-            reorder_by_ids(candidates, &ids)
-        }
+        Some(ids) if !ids.is_empty() => reorder_by_ids(candidates, &ids),
         _ => {
             tracing::warn!(
-                body_preview = %body.chars().take(200).collect::<String>(),
+                http_body_len = sanitized_body.len(),
+                error_kind = "parse_ranked_ids_failed",
                 "rerank_with_llm: could not parse ranked IDs from LLM response"
             );
             candidates
@@ -162,7 +220,6 @@ pub fn parse_rerank_response(response_body: &str) -> Option<Vec<i64>> {
         // Maybe the response body IS the content directly
         response_body.to_string()
     };
-
     // Try to parse the content as RerankOutput
     // First try direct parse, then look for JSON in the text
     if let Ok(output) = serde_json::from_str::<RerankOutput>(&content) {

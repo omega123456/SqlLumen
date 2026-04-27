@@ -1,11 +1,11 @@
 use std::time::Instant;
 
+use super::helpers::resolve_session_profile;
 use crate::ai_memory::{read_embedding_config, storage, types::AiMemory};
 #[cfg(not(coverage))]
 use crate::ai_memory::{reembed, search};
 use crate::schema_index::embeddings;
 use crate::state::AppState;
-use super::helpers::resolve_session_profile;
 
 #[cfg(not(coverage))]
 use tauri::{Emitter, State};
@@ -34,7 +34,11 @@ pub fn save_memory_impl(
 }
 
 /// Complete save_memory with async embedding step.
-pub async fn save_memory_full(state: &AppState, session_id: &str, content: &str) -> Result<AiMemory, String> {
+pub async fn save_memory_full(
+    state: &AppState,
+    session_id: &str,
+    content: &str,
+) -> Result<AiMemory, String> {
     tracing::debug!(
         session_id,
         content_len = content.len(),
@@ -68,8 +72,7 @@ pub async fn save_memory_full(state: &AppState, session_id: &str, content: &str)
 
         let table_name = {
             let conn = state.db.lock().map_err(|e| format!("DB lock: {e}"))?;
-            storage::ensure_vec_table(&conn, &profile_id, dim)
-                .map_err(|e| e.to_string())?
+            storage::ensure_vec_table(&conn, &profile_id, dim).map_err(|e| e.to_string())?
         };
 
         let vecs = embeddings::embed_texts(

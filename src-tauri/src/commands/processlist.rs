@@ -50,9 +50,8 @@ pub async fn get_processlist_impl(
     let mut result = Vec::with_capacity(rows.len());
 
     // Column-reading helpers to reduce repetitive try_get boilerplate
-    let get_string = |row: &sqlx::mysql::MySqlRow, col: &str| -> String {
-        row.try_get(col).unwrap_or_default()
-    };
+    let get_string =
+        |row: &sqlx::mysql::MySqlRow, col: &str| -> String { row.try_get(col).unwrap_or_default() };
     let get_opt_string = |row: &sqlx::mysql::MySqlRow, col: &str| -> Option<String> {
         row.try_get(col).unwrap_or(None)
     };

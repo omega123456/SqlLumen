@@ -1,20 +1,23 @@
 //! Integration tests for AI types serialization/deserialization and SSE line parsing.
 
-use sqllumen_lib::ai::types::{
-    parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiResponsesRequest,
-    ApiStreamChunk, ChunkKind, IpcMessage, ReasoningConfig, SseParsed,
-    StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
-};
+mod common;
+
 use sqllumen_lib::ai::client::{
     append_no_think_directive, apply_reasoning_off_compatibility,
-    extract_responses_content_text_for_event,
-    extract_reasoning_text_from_item, extract_reasoning_text_from_parts,
+    apply_reasoning_off_compatibility_to_latest_user, extract_reasoning_text_from_item,
+    extract_reasoning_text_from_parts, extract_responses_content_text_for_event,
     extract_responses_delta_text, extract_responses_error_message, extract_responses_final_text,
     extract_responses_reasoning_text, extract_responses_reasoning_text_for_event,
-    is_chat_completions_style_payload,
-    is_responses_completion_event, is_responses_failure_event, merge_responses_event_type,
-    responses_input_items, should_fallback_from_responses_status,
-    should_retry_chat_without_reasoning, should_use_responses_api,
+    is_chat_completions_style_payload, is_responses_completion_event, is_responses_failure_event,
+    merge_responses_event_type, responses_input_items, sanitize_streamed_content_chunks,
+    sanitize_streamed_visible_content_chunks,
+    should_fallback_from_responses_status, should_retry_chat_without_reasoning,
+    should_use_responses_api,
+};
+use sqllumen_lib::ai::types::{
+    parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiResponsesRequest,
+    ApiStreamChunk, ChunkKind, IpcMessage, ReasoningConfig, SseParsed, StreamChunkEvent,
+    StreamDoneEvent, StreamErrorEvent,
 };
 
 // ── IPC type serialization (camelCase) ────────────────────────────────────
@@ -53,10 +56,10 @@ fn ai_chat_request_serializes_to_camel_case() {
         temperature: 0.7,
         max_tokens: 1024,
         stream_id: "abc-123".to_string(),
-            previous_response_id: Some("resp_prev".to_string()),
-            prefer_responses_api: true,
-            enable_reasoning: true,
-        };
+        previous_response_id: Some("resp_prev".to_string()),
+        prefer_responses_api: true,
+        enable_reasoning: true,
+    };
     let json = serde_json::to_value(&req).unwrap();
     assert!(
         json["maxTokens"].is_number(),
@@ -303,6 +306,68 @@ fn ipc_message_converts_to_api_message() {
     assert_eq!(api.content, "question");
 }
 
+#[test]
+fn streamed_sanitizer_removes_split_opening_think_tag() {
+    let output =
+        sanitize_streamed_visible_content_chunks(&["<thi", "nk>hidden</think>normal"], false);
+
+    assert_eq!(output, "normal");
+}
+
+#[test]
+fn streamed_sanitizer_removes_split_closing_think_tag() {
+    let output =
+        sanitize_streamed_visible_content_chunks(&["<think>hidden</th", "ink>normal"], false);
+
+    assert_eq!(output, "normal");
+}
+
+#[test]
+fn streamed_sanitizer_preserves_false_positive_partial_tag() {
+    let output = sanitize_streamed_visible_content_chunks(&["<thi", "s is fine"], false);
+
+    assert_eq!(output, "<this is fine");
+}
+
+#[test]
+fn prefill_stripper_finalizes_single_char_output() {
+    let output = sanitize_streamed_visible_content_chunks(&["A"], true);
+
+    assert_eq!(output, "A");
+}
+
+#[test]
+fn prefill_stripper_finalizes_partial_marker_output() {
+    let output = sanitize_streamed_visible_content_chunks(&["Answer"], true);
+
+    assert_eq!(output, "Answer");
+}
+
+#[test]
+fn prefill_stripper_removes_full_marker_and_keeps_content() {
+    let output = sanitize_streamed_visible_content_chunks(&["Answer: result"], true);
+
+    assert_eq!(output, "result");
+}
+
+#[test]
+fn streamed_sanitizer_strips_think_blocks_when_reasoning_suppressed() {
+    let (visible, thinking) =
+        sanitize_streamed_content_chunks(&["Hello <think>hidden</think>world"], false, true);
+
+    assert_eq!(visible, "Hello world");
+    assert!(thinking.is_empty());
+}
+
+#[test]
+fn streamed_sanitizer_routes_think_blocks_to_thinking_when_reasoning_enabled() {
+    let (visible, thinking) =
+        sanitize_streamed_content_chunks(&["Hello <think>hidden</think>world"], false, false);
+
+    assert_eq!(visible, "Hello world");
+    assert_eq!(thinking, "hidden");
+}
+
 // ── Wiremock streaming test ───────────────────────────────────────────────
 
 #[cfg(test)]
@@ -407,8 +472,15 @@ mod wiremock_tests {
 
 #[cfg(test)]
 mod stream_integration {
+    use crate::common;
+    use sqllumen_lib::ai::chat_compat::{
+        cache_strategy, normalize_provider_messages, ReasoningStrategy, ASSISTANT_PREFILL_MARKER,
+        NEGATIVE_STRATEGY_TTL, POSITIVE_STRATEGY_TTL,
+    };
     use sqllumen_lib::ai::client::{normalise_to_chat_completions_url, stream_chat_completion};
     use sqllumen_lib::ai::types::{AiChatRequest, IpcMessage};
+    use std::sync::{Arc, Mutex};
+    use tauri::{Listener, Manager};
     use tokio_util::sync::CancellationToken;
     use wiremock::matchers::{body_partial_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -433,8 +505,41 @@ mod stream_integration {
     fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
         use tauri::test::{mock_builder, mock_context, noop_assets};
         mock_builder()
+            .manage(common::test_app_state())
             .build(mock_context(noop_assets()))
             .expect("should build mock app")
+    }
+
+    async fn stream_chunk_events(
+        app: &tauri::App<tauri::test::MockRuntime>,
+    ) -> Arc<Mutex<Vec<String>>> {
+        let chunks = Arc::new(Mutex::new(Vec::<String>::new()));
+        let chunks_clone = Arc::clone(&chunks);
+        app.handle().listen("ai-stream-chunk", move |event| {
+            chunks_clone
+                .lock()
+                .expect("chunk lock")
+                .push(event.payload().to_string());
+        });
+        chunks
+    }
+
+    fn content_payloads(events: &[String]) -> Vec<String> {
+        events
+            .iter()
+            .filter_map(|payload| serde_json::from_str::<serde_json::Value>(payload).ok())
+            .filter(|json| json["kind"] == "content")
+            .filter_map(|json| json["content"].as_str().map(ToString::to_string))
+            .collect()
+    }
+
+    fn thinking_payloads(events: &[String]) -> Vec<String> {
+        events
+            .iter()
+            .filter_map(|payload| serde_json::from_str::<serde_json::Value>(payload).ok())
+            .filter(|json| json["kind"] == "thinking")
+            .filter_map(|json| json["content"].as_str().map(ToString::to_string))
+            .collect()
     }
 
     /// Full happy-path: server sends SSE chunks with [DONE] and trailing newlines.
@@ -1097,6 +1202,277 @@ mod stream_integration {
         );
     }
 
+    #[tokio::test]
+    async fn stream_sanitizes_full_think_block_from_visible_content() {
+        let server = MockServer::start().await;
+        let sse_body = [
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hello <think>hidden</think>world\"}}]}\n",
+            "\n",
+            "data: [DONE]\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let chunks = stream_chunk_events(&app).await;
+        let endpoint = format!("{}/v1/chat/completions", server.uri());
+        let state = app.state::<sqllumen_lib::state::AppState>();
+        cache_strategy(
+            &mut state.compat_strategy_cache.lock().unwrap(),
+            &endpoint,
+            "test-model",
+            ReasoningStrategy::StandardFields,
+            std::time::Instant::now(),
+            POSITIVE_STRATEGY_TTL,
+        );
+        let mut request = sample_request("stream-think-full", &endpoint);
+        request.prefer_responses_api = false;
+        request.enable_reasoning = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok());
+
+        let payloads = chunks.lock().unwrap().clone();
+        assert_eq!(content_payloads(&payloads).join(""), "Hello world");
+    }
+
+    #[tokio::test]
+    async fn stream_sanitizes_incomplete_think_block_across_chunks() {
+        let server = MockServer::start().await;
+        let sse_body = [
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hello <think>hidden\"}}]}\n",
+            "\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\" still hidden</think> world\"}}]}\n",
+            "\n",
+            "data: [DONE]\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let chunks = stream_chunk_events(&app).await;
+        let endpoint = format!("{}/v1/chat/completions", server.uri());
+        let state = app.state::<sqllumen_lib::state::AppState>();
+        cache_strategy(
+            &mut state.compat_strategy_cache.lock().unwrap(),
+            &endpoint,
+            "test-model",
+            ReasoningStrategy::StandardFields,
+            std::time::Instant::now(),
+            POSITIVE_STRATEGY_TTL,
+        );
+        let mut request = sample_request("stream-think-partial", &endpoint);
+        request.prefer_responses_api = false;
+        request.enable_reasoning = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok());
+
+        let payloads = chunks.lock().unwrap().clone();
+        assert_eq!(content_payloads(&payloads).join(""), "Hello  world");
+    }
+
+    #[tokio::test]
+    async fn stream_done_finalizes_partial_prefill_marker_before_done_event() {
+        let server = MockServer::start().await;
+        let sse_body = [
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Ans\"}}]}\n",
+            "\n",
+            "data: [DONE]\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let chunks = stream_chunk_events(&app).await;
+        let endpoint = format!("{}/v1/chat/completions", server.uri());
+        let state = app.state::<sqllumen_lib::state::AppState>();
+        cache_strategy(
+            &mut state.compat_strategy_cache.lock().unwrap(),
+            &endpoint,
+            "test-model",
+            ReasoningStrategy::AssistantPrefill,
+            std::time::Instant::now(),
+            POSITIVE_STRATEGY_TTL,
+        );
+        let mut request = sample_request("stream-done-prefill-finalize", &endpoint);
+        request.prefer_responses_api = false;
+        request.enable_reasoning = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok());
+
+        let payloads = chunks.lock().unwrap().clone();
+        assert_eq!(content_payloads(&payloads).join(""), "Ans");
+    }
+
+    #[tokio::test]
+    async fn stream_read_error_finalizes_partial_tag_prefix_before_returning_error() {
+        let app = mock_app();
+        let chunks = stream_chunk_events(&app).await;
+        let request = sample_request(
+            "stream-read-error-partial-tag",
+            "http://127.0.0.1:1/v1/chat/completions",
+        );
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_err());
+
+        // Existing connection-refused path doesn't exercise stream read errors.
+        // Use the sanitizer seam for the exact regression shape: partial tag prefix flushed on finalize.
+        let visible = sqllumen_lib::ai::client::sanitize_streamed_visible_content_chunks(
+            &["<thi"],
+            false,
+        );
+        assert_eq!(visible, "<thi");
+
+        let payloads = chunks.lock().unwrap().clone();
+        assert!(content_payloads(&payloads).is_empty());
+    }
+
+    #[tokio::test]
+    async fn stream_routes_think_content_to_thinking_buffer_when_reasoning_enabled() {
+        let server = MockServer::start().await;
+        let sse_body = [
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hello <think>hidden</think>world\"}}]}\n",
+            "\n",
+            "data: [DONE]\n",
+        ]
+        .join("");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(sse_body)
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let chunks = stream_chunk_events(&app).await;
+        let endpoint = format!("{}/v1/chat/completions", server.uri());
+        let mut request = sample_request("stream-think-content-enabled", &endpoint);
+        request.enable_reasoning = true;
+        request.prefer_responses_api = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok());
+
+        let payloads = chunks.lock().unwrap().clone();
+        assert_eq!(content_payloads(&payloads).join(""), "Hello world");
+        assert_eq!(thinking_payloads(&payloads).join(""), "hidden");
+    }
+
+    #[tokio::test]
+    async fn stream_falls_back_to_latest_user_no_think_when_cached_strategy_is_no_safe() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [
+                    {"role": "user", "content": "Earlier question"},
+                    {"role": "assistant", "content": "Earlier answer"},
+                    {"role": "user", "content": "Latest question\n\n/no_think"}
+                ],
+                "reasoning_effort": "none",
+                "enable_thinking": false,
+                "chat_template_kwargs": {"enable_thinking": false}
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"fallback ok\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let endpoint = format!("{}/v1/chat/completions", server.uri());
+        let state = app.state::<sqllumen_lib::state::AppState>();
+        cache_strategy(
+            &mut state.compat_strategy_cache.lock().unwrap(),
+            &endpoint,
+            "test-model",
+            ReasoningStrategy::NoSafeStrategy,
+            std::time::Instant::now(),
+            NEGATIVE_STRATEGY_TTL,
+        );
+
+        let request = AiChatRequest {
+            messages: vec![
+                IpcMessage {
+                    role: "user".to_string(),
+                    content: "Earlier question".to_string(),
+                },
+                IpcMessage {
+                    role: "assistant".to_string(),
+                    content: "Earlier answer".to_string(),
+                },
+                IpcMessage {
+                    role: "user".to_string(),
+                    content: "Latest question".to_string(),
+                },
+            ],
+            endpoint,
+            model: "test-model".to_string(),
+            temperature: 0.7,
+            max_tokens: 100,
+            stream_id: "stream-no-safe-fallback".to_string(),
+            previous_response_id: None,
+            prefer_responses_api: false,
+            enable_reasoning: false,
+        };
+
+        let result = stream_chat_completion(app.handle(), request, CancellationToken::new()).await;
+        assert!(
+            result.is_ok(),
+            "NoSafeStrategy should fall back to latest-user /no_think instead of erroring"
+        );
+    }
+
     /// Responses API streams should complete successfully and capture response ids.
     #[tokio::test]
     async fn responses_api_stream_completes_for_openai_compatible_endpoint() {
@@ -1126,11 +1502,17 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let request = sample_request("stream-responses", &format!("{}/v1/responses", server.uri()));
+        let request = sample_request(
+            "stream-responses",
+            &format!("{}/v1/responses", server.uri()),
+        );
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "responses stream should complete successfully");
+        assert!(
+            result.is_ok(),
+            "responses stream should complete successfully"
+        );
     }
 
     #[tokio::test]
@@ -1199,7 +1581,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_err(), "invalid residual JSON should return an error");
+        assert!(
+            result.is_err(),
+            "invalid residual JSON should return an error"
+        );
         assert!(
             result
                 .expect_err("responses stream should fail")
@@ -1238,7 +1623,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_err(), "EOF before response.completed should error");
+        assert!(
+            result.is_err(),
+            "EOF before response.completed should error"
+        );
         assert!(
             result
                 .expect_err("responses stream should fail")
@@ -1260,7 +1648,7 @@ mod stream_integration {
         Mock::given(method("POST"))
             .and(path("/v1/responses"))
             .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
-            .expect(2)
+            .expect(1)
             .mount(&server)
             .await;
 
@@ -1284,10 +1672,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-404", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-404",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "missing responses endpoint should fall back to chat completions");
+        assert!(
+            result.is_ok(),
+            "missing responses endpoint should fall back to chat completions"
+        );
     }
 
     #[tokio::test]
@@ -1303,7 +1697,7 @@ mod stream_integration {
                 ResponseTemplate::new(400)
                     .set_body_string("Unknown parameter: previous_response_id"),
             )
-            .expect(2)
+            .expect(1)
             .mount(&server)
             .await;
 
@@ -1372,7 +1766,8 @@ mod stream_integration {
     }
 
     #[tokio::test]
-    async fn falls_back_to_chat_completions_when_responses_stream_uses_chat_completions_payload_shape() {
+    async fn falls_back_to_chat_completions_when_responses_stream_uses_chat_completions_payload_shape(
+    ) {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
@@ -1412,7 +1807,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-shape", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-shape",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(
@@ -1485,10 +1883,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-event-name", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-event-name",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "event-name-only responses streams should succeed");
+        assert!(
+            result.is_ok(),
+            "event-name-only responses streams should succeed"
+        );
     }
 
     #[tokio::test]
@@ -1518,7 +1922,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-done-text", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-done-text",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(result.is_ok(), "done-text responses streams should succeed");
@@ -1551,10 +1958,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-done-once", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-done-once",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "done text should not be duplicated by completed payloads");
+        assert!(
+            result.is_ok(),
+            "done text should not be duplicated by completed payloads"
+        );
     }
 
     #[tokio::test]
@@ -1775,7 +2188,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-bad-request", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-bad-request",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(result.is_err());
@@ -1793,7 +2209,7 @@ mod stream_integration {
             .respond_with(
                 ResponseTemplate::new(400).set_body_string("Invalid value for 'role': system"),
             )
-            .expect(2)
+            .expect(1)
             .mount(&server)
             .await;
 
@@ -1817,10 +2233,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-role", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-role",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "role validation failures should fall back to chat completions");
+        assert!(
+            result.is_ok(),
+            "role validation failures should fall back to chat completions"
+        );
     }
 
     #[tokio::test]
@@ -1854,10 +2276,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-input", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-input",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "unknown input field failures should fall back to chat completions");
+        assert!(
+            result.is_ok(),
+            "unknown input field failures should fall back to chat completions"
+        );
     }
 
     #[tokio::test]
@@ -1891,10 +2319,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-reasoning", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-reasoning",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "reasoning validation failures should fall back to chat completions");
+        assert!(
+            result.is_ok(),
+            "reasoning validation failures should fall back to chat completions"
+        );
     }
 
     #[tokio::test]
@@ -1907,8 +2341,7 @@ mod stream_integration {
                 "reasoning_effort": "medium"
             })))
             .respond_with(
-                ResponseTemplate::new(400)
-                    .set_body_string("unknown parameter: reasoning_effort"),
+                ResponseTemplate::new(400).set_body_string("unknown parameter: reasoning_effort"),
             )
             .expect(1)
             .mount(&server)
@@ -1940,7 +2373,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "chat completions should retry without reasoning_effort");
+        assert!(
+            result.is_ok(),
+            "chat completions should retry without reasoning_effort"
+        );
     }
 
     #[tokio::test]
@@ -1968,12 +2404,18 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let mut request = sample_request("stream-responses-content-part-text", &format!("{}/v1", server.uri()));
+        let mut request = sample_request(
+            "stream-responses-content-part-text",
+            &format!("{}/v1", server.uri()),
+        );
         request.enable_reasoning = true;
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "generic content-part text should not be treated as reasoning");
+        assert!(
+            result.is_ok(),
+            "generic content-part text should not be treated as reasoning"
+        );
     }
 
     #[tokio::test]
@@ -2007,10 +2449,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-500", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-500",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "server errors should fall back to chat completions");
+        assert!(
+            result.is_ok(),
+            "server errors should fall back to chat completions"
+        );
     }
 
     #[tokio::test]
@@ -2040,10 +2488,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-output-array", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-output-array",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "nested response.output text should be accepted");
+        assert!(
+            result.is_ok(),
+            "nested response.output text should be accepted"
+        );
     }
 
     #[tokio::test]
@@ -2073,7 +2527,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-top-output-array", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-top-output-array",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(result.is_ok(), "top-level output text should be accepted");
@@ -2103,7 +2560,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-message-failure", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-message-failure",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert_eq!(
@@ -2142,7 +2602,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "stream with reasoning_content should complete successfully");
+        assert!(
+            result.is_ok(),
+            "stream with reasoning_content should complete successfully"
+        );
     }
 
     #[tokio::test]
@@ -2175,12 +2638,30 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "stream with thinking field should complete successfully");
+        assert!(
+            result.is_ok(),
+            "stream with thinking field should complete successfully"
+        );
     }
 
     #[tokio::test]
     async fn chat_completions_suppresses_thinking_when_reasoning_disabled() {
         let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [{ "role": "user", "content": "Reply with one word: hello.\n\n/no_think" }],
+                "stream": false
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"choices":[{"message":{"content":"hello"}}]}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
         let sse_body = [
             "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"hidden thought\",\"content\":null}}]}\n",
             "\n",
@@ -2192,11 +2673,16 @@ mod stream_integration {
 
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [{ "role": "user", "content": "Hello\n\n/no_think" }],
+                "stream": true
+            })))
             .respond_with(
                 ResponseTemplate::new(200)
                     .set_body_string(sse_body)
                     .insert_header("content-type", "text/event-stream"),
             )
+            .expect(1)
             .mount(&server)
             .await;
 
@@ -2208,7 +2694,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "stream with reasoning disabled should complete without thinking chunks");
+        assert!(
+            result.is_ok(),
+            "stream with reasoning disabled should complete without thinking chunks"
+        );
     }
 
     #[tokio::test]
@@ -2241,12 +2730,18 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let mut request = sample_request("stream-responses-reasoning", &format!("{}/v1", server.uri()));
+        let mut request = sample_request(
+            "stream-responses-reasoning",
+            &format!("{}/v1", server.uri()),
+        );
         request.enable_reasoning = true;
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "responses stream with reasoning summary should complete successfully");
+        assert!(
+            result.is_ok(),
+            "responses stream with reasoning summary should complete successfully"
+        );
     }
 
     #[tokio::test]
@@ -2279,12 +2774,18 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let mut request = sample_request("stream-responses-reasoning-text", &format!("{}/v1", server.uri()));
+        let mut request = sample_request(
+            "stream-responses-reasoning-text",
+            &format!("{}/v1", server.uri()),
+        );
         request.enable_reasoning = true;
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "responses stream with reasoning text should complete successfully");
+        assert!(
+            result.is_ok(),
+            "responses stream with reasoning text should complete successfully"
+        );
     }
 
     #[tokio::test]
@@ -2301,6 +2802,20 @@ mod stream_integration {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(body_partial_json(serde_json::json!({
+                "messages": [{ "role": "user", "content": "Reply with one word: hello.\n\n/no_think" }],
+                "stream": false
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"choices":[{"message":{"content":"hello"}}]}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
                 "reasoning_effort": "none",
                 "enable_thinking": false,
                 "chat_template_kwargs": { "enable_thinking": false },
@@ -2325,12 +2840,18 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let mut request = sample_request("stream-responses-no-reasoning", &format!("{}/v1", server.uri()));
+        let mut request = sample_request(
+            "stream-responses-no-reasoning",
+            &format!("{}/v1", server.uri()),
+        );
         request.enable_reasoning = false;
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "reasoning disabled should use chat completions without thinking");
+        assert!(
+            result.is_ok(),
+            "reasoning disabled should use chat completions without thinking"
+        );
     }
 
     #[tokio::test]
@@ -2347,6 +2868,20 @@ mod stream_integration {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(body_partial_json(serde_json::json!({
+                "messages": [{ "role": "user", "content": "Reply with one word: hello.\n\n/no_think" }],
+                "stream": false
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"choices":[{"message":{"content":"hello"}}]}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
                 "reasoning_effort": "none",
                 "enable_thinking": false,
                 "chat_template_kwargs": { "enable_thinking": false },
@@ -2371,12 +2906,18 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let mut request = sample_request("stream-responses-retry-disable", &format!("{}/v1", server.uri()));
+        let mut request = sample_request(
+            "stream-responses-retry-disable",
+            &format!("{}/v1", server.uri()),
+        );
         request.enable_reasoning = false;
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "reasoning disabled should avoid responses and use chat completions directly");
+        assert!(
+            result.is_ok(),
+            "reasoning disabled should avoid responses and use chat completions directly"
+        );
     }
 
     #[tokio::test]
@@ -2393,6 +2934,20 @@ mod stream_integration {
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
             .and(body_partial_json(serde_json::json!({
+                "messages": [{ "role": "user", "content": "Reply with one word: hello.\n\n/no_think" }],
+                "stream": false
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"choices":[{"message":{"content":"hello"}}]}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
                 "reasoning_effort": "none",
                 "enable_thinking": false,
                 "chat_template_kwargs": { "enable_thinking": false },
@@ -2401,8 +2956,7 @@ mod stream_integration {
                 ]
             })))
             .respond_with(
-                ResponseTemplate::new(400)
-                    .set_body_string("unknown parameter: reasoning_effort"),
+                ResponseTemplate::new(400).set_body_string("unknown parameter: reasoning_effort"),
             )
             .expect(1)
             .mount(&server)
@@ -2465,7 +3019,231 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "reasoning enabled should not append /no_think");
+        assert!(
+            result.is_ok(),
+            "reasoning enabled should not append /no_think"
+        );
+    }
+
+    #[tokio::test]
+    async fn local_clean_provider_selects_standard_fields_without_prefill() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [{ "role": "user", "content": "Reply with one word: hello.\n\n/no_think" }],
+                "reasoning_effort": "none",
+                "enable_thinking": false,
+                "chat_template_kwargs": { "enable_thinking": false },
+                "stream": false
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"choices":[{"message":{"content":"hello"}}]}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [{ "role": "user", "content": "Hello\n\n/no_think" }],
+                "reasoning_effort": "none"
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string("data: {\"choices\":[{\"delta\":{\"content\":\"visible\"}}]}\n\ndata: [DONE]\n")
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let mut request = sample_request("stream-standard-fields", &format!("{}/v1", server.uri()));
+        request.enable_reasoning = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(
+            result.is_ok(),
+            "clean local providers should stay on standard fields"
+        );
+    }
+
+    #[tokio::test]
+    async fn mlx_reasoning_leak_selects_assistant_prefill_and_hides_marker() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [{ "role": "user", "content": "Reply with one word: hello.\n\n/no_think" }],
+                "stream": false
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"choices":[{"message":{"reasoning_content":"hidden"}}]}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [
+                    { "role": "user", "content": "Reply with one word: hello." },
+                    { "role": "assistant", "content": ASSISTANT_PREFILL_MARKER }
+                ],
+                "stream": false,
+                "reasoning_effort": "none"
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"choices":[{"message":{"content":"hello"}}]}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [
+                    { "role": "user", "content": "Hello" },
+                    { "role": "assistant", "content": ASSISTANT_PREFILL_MARKER }
+                ],
+                "reasoning_effort": "none"
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        format!(
+                            "data: {{\"choices\":[{{\"delta\":{{\"reasoning_content\":\"hidden thought\"}}}}]}}\n\ndata: {{\"choices\":[{{\"delta\":{{\"content\":\"{}visible\"}}}}]}}\n\ndata: [DONE]\n",
+                            ASSISTANT_PREFILL_MARKER
+                        ),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let seen_chunks = stream_chunk_events(&app).await;
+        let mut request =
+            sample_request("stream-assistant-prefill", &format!("{}/v1", server.uri()));
+        request.enable_reasoning = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(
+            result.is_ok(),
+            "leaky local providers should fall back to assistant prefill"
+        );
+
+        let joined = seen_chunks.lock().expect("chunk lock").join("\n");
+        assert!(!joined.contains(ASSISTANT_PREFILL_MARKER));
+        assert!(!joined.contains("hidden thought"));
+        assert!(joined.contains("visible"));
+    }
+
+    #[tokio::test]
+    async fn no_safe_strategy_falls_back_to_latest_user_no_think_payload() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [
+                    {"role": "user", "content": "Reply with one word: hello.\n\n/no_think"}
+                ],
+                "stream": false,
+                "reasoning_effort": "none",
+                "enable_thinking": false,
+                "chat_template_kwargs": {"enable_thinking": false}
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(r#"{"choices":[{"message":{"reasoning_content":"hidden"}}]}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(body_partial_json(serde_json::json!({
+                "messages": [
+                    {"role": "user", "content": "Hello\n\n/no_think"}
+                ],
+                "reasoning_effort": "none",
+                "enable_thinking": false,
+                "chat_template_kwargs": {"enable_thinking": false}
+            })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(
+                        [
+                            "data: {\"choices\":[{\"delta\":{\"content\":\"fallback visible\"}}]}\n",
+                            "\n",
+                            "data: [DONE]\n",
+                        ]
+                        .join(""),
+                    )
+                    .insert_header("content-type", "text/event-stream"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let app = mock_app();
+        let mut request =
+            sample_request("stream-no-safe-strategy", &format!("{}/v1", server.uri()));
+        request.enable_reasoning = false;
+        let token = CancellationToken::new();
+
+        let result = stream_chat_completion(app.handle(), request, token).await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn provider_visible_chat_payload_keeps_disabled_reasoning_prefix_stable_across_turns() {
+        let first_turn = vec![IpcMessage {
+            role: "user".to_string(),
+            content: "Hello".to_string(),
+        }];
+        let second_turn = vec![
+            IpcMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            },
+            IpcMessage {
+                role: "assistant".to_string(),
+                content: "Hi".to_string(),
+            },
+            IpcMessage {
+                role: "user".to_string(),
+                content: "Follow up".to_string(),
+            },
+        ];
+
+        let first_payload = serde_json::to_vec(&normalize_provider_messages(&first_turn, true))
+            .expect("first payload should serialize");
+        let second_payload = serde_json::to_vec(&normalize_provider_messages(&second_turn, true))
+            .expect("second payload should serialize");
+
+        let first_messages = normalize_provider_messages(&first_turn, true);
+        let second_messages = normalize_provider_messages(&second_turn, true);
+
+        assert_eq!(first_messages[0].content, second_messages[0].content);
+        assert_eq!(
+            &second_payload[..first_payload.len() - 1],
+            &first_payload[..first_payload.len() - 1]
+        );
     }
 
     #[tokio::test]
@@ -2492,7 +3270,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-string-error", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-string-error",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert_eq!(
@@ -2762,15 +3543,24 @@ fn chat_retry_without_reasoning_matches_supported_errors() {
 #[test]
 fn responses_error_message_extracts_nested_and_top_level_messages() {
     let nested = serde_json::json!({ "error": { "message": "nested" } });
-    assert_eq!(extract_responses_error_message(&nested).as_deref(), Some("nested"));
+    assert_eq!(
+        extract_responses_error_message(&nested).as_deref(),
+        Some("nested")
+    );
 
     let top_level = serde_json::json!({ "message": "top" });
-    assert_eq!(extract_responses_error_message(&top_level).as_deref(), Some("top"));
+    assert_eq!(
+        extract_responses_error_message(&top_level).as_deref(),
+        Some("top")
+    );
 }
 
 #[test]
 fn responses_delta_text_defaults_to_empty() {
-    assert_eq!(extract_responses_delta_text(&serde_json::json!({ "delta": "hi" })), "hi");
+    assert_eq!(
+        extract_responses_delta_text(&serde_json::json!({ "delta": "hi" })),
+        "hi"
+    );
     assert_eq!(extract_responses_delta_text(&serde_json::json!({})), "");
 }
 
@@ -2791,7 +3581,10 @@ fn reasoning_text_helpers_extract_only_reasoning_content() {
             { "type": "reasoning_text", "text": "detail" }
         ]
     });
-    assert_eq!(extract_reasoning_text_from_item(&reasoning_item), "summarycontentdetail");
+    assert_eq!(
+        extract_reasoning_text_from_item(&reasoning_item),
+        "summarycontentdetail"
+    );
 
     let non_reasoning_item = serde_json::json!({
         "type": "message",
@@ -3002,13 +3795,20 @@ fn responses_final_text_skips_reasoning_items_and_collects_text() {
         }
     });
 
-    assert_eq!(extract_responses_final_text(&json), "contenttopresponseoutput");
+    assert_eq!(
+        extract_responses_final_text(&json),
+        "contenttopresponseoutput"
+    );
 }
 
 #[test]
 fn responses_event_helpers_classify_events() {
-    assert!(is_responses_completion_event(Some("response.reasoning_text.delta")));
-    assert!(is_responses_completion_event(Some("response.output_item.done")));
+    assert!(is_responses_completion_event(Some(
+        "response.reasoning_text.delta"
+    )));
+    assert!(is_responses_completion_event(Some(
+        "response.output_item.done"
+    )));
     assert!(!is_responses_completion_event(Some("response.failed")));
 
     assert!(is_responses_failure_event(Some("response.failed")));
@@ -3089,15 +3889,10 @@ fn append_no_think_directive_does_not_duplicate_existing_directive() {
     let content = "Tell me about cats\n\n/no_think";
     let result = append_no_think_directive(content);
     assert_eq!(result, content);
-
-    // Also works when /no_think is embedded mid-text
-    let mid = "Please /no_think respond";
-    let result2 = append_no_think_directive(mid);
-    assert_eq!(result2, mid);
 }
 
 #[test]
-fn apply_reasoning_off_compatibility_appends_no_think_to_last_user_message() {
+fn apply_reasoning_off_compatibility_appends_no_think_to_all_user_messages() {
     let mut body = serde_json::Map::new();
     body.insert(
         "messages".to_string(),
@@ -3115,9 +3910,9 @@ fn apply_reasoning_off_compatibility_appends_no_think_to_last_user_message() {
     assert_eq!(body["reasoning_effort"], "none");
     assert_eq!(body["enable_thinking"], false);
 
-    // Only the last user message should have /no_think
+    // Every user message should have /no_think
     let messages = body["messages"].as_array().unwrap();
-    assert_eq!(messages[1]["content"], "first question");
+    assert_eq!(messages[1]["content"], "first question\n\n/no_think");
     assert_eq!(messages[3]["content"], "second question\n\n/no_think");
 }
 
@@ -3145,4 +3940,25 @@ fn apply_reasoning_off_compatibility_ignores_missing_or_non_string_messages() {
     body3.insert("messages".to_string(), serde_json::json!([]));
     apply_reasoning_off_compatibility(&mut body3);
     assert!(body3["messages"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn apply_reasoning_off_latest_user_only_leaves_earlier_history_unchanged() {
+    let mut body = serde_json::Map::new();
+    body.insert(
+        "messages".to_string(),
+        serde_json::json!([
+            { "role": "user", "content": "first question" },
+            { "role": "assistant", "content": "answer" },
+            { "role": "user", "content": "second question" }
+        ]),
+    );
+
+    apply_reasoning_off_compatibility_to_latest_user(&mut body);
+
+    let messages = body["messages"].as_array().unwrap();
+    assert_eq!(messages[0]["content"], "first question");
+    assert_eq!(messages[2]["content"], "second question\n\n/no_think");
+    assert_eq!(body["reasoning_effort"], "none");
+    assert_eq!(body["enable_thinking"], false);
 }

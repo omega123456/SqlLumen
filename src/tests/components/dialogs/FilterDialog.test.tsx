@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FilterDialog } from '../../../components/dialogs/FilterDialog'
 import type { FilterCondition } from '../../../types/schema'
@@ -108,7 +108,14 @@ describe('FilterDialog', () => {
 
     const opCombo = screen.getByTestId('filter-operator-select-0')
     await user.click(opCombo)
-    await user.click(await screen.findByRole('option', { name: 'IS NULL' }))
+    await waitFor(() => {
+      expect(screen.getAllByRole('option').length).toBeGreaterThan(0)
+    })
+    const isNullOption = screen
+      .getAllByRole('option')
+      .find((option) => option.getAttribute('aria-label') === 'IS NULL')
+    expect(isNullOption).toBeTruthy()
+    await user.click(isNullOption!)
 
     const valueInput = screen.getByTestId('filter-value-input') as HTMLInputElement
     expect(valueInput).toBeDisabled()
@@ -127,7 +134,14 @@ describe('FilterDialog', () => {
 
     const opCombo = screen.getByTestId('filter-operator-select-0')
     await user.click(opCombo)
-    await user.click(await screen.findByRole('option', { name: 'IS NOT NULL' }))
+    await waitFor(() => {
+      expect(screen.getAllByRole('option').length).toBeGreaterThan(0)
+    })
+    const isNotNullOption = screen
+      .getAllByRole('option')
+      .find((option) => option.getAttribute('aria-label') === 'IS NOT NULL')
+    expect(isNotNullOption).toBeTruthy()
+    await user.click(isNotNullOption!)
 
     const valueInput = screen.getByTestId('filter-value-input') as HTMLInputElement
     expect(valueInput).toBeDisabled()

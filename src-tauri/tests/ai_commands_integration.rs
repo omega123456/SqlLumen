@@ -2,6 +2,9 @@
 
 mod common;
 
+use sqllumen_lib::ai::chat_compat::{
+    cache_strategy, ReasoningStrategy, ASSISTANT_PREFILL_MARKER, POSITIVE_STRATEGY_TTL,
+};
 use sqllumen_lib::ai::types::{AiChatRequest, AiQueryExpandRequest, IpcMessage};
 use sqllumen_lib::commands::ai::{
     ai_cancel_impl, ai_chat_impl, ai_query_expand_impl, categorise_model, list_ai_models_impl,
@@ -24,6 +27,8 @@ fn test_state() -> AppState {
         dump_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
         import_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
         ai_requests: Arc::new(Mutex::new(HashMap::new())),
+        compat_strategy_cache: Arc::new(Mutex::new(HashMap::new())),
+        compat_strategy_probe_locks: Arc::new(Mutex::new(HashMap::new())),
         index_build_tokens: Arc::new(Mutex::new(HashMap::new())),
         session_profile_map: Arc::new(Mutex::new(HashMap::new())),
         session_ref_counts: Arc::new(Mutex::new(HashMap::new())),
@@ -171,10 +176,7 @@ async fn chat_impl_returns_error_when_request_map_lock_is_poisoned() {
         panic!("poison ai_requests mutex");
     });
 
-    let request = sample_request(
-        "stream-poisoned-chat",
-        "http://127.0.0.1:1/v1",
-    );
+    let request = sample_request("stream-poisoned-chat", "http://127.0.0.1:1/v1");
     let result = ai_chat_impl(&state, app.handle().clone(), request).await;
 
     assert!(result.is_err());
@@ -698,6 +700,14 @@ async fn query_expand_returns_text() {
         .await;
 
     let state = test_state();
+    cache_strategy(
+        &mut state.compat_strategy_cache.lock().unwrap(),
+        &format!("{}/v1", server.uri()),
+        "test-model",
+        ReasoningStrategy::StandardFields,
+        std::time::Instant::now(),
+        POSITIVE_STRATEGY_TTL,
+    );
     let req = AiQueryExpandRequest {
         endpoint: format!("{}/v1", server.uri()),
         model: "test-model".to_string(),
@@ -710,6 +720,219 @@ async fn query_expand_returns_text() {
     assert!(result.is_ok(), "should succeed: {:?}", result);
     let response = result.unwrap();
     assert_eq!(response.text, "SELECT * FROM users WHERE active = 1");
+}
+
+#[tokio::test]
+async fn query_expand_uses_standard_fields_strategy_and_keeps_output_clean() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "{\"queries\":[\"expanded query\"]}"
+                }
+            }]
+        })))
+        .mount(&server)
+        .await;
+
+    let state = test_state();
+    cache_strategy(
+        &mut state.compat_strategy_cache.lock().unwrap(),
+        &format!("{}/v1", server.uri()),
+        "test-model",
+        ReasoningStrategy::StandardFields,
+        std::time::Instant::now(),
+        POSITIVE_STRATEGY_TTL,
+    );
+
+    let req = AiQueryExpandRequest {
+        endpoint: format!("{}/v1", server.uri()),
+        model: "test-model".to_string(),
+        system_prompt: "You are a SQL assistant.".to_string(),
+        user_message: "Find active users".to_string(),
+        conversation_context: None,
+    };
+
+    let result = ai_query_expand_impl(&state, req).await.unwrap();
+    assert_eq!(result.text, "{\"queries\":[\"expanded query\"]}");
+
+    let requests = server.received_requests().await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let messages = body["messages"].as_array().unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[1]["role"], "user");
+    assert!(messages[1]["content"]
+        .as_str()
+        .unwrap()
+        .ends_with("/no_think"));
+}
+
+#[tokio::test]
+async fn query_expand_strips_assistant_prefill_before_parsing() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": format!("{}{{\"queries\":[\"expanded query\"]}}", ASSISTANT_PREFILL_MARKER)
+                }
+            }]
+        })))
+        .mount(&server)
+        .await;
+
+    let state = test_state();
+    cache_strategy(
+        &mut state.compat_strategy_cache.lock().unwrap(),
+        &format!("{}/v1", server.uri()),
+        "test-model",
+        ReasoningStrategy::AssistantPrefill,
+        std::time::Instant::now(),
+        POSITIVE_STRATEGY_TTL,
+    );
+
+    let req = AiQueryExpandRequest {
+        endpoint: format!("{}/v1", server.uri()),
+        model: "test-model".to_string(),
+        system_prompt: "You are a SQL assistant.".to_string(),
+        user_message: "Find active users".to_string(),
+        conversation_context: None,
+    };
+
+    let result = ai_query_expand_impl(&state, req).await.unwrap();
+    assert_eq!(result.text, "{\"queries\":[\"expanded query\"]}");
+
+    let requests = server.received_requests().await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let messages = body["messages"].as_array().unwrap();
+    assert_eq!(messages.last().unwrap()["role"], "assistant");
+    assert_eq!(
+        messages.last().unwrap()["content"],
+        ASSISTANT_PREFILL_MARKER
+    );
+    assert!(messages[1]["content"].as_str().unwrap().contains("Find active users"));
+    assert!(!messages[1]["content"].as_str().unwrap().contains("/no_think"));
+}
+
+
+#[tokio::test]
+async fn query_expand_sanitizes_think_wrappers_before_parsing() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "<think>hidden</think>{\"queries\":[\"expanded query\"]}"
+                }
+            }]
+        })))
+        .mount(&server)
+        .await;
+
+    let state = test_state();
+    cache_strategy(
+        &mut state.compat_strategy_cache.lock().unwrap(),
+        &format!("{}/v1", server.uri()),
+        "test-model",
+        ReasoningStrategy::StandardFields,
+        std::time::Instant::now(),
+        POSITIVE_STRATEGY_TTL,
+    );
+    let req = AiQueryExpandRequest {
+        endpoint: format!("{}/v1", server.uri()),
+        model: "test-model".to_string(),
+        system_prompt: "You are a SQL assistant.".to_string(),
+        user_message: "Find active users".to_string(),
+        conversation_context: None,
+    };
+
+    let result = ai_query_expand_impl(&state, req).await.unwrap();
+    assert_eq!(result.text, "{\"queries\":[\"expanded query\"]}");
+}
+
+#[tokio::test]
+async fn query_expand_falls_back_to_original_query_for_garbage_or_thinking_only_content() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "<think>only hidden reasoning</think>"
+                }
+            }]
+        })))
+        .mount(&server)
+        .await;
+
+    let state = test_state();
+    let req = AiQueryExpandRequest {
+        endpoint: format!("{}/v1", server.uri()),
+        model: "test-model".to_string(),
+        system_prompt: "You are a SQL assistant.".to_string(),
+        user_message: "Find active users".to_string(),
+        conversation_context: None,
+    };
+
+    let result = ai_query_expand_impl(&state, req).await.unwrap();
+    assert_eq!(result.text, "Find active users");
+}
+
+#[tokio::test]
+async fn query_expand_preserves_normal_angle_brackets_in_sql_output() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": "SELECT * FROM scores WHERE score > 5 AND score < 10"
+                }
+            }]
+        })))
+        .mount(&server)
+        .await;
+
+    let state = test_state();
+    let req = AiQueryExpandRequest {
+        endpoint: format!("{}/v1", server.uri()),
+        model: "test-model".to_string(),
+        system_prompt: "You are a SQL assistant.".to_string(),
+        user_message: "Find active users".to_string(),
+        conversation_context: None,
+    };
+
+    let result = ai_query_expand_impl(&state, req).await.unwrap();
+    assert_eq!(result.text, "SELECT * FROM scores WHERE score > 5 AND score < 10");
 }
 
 #[tokio::test]
@@ -735,7 +958,6 @@ async fn query_expand_disables_reasoning_on_request() {
                 }
             }]
         })))
-        .expect(1)
         .mount(&server)
         .await;
 
@@ -749,7 +971,10 @@ async fn query_expand_disables_reasoning_on_request() {
     };
 
     let result = ai_query_expand_impl(&state, req).await;
-    assert!(result.is_ok(), "query expansion should send reasoning_effort none");
+    assert!(
+        result.is_ok(),
+        "query expansion should send reasoning_effort none"
+    );
     assert_eq!(result.unwrap().text, "ok");
 
     // Verify the actual request body contained /no_think in the last user message
@@ -767,6 +992,14 @@ async fn query_expand_disables_reasoning_on_request() {
         .await;
 
     let state2 = test_state();
+    cache_strategy(
+        &mut state2.compat_strategy_cache.lock().unwrap(),
+        &format!("{}/v1", server2.uri()),
+        "test-model",
+        ReasoningStrategy::StandardFields,
+        std::time::Instant::now(),
+        POSITIVE_STRATEGY_TTL,
+    );
     let req2 = AiQueryExpandRequest {
         endpoint: format!("{}/v1", server2.uri()),
         model: "test-model".to_string(),
@@ -779,8 +1012,11 @@ async fn query_expand_disables_reasoning_on_request() {
 
     // Check captured requests
     let requests = server2.received_requests().await.unwrap();
-    assert!(!requests.is_empty(), "should have received at least one request");
-    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert!(
+        !requests.is_empty(),
+        "should have received at least one request"
+    );
+    let body: serde_json::Value = serde_json::from_slice(&requests.last().unwrap().body).unwrap();
     let messages = body["messages"].as_array().unwrap();
 
     // System prompt (messages[0]) should NOT contain /no_think
@@ -828,6 +1064,14 @@ async fn query_expand_prepends_non_empty_conversation_context() {
         .await;
 
     let state = test_state();
+    cache_strategy(
+        &mut state.compat_strategy_cache.lock().unwrap(),
+        &format!("{}/v1", server.uri()),
+        "test-model",
+        ReasoningStrategy::StandardFields,
+        std::time::Instant::now(),
+        POSITIVE_STRATEGY_TTL,
+    );
     let req = AiQueryExpandRequest {
         endpoint: format!("{}/v1", server.uri()),
         model: "test-model".to_string(),
@@ -837,7 +1081,10 @@ async fn query_expand_prepends_non_empty_conversation_context() {
     };
 
     let result = ai_query_expand_impl(&state, req).await;
-    assert!(result.is_ok(), "should include conversation context: {result:?}");
+    assert!(
+        result.is_ok(),
+        "should include conversation context: {result:?}"
+    );
     assert_eq!(result.unwrap().text, "ok");
 }
 
@@ -868,6 +1115,14 @@ async fn query_expand_ignores_empty_conversation_context() {
         .await;
 
     let state = test_state();
+    cache_strategy(
+        &mut state.compat_strategy_cache.lock().unwrap(),
+        &format!("{}/v1", server.uri()),
+        "test-model",
+        ReasoningStrategy::StandardFields,
+        std::time::Instant::now(),
+        POSITIVE_STRATEGY_TTL,
+    );
     let req = AiQueryExpandRequest {
         endpoint: format!("{}/v1", server.uri()),
         model: "test-model".to_string(),
@@ -925,6 +1180,14 @@ async fn query_expand_retries_with_fresh_client_after_transport_error() {
     });
 
     let state = test_state();
+    cache_strategy(
+        &mut state.compat_strategy_cache.lock().unwrap(),
+        &format!("http://{addr}/v1"),
+        "test-model",
+        ReasoningStrategy::StandardFields,
+        std::time::Instant::now(),
+        POSITIVE_STRATEGY_TTL,
+    );
     let req = AiQueryExpandRequest {
         endpoint: format!("http://{addr}/v1"),
         model: "test-model".to_string(),
@@ -969,12 +1232,12 @@ async fn query_expand_handles_empty_choices() {
 
     let result = ai_query_expand_impl(&state, req).await;
     assert!(result.is_ok());
-    // Empty choices → empty text
-    assert_eq!(result.unwrap().text, "");
+    // Empty choices → original query fallback
+    assert_eq!(result.unwrap().text, "user");
 }
 
 #[tokio::test]
-async fn query_expand_returns_error_on_http_500() {
+async fn query_expand_falls_back_to_original_query_on_http_500() {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -996,12 +1259,12 @@ async fn query_expand_returns_error_on_http_500() {
     };
 
     let result = ai_query_expand_impl(&state, req).await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("500"));
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().text, "user");
 }
 
 #[tokio::test]
-async fn query_expand_returns_error_on_connection_refused() {
+async fn query_expand_falls_back_to_original_query_on_connection_refused() {
     let state = test_state();
     let req = AiQueryExpandRequest {
         endpoint: "http://127.0.0.1:1/v1".to_string(),
@@ -1012,8 +1275,8 @@ async fn query_expand_returns_error_on_connection_refused() {
     };
 
     let result = ai_query_expand_impl(&state, req).await;
-    assert!(result.is_err());
-    assert!(result.unwrap_err().contains("failed"));
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().text, "user");
 }
 
 #[tokio::test]

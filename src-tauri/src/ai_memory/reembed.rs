@@ -16,15 +16,14 @@ pub async fn reembed_memories_impl<F>(
 where
     F: Fn(MemoryReembedProgress) + Send + 'static,
 {
-    let make_progress = |phase: &str, done: usize, total: usize, error: Option<String>| {
-        MemoryReembedProgress {
+    let make_progress =
+        |phase: &str, done: usize, total: usize, error: Option<String>| MemoryReembedProgress {
             connection_id: connection_id.to_string(),
             phase: phase.to_string(),
             done,
             total,
             error,
-        }
-    };
+        };
 
     tracing::debug!(connection_id, "reembed_memories: start");
     progress_callback(make_progress("embedding", 0, 0, None));
@@ -36,13 +35,20 @@ where
     };
 
     if texts.is_empty() {
-        tracing::debug!(connection_id, "reembed_memories: no memories — nothing to re-embed");
+        tracing::debug!(
+            connection_id,
+            "reembed_memories: no memories — nothing to re-embed"
+        );
         progress_callback(make_progress("done", 0, 0, None));
         return Ok(());
     }
 
     let total = texts.len();
-    tracing::debug!(connection_id, total, "reembed_memories: loaded memory texts");
+    tracing::debug!(
+        connection_id,
+        total,
+        "reembed_memories: loaded memory texts"
+    );
 
     // Read embedding config
     let (endpoint, model) = {

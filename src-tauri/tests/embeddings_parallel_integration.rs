@@ -139,7 +139,11 @@ async fn embed_texts_halving_retry_on_413_produces_correct_output() {
     )
     .await;
 
-    assert!(result.is_ok(), "should recover from 413 via halving: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "should recover from 413 via halving: {:?}",
+        result
+    );
     let vecs = result.unwrap();
     assert_eq!(vecs.len(), 2, "should return vectors for all inputs");
 }
@@ -174,7 +178,11 @@ async fn embed_texts_with_dimensions_sends_field() {
     )
     .await;
 
-    assert!(result.is_ok(), "should succeed with dimensions: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "should succeed with dimensions: {:?}",
+        result
+    );
 }
 
 #[tokio::test]
@@ -193,14 +201,7 @@ async fn embed_texts_without_dimensions_omits_field() {
     let client = test_client();
     let base_url = format!("{}/v1", server.uri());
 
-    let result = embed_texts(
-        &client,
-        &base_url,
-        "model",
-        vec!["test".to_string()],
-        None,
-    )
-    .await;
+    let result = embed_texts(&client, &base_url, "model", vec!["test".to_string()], None).await;
 
     assert!(result.is_ok());
 }

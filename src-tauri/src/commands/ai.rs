@@ -1,9 +1,16 @@
 //! Tauri commands for AI chat — streaming completions, cancellation, model listing, and query expansion.
 
-use crate::ai::client::stream_chat_completion;
+use crate::ai::chat_compat::{
+    is_local_eligible, reasoning_strategy_name, strip_known_hidden_reasoning_markers,
+    ReasoningStrategy,
+};
+use crate::ai::client::{
+    apply_reasoning_off_compatibility_to_latest_user, prepare_local_compat_request,
+    stream_chat_completion,
+};
 use crate::ai::types::{
     AiChatRequest, AiModelInfo, AiModelsResponse, AiQueryExpandRequest, AiQueryExpandResponse,
-    OpenAiModelsApiResponse,
+    IpcMessage, OpenAiModelsApiResponse,
 };
 use crate::state::AppState;
 use std::time::Duration;
@@ -216,19 +223,94 @@ pub async fn ai_query_expand_impl(
         _ => req.user_message.clone(),
     };
 
+    let hidden_messages = vec![
+        IpcMessage {
+            role: "system".to_string(),
+            content: req.system_prompt.clone(),
+        },
+        IpcMessage {
+            role: "user".to_string(),
+            content: effective_user_message,
+        },
+    ];
+
+    let is_local_endpoint = is_local_eligible(&req.endpoint);
+    let (strategy, provider_messages, reasoning_fields) = if is_local_endpoint {
+        match prepare_local_compat_request(
+            state,
+            &state.http_client,
+            &req.endpoint,
+            &req.model,
+            hidden_messages.clone(),
+        )
+        .await
+        {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                tracing::warn!(
+                    endpoint = %req.endpoint,
+                    model = %req.model,
+                    error = %error,
+                    "query expansion compatibility strategy unavailable; falling back to original query"
+                );
+                return Ok(AiQueryExpandResponse {
+                    text: req.user_message,
+                });
+            }
+        }
+    } else {
+        let provider_messages: Vec<crate::ai::types::ApiMessage> = hidden_messages
+            .iter()
+            .map(crate::ai::types::ApiMessage::from)
+            .collect();
+        let mut body = serde_json::json!({
+            "messages": provider_messages,
+        });
+        apply_reasoning_off_compatibility_to_latest_user(
+            body.as_object_mut().expect("messages object"),
+        );
+        if let Some(messages) = body.get("messages").and_then(|v| v.as_array()) {
+            (ReasoningStrategy::StandardFields, serde_json::from_value(serde_json::Value::Array(messages.clone())).unwrap_or_default(), body)
+        } else {
+            (ReasoningStrategy::StandardFields, Vec::new(), body)
+        }
+    };
+
+    tracing::debug!(
+        endpoint = %crate::ai::chat_compat::normalize_endpoint_key(&req.endpoint),
+        model = %req.model,
+        strategy = reasoning_strategy_name(strategy),
+        "query expansion applying reasoning compatibility strategy"
+    );
+
     let mut body_obj = serde_json::json!({
         "model": req.model,
-        "messages": [
-            { "role": "system", "content": req.system_prompt },
-            { "role": "user", "content": effective_user_message },
-        ],
+        "messages": provider_messages,
         "stream": false,
     })
     .as_object()
     .cloned()
     .unwrap_or_default();
-    crate::ai::client::apply_reasoning_off_compatibility(&mut body_obj);
+    if is_local_endpoint {
+        if let Some(obj) = reasoning_fields.as_object() {
+            body_obj.extend(obj.clone());
+        }
+    } else {
+        apply_reasoning_off_compatibility_to_latest_user(&mut body_obj);
+    }
     let body = serde_json::Value::Object(body_obj);
+
+    let fallback_to_original_query = |reason: &str| {
+        tracing::warn!(
+            endpoint = %req.endpoint,
+            model = %req.model,
+            reason,
+            "local query expansion failed; falling back to original query"
+        );
+        Ok(AiQueryExpandResponse {
+            text: req.user_message.clone(),
+        })
+    };
 
     let response = match send_query_expand_request(&state.http_client, &req.endpoint, &body).await {
         Ok(response) => response,
@@ -247,18 +329,27 @@ pub async fn ai_query_expand_impl(
                 .build()
                 .map_err(|e| format!("Failed to create query expand retry client: {e}"))?;
 
-            send_query_expand_request(&retry_client, &req.endpoint, &body)
-                .await
-                .map_err(|retry_error| {
-                    if retry_error.is_timeout() {
+            match send_query_expand_request(&retry_client, &req.endpoint, &body).await {
+                Ok(response) => response,
+                Err(retry_error) => {
+                    if is_local_endpoint {
+                        return fallback_to_original_query(if retry_error.is_timeout() {
+                            "request timed out after retry"
+                        } else {
+                            "request failed after retry"
+                        });
+                    }
+
+                    return Err(if retry_error.is_timeout() {
                         format!(
                             "Query expand request timed out after {}s: {retry_error}",
                             QUERY_EXPAND_TIMEOUT.as_secs()
                         )
                     } else {
                         format!("Query expand HTTP request failed after retry: {retry_error}")
-                    }
-                })?
+                    });
+                }
+            }
         }
     };
 
@@ -268,6 +359,9 @@ pub async fn ai_query_expand_impl(
             .text()
             .await
             .unwrap_or_else(|_| "<failed to read body>".to_string());
+        if is_local_endpoint {
+            return fallback_to_original_query("endpoint returned non-success status");
+        }
         return Err(format!("HTTP {status}: {body_text}"));
     }
 
@@ -276,13 +370,43 @@ pub async fn ai_query_expand_impl(
         .await
         .map_err(|e| format!("Failed to parse query expand response: {e}"))?;
 
-    let text = json["choices"]
+    let raw_text = json["choices"]
         .get(0)
         .and_then(|c| c["message"]["content"].as_str())
         .unwrap_or("")
         .to_string();
 
+    let text = sanitize_query_expand_output(&raw_text, strategy, &req.user_message);
+
     Ok(AiQueryExpandResponse { text })
+}
+
+fn sanitize_query_expand_output(
+    content: &str,
+    strategy: ReasoningStrategy,
+    original_query: &str,
+) -> String {
+    let sanitized = strip_known_hidden_reasoning_markers(content, Some(strategy));
+    let trimmed = sanitized.trim();
+
+    if trimmed.is_empty() || trimmed == "<think>" {
+        return original_query.to_string();
+    }
+
+    let parsed = serde_json::from_str::<serde_json::Value>(trimmed);
+    match parsed {
+        Ok(value) if value.is_object() => trimmed.to_string(),
+        Ok(_) => original_query.to_string(),
+        Err(_) => {
+            if trimmed.starts_with("<think>")
+                || (trimmed.contains("<think>") && trimmed.contains("</think>"))
+            {
+                original_query.to_string()
+            } else {
+                trimmed.to_string()
+            }
+        }
+    }
 }
 
 async fn send_query_expand_request(

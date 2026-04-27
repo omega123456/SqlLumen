@@ -120,7 +120,8 @@ pub async fn embed_texts_with_timeout(
         );
         let batch_started = Instant::now();
 
-        match send_embedding_request(client, &url, model, batch, dimensions, request_timeout).await {
+        match send_embedding_request(client, &url, model, batch, dimensions, request_timeout).await
+        {
             Ok(response) => {
                 let dims = response
                     .data

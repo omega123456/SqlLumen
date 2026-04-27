@@ -118,6 +118,7 @@ vi.mock('../../stores/settings-store', () => ({
 // ---------------------------------------------------------------------------
 
 const INITIAL_STATE = { tabs: {} as Record<string, TabAiState> }
+const ASSISTANT_PREFILL_MARKER = 'Answer: '
 
 function getTab(tabId: string): TabAiState | undefined {
   return useAiStore.getState().tabs[tabId]
@@ -1224,6 +1225,78 @@ describe('useAiStore', () => {
       // Since retrieval failed, schema DDL should be empty
       expect(systemMsg!.content).not.toContain('Database schema:')
       expect(tab.messages.find((message) => message.kind === 'schema-context')).toBeUndefined()
+    })
+
+    describe('provider-only directives stay backend-only', () => {
+      it('sends clean frontend IPC messages without provider-only directives', async () => {
+        useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Explain this query', {})
+
+        await vi.waitFor(() => {
+          expect(mockSendAiChat).toHaveBeenCalledTimes(1)
+        })
+
+        const params = mockSendAiChat.mock.calls[0][0]
+        const contents = (params.messages as Array<{ role: string; content: string }>).map(
+          (message) => message.content
+        )
+
+        expect(contents).toEqual(
+          expect.arrayContaining([
+            expect.stringContaining('Explain this query'),
+            expect.stringContaining('CREATE TABLE `testdb`.`users`'),
+          ])
+        )
+        expect(contents.join('\n')).not.toContain('/no_think')
+        expect(contents.join('\n')).not.toContain(ASSISTANT_PREFILL_MARKER)
+        expect(contents.join('\n')).not.toContain('<think>')
+        expect(contents.join('\n')).not.toContain('</think>')
+        expect(params.messages).not.toContainEqual(
+          expect.objectContaining({ reasoningEffort: expect.anything() })
+        )
+        expect(params.messages).not.toContainEqual(
+          expect.objectContaining({ enableThinking: expect.anything() })
+        )
+        expect(params.messages).not.toContainEqual(
+          expect.objectContaining({ chatTemplateKwargs: expect.anything() })
+        )
+      })
+
+      it('keeps visible assistant messages free of backend-only reasoning suppression markers', async () => {
+        let capturedCallbacks: {
+          onChunk: (content: string, kind: string) => void
+          onDone: (info: {
+            responseId?: string | null
+            transport?: 'chat_completions' | 'responses'
+          }) => void
+          onError: (error: string) => void
+        } | null = null
+
+        mockListenToAiStream.mockImplementationOnce(
+          (_streamId: string, callbacks: typeof capturedCallbacks) => {
+            capturedCallbacks = callbacks
+            return Promise.resolve(vi.fn())
+          }
+        )
+
+        useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Answer clearly', {})
+
+        await vi.waitFor(() => {
+          expect(capturedCallbacks).not.toBeNull()
+        })
+
+        capturedCallbacks!.onChunk('Final answer only', 'content')
+        capturedCallbacks!.onDone({ transport: 'chat_completions' })
+
+        const assistantMessage = getTab('tab-1')!.messages.find(
+          (message) => message.role === 'assistant'
+        )
+        expect(assistantMessage).toBeDefined()
+        expect(assistantMessage!.content).toBe('Final answer only')
+        expect(assistantMessage!.content).not.toContain('/no_think')
+        expect(assistantMessage!.content).not.toContain(ASSISTANT_PREFILL_MARKER)
+        expect(assistantMessage!.content).not.toContain('<think>')
+        expect(assistantMessage!.content).not.toContain('</think>')
+      })
     })
   })
 

@@ -311,7 +311,14 @@ async fn embed_texts_returns_error_on_connection_refused() {
 #[tokio::test]
 async fn embed_texts_empty_base_url_returns_clear_error() {
     let client = test_client();
-    let result = embed_texts(&client, "", "nomic-embed-text", vec!["test".to_string()], None).await;
+    let result = embed_texts(
+        &client,
+        "",
+        "nomic-embed-text",
+        vec!["test".to_string()],
+        None,
+    )
+    .await;
     assert!(
         result.is_err(),
         "embed_texts with empty base_url should fail"
