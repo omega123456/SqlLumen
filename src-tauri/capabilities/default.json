@@ -8,6 +8,7 @@
     "core:default",
     "updater:default",
     "process:default",
+    "os:default",
     "core:window:allow-destroy",
     "window-state:default",
     "clipboard-manager:default",
