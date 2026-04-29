@@ -53,6 +53,7 @@ interface ResultOverrides {
 /** Fields that belong on TabQueryState (tab-level). */
 interface TabOverrides {
   content?: string
+  selectedText?: string
   filePath?: string | null
   cursorPosition?: { lineNumber: number; column: number } | null
   connectionId?: string
@@ -142,6 +143,7 @@ export function makeTabState(
 
   return {
     content: '',
+    selectedText: '',
     filePath: null,
     tabStatus: 'idle',
     prevTabStatus: 'idle',

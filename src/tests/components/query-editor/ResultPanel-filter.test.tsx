@@ -112,6 +112,7 @@ function setupQueryTab(resultOverrides: Partial<SingleResultState> = {}) {
 
   const tab: TabQueryState = {
     content: '',
+    selectedText: '',
     filePath: null,
     tabStatus: 'success',
     prevTabStatus: 'idle',

@@ -224,6 +224,7 @@ describe('useQueryStore — setActiveResultIndex', () => {
       tabs: {
         'tab-1': {
           content: 'SELECT 1; SELECT 2',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -302,6 +303,7 @@ describe('useQueryStore — per-result isolation', () => {
       tabs: {
         'tab-1': {
           content: '',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -351,6 +353,7 @@ describe('useQueryStore — per-result isolation', () => {
       tabs: {
         'tab-1': {
           content: '',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -412,6 +415,7 @@ describe('useQueryStore — hasAnyUnsavedEdits', () => {
       tabs: {
         'tab-1': {
           content: '',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -440,6 +444,7 @@ describe('useQueryStore — hasAnyUnsavedEdits', () => {
       tabs: {
         'tab-1': {
           content: '',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -488,6 +493,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
       tabs: {
         'tab-1': {
           content: 'SELECT 1; SELECT name FROM users',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -550,6 +556,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
       tabs: {
         'tab-1': {
           content: 'SELECT 1; SELECT 2',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -692,6 +699,7 @@ describe('useQueryStore — fetchPage', () => {
       tabs: {
         'tab-1': {
           content: 'SELECT id FROM users',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -757,6 +765,7 @@ describe('useQueryStore — fetchPage', () => {
       tabs: {
         'tab-1': {
           content: '',
+          selectedText: '',
           filePath: null,
           tabStatus: 'idle',
           prevTabStatus: 'idle',
@@ -826,6 +835,7 @@ describe('useQueryStore — changePageSize', () => {
       tabs: {
         'tab-1': {
           content: 'CALL proc()',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -908,6 +918,7 @@ describe('useQueryStore — setViewMode edge cases', () => {
       tabs: {
         'tab-1': {
           content: 'SELECT 1',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -949,6 +960,7 @@ describe('useQueryStore — sortResults', () => {
       tabs: {
         'tab-1': {
           content: 'CALL proc()',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -1039,6 +1051,7 @@ describe('useQueryStore — sortResults stale re-execution discard', () => {
       tabs: {
         'tab-1': {
           content: 'SELECT 1; SELECT 2',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -1141,6 +1154,7 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
       tabs: {
         'tab-1': {
           content: 'SELECT 1; SELECT 2',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',

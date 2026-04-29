@@ -631,6 +631,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
       tabs: {
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -690,6 +691,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
       tabs: {
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -744,6 +746,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
       tabs: {
         [tabId]: {
           content: 'SELECT 1; SELECT 2; SELECT 3',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -845,6 +848,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
       tabs: {
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',

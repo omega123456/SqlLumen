@@ -104,6 +104,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
       tabs: {
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -161,6 +162,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
       tabs: {
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -218,6 +220,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
       tabs: {
         [tabId]: {
           content: 'SELECT 1',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',
@@ -271,6 +274,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
       tabs: {
         [tabId]: {
           content: 'SELECT 1; SELECT 2',
+          selectedText: '',
           filePath: null,
           tabStatus: 'success',
           prevTabStatus: 'idle',

@@ -18,6 +18,7 @@ function setupTab(
       ...prev.tabs,
       [tabId]: {
         content: '',
+        selectedText: '',
         filePath: null,
         tabStatus: 'idle' as const,
         prevTabStatus: 'idle' as const,
