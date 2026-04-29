@@ -65,9 +65,19 @@ const mockLayout = vi.fn()
 const mockEditorInstance = {
   layout: mockLayout,
   onDidChangeCursorPosition: vi.fn(() => ({ dispose: vi.fn() })),
+  onDidChangeCursorSelection: vi.fn(() => ({ dispose: vi.fn() })),
   onDidChangeModelContent: vi.fn(() => ({ dispose: vi.fn() })),
   onDidDispose: vi.fn(),
-  getModel: vi.fn(() => ({ uri: { toString: () => 'inmemory://model/1' } })),
+  getModel: vi.fn(() => ({
+    uri: { toString: () => 'inmemory://model/1' },
+    getValueInRange: vi.fn(() => ''),
+  })),
+  getSelection: vi.fn(() => ({
+    startLineNumber: 1,
+    startColumn: 1,
+    endLineNumber: 1,
+    endColumn: 1,
+  })),
   setPosition: vi.fn(),
   revealPositionInCenter: vi.fn(),
   addCommand: vi.fn(),
@@ -192,8 +202,10 @@ beforeEach(() => {
   panelRenders.length = 0
   mockLayout.mockClear()
   mockEditorInstance.onDidChangeCursorPosition.mockClear()
+  mockEditorInstance.onDidChangeCursorSelection.mockClear()
   mockEditorInstance.onDidDispose.mockClear()
   mockEditorInstance.getModel.mockClear()
+  mockEditorInstance.getSelection.mockClear()
   mockEditorInstance.setPosition.mockClear()
   mockEditorInstance.revealPositionInCenter.mockClear()
 })

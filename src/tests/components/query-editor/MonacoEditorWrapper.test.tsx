@@ -67,12 +67,55 @@ const mockOnDidDispose = vi.fn()
 const registeredDisposeHandlers: Array<() => void> = []
 const mockModelUri = { toString: () => 'inmemory://model/1' }
 const mockContentChangeDispose = vi.fn()
+const mockSelectionDispose = vi.fn()
 let capturedContentChangeHandler: (() => void) | null = null
+let capturedSelectionChangeHandler:
+  | ((e: {
+      selection: {
+        startLineNumber: number
+        startColumn: number
+        endLineNumber: number
+        endColumn: number
+      }
+    }) => void)
+  | null = null
 const capturedAddCommandHandlers: Record<number, () => void> = {}
+
+function createMockModel(selectedText = '') {
+  return {
+    uri: mockModelUri,
+    getValue: () => 'SELECT 1',
+    getValueInRange: (_range: unknown) => selectedText,
+    getLineCount: () => 1,
+    getLineLength: (_line: number) => 8,
+  }
+}
+
 const mockEditorInstance = {
   setPosition: vi.fn(),
   revealPositionInCenter: vi.fn(),
+  getSelection: vi.fn(() => ({
+    startLineNumber: 1,
+    startColumn: 1,
+    endLineNumber: 1,
+    endColumn: 1,
+  })),
   onDidChangeCursorPosition: vi.fn(() => ({ dispose: mockCursorPositionDispose })),
+  onDidChangeCursorSelection: vi.fn(
+    (
+      handler: (e: {
+        selection: {
+          startLineNumber: number
+          startColumn: number
+          endLineNumber: number
+          endColumn: number
+        }
+      }) => void
+    ) => {
+      capturedSelectionChangeHandler = handler
+      return { dispose: mockSelectionDispose }
+    }
+  ),
   onDidChangeModelContent: vi.fn((handler: () => void) => {
     capturedContentChangeHandler = handler
     return { dispose: mockContentChangeDispose }
@@ -81,12 +124,7 @@ const mockEditorInstance = {
     mockOnDidDispose(handler)
     registeredDisposeHandlers.push(handler)
   }),
-  getModel: vi.fn(() => ({
-    uri: mockModelUri,
-    getValue: () => 'SELECT 1',
-    getLineCount: () => 1,
-    getLineLength: (_line: number) => 8,
-  })),
+  getModel: vi.fn(() => createMockModel()),
   addCommand: vi.fn((keyCode: number, handler: () => void) => {
     capturedAddCommandHandlers[keyCode] = handler
   }),
@@ -153,27 +191,32 @@ beforeEach(() => {
   mockEditorInstance.setPosition.mockClear()
   mockEditorInstance.revealPositionInCenter.mockClear()
   mockEditorInstance.onDidChangeCursorPosition.mockClear()
+  mockEditorInstance.onDidChangeCursorSelection.mockClear()
   mockEditorInstance.onDidDispose.mockClear()
   mockEditorInstance.getModel.mockClear()
+  mockEditorInstance.getSelection.mockClear()
   mockEditorInstance.addCommand.mockClear()
   mockEditorInstance.updateOptions.mockClear()
   mockEditorInstance.onDidChangeModelContent.mockClear()
   mockContentChangeDispose.mockClear()
+  mockSelectionDispose.mockClear()
   mockRegisterModelConnection.mockClear()
   mockUnregisterModelConnection.mockClear()
   mockEditorComponent.mockClear()
   mockTriggerCodeLensRefresh.mockClear()
   capturedContentChangeHandler = null
+  capturedSelectionChangeHandler = null
   Object.keys(capturedAddCommandHandlers).forEach(
     (k) => delete capturedAddCommandHandlers[Number(k)]
   )
   registeredDisposeHandlers.length = 0
   // Reset getModel to its default implementation
-  mockEditorInstance.getModel.mockImplementation(() => ({
-    uri: mockModelUri,
-    getValue: () => 'SELECT 1',
-    getLineCount: () => 1,
-    getLineLength: (_line: number) => 8,
+  mockEditorInstance.getModel.mockImplementation(() => createMockModel())
+  mockEditorInstance.getSelection.mockImplementation(() => ({
+    startLineNumber: 1,
+    startColumn: 1,
+    endLineNumber: 1,
+    endColumn: 1,
   }))
 })
 
@@ -360,6 +403,7 @@ describe('MonacoEditorWrapper', () => {
 
       // onDidChangeCursorPosition should NOT have been called in override mode
       expect(mockEditorInstance.onDidChangeCursorPosition).not.toHaveBeenCalled()
+      expect(mockEditorInstance.onDidChangeCursorSelection).not.toHaveBeenCalled()
     })
 
     it('uses override readOnly prop instead of status-based computation', () => {
@@ -652,6 +696,41 @@ describe('MonacoEditorWrapper', () => {
       handleDispose()
 
       expect(mockContentChangeDispose).toHaveBeenCalledTimes(1)
+    })
+
+    it('disposes the selection-change listener when the editor is disposed', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      const handleDispose = registeredDisposeHandlers[0]
+      handleDispose()
+
+      expect(mockSelectionDispose).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('selection tracking', () => {
+    it('stores selected text when Monaco selection changes', () => {
+      mockEditorInstance.getModel.mockImplementation(() => createMockModel('SELECT'))
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      expect(capturedSelectionChangeHandler).not.toBeNull()
+      capturedSelectionChangeHandler!({
+        selection: {
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 7,
+        },
+      })
+
+      expect(useQueryStore.getState().tabs['tab-1']?.selectedText).toBe('SELECT')
+    })
+
+    it('initializes selected text to empty when nothing is selected', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      expect(useQueryStore.getState().tabs['tab-1']?.selectedText).toBe('')
     })
   })
 })

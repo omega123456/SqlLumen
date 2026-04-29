@@ -67,6 +67,7 @@ export function MonacoEditorWrapper({
   const status = useQueryStore((state) => state.tabs[tabId]?.tabStatus ?? 'idle')
   const setContent = useQueryStore((state) => state.setContent)
   const setCursorPosition = useQueryStore((state) => state.setCursorPosition)
+  const setSelectedText = useQueryStore((state) => state.setSelectedText)
 
   // Read editor settings from the settings store
   const editorFontFamily = useSettingsStore((state) => state.getSetting('editor.fontFamily'))
@@ -167,16 +168,32 @@ export function MonacoEditorWrapper({
 
     // Track cursor position changes and persist to store (only in query-store mode)
     let cursorDisposable: MonacoType.IDisposable | null = null
+    let selectionDisposable: MonacoType.IDisposable | null = null
+    const syncSelectedText = () => {
+      if (isOverrideMode) return
+
+      const model = editor.getModel()
+      const selection = editor.getSelection()
+      setSelectedText(tabId, model && selection ? model.getValueInRange(selection) : '')
+    }
+
     if (!isOverrideMode) {
       cursorDisposable = editor.onDidChangeCursorPosition((e) => {
         setCursorPosition(tabId, { lineNumber: e.position.lineNumber, column: e.position.column })
       })
+
+      selectionDisposable = editor.onDidChangeCursorSelection(() => {
+        syncSelectedText()
+      })
+
+      syncSelectedText()
     }
 
     // Subscribe to content changes so CodeLens positions refresh as the user types.
     // Also keep the AI attached context in sync when the user edits inline.
     const contentChangeDisposable = editor.onDidChangeModelContent(() => {
       triggerCodeLensRefresh()
+      syncSelectedText()
 
       // If there is an attached AI context for this tab, update its SQL to
       // reflect the current editor content so that followup AI prompts
@@ -204,6 +221,7 @@ export function MonacoEditorWrapper({
 
     editor.onDidDispose(() => {
       cursorDisposable?.dispose()
+      selectionDisposable?.dispose()
       contentChangeDisposable.dispose()
       // Unregister using the captured URI — model may already be disposed
       if (modelUriRef.current) unregisterModelConnection(modelUriRef.current)

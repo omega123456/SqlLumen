@@ -24,6 +24,30 @@ beforeEach(() => {
 })
 
 describe('AppLayout', () => {
+  function setActiveQueryEditorTab(tabStateOverrides: Record<string, unknown> = {}) {
+    useConnectionStore.setState({ activeTabId: 'conn-1' })
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'conn-1': [{ id: 'tab-1', type: 'query-editor', connectionId: 'conn-1', label: 'Q1' }],
+      },
+      activeTabByConnection: { 'conn-1': 'tab-1' },
+    })
+
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...useQueryStore.getState().getTabState('tab-1'),
+          content: 'SELECT 1;\nSELECT 2;',
+          selectedText: '',
+          cursorPosition: { lineNumber: 1, column: 1 },
+          tabStatus: 'idle',
+          results: [],
+          ...tabStateOverrides,
+        },
+      },
+    } as never)
+  }
+
   it('renders all four main sections', () => {
     render(<AppLayout />)
     // Status bar
@@ -115,24 +139,10 @@ describe('AppLayout', () => {
     })
 
     it('executes the query at cursor position for a query-editor tab', () => {
-      useConnectionStore.setState({ activeTabId: 'conn-1' })
-      useWorkspaceStore.setState({
-        tabsByConnection: {
-          'conn-1': [{ id: 'tab-1', type: 'query-editor', connectionId: 'conn-1', label: 'Q1' }],
-        },
-        activeTabByConnection: { 'conn-1': 'tab-1' },
-      })
       const executeQueryMock = vi.fn()
       const requestNavigationActionMock = vi.fn((_tabId: string, action: () => void) => action())
+      setActiveQueryEditorTab({ cursorPosition: { lineNumber: 1, column: 1 } })
       useQueryStore.setState({
-        tabs: {
-          'tab-1': {
-            content: 'SELECT 1;\nSELECT 2;',
-            cursorPosition: { lineNumber: 1, column: 1 },
-            status: 'idle',
-            results: [],
-          },
-        },
         executeQuery: executeQueryMock,
         executeCallQuery: vi.fn(),
         requestNavigationAction: requestNavigationActionMock,
@@ -146,6 +156,97 @@ describe('AppLayout', () => {
 
       expect(requestNavigationActionMock).toHaveBeenCalledWith('tab-1', expect.any(Function))
       expect(executeQueryMock).toHaveBeenCalledWith('conn-1', 'tab-1', 'SELECT 1')
+    })
+
+    it('executes selected text when F9 has a selection', () => {
+      const executeQueryMock = vi.fn()
+      const requestNavigationActionMock = vi.fn((_tabId: string, action: () => void) => action())
+      setActiveQueryEditorTab({
+        selectedText: 'ECT 1',
+        cursorPosition: { lineNumber: 2, column: 1 },
+      })
+      useQueryStore.setState({
+        executeQuery: executeQueryMock,
+        executeCallQuery: vi.fn(),
+        requestNavigationAction: requestNavigationActionMock,
+      } as never)
+
+      render(<AppLayout />)
+
+      act(() => {
+        useShortcutStore.getState().dispatchAction('execute-query')
+      })
+
+      expect(requestNavigationActionMock).toHaveBeenCalledWith('tab-1', expect.any(Function))
+      expect(executeQueryMock).toHaveBeenCalledWith('conn-1', 'tab-1', 'ECT 1')
+    })
+
+    it('does not fall back to the statement at cursor when the selection is whitespace only', () => {
+      const executeQueryMock = vi.fn()
+      const requestNavigationActionMock = vi.fn((_tabId: string, action: () => void) => action())
+      setActiveQueryEditorTab({ selectedText: '   ', cursorPosition: { lineNumber: 2, column: 1 } })
+      useQueryStore.setState({
+        executeQuery: executeQueryMock,
+        executeCallQuery: vi.fn(),
+        requestNavigationAction: requestNavigationActionMock,
+      } as never)
+
+      render(<AppLayout />)
+
+      act(() => {
+        useShortcutStore.getState().dispatchAction('execute-query')
+      })
+
+      expect(requestNavigationActionMock).not.toHaveBeenCalled()
+      expect(executeQueryMock).not.toHaveBeenCalled()
+    })
+
+    it('uses executeCallQuery for selected CALL text', () => {
+      const executeCallQueryMock = vi.fn()
+      const requestNavigationActionMock = vi.fn((_tabId: string, action: () => void) => action())
+      setActiveQueryEditorTab({
+        content: 'SELECT 1;\nCALL my_proc();',
+        selectedText: 'CALL my_proc()',
+      })
+      useQueryStore.setState({
+        executeQuery: vi.fn(),
+        executeCallQuery: executeCallQueryMock,
+        requestNavigationAction: requestNavigationActionMock,
+      } as never)
+
+      render(<AppLayout />)
+
+      act(() => {
+        useShortcutStore.getState().dispatchAction('execute-query')
+      })
+
+      expect(executeCallQueryMock).toHaveBeenCalledWith('conn-1', 'tab-1', 'CALL my_proc()')
+    })
+
+    it('uses executeMultiQuery when the selection contains multiple statements', () => {
+      const executeMultiQueryMock = vi.fn()
+      const requestNavigationActionMock = vi.fn((_tabId: string, action: () => void) => action())
+      setActiveQueryEditorTab({
+        selectedText: 'SELECT 1;\nSELECT 2;',
+        cursorPosition: { lineNumber: 1, column: 1 },
+      })
+      useQueryStore.setState({
+        executeQuery: vi.fn(),
+        executeCallQuery: vi.fn(),
+        executeMultiQuery: executeMultiQueryMock,
+        requestNavigationAction: requestNavigationActionMock,
+      } as never)
+
+      render(<AppLayout />)
+
+      act(() => {
+        useShortcutStore.getState().dispatchAction('execute-query')
+      })
+
+      expect(executeMultiQueryMock).toHaveBeenCalledWith('conn-1', 'tab-1', [
+        'SELECT 1',
+        'SELECT 2',
+      ])
     })
 
     it('does not execute when tab status is running', () => {

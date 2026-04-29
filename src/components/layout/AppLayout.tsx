@@ -26,6 +26,72 @@ import {
 } from '../query-editor/sql-parser-utils'
 import styles from './AppLayout.module.css'
 
+type ExecuteQueryPlan =
+  | { kind: 'single'; payload: string }
+  | { kind: 'call'; payload: string }
+  | { kind: 'multi'; payload: string[] }
+
+function getExecutableStatements(sql: string): string[] {
+  return splitStatements(sql)
+    .map((statement) => statement.sql.trim())
+    .filter((statement) => statement.length > 0)
+    .filter((statement) => !/^DELIMITER\s/i.test(statement))
+}
+
+function buildExecuteQueryPlan(
+  content: string,
+  selectedText: string,
+  cursorPosition: { lineNumber: number; column: number } | null
+): ExecuteQueryPlan | null {
+  if (selectedText.length > 0) {
+    const selectedStatements = getExecutableStatements(selectedText)
+
+    if (selectedStatements.length === 0) {
+      return null
+    }
+
+    if (selectedStatements.length > 1) {
+      return { kind: 'multi', payload: selectedStatements }
+    }
+
+    const [statement] = selectedStatements
+    return { kind: isCallSql(statement) ? 'call' : 'single', payload: statement }
+  }
+
+  const cursor = cursorPosition ?? { lineNumber: 1, column: 1 }
+  const offset = cursorToOffset(content, cursor.lineNumber, cursor.column)
+  const statements = splitStatements(content)
+  const statementAtCursor = findStatementAtCursor(statements, offset)
+  const sql = statementAtCursor?.sql ?? content.trim()
+
+  if (!sql) {
+    return null
+  }
+
+  return { kind: isCallSql(sql) ? 'call' : 'single', payload: sql }
+}
+
+function runExecuteQueryPlan(
+  queryState: ReturnType<typeof useQueryStore.getState>,
+  connectionId: string,
+  tabId: string,
+  plan: ExecuteQueryPlan
+): void {
+  queryState.requestNavigationAction(tabId, () => {
+    if (plan.kind === 'multi') {
+      queryState.executeMultiQuery(connectionId, tabId, plan.payload)
+      return
+    }
+
+    if (plan.kind === 'call') {
+      queryState.executeCallQuery(connectionId, tabId, plan.payload)
+      return
+    }
+
+    queryState.executeQuery(connectionId, tabId, plan.payload)
+  })
+}
+
 export function AppLayout() {
   const sidebarPanelRef = usePanelRef()
   const isSettingsOpen = useSettingsStore((s) => s.isDialogOpen)
@@ -88,21 +154,14 @@ export function AppLayout() {
       const content = tabState.content
       if (!content.trim()) return
 
-      const cursor = tabState.cursorPosition ?? { lineNumber: 1, column: 1 }
-      const offset = cursorToOffset(content, cursor.lineNumber, cursor.column)
-      const statements = splitStatements(content)
-      const stmt = findStatementAtCursor(statements, offset)
-      const sql = stmt?.sql ?? content.trim()
+      const plan = buildExecuteQueryPlan(
+        content,
+        tabState.selectedText ?? '',
+        tabState.cursorPosition
+      )
+      if (!plan) return
 
-      if (sql) {
-        queryState.requestNavigationAction(tabId, () => {
-          if (isCallSql(sql)) {
-            queryState.executeCallQuery(connectionId, tabId, sql)
-          } else {
-            queryState.executeQuery(connectionId, tabId, sql)
-          }
-        })
-      }
+      runExecuteQueryPlan(queryState, connectionId, tabId, plan)
     })
 
     store.registerAction('execute-all', () => {
@@ -123,11 +182,7 @@ export function AppLayout() {
       if (!content.trim()) return
 
       queryState.requestNavigationAction(tabId, () => {
-        const statements = splitStatements(content)
-        const filtered = statements
-          .map((s) => s.sql.trim())
-          .filter((sql) => sql.length > 0)
-          .filter((sql) => !/^DELIMITER\s/i.test(sql))
+        const filtered = getExecutableStatements(content)
 
         if (filtered.length === 0) return
         queryState.executeMultiQuery(connectionId, tabId, filtered)

@@ -195,6 +195,8 @@ export interface SingleResultState {
 export interface TabQueryState {
   /** The SQL content in the editor for this tab. */
   content: string
+  /** Current selected text in the editor; empty string when nothing is selected. */
+  selectedText: string
   /** File path if tab was opened from a file (for Save). */
   filePath: string | null
   /** Tab-level execution status. */
@@ -260,6 +262,7 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
 
 const DEFAULT_TAB_STATE: TabQueryState = {
   content: '',
+  selectedText: '',
   filePath: null,
   tabStatus: 'idle',
   prevTabStatus: 'idle',
@@ -528,6 +531,9 @@ interface QueryState {
 
   /** Update editor content for a tab. */
   setContent: (tabId: string, content: string) => void
+
+  /** Update current selected text for a tab. */
+  setSelectedText: (tabId: string, selectedText: string) => void
 
   /** Update file path for a tab (when opened from or saved to file). */
   setFilePath: (tabId: string, filePath: string | null) => void
@@ -918,6 +924,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
     setContent: (tabId: string, content: string) => {
       patchTab(tabId, { content })
+    },
+
+    setSelectedText: (tabId: string, selectedText: string) => {
+      patchTab(tabId, { selectedText })
     },
 
     setFilePath: (tabId: string, filePath: string | null) => {
