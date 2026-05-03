@@ -43,13 +43,7 @@ export { stripLeadingSqlComments } from '../lib/sql-utils'
 /** Default page-size fallback used when settings have not been loaded (e.g. in tests). */
 const FALLBACK_PAGE_SIZE = 1000
 
-/**
- * Page size used for query result execution.
- * Set large enough to ensure ALL rows come back in a single page — the
- * backend's 1000-row auto-LIMIT caps the actual row count, so this just
- * disables client-side pagination for query results.
- */
-const QUERY_RESULT_PAGE_SIZE = 1_000_000
+/** @deprecated Removed — use getDefaultPageSize() instead. */
 
 /**
  * Read the default page size from the settings store.
@@ -793,7 +787,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       if (!get().tabs[tabId]) return
 
       const results = multiResult.results.map((item) =>
-        buildSingleResultFromItem(item, QUERY_RESULT_PAGE_SIZE)
+        buildSingleResultFromItem(item, getDefaultPageSize())
       )
 
       // Tab-level status: 'success' if at least one result exists
@@ -959,7 +953,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       beginExecution(tabId)
 
       try {
-        const result = await executeQueryCmd(connectionId, tabId, sql, QUERY_RESULT_PAGE_SIZE)
+        const result = await executeQueryCmd(connectionId, tabId, sql, getDefaultPageSize())
 
         // Guard: if the tab was closed while query was running, skip the update
         if (!get().tabs[tabId]) return
@@ -977,7 +971,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           queryId: result.queryId,
           currentPage: 1,
           totalPages: result.totalPages,
-          pageSize: QUERY_RESULT_PAGE_SIZE,
+          pageSize: getDefaultPageSize(),
           autoLimitApplied: result.autoLimitApplied,
           lastExecutedSql: sql,
           reExecutable: true,
@@ -1043,7 +1037,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       await runMultiResultExecution(
         connectionId,
         tabId,
-        () => executeMultiQueryCmd(connectionId, tabId, statements, QUERY_RESULT_PAGE_SIZE),
+        () => executeMultiQueryCmd(connectionId, tabId, statements, getDefaultPageSize()),
         true
       )
     },
@@ -1052,7 +1046,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       await runMultiResultExecution(
         connectionId,
         tabId,
-        () => executeCallQueryCmd(connectionId, tabId, sql, QUERY_RESULT_PAGE_SIZE),
+        () => executeCallQueryCmd(connectionId, tabId, sql, getDefaultPageSize()),
         false
       )
     },
@@ -1346,7 +1340,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 tabId,
                 resultIndex,
                 lastSql,
-                QUERY_RESULT_PAGE_SIZE,
+                getDefaultPageSize(),
                 capturedQueryId,
                 { sortColumn: null, sortDirection: null }
               )
@@ -1356,7 +1350,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 connectionId,
                 tabId,
                 lastSql,
-                QUERY_RESULT_PAGE_SIZE
+                getDefaultPageSize()
               )
               const normalizedRows = normalizeQueryRows(execResult.columns, execResult.firstPage)
 
