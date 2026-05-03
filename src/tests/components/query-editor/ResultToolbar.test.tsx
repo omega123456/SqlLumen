@@ -102,7 +102,7 @@ describe('ResultToolbar', () => {
         onClearFilterClick={() => {}}
       />
     )
-    expect(screen.getByText('(1000 row limit applied)')).toBeInTheDocument()
+    expect(screen.getByText('(500 row limit applied)')).toBeInTheDocument()
   })
 
   it('does not show auto-limit text when autoLimitApplied is false', () => {

@@ -369,7 +369,7 @@ async fn execute_single_select_statement(
     use mysql_async::prelude::Queryable;
 
     let sql_to_execute = if auto_limit_applied {
-        inject_limit_into_select(sql, 1000)
+        inject_limit_into_select(sql, page_size_used)
     } else {
         sql.to_string()
     };

@@ -773,7 +773,7 @@ async fn execute_single_statement_inner(
     // Determine effective SQL (with auto-LIMIT if needed)
     let auto_limit_applied = needs_auto_limit(sql);
     let sql_to_execute = if auto_limit_applied {
-        inject_limit_into_select(sql, 1000)
+        inject_limit_into_select(sql, page_size)
     } else {
         sql.to_string()
     };

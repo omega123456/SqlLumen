@@ -31,9 +31,8 @@
    --------------------------------------------------------------------------- */
 
 [data-theme='light'] .monaco-editor .suggest-widget {
-  width: 256px !important;
   min-width: 256px !important;
-  max-width: 256px !important;
+  max-width: min(600px, 90vw) !important;
   box-sizing: border-box;
 }
 
@@ -93,9 +92,8 @@
    --------------------------------------------------------------------------- */
 
 [data-theme='dark'] .monaco-editor .suggest-widget {
-  width: 256px !important;
   min-width: 256px !important;
-  max-width: 256px !important;
+  max-width: min(600px, 90vw) !important;
   box-sizing: border-box;
 }
 

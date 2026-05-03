@@ -2,7 +2,7 @@
  * Toolbar above the result grid — shows view mode toggle, edit mode dropdown,
  * Save/Discard buttons, query status, and export action.
  *
- * Query results display all rows at once (up to the backend's 1000-row
+ * Query results display all rows at once (up to the backend's configured
  * auto-limit) without client-side pagination. The page-size dropdown and
  * prev/next page buttons are intentionally omitted here — pagination
  * controls remain available in the table-data toolbar where they make sense.
@@ -13,6 +13,7 @@
 import { useCallback } from 'react'
 import { FloppyDisk } from '@phosphor-icons/react'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
+import { useSettingsStore } from '../../stores/settings-store'
 import { EditModeDropdown } from './EditModeDropdown'
 import { ViewModeGroup } from '../shared/toolbar/ViewModeGroup'
 import { ExportButton } from '../shared/toolbar/ExportButton'
@@ -52,6 +53,7 @@ export function ResultToolbar({
   const executionTimeMs = activeResult.executionTimeMs
   const errorMessage = activeResult.errorMessage
   const autoLimitApplied = activeResult.autoLimitApplied
+  const configuredPageSize = useSettingsStore((s) => s.getSetting('results.pageSize')) || '500'
   const viewMode = activeResult.viewMode
 
   // Edit state for Save/Discard buttons
@@ -79,7 +81,7 @@ export function ResultToolbar({
 
   // Auto-limit custom content
   const autoLimitContent = autoLimitApplied ? (
-    <span className={styles.autoLimit}>(1000 row limit applied)</span>
+    <span className={styles.autoLimit}>({configuredPageSize} row limit applied)</span>
   ) : undefined
 
   const handleViewMode = useCallback(
