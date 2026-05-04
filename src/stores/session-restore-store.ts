@@ -361,7 +361,7 @@ async function restoreConnectionTabs(
       case 'table-data': {
         workspaceStore.openTab({
           type: 'table-data',
-          label: `${tabState.databaseName}.${tabState.tableName}`,
+          label: tabState.tableName,
           connectionId: sessionId,
           databaseName: tabState.databaseName,
           objectName: tabState.tableName,
@@ -381,7 +381,7 @@ async function restoreConnectionTabs(
       case 'schema-info': {
         workspaceStore.openTab({
           type: 'schema-info',
-          label: `${tabState.databaseName}.${tabState.objectName}`,
+          label: tabState.objectName,
           connectionId: sessionId,
           databaseName: tabState.databaseName,
           objectName: tabState.objectName,

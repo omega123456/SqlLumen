@@ -250,10 +250,10 @@ describe('BaseFormView — basic rendering', () => {
     expect(field).toHaveTextContent('(Unique Key)')
   })
 
-  it('displays column names in UPPERCASE', () => {
+  it('displays column names with original casing', () => {
     renderForm()
     const idField = screen.getByTestId('form-field-id')
-    expect(idField.textContent).toContain('ID')
+    expect(idField.textContent).toContain('id')
   })
 })
 
@@ -971,5 +971,40 @@ describe('BaseFormView — optional insert/delete capabilities', () => {
     // The form itself doesn't call these — they're for toolbar/parent consumption
     expect(onInsertRow).not.toHaveBeenCalled()
     expect(onDeleteRow).not.toHaveBeenCalled()
+  })
+
+  it('preserves exact column name casing in form labels', () => {
+    const mixedCaseColumns: GridColumnDescriptor[] = [
+      {
+        key: 'firstName',
+        displayName: 'firstName',
+        dataType: 'VARCHAR',
+        editable: true,
+        isBinary: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+      },
+      {
+        key: 'LastName',
+        displayName: 'LastName',
+        dataType: 'VARCHAR',
+        editable: true,
+        isBinary: false,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+      },
+    ]
+    renderForm({
+      columns: mixedCaseColumns,
+      currentRow: ['John', 'Doe'],
+    })
+
+    // Labels should preserve exact casing, not be uppercased
+    expect(screen.getByText('firstName')).toBeInTheDocument()
+    expect(screen.getByText('LastName')).toBeInTheDocument()
+    expect(screen.queryByText('FIRSTNAME')).not.toBeInTheDocument()
+    expect(screen.queryByText('LASTNAME')).not.toBeInTheDocument()
   })
 })

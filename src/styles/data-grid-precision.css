@@ -32,7 +32,7 @@
   font-weight: var(--type-table-header-weight);
   font-size: var(--type-table-header-size);
   letter-spacing: var(--type-table-header-tracking);
-  text-transform: uppercase;
+
   color: var(--on-surface-variant);
   background-color: var(--result-grid-header-bg);
   border-bottom: var(--grid-header-border-bottom);

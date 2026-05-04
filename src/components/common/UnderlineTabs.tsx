@@ -78,6 +78,13 @@ export function UnderlineTab({
         style={indicatorStyle}
         title={title}
         onAuxClick={onAuxClick}
+        onMouseDown={
+          onAuxClick
+            ? (e) => {
+                if (e.button === 1) e.preventDefault()
+              }
+            : undefined
+        }
       >
         <div
           role="button"
@@ -108,6 +115,13 @@ export function UnderlineTab({
       title={title}
       onClick={handleSelect}
       onAuxClick={onAuxClick}
+      onMouseDown={
+        onAuxClick
+          ? (e) => {
+              if (e.button === 1) e.preventDefault()
+            }
+          : undefined
+      }
     >
       {children}
     </button>

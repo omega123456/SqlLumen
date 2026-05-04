@@ -243,29 +243,51 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
     const current = get().connectionStates[connectionId]
     if (!current || current.loadGeneration !== gen) return
 
-    const nodes: Record<string, TreeNode> = {}
+    const existingNodes = get().connectionStates[connectionId]?.nodes ?? {}
+
+    // Build set of new database IDs
+    const newDbIds = new Set<string>()
+    const mergedNodes: Record<string, TreeNode> = {}
 
     for (const dbName of databases) {
       const id = makeNodeId('database', dbName, dbName)
-      nodes[id] = {
-        id,
-        label: dbName,
-        type: 'database',
-        parentId: null,
-        hasChildren: true,
-        isLoaded: false,
-        databaseName: dbName,
-        objectName: dbName,
+      newDbIds.add(id)
+
+      const existing = existingNodes[id]
+      if (existing && existing.isLoaded) {
+        // Preserve the existing database node (and we'll keep its descendants below)
+        mergedNodes[id] = existing
+      } else {
+        mergedNodes[id] = {
+          id,
+          label: dbName,
+          type: 'database',
+          parentId: null,
+          hasChildren: true,
+          isLoaded: false,
+          databaseName: dbName,
+          objectName: dbName,
+        }
       }
     }
 
-    const childIdsByParentId = buildChildIndex(nodes)
+    // Keep all descendant nodes of databases that still exist
+    for (const [nodeId, node] of Object.entries(existingNodes)) {
+      if (node.type === 'database') continue // already handled above
+      // Check if this node belongs to a database that still exists
+      const dbId = makeNodeId('database', node.databaseName!, node.databaseName!)
+      if (newDbIds.has(dbId)) {
+        mergedNodes[nodeId] = node
+      }
+    }
+
+    const childIdsByParentId = buildChildIndex(mergedNodes)
 
     set((state) =>
       setConnState(state, connectionId, {
-        nodes,
+        nodes: mergedNodes,
         childIdsByParentId,
-        expandedNodes: new Set(),
+        expandedNodes: getConnState(get(), connectionId).expandedNodes,
         loadingNodes: new Set(),
       })
     )

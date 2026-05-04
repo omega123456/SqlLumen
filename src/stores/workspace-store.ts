@@ -121,7 +121,7 @@ function getUpdatedObjectTabLabel(
     return getObjectEditorLabel(tab.objectType, objectName)
   }
 
-  return `${databaseName}.${objectName}`
+  return objectName
 }
 
 /**

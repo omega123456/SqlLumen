@@ -470,7 +470,7 @@ describe('useWorkspaceStore — updateTabDatabase', () => {
     const state = useWorkspaceStore.getState()
     const tabs = state.tabsByConnection['conn-1']
     expect((tabs[0] as TableDataTab).databaseName).toBe('newdb')
-    expect(tabs[0].label).toBe('newdb.users')
+    expect(tabs[0].label).toBe('users')
   })
 })
 
@@ -484,7 +484,27 @@ describe('useWorkspaceStore — updateTabObject', () => {
     const state = useWorkspaceStore.getState()
     const tabs = state.tabsByConnection['conn-1']
     expect((tabs[0] as TableDataTab).objectName).toBe('new_table')
-    expect(tabs[0].label).toBe('mydb.new_table')
+    expect(tabs[0].label).toBe('new_table')
+  })
+})
+
+describe('useWorkspaceStore — table-data tab label should only show object name', () => {
+  it('updateTabObject sets label to only objectName for table-data tabs', () => {
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'old_table', label: 'old_table' }))
+    useWorkspaceStore.getState().updateTabObject('conn-1', 'mydb', 'old_table', 'new_table')
+
+    const state = useWorkspaceStore.getState()
+    const tabs = state.tabsByConnection['conn-1']
+    expect(tabs[0].label).toBe('new_table')
+  })
+
+  it('updateTabDatabase sets label to only objectName for table-data tabs', () => {
+    useWorkspaceStore.getState().openTab(makeTab({ databaseName: 'olddb', label: 'users' }))
+    useWorkspaceStore.getState().updateTabDatabase('conn-1', 'olddb', 'newdb')
+
+    const state = useWorkspaceStore.getState()
+    const tabs = state.tabsByConnection['conn-1']
+    expect(tabs[0].label).toBe('users')
   })
 })
 

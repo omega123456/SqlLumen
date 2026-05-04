@@ -724,3 +724,51 @@ describe('useSchemaStore — loadGeneration stale guard', () => {
     expect(allLabels).not.toContain('stale_table')
   })
 })
+
+// ---------------------------------------------------------------------------
+// loadDatabases preserves child nodes (bug: tree collapses on connection switch)
+// ---------------------------------------------------------------------------
+
+describe('useSchemaStore — loadDatabases preserves existing children', () => {
+  it('retains previously-loaded category and table nodes when loadDatabases is called again', async () => {
+    const connId = 'conn-preserve'
+
+    // 1. Load databases initially
+    mockListDatabases.mockResolvedValue(['mydb'])
+    await useSchemaStore.getState().loadDatabases(connId)
+
+    // 2. Expand the database node to create category children
+    const dbNodeId = makeNodeId('database', 'mydb', 'mydb')
+    await useSchemaStore.getState().loadChildren(connId, dbNodeId)
+
+    // 3. Expand the "Tables" category to load table nodes
+    const tablesCatId = makeNodeId('category', 'mydb', 'table')
+    mockListSchemaObjects.mockResolvedValue(['users', 'orders'])
+    await useSchemaStore.getState().loadChildren(connId, tablesCatId)
+
+    // Mark nodes as expanded
+    useSchemaStore.getState().toggleExpand(dbNodeId, connId)
+    useSchemaStore.getState().toggleExpand(tablesCatId, connId)
+
+    // Verify children exist before re-calling loadDatabases
+    const stateBefore = useSchemaStore.getState().connectionStates[connId]
+    expect(Object.keys(stateBefore.nodes).length).toBeGreaterThan(1)
+    expect(stateBefore.expandedNodes.has(dbNodeId)).toBe(true)
+    expect(stateBefore.expandedNodes.has(tablesCatId)).toBe(true)
+    const tablesNodeId = makeNodeId('table', 'mydb', 'users')
+    expect(stateBefore.nodes[tablesNodeId]).toBeDefined()
+
+    // 4. Call loadDatabases again (simulates switching back to this connection)
+    mockListDatabases.mockResolvedValue(['mydb'])
+    await useSchemaStore.getState().loadDatabases(connId)
+
+    // 5. Assert children are preserved
+    const stateAfter = useSchemaStore.getState().connectionStates[connId]
+    expect(stateAfter.expandedNodes.has(dbNodeId)).toBe(true)
+    expect(stateAfter.expandedNodes.has(tablesCatId)).toBe(true)
+    // THIS IS THE KEY ASSERTION: child nodes should still exist
+    expect(stateAfter.nodes[tablesCatId]).toBeDefined()
+    expect(stateAfter.nodes[tablesNodeId]).toBeDefined()
+    expect(Object.keys(stateAfter.nodes).length).toBeGreaterThan(1)
+  })
+})

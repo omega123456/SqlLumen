@@ -92,11 +92,11 @@ describe('ResultFormView', () => {
     expect(screen.getByText('Record 1 of 5')).toBeInTheDocument()
   })
 
-  it('shows all column names as uppercase labels', () => {
+  it('shows column names with original casing', () => {
     render(<ResultFormView {...defaultProps} />)
-    expect(screen.getByText('ID')).toBeInTheDocument()
-    expect(screen.getByText('NAME')).toBeInTheDocument()
-    expect(screen.getByText('EMAIL')).toBeInTheDocument()
+    expect(screen.getByText('id')).toBeInTheDocument()
+    expect(screen.getByText('name')).toBeInTheDocument()
+    expect(screen.getByText('email')).toBeInTheDocument()
   })
 
   it('shows all values for the selected row', () => {

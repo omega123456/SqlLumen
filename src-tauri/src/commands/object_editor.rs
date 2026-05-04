@@ -677,6 +677,9 @@ pub async fn save_object(
     let start = std::time::Instant::now();
     let connection_id_for_log = request.connection_id.clone();
     let sql_text = request.body.clone();
+    let object_type_for_log = request.object_type.clone();
+    let database_for_log = request.database.clone();
+    let object_name_for_log = request.object_name.clone();
     let result = save_object_impl(request, &state).await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
@@ -684,6 +687,31 @@ pub async fn save_object(
 
     match &result {
         Ok(response) => {
+            // Log the DROP IF EXISTS as a separate history entry when it was executed
+            if response.drop_succeeded {
+                let type_keyword =
+                    object_type_keyword(&object_type_for_log).unwrap_or("UNKNOWN");
+                let drop_sql = format!(
+                    "DROP {} IF EXISTS `{}`.`{}`",
+                    type_keyword, database_for_log, object_name_for_log
+                );
+                let (drop_conn_id, drop_database_name) =
+                    resolve_connection_context(&state, &connection_id_for_log);
+                log_single_entry(
+                    &state.db,
+                    NewHistoryEntry {
+                        connection_id: drop_conn_id,
+                        database_name: drop_database_name,
+                        sql_text: drop_sql,
+                        duration_ms: Some(duration_ms),
+                        row_count: Some(0),
+                        affected_rows: Some(0),
+                        success: true,
+                        error_message: None,
+                    },
+                );
+            }
+
             log_single_entry(
                 &state.db,
                 NewHistoryEntry {

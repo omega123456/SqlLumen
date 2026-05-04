@@ -360,7 +360,7 @@ function FormField({
               data-testid={`lock-icon-${col.displayName}`}
             />
           )}
-          {col.displayName.toUpperCase()}
+          {col.displayName}
         </span>
         {labelSuffix && <span className={styles.fieldLabelSuffix}>{labelSuffix}</span>}
         {col.isNullable && isEditable && (

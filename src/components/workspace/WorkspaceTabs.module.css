@@ -32,14 +32,11 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
-  max-width: 160px;
   min-width: 0;
   white-space: nowrap;
 }
 
 .tabLabelText {
-  overflow: hidden;
-  text-overflow: ellipsis;
   min-width: 0;
 }
 

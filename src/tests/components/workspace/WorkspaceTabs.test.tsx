@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { dispatchAuxClick } from '../../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
@@ -353,7 +353,9 @@ describe('WorkspaceTabs', () => {
 
     render(<WorkspaceTabs connectionId="conn-1" />)
 
-    expect(screen.getByTestId(`workspace-tab-${tabId}`)).toHaveTextContent('Stored Procedure: my_proc ●')
+    expect(screen.getByTestId(`workspace-tab-${tabId}`)).toHaveTextContent(
+      'Stored Procedure: my_proc ●'
+    )
   })
 
   it('does not show dirty indicator for object-editor tabs without editor state', () => {
@@ -407,5 +409,32 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs connectionId="conn-1" />)
 
     expect(screen.getByTestId(`workspace-tab-${tabId}`)).not.toHaveTextContent('●')
+  })
+
+  it('prevents browser autoscroll by calling preventDefault on middle-button mousedown', () => {
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const tabEl = screen.getByTestId(`workspace-tab-${tabs[0].id}`)
+
+    const mousedownEvent = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+      button: 1,
+    })
+
+    const preventDefaultSpy = vi.spyOn(mousedownEvent, 'preventDefault')
+    tabEl.dispatchEvent(mousedownEvent)
+
+    expect(preventDefaultSpy).toHaveBeenCalled()
   })
 })
