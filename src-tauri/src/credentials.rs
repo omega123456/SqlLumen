@@ -134,6 +134,8 @@ pub fn store_password(profile_id: &str, password: &str) -> Result<(), String> {
         warn!(profile_id, error = %error, "failed to access keychain entry for password store");
         format!("Failed to access keychain: {error}")
     })?;
+
+    #[cfg(not(target_os = "macos"))]
     entry.set_password(password).map_err(|error| {
         warn!(profile_id, error = %error, "failed to store password in keychain");
         format!("Failed to store password in keychain: {error}")
