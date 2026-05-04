@@ -37,7 +37,7 @@ fn test_insert_connection_returns_uuid() {
 }
 
 #[test]
-fn test_insert_sets_keychain_ref_to_id() {
+fn test_insert_sets_password_marker_to_connection_id() {
     let conn = common::test_db();
     let data = sample_new_connection();
     let id = insert_connection(&conn, &data).expect("should insert");
@@ -67,7 +67,7 @@ fn test_get_connection_returns_record() {
     assert_eq!(record.host, "localhost");
     assert_eq!(record.port, 3306);
     assert_eq!(record.username, "root");
-    assert!(record.has_password);
+    assert!(record.has_password, "non-null keychain_ref acts as saved-password marker");
     assert_eq!(record.default_database, Some("mydb".to_string()));
     assert!(!record.ssl_enabled);
     assert_eq!(record.color, Some("#ff0000".to_string()));

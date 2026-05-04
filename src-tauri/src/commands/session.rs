@@ -31,14 +31,10 @@ pub async fn select_database_impl(
     let _ = safe_identifier(database_name)?;
     stored_params.default_database = Some(database_name.to_string());
 
-    let password = if stored_params.has_password {
-        credentials::retrieve_password_for_connection(
-            stored_params.profile_id.as_str(),
-            stored_params.keychain_ref.as_deref(),
-        )?
-    } else {
-        String::new()
-    };
+    let password = credentials::resolve_password(
+        stored_params.profile_id.as_str(),
+        stored_params.has_password,
+    )?;
 
     #[cfg(any(test, feature = "test-utils"))]
     if let Some(hook) = *TEST_SELECT_DATABASE_HOOK

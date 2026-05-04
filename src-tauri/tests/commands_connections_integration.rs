@@ -6,6 +6,7 @@ use sqllumen_lib::commands::connections::{
     delete_connection_impl, get_connection_impl, list_connections_impl, save_connection_impl,
     update_connection_impl, UpdateConnectionInput,
 };
+use sqllumen_lib::credentials;
 
 #[test]
 fn test_save_connection_impl_returns_uuid() {
@@ -219,7 +220,7 @@ fn test_update_rejects_setting_and_clearing_password_together() {
 }
 
 #[test]
-fn test_delete_connection_tolerates_missing_keychain_entry() {
+fn test_delete_connection_without_password_marker_succeeds() {
     let state = common::test_app_state();
     let id = save_connection_impl(&state, common::sample_save_input()).expect("should save");
 
@@ -333,7 +334,7 @@ fn test_update_connection_input_deserialize_clear_password_default() {
 #[test]
 fn test_update_clear_password_on_connection_with_password() {
     let state = common::test_app_state();
-    // Save a connection WITH a password so keychain_ref is set
+    // Save a connection WITH a password so the saved-password marker is set
     let mut input = common::sample_save_input();
     input.password = Some("initial_secret".to_string());
     let id = save_connection_impl(&state, input).expect("should save");
@@ -387,7 +388,7 @@ fn test_update_password_on_connection_that_already_has_password() {
         .expect("should find");
     assert!(record.has_password);
 
-    // Update with a new password (exercises the filter closures when previous keychain_ref exists)
+    // Update with a new password and keep the saved-password marker present
     let update = UpdateConnectionInput {
         name: "Test DB".to_string(),
         host: "localhost".to_string(),
@@ -421,7 +422,7 @@ fn test_update_password_on_connection_that_already_has_password() {
 #[test]
 fn test_delete_connection_with_password() {
     let state = common::test_app_state();
-    // Save with a password so keychain_ref is set
+    // Save with a password so the saved-password marker is set
     let mut input = common::sample_save_input();
     input.password = Some("my_secret".to_string());
     let id = save_connection_impl(&state, input).expect("should save");
@@ -431,9 +432,92 @@ fn test_delete_connection_with_password() {
         .expect("should find");
     assert!(record.has_password);
 
-    // Delete the connection (exercises filter closure on keychain_ref)
+    // Delete the connection and its saved credential
     delete_connection_impl(&state, &id).expect("should delete");
 
     let result = get_connection_impl(&state, &id).expect("should not error");
     assert!(result.is_none());
+}
+
+#[test]
+fn test_clear_password_delete_failure_returns_error_and_preserves_sqlite_marker() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    let state = common::test_app_state();
+    let mut input = common::sample_save_input();
+    input.password = Some("secret".to_string());
+    let id = save_connection_impl(&state, input).expect("should save");
+
+    common::fake_credentials::queue_fake_credential_error("delete failed");
+
+    let update = UpdateConnectionInput {
+        name: "Test DB".to_string(),
+        host: "localhost".to_string(),
+        port: 3306,
+        username: "root".to_string(),
+        password: None,
+        clear_password: true,
+        default_database: None,
+        ssl_enabled: false,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        color: None,
+        group_id: None,
+        read_only: false,
+        sort_order: 0,
+        connect_timeout_secs: None,
+        keepalive_interval_secs: None,
+    };
+
+    let error = update_connection_impl(&state, &id, update).expect_err("should surface delete failure");
+    assert!(error.starts_with("Failed to delete password from keychain:"));
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+    assert!(record.has_password, "sqlite marker should remain set on failure");
+}
+
+#[test]
+fn test_delete_connection_credential_failure_returns_error_and_preserves_sqlite_row() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    let state = common::test_app_state();
+    let mut input = common::sample_save_input();
+    input.password = Some("secret".to_string());
+    let id = save_connection_impl(&state, input).expect("should save");
+
+    common::fake_credentials::queue_fake_credential_error("delete failed");
+
+    let error = delete_connection_impl(&state, &id).expect_err("should surface delete failure");
+    assert!(error.starts_with("Failed to delete password from keychain:"));
+
+    let record = get_connection_impl(&state, &id)
+        .expect("should not error")
+        .expect("should find");
+    assert!(record.has_password, "row should remain when credential deletion fails");
+}
+
+#[test]
+fn test_profile_id_password_marker_behavior_uses_profile_id_as_marker_and_credential_key() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    let state = common::test_app_state();
+    let mut input = common::sample_save_input();
+    input.password = Some("secret".to_string());
+    let id = save_connection_impl(&state, input).expect("should save");
+
+    let conn = state.db.lock().expect("db lock should succeed");
+    let keychain_ref: Option<String> = conn
+        .query_row(
+            "SELECT keychain_ref FROM connections WHERE id = ?1",
+            [&id],
+            |row| row.get(0),
+        )
+        .expect("should find row");
+    drop(conn);
+
+    assert_eq!(keychain_ref.as_deref(), Some(id.as_str()));
+    assert_eq!(
+        credentials::get_password(&id).expect("credential lookup should succeed"),
+        Some("secret".to_string())
+    );
 }

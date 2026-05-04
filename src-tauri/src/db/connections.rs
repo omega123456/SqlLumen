@@ -44,8 +44,9 @@ pub struct UpdateConnectionData {
     pub keepalive_interval_secs: Option<i64>,
 }
 
-/// A connection record as returned to callers. Excludes keychain_ref,
-/// includes has_password computed from keychain_ref presence.
+/// A connection record as returned to callers. Exposes `has_password`, which is
+/// computed from `keychain_ref` presence. The stored `keychain_ref` acts only as
+/// a password-presence marker keyed by profile id, not a physical keychain item name.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionRecord {
@@ -108,7 +109,8 @@ fn row_to_connection_record(row: &rusqlite::Row) -> rusqlite::Result<ConnectionR
     })
 }
 
-/// Insert a new connection profile. Sets keychain_ref to the generated UUID.
+/// Insert a new connection profile. Sets `keychain_ref` to the generated profile id
+/// as the saved-password presence marker.
 /// Returns the new connection's UUID.
 pub fn insert_connection(conn: &Connection, data: &NewConnectionData) -> Result<String> {
     let id = Uuid::new_v4().to_string();
@@ -134,7 +136,7 @@ pub fn insert_connection(conn: &Connection, data: &NewConnectionData) -> Result<
             data.host,
             data.port,
             data.username,
-            id, // keychain_ref = id
+            id, // keychain_ref stores the profile-id password marker
             data.default_database,
             data.ssl_enabled,
             data.ssl_ca_path,
@@ -153,7 +155,8 @@ pub fn insert_connection(conn: &Connection, data: &NewConnectionData) -> Result<
 }
 
 /// Get a connection by ID. Returns None if not found.
-/// Returns all fields except keychain_ref; includes has_password.
+/// Returns all fields except `keychain_ref`; includes `has_password` derived from
+/// whether the saved-password marker is present.
 pub fn get_connection(conn: &Connection, id: &str) -> Result<Option<ConnectionRecord>> {
     let sql = format!(
         "SELECT {} FROM connections c WHERE c.id = ?1",
@@ -211,7 +214,7 @@ pub fn list_connections(conn: &Connection) -> Result<Vec<ConnectionRecord>> {
     Ok(records)
 }
 
-/// Update an existing connection's fields. Does not modify keychain_ref.
+/// Update an existing connection's fields. Does not modify the password marker.
 /// Returns an error if the connection does not exist.
 pub fn update_connection(conn: &Connection, id: &str, data: &UpdateConnectionData) -> Result<()> {
     let rows_affected = conn.execute(

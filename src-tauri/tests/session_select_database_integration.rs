@@ -59,7 +59,6 @@ fn register_connection_with_password(
     state: &AppState,
     connection_id: &str,
     profile_id: &str,
-    keychain_ref: Option<&str>,
 ) {
     state.registry.insert(
         connection_id.to_string(),
@@ -76,7 +75,7 @@ fn register_connection_with_password(
                 port: 13306,
                 username: "dummy".to_string(),
                 has_password: true,
-                keychain_ref: keychain_ref.map(ToString::to_string),
+                keychain_ref: Some(profile_id.to_string()),
                 default_database: Some("ecommerce_db".to_string()),
                 ssl_enabled: false,
                 ssl_ca_path: None,
@@ -181,7 +180,7 @@ async fn select_database_reconnects_with_password_and_updates_registry_without_h
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let _pool_guard = install_test_pool_factory(forced_pool_success);
     let state = test_state();
-    register_connection_with_password(&state, "conn-1", "profile-select-success", None);
+    register_connection_with_password(&state, "conn-1", "profile-select-success");
     sqllumen_lib::credentials::store_password("profile-select-success", "secret")
         .expect("password should be stored");
 
@@ -201,13 +200,8 @@ async fn select_database_surfaces_pool_errors_after_password_lookup() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let _pool_guard = install_test_pool_factory(forced_pool_error);
     let state = test_state();
-    register_connection_with_password(
-        &state,
-        "conn-1",
-        "profile-select-failure",
-        Some("legacy-select-ref"),
-    );
-    sqllumen_lib::credentials::store_password("legacy-select-ref", "secret")
+    register_connection_with_password(&state, "conn-1", "profile-select-failure");
+    sqllumen_lib::credentials::store_password("profile-select-failure", "secret")
         .expect("password should be stored");
 
     let err = select_database_impl(&state, "conn-1", "analytics_db")
@@ -226,7 +220,7 @@ async fn select_database_surfaces_pool_errors_after_password_lookup() {
 async fn select_database_errors_when_password_lookup_fails() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
-    register_connection_with_password(&state, "conn-1", "profile-select-failure", None);
+    register_connection_with_password(&state, "conn-1", "profile-select-failure");
     common::fake_credentials::queue_fake_credential_error("missing secret");
 
     let err = select_database_impl(&state, "conn-1", "analytics_db")

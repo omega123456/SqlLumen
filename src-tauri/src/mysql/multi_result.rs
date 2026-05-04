@@ -283,21 +283,14 @@ fn map_mysql_error(e: &mysql_async::Error) -> String {
 
 /// Build a new `mysql_async` connection from stored connection parameters.
 ///
-/// Retrieves the password from the OS keychain using `profile_id` + `keychain_ref`.
+/// Retrieves the password from the OS keychain using the saved `profile_id`.
 /// Configures SSL/TLS to match the existing sqlx pool configuration.
 #[cfg(not(coverage))]
 pub async fn build_connection(
     params: &crate::mysql::registry::StoredConnectionParams,
 ) -> Result<mysql_async::Conn, String> {
     // Retrieve password from keychain
-    let password = if params.has_password {
-        crate::credentials::retrieve_password_for_connection(
-            &params.profile_id,
-            params.keychain_ref.as_deref(),
-        )?
-    } else {
-        String::new()
-    };
+    let password = crate::credentials::resolve_password(&params.profile_id, params.has_password)?;
 
     let mut builder = mysql_async::OptsBuilder::default()
         .ip_or_hostname(&params.host)

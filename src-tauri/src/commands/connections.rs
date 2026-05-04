@@ -84,14 +84,14 @@ pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Resu
         keepalive_interval_secs: data.keepalive_interval_secs,
     };
 
-    // insert_connection always sets keychain_ref = id
+    // insert_connection sets keychain_ref to the profile id as a password-presence marker
     let id = match connections::insert_connection(&conn, &new_data) {
         Ok(id) => id,
         Err(error) => return Err(error.to_string()),
     };
 
     if let Some(pw) = password {
-        // Store password in OS keychain
+        // Store password in OS keychain/shared vault using the saved profile id
         if let Err(e) = crate::credentials::store_password(&id, &pw) {
             // Rollback: delete the connection we just inserted
             let _ = connections::delete_connection(&conn, &id);
@@ -163,22 +163,12 @@ pub fn update_connection_impl(
     }
 
     if clear_password {
-        let previous_keychain_ref = connections::get_keychain_ref(&conn, id)
-            .map_err(|e| e.to_string())?
-            .filter(|reference| !reference.is_empty());
+        crate::credentials::delete_password(id)
+            .map_err(|error| format!("Failed to delete password from keychain: {error}"))?;
         if let Err(error) = connections::set_keychain_ref(&conn, id, None) {
             return Err(error.to_string());
         }
-        if let Some(previous_ref) = previous_keychain_ref.as_deref() {
-            let _ = crate::credentials::delete_password(previous_ref);
-            if previous_ref != id {
-                let _ = crate::credentials::delete_password(id);
-            }
-        }
     } else if let Some(pw) = password {
-        let previous_keychain_ref = connections::get_keychain_ref(&conn, id)
-            .map_err(|e| e.to_string())?
-            .filter(|reference| !reference.is_empty());
         // Store/update password in OS keychain
         crate::credentials::store_password(id, &pw)
             .map_err(|e| format!("Failed to update password in keychain: {e}"))?;
@@ -186,12 +176,6 @@ pub fn update_connection_impl(
         if let Err(error) = connections::set_keychain_ref(&conn, id, Some(id)) {
             let _ = crate::credentials::delete_password(id);
             return Err(error.to_string());
-        }
-        if let Some(previous_ref) = previous_keychain_ref
-            .as_deref()
-            .filter(|reference| *reference != id)
-        {
-            let _ = crate::credentials::delete_password(previous_ref);
         }
     }
     // If password is None, leave existing password/keychain_ref unchanged
@@ -201,14 +185,14 @@ pub fn update_connection_impl(
 
 pub fn delete_connection_impl(state: &AppState, id: &str) -> Result<(), String> {
     let conn = lock_db(state)?;
-    let keychain_ref = connections::get_keychain_ref(&conn, id)
+    let has_password_marker = connections::get_keychain_ref(&conn, id)
         .map_err(|e| e.to_string())?
-        .filter(|reference| !reference.is_empty());
-    // Try to delete keychain entry; ignore failures (orphaned entries acceptable)
-    let _ = crate::credentials::delete_password(crate::credentials::effective_keychain_ref(
-        id,
-        keychain_ref.as_deref(),
-    ));
+        .is_some();
+
+    if has_password_marker {
+        crate::credentials::delete_password(id)
+            .map_err(|error| format!("Failed to delete password from keychain: {error}"))?;
+    }
 
     // Clean up AI memories for this connection profile
     if let Err(e) = crate::ai_memory::storage::delete_memories_for_connection(&conn, id) {

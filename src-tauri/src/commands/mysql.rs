@@ -231,13 +231,8 @@ pub async fn open_connection_impl(
         }
     };
 
-    // Retrieve password from keychain — propagate errors instead of hiding them
-    let password = if record.has_password {
-        credentials::retrieve_password_for_connection(profile_id, record.keychain_ref.as_deref())
-            .map_err(|e| format!("Failed to retrieve password from keychain: {e}"))?
-    } else {
-        String::new()
-    };
+    // Retrieve password from keychain/shared vault using the saved profile id.
+    let password = credentials::resolve_password(profile_id, record.has_password)?;
 
     let keepalive_secs = record.keepalive_interval_secs.unwrap_or(60).max(0) as u64;
     let timeout_secs = record.connect_timeout_secs.unwrap_or(10).max(1) as u64;
@@ -309,12 +304,7 @@ pub async fn open_connection_impl(
         }
     };
 
-    let password = if record.has_password {
-        credentials::retrieve_password_for_connection(profile_id, record.keychain_ref.as_deref())
-            .map_err(|e| format!("Failed to retrieve password from keychain: {e}"))?
-    } else {
-        String::new()
-    };
+    let password = credentials::resolve_password(profile_id, record.has_password)?;
 
     let params = crate::mysql::registry::StoredConnectionParams {
         profile_id: profile_id.to_string(),

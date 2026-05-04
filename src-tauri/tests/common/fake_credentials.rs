@@ -27,7 +27,7 @@ pub fn ensure_fake_backend_once() {
     INSTALL_BACKEND.call_once(|| {
         set_test_credential_backend(Some(TestCredentialBackend {
             store_password: fake_store_password,
-            retrieve_password: fake_retrieve_password,
+            get_password: fake_get_password,
             delete_password: fake_delete_password,
         }));
     });
@@ -60,22 +60,18 @@ fn fake_store_password(connection_id: &str, password: &str) -> Result<(), String
     Ok(())
 }
 
-fn fake_retrieve_password(connection_id: &str) -> Result<String, String> {
+fn fake_get_password(connection_id: &str) -> Result<Option<String>, String> {
     if let Some(error) = take_fake_error() {
         return Err(format!(
             "Failed to retrieve password from keychain: {error}"
         ));
     }
 
-    TEST_KEYCHAIN
+    Ok(TEST_KEYCHAIN
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .get(connection_id)
-        .cloned()
-        .ok_or_else(|| {
-            "Failed to retrieve password from keychain: No matching entry found in secure storage"
-                .to_string()
-        })
+        .cloned())
 }
 
 fn fake_delete_password(connection_id: &str) -> Result<(), String> {
@@ -105,14 +101,4 @@ fn take_fake_error() -> Option<String> {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take()
-}
-
-pub fn move_fake_password(from: &str, to: &str) {
-    let mut keychain = TEST_KEYCHAIN
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let password = keychain
-        .remove(from)
-        .expect("source password should exist in fake keychain");
-    keychain.insert(to.to_string(), password);
 }

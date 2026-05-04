@@ -14,11 +14,13 @@ pub enum ConnectionStatus {
 
 /// Parameters stored in memory for reconnection.
 /// Contains everything needed to recreate a MySQL pool except the password,
-/// which is re-read from the OS keychain on each reconnection attempt.
+/// which is re-read from the OS keychain on each reconnection attempt using
+/// the saved profile id instead of the runtime session id.
 /// This struct lives only in the in-memory registry — never persisted.
 #[derive(Debug, Clone)]
 pub struct StoredConnectionParams {
-    /// Saved connection profile id (SQLite row). Used for keychain password lookup.
+    /// Saved connection profile id (SQLite row). This is the credential lookup key
+    /// for saved passwords and is distinct from runtime session ids.
     pub profile_id: String,
     pub host: String,
     pub port: u16,
@@ -60,7 +62,7 @@ pub struct RegistryEntry {
     pub pool: MySqlPool,
     /// Runtime session id (registry map key, health monitor id, IPC `connectionId`).
     pub session_id: String,
-    /// Saved profile id used for keychain and SQLite profile updates.
+    /// Saved profile id used for credential lookup and SQLite profile updates.
     pub profile_id: String,
     pub status: ConnectionStatus,
     pub server_version: String,
@@ -165,7 +167,7 @@ impl ConnectionRegistry {
         map.get(id).map(|e| e.read_only).unwrap_or(false)
     }
 
-    /// Get the saved profile ID for a session (connection) ID.
+    /// Get the saved profile id for a runtime session id.
     /// Returns `None` if the connection is not in the registry.
     pub fn get_profile_id(&self, session_id: &str) -> Option<String> {
         let map = self.entries.read().expect("registry lock poisoned");

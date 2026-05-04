@@ -288,8 +288,8 @@ fn test_credential_store_and_retrieve() {
 
     credentials::store_password(&test_id, "my_secret_password").expect("should store password");
 
-    let retrieved = credentials::retrieve_password(&test_id).expect("should retrieve password");
-    assert_eq!(retrieved, "my_secret_password");
+    let retrieved = credentials::get_password(&test_id).expect("should retrieve password");
+    assert_eq!(retrieved.as_deref(), Some("my_secret_password"));
 
     credentials::delete_password(&test_id).expect("should delete password");
 }
@@ -302,8 +302,8 @@ fn test_credential_overwrite() {
     credentials::store_password(&test_id, "first_password").expect("should store");
     credentials::store_password(&test_id, "second_password").expect("should overwrite");
 
-    let retrieved = credentials::retrieve_password(&test_id).expect("should retrieve");
-    assert_eq!(retrieved, "second_password");
+    let retrieved = credentials::get_password(&test_id).expect("should retrieve");
+    assert_eq!(retrieved.as_deref(), Some("second_password"));
 
     credentials::delete_password(&test_id).expect("should delete");
 }
@@ -316,16 +316,16 @@ fn test_credential_delete() {
     credentials::store_password(&test_id, "temp_password").expect("should store");
     credentials::delete_password(&test_id).expect("should delete");
 
-    let result = credentials::retrieve_password(&test_id);
-    assert!(result.is_err(), "should fail to retrieve deleted password");
+    let result = credentials::get_password(&test_id).expect("lookup should succeed");
+    assert!(result.is_none(), "should not retrieve deleted password");
 }
 
 #[test]
 fn test_credential_retrieve_nonexistent() {
     common::ensure_fake_backend_once();
     let test_id = format!("test-cred-none-{}", uuid::Uuid::new_v4());
-    let result = credentials::retrieve_password(&test_id);
-    assert!(result.is_err(), "should fail for nonexistent credential");
+    let result = credentials::get_password(&test_id).expect("lookup should succeed");
+    assert!(result.is_none(), "should return none for nonexistent credential");
 }
 
 // --- Pool Creation Tests (require live MySQL) ---

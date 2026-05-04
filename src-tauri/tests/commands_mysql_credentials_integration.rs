@@ -15,7 +15,6 @@ use sqllumen_lib::commands::mysql::{
 };
 use sqllumen_lib::commands::settings::{get_all_settings_impl, get_setting_impl, set_setting_impl};
 use sqllumen_lib::credentials::{self};
-use sqllumen_lib::db::connections::set_keychain_ref;
 #[cfg(coverage)]
 use sqllumen_lib::mysql::health::spawn_health_monitor;
 use sqllumen_lib::mysql::pool::{
@@ -352,8 +351,8 @@ fn update_input(password: Option<&str>) -> UpdateConnectionInput {
 fn credentials_round_trip_with_fake_keychain() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     credentials::store_password("cred-1", "secret").expect("should store password");
-    let password = credentials::retrieve_password("cred-1").expect("should retrieve password");
-    assert_eq!(password, "secret");
+    let password = credentials::get_password("cred-1").expect("should retrieve password");
+    assert_eq!(password.as_deref(), Some("secret"));
     credentials::delete_password("cred-1").expect("should delete password");
 }
 
@@ -367,8 +366,8 @@ fn credentials_surface_fake_backend_errors() {
     common::fake_credentials::queue_fake_credential_error(
         "No matching entry found in secure storage",
     );
-    let get_error =
-        credentials::retrieve_password("cred-err").expect_err("retrieve should propagate errors");
+    let get_error = credentials::get_password("cred-err")
+        .expect_err("retrieve should propagate errors");
     assert!(get_error.contains("Failed to retrieve password from keychain"));
     common::fake_credentials::queue_fake_credential_error(
         "No matching entry found in secure storage",
@@ -379,49 +378,10 @@ fn credentials_surface_fake_backend_errors() {
 }
 
 #[test]
-fn credentials_retrieve_password_for_connection_prefers_stored_keychain_ref() {
+fn credentials_get_password_returns_none_for_missing_entry() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
-    credentials::store_password("legacy-ref", "secret").expect("should store password");
-
-    let password = credentials::retrieve_password_for_connection("conn-1", Some("legacy-ref"))
-        .expect("should read using keychain ref");
-
-    assert_eq!(password, "secret");
-}
-
-#[test]
-fn effective_keychain_ref_falls_back_to_connection_id_for_missing_or_empty_ref() {
-    assert_eq!(credentials::effective_keychain_ref("conn-1", None), "conn-1");
-    assert_eq!(
-        credentials::effective_keychain_ref("conn-1", Some("")),
-        "conn-1"
-    );
-    assert_eq!(
-        credentials::effective_keychain_ref("conn-1", Some("legacy-ref")),
-        "legacy-ref"
-    );
-}
-
-#[test]
-fn credentials_retrieve_password_for_connection_uses_connection_id_when_keychain_ref_missing() {
-    let _guard = common::fake_credentials::isolate_fake_keychain();
-    credentials::store_password("conn-1", "secret").expect("should store password");
-
-    let password = credentials::retrieve_password_for_connection("conn-1", None)
-        .expect("should read using connection id");
-
-    assert_eq!(password, "secret");
-}
-
-#[test]
-fn credentials_retrieve_password_for_connection_ignores_empty_keychain_ref() {
-    let _guard = common::fake_credentials::isolate_fake_keychain();
-    credentials::store_password("conn-1", "secret").expect("should store password");
-
-    let password = credentials::retrieve_password_for_connection("conn-1", Some(""))
-        .expect("should fall back to connection id when keychain ref is empty");
-
-    assert_eq!(password, "secret");
+    let password = credentials::get_password("missing").expect("lookup should succeed");
+    assert!(password.is_none());
 }
 
 #[test]
@@ -599,34 +559,6 @@ fn update_connection_with_password_sets_keychain_ref() {
 }
 
 #[test]
-fn update_connection_with_password_migrates_legacy_keychain_ref() {
-    let _guard = common::fake_credentials::isolate_fake_keychain();
-    let state = test_state();
-    let connection_id = save_connection_impl(&state, sample_save_input(Some("old-secret")))
-        .expect("save should succeed");
-    let legacy_keychain_ref = format!("legacy-{connection_id}");
-
-    {
-        let conn = state.db.lock().expect("db lock should succeed");
-        set_keychain_ref(&conn, &connection_id, Some(&legacy_keychain_ref))
-            .expect("should persist legacy keychain ref");
-    }
-    common::fake_credentials::move_fake_password(&connection_id, &legacy_keychain_ref);
-
-    update_connection_impl(&state, &connection_id, update_input(Some("new-secret")))
-        .expect("update with password should succeed");
-
-    assert_eq!(
-        credentials::retrieve_password(&connection_id).expect("new password should exist"),
-        "new-secret"
-    );
-    assert!(
-        credentials::retrieve_password(&legacy_keychain_ref).is_err(),
-        "legacy password should be removed after migration"
-    );
-}
-
-#[test]
 fn update_connection_with_password_surfaces_sqlite_write_errors() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
@@ -644,20 +576,11 @@ fn update_connection_with_password_surfaces_sqlite_write_errors() {
 }
 
 #[test]
-fn update_connection_clear_password_removes_legacy_and_current_keychain_entries() {
+fn update_connection_clear_password_removes_current_credential_and_marker() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
     let connection_id = save_connection_impl(&state, sample_save_input(Some("old-secret")))
         .expect("save should succeed");
-    let legacy_keychain_ref = format!("legacy-{connection_id}");
-
-    credentials::store_password(&legacy_keychain_ref, "legacy-secret")
-        .expect("legacy credential should be stored");
-    {
-        let conn = state.db.lock().expect("db lock should succeed");
-        set_keychain_ref(&conn, &connection_id, Some(&legacy_keychain_ref))
-            .expect("should persist legacy keychain ref");
-    }
 
     let mut clear_input = update_input(None);
     clear_input.clear_password = true;
@@ -679,8 +602,10 @@ fn update_connection_clear_password_removes_legacy_and_current_keychain_entries(
             .expect("connection row should exist");
         assert!(persisted_ref.is_none());
     }
-    assert!(credentials::retrieve_password(&legacy_keychain_ref).is_err());
-    assert!(credentials::retrieve_password(&connection_id).is_err());
+    assert_eq!(
+        credentials::get_password(&connection_id).expect("lookup should succeed"),
+        None
+    );
 }
 
 #[tokio::test]
@@ -1025,9 +950,9 @@ async fn open_connection_impl_surfaces_keychain_errors() {
 }
 
 #[tokio::test]
-async fn open_connection_ipc_uses_stored_keychain_ref() {
+async fn open_connection_ipc_uses_profile_id_credential_key() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
-    let (app, webview) = build_connection_commands_app();
+    let (_app, webview) = build_connection_commands_app();
 
     let connection_id: String = invoke_tauri_command(
         &webview,
@@ -1037,18 +962,6 @@ async fn open_connection_ipc_uses_stored_keychain_ref() {
         }),
     )
     .expect("save_connection IPC should succeed");
-
-    let legacy_keychain_ref = format!("legacy-{connection_id}");
-    {
-        let state = app.state::<AppState>();
-        let conn = state.db.lock().expect("db lock should succeed");
-        conn.execute(
-            "UPDATE connections SET keychain_ref = ?1 WHERE id = ?2",
-            rusqlite::params![legacy_keychain_ref, connection_id],
-        )
-        .expect("should persist legacy keychain ref");
-    }
-    common::fake_credentials::move_fake_password(&connection_id, &legacy_keychain_ref);
 
     let _pool_guard = install_test_pool_factory(forced_pool_success);
     let result: OpenConnectionResultDto = invoke_tauri_command(
@@ -1060,7 +973,7 @@ async fn open_connection_ipc_uses_stored_keychain_ref() {
             },
         }),
     )
-    .expect("open_connection IPC should use the stored keychain ref");
+    .expect("open_connection IPC should use the saved profile id");
 
     assert_eq!(result.server_version, "Unknown");
     assert!(!result.session_id.is_empty());
@@ -1319,12 +1232,11 @@ async fn open_connection_impl_surfaces_database_read_errors() {
 
 #[tokio::test]
 #[cfg(not(coverage))]
-async fn health_reconnect_uses_stored_keychain_ref() {
+async fn health_reconnect_uses_profile_id_credential_key() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     let state = test_state();
     let connection_id = "conn-health".to_string();
-    let legacy_keychain_ref = "legacy-health-ref".to_string();
-    credentials::store_password(&legacy_keychain_ref, "secret").expect("should store password");
+    credentials::store_password(&connection_id, "secret").expect("should store password");
 
     state.registry.insert(
         connection_id.clone(),
@@ -1341,7 +1253,7 @@ async fn health_reconnect_uses_stored_keychain_ref() {
                 port: 3306,
                 username: "root".to_string(),
                 has_password: true,
-                keychain_ref: Some(legacy_keychain_ref),
+                keychain_ref: Some(connection_id.clone()),
                 default_database: None,
                 ssl_enabled: false,
                 ssl_ca_path: None,

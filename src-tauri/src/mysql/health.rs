@@ -206,26 +206,21 @@ async fn reconnect_loop_impl<R: Runtime>(
             }
         };
 
-        // Build ConnectionParams from stored params, re-reading password from keychain
-        let password = if stored_params.has_password {
-            match credentials::retrieve_password_for_connection(
-                stored_params.profile_id.as_str(),
-                stored_params.keychain_ref.as_deref(),
-            ) {
-                Ok(p) => p,
-                Err(e) => {
-                    // Keychain retrieval failed — emit disconnected and stop retrying
-                    update_and_emit(
-                        app_handle,
-                        connection_id,
-                        ConnectionStatus::Disconnected,
-                        Some(&format!("Cannot retrieve password from keychain: {e}")),
-                    );
-                    return false;
-                }
+        // Build ConnectionParams from stored params, re-reading password by saved profile id.
+        let password = match credentials::resolve_password(
+            stored_params.profile_id.as_str(),
+            stored_params.has_password,
+        ) {
+            Ok(password) => password,
+            Err(error) => {
+                update_and_emit(
+                    app_handle,
+                    connection_id,
+                    ConnectionStatus::Disconnected,
+                    Some(&format!("Cannot retrieve password from keychain: {error}")),
+                );
+                return false;
             }
-        } else {
-            String::new()
         };
 
         let conn_params = stored_params.to_connection_params(password);
