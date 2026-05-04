@@ -9,18 +9,7 @@ export interface ThinkingBlockProps {
 
 export function ThinkingBlock({ content, isStreaming }: ThinkingBlockProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const prevStreamingRef = useRef(isStreaming)
   const contentRef = useRef<HTMLDivElement>(null)
-
-  // While streaming, always show expanded; otherwise respect user toggle
-
-  // Auto-collapse when streaming transitions from true to false
-  useEffect(() => {
-    if (prevStreamingRef.current && !isStreaming) {
-      setIsOpen(false)
-    }
-    prevStreamingRef.current = isStreaming
-  }, [isStreaming])
 
   useEffect(() => {
     if (!isStreaming || !contentRef.current) {
@@ -36,6 +25,8 @@ export function ThinkingBlock({ content, isStreaming }: ThinkingBlockProps) {
     }
   }
 
+  const isExpanded = isStreaming || isOpen
+
   return (
     <div className={styles.container} data-testid="thinking-block">
       <button
@@ -50,7 +41,7 @@ export function ThinkingBlock({ content, isStreaming }: ThinkingBlockProps) {
         </span>
         {!isStreaming && (isOpen ? <CaretDown size={12} /> : <CaretRight size={12} />)}
       </button>
-      {(isStreaming || isOpen) && (
+      {isExpanded && (
         <div ref={contentRef} className={styles.content} data-testid="thinking-block-content">
           <pre className={styles.pre}>
             {content}

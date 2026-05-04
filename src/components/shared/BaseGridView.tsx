@@ -498,7 +498,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   )
 
   const handleCellDoubleClick = useCallback(
-    (args: CellMouseArgs<GridRow>, _event: CellMouseEvent) => {
+    (args: CellMouseArgs<GridRow>) => {
       onCellDoubleClick?.(args.row, args.column.key)
     },
     [onCellDoubleClick]

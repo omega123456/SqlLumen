@@ -20,19 +20,28 @@ export function RunningIndicator({ connectionId, tabId }: RunningIndicatorProps)
   const isCancelling = useQueryStore((state) => state.tabs[tabId]?.isCancelling ?? false)
   const cancelQuery = useQueryStore((state) => state.cancelQuery)
 
-  const [elapsed, setElapsed] = useState(executionStartedAt ? Date.now() - executionStartedAt : 0)
+  const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
     if (executionStartedAt === null) {
-      setElapsed(0)
-      return
+      const resetTimer = setTimeout(() => {
+        setElapsed(0)
+      }, 0)
+
+      return () => clearTimeout(resetTimer)
     }
 
-    const interval = setInterval(() => {
+    const updateElapsed = () => {
       setElapsed(Date.now() - executionStartedAt)
-    }, 1000)
+    }
 
-    return () => clearInterval(interval)
+    const initialTimer = setTimeout(updateElapsed, 0)
+    const interval = setInterval(updateElapsed, 1000)
+
+    return () => {
+      clearTimeout(initialTimer)
+      clearInterval(interval)
+    }
   }, [executionStartedAt])
 
   return (

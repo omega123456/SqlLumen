@@ -53,6 +53,17 @@
   color: var(--on-surface);
 }
 
+.cardBody {
+  font-size: var(--type-size-sm);
+  color: var(--on-surface-variant);
+}
+
+.cardActions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
 .progressMeta {
   display: flex;
   align-items: center;

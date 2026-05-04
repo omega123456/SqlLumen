@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { fireEvent } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
@@ -19,8 +19,6 @@ function makeFavoriteEntry(overrides: Partial<FavoriteEntry> = {}): FavoriteEntr
     ...overrides,
   }
 }
-
-let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   useFavoritesStore.setState({
@@ -47,10 +45,6 @@ beforeEach(() => {
         return null
     }
   })
-})
-
-afterEach(() => {
-  consoleSpy?.mockRestore()
 })
 
 describe('FavoriteDialog', () => {

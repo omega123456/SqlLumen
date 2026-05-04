@@ -2165,6 +2165,35 @@ for (const theme of themes) {
       )
     })
 
+    test('SettingsDialog — Updates ready to finish state', async ({ page }) => {
+      await page.evaluate(() => {
+        const updateStore = (window as unknown as Record<string, unknown>).__updateStore__ as {
+          setState: (partial: Record<string, unknown>) => void
+        }
+        updateStore.setState({
+          status: 'ready-to-finish',
+          availableVersion: '2.0.0',
+          downloadProgress: 100,
+          updateObject: null,
+        })
+      })
+
+      await page.getByTestId('settings-button').click()
+      await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await page.getByTestId('settings-nav-updates').click()
+      await expect(page.getByTestId('updates-ready-card')).toBeVisible({ timeout: APP_READY_MS })
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) {
+          el.blur()
+        }
+      })
+      await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
+        `settings-dialog-updates-ready-to-finish-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     // --- History & Favorites screenshots (Phase 9.3) ---
 
     test('HistoryFavoritesTab — split-panel layout', async ({ page }) => {

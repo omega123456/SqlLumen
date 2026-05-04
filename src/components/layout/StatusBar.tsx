@@ -50,8 +50,6 @@ export function StatusBar() {
   const indexStatus = indexState?.status
 
   // Flash logic — show brief completion/error indicators after status transitions.
-  // The synchronous setState calls within the effect match the pattern used in
-  // Sidebar.tsx and AiChatInput.tsx for responding to external store changes.
   const [flashType, setFlashType] = useState<'ready' | 'error' | null>(null)
   const [fadingOut, setFadingOut] = useState(false)
   const prevStatusRef = useRef<string | undefined>(undefined)
@@ -60,6 +58,7 @@ export function StatusBar() {
     const prevStatus = prevStatusRef.current
     prevStatusRef.current = indexStatus
 
+    let frame: number | undefined
     let flashTimer: ReturnType<typeof setTimeout> | undefined
     let fadeTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -68,22 +67,27 @@ export function StatusBar() {
       prevStatus !== undefined &&
       prevStatus !== indexStatus
     ) {
-      setFlashType(indexStatus)
-      setFadingOut(false)
-      const duration = indexStatus === 'ready' ? 2000 : 3000
-      flashTimer = setTimeout(() => {
-        setFadingOut(true)
-        fadeTimer = setTimeout(() => {
-          setFlashType(null)
-          setFadingOut(false)
-        }, 500)
-      }, duration)
+      frame = requestAnimationFrame(() => {
+        setFlashType(indexStatus)
+        setFadingOut(false)
+        const duration = indexStatus === 'ready' ? 2000 : 3000
+        flashTimer = setTimeout(() => {
+          setFadingOut(true)
+          fadeTimer = setTimeout(() => {
+            setFlashType(null)
+            setFadingOut(false)
+          }, 500)
+        }, duration)
+      })
     } else if (indexStatus === 'building') {
-      setFlashType(null)
-      setFadingOut(false)
+      frame = requestAnimationFrame(() => {
+        setFlashType(null)
+        setFadingOut(false)
+      })
     }
 
     return () => {
+      if (frame !== undefined) cancelAnimationFrame(frame)
       if (flashTimer !== undefined) clearTimeout(flashTimer)
       if (fadeTimer !== undefined) clearTimeout(fadeTimer)
     }

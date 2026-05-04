@@ -8,10 +8,10 @@
  * Strip leading SQL comments (block, line `-- ...`, and `# ...`)
  * so we can identify the first real keyword.
  *
- * Supports nested block comments (`/* outer /* inner *​/ still outer *​/`).
+ * Supports nested block comments, including nested inner/outer block-comment pairs.
  *
- * Preserves MySQL executable comments (`/​*! ... *​/`) and optimizer hints
- * (`/​*+ ... *​/`). These are treated as part of the SQL statement.
+ * Preserves MySQL executable comments (`/*! ... *\/`) and optimizer hints
+ * (`/*+ ... *\/`). These are treated as part of the SQL statement.
  */
 export function stripLeadingSqlComments(sql: string): string {
   let s = sql
@@ -58,7 +58,7 @@ export function stripLeadingSqlComments(sql: string): string {
  * Extract the first SQL keyword from a string after stripping leading comments.
  * Returns the keyword uppercased, or '' if none found.
  *
- * Handles MySQL executable comments (e.g. `/*!50001 CALL proc() *​/`).
+ * Handles MySQL executable comments (e.g. `/*!50001 CALL proc() *\/`).
  */
 export function getFirstSqlKeyword(sql: string): string {
   const stripped = stripLeadingSqlComments(sql).trimStart()

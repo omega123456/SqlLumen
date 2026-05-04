@@ -565,7 +565,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
           triggerRef.current?.focus()
         }
       },
-      [close, closeOnSelect, options, props]
+      [close, closeOnSelect, focusListOnOpen, options, props]
     )
 
     const handleTriggerKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {

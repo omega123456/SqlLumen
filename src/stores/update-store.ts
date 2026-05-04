@@ -7,12 +7,22 @@ import { hasTauriApis } from '../lib/tauri-env'
 import { UPDATE_INTERVAL_MS } from '../lib/update-intervals'
 import { useSettingsStore } from './settings-store'
 
-type UpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'available' | 'installing' | 'error'
+type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'up-to-date'
+  | 'available'
+  | 'installing'
+  | 'ready-to-finish'
+  | 'error'
 
 type UpdateProgressEvent =
   | { event: 'Started'; data?: { contentLength?: number } }
   | { event: 'Progress'; data: { chunkLength: number } }
   | { event: 'Finished' }
+
+type UpdatePlatform = 'macos' | 'windows' | 'linux' | 'unknown'
+type ReadyToFinishAction = 'relaunch' | 'manual-quit'
 
 let periodicTimer: ReturnType<typeof setInterval> | null = null
 let resetStatusTimer: ReturnType<typeof setTimeout> | null = null
@@ -36,12 +46,79 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function resolveUpdatePlatform(platformValue: string | null | undefined): UpdatePlatform {
+  if (platformValue === 'macos' || platformValue === 'windows' || platformValue === 'linux') {
+    return platformValue
+  }
+
+  return 'unknown'
+}
+
+function getReadyToFinishBehavior(
+  currentPlatform: UpdatePlatform,
+  availableVersion: string | null
+): {
+  readyToFinishAction: ReadyToFinishAction
+  readyToFinishCta: string
+  readyToFinishMessage: string
+} {
+  const version = availableVersion ?? 'the latest version'
+
+  if (currentPlatform === 'linux') {
+    return {
+      readyToFinishAction: 'manual-quit',
+      readyToFinishCta: 'Got it',
+      readyToFinishMessage: `Quit and reopen SqlLumen to finish installing version ${version}.`,
+    }
+  }
+
+  return {
+    readyToFinishAction: 'relaunch',
+    readyToFinishCta: 'Restart App',
+    readyToFinishMessage: `Restart SqlLumen to finish installing version ${version}.`,
+  }
+}
+
+function getPlatformState(currentPlatform: UpdatePlatform, availableVersion: string | null) {
+  return {
+    currentPlatform,
+    ...getReadyToFinishBehavior(currentPlatform, availableVersion),
+  }
+}
+
+async function detectPlatform(): Promise<UpdatePlatform> {
+  if (!hasTauriApis()) {
+    return 'unknown'
+  }
+
+  try {
+    return resolveUpdatePlatform(await platform())
+  } catch (error) {
+    const message = toErrorMessage(error)
+    logFrontend('error', `[update-store] Failed to detect platform: ${message}`)
+    return 'unknown'
+  }
+}
+
 function resetUpdateState(set: (partial: Partial<UpdateState>) => void): void {
-  set({ status: 'idle', availableVersion: null, errorMessage: null, updateObject: null })
+  set({
+    status: 'idle',
+    availableVersion: null,
+    downloadProgress: 0,
+    errorMessage: null,
+    updateObject: null,
+    ...getPlatformState(useUpdateStore.getState().currentPlatform, null),
+  })
 }
 
 function scheduleUpToDateReset(set: (partial: Partial<UpdateState>) => void): void {
-  set({ status: 'up-to-date', availableVersion: null, errorMessage: null, updateObject: null })
+  set({
+    status: 'up-to-date',
+    availableVersion: null,
+    errorMessage: null,
+    updateObject: null,
+    ...getPlatformState(useUpdateStore.getState().currentPlatform, null),
+  })
   resetStatusTimer = setTimeout(() => {
     resetStatusTimer = null
     useUpdateStore.setState((currentState) => {
@@ -55,6 +132,7 @@ function scheduleUpToDateReset(set: (partial: Partial<UpdateState>) => void): vo
         availableVersion: null,
         errorMessage: null,
         updateObject: null,
+        ...getPlatformState(currentState.currentPlatform, null),
       }
     })
   }, 5_000)
@@ -62,10 +140,15 @@ function scheduleUpToDateReset(set: (partial: Partial<UpdateState>) => void): vo
 
 interface UpdateState {
   status: UpdateStatus
+  currentPlatform: UpdatePlatform
+  readyToFinishAction: ReadyToFinishAction
+  readyToFinishCta: string
+  readyToFinishMessage: string
   availableVersion: string | null
   downloadProgress: number
   errorMessage: string | null
   updateObject: Update | null
+  setCurrentPlatform: (platformValue: UpdatePlatform) => void
   checkForUpdate: (manual: boolean) => Promise<void>
   downloadAndInstall: () => Promise<void>
   restartApp: () => Promise<void>
@@ -76,17 +159,26 @@ interface UpdateState {
 
 export const useUpdateStore = create<UpdateState>()((set, get) => ({
   status: 'idle',
+  ...getPlatformState('unknown', null),
   availableVersion: null,
   downloadProgress: 0,
   errorMessage: null,
   updateObject: null,
+
+  setCurrentPlatform: (platformValue: UpdatePlatform) => {
+    set((state) => ({
+      ...state,
+      ...getPlatformState(platformValue, state.availableVersion),
+    }))
+  },
 
   checkForUpdate: async (manual: boolean) => {
     const state = get()
     if (
       state.status === 'checking' ||
       state.status === 'installing' ||
-      state.status === 'available'
+      state.status === 'available' ||
+      state.status === 'ready-to-finish'
     ) {
       return
     }
@@ -104,6 +196,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
       downloadProgress: 0,
       errorMessage: null,
       updateObject: null,
+      ...getPlatformState(get().currentPlatform, null),
     })
 
     try {
@@ -116,6 +209,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
           errorMessage: null,
           downloadProgress: 0,
           updateObject: update,
+          ...getPlatformState(get().currentPlatform, update.version ?? null),
         })
         return
       }
@@ -134,7 +228,13 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
       )
 
       if (manual) {
-        set({ status: 'error', errorMessage: message, availableVersion: null, updateObject: null })
+        set({
+          status: 'error',
+          errorMessage: message,
+          availableVersion: null,
+          updateObject: null,
+          ...getPlatformState(get().currentPlatform, null),
+        })
         return
       }
 
@@ -147,14 +247,24 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
     const updateObject = get().updateObject
 
     if (!hasTauriApis()) {
-      set({ status: 'idle', errorMessage: null, updateObject: null })
+      set({
+        status: 'idle',
+        errorMessage: null,
+        updateObject: null,
+        ...getPlatformState(get().currentPlatform, get().availableVersion),
+      })
       return
     }
 
     if (!updateObject) {
       const message = 'No update is available to install.'
       logFrontend('error', `[update-store] Install failed: ${message}`)
-      set({ status: 'error', errorMessage: message, updateObject: null })
+      set({
+        status: 'error',
+        errorMessage: message,
+        updateObject: null,
+        ...getPlatformState(get().currentPlatform, get().availableVersion),
+      })
       return
     }
 
@@ -189,14 +299,34 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
 
       set({ updateObject: null })
 
-      const currentPlatform = await platform()
+      const currentPlatform = await detectPlatform()
+      set((state) => ({
+        ...state,
+        ...getPlatformState(currentPlatform, state.availableVersion),
+      }))
+
       if (currentPlatform === 'macos') {
         await relaunch()
+        return
       }
+
+      set({
+        status: 'ready-to-finish',
+        availableVersion: updateObject.version ?? null,
+        downloadProgress: 100,
+        errorMessage: null,
+        updateObject: null,
+        ...getPlatformState(currentPlatform, updateObject.version ?? null),
+      })
     } catch (error) {
       const message = toErrorMessage(error)
       logFrontend('error', `[update-store] Install failed: ${message}`)
-      set({ status: 'error', errorMessage: message, updateObject: null })
+      set((state) => ({
+        status: 'error',
+        errorMessage: message,
+        updateObject: null,
+        ...getPlatformState(state.currentPlatform, state.availableVersion),
+      }))
     }
   },
 
@@ -206,10 +336,25 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
     }
 
     try {
+      const currentPlatform = await detectPlatform()
+      set((state) => ({
+        ...state,
+        ...getPlatformState(currentPlatform, state.availableVersion),
+      }))
+
+      if (currentPlatform === 'linux') {
+        return
+      }
+
       await relaunch()
     } catch (error) {
-      logFrontend('error', `[update-store] Restart failed: ${toErrorMessage(error)}`)
-      throw error
+      const message = toErrorMessage(error)
+      logFrontend('error', `[update-store] Restart failed: ${message}`)
+      set((state) => ({
+        status: state.status === 'ready-to-finish' ? 'ready-to-finish' : 'error',
+        errorMessage: message,
+        ...getPlatformState(state.currentPlatform, state.availableVersion),
+      }))
     }
   },
 
@@ -250,3 +395,7 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
     await get().startPeriodicCheck()
   },
 }))
+
+void detectPlatform().then((currentPlatform) => {
+  useUpdateStore.getState().setCurrentPlatform(currentPlatform)
+})

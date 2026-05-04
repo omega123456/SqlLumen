@@ -1,6 +1,6 @@
 //! OS-native credential storage for connection passwords.
 //!
-//! Uses the `keyring` crate to store passwords in the OS keychain:
+//! Uses the `keyring` crate to store passwords in OS-native secure storage:
 //! - macOS: Keychain (`apple-native` feature — see `Cargo.toml`)
 //! - Windows: Credential Manager (`windows-native`)
 //! - Linux: keyutils + Secret Service (`linux-native-sync-persistent`, etc.)
@@ -55,11 +55,60 @@ pub fn set_test_credential_backend(backend: Option<TestCredentialBackend>) {
     *guard = backend;
 }
 
+pub fn secure_storage_display_name() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        return "macOS Keychain";
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        return "Windows Credential Manager";
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        return "Linux Secret Service / keyring";
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        return "secure storage";
+    }
+}
+
+fn linux_unavailable_guidance() -> &'static str {
+    #[cfg(target_os = "linux")]
+    {
+        return " Linux Secret Service / keyring is unavailable or locked. Unlock your keyring or install a Secret Service provider such as GNOME Keyring, then try again.";
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        return "";
+    }
+}
+
+fn secure_storage_error(action: &str, error: impl std::fmt::Display) -> String {
+    format!(
+        "Failed to {action} in {}: {error}{}",
+        secure_storage_display_name(),
+        linux_unavailable_guidance()
+    )
+}
+
+fn secure_storage_missing_entry_error(action: &str) -> String {
+    format!(
+        "Failed to {action} in {}: No matching entry found in secure storage",
+        secure_storage_display_name()
+    )
+}
+
 #[cfg(target_os = "macos")]
 fn shared_vault_entry() -> Result<keyring::Entry, String> {
     keyring::Entry::new(SERVICE_NAME, MACOS_SHARED_VAULT_ACCOUNT).map_err(|error| {
         warn!(error = %error, "failed to access macOS shared credential vault entry");
-        format!("Failed to access keychain: {error}")
+        secure_storage_error("access secure storage", error)
     })
 }
 
@@ -68,17 +117,21 @@ fn read_shared_vault(entry: &keyring::Entry) -> Result<Option<SharedVault>, Stri
     match entry.get_password() {
         Ok(raw_vault) => {
             let vault = serde_json::from_str::<SharedVault>(&raw_vault).map_err(|error| {
-                warn!(error = %error, "failed to deserialize shared password vault from keychain");
-                format!("Failed to parse shared password vault from keychain: {error}")
+                warn!(error = %error, "failed to deserialize shared password vault from secure storage");
+                format!(
+                    "Failed to parse shared password vault from {}: {error}",
+                    secure_storage_display_name()
+                )
             })?;
 
             if vault.version != 1 {
                 warn!(
                     version = vault.version,
-                    "unsupported shared password vault version in keychain"
+                    "unsupported shared password vault version in secure storage"
                 );
                 return Err(format!(
-                    "Failed to parse shared password vault from keychain: unsupported vault version {}",
+                    "Failed to parse shared password vault from {}: unsupported vault version {}",
+                    secure_storage_display_name(),
                     vault.version
                 ));
             }
@@ -87,9 +140,10 @@ fn read_shared_vault(entry: &keyring::Entry) -> Result<Option<SharedVault>, Stri
         }
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(error) => {
-            warn!(error = %error, "failed to retrieve shared password vault from keychain");
-            Err(format!(
-                "Failed to retrieve shared password vault from keychain: {error}"
+            warn!(error = %error, "failed to retrieve shared password vault from secure storage");
+            Err(secure_storage_error(
+                "retrieve shared password vault",
+                error,
             ))
         }
     }
@@ -101,12 +155,12 @@ fn write_shared_vault(entry: &keyring::Entry, vault: &SharedVault) -> Result<(),
         .map_err(|error| format!("Failed to serialize shared password vault: {error}"))?;
 
     entry.set_password(&payload).map_err(|error| {
-        warn!(error = %error, "failed to store shared password vault in keychain");
-        format!("Failed to store shared password vault in keychain: {error}")
+        warn!(error = %error, "failed to store shared password vault in secure storage");
+        secure_storage_error("store shared password vault", error)
     })
 }
 
-/// Store a password in the OS keychain for the given saved connection profile id.
+/// Store a password in OS-native secure storage for the given saved connection profile id.
 pub fn store_password(profile_id: &str, password: &str) -> Result<(), String> {
     #[cfg(any(test, feature = "test-utils"))]
     if let Some(backend) = *TEST_CREDENTIAL_BACKEND
@@ -131,18 +185,18 @@ pub fn store_password(profile_id: &str, password: &str) -> Result<(), String> {
 
     #[cfg(not(target_os = "macos"))]
     let entry = keyring::Entry::new(SERVICE_NAME, profile_id).map_err(|error| {
-        warn!(profile_id, error = %error, "failed to access keychain entry for password store");
-        format!("Failed to access keychain: {error}")
+        warn!(profile_id, error = %error, "failed to access secure-storage entry for password store");
+        secure_storage_error("access secure storage", error)
     })?;
 
     #[cfg(not(target_os = "macos"))]
     entry.set_password(password).map_err(|error| {
-        warn!(profile_id, error = %error, "failed to store password in keychain");
-        format!("Failed to store password in keychain: {error}")
+        warn!(profile_id, error = %error, "failed to store password in secure storage");
+        secure_storage_error("store password", error)
     })
 }
 
-/// Retrieve a password from the OS keychain for the given saved connection profile id.
+/// Retrieve a password from OS-native secure storage for the given saved connection profile id.
 pub fn get_password(profile_id: &str) -> Result<Option<String>, String> {
     #[cfg(any(test, feature = "test-utils"))]
     if let Some(backend) = *TEST_CREDENTIAL_BACKEND
@@ -164,8 +218,8 @@ pub fn get_password(profile_id: &str) -> Result<Option<String>, String> {
 
     #[cfg(not(target_os = "macos"))]
     let entry = keyring::Entry::new(SERVICE_NAME, profile_id).map_err(|error| {
-        warn!(profile_id, error = %error, "failed to access keychain entry for password retrieval");
-        format!("Failed to access keychain: {error}")
+        warn!(profile_id, error = %error, "failed to access secure-storage entry for password retrieval");
+        secure_storage_error("access secure storage", error)
     })?;
 
     #[cfg(not(target_os = "macos"))]
@@ -173,10 +227,8 @@ pub fn get_password(profile_id: &str) -> Result<Option<String>, String> {
         Ok(password) => Ok(Some(password)),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(error) => {
-            warn!(profile_id, error = %error, "failed to retrieve password from keychain");
-            Err(format!(
-                "Failed to retrieve password from keychain: {error}"
-            ))
+            warn!(profile_id, error = %error, "failed to retrieve password from secure storage");
+            Err(secure_storage_error("retrieve password", error))
         }
     }
 }
@@ -190,13 +242,10 @@ pub fn resolve_password(profile_id: &str, has_password: bool) -> Result<String, 
         return Ok(String::new());
     }
 
-    get_password(profile_id)?.ok_or_else(|| {
-        "Failed to retrieve password from keychain: No matching entry found in secure storage"
-            .to_string()
-    })
+    get_password(profile_id)?.ok_or_else(|| secure_storage_missing_entry_error("retrieve password"))
 }
 
-/// Delete a password from the OS keychain for the given saved connection profile id.
+/// Delete a password from OS-native secure storage for the given saved connection profile id.
 pub fn delete_password(profile_id: &str) -> Result<(), String> {
     #[cfg(any(test, feature = "test-utils"))]
     if let Some(backend) = *TEST_CREDENTIAL_BACKEND
@@ -224,20 +273,15 @@ pub fn delete_password(profile_id: &str) -> Result<(), String> {
                 profile_id,
                 "shared password vault did not contain requested profile during delete"
             );
-            return Err(
-                "Failed to delete password from keychain: No matching entry found in secure storage"
-                    .to_string(),
-            );
+            return Err(secure_storage_missing_entry_error("delete password"));
         }
 
         if vault.passwords.is_empty() {
             return match entry.delete_credential() {
                 Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
                 Err(error) => {
-                    warn!(error = %error, "failed to delete shared password vault from keychain");
-                    Err(format!(
-                        "Failed to delete shared password vault from keychain: {error}"
-                    ))
+                    warn!(error = %error, "failed to delete shared password vault from secure storage");
+                    Err(secure_storage_error("delete shared password vault", error))
                 }
             };
         }
@@ -247,16 +291,16 @@ pub fn delete_password(profile_id: &str) -> Result<(), String> {
 
     #[cfg(not(target_os = "macos"))]
     let entry = keyring::Entry::new(SERVICE_NAME, profile_id).map_err(|error| {
-        warn!(profile_id, error = %error, "failed to access keychain entry for password deletion");
-        format!("Failed to access keychain: {error}")
+        warn!(profile_id, error = %error, "failed to access secure-storage entry for password deletion");
+        secure_storage_error("access secure storage", error)
     })?;
 
     #[cfg(not(target_os = "macos"))]
     match entry.delete_credential() {
         Ok(()) => Ok(()),
         Err(error) => {
-            warn!(profile_id, error = %error, "failed to delete password from keychain");
-            Err(format!("Failed to delete password from keychain: {error}"))
+            warn!(profile_id, error = %error, "failed to delete password from secure storage");
+            Err(secure_storage_error("delete password", error))
         }
     }
 }

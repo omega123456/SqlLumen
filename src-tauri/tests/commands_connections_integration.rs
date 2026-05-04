@@ -8,6 +8,13 @@ use sqllumen_lib::commands::connections::{
 };
 use sqllumen_lib::credentials;
 
+fn delete_password_prefix() -> String {
+    format!(
+        "Failed to delete password in {}:",
+        credentials::secure_storage_display_name()
+    )
+}
+
 #[test]
 fn test_save_connection_impl_returns_uuid() {
     let state = common::test_app_state();
@@ -224,7 +231,7 @@ fn test_delete_connection_without_password_marker_succeeds() {
     let state = common::test_app_state();
     let id = save_connection_impl(&state, common::sample_save_input()).expect("should save");
 
-    delete_connection_impl(&state, &id).expect("should delete even without keychain");
+    delete_connection_impl(&state, &id).expect("should delete even without saved credential");
 
     let result = get_connection_impl(&state, &id).expect("should not error");
     assert!(result.is_none());
@@ -470,7 +477,7 @@ fn test_clear_password_delete_failure_returns_error_and_preserves_sqlite_marker(
     };
 
     let error = update_connection_impl(&state, &id, update).expect_err("should surface delete failure");
-    assert!(error.starts_with("Failed to delete password from keychain:"));
+    assert!(error.starts_with(&delete_password_prefix()));
 
     let record = get_connection_impl(&state, &id)
         .expect("should not error")
@@ -489,7 +496,7 @@ fn test_delete_connection_credential_failure_returns_error_and_preserves_sqlite_
     common::fake_credentials::queue_fake_credential_error("delete failed");
 
     let error = delete_connection_impl(&state, &id).expect_err("should surface delete failure");
-    assert!(error.starts_with("Failed to delete password from keychain:"));
+    assert!(error.starts_with(&delete_password_prefix()));
 
     let record = get_connection_impl(&state, &id)
         .expect("should not error")

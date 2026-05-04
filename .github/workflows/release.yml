@@ -38,7 +38,7 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      # Multiline body for tauri-action; keep fallback string in sync with scripts/bump-tauri-version.mjs
+      # Multiline body for tauri-action; read canonical copy from .github/tauri-release-body.md.
       - name: Read release body for tauri-action
         id: release_body
         shell: bash
@@ -46,11 +46,7 @@ jobs:
           delim="TAURI_RELEASE_BODY_${GITHUB_SHA}"
           {
             echo "body<<${delim}"
-            if [ -f .github/tauri-release-body.md ]; then
-              cat .github/tauri-release-body.md
-            else
-              printf '%s\n' "See the release assets to download installers for Windows and macOS."
-            fi
+            if [ -f .github/tauri-release-body.md ]; then cat .github/tauri-release-body.md; else printf '%s\n' "See release assets for platform installers."; fi
             echo "${delim}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -92,6 +88,67 @@ jobs:
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
           args: --target aarch64-apple-darwin --bundles dmg,app
 
+  publish-tauri-linux-x64:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'pnpm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          cache-on-failure: true
+
+      - name: Install Linux system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxdo-dev libssl-dev curl wget file build-essential pkg-config patchelf
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Multiline body for tauri-action; read canonical copy from .github/tauri-release-body.md.
+      - name: Read release body for tauri-action
+        id: release_body
+        shell: bash
+        run: |
+          delim="TAURI_RELEASE_BODY_${GITHUB_SHA}"
+          {
+            echo "body<<${delim}"
+            if [ -f .github/tauri-release-body.md ]; then cat .github/tauri-release-body.md; else printf '%s\n' "See release assets for platform installers."; fi
+            echo "${delim}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tauriScript: pnpm tauri
+          tagName: v__VERSION__
+          releaseName: SqlLumen v__VERSION__
+          releaseBody: ${{ steps.release_body.outputs.body }}
+          releaseDraft: false
+          prerelease: false
+          uploadUpdaterJson: true
+          # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
+          assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
+          args: --bundles appimage,deb
+
   publish-tauri-windows:
     permissions:
       contents: write
@@ -121,7 +178,7 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      # Multiline body for tauri-action; keep fallback string in sync with scripts/bump-tauri-version.mjs
+      # Multiline body for tauri-action; read canonical copy from .github/tauri-release-body.md.
       - name: Read release body for tauri-action
         id: release_body
         shell: bash
@@ -129,11 +186,7 @@ jobs:
           delim="TAURI_RELEASE_BODY_${GITHUB_SHA}"
           {
             echo "body<<${delim}"
-            if [ -f .github/tauri-release-body.md ]; then
-              cat .github/tauri-release-body.md
-            else
-              printf '%s\n' "See the release assets to download installers for Windows and macOS."
-            fi
+            if [ -f .github/tauri-release-body.md ]; then cat .github/tauri-release-body.md; else printf '%s\n' "See release assets for platform installers."; fi
             echo "${delim}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -154,3 +207,113 @@ jobs:
           # OS + arch after version so release assets are unique per matrix job (see tauri-action v0 README).
           assetNamePattern: '[name]-[version]-[platform]-[arch][setup][ext]'
           args: --bundles msi,nsis
+
+  validate-release:
+    needs:
+      - publish-tauri-macos-arm
+      - publish-tauri-linux-x64
+      - publish-tauri-windows
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate published updater feed and release assets
+        shell: bash
+        env:
+          GITHUB_REPOSITORY_CANONICAL: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          endpoint="$(jq -r '.plugins.updater.endpoints[0] // empty' src-tauri/tauri.conf.json)"
+          if [ -z "$endpoint" ]; then
+            echo "[validate-release] Missing updater endpoint in src-tauri/tauri.conf.json."
+            exit 1
+          fi
+
+          if [[ "$endpoint" =~ ^https://github\.com/([^/]+)/([^/]+)/releases/latest/download/latest\.json$ ]]; then
+            endpoint_repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+          else
+            echo "[validate-release] Updater endpoint format is unsupported: $endpoint"
+            echo "[validate-release] Expected a GitHub latest.json download URL under /releases/latest/download/latest.json."
+            exit 1
+          fi
+
+          if [ "$endpoint_repo" != "$GITHUB_REPOSITORY_CANONICAL" ]; then
+            echo "[validate-release] Updater endpoint repository mismatch."
+            echo "[validate-release] Configured endpoint repo: $endpoint_repo"
+            echo "[validate-release] Workflow repository: $GITHUB_REPOSITORY_CANONICAL"
+            echo "[validate-release] Fix src-tauri/tauri.conf.json so updater releases point at the canonical release repository."
+            exit 1
+          fi
+
+          if [ -z "${RELEASE_TAG}" ]; then
+            echo "[validate-release] Missing release tag from github.ref_name."
+            exit 1
+          fi
+
+          latest_json_file="$(mktemp)"
+          release_assets_file="$(mktemp)"
+          release_api_url="https://api.github.com/repos/${endpoint_repo}/releases/tags/${RELEASE_TAG}"
+          release_latest_json_url="https://github.com/${endpoint_repo}/releases/download/${RELEASE_TAG}/latest.json"
+
+          fetch_and_validate() {
+            curl --fail --silent --show-error --location "$release_latest_json_url" --output "$latest_json_file"
+            curl --fail --silent --show-error \
+              --header "Authorization: Bearer ${GITHUB_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              "$release_api_url" > "$release_assets_file"
+
+            windows_url="$(jq -r '.platforms["windows-x86_64"]?.url // ""' "$latest_json_file")"
+            if [ -z "$windows_url" ]; then
+              echo "[validate-release] latest.json is missing a Windows x64 updater URL."
+              return 1
+            fi
+
+            windows_filename="${windows_url##*/}"
+            windows_filename_lower="$(printf '%s' "$windows_filename" | tr '[:upper:]' '[:lower:]')"
+            if [[ "$windows_filename_lower" != *nsis* && "$windows_filename_lower" != *.exe ]]; then
+              echo "[validate-release] Windows x64 updater URL must reference the NSIS updater artifact when updaterJsonPreferNsis=true."
+              echo "[validate-release] Received URL: $windows_url"
+              echo "[validate-release] Expected filename containing 'nsis' or ending with '.exe' (not .msi or .zip)."
+              return 1
+            fi
+
+            jq -e '
+              .platforms != null and
+              (.platforms["linux-x86_64"]?.url // "" | test("AppImage")) and
+              ((.platforms["linux-x86_64"]?.signature // "") | length > 0) and
+              (.platforms["darwin-aarch64"]?.url // "" | test("\\.app(\\.|$)")) and
+              ((.platforms["darwin-aarch64"]?.signature // "") | length > 0) and
+              ((.platforms["windows-x86_64"]?.signature // "") | length > 0)
+            ' "$latest_json_file" > /dev/null
+
+            jq -e --arg tag "$RELEASE_TAG" '.tag_name == $tag' "$release_assets_file" > /dev/null
+            jq -e '.assets | map(.name) | any(test("\\.deb$"))' "$release_assets_file" > /dev/null
+          }
+
+          success=0
+          for attempt in 1 2 3 4 5; do
+            if fetch_and_validate; then
+              success=1
+              echo "[validate-release] Tagged latest.json and release assets validated on attempt $attempt."
+              break
+            fi
+
+            echo "[validate-release] Validation attempt $attempt failed."
+            if [ "$attempt" -lt 5 ]; then
+              echo "[validate-release] Waiting 15 seconds before retrying latest.json and release asset validation..."
+              sleep 15
+            fi
+          done
+
+          if [ "$success" -ne 1 ]; then
+            echo "[validate-release] Release validation failed after 5 attempts."
+            echo "[validate-release] Expected latest.json entries for ${RELEASE_TAG}: Linux x64 AppImage, macOS ARM app updater artifact, and Windows x64 NSIS updater artifact (URL filename contains 'nsis' or ends with '.exe'), each with a non-empty signature."
+            echo "[validate-release] Expected release asset: Linux .deb installer."
+            echo "[validate-release] Remediation: re-run the failed platform publish job or confirm that all macOS, Windows, and Linux publish jobs completed successfully and uploaded their assets."
+            exit 1
+          fi

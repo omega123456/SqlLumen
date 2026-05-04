@@ -6,7 +6,7 @@ use std::sync::MutexGuard;
 #[cfg(not(coverage))]
 use tauri::State;
 
-/// Input for saving a new connection. Includes password field for keychain storage.
+/// Input for saving a new connection. Includes password field for secure-storage persistence.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveConnectionInput {
@@ -28,7 +28,7 @@ pub struct SaveConnectionInput {
     pub keepalive_interval_secs: Option<i64>,
 }
 
-/// Input for updating an existing connection. Includes password field for keychain storage.
+/// Input for updating an existing connection. Includes password field for secure-storage persistence.
 /// When password is None, the existing password is left unchanged.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,11 +91,11 @@ pub fn save_connection_impl(state: &AppState, data: SaveConnectionInput) -> Resu
     };
 
     if let Some(pw) = password {
-        // Store password in OS keychain/shared vault using the saved profile id
+        // Store password in OS secure storage/shared vault using the saved profile id
         if let Err(e) = crate::credentials::store_password(&id, &pw) {
             // Rollback: delete the connection we just inserted
             let _ = connections::delete_connection(&conn, &id);
-            return Err(format!("Failed to store password in keychain: {e}"));
+            return Err(e);
         }
     } else {
         // No password provided — clear keychain_ref so has_password is false
@@ -163,15 +163,13 @@ pub fn update_connection_impl(
     }
 
     if clear_password {
-        crate::credentials::delete_password(id)
-            .map_err(|error| format!("Failed to delete password from keychain: {error}"))?;
+        crate::credentials::delete_password(id)?;
         if let Err(error) = connections::set_keychain_ref(&conn, id, None) {
             return Err(error.to_string());
         }
     } else if let Some(pw) = password {
-        // Store/update password in OS keychain
-        crate::credentials::store_password(id, &pw)
-            .map_err(|e| format!("Failed to update password in keychain: {e}"))?;
+        // Store/update password in OS secure storage
+        crate::credentials::store_password(id, &pw)?;
         // Ensure keychain_ref is set (may have been NULL if no previous password)
         if let Err(error) = connections::set_keychain_ref(&conn, id, Some(id)) {
             let _ = crate::credentials::delete_password(id);
@@ -190,8 +188,7 @@ pub fn delete_connection_impl(state: &AppState, id: &str) -> Result<(), String> 
         .is_some();
 
     if has_password_marker {
-        crate::credentials::delete_password(id)
-            .map_err(|error| format!("Failed to delete password from keychain: {error}"))?;
+        crate::credentials::delete_password(id)?;
     }
 
     // Clean up AI memories for this connection profile

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { HistoryFavoritesTab } from '../../../components/history-favorites/HistoryFavoritesTab'
@@ -50,8 +50,6 @@ const TAB: HistoryFavoritesTabType = {
   connectionId: 'conn-1',
 }
 
-let consoleSpy: ReturnType<typeof vi.spyOn>
-
 beforeEach(() => {
   useHistoryStore.setState({
     entriesByConnection: {},
@@ -90,10 +88,6 @@ beforeEach(() => {
         return null
     }
   })
-})
-
-afterEach(() => {
-  consoleSpy?.mockRestore()
 })
 
 describe('HistoryFavoritesTab', () => {

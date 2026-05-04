@@ -133,10 +133,10 @@ export async function connectToSample(
   }
 }
 
-const AUTOCOMPLETE_OPEN_RETRIES = 4
-const AUTOCOMPLETE_OPEN_TIMEOUT_MS = 2_000
-const AUTOCOMPLETE_READY_RETRIES = 8
-const AUTOCOMPLETE_RETRY_DELAY_MS = 300
+const AUTOCOMPLETE_OPEN_RETRIES = 5
+const AUTOCOMPLETE_OPEN_TIMEOUT_MS = 3_000
+const AUTOCOMPLETE_READY_RETRIES = 16
+const AUTOCOMPLETE_RETRY_DELAY_MS = 250
 
 async function focusMonacoEditor(page: Page, timeout = APP_READY_MS) {
   const editorSurface = page.locator('.monaco-editor').first()

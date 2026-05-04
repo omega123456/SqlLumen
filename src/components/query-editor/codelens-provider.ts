@@ -149,8 +149,9 @@ const ASK_AI_COMMAND_ID = 'sqllumen.codelens.askAi'
 /** @internal Exported for testing. */
 export function provideCodeLenses(
   model: editor.ITextModel,
-  _token: CancellationToken
+  _unusedToken: CancellationToken
 ): monaco.languages.CodeLensList {
+  void _unusedToken
   const ctx = getModelContext(model.uri.toString())
 
   // No CodeLens in object-editor tabs or unregistered models

@@ -12,9 +12,15 @@ const tauriDir = path.join(repoRoot, 'src-tauri')
 const releaseBodyRelative = '.github/tauri-release-body.md'
 const releaseBodyPath = path.join(repoRoot, releaseBodyRelative)
 
-/** Keep in sync with `.github/tauri-release-body.md` and the workflow fallback string. */
-const DEFAULT_RELEASE_BODY =
-  'See the release assets to download installers for Windows and macOS.'
+const DEFAULT_RELEASE_BODY = 'See release assets for platform installers.'
+
+function readCanonicalReleaseBody() {
+  try {
+    return readFileSync(releaseBodyPath, 'utf8').trim() || DEFAULT_RELEASE_BODY
+  } catch {
+    return DEFAULT_RELEASE_BODY
+  }
+}
 
 function parseSemver(s) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(s).trim())
@@ -155,19 +161,20 @@ function restoreVersionFilesAndReleaseBody(
 
 /** @param {import('node:readline').Interface} rl */
 async function readReleaseNotes(rl) {
+  const canonicalReleaseBody = readCanonicalReleaseBody()
   console.log('')
   console.log('Release notes for the GitHub release (shown on the Releases page).')
   console.log('  Press Enter once to use the default message, or')
   console.log('  type one or more lines and finish with an empty line.')
   console.log('')
-  console.log(`Default:\n  ${DEFAULT_RELEASE_BODY}\n`)
+  console.log(`Default:\n  ${canonicalReleaseBody}\n`)
 
   const lines = []
   while (true) {
     const prompt = lines.length === 0 ? 'Notes (Enter = default): ' : 'Notes (empty line ends): '
     const line = await rl.question(prompt)
     if (lines.length === 0 && line.trim() === '') {
-      return DEFAULT_RELEASE_BODY
+      return canonicalReleaseBody
     }
     if (lines.length > 0 && line === '') {
       return lines.join('\n')

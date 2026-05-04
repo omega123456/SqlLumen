@@ -132,7 +132,8 @@ function schemasEqual<T>(a: T, b: T): boolean {
 function canonicalizeColumn(column: TableDesignerColumnDef): TableDesignerColumnDef {
   const normalizedModifier = normalizeTypeModifier(column.type, column.typeModifier)
   if (normalizedModifier === '') {
-    const { typeModifier: _typeModifier, ...rest } = column
+    const { typeModifier, ...rest } = column
+    void typeModifier
     return rest
   }
 

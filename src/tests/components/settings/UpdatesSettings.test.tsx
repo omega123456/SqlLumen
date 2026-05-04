@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-const { mockGetAppInfo, mockLogFrontend } = vi.hoisted(() => ({
+const { mockGetAppInfo, mockLogFrontend, mockHasTauriApis } = vi.hoisted(() => ({
   mockGetAppInfo: vi.fn(),
   mockLogFrontend: vi.fn(),
+  mockHasTauriApis: vi.fn(),
 }))
 
 vi.mock('../../../lib/app-info-commands', () => ({
@@ -13,6 +14,10 @@ vi.mock('../../../lib/app-info-commands', () => ({
 
 vi.mock('../../../lib/app-log-commands', () => ({
   logFrontend: mockLogFrontend,
+}))
+
+vi.mock('../../../lib/tauri-env', () => ({
+  hasTauriApis: mockHasTauriApis,
 }))
 
 import { UpdatesSettings } from '../../../components/settings/UpdatesSettings'
@@ -27,6 +32,66 @@ import { useWorkspaceStore } from '../../../stores/workspace-store'
 
 const mockCheckForUpdate = vi.fn<(manual: boolean) => Promise<void>>()
 const mockDownloadAndInstall = vi.fn<() => Promise<void>>()
+const mockRestartApp = vi.fn<() => Promise<void>>()
+
+function makeAvailableUpdate(version = '2.0.0') {
+  return {
+    status: 'available' as const,
+    availableVersion: version,
+  }
+}
+
+function setReadyToFinishState(version: string, platform: 'windows' | 'linux' | 'macos'): void {
+  const isLinux = platform === 'linux'
+  useUpdateStore.setState({
+    status: 'ready-to-finish',
+    currentPlatform: platform,
+    readyToFinishAction: isLinux ? 'manual-quit' : 'relaunch',
+    readyToFinishCta: isLinux ? 'Got it' : 'Restart App',
+    readyToFinishMessage: isLinux
+      ? `Quit and reopen SqlLumen to finish installing version ${version}.`
+      : `Restart SqlLumen to finish installing version ${version}.`,
+    availableVersion: version,
+  })
+}
+
+function makeActiveConnections(count: number) {
+  return Object.fromEntries(
+    Array.from({ length: count }, (_, index) => {
+      const id = `conn${index + 1}`
+      return [
+        id,
+        {
+          id,
+          profile: {
+            id: `profile-${index + 1}`,
+            name: `Test ${index + 1}`,
+            host: '127.0.0.1',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: null,
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: index,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2025-01-01T00:00:00Z',
+            updatedAt: '2025-01-01T00:00:00Z',
+          },
+          sessionDatabase: null,
+          status: 'connected' as const,
+          serverVersion: '8.0.0',
+        },
+      ]
+    })
+  )
+}
 
 function resetStores(): void {
   useSettingsStore.setState({
@@ -41,11 +106,16 @@ function resetStores(): void {
 
   useUpdateStore.setState({
     status: 'idle',
+    currentPlatform: 'windows',
+    readyToFinishAction: 'relaunch',
+    readyToFinishCta: 'Restart App',
+    readyToFinishMessage: 'Restart SqlLumen to finish installing version the latest version.',
     availableVersion: null,
     downloadProgress: 0,
     errorMessage: null,
     checkForUpdate: mockCheckForUpdate,
     downloadAndInstall: mockDownloadAndInstall,
+    restartApp: mockRestartApp,
   })
 
   useConnectionStore.setState({
@@ -66,12 +136,14 @@ describe('UpdatesSettings', () => {
     resetStores()
     mockCheckForUpdate.mockReset()
     mockDownloadAndInstall.mockReset().mockResolvedValue(undefined)
+    mockRestartApp.mockReset().mockResolvedValue(undefined)
     mockGetAppInfo.mockReset().mockResolvedValue({
       rustLogOverride: false,
       logDirectory: '/mock/logs',
       appVersion: '1.2.3',
     })
     mockLogFrontend.mockReset()
+    mockHasTauriApis.mockReset().mockReturnValue(true)
   })
 
   it('renders idle state with Check for Updates button', async () => {
@@ -95,14 +167,14 @@ describe('UpdatesSettings', () => {
     expect(screen.getByTestId('updates-up-to-date')).toHaveTextContent("You're up to date")
   })
 
-  it('renders available state with version and Download & Restart button', async () => {
-    useUpdateStore.setState({ status: 'available', availableVersion: '2.0.0' })
+  it('renders available state with version and Download Update button', async () => {
+    useUpdateStore.setState(makeAvailableUpdate())
     render(<UpdatesSettings />)
     await screen.findByTestId('updates-app-version')
     expect(screen.getByTestId('updates-available-card')).toHaveTextContent(
       'Version 2.0.0 is available'
     )
-    expect(screen.getByTestId('updates-download-button')).toHaveTextContent('Download & Restart')
+    expect(screen.getByTestId('updates-download-button')).toHaveTextContent('Download Update')
   })
 
   it('renders installing state with progress bar and percentage', async () => {
@@ -116,7 +188,52 @@ describe('UpdatesSettings', () => {
     expect(screen.getByTestId('updates-installing-card')).toHaveTextContent(
       'Downloading version 2.0.0'
     )
+    expect(screen.getByTestId('updates-installing-card')).toHaveTextContent('Downloading update')
+    expect(screen.getByTestId('updates-installing-card')).not.toHaveTextContent('Preparing restart')
     expect(screen.getByTestId('updates-progress-text')).toHaveTextContent('42%')
+  })
+
+  it.each([
+    {
+      platform: 'windows',
+      expectedTitle: 'Update downloaded',
+      expectedMessage: 'Restart SqlLumen to finish installing version 2.0.0.',
+      expectedButton: 'Restart App',
+    },
+    {
+      platform: 'linux',
+      expectedTitle: 'Restart required',
+      expectedMessage: 'Quit and reopen SqlLumen to finish installing version 2.0.0.',
+      expectedButton: 'Got it',
+    },
+  ] as const)(
+    'renders ready-to-finish state for $platform',
+    async ({ platform, expectedTitle, expectedMessage, expectedButton }) => {
+      setReadyToFinishState('2.0.0', platform)
+
+      render(<UpdatesSettings />)
+
+      await screen.findByTestId('updates-app-version')
+      expect(screen.getByTestId('updates-ready-card')).toHaveTextContent(expectedTitle)
+      expect(screen.getByTestId('updates-ready-message')).toHaveTextContent(expectedMessage)
+      expect(screen.getByTestId('updates-restart-button')).toHaveTextContent(expectedButton)
+      if (platform === 'windows') {
+        expect(screen.getByTestId('updates-later-button')).toHaveTextContent('Later')
+      }
+    }
+  )
+
+  it('renders restart error while keeping ready-to-finish actions visible', async () => {
+    setReadyToFinishState('2.0.0', 'windows')
+    useUpdateStore.setState({ errorMessage: 'restart failed' })
+
+    render(<UpdatesSettings />)
+
+    await screen.findByTestId('updates-app-version')
+    expect(screen.getByTestId('updates-ready-error')).toHaveTextContent(
+      'Restart failed: restart failed'
+    )
+    expect(screen.getByTestId('updates-restart-button')).toHaveTextContent('Restart App')
   })
 
   it('renders error state with Try Again button', async () => {
@@ -127,46 +244,16 @@ describe('UpdatesSettings', () => {
     expect(screen.getByTestId('updates-try-again-button')).toHaveTextContent('Try Again')
   })
 
-  it('shows confirmation dialog before Download & Restart when active work exists', async () => {
+  it('shows confirmation dialog before download when active work exists', async () => {
     const user = userEvent.setup()
-    useUpdateStore.setState({ status: 'available', availableVersion: '2.0.0' })
-    useConnectionStore.setState({
-      activeConnections: {
-        conn1: {
-          id: 'conn1',
-          profile: {
-            id: 'profile-1',
-            name: 'Test',
-            host: '127.0.0.1',
-            port: 3306,
-            username: 'root',
-            hasPassword: true,
-            defaultDatabase: null,
-            sslEnabled: false,
-            sslCaPath: null,
-            sslCertPath: null,
-            sslKeyPath: null,
-            color: null,
-            groupId: null,
-            readOnly: false,
-            sortOrder: 0,
-            connectTimeoutSecs: 10,
-            keepaliveIntervalSecs: 60,
-            createdAt: '2025-01-01T00:00:00Z',
-            updatedAt: '2025-01-01T00:00:00Z',
-          },
-          sessionDatabase: null,
-          status: 'connected',
-          serverVersion: '8.0.0',
-        },
-      },
-    })
+    useUpdateStore.setState(makeAvailableUpdate())
+    useConnectionStore.setState({ activeConnections: makeActiveConnections(1) })
 
     render(<UpdatesSettings />)
     await user.click(screen.getByTestId('updates-download-button'))
 
     expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
-    expect(screen.getByText('Download & Restart?')).toBeInTheDocument()
+    expect(screen.getByText('Download update?')).toBeInTheDocument()
     expect(screen.getByText(/1 active database connection/)).toBeInTheDocument()
 
     await user.click(screen.getByTestId('confirm-confirm-button'))
@@ -177,13 +264,52 @@ describe('UpdatesSettings', () => {
 
   it('skips confirmation dialog when no active work exists', async () => {
     const user = userEvent.setup()
-    useUpdateStore.setState({ status: 'available', availableVersion: '2.0.0' })
+    useUpdateStore.setState(makeAvailableUpdate())
 
     render(<UpdatesSettings />)
     await user.click(screen.getByTestId('updates-download-button'))
 
     expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
     expect(mockDownloadAndInstall).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows restart confirmation before restarting on Windows when active work exists', async () => {
+    const user = userEvent.setup()
+    setReadyToFinishState('2.0.0', 'windows')
+    useConnectionStore.setState({ activeConnections: makeActiveConnections(1) })
+
+    render(<UpdatesSettings />)
+    await screen.findByTestId('updates-app-version')
+    await user.click(screen.getByTestId('updates-restart-button'))
+
+    expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    expect(screen.getByText('Restart App?')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('confirm-confirm-button'))
+    await waitFor(() => {
+      expect(mockRestartApp).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('linux ready-to-finish restart button does not relaunch', async () => {
+    const user = userEvent.setup()
+    useSettingsStore.setState({
+      settings: { 'updates.checkInterval': '1d' },
+      pendingChanges: {},
+      isLoading: false,
+      isDirty: false,
+      activeSection: 'updates',
+      isDialogOpen: true,
+      dialogSection: 'updates',
+    })
+    setReadyToFinishState('2.0.0', 'linux')
+
+    render(<UpdatesSettings />)
+    await screen.findByTestId('updates-app-version')
+    await user.click(screen.getByTestId('updates-restart-button'))
+
+    expect(mockRestartApp).not.toHaveBeenCalled()
+    expect(useSettingsStore.getState().isDialogOpen).toBe(false)
   })
 
   it('check interval dropdown updates pendingChanges', async () => {

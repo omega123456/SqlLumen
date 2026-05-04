@@ -43,6 +43,36 @@ interface MockUpdate {
   downloadAndInstall: (onEvent?: (event: MockProgressEvent) => void) => Promise<void>
 }
 
+function makeAvailableUpdate(version = '2.0.0', progressChunks: number[] = [100]): MockUpdate {
+  return {
+    version,
+    downloadAndInstall: vi.fn(async (onEvent?: (event: MockProgressEvent) => void) => {
+      onEvent?.({ event: 'Started', data: { contentLength: 100 } })
+      for (const chunkLength of progressChunks) {
+        onEvent?.({ event: 'Progress', data: { chunkLength } })
+      }
+      onEvent?.({ event: 'Finished' })
+    }),
+  }
+}
+
+function setReadyToFinishState(version: string, platform: 'macos' | 'windows' | 'linux'): void {
+  const isLinux = platform === 'linux'
+  useUpdateStore.setState({
+    status: 'ready-to-finish',
+    currentPlatform: platform,
+    readyToFinishAction: isLinux ? 'manual-quit' : 'relaunch',
+    readyToFinishCta: isLinux ? 'Got it' : 'Restart App',
+    readyToFinishMessage: isLinux
+      ? `Quit and reopen SqlLumen to finish installing version ${version}.`
+      : `Restart SqlLumen to finish installing version ${version}.`,
+    availableVersion: version,
+    downloadProgress: 100,
+    errorMessage: null,
+    updateObject: null,
+  })
+}
+
 function resetStores(): void {
   useSettingsStore.setState({
     settings: {},
@@ -57,6 +87,10 @@ function resetStores(): void {
   useUpdateStore.getState().stopPeriodicCheck()
   useUpdateStore.setState({
     status: 'idle',
+    currentPlatform: 'unknown',
+    readyToFinishAction: 'relaunch',
+    readyToFinishCta: 'Restart App',
+    readyToFinishMessage: 'Restart SqlLumen to finish installing version the latest version.',
     availableVersion: null,
     downloadProgress: 0,
     errorMessage: null,
@@ -83,10 +117,7 @@ describe('useUpdateStore', () => {
   })
 
   it('manual check sets available state when update exists', async () => {
-    const update: MockUpdate = {
-      version: '2.0.0',
-      downloadAndInstall: vi.fn(async () => undefined),
-    }
+    const update = makeAvailableUpdate()
     mockCheck.mockResolvedValue(update)
 
     await useUpdateStore.getState().checkForUpdate(true)
@@ -184,10 +215,7 @@ describe('useUpdateStore', () => {
     await useUpdateStore.getState().checkForUpdate(true)
     expect(useUpdateStore.getState().status).toBe('up-to-date')
 
-    const update: MockUpdate = {
-      version: '3.1.0',
-      downloadAndInstall: vi.fn(async () => undefined),
-    }
+    const update = makeAvailableUpdate('3.1.0')
     mockCheck.mockResolvedValueOnce(update)
 
     await useUpdateStore.getState().checkForUpdate(true)
@@ -198,42 +226,103 @@ describe('useUpdateStore', () => {
   })
 
   it('downloadAndInstall tracks progress and relaunches after finish on macOS', async () => {
-    const downloadAndInstall = vi.fn(async (onEvent?: (event: MockProgressEvent) => void) => {
-      onEvent?.({ event: 'Started', data: { contentLength: 100 } })
-      onEvent?.({ event: 'Progress', data: { chunkLength: 25 } })
-      onEvent?.({ event: 'Progress', data: { chunkLength: 25 } })
-      onEvent?.({ event: 'Finished' })
-    })
-
-    mockCheck.mockResolvedValue({ version: '4.0.0', downloadAndInstall })
+    const update = makeAvailableUpdate('4.0.0', [25, 25, 50])
+    mockCheck.mockResolvedValue(update)
     await useUpdateStore.getState().checkForUpdate(true)
 
     await useUpdateStore.getState().downloadAndInstall()
 
-    expect(downloadAndInstall).toHaveBeenCalledTimes(1)
+    expect(update.downloadAndInstall).toHaveBeenCalledTimes(1)
     expect(useUpdateStore.getState()).toMatchObject({
       status: 'installing',
       downloadProgress: 100,
       errorMessage: null,
+      updateObject: null,
     })
     expect(mockRelaunch).toHaveBeenCalledTimes(1)
   })
 
-  it('downloadAndInstall does not relaunch after finish on Windows', async () => {
+  it.each([
+    {
+      platform: 'windows',
+      version: '4.0.0',
+      readyToFinishAction: 'relaunch',
+      readyToFinishCta: 'Restart App',
+      readyToFinishMessage: 'Restart SqlLumen to finish installing version 4.0.0.',
+    },
+    {
+      platform: 'linux',
+      version: '4.1.0',
+      readyToFinishAction: 'manual-quit',
+      readyToFinishCta: 'Got it',
+      readyToFinishMessage: 'Quit and reopen SqlLumen to finish installing version 4.1.0.',
+    },
+  ] as const)(
+    'downloadAndInstall moves to ready-to-finish after finish on $platform',
+    async ({ platform, version, readyToFinishAction, readyToFinishCta, readyToFinishMessage }) => {
+      mockPlatform.mockResolvedValue(platform)
+
+      const update = makeAvailableUpdate(version)
+      mockCheck.mockResolvedValue(update)
+      await useUpdateStore.getState().checkForUpdate(true)
+
+      await useUpdateStore.getState().downloadAndInstall()
+
+      expect(useUpdateStore.getState()).toMatchObject({
+        status: 'ready-to-finish',
+        currentPlatform: platform,
+        readyToFinishAction,
+        readyToFinishCta,
+        readyToFinishMessage,
+        availableVersion: version,
+        downloadProgress: 100,
+        errorMessage: null,
+        updateObject: null,
+      })
+      expect(mockRelaunch).not.toHaveBeenCalled()
+    }
+  )
+
+  it('restartApp relaunches on Windows from ready-to-finish', async () => {
     mockPlatform.mockResolvedValue('windows')
+    setReadyToFinishState('4.0.0', 'windows')
 
-    const downloadAndInstall = vi.fn(async (onEvent?: (event: MockProgressEvent) => void) => {
-      onEvent?.({ event: 'Started', data: { contentLength: 100 } })
-      onEvent?.({ event: 'Progress', data: { chunkLength: 100 } })
-      onEvent?.({ event: 'Finished' })
-    })
+    await useUpdateStore.getState().restartApp()
 
-    mockCheck.mockResolvedValue({ version: '4.0.0', downloadAndInstall })
-    await useUpdateStore.getState().checkForUpdate(true)
+    expect(mockRelaunch).toHaveBeenCalledTimes(1)
+  })
 
-    await useUpdateStore.getState().downloadAndInstall()
+  it('restartApp does not relaunch on Linux from ready-to-finish', async () => {
+    mockPlatform.mockResolvedValue('linux')
+    setReadyToFinishState('4.1.0', 'linux')
+
+    await useUpdateStore.getState().restartApp()
 
     expect(mockRelaunch).not.toHaveBeenCalled()
+    expect(useUpdateStore.getState()).toMatchObject({
+      status: 'ready-to-finish',
+      availableVersion: '4.1.0',
+      downloadProgress: 100,
+    })
+  })
+
+  it('restartApp keeps ready-to-finish state when relaunch fails', async () => {
+    mockPlatform.mockResolvedValue('windows')
+    mockRelaunch.mockRejectedValue(new Error('restart failed'))
+    setReadyToFinishState('4.0.0', 'windows')
+
+    await useUpdateStore.getState().restartApp()
+
+    expect(mockLogFrontend).toHaveBeenCalledWith(
+      'error',
+      '[update-store] Restart failed: restart failed'
+    )
+    expect(useUpdateStore.getState()).toMatchObject({
+      status: 'ready-to-finish',
+      availableVersion: '4.0.0',
+      downloadProgress: 100,
+      errorMessage: 'restart failed',
+    })
   })
 
   it('downloadAndInstall stores error state on failure', async () => {
@@ -362,6 +451,44 @@ describe('useUpdateStore', () => {
       updateObject: null,
     })
   })
+
+  it.each([
+    {
+      platform: 'macos',
+      version: '5.0.0',
+      readyToFinishAction: 'relaunch',
+      readyToFinishCta: 'Restart App',
+      readyToFinishMessage: 'Restart SqlLumen to finish installing version 5.0.0.',
+    },
+    {
+      platform: 'windows',
+      version: '5.1.0',
+      readyToFinishAction: 'relaunch',
+      readyToFinishCta: 'Restart App',
+      readyToFinishMessage: 'Restart SqlLumen to finish installing version 5.1.0.',
+    },
+    {
+      platform: 'linux',
+      version: '5.2.0',
+      readyToFinishAction: 'manual-quit',
+      readyToFinishCta: 'Got it',
+      readyToFinishMessage: 'Quit and reopen SqlLumen to finish installing version 5.2.0.',
+    },
+  ] as const)(
+    'setCurrentPlatform derives ready-to-finish metadata for $platform',
+    ({ platform, version, readyToFinishAction, readyToFinishCta, readyToFinishMessage }) => {
+      useUpdateStore.setState({ availableVersion: version })
+
+      useUpdateStore.getState().setCurrentPlatform(platform)
+
+      expect(useUpdateStore.getState()).toMatchObject({
+        currentPlatform: platform,
+        readyToFinishAction,
+        readyToFinishCta,
+        readyToFinishMessage,
+      })
+    }
+  )
 
   it('automatic check errors are logged and keep status idle', async () => {
     mockCheck.mockRejectedValue(new Error('network down'))

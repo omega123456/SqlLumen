@@ -1,4 +1,4 @@
-//! In-memory credential backend for integration tests (no OS keychain).
+//! In-memory credential backend for integration tests (no OS secure-storage dependency).
 
 use sqllumen_lib::credentials::{set_test_credential_backend, TestCredentialBackend};
 use std::collections::HashMap;
@@ -11,6 +11,21 @@ static TEST_CREDENTIAL_ERROR: LazyLock<Mutex<Option<String>>> = LazyLock::new(||
 
 static INSTALL_BACKEND: Once = Once::new();
 static KEYCHAIN_ISOLATION_LOCK: Mutex<()> = Mutex::new(());
+
+fn storage_label() -> &'static str {
+    sqllumen_lib::credentials::secure_storage_display_name()
+}
+
+fn credential_error(action: &str, error: &str) -> String {
+    format!("Failed to {action} in {}: {error}", storage_label())
+}
+
+fn missing_entry_error(action: &str) -> String {
+    format!(
+        "Failed to {action} in {}: No matching entry found in secure storage",
+        storage_label()
+    )
+}
 
 fn clear_keychain_state() {
     TEST_KEYCHAIN
@@ -50,7 +65,7 @@ pub fn isolate_fake_keychain() -> FakeKeychainIsolationGuard {
 
 fn fake_store_password(connection_id: &str, password: &str) -> Result<(), String> {
     if let Some(error) = take_fake_error() {
-        return Err(format!("Failed to store password in keychain: {error}"));
+        return Err(credential_error("store password", &error));
     }
 
     TEST_KEYCHAIN
@@ -62,9 +77,7 @@ fn fake_store_password(connection_id: &str, password: &str) -> Result<(), String
 
 fn fake_get_password(connection_id: &str) -> Result<Option<String>, String> {
     if let Some(error) = take_fake_error() {
-        return Err(format!(
-            "Failed to retrieve password from keychain: {error}"
-        ));
+        return Err(credential_error("retrieve password", &error));
     }
 
     Ok(TEST_KEYCHAIN
@@ -76,7 +89,7 @@ fn fake_get_password(connection_id: &str) -> Result<Option<String>, String> {
 
 fn fake_delete_password(connection_id: &str) -> Result<(), String> {
     if let Some(error) = take_fake_error() {
-        return Err(format!("Failed to delete password from keychain: {error}"));
+        return Err(credential_error("delete password", &error));
     }
 
     TEST_KEYCHAIN
@@ -84,10 +97,7 @@ fn fake_delete_password(connection_id: &str) -> Result<(), String> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .remove(connection_id)
         .map(|_| ())
-        .ok_or_else(|| {
-            "Failed to delete password from keychain: No matching entry found in secure storage"
-                .to_string()
-        })
+        .ok_or_else(|| missing_entry_error("delete password"))
 }
 
 pub fn queue_fake_credential_error(message: &str) {

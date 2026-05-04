@@ -234,7 +234,7 @@ export function useObjectBrowserActions(connectionId: string): UseObjectBrowserA
         const template = buildExecuteTemplate(databaseName, routineName, routineType, parameters)
         const tabId = openQueryTab(connectionId, `Execute: ${routineName}`)
         useQueryStore.getState().setContent(tabId, template)
-      } catch (_error) {
+      } catch {
         // Fall back to simple template
         const keyword = routineType === 'procedure' ? 'CALL' : 'SELECT'
         const fallbackTemplate = `${keyword} \`${databaseName}\`.\`${routineName}\`( /* Add parameters here */ );`

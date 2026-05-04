@@ -586,6 +586,10 @@ describe('StatusBar', () => {
 
       rerender(<StatusBar />)
 
+      act(() => {
+        vi.advanceTimersByTime(16)
+      })
+
       expect(screen.getByTestId('indexing-ready')).toBeInTheDocument()
       expect(screen.queryByTestId('indexing-indicator')).not.toBeInTheDocument()
     })
@@ -620,6 +624,10 @@ describe('StatusBar', () => {
             },
           },
         })
+      })
+
+      act(() => {
+        vi.advanceTimersByTime(16)
       })
 
       expect(screen.getByTestId('indexing-ready')).toBeInTheDocument()
@@ -667,6 +675,10 @@ describe('StatusBar', () => {
 
       rerender(<StatusBar />)
 
+      act(() => {
+        vi.advanceTimersByTime(16)
+      })
+
       expect(screen.getByTestId('indexing-error')).toBeInTheDocument()
       expect(screen.queryByTestId('indexing-indicator')).not.toBeInTheDocument()
     })
@@ -702,6 +714,10 @@ describe('StatusBar', () => {
             },
           },
         })
+      })
+
+      act(() => {
+        vi.advanceTimersByTime(16)
       })
 
       expect(screen.getByTestId('indexing-error')).toBeInTheDocument()

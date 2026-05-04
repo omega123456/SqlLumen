@@ -2,6 +2,7 @@ mod common;
 
 use sqllumen_lib::commands::session::select_database_impl;
 use sqllumen_lib::commands::session::set_test_select_database_hook;
+use sqllumen_lib::credentials;
 use sqllumen_lib::mysql::pool::{set_test_pool_factory, ConnectionParams};
 use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
 use sqllumen_lib::state::AppState;
@@ -11,6 +12,13 @@ use tokio_util::sync::CancellationToken;
 
 static SELECT_DATABASE_HOOK_LOCK: Mutex<()> = Mutex::new(());
 static POOL_FACTORY_LOCK: Mutex<()> = Mutex::new(());
+
+fn retrieve_password_prefix() -> String {
+    format!(
+        "Failed to retrieve password in {}:",
+        credentials::secure_storage_display_name()
+    )
+}
 
 fn dummy_pool() -> sqlx::MySqlPool {
     let opts = MySqlConnectOptions::new()
@@ -226,7 +234,7 @@ async fn select_database_errors_when_password_lookup_fails() {
     let err = select_database_impl(&state, "conn-1", "analytics_db")
         .await
         .expect_err("password lookup failure should be surfaced");
-    assert!(err.contains("Failed to retrieve password from keychain"));
+    assert!(err.contains(&retrieve_password_prefix()));
 
     let params = state
         .registry

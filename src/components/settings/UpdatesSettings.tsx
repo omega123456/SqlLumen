@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowsClockwise, CheckCircle, DownloadSimple, WarningCircle } from '@phosphor-icons/react'
 import { Button } from '../common/Button'
 import { Dropdown } from '../common/Dropdown'
@@ -78,17 +78,23 @@ function buildPendingWorkSummary(): PendingWorkSummary {
 
 export function UpdatesSettings() {
   const setPendingChange = useSettingsStore((s) => s.setPendingChange)
+  const closeSettingsDialog = useSettingsStore((s) => s.closeDialog)
   const status = useUpdateStore((s) => s.status)
   const availableVersion = useUpdateStore((s) => s.availableVersion)
   const downloadProgress = useUpdateStore((s) => s.downloadProgress)
   const errorMessage = useUpdateStore((s) => s.errorMessage)
   const checkForUpdate = useUpdateStore((s) => s.checkForUpdate)
   const downloadAndInstall = useUpdateStore((s) => s.downloadAndInstall)
+  const restartApp = useUpdateStore((s) => s.restartApp)
+  const readyToFinishAction = useUpdateStore((s) => s.readyToFinishAction)
+  const readyToFinishCta = useUpdateStore((s) => s.readyToFinishCta)
+  const readyToFinishMessage = useUpdateStore((s) => s.readyToFinishMessage)
   const checkInterval = useSettingValue('updates.checkInterval')
 
   const [appVersion, setAppVersion] = useState('Loading…')
   const [confirmOpen, setConfirmOpen] = useState(false)
-  const [isConfirmingDownload, setIsConfirmingDownload] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<'download' | 'restart'>('download')
+  const [isConfirmingAction, setIsConfirmingAction] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -111,7 +117,7 @@ export function UpdatesSettings() {
     }
   }, [])
 
-  const pendingWork = useMemo(() => buildPendingWorkSummary(), [confirmOpen, status])
+  const pendingWork = buildPendingWorkSummary()
 
   const handleManualCheck = (): void => {
     void checkForUpdate(true)
@@ -123,9 +129,10 @@ export function UpdatesSettings() {
     </Button>
   )
 
-  const handleDownloadAndRestart = (): void => {
+  const handleDownloadUpdate = (): void => {
     const summary = buildPendingWorkSummary()
     if (summary.hasWork) {
+      setConfirmAction('download')
       setConfirmOpen(true)
       return
     }
@@ -133,10 +140,28 @@ export function UpdatesSettings() {
     void downloadAndInstall()
   }
 
-  const handleConfirmDownload = (): void => {
-    setIsConfirmingDownload(true)
-    void downloadAndInstall().finally(() => {
-      setIsConfirmingDownload(false)
+  const handleRestartAction = (): void => {
+    if (readyToFinishAction === 'manual-quit') {
+      closeSettingsDialog()
+      return
+    }
+
+    const summary = buildPendingWorkSummary()
+    if (summary.hasWork) {
+      setConfirmAction('restart')
+      setConfirmOpen(true)
+      return
+    }
+
+    void restartApp()
+  }
+
+  const handleConfirmAction = (): void => {
+    setIsConfirmingAction(true)
+
+    const action = confirmAction === 'download' ? downloadAndInstall : restartApp
+    void action().finally(() => {
+      setIsConfirmingAction(false)
       setConfirmOpen(false)
     })
   }
@@ -170,10 +195,10 @@ export function UpdatesSettings() {
             <div>
               <Button
                 variant="primary"
-                onClick={handleDownloadAndRestart}
+                onClick={handleDownloadUpdate}
                 data-testid="updates-download-button"
               >
-                <DownloadSimple size={16} weight="regular" /> Download & Restart
+                <DownloadSimple size={16} weight="regular" /> Download Update
               </Button>
             </div>
           </div>
@@ -202,8 +227,52 @@ export function UpdatesSettings() {
               />
             </div>
             <div className={styles.progressMeta}>
-              <span>Preparing restart</span>
+              <span>Downloading update</span>
               <span data-testid="updates-progress-text">{downloadProgress}%</span>
+            </div>
+          </div>
+        )
+      case 'ready-to-finish':
+        return (
+          <div
+            className={`${styles.updateCard} ui-elevated-surface`}
+            data-testid="updates-ready-card"
+            aria-live="polite"
+          >
+            <div className={styles.cardTitle}>
+              {readyToFinishAction === 'manual-quit' ? 'Restart required' : 'Update downloaded'}
+            </div>
+            <div className={styles.cardBody} data-testid="updates-ready-message">
+              {readyToFinishMessage}
+            </div>
+            {errorMessage ? (
+              <div
+                className={`${styles.statusMessage} ${styles.errorMessage}`}
+                data-testid="updates-ready-error"
+              >
+                <WarningCircle size={16} weight="fill" /> Restart failed: {errorMessage}
+              </div>
+            ) : null}
+            <div className={styles.cardActions}>
+              <Button
+                variant="primary"
+                onClick={handleRestartAction}
+                data-testid="updates-restart-button"
+              >
+                {readyToFinishAction === 'manual-quit' ? (
+                  <CheckCircle size={16} weight="regular" />
+                ) : (
+                  <ArrowsClockwise size={16} weight="regular" />
+                )}
+                {readyToFinishCta}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={closeSettingsDialog}
+                data-testid="updates-later-button"
+              >
+                Later
+              </Button>
             </div>
           </div>
         )
@@ -265,10 +334,12 @@ export function UpdatesSettings() {
 
       <ConfirmDialog
         isOpen={confirmOpen}
-        title="Download & Restart?"
+        title={confirmAction === 'download' ? 'Download update?' : 'Restart App?'}
         message={
           <div>
-            Downloading the update will restart SqlLumen and interrupt:
+            {confirmAction === 'download'
+              ? 'Downloading the update may interrupt:'
+              : 'Restarting SqlLumen will interrupt:'}
             <ul className={styles.confirmList}>
               {pendingWork.items.map((item) => (
                 <li key={item}>{item}</li>
@@ -276,11 +347,11 @@ export function UpdatesSettings() {
             </ul>
           </div>
         }
-        confirmLabel="Download & Restart"
+        confirmLabel={confirmAction === 'download' ? 'Download Update' : 'Restart App'}
         isDestructive
         warningText={null}
-        isLoading={isConfirmingDownload}
-        onConfirm={handleConfirmDownload}
+        isLoading={isConfirmingAction}
+        onConfirm={handleConfirmAction}
         onCancel={() => setConfirmOpen(false)}
       />
     </div>

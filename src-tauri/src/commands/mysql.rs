@@ -214,7 +214,7 @@ pub async fn test_connection_impl(_input: TestConnectionInput) -> TestConnection
     }
 }
 
-/// Open a saved connection: reads from SQLite, retrieves password from keychain,
+/// Open a saved connection: reads from SQLite, retrieves password from secure storage,
 /// creates pool, registers it under a new session id, and spawns a health monitor task.
 #[cfg(not(coverage))]
 pub async fn open_connection_impl(
@@ -231,7 +231,7 @@ pub async fn open_connection_impl(
         }
     };
 
-    // Retrieve password from keychain/shared vault using the saved profile id.
+    // Retrieve password from secure storage/shared vault using the saved profile id.
     let password = credentials::resolve_password(profile_id, record.has_password)?;
 
     let keepalive_secs = record.keepalive_interval_secs.unwrap_or(60).max(0) as u64;

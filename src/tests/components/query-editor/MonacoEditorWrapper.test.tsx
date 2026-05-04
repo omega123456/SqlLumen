@@ -85,9 +85,9 @@ function createMockModel(selectedText = '') {
   return {
     uri: mockModelUri,
     getValue: () => 'SELECT 1',
-    getValueInRange: (_range: unknown) => selectedText,
+    getValueInRange: () => selectedText,
     getLineCount: () => 1,
-    getLineLength: (_line: number) => 8,
+    getLineLength: () => 8,
   }
 }
 

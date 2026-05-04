@@ -17,6 +17,8 @@ use sqllumen_lib::commands::settings::{get_all_settings_impl, get_setting_impl, 
 use sqllumen_lib::credentials::{self};
 #[cfg(coverage)]
 use sqllumen_lib::mysql::health::spawn_health_monitor;
+#[cfg(not(coverage))]
+use sqllumen_lib::mysql::health::attempt_reconnect_once_for_test;
 use sqllumen_lib::mysql::pool::{
     build_connect_options, create_pool, set_test_pool_factory, ConnectionParams,
 };
@@ -347,6 +349,22 @@ fn update_input(password: Option<&str>) -> UpdateConnectionInput {
     }
 }
 
+fn secure_storage_label() -> &'static str {
+    credentials::secure_storage_display_name()
+}
+
+fn store_password_prefix() -> String {
+    format!("Failed to store password in {}:", secure_storage_label())
+}
+
+fn retrieve_password_prefix() -> String {
+    format!("Failed to retrieve password in {}:", secure_storage_label())
+}
+
+fn delete_password_prefix() -> String {
+    format!("Failed to delete password in {}:", secure_storage_label())
+}
+
 #[test]
 fn credentials_round_trip_with_fake_keychain() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
@@ -357,24 +375,36 @@ fn credentials_round_trip_with_fake_keychain() {
 }
 
 #[test]
+fn credentials_use_platform_specific_secure_storage_label() {
+    #[cfg(target_os = "macos")]
+    assert_eq!(secure_storage_label(), "macOS Keychain");
+
+    #[cfg(target_os = "windows")]
+    assert_eq!(secure_storage_label(), "Windows Credential Manager");
+
+    #[cfg(target_os = "linux")]
+    assert_eq!(secure_storage_label(), "Linux Secret Service / keyring");
+}
+
+#[test]
 fn credentials_surface_fake_backend_errors() {
     let _guard = common::fake_credentials::isolate_fake_keychain();
     common::fake_credentials::queue_fake_credential_error("Attribute user is invalid: bad id");
     let store_error = credentials::store_password("cred-err", "secret")
         .expect_err("store should propagate errors");
-    assert!(store_error.contains("Failed to store password in keychain"));
+    assert!(store_error.contains(&store_password_prefix()));
     common::fake_credentials::queue_fake_credential_error(
         "No matching entry found in secure storage",
     );
     let get_error = credentials::get_password("cred-err")
         .expect_err("retrieve should propagate errors");
-    assert!(get_error.contains("Failed to retrieve password from keychain"));
+    assert!(get_error.contains(&retrieve_password_prefix()));
     common::fake_credentials::queue_fake_credential_error(
         "No matching entry found in secure storage",
     );
     let delete_error =
         credentials::delete_password("cred-err").expect_err("delete should propagate errors");
-    assert!(delete_error.contains("Failed to delete password from keychain"));
+    assert!(delete_error.contains(&delete_password_prefix()));
 }
 
 #[test]
@@ -398,7 +428,7 @@ fn save_connection_impl_rolls_back_when_password_storage_fails() {
         .query_row("SELECT COUNT(*) FROM connections", [], |row| row.get(0))
         .expect("should count rows");
     assert_eq!(count, 0);
-    assert!(error.starts_with("Failed to store password in keychain:"));
+    assert!(error.starts_with(&store_password_prefix()));
 }
 
 #[test]
@@ -432,7 +462,7 @@ fn update_connection_impl_surfaces_password_update_errors() {
         },
     )
     .expect_err("update should fail when keychain update fails");
-    assert!(error.starts_with("Failed to update password in keychain:"));
+    assert!(error.starts_with(&store_password_prefix()));
 }
 
 #[test]
@@ -619,7 +649,7 @@ async fn open_connection_impl_surfaces_keychain_lookup_errors() {
     let error = open_connection_impl(&state, &profile_id)
         .await
         .expect_err("keychain lookup failure should surface");
-    assert!(error.contains("Failed to retrieve password from keychain"));
+    assert!(error.contains(&retrieve_password_prefix()));
 }
 
 #[tokio::test]
@@ -946,7 +976,7 @@ async fn open_connection_impl_surfaces_keychain_errors() {
     let error = open_connection_impl(&state, &connection_id)
         .await
         .expect_err("keychain retrieval failure should be surfaced");
-    assert!(error.starts_with("Failed to retrieve password from keychain:"));
+    assert!(error.starts_with(&retrieve_password_prefix()));
 }
 
 #[tokio::test]
@@ -1284,6 +1314,52 @@ async fn health_reconnect_uses_profile_id_credential_key() {
         Some(ConnectionStatus::Connected)
     );
     token.cancel();
+}
+
+#[tokio::test]
+#[cfg(not(coverage))]
+async fn health_reconnect_surfaces_secure_storage_wording_for_credential_failures() {
+    let _guard = common::fake_credentials::isolate_fake_keychain();
+    let state = test_state();
+    let connection_id = "conn-health-error".to_string();
+    credentials::store_password(&connection_id, "secret").expect("should store password");
+
+    state.registry.insert(
+        connection_id.clone(),
+        RegistryEntry {
+            pool: dummy_pool(),
+            session_id: connection_id.clone(),
+            profile_id: connection_id.clone(),
+            status: ConnectionStatus::Disconnected,
+            server_version: "Unknown".to_string(),
+            cancellation_token: CancellationToken::new(),
+            connection_params: StoredConnectionParams {
+                profile_id: connection_id.clone(),
+                host: "127.0.0.1".to_string(),
+                port: 3306,
+                username: "root".to_string(),
+                has_password: true,
+                keychain_ref: Some(connection_id.clone()),
+                default_database: None,
+                ssl_enabled: false,
+                ssl_ca_path: None,
+                ssl_cert_path: None,
+                ssl_key_path: None,
+                connect_timeout_secs: 10,
+                keepalive_interval_secs: 0,
+            },
+            read_only: false,
+        },
+    );
+
+    common::fake_credentials::queue_fake_credential_error("backend unavailable");
+
+    let error = attempt_reconnect_once_for_test(&state, &connection_id)
+        .await
+        .expect_err("credential lookup failure during reconnect should surface");
+
+    assert!(error.contains(secure_storage_label()));
+    assert!(error.contains("Failed to retrieve password in"));
 }
 
 #[tokio::test]

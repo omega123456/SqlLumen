@@ -167,7 +167,6 @@ describe('FkCellRenderer', () => {
 
     const { getByTestId } = render(
       <FkLookupContext.Provider value={contextValue}>
-        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
         <div onMouseDown={parentMouseDown}>
           <FkCellRenderer {...makeFkCellProps('user_id', 42, sampleFk)} />
         </div>

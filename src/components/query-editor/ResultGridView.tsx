@@ -427,7 +427,7 @@ export function ResultGridView({
         )
       },
     }
-  }, [columns, resolvedColumns])
+  }, [editableColumnMap, resolvedColumns])
 
   const handleCellClipboardEdit = useCallback(
     async (args: CellClipboardEditArgs) => {

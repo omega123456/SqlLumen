@@ -204,7 +204,6 @@ export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) 
           const info = row.info as string | null
           if (!info) return null
           return (
-            // eslint-disable-next-line jsx-a11y/click-events-have-key-events
             <span
               role="button"
               tabIndex={0}

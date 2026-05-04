@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useConnectionStore } from '../../stores/connection-store'
 import { ObjectBrowser } from '../object-browser/ObjectBrowser'
 import styles from './Sidebar.module.css'
@@ -9,15 +9,18 @@ export function Sidebar() {
 
   const activeConnection = activeTabId ? activeConnections[activeTabId] : null
 
-  const [favouritesOpen, setFavouritesOpen] = useState(false)
+  const [panelState, setPanelState] = useState<{ tabId: string | null; favouritesOpen: boolean }>({
+    tabId: activeTabId,
+    favouritesOpen: false,
+  })
+
+  const favouritesOpen = panelState.tabId === activeTabId ? panelState.favouritesOpen : false
 
   const handleToggleFavourites = useCallback(() => {
-    setFavouritesOpen((f) => !f)
-  }, [])
-
-  // Reset favourites panel when active connection tab changes
-  useEffect(() => {
-    setFavouritesOpen(false)
+    setPanelState((current) => ({
+      tabId: activeTabId,
+      favouritesOpen: current.tabId === activeTabId ? !current.favouritesOpen : true,
+    }))
   }, [activeTabId])
 
   if (activeConnection && activeTabId) {

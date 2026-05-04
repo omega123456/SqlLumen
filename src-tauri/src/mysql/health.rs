@@ -15,6 +15,10 @@ use crate::mysql::query_log;
 use crate::mysql::registry::ConnectionStatus;
 #[cfg(not(coverage))]
 use crate::state::AppState;
+#[cfg(any(test, feature = "test-utils"))]
+use crate::{credentials, mysql::pool, state::AppState};
+#[cfg(any(test, feature = "test-utils"))]
+use crate::mysql::registry::ConnectionStatus;
 use std::time::Duration;
 use tauri::{AppHandle, Runtime};
 #[cfg(not(coverage))]
@@ -217,7 +221,7 @@ async fn reconnect_loop_impl<R: Runtime>(
                     app_handle,
                     connection_id,
                     ConnectionStatus::Disconnected,
-                    Some(&format!("Cannot retrieve password from keychain: {error}")),
+                    Some(&error),
                 );
                 return false;
             }
@@ -250,6 +254,34 @@ async fn reconnect_loop_impl<R: Runtime>(
             }
         }
     }
+}
+
+#[cfg(any(test, feature = "test-utils"))]
+pub async fn attempt_reconnect_once_for_test(
+    state: &AppState,
+    connection_id: &str,
+) -> Result<(), String> {
+    let stored_params = state
+        .registry
+        .get_connection_params(connection_id)
+        .ok_or_else(|| format!("Connection '{connection_id}' is not open"))?;
+
+    let password = credentials::resolve_password(
+        stored_params.profile_id.as_str(),
+        stored_params.has_password,
+    )?;
+
+    let conn_params = stored_params.to_connection_params(password);
+    let new_pool = pool::create_pool(&conn_params)
+        .await
+        .map_err(|error| format!("Failed to reconnect: {error}"))?;
+
+    state.registry.replace_pool(connection_id, new_pool);
+    state
+        .registry
+        .update_status(connection_id, ConnectionStatus::Connected);
+
+    Ok(())
 }
 
 /// Emit a `connection-status-changed` Tauri event.

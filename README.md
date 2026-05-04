@@ -117,13 +117,84 @@ pnpm dev
 
 ## GitHub releases (CI)
 
-The workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) builds **Windows** (x64) and **macOS** (Apple Silicon and Intel) bundles and uploads them to a **GitHub Release**. It runs on **`workflow_dispatch`** (Actions tab → Release → Run workflow) or when you push a version tag matching `v*` (e.g. `v0.1.0`).
+The workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) publishes GitHub Release assets for these currently shipped platforms:
+
+| Platform              | Artifacts                                                  | Notes                                                                                                   |
+| --------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| macOS (Apple Silicon) | `.app.tar.gz` updater artifact + `.dmg`                    | Used by Tauri in-app updates on supported installs; CI builds are unsigned unless signing is configured |
+| Windows (x64)         | updater artifact + `.msi` / `.exe` installer bundles       | In-app updates download first, then restart to finish                                                   |
+| Linux (x64)           | `.AppImage.tar.gz` updater artifact + `.AppImage` + `.deb` | AppImage participates in in-app updates; `.deb` is for manual install/reinstall on Ubuntu/Debian        |
+
+The release workflow runs on **`workflow_dispatch`** (Actions tab → Release → Run workflow) or when you push a version tag matching `v*` (for example `v0.1.0`).
 
 1. From the repo root, run **`pnpm release:tauri-version`** (see [`scripts/bump-tauri-version.mjs`](scripts/bump-tauri-version.mjs)). It interactively bumps **`version`** in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json), asks for **release notes** (press Enter to keep the default message), writes them to [`.github/tauri-release-body.md`](.github/tauri-release-body.md) for the [release workflow](.github/workflows/release.yml), runs **`pnpm build`** first; if the build fails it restores `tauri.conf.json` and the release body file and does **not** commit, tag, or push. On success it commits, creates the `v*` tag, and pushes the branch and tag. Keep [`package.json`](package.json) / [`src-tauri/Cargo.toml`](src-tauri/Cargo.toml) aligned with the shipped version if your process requires it—the script only edits `tauri.conf.json` and the release body file.
 2. Or bump `tauri.conf.json` yourself, commit and push, then create and push the tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`), or run the workflow manually after tagging.
 3. If asset upload fails with a permissions error, set the repository’s **Settings → Actions → General → Workflow permissions** to **Read and write**.
 
-Releases are created as **drafts** by default; publish them from the Releases page when ready. macOS artifacts from CI are **unsigned** unless you add Apple code signing secrets to the workflow—users may see Gatekeeper warnings until signing/notarization is configured ([Tauri macOS signing](https://v2.tauri.app/distribute/sign-macos/)).
+Release note copy stays aligned across the workflow fallback text, [`scripts/bump-tauri-version.mjs`](scripts/bump-tauri-version.mjs), and [`.github/tauri-release-body.md`](.github/tauri-release-body.md):
+
+> See the release assets to download installers for Windows, macOS, Linux AppImage, and Linux .deb packages.
+
+Releases are published directly (non-draft) by default. macOS artifacts from CI are **unsigned** unless you add Apple code signing secrets to the workflow—users may see Gatekeeper warnings until signing/notarization is configured ([Tauri macOS signing](https://v2.tauri.app/distribute/sign-macos/)).
+
+## Linux installation, updates, and saved-password troubleshooting
+
+SqlLumen currently publishes **Linux x64** release assets for users on **Ubuntu/Debian-derived desktop environments**.
+
+### Linux prerequisites (runtime)
+
+On Ubuntu/Debian, install the runtime libraries Tauri/WebKitGTK apps commonly need:
+
+```bash
+sudo apt update
+sudo apt install -y libwebkit2gtk-4.1-0 libappindicator3-1 libgtk-3-0 libxdo3 libssl3 librsvg2-2
+```
+
+Package names can vary slightly by distro release. If `apt` reports a package is unavailable, install the closest equivalent provided by your Ubuntu/Debian version.
+
+### Linux installation
+
+- **Ubuntu/Debian manual install (`.deb`)**
+
+  Download the `.deb` asset from GitHub Releases, then install it with:
+
+  ```bash
+  sudo apt install ./SqlLumen_x.x.x_amd64.deb
+  ```
+
+- **Portable / updater-enabled install (AppImage)**
+
+  Download the AppImage release asset, mark it executable if needed, and run it:
+
+  ```bash
+  chmod +x SqlLumen_*.AppImage
+  ./SqlLumen_*.AppImage
+  ```
+
+### Linux in-app updates
+
+- **AppImage** installs are the Linux path that participates in Tauri in-app updates.
+- **`.deb`** installs do **not** use in-app updates. Re-download the newer `.deb` from GitHub Releases and reinstall it manually.
+- When an update finishes downloading on Linux, SqlLumen shows a **Restart required** state. Quit the app and reopen it to finish applying the update; Linux does not auto-relaunch after download.
+
+### Linux Secret Service / keyring troubleshooting
+
+Saved passwords on Linux require a working **Secret Service** provider. **GNOME Keyring** is the recommended provider.
+
+- **If password save/load fails** and SqlLumen mentions _"Linux Secret Service / keyring is unavailable or locked"_, verify that a Secret Service provider is installed and running for your desktop session.
+- **Check whether a Secret Service is available**:
+
+  ```bash
+  busctl --user list | grep org.freedesktop.secrets
+  ```
+
+  If `org.freedesktop.secrets` is not present, no Secret Service provider is currently exposed on your user DBus session.
+
+- **If the keyring is locked**, unlock it by logging into the desktop session normally or by opening your keyring/passwords app and unlocking the default keyring. Then retry the save/open action in SqlLumen.
+- **Minimal desktop environments, CI, WSL, and headless servers** often do not provide a user DBus session or Secret Service implementation at all. In those environments, secure password storage may be unavailable until you run a full desktop session with a keyring service such as GNOME Keyring.
+- **DBus session issues**: even with GNOME Keyring installed, SqlLumen cannot use secure storage unless it is started inside the same logged-in user session that owns the DBus session bus. Launching from ad-hoc shells, service managers, or stripped-down environments can break Secret Service discovery.
+
+Do not work around this by storing database passwords insecurely outside the OS credential store.
 
 ## macOS quarantine exclusion (step by step)
 

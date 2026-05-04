@@ -1,1 +1,1 @@
-See the release assets to download installers for Windows and macOS.
+See the release assets to download installers for Windows, macOS, Linux AppImage, and Linux .deb packages.

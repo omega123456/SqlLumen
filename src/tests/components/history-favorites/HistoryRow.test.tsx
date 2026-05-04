@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
@@ -28,8 +28,6 @@ function makeHistoryEntry(overrides: Partial<HistoryEntry> = {}): HistoryEntry {
     ...overrides,
   }
 }
-
-let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   useHistoryStore.setState({
@@ -70,10 +68,6 @@ beforeEach(() => {
         return null
     }
   })
-})
-
-afterEach(() => {
-  consoleSpy?.mockRestore()
 })
 
 describe('HistoryRow', () => {

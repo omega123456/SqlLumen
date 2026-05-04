@@ -65,11 +65,13 @@ export function AiChatInput({
   // Consume external suggestion text
   useEffect(() => {
     if (suggestionText) {
-      setValue(suggestionText)
-      onSuggestionConsumed?.()
-      requestAnimationFrame(() => {
+      const frame = requestAnimationFrame(() => {
+        setValue(suggestionText)
+        onSuggestionConsumed?.()
         textareaRef.current?.focus()
       })
+
+      return () => cancelAnimationFrame(frame)
     }
   }, [suggestionText, onSuggestionConsumed])
 
