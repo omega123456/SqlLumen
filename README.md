@@ -2,6 +2,25 @@
 
 A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://tauri.app/) 2 and [React](https://react.dev/) 19 (TypeScript). The UI is a native shell—sidebar object browser, tabbed workspace, resizable panels, and status bar—with light/dark theming. **MySQL and MariaDB** access runs in the Rust backend; the frontend talks to the database only through Tauri IPC (`invoke`), with local **SQLite** for app settings, history, and other persisted data.
 
+## Contents
+
+- **Install & downloads**
+  - [GitHub releases](#github-releases-ci)
+  - [Install by OS](#install-by-operating-system)
+  - [Linux (detailed)](#linux-installation-updates-and-saved-password-troubleshooting)
+  - [macOS Gatekeeper / quarantine](#macos-quarantine-exclusion-step-by-step)
+- **Develop locally**
+  - [Requirements](#requirements)
+  - [Setup](#setup)
+  - [Quick start](#quick-start)
+  - [Scripts](#scripts)
+- **Reference**
+  - [Features](#features)
+  - [Stack](#stack)
+  - [Project layout](#project-layout)
+  - [Contributing](#contributing)
+  - [AGENTS.md](AGENTS.md)
+
 ## Features
 
 - **Connections** — save and open connections; test connectivity from the connection dialog
@@ -136,6 +155,18 @@ Release note copy stays aligned across the workflow fallback text, [`scripts/bum
 > See the release assets to download installers for Windows, macOS, Linux AppImage, and Linux .deb packages.
 
 Releases are published directly (non-draft) by default. macOS artifacts from CI are **unsigned** unless you add Apple code signing secrets to the workflow—users may see Gatekeeper warnings until signing/notarization is configured ([Tauri macOS signing](https://v2.tauri.app/distribute/sign-macos/)).
+
+## Install by operating system
+
+Download installers from **[GitHub Releases](https://github.com/omega123456/SqlLumen/releases)**. Use the platform table below, then see the linked sections for prerequisites, updates, and troubleshooting.
+
+| OS | Artifacts (CI) | Install | In-app updates | More detail |
+| -- | ---------------- | ------- | -------------- | ----------- |
+| **Windows (x64)** | `.msi`, `.exe`, updater bundle | Run the installer from the release asset. | Yes — download then restart to finish. | [GitHub releases](#github-releases-ci) |
+| **macOS (Apple Silicon)** | `.dmg`, `.app.tar.gz`, updater artifact | Open the `.dmg` and drag **SqlLumen** to **Applications** (or use the packaged `.app` flow your release uses). | Yes on supported installs. | Unsigned CI builds: [macOS quarantine](#macos-quarantine-exclusion-step-by-step) · [Tauri macOS signing](https://v2.tauri.app/distribute/sign-macos/) |
+| **Linux (x64)** | `.deb`, `.AppImage`, `.AppImage.tar.gz` | **`.deb`:** `sudo apt install ./SqlLumen_x.x.x_amd64.deb` · **AppImage:** `chmod +x` then run. | **AppImage** only — `.deb` users reinstall from Releases. | [Linux installation](#linux-installation-updates-and-saved-password-troubleshooting) (prerequisites, keyring, restart-after-update) |
+
+For **building from source** on any OS, use [Requirements](#requirements), [Setup](#setup), and [Quick start](#quick-start) instead of prebuilt installers.
 
 ## Linux installation, updates, and saved-password troubleshooting
 
