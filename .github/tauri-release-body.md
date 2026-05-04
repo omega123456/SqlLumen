@@ -1,1 +1,1 @@
-Changed Macos keychain storage to consolidate all items into a single key
+See the release assets to download installers for Windows and macOS.
