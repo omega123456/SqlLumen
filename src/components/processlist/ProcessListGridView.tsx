@@ -1,16 +1,18 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useProcessListStore } from '../../stores/processlist-store'
+import { filterProcessListRows } from '../../lib/processlist-filter'
 import { Checkbox } from '../common/Checkbox'
 import { BaseGridView } from '../shared/BaseGridView'
 import { InfoCellPopover } from './InfoCellPopover'
+import type { ProcessRow } from '../../lib/processlist-commands'
 import type { GridColumnDescriptor } from '../../types/shared-data-view'
 import type { Column } from '../shared/DataGrid'
 import styles from './ProcessListGridView.module.css'
 
-type GridRow = Record<string, unknown>
+type GridRow = ProcessRow & Record<string, unknown>
 
 const EMPTY_SET = new Set<number>()
-const EMPTY_PROCESS_ROWS: import('../../lib/processlist-commands').ProcessRow[] = []
+const EMPTY_PROCESS_ROWS: ProcessRow[] = []
 
 /** Checkbox cell that subscribes to the store directly to avoid recreating prefixColumns. */
 function ProcessCheckboxCell({
@@ -117,20 +119,28 @@ export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) 
   const selectedIds = useProcessListStore(
     (s) => s.selectedIdsByConnection[connectionId] ?? EMPTY_SET
   )
+  const excludeIdleConnections = useProcessListStore(
+    (s) => s.excludeIdleConnectionsByConnection[connectionId] ?? true
+  )
   const sortColumn = useProcessListStore((s) => s.sortColumnByConnection[connectionId] ?? null)
   const setSortColumn = useProcessListStore((s) => s.setSortColumn)
 
   const [popoverSql, setPopoverSql] = useState<string | null>(null)
   const [popoverAnchor, setPopoverAnchor] = useState<HTMLElement | null>(null)
 
+  const visibleRows = useMemo(
+    () => filterProcessListRows(rows, excludeIdleConnections),
+    [rows, excludeIdleConnections]
+  )
+
   // Sort rows directly without intermediate mapping — ProcessRow already matches grid shape
   const gridRows: GridRow[] = useMemo(() => {
-    if (!sortColumn) return rows as unknown as GridRow[]
+    if (!sortColumn) return visibleRows as GridRow[]
 
     const { columnKey, direction } = sortColumn
-    return ([...rows] as unknown as GridRow[]).sort((a, b) => {
-      const aVal = a[columnKey]
-      const bVal = b[columnKey]
+    return ([...visibleRows] as GridRow[]).sort((a, b) => {
+      const aVal = a[columnKey as keyof ProcessRow]
+      const bVal = b[columnKey as keyof ProcessRow]
       if (aVal == null && bVal == null) return 0
       if (aVal == null) return direction === 'ASC' ? -1 : 1
       if (bVal == null) return direction === 'ASC' ? 1 : -1
@@ -140,7 +150,7 @@ export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) 
       const cmp = String(aVal).localeCompare(String(bVal))
       return direction === 'ASC' ? cmp : -cmp
     })
-  }, [rows, sortColumn])
+  }, [visibleRows, sortColumn])
 
   const handleSortChange = useCallback(
     (column: string | null, direction: 'ASC' | 'DESC' | null) => {
@@ -164,7 +174,7 @@ export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) 
     setPopoverAnchor(e.currentTarget)
   }, [])
 
-  const prefixColumns: Column<GridRow>[] = useMemo(
+  const prefixColumns = useMemo<Column<Record<string, unknown>>[]>(
     () => [
       {
         key: '__select__',
@@ -175,23 +185,22 @@ export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) 
         resizable: false,
         sortable: false,
         cellClass: 'rdg-checkbox-cell',
-        renderCell: ({ row }: { row: GridRow }) => {
-          const id = row.id as number
-          return <ProcessCheckboxCell connectionId={connectionId} processId={id} />
+        renderCell: ({ row }: { row: Record<string, unknown> }) => {
+          return <ProcessCheckboxCell connectionId={connectionId} processId={row.id as number} />
         },
       },
     ],
     [connectionId]
   )
 
-  const suffixColumns: Column<GridRow>[] = useMemo(
+  const suffixColumns = useMemo<Column<Record<string, unknown>>[]>(
     () => [
       {
         key: 'info',
         name: 'Info',
         resizable: true,
         sortable: true,
-        renderCell: ({ row }: { row: GridRow }) => {
+        renderCell: ({ row }: { row: Record<string, unknown> }) => {
           const info = row.info as string | null
           if (!info) return null
           return (
@@ -219,12 +228,11 @@ export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) 
     [handleInfoCellClick]
   )
 
-  const rowKeyGetter = useCallback((row: GridRow) => String(row.id), [])
+  const rowKeyGetter = useCallback((row: Record<string, unknown>) => String(row.id), [])
 
   const getRowClass = useCallback(
-    (row: GridRow) => {
-      const id = row.id as number
-      return selectedIds.has(id) ? 'rdg-row-precision-selected' : undefined
+    (row: Record<string, unknown>) => {
+      return selectedIds.has(row.id as number) ? 'rdg-row-precision-selected' : undefined
     },
     [selectedIds]
   )

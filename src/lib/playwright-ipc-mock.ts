@@ -1538,8 +1538,8 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           db: 'ecommerce_db',
           command: 'Sleep',
           time: 120,
-          state: '',
-          info: null,
+          state: 'Idle',
+          info: 'SELECT SLEEP(120)',
         },
         {
           id: 3,

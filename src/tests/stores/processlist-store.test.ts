@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useProcessListStore } from '../../stores/processlist-store'
 import type { ProcessRow, KillResult } from '../../lib/processlist-commands'
+import { isIdleProcessRow } from '../../lib/processlist-filter'
 
 // Mock toast and log
 vi.mock('../../stores/toast-store', () => ({
@@ -38,6 +39,7 @@ function resetStore() {
     lastRefreshedAtByConnection: {},
     selectedIdsByConnection: {},
     refreshIntervalMsByConnection: {},
+    excludeIdleConnectionsByConnection: {},
     isConfirmDialogOpenByConnection: {},
     isSummaryDialogOpenByConnection: {},
     sortColumnByConnection: {},
@@ -45,6 +47,7 @@ function resetStore() {
     fetchErrorByConnection: {},
     isFetchingByConnection: {},
     fetchGenerationByConnection: {},
+    hasFetchedByConnection: {},
   })
 }
 
@@ -87,6 +90,44 @@ describe('processlist-store', () => {
 
       const selected = useProcessListStore.getState().selectedIdsByConnection[CONN]
       expect(selected).toEqual(new Set([1, 2])) // 5 removed
+    })
+
+    it('drops selected rows that become hidden by the default idle filter', async () => {
+      useProcessListStore.setState({
+        selectedIdsByConnection: { [CONN]: new Set([1, 2]) },
+      })
+
+      const rows: ProcessRow[] = [
+        {
+          id: 1,
+          user: 'root',
+          host: 'localhost',
+          db: 'mydb',
+          command: 'Query',
+          time: 0,
+          state: 'executing',
+          info: 'SELECT 1',
+        },
+        {
+          id: 2,
+          user: 'root',
+          host: 'localhost',
+          db: 'mydb',
+          command: 'Sleep',
+          time: 5,
+          state: 'idle',
+          info: 'SELECT SLEEP(5)',
+        },
+      ]
+
+      mockIPC((cmd) => {
+        if (cmd === 'get_processlist') return rows
+        return null
+      })
+
+      await useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
+
+      expect(useProcessListStore.getState().selectedIdsByConnection[CONN]).toEqual(new Set([1]))
     })
 
     it('shows error toast on manual fetch failure', async () => {
@@ -206,6 +247,49 @@ describe('processlist-store', () => {
       expect(useProcessListStore.getState().refreshIntervalMsByConnection[CONN]).toBe(10000)
     })
 
+    it('setExcludeIdleConnections hides idle rows from selection by default', () => {
+      const rows: ProcessRow[] = [
+        {
+          id: 1,
+          user: 'root',
+          host: 'localhost',
+          db: 'mydb',
+          command: 'Query',
+          time: 0,
+          state: 'executing',
+          info: 'SELECT 1',
+        },
+        {
+          id: 2,
+          user: 'root',
+          host: 'localhost',
+          db: 'mydb',
+          command: 'Sleep',
+          time: 5,
+          state: 'idle',
+          info: 'SELECT SLEEP(5)',
+        },
+      ]
+
+      expect(isIdleProcessRow(rows[1])).toBe(true)
+
+      useProcessListStore.setState({
+        rowsByConnection: { [CONN]: rows },
+        selectedIdsByConnection: { [CONN]: new Set([1, 2]) },
+      })
+
+      useProcessListStore.getState().setExcludeIdleConnections(CONN, true)
+
+      const state = useProcessListStore.getState()
+      expect(state.excludeIdleConnectionsByConnection[CONN]).toBe(true)
+      expect(state.selectedIdsByConnection[CONN]).toEqual(new Set([1]))
+    })
+
+    it('setExcludeIdleConnections can show idle rows again', () => {
+      useProcessListStore.getState().setExcludeIdleConnections(CONN, false)
+      expect(useProcessListStore.getState().excludeIdleConnectionsByConnection[CONN]).toBe(false)
+    })
+
     it('setConfirmDialogOpen updates state', () => {
       useProcessListStore.getState().setConfirmDialogOpen(CONN, true)
       expect(useProcessListStore.getState().isConfirmDialogOpenByConnection[CONN]).toBe(true)
@@ -229,6 +313,7 @@ describe('processlist-store', () => {
         rowsByConnection: { [CONN]: makeRows(2) },
         selectedIdsByConnection: { [CONN]: new Set([1]) },
         refreshIntervalMsByConnection: { [CONN]: 3000 },
+        excludeIdleConnectionsByConnection: { [CONN]: false },
         isConfirmDialogOpenByConnection: { [CONN]: true },
         isSummaryDialogOpenByConnection: { [CONN]: true },
         sortColumnByConnection: { [CONN]: { columnKey: 'id', direction: 'ASC' } },
@@ -245,6 +330,7 @@ describe('processlist-store', () => {
       expect(state.rowsByConnection[CONN]).toBeUndefined()
       expect(state.selectedIdsByConnection[CONN]).toBeUndefined()
       expect(state.refreshIntervalMsByConnection[CONN]).toBeUndefined()
+      expect(state.excludeIdleConnectionsByConnection[CONN]).toBeUndefined()
       expect(state.isFetchingByConnection[CONN]).toBeUndefined()
       expect(state.isSummaryDialogOpenByConnection[CONN]).toBeUndefined()
     })

@@ -84,6 +84,7 @@ beforeEach(() => {
       lastRefreshedAtByConnection: { 'conn-1': Date.now() },
       selectedIdsByConnection: {},
       refreshIntervalMsByConnection: { 'conn-1': 5000 },
+      excludeIdleConnectionsByConnection: {},
       isConfirmDialogOpenByConnection: {},
       isSummaryDialogOpenByConnection: {},
       sortColumnByConnection: {},
@@ -179,6 +180,59 @@ describe('ProcessListToolbar', () => {
   it('renders interval dropdown', () => {
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
     expect(screen.getByTestId('processlist-interval-dropdown')).toBeInTheDocument()
+  })
+
+  it('defaults the filter dropdown to exclude idle', () => {
+    render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
+
+    expect(screen.getByTestId('processlist-filter-dropdown')).toHaveTextContent('Exclude idle')
+  })
+
+  it('updates the filter dropdown state when show all is selected', async () => {
+    const user = userEvent.setup()
+
+    render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
+
+    await user.click(screen.getByTestId('processlist-filter-dropdown'))
+    await user.click(screen.getByTestId('processlist-filter-dropdown-option-show-all'))
+
+    expect(useProcessListStore.getState().excludeIdleConnectionsByConnection['conn-1']).toBe(false)
+    expect(screen.getByTestId('processlist-filter-dropdown')).toHaveTextContent('Show all')
+  })
+
+  it('shows the filtered process count when idle rows are excluded', () => {
+    act(() => {
+      useProcessListStore.setState({
+        rowsByConnection: {
+          'conn-1': [
+            {
+              id: 10,
+              user: 'root',
+              host: 'localhost',
+              db: 'test',
+              command: 'Query',
+              time: 5,
+              state: 'running',
+              info: 'SELECT 1',
+            },
+            {
+              id: 11,
+              user: 'app',
+              host: 'localhost',
+              db: 'test',
+              command: 'Sleep',
+              time: 25,
+              state: 'idle',
+              info: 'SELECT SLEEP(25)',
+            },
+          ],
+        },
+      })
+    })
+
+    render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
+
+    expect(screen.getByText('1 Rows')).toBeInTheDocument()
   })
 
   it('opens confirm dialog and shows truncated SQL on kill click', async () => {

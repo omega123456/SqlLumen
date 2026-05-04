@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react'
-import { useProcessListStore } from '../../stores/processlist-store'
+import { DEFAULT_REFRESH_INTERVAL_MS, useProcessListStore } from '../../stores/processlist-store'
 import { ProcessListToolbar } from './ProcessListToolbar'
 import { ProcessListGridView } from './ProcessListGridView'
 import styles from './ProcessListTab.module.css'
@@ -13,7 +13,7 @@ export interface ProcessListTabProps {
 export default function ProcessListTab({ connectionId, sessionId, isActive }: ProcessListTabProps) {
   const fetchProcessList = useProcessListStore((s) => s.fetchProcessList)
   const refreshIntervalMs = useProcessListStore(
-    (s) => s.refreshIntervalMsByConnection[connectionId] ?? 5000
+    (s) => s.refreshIntervalMsByConnection[connectionId] ?? DEFAULT_REFRESH_INTERVAL_MS
   )
   const isConfirmDialogOpen = useProcessListStore(
     (s) => s.isConfirmDialogOpenByConnection[connectionId] ?? false

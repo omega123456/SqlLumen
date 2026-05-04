@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowCounterClockwise, StopCircle } from '@phosphor-icons/react'
-import { useProcessListStore } from '../../stores/processlist-store'
+import {
+  DEFAULT_EXCLUDE_IDLE_CONNECTIONS,
+  DEFAULT_REFRESH_INTERVAL_MS,
+  useProcessListStore,
+} from '../../stores/processlist-store'
+import { filterProcessListRows } from '../../lib/processlist-filter'
 import { formatProcessListRefreshTime } from '../../lib/processlist-time'
 import { useConnectionStore } from '../../stores/connection-store'
 import { Dropdown } from '../common/Dropdown'
@@ -24,6 +29,14 @@ const INTERVAL_OPTIONS = [
   { label: '30s', value: '30000' },
 ]
 
+const FILTER_OPTIONS = [
+  { label: 'Exclude idle', value: 'exclude-idle' },
+  { label: 'Show all', value: 'show-all' },
+]
+
+const EXCLUDE_IDLE_FILTER_VALUE = 'exclude-idle'
+const SHOW_ALL_FILTER_VALUE = 'show-all'
+
 function truncateSql(sql: string | null): string {
   if (!sql) return '(no active query)'
   return sql.length > 80 ? sql.slice(0, 80) + '...' : sql
@@ -44,11 +57,12 @@ export function ProcessListToolbar({
   const selectedIds = useProcessListStore(
     (s) => s.selectedIdsByConnection[connectionId] ?? emptySet
   )
-  const selectedCount = selectedIds.size
-  const rowCount = rows.length
   const isFetching = useProcessListStore((s) => s.isFetchingByConnection[connectionId] ?? false)
   const refreshIntervalMs = useProcessListStore(
-    (s) => s.refreshIntervalMsByConnection[connectionId] ?? 5000
+    (s) => s.refreshIntervalMsByConnection[connectionId] ?? DEFAULT_REFRESH_INTERVAL_MS
+  )
+  const excludeIdleConnections = useProcessListStore(
+    (s) => s.excludeIdleConnectionsByConnection[connectionId] ?? DEFAULT_EXCLUDE_IDLE_CONNECTIONS
   )
   const lastRefreshedAt = useProcessListStore(
     (s) => s.lastRefreshedAtByConnection[connectionId] ?? null
@@ -57,6 +71,7 @@ export function ProcessListToolbar({
     (s) => s.isConfirmDialogOpenByConnection[connectionId] ?? false
   )
   const setRefreshInterval = useProcessListStore((s) => s.setRefreshInterval)
+  const setExcludeIdleConnections = useProcessListStore((s) => s.setExcludeIdleConnections)
   const setConfirmDialogOpen = useProcessListStore((s) => s.setConfirmDialogOpen)
   const setSummaryDialogOpen = useProcessListStore((s) => s.setSummaryDialogOpen)
   const killSelectedProcesses = useProcessListStore((s) => s.killSelectedProcesses)
@@ -65,6 +80,9 @@ export function ProcessListToolbar({
 
   const activeConnections = useConnectionStore((s) => s.activeConnections)
   const isReadOnly = activeConnections[connectionId]?.profile.readOnly ?? false
+  const visibleRows = filterProcessListRows(rows, excludeIdleConnections)
+  const selectedCount = selectedIds.size
+  const rowCount = visibleRows.length
 
   const [killResults, setKillResults] = useState<KillResult[] | null>(null)
   const [isKilling, setIsKilling] = useState(false)
@@ -109,6 +127,13 @@ export function ProcessListToolbar({
       setRefreshInterval(connectionId, Number(value))
     },
     [connectionId, setRefreshInterval]
+  )
+
+  const handleFilterChange = useCallback(
+    (value: string) => {
+      setExcludeIdleConnections(connectionId, value === EXCLUDE_IDLE_FILTER_VALUE)
+    },
+    [connectionId, setExcludeIdleConnections]
   )
 
   const handleKillClick = useCallback(() => {
@@ -218,6 +243,16 @@ export function ProcessListToolbar({
 
       {/* Right section: Interval dropdown + Kill button */}
       <div className={styles.rightSection}>
+        <Dropdown
+          id="processlist-filter"
+          ariaLabel="Process list filter"
+          data-testid="processlist-filter-dropdown"
+          options={FILTER_OPTIONS}
+          value={excludeIdleConnections ? EXCLUDE_IDLE_FILTER_VALUE : SHOW_ALL_FILTER_VALUE}
+          onChange={handleFilterChange}
+          triggerClassName={sharedToolbarStyles.pageSizeSelect}
+        />
+
         <Dropdown
           id="processlist-interval"
           ariaLabel="Auto-refresh interval"

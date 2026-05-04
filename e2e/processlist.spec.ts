@@ -55,4 +55,22 @@ test.describe('Process List tab', () => {
     await expect(page.getByTestId('processlist-grid')).toBeVisible({ timeout: APP_READY_MS })
     await expect(page.getByTestId('processlist-interval-dropdown')).toBeVisible()
   })
+
+  test('filter dropdown defaults to exclude idle and can switch to show all', async ({ page }) => {
+    const tabStrip = page.getByTestId('workspace-tabs')
+    await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
+    await tabStrip.getByText('Process List').click()
+
+    const filterDropdown = page.getByTestId('processlist-filter-dropdown')
+    const rows = page.getByTestId('processlist-grid').locator('.rdg-row')
+
+    await expect(filterDropdown).toHaveText('Exclude idle')
+    await expect(rows).toHaveCount(3)
+
+    await filterDropdown.click()
+    await page.getByTestId('processlist-filter-dropdown-option-show-all').click()
+
+    await expect(filterDropdown).toHaveText('Show all')
+    await expect(rows).toHaveCount(6)
+  })
 })

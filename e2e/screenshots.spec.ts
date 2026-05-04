@@ -2902,6 +2902,17 @@ for (const theme of themes) {
       )
     })
 
+    test('ProcessListTab — include idle connections', async ({ page }) => {
+      await openProcessListTab(page)
+      await page.getByTestId('processlist-filter-dropdown').click()
+      await page.getByTestId('processlist-filter-dropdown-option-show-all').click()
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('processlist-tab')).toHaveScreenshot(
+        `processlist-tab-include-idle-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('full app layout — process list tab', async ({ page }) => {
       await openProcessListTab(page)
       await resetChromeScrollPositions(page)

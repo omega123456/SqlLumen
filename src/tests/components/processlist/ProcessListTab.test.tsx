@@ -71,6 +71,7 @@ function setupStore() {
     lastRefreshedAtByConnection: {},
     selectedIdsByConnection: {},
     refreshIntervalMsByConnection: {},
+    excludeIdleConnectionsByConnection: {},
     isConfirmDialogOpenByConnection: {},
     isSummaryDialogOpenByConnection: {},
     sortColumnByConnection: {},

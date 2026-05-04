@@ -1,18 +1,33 @@
 import { create } from 'zustand'
 import type { ProcessRow, KillResult } from '../lib/processlist-commands'
 import { getProcesslist, killQueries } from '../lib/processlist-commands'
+import { filterProcessListRows } from '../lib/processlist-filter'
 import { getProcessListRefreshTimestamp } from '../lib/processlist-time'
 import { showErrorToast } from './toast-store'
 import { logFrontend } from '../lib/app-log-commands'
 
 const DEFAULT_REFRESH_INTERVAL_MS = 5000
+const DEFAULT_EXCLUDE_IDLE_CONNECTIONS = true
 const ERROR_TOAST_COOLDOWN_MS = 30_000
+
+function reconcileVisibleSelectedIds(
+  rows: ProcessRow[],
+  selectedIds: Set<number>,
+  excludeIdleConnections: boolean
+): Set<number> {
+  const visibleRowIds = new Set(
+    filterProcessListRows(rows, excludeIdleConnections).map((row) => row.id)
+  )
+
+  return new Set([...selectedIds].filter((id) => visibleRowIds.has(id)))
+}
 
 interface ProcessListState {
   rowsByConnection: Record<string, ProcessRow[]>
   lastRefreshedAtByConnection: Record<string, number | null>
   selectedIdsByConnection: Record<string, Set<number>>
   refreshIntervalMsByConnection: Record<string, number>
+  excludeIdleConnectionsByConnection: Record<string, boolean>
   isConfirmDialogOpenByConnection: Record<string, boolean>
   isSummaryDialogOpenByConnection: Record<string, boolean>
   sortColumnByConnection: Record<string, { columnKey: string; direction: 'ASC' | 'DESC' } | null>
@@ -28,6 +43,7 @@ interface ProcessListState {
   setSelectedIds: (connectionId: string, ids: Set<number>) => void
   toggleSelectedId: (connectionId: string, id: number) => void
   setRefreshInterval: (connectionId: string, ms: number) => void
+  setExcludeIdleConnections: (connectionId: string, excludeIdleConnections: boolean) => void
   setConfirmDialogOpen: (connectionId: string, open: boolean) => void
   setSummaryDialogOpen: (connectionId: string, open: boolean) => void
   setSortColumn: (
@@ -42,6 +58,7 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
   lastRefreshedAtByConnection: {},
   selectedIdsByConnection: {},
   refreshIntervalMsByConnection: {},
+  excludeIdleConnectionsByConnection: {},
   isConfirmDialogOpenByConnection: {},
   isSummaryDialogOpenByConnection: {},
   sortColumnByConnection: {},
@@ -73,9 +90,14 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
       // Stale guard: if generation changed (e.g. resetConnection was called), discard results
       if (get().fetchGenerationByConnection[connectionId] !== generation) return
 
+      const excludeIdleConnections =
+        get().excludeIdleConnectionsByConnection[connectionId] ?? DEFAULT_EXCLUDE_IDLE_CONNECTIONS
       const currentSelected = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
-      const newRowIds = new Set(rows.map((r) => r.id))
-      const reconciledSelected = new Set([...currentSelected].filter((id) => newRowIds.has(id)))
+      const reconciledSelected = reconcileVisibleSelectedIds(
+        rows,
+        currentSelected,
+        excludeIdleConnections
+      )
 
       set({
         rowsByConnection: { ...get().rowsByConnection, [connectionId]: rows },
@@ -169,6 +191,27 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
     })
   },
 
+  setExcludeIdleConnections: (connectionId: string, excludeIdleConnections: boolean) => {
+    const rows = get().rowsByConnection[connectionId] ?? []
+    const currentSelected = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
+    const reconciledSelected = reconcileVisibleSelectedIds(
+      rows,
+      currentSelected,
+      excludeIdleConnections
+    )
+
+    set({
+      excludeIdleConnectionsByConnection: {
+        ...get().excludeIdleConnectionsByConnection,
+        [connectionId]: excludeIdleConnections,
+      },
+      selectedIdsByConnection: {
+        ...get().selectedIdsByConnection,
+        [connectionId]: reconciledSelected,
+      },
+    })
+  },
+
   setConfirmDialogOpen: (connectionId: string, open: boolean) => {
     set({
       isConfirmDialogOpenByConnection: {
@@ -214,6 +257,7 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
         lastRefreshedAtByConnection: deleteKey(state.lastRefreshedAtByConnection),
         selectedIdsByConnection: deleteKey(state.selectedIdsByConnection),
         refreshIntervalMsByConnection: deleteKey(state.refreshIntervalMsByConnection),
+        excludeIdleConnectionsByConnection: deleteKey(state.excludeIdleConnectionsByConnection),
         isConfirmDialogOpenByConnection: deleteKey(state.isConfirmDialogOpenByConnection),
         isSummaryDialogOpenByConnection: deleteKey(state.isSummaryDialogOpenByConnection),
         sortColumnByConnection: deleteKey(state.sortColumnByConnection),
@@ -231,4 +275,4 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
 }))
 
 /** Default refresh interval in milliseconds. */
-export { DEFAULT_REFRESH_INTERVAL_MS }
+export { DEFAULT_EXCLUDE_IDLE_CONNECTIONS, DEFAULT_REFRESH_INTERVAL_MS }

@@ -8,6 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..')
 const tauriConfPath = path.join(repoRoot, 'src-tauri', 'tauri.conf.json')
 const cargoTomlPath = path.join(repoRoot, 'src-tauri', 'Cargo.toml')
+const tauriDir = path.join(repoRoot, 'src-tauri')
 const releaseBodyRelative = '.github/tauri-release-body.md'
 const releaseBodyPath = path.join(repoRoot, releaseBodyRelative)
 
@@ -111,6 +112,14 @@ function runGit(args, inheritIo = true) {
   })
 }
 
+/** Runs `cargo generate-lockfile` so `Cargo.lock` matches the bumped `[package] version`. */
+function runCargoGenerateLockfile() {
+  execFileSync('cargo', ['generate-lockfile'], {
+    cwd: tauriDir,
+    stdio: 'inherit',
+  })
+}
+
 /** Runs `pnpm build` (tsc + vite). Throws if the build fails. */
 function runProductionBuild() {
   execSync('pnpm build', {
@@ -118,6 +127,30 @@ function runProductionBuild() {
     stdio: 'inherit',
     shell: true,
   })
+}
+
+function restoreVersionFilesAndReleaseBody(
+  tauriConfRaw,
+  cargoTomlRaw,
+  releaseBodyExisted,
+  releaseBodyRaw
+) {
+  writeFileSync(tauriConfPath, tauriConfRaw, 'utf8')
+  writeFileSync(cargoTomlPath, cargoTomlRaw, 'utf8')
+  if (releaseBodyExisted && releaseBodyRaw !== null) {
+    writeFileSync(releaseBodyPath, releaseBodyRaw, 'utf8')
+  } else {
+    try {
+      unlinkSync(releaseBodyPath)
+    } catch {
+      /* file may not exist */
+    }
+  }
+  try {
+    runGit(['restore', 'src-tauri/Cargo.lock'], false)
+  } catch {
+    /* lockfile may be untracked or restore unsupported; best-effort */
+  }
 }
 
 /** @param {import('node:readline').Interface} rl */
@@ -246,28 +279,46 @@ async function main() {
     console.log(`Updated ${releaseBodyRelative} for GitHub Actions release body.`)
 
     console.log('')
-    console.log('Running pnpm build (tsc + vite build) before commit/tag…')
+    console.log('Refreshing src-tauri/Cargo.lock (cargo generate-lockfile)…')
     try {
-      runProductionBuild()
+      runCargoGenerateLockfile()
     } catch {
-      writeFileSync(tauriConfPath, raw, 'utf8')
-      writeFileSync(cargoTomlPath, cargoRaw, 'utf8')
-      if (releaseBodyPreviousExisted && releaseBodyPreviousRaw !== null) {
-        writeFileSync(releaseBodyPath, releaseBodyPreviousRaw, 'utf8')
-      } else {
-        try {
-          unlinkSync(releaseBodyPath)
-        } catch {
-          /* file may not exist */
-        }
-      }
+      restoreVersionFilesAndReleaseBody(
+        raw,
+        cargoRaw,
+        releaseBodyPreviousExisted,
+        releaseBodyPreviousRaw
+      )
       console.error(
-        '[bump-tauri-version] Build failed; restored previous tauri.conf.json, Cargo.toml, and release body file. No commit, tag, or push.'
+        '[bump-tauri-version] cargo generate-lockfile failed; restored previous tauri.conf.json, Cargo.toml, release body, and Cargo.lock. No commit, tag, or push.'
       )
       process.exit(1)
     }
 
-    runGit(['add', 'src-tauri/tauri.conf.json', 'src-tauri/Cargo.toml', releaseBodyRelative])
+    console.log('')
+    console.log('Running pnpm build (tsc + vite build) before commit/tag…')
+    try {
+      runProductionBuild()
+    } catch {
+      restoreVersionFilesAndReleaseBody(
+        raw,
+        cargoRaw,
+        releaseBodyPreviousExisted,
+        releaseBodyPreviousRaw
+      )
+      console.error(
+        '[bump-tauri-version] Build failed; restored previous tauri.conf.json, Cargo.toml, release body, and Cargo.lock. No commit, tag, or push.'
+      )
+      process.exit(1)
+    }
+
+    runGit([
+      'add',
+      'src-tauri/tauri.conf.json',
+      'src-tauri/Cargo.toml',
+      'src-tauri/Cargo.lock',
+      releaseBodyRelative,
+    ])
     runGit(['commit', '-m', `chore: bump version to ${next}`])
     runGit(['tag', gitTag])
     console.log(`Created tag ${gitTag}.`)

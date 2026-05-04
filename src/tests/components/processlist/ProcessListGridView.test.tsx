@@ -61,6 +61,7 @@ beforeEach(() => {
     lastRefreshedAtByConnection: {},
     selectedIdsByConnection: { 'conn-1': new Set<number>() },
     refreshIntervalMsByConnection: {},
+    excludeIdleConnectionsByConnection: {},
     isConfirmDialogOpenByConnection: {},
     isSummaryDialogOpenByConnection: {},
     sortColumnByConnection: {},
@@ -68,6 +69,7 @@ beforeEach(() => {
     fetchErrorByConnection: {},
     isFetchingByConnection: {},
     fetchGenerationByConnection: {},
+    hasFetchedByConnection: {},
   })
 })
 
@@ -118,6 +120,9 @@ describe('ProcessListGridView', () => {
 
   it('sorts rows when sortColumn is set', () => {
     useProcessListStore.setState({
+      excludeIdleConnectionsByConnection: { 'conn-1': false },
+    })
+    useProcessListStore.setState({
       sortColumnByConnection: { 'conn-1': { columnKey: 'time', direction: 'DESC' } },
     })
     render(<ProcessListGridView connectionId="conn-1" />)
@@ -126,6 +131,29 @@ describe('ProcessListGridView', () => {
     // time=100 should come before time=5 in DESC
     expect(rows[0].time).toBe(100)
     expect(rows[1].time).toBe(5)
+  })
+
+  it('hides idle rows by default', () => {
+    render(<ProcessListGridView connectionId="conn-1" />)
+
+    const lastCall = mockDataGridFn.mock.calls[mockDataGridFn.mock.calls.length - 1][0]
+    const rows = lastCall.rows as Array<Record<string, unknown>>
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe(1)
+  })
+
+  it('shows idle rows when the filter is disabled', () => {
+    useProcessListStore.setState({
+      excludeIdleConnectionsByConnection: { 'conn-1': false },
+    })
+
+    render(<ProcessListGridView connectionId="conn-1" />)
+
+    const lastCall = mockDataGridFn.mock.calls[mockDataGridFn.mock.calls.length - 1][0]
+    const rows = lastCall.rows as Array<Record<string, unknown>>
+
+    expect(rows).toHaveLength(2)
   })
 
   it('passes empty rows when connection has no data', () => {
