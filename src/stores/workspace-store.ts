@@ -110,8 +110,7 @@ function getObjectEditorLabel(objectType: EditableObjectType, objectName: string
 
 function getUpdatedObjectTabLabel(
   tab: ObjectScopedTab,
-  objectName: string = tab.objectName,
-  databaseName: string = tab.databaseName
+  objectName: string = tab.objectName
 ): string {
   if (tab.type === 'table-designer') {
     return objectName
@@ -692,7 +691,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
           return {
             ...t,
             databaseName: newDatabase,
-            label: getUpdatedObjectTabLabel(t, t.objectName, newDatabase),
+            label: getUpdatedObjectTabLabel(t, t.objectName),
           } as WorkspaceTab
         })
       )
