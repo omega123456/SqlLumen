@@ -332,9 +332,7 @@ export interface PrimaryKeyInfo {
 export interface TableDataResponse {
   columns: TableDataColumnMeta[]
   rows: unknown[][]
-  totalRows: number
   currentPage: number
-  totalPages: number
   pageSize: number
   primaryKey: PrimaryKeyInfo | null
   executionTimeMs: number
@@ -468,9 +466,7 @@ export interface TableDataTabState {
   // Data
   columns: TableDataColumnMeta[]
   rows: unknown[][]
-  totalRows: number
   currentPage: number
-  totalPages: number
   pageSize: number
   primaryKey: PrimaryKeyInfo | null
   executionTimeMs: number

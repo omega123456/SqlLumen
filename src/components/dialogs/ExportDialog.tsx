@@ -12,10 +12,6 @@ const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
 interface ExportDialogProps {
   connectionId: string
   tabId: string
-  /** Number of columns in the result set. */
-  columnCount: number
-  /** Total row count in the result set. */
-  totalRows: number
   onClose: () => void
   /** Optional result index for multi-result tabs. */
   resultIndex?: number
@@ -78,8 +74,6 @@ const FORMAT_KEYS = Object.keys(EXPORT_FORMAT_CONFIG) as ExportFormat[]
 export default function ExportDialog({
   connectionId,
   tabId,
-  columnCount,
-  totalRows,
   onClose,
   resultIndex,
   onExport,
@@ -109,14 +103,6 @@ export default function ExportDialog({
       })),
     [isView]
   )
-
-  const estimatedSizeText = useMemo(() => {
-    const estimatedBytes = totalRows * columnCount * 20
-    if (estimatedBytes > 1_000_000) {
-      return `${(estimatedBytes / 1_000_000).toFixed(1)} MB`
-    }
-    return `${Math.max(1, Math.round(estimatedBytes / 1_000))} KB`
-  }, [totalRows, columnCount])
 
   const handleBrowse = useCallback(async () => {
     const config = EXPORT_FORMAT_CONFIG[format]
@@ -163,7 +149,17 @@ export default function ExportDialog({
     } finally {
       setIsExporting(false)
     }
-  }, [connectionId, tabId, format, filePath, includeHeaders, tableName, onClose, onExport])
+  }, [
+    connectionId,
+    tabId,
+    format,
+    filePath,
+    includeHeaders,
+    tableName,
+    onClose,
+    onExport,
+    resultIndex,
+  ])
 
   return (
     <DialogShell
@@ -296,19 +292,6 @@ export default function ExportDialog({
               Cancel
             </button>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className={styles.footer}>
-          <span className={styles.footerIcon}>
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
-            </svg>
-          </span>
-          <p className={styles.footerText} data-testid="export-estimated-size">
-            Estimated size: <span className={styles.footerTextBold}>{estimatedSizeText}</span>.
-            Large exports may take several minutes to process in the background.
-          </p>
         </div>
       </div>
     </DialogShell>

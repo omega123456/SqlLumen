@@ -15,7 +15,7 @@ mod type_aware_filter_integration {
     use super::*;
     use chrono::NaiveDate;
     use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
-    use opensrv_mysql::{ColumnFlags, ColumnType, ErrorKind};
+use opensrv_mysql::{ColumnFlags, ColumnType};
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
     use serde_json::json;
@@ -238,12 +238,6 @@ mod type_aware_filter_integration {
                 error: None,
             },
             MockQueryStep {
-                query: "SELECT COUNT(*) FROM `pi_management`.`users` WHERE `email_verified_at` IS NOT NULL",
-                columns: vec![MockColumnDef { name: "COUNT(*)", coltype: ColumnType::MYSQL_TYPE_LONGLONG, colflags: ColumnFlags::NOT_NULL_FLAG }],
-                rows: vec![vec![MockCell::I64(1)]],
-                error: None,
-            },
-            MockQueryStep {
                 query: "SELECT * FROM `pi_management`.`users` WHERE `email_verified_at` IS NOT NULL LIMIT 50 OFFSET 0",
                 columns: vec![
                     MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
@@ -259,12 +253,6 @@ mod type_aware_filter_integration {
                     ),
                 ]],
                 error: None,
-            },
-            MockQueryStep {
-                query: "SELECT COUNT(*) FROM `pi_management`.`users` WHERE (`email_verified_at` IS NOT NULL AND `email_verified_at` != '')",
-                columns: vec![],
-                rows: vec![],
-                error: Some((ErrorKind::ER_WRONG_VALUE, b"Incorrect TIMESTAMP value: ''")),
             },
         ])
         .await;
@@ -313,7 +301,6 @@ mod type_aware_filter_integration {
         )
         .expect("type-aware timestamp notBlank filter should succeed");
 
-        assert_eq!(response.total_rows, 1);
         assert_eq!(response.rows.len(), 1);
 
         set_test_pool_factory(None);
@@ -368,12 +355,6 @@ mod type_aware_filter_integration {
                 query: "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION",
                 columns: vec![MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG }],
                 rows: vec![vec![MockCell::Bytes(b"id")]],
-                error: None,
-            },
-            MockQueryStep {
-                query: "SELECT COUNT(*) FROM `pi_management`.`users`",
-                columns: vec![MockColumnDef { name: "COUNT(*)", coltype: ColumnType::MYSQL_TYPE_LONGLONG, colflags: ColumnFlags::NOT_NULL_FLAG }],
-                rows: vec![vec![MockCell::I64(1)]],
                 error: None,
             },
             MockQueryStep {
@@ -441,7 +422,6 @@ mod type_aware_filter_integration {
         )
         .expect("fetch_table_data IPC should succeed");
 
-        assert_eq!(response.total_rows, 1);
         assert_eq!(response.rows.len(), 1);
         assert_eq!(
             response.rows[0][1],
@@ -495,12 +475,6 @@ mod type_aware_filter_integration {
                 query: "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION",
                 columns: vec![MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG }],
                 rows: vec![vec![MockCell::Bytes(b"id")]],
-                error: None,
-            },
-            MockQueryStep {
-                query: "SELECT COUNT(*) FROM `pi_management`.`users`",
-                columns: vec![MockColumnDef { name: "COUNT(*)", coltype: ColumnType::MYSQL_TYPE_LONGLONG, colflags: ColumnFlags::NOT_NULL_FLAG }],
-                rows: vec![vec![MockCell::I64(1)]],
                 error: None,
             },
             MockQueryStep {
@@ -604,12 +578,6 @@ mod type_aware_filter_integration {
                 error: None,
             },
             MockQueryStep {
-                query: "SELECT COUNT(*) FROM `pi_management`.`users`",
-                columns: vec![MockColumnDef { name: "COUNT(*)", coltype: ColumnType::MYSQL_TYPE_LONGLONG, colflags: ColumnFlags::NOT_NULL_FLAG }],
-                rows: vec![vec![MockCell::I64(1)]],
-                error: None,
-            },
-            MockQueryStep {
                 query: "SELECT * FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
                 columns: vec![
                     MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
@@ -659,7 +627,6 @@ mod type_aware_filter_integration {
         )
         .expect("fetch_table_data IPC should succeed");
 
-        assert_eq!(response.total_rows, 1);
         assert_eq!(response.rows.len(), 1);
         assert_eq!(response.rows[0][1], serde_json::json!(1));
 
@@ -951,7 +918,6 @@ mod command_wrapper_coverage {
 
         assert_eq!(response.current_page, 2);
         assert_eq!(response.page_size, 25);
-        assert_eq!(response.total_rows, 0);
         assert!(response.rows.is_empty());
     }
 
@@ -1114,6 +1080,8 @@ mod command_wrapper_coverage {
         assert!(entry.sql_text.contains("users"));
         assert!(entry.sql_text.contains("LIMIT 50 OFFSET 0"));
         assert_eq!(entry.database_name.as_deref(), Some("test_db"));
+        assert_eq!(entry.row_count, None);
+        assert_eq!(entry.affected_rows, None);
     }
 
     #[tokio::test]
@@ -2114,7 +2082,6 @@ fn filter_condition_roundtrip() {
 #[test]
 fn export_table_options_serializes() {
     let opts = ExportTableOptions {
-        connection_id: "conn-1".to_string(),
         database: "test_db".to_string(),
         table: "users".to_string(),
         format: "csv".to_string(),
@@ -2125,7 +2092,8 @@ fn export_table_options_serializes() {
         sort: None,
     };
     let json = serde_json::to_string(&opts).expect("serialize");
-    assert!(json.contains("connectionId"));
+    assert!(!json.contains("connectionId"));
+    assert!(json.contains("database"));
     assert!(json.contains("includeHeaders"));
 }
 
@@ -2161,15 +2129,12 @@ mod coverage_stubs {
             100,
             None,
             vec![],
-            "conn-1",
         )
         .await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
-        assert_eq!(response.total_rows, 0);
         assert_eq!(response.current_page, 1);
-        assert_eq!(response.total_pages, 1);
         assert_eq!(response.page_size, 100);
         assert!(response.columns.is_empty());
         assert!(response.rows.is_empty());
@@ -2190,7 +2155,7 @@ mod coverage_stubs {
             direction: "asc".to_string(),
         });
 
-        let result = fetch_table_data_impl(&pool, "db", "tbl", 2, 50, sort, filter, "conn-1").await;
+        let result = fetch_table_data_impl(&pool, "db", "tbl", 2, 50, sort, filter).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -2259,7 +2224,6 @@ mod coverage_stubs {
     async fn export_table_data_impl_stub_returns_ok() {
         let pool = dummy_lazy_pool();
         let options = ExportTableOptions {
-            connection_id: "conn-1".to_string(),
             database: "test_db".to_string(),
             table: "users".to_string(),
             format: "csv".to_string(),

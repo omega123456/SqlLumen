@@ -27,9 +27,7 @@ vi.mock('../../../lib/table-data-commands', () => ({
   fetchTableData: vi.fn().mockResolvedValue({
     columns: [],
     rows: [],
-    totalRows: 0,
     currentPage: 1,
-    totalPages: 1,
     pageSize: 1000,
     primaryKey: null,
     executionTimeMs: 0,
@@ -146,9 +144,7 @@ function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabS
   return {
     columns: mockColumns,
     rows: mockRows,
-    totalRows: 1,
     currentPage: 1,
-    totalPages: 1,
     pageSize: 1000,
     primaryKey: mockPK,
     executionTimeMs: 15,
@@ -320,12 +316,13 @@ beforeEach(() => {
 })
 
 describe('TableDataFormView', () => {
-  it('renders form view with record navigation "Record 1 of 1"', () => {
+  it('renders form view with unknown-total record navigation', () => {
     setupStore()
     renderFormView()
 
     expect(screen.getByTestId('table-data-form-view')).toBeInTheDocument()
-    expect(screen.getByText('Record 1 of 1')).toBeInTheDocument()
+    expect(screen.getByText('Record 1')).toBeInTheDocument()
+    expect(screen.queryByText('Record 1 of 1')).not.toBeInTheDocument()
   })
 
   it('shows all column fields', () => {
@@ -411,12 +408,12 @@ describe('TableDataFormView', () => {
     expect(prevBtn).toBeDisabled()
   })
 
-  it('Next button disabled on last record', () => {
+  it('Next button stays enabled for optimistic unknown-total navigation', () => {
     setupStore()
     renderFormView()
 
     const nextBtn = screen.getByTestId('btn-form-next')
-    expect(nextBtn).toBeDisabled()
+    expect(nextBtn).not.toBeDisabled()
   })
 
   it('Save button disabled when no changes', () => {
@@ -446,7 +443,7 @@ describe('TableDataFormView', () => {
   })
 
   it('shows empty state when rows is empty', () => {
-    setupStore({ rows: [], totalRows: 0 })
+    setupStore({ rows: [] })
     renderFormView()
 
     expect(screen.getByText('No rows to display')).toBeInTheDocument()
@@ -458,7 +455,6 @@ describe('TableDataFormView', () => {
         [1, 'Alice', null],
         [2, 'Bob', null],
       ],
-      totalRows: 2,
       selectedRowKey: { id: 1 },
     })
     renderFormView()
@@ -545,9 +541,7 @@ describe('TableDataFormView', () => {
     vi.mocked(fetchTableData).mockResolvedValueOnce({
       columns: [mockColumns[0]],
       rows: [[1]],
-      totalRows: 1,
       currentPage: 1,
-      totalPages: 1,
       pageSize: 100,
       primaryKey: mockPK,
       executionTimeMs: 4,
@@ -596,9 +590,7 @@ describe('TableDataFormView', () => {
     vi.mocked(fetchTableData).mockResolvedValueOnce({
       columns: [mockColumns[0]],
       rows: [[1]],
-      totalRows: 1,
       currentPage: 1,
-      totalPages: 1,
       pageSize: 100,
       primaryKey: mockPK,
       executionTimeMs: 4,
@@ -647,9 +639,7 @@ describe('TableDataFormView', () => {
     vi.mocked(fetchTableData).mockResolvedValueOnce({
       columns: [mockColumns[0]],
       rows: [[1]],
-      totalRows: 1,
       currentPage: 1,
-      totalPages: 1,
       pageSize: 100,
       primaryKey: mockPK,
       executionTimeMs: 4,
@@ -703,14 +693,12 @@ describe('TableDataFormView', () => {
     setupStore({
       currentPage: 3,
       pageSize: 10,
-      totalPages: 5,
-      totalRows: 50,
       selectedRowKey: { id: 1 },
     })
     renderFormView()
 
-    // Record position should be (3-1)*10 + 0 + 1 = 21
-    expect(screen.getByText('Record 21 of 50')).toBeInTheDocument()
+    expect(screen.getByText('Record 21')).toBeInTheDocument()
+    expect(screen.queryByText(/of 50/)).not.toBeInTheDocument()
   })
 
   it('unique key field label shows "(Unique Key)"', () => {
@@ -751,12 +739,11 @@ describe('TableDataFormView', () => {
         [1, 'Alice', null],
         [2, 'Bob', null],
       ],
-      totalRows: 2,
       selectedRowKey: { id: 1 },
     })
     renderFormView()
 
-    expect(screen.getByText('Record 1 of 2')).toBeInTheDocument()
+    expect(screen.getByText('Record 1')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('btn-form-next'))
 
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -769,7 +756,6 @@ describe('TableDataFormView', () => {
         [1, 'Alice', null],
         [2, 'Bob', null],
       ],
-      totalRows: 2,
       selectedRowKey: { id: 2 },
     })
     renderFormView()
@@ -929,18 +915,14 @@ describe('TableDataFormView', () => {
     expect(nameInput.value).toBe('')
   })
 
-  it('temp row shows correct "Record N of M" with effectiveTotalRows', () => {
-    // Server says totalRows=1, but after inserting a new temp row, rows.length=2
-    // The form should show "Record 2 of 2" not "Record 2 of 1"
+  it('temp row shows correct record number without total count', () => {
     setupStore()
     useTableDataStore.getState().insertNewRow('tab-1')
     useTableDataStore.getState().setViewMode('tab-1', 'form')
     renderFormView()
 
-    // After insert, totalRows=1 from server, but temp row makes effectiveTotalRows=2
-    // The temp row is selected and is at localIndex=1, absoluteIndex=1
-    // Display: "Record 2 of 2"
-    expect(screen.getByText('Record 2 of 2')).toBeInTheDocument()
+    expect(screen.getByText('Record 2')).toBeInTheDocument()
+    expect(screen.queryByText(/of/)).not.toBeInTheDocument()
   })
 
   it('null toggle OFF sets value to empty string', () => {
@@ -1142,16 +1124,13 @@ describe('TableDataFormView', () => {
   it('handles cross-page navigation next', async () => {
     setupStore({
       rows: [[1, 'Alice', null]],
-      totalRows: 10,
       currentPage: 1,
-      totalPages: 2,
       pageSize: 1,
       selectedRowKey: { id: 1 },
     })
     renderFormView()
 
-    expect(screen.getByText('Record 1 of 10')).toBeInTheDocument()
-    // Next button should be enabled (not on last page)
+    expect(screen.getByText('Record 1')).toBeInTheDocument()
     const nextBtn = screen.getByTestId('btn-form-next')
     expect(nextBtn).not.toBeDisabled()
     fireEvent.click(nextBtn)
@@ -1160,18 +1139,55 @@ describe('TableDataFormView', () => {
     })
   })
 
-  it('Next button disabled on last record of last page', () => {
+  it('navigates to first row of next page from a short page', async () => {
     setupStore({
       rows: [[1, 'Alice', null]],
-      totalRows: 1,
       currentPage: 1,
-      totalPages: 1,
+      pageSize: 2,
+      selectedRowKey: { id: 1 },
+    })
+
+    const fetchPageSpy = vi
+      .spyOn(useTableDataStore.getState(), 'fetchPage')
+      .mockImplementation(async (tabId: string, page: number) => {
+        useTableDataStore.setState((state) => ({
+          tabs: {
+            ...state.tabs,
+            [tabId]: {
+              ...state.tabs[tabId],
+              rows: [[2, 'Bob', null]],
+              currentPage: page,
+              selectedRowKey: null,
+            },
+          },
+        }))
+      })
+
+    renderFormView()
+
+    fireEvent.click(screen.getByTestId('btn-form-next'))
+
+    await waitFor(() => {
+      expect(fetchPageSpy).toHaveBeenCalledWith('tab-1', 2)
+    })
+
+    await waitFor(() => {
+      expect(useTableDataStore.getState().tabs['tab-1']?.selectedRowKey).toEqual({ id: 2 })
+    })
+
+    fetchPageSpy.mockRestore()
+  })
+
+  it('Next button remains enabled on last loaded record', () => {
+    setupStore({
+      rows: [[1, 'Alice', null]],
+      currentPage: 1,
       pageSize: 1000,
       selectedRowKey: { id: 1 },
     })
     renderFormView()
 
-    expect(screen.getByTestId('btn-form-next')).toBeDisabled()
+    expect(screen.getByTestId('btn-form-next')).not.toBeDisabled()
   })
 
   it('Previous button disabled when loading', () => {
@@ -1180,7 +1196,6 @@ describe('TableDataFormView', () => {
         [1, 'Alice', null],
         [2, 'Bob', null],
       ],
-      totalRows: 2,
       selectedRowKey: { id: 2 },
       isLoading: true,
     })

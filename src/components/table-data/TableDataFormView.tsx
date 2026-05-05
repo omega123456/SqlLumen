@@ -104,9 +104,7 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
 
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
   const rows = useMemo(() => tabState?.rows ?? [], [tabState?.rows])
-  const totalRows = tabState?.totalRows ?? 0
   const currentPage = tabState?.currentPage ?? 1
-  const totalPages = tabState?.totalPages ?? 1
   const pageSize = tabState?.pageSize ?? 1000
   const primaryKey = tabState?.primaryKey ?? null
   const storeEditState = tabState?.editState ?? null
@@ -126,11 +124,6 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
   const hasPk = primaryKey !== null
   const isEditable = !isConnectionReadOnly && hasPk && !isView
   const pkColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
-
-  // When a temp/new row exists, totalRows from the server doesn't include it.
-  // Add 1 so the display and navigation bounds are correct ("Record 3 of 3" not "Record 3 of 2").
-  const hasTempRow = storeEditState?.isNewRow === true
-  const effectiveTotalRows = hasTempRow ? totalRows + 1 : totalRows
 
   // --- Grid columns (stable) ---
   const gridColumns = useMemo(
@@ -203,28 +196,48 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
   }, [storeEditState, isEditingCurrentRow])
 
   // --- Navigation boundary flags ---
-  // Fold isLoading into the first/last flags so BaseFormView disables buttons
+  // Fold isLoading into the first flag so BaseFormView disables buttons
   const isFirstRecord = (currentPage === 1 && localIndex === 0) || isLoading
-  const isLastRecord = (currentPage >= totalPages && localIndex >= rows.length - 1) || isLoading
 
   // --- Navigation handlers ---
   const navigateRelative = useCallback(
     (direction: -1 | 1) => {
       if (!tabState || isLoading) return
 
-      const absoluteIdx = (currentPage - 1) * pageSize + localIndex
-      const newAbsoluteIndex = absoluteIdx + direction
-
-      // Boundary check — use effectiveTotalRows so navigation accounts for temp rows
-      if (newAbsoluteIndex < 0 || newAbsoluteIndex >= effectiveTotalRows) return
-
-      const newPage = Math.floor(newAbsoluteIndex / pageSize) + 1
-      const newLocalIndex = newAbsoluteIndex % pageSize
+      if (direction < 0 && currentPage === 1 && localIndex === 0) return
 
       const action = async () => {
-        if (newPage !== currentPage) {
-          await fetchPage(tabId, newPage)
+        const isForwardCrossPage = direction > 0 && localIndex === rows.length - 1
+        const isBackwardCrossPage = direction < 0 && localIndex === 0 && currentPage > 1
+
+        if (isForwardCrossPage) {
+          await fetchPage(tabId, currentPage + 1)
+          const updatedState = useTableDataStore.getState().tabs[tabId]
+          const targetRow = updatedState?.rows[0]
+
+          if (updatedState && targetRow) {
+            const newKey = getRowKeyFromArray(targetRow, updatedState.columns, pkColumns)
+            setSelectedRow(tabId, newKey)
+          }
+
+          return
         }
+
+        if (isBackwardCrossPage) {
+          await fetchPage(tabId, currentPage - 1)
+          const updatedState = useTableDataStore.getState().tabs[tabId]
+          const targetRow = updatedState?.rows[updatedState.rows.length - 1]
+
+          if (updatedState && targetRow) {
+            const newKey = getRowKeyFromArray(targetRow, updatedState.columns, pkColumns)
+            setSelectedRow(tabId, newKey)
+          }
+
+          return
+        }
+
+        const newAbsoluteIndex = absoluteIndex + direction
+        const newLocalIndex = ((newAbsoluteIndex % pageSize) + pageSize) % pageSize
         const updatedState = useTableDataStore.getState().tabs[tabId]
         if (updatedState && updatedState.rows.length > 0) {
           const targetIndex = Math.min(newLocalIndex, updatedState.rows.length - 1)
@@ -242,9 +255,10 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
       tabState,
       isLoading,
       localIndex,
+      rows.length,
+      absoluteIndex,
       currentPage,
       pageSize,
-      effectiveTotalRows,
       tabId,
       fetchPage,
       pkColumns,
@@ -383,12 +397,12 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
         columns={gridColumns}
         currentRow={currentRow}
         currentRowData={currentRowData}
-        totalRows={effectiveTotalRows}
+        recordCountMode="unknown"
         currentAbsoluteIndex={absoluteIndex}
         isFirstRecord={isFirstRecord}
-        isLastRecord={isLastRecord}
         onNavigatePrev={onNavigatePrev}
         onNavigateNext={onNavigateNext}
+        isLoading={isLoading}
         editState={sharedEditState}
         onEnsureEditing={onEnsureEditing}
         onUpdateCell={onUpdateCell}

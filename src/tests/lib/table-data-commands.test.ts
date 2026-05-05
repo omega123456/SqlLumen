@@ -26,9 +26,7 @@ const mockFetchTableDataFn = vi.fn(
       },
     ],
     rows: [[1], [2]],
-    totalRows: 2,
     currentPage: 1,
-    totalPages: 1,
     pageSize: 1000,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
     executionTimeMs: 10,
@@ -78,7 +76,6 @@ describe('fetchTableData', () => {
     })
     expect(result.columns).toHaveLength(1)
     expect(result.rows).toEqual([[1], [2]])
-    expect(result.totalRows).toBe(2)
     expect(result.primaryKey?.keyColumns).toEqual(['id'])
     expect(mockFetchTableDataFn).toHaveBeenCalled()
   })
@@ -183,9 +180,7 @@ describe('fetchTableData', () => {
         },
       ],
       rows: [['active']],
-      totalRows: 1,
       currentPage: 1,
-      totalPages: 1,
       pageSize: 1000,
       primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
       executionTimeMs: 10,

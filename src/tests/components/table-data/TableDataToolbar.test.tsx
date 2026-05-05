@@ -28,9 +28,7 @@ vi.mock('../../../lib/table-data-commands', () => ({
   fetchTableData: vi.fn().mockResolvedValue({
     columns: [],
     rows: [],
-    totalRows: 0,
     currentPage: 1,
-    totalPages: 1,
     pageSize: 1000,
     primaryKey: null,
     executionTimeMs: 0,
@@ -94,9 +92,7 @@ function makeDefaultTabState(overrides: Partial<TableDataTabState> = {}): TableD
       },
     ],
     rows: [[1], [2], [3]],
-    totalRows: 42,
     currentPage: 1,
-    totalPages: 3,
     pageSize: 1000,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
     executionTimeMs: 15,
@@ -142,11 +138,12 @@ describe('TableDataToolbar', () => {
     expect(screen.getByTestId('table-data-toolbar')).toBeInTheDocument()
   })
 
-  it('shows row count and execution time', () => {
+  it('shows execution time without row count', () => {
     setupConnection()
-    setupTabState({ totalRows: 42, executionTimeMs: 15 })
+    setupTabState({ executionTimeMs: 15 })
     render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByText('42 Rows')).toBeInTheDocument()
+    expect(screen.queryByText('42 Rows')).not.toBeInTheDocument()
+    expect(screen.getByText('Success')).toBeInTheDocument()
     expect(screen.getByText('(15ms)')).toBeInTheDocument()
   })
 
@@ -218,37 +215,38 @@ describe('TableDataToolbar', () => {
 
   it('Pagination prev disabled on page 1', () => {
     setupConnection()
-    setupTabState({ currentPage: 1, totalPages: 3 })
+    setupTabState({ currentPage: 1 })
     render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('pagination-prev')).toBeDisabled()
   })
 
-  it('Pagination next disabled on last page', () => {
+  it('Pagination next remains enabled on last known page', () => {
     setupConnection()
-    setupTabState({ currentPage: 3, totalPages: 3 })
+    setupTabState({ currentPage: 3 })
     render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('pagination-next')).toBeDisabled()
+    expect(screen.getByTestId('pagination-next')).not.toBeDisabled()
   })
 
   it('Pagination prev enabled when not on first page', () => {
     setupConnection()
-    setupTabState({ currentPage: 2, totalPages: 3 })
+    setupTabState({ currentPage: 2 })
     render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('pagination-prev')).not.toBeDisabled()
   })
 
   it('Pagination next enabled when not on last page', () => {
     setupConnection()
-    setupTabState({ currentPage: 1, totalPages: 3 })
+    setupTabState({ currentPage: 1 })
     render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('pagination-next')).not.toBeDisabled()
   })
 
-  it('shows page indicator', () => {
+  it('shows editable page input instead of total-page indicator', () => {
     setupConnection()
-    setupTabState({ currentPage: 2, totalPages: 5 })
+    setupTabState({ currentPage: 2 })
     render(<TableDataToolbar tabId="tab-1" />)
-    expect(screen.getByTestId('page-indicator')).toHaveTextContent('Page 2 of 5')
+    expect(screen.queryByTestId('page-indicator')).not.toBeInTheDocument()
+    expect(screen.getByTestId('pagination-page-input')).toHaveValue('2')
   })
 
   it('shows read-only badge when connection is read-only', () => {
@@ -542,7 +540,7 @@ describe('TableDataToolbar', () => {
 
   it('clicking Next Page fetches next page', async () => {
     setupConnection()
-    setupTabState({ currentPage: 1, totalPages: 3 })
+    setupTabState({ currentPage: 1 })
     render(<TableDataToolbar tabId="tab-1" />)
     fireEvent.click(screen.getByTestId('pagination-next'))
     await waitFor(() => {
@@ -550,9 +548,24 @@ describe('TableDataToolbar', () => {
     })
   })
 
+  it('submitting a page number fetches that page', async () => {
+    const user = userEvent.setup()
+    setupConnection()
+    setupTabState({ currentPage: 2 })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    const pageInput = screen.getByTestId('pagination-page-input')
+    await user.clear(pageInput)
+    await user.type(pageInput, '7{Enter}')
+
+    await waitFor(() => {
+      expect(vi.mocked(fetchTableData).mock.calls.some((c) => c[0]?.page === 7)).toBe(true)
+    })
+  })
+
   it('clicking Prev Page fetches previous page', async () => {
     setupConnection()
-    setupTabState({ currentPage: 2, totalPages: 3 })
+    setupTabState({ currentPage: 2 })
     render(<TableDataToolbar tabId="tab-1" />)
     fireEvent.click(screen.getByTestId('pagination-prev'))
     await waitFor(() => {
@@ -574,9 +587,16 @@ describe('TableDataToolbar', () => {
     expect(screen.queryByText(/\(\d+ms\)/)).not.toBeInTheDocument()
   })
 
-  it('export button is disabled when no rows', () => {
+  it('export button stays enabled when table data is loaded without total rows', () => {
     setupConnection()
-    setupTabState({ totalRows: 0 })
+    setupTabState()
+    render(<TableDataToolbar tabId="tab-1" />)
+    expect(screen.getByTestId('btn-export')).not.toBeDisabled()
+  })
+
+  it('export button is disabled when table data has not loaded', () => {
+    setupConnection()
+    setupTabState({ columns: [] })
     render(<TableDataToolbar tabId="tab-1" />)
     expect(screen.getByTestId('btn-export')).toBeDisabled()
   })

@@ -53,9 +53,7 @@ vi.mock('../../../lib/table-data-commands', () => ({
   fetchTableData: vi.fn().mockResolvedValue({
     columns: [],
     rows: [],
-    totalRows: 0,
     currentPage: 1,
-    totalPages: 1,
     pageSize: 1000,
     primaryKey: null,
     executionTimeMs: 0,
@@ -87,7 +85,7 @@ vi.mock('../../../stores/toast-store', () => ({
   showWarningToast: vi.fn(),
 }))
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import type { Mock } from 'vitest'
@@ -207,9 +205,7 @@ function setupTabState(overrides: Partial<TableDataTabState> = {}) {
       [1, 'Alice', null],
       [2, null, '[BLOB 32 bytes]'],
     ],
-    totalRows: 2,
     currentPage: 1,
-    totalPages: 1,
     pageSize: 1000,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
     executionTimeMs: 15,
@@ -935,7 +931,7 @@ describe('TableDataGrid', () => {
         syncCellValue={useTableDataStore.getState().syncCellValue}
       />
     )
-    const input = editor.getByRole('textbox') as HTMLInputElement
+    const input = within(editor.container).getByRole('textbox') as HTMLInputElement
 
     expect(input).not.toBeDisabled()
     expect(input.value).toBe('')
@@ -1017,7 +1013,7 @@ describe('TableDataGrid', () => {
         syncCellValue={useTableDataStore.getState().syncCellValue}
       />
     )
-    const input = editor.getByRole('textbox') as HTMLInputElement
+    const input = within(editor.container).getByRole('textbox') as HTMLInputElement
 
     fireEvent.change(input, { target: { value: 'Canceled' } })
     expect(screen.getByTestId('btn-save')).not.toBeDisabled()

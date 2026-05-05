@@ -76,8 +76,6 @@ describe('ExportDialog', () => {
   const defaultProps = {
     connectionId: 'conn-1',
     tabId: 'tab-1',
-    columnCount: 3,
-    totalRows: 100,
     onClose: vi.fn(),
   }
 
@@ -241,12 +239,9 @@ describe('ExportDialog', () => {
     )
   }, 15000)
 
-  it('displays estimated size', () => {
+  it('does not display estimated size footer content', () => {
     render(<ExportDialog {...defaultProps} />)
-    const estimated = screen.getByTestId('export-estimated-size')
-    expect(estimated).toBeInTheDocument()
-    // 100 rows * 3 columns * 20 bytes = 6000 bytes = 6 KB
-    expect(estimated.textContent).toContain('6 KB')
+    expect(screen.queryByTestId('export-estimated-size')).not.toBeInTheDocument()
   })
 
   it('checkbox defaults to checked and can be toggled', async () => {
@@ -365,11 +360,9 @@ describe('ExportDialog', () => {
     expect(tableNameInput.value).toBe('users')
   })
 
-  it('estimated size shows MB for large exports', () => {
-    render(<ExportDialog {...defaultProps} totalRows={100000} columnCount={10} />)
-    const estimated = screen.getByTestId('export-estimated-size')
-    // 100000 * 10 * 20 = 20,000,000 bytes = 20.0 MB
-    expect(estimated.textContent).toContain('20.0 MB')
+  it('renders without removed sizing props', () => {
+    render(<ExportDialog {...defaultProps} />)
+    expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
   })
 
   it('shows error message for non-Error thrown value', async () => {

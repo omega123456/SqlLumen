@@ -334,8 +334,10 @@ async function openTableDataTab(page: Page) {
   // Wait for the table data tab to mount and data to load
   await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
-  // Wait for loading to finish — the toolbar shows row count when done
-  await expect(page.getByTestId('table-data-toolbar')).toContainText('Rows', {
+  await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
+    timeout: APP_READY_MS,
+  })
+  await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
     timeout: APP_READY_MS,
   })
 }
@@ -362,8 +364,10 @@ async function openViewDataTab(page: Page) {
   // Wait for the table data tab to mount and data to load
   await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
-  // Wait for loading to finish — the toolbar shows row count when done
-  await expect(page.getByTestId('table-data-toolbar')).toContainText('Rows', {
+  await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
+    timeout: APP_READY_MS,
+  })
+  await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
     timeout: APP_READY_MS,
   })
 }
@@ -390,8 +394,10 @@ async function openOrdersTableDataTab(page: Page) {
   // Wait for the table data tab to mount and data to load
   await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
-  // Wait for loading to finish — the toolbar shows row count when done
-  await expect(page.getByTestId('table-data-toolbar')).toContainText('Rows', {
+  await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
+    timeout: APP_READY_MS,
+  })
+  await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
     timeout: APP_READY_MS,
   })
 }

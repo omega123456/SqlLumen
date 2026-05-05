@@ -25,7 +25,10 @@ async function openTableDataTab(page: Page) {
   })
 
   await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('table-data-toolbar')).toContainText('Rows', {
+  await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
+    timeout: APP_READY_MS,
+  })
+  await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
     timeout: APP_READY_MS,
   })
 }

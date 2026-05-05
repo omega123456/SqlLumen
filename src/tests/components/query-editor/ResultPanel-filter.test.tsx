@@ -57,9 +57,7 @@ vi.mock('../../../lib/table-data-commands', () => ({
   fetchTableData: vi.fn().mockResolvedValue({
     columns: [],
     rows: [],
-    totalRows: 0,
     currentPage: 1,
-    totalPages: 1,
     pageSize: 100,
     primaryKey: null,
     executionTimeMs: 0,

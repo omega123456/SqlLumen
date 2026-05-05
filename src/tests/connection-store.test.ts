@@ -749,9 +749,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
           table: 'users',
           columns: [],
           rows: [],
-          totalRows: 0,
           currentPage: 1,
-          totalPages: 1,
           pageSize: 100,
           executionTimeMs: 0,
           primaryKey: null, // No PK → save will fail

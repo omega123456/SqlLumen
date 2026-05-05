@@ -5,6 +5,25 @@ import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { TableDataTabState } from '../../../types/schema'
 
+const exportDialogSpy = vi.fn()
+
+vi.mock('../../../components/dialogs/ExportDialog', () => ({
+  default: (props: Record<string, unknown>) => {
+    exportDialogSpy(props)
+    return (
+      <div data-testid="export-dialog">
+        <button
+          type="button"
+          data-testid="export-cancel-button"
+          onClick={() => (props.onClose as (() => void) | undefined)?.()}
+        >
+          Cancel
+        </button>
+      </div>
+    )
+  },
+}))
+
 // Mock table-data-commands
 vi.mock('../../../lib/table-data-commands', () => ({
   fetchTableData: vi.fn().mockResolvedValue({
@@ -38,9 +57,7 @@ vi.mock('../../../lib/table-data-commands', () => ({
       [1, 'Alice'],
       [2, 'Bob'],
     ],
-    totalRows: 2,
     currentPage: 1,
-    totalPages: 1,
     pageSize: 1000,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
     executionTimeMs: 15,
@@ -157,9 +174,7 @@ function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabS
       [1, 'Alice'],
       [2, 'Bob'],
     ],
-    totalRows: 2,
     currentPage: 1,
-    totalPages: 1,
     pageSize: 1000,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
     executionTimeMs: 15,
@@ -188,6 +203,7 @@ beforeEach(() => {
     activeTabId: null,
   })
   mockIPC(() => null)
+  exportDialogSpy.mockClear()
 })
 
 /** Drain async loadTableData so follow-up assertions and test teardown do not warn on act(). */
@@ -250,9 +266,7 @@ describe('TableDataTab', () => {
         },
       ],
       rows: [[1]],
-      totalRows: 1,
       currentPage: 1,
-      totalPages: 1,
       pageSize: 1000,
       primaryKey: null,
       executionTimeMs: 10,
@@ -308,9 +322,7 @@ describe('TableDataTab', () => {
     vi.mocked(fetchTableData).mockResolvedValueOnce({
       columns: makeTabState().columns,
       rows: makeTabState().rows,
-      totalRows: 2,
       currentPage: 1,
-      totalPages: 1,
       pageSize: 1000,
       primaryKey: makeTabState().primaryKey,
       executionTimeMs: 15,
@@ -368,6 +380,26 @@ describe('TableDataTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
     })
+  })
+
+  it('does not pass authoritative totalRows into export dialog', async () => {
+    setupConnection()
+    render(<TableDataTab tab={makeTab()} />)
+
+    await waitForTableDataLoaded()
+
+    await act(async () => {
+      useTableDataStore.getState().openExportDialog('tab-1')
+    })
+
+    await waitFor(() => {
+      expect(exportDialogSpy).toHaveBeenCalled()
+    })
+
+    const lastCall = exportDialogSpy.mock.calls[exportDialogSpy.mock.calls.length - 1]?.[0] as {
+      totalRows?: number
+    }
+    expect(lastCall.totalRows).toBeUndefined()
   })
 
   it('shows unsaved changes dialog when pendingNavigationAction is set', async () => {
@@ -544,9 +576,7 @@ describe('TableDataTab', () => {
         },
       ],
       rows: [[1]],
-      totalRows: 1,
       currentPage: 1,
-      totalPages: 1,
       pageSize: 1000,
       primaryKey: null,
       executionTimeMs: 10,

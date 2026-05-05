@@ -72,6 +72,26 @@ describe('playwrightIpcMockHandler', () => {
     expect(result).toBeNull()
   })
 
+  it('returns fetch_table_data results without removed total fields', () => {
+    const result = playwrightIpcMockHandler('fetch_table_data', {
+      connectionId: 'conn-1',
+      database: 'ecommerce_db',
+      table: 'users',
+      page: 1,
+      pageSize: 100,
+    }) as Record<string, unknown>
+
+    expect(result.currentPage).toBe(1)
+    expect(result.pageSize).toBe(100)
+    expect(result.rows).toEqual([
+      [1, 'Alice', 'alice@example.com'],
+      [2, 'Bob', 'bob@example.com'],
+      [3, 'Charlie', 'charlie@example.com'],
+    ])
+    expect(result).not.toHaveProperty('totalRows')
+    expect(result).not.toHaveProperty('totalPages')
+  })
+
   it('returns a realistic table designer schema mock', () => {
     const result = playwrightIpcMockHandler('load_table_for_designer', {
       connectionId: 'conn-1',

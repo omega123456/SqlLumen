@@ -131,7 +131,6 @@ pub async fn fetch_table_data(
         page_size,
         sort,
         filter,
-        &connection_id,
     )
     .await;
 
@@ -149,8 +148,8 @@ pub async fn fetch_table_data(
                     .map(|r| r.execution_time_ms as i64)
                     .unwrap_or(0),
             ),
-            row_count: Some(result.as_ref().map(|r| r.total_rows as i64).unwrap_or(0)),
-            affected_rows: Some(0),
+            row_count: None,
+            affected_rows: None,
             success: result.is_ok(),
             error_message: result.as_ref().err().cloned(),
         },
@@ -384,7 +383,6 @@ pub async fn export_table_data(
     let sql_text = interpolate_sql_params(&raw_sql, &filter_clause.params);
 
     let options = table_data::ExportTableOptions {
-        connection_id: connection_id.clone(),
         database,
         table,
         format,

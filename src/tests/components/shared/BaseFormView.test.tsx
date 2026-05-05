@@ -207,6 +207,12 @@ describe('BaseFormView — basic rendering', () => {
     expect(title.textContent).toContain('10,000')
   })
 
+  it('shows current record without total in unknown-total mode', () => {
+    renderForm({ recordCountMode: 'unknown', totalRows: undefined, isLastRecord: undefined })
+    expect(screen.getByText('Record 1')).toBeInTheDocument()
+    expect(screen.queryByText(/Record 1 of/)).not.toBeInTheDocument()
+  })
+
   it('shows all column fields with correct test IDs', () => {
     renderForm()
     expect(screen.getByTestId('form-field-id')).toBeInTheDocument()
@@ -265,6 +271,16 @@ describe('BaseFormView — navigation buttons', () => {
 
   it('Next button disabled on last record', () => {
     renderForm({ isLastRecord: true })
+    expect(screen.getByTestId('btn-form-next')).toBeDisabled()
+  })
+
+  it('Next button stays enabled in unknown-total mode when not loading', () => {
+    renderForm({ recordCountMode: 'unknown', isLastRecord: true })
+    expect(screen.getByTestId('btn-form-next')).not.toBeDisabled()
+  })
+
+  it('Next button is disabled in unknown-total mode while loading', () => {
+    renderForm({ recordCountMode: 'unknown', isLastRecord: true, isLoading: true })
     expect(screen.getByTestId('btn-form-next')).toBeDisabled()
   })
 

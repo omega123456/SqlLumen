@@ -19,6 +19,12 @@ export interface FilterToolbarButtonProps {
   onClearClick: () => void
   /** Disables both buttons when true. */
   isDisabled?: boolean
+  /** Optional test id override for the filter button. */
+  filterButtonTestId?: string
+  /** Optional test id override for the active filter badge. */
+  filterBadgeTestId?: string
+  /** Optional test id override for the clear button. */
+  clearButtonTestId?: string
 }
 
 export function FilterToolbarButton({
@@ -27,6 +33,9 @@ export function FilterToolbarButton({
   onFilterClick,
   onClearClick,
   isDisabled = false,
+  filterButtonTestId = 'btn-filter',
+  filterBadgeTestId = 'filter-badge',
+  clearButtonTestId = 'btn-clear-filter',
 }: FilterToolbarButtonProps) {
   return (
     <>
@@ -37,13 +46,13 @@ export function FilterToolbarButton({
           onClick={onFilterClick}
           disabled={isDisabled}
           title="Filter"
-          data-testid="btn-filter"
+          data-testid={filterButtonTestId}
         >
           <Funnel size={16} weight={isActive ? 'fill' : 'regular'} />
           <span>Filter</span>
         </button>
         {isActive && (
-          <span className={styles.filterBadge} data-testid="filter-badge">
+          <span className={styles.filterBadge} data-testid={filterBadgeTestId}>
             {activeCount}
           </span>
         )}
@@ -57,7 +66,7 @@ export function FilterToolbarButton({
           disabled={isDisabled}
           title="Clear filters"
           aria-label="Clear filters"
-          data-testid="btn-clear-filter"
+          data-testid={clearButtonTestId}
         >
           <FunnelX size={16} weight="regular" />
         </button>

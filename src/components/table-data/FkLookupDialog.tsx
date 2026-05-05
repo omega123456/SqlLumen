@@ -10,10 +10,11 @@
  */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { X, Funnel } from '@phosphor-icons/react'
+import { X } from '@phosphor-icons/react'
 import { DialogShell } from '../dialogs/DialogShell'
 import { FilterDialog } from '../dialogs/FilterDialog'
 import { BaseGridView } from '../shared/BaseGridView'
+import { FilterToolbarButton } from '../shared/FilterToolbarButton'
 import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
 import { StatusArea } from '../shared/toolbar/StatusArea'
 import { Button } from '../common/Button'
@@ -62,9 +63,7 @@ export function FkLookupDialog({
   // ---------------------------------------------------------------------------
   const [columns, setColumns] = useState<TableDataColumnMeta[]>([])
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
-  const [totalRows, setTotalRows] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
   const [pageSize, setPageSize] = useState(100)
   const [filterModel, setFilterModel] = useState<FilterCondition[]>([])
   const [sort, setSort] = useState<{ column: string; direction: 'ASC' | 'DESC' } | null>(null)
@@ -129,9 +128,7 @@ export function FkLookupDialog({
 
         setColumns(response.columns)
         setRows(transformedRows)
-        setTotalRows(response.totalRows)
         setCurrentPage(response.currentPage)
-        setTotalPages(response.totalPages)
         setPageSize(response.pageSize)
         setPrimaryKey(response.primaryKey)
         setExecutionTimeMs(response.executionTimeMs)
@@ -238,6 +235,7 @@ export function FkLookupDialog({
   const handleSortChange = useCallback(
     (column: string | null, direction: 'ASC' | 'DESC' | null) => {
       setSelectedRowKey(null)
+      setCurrentPage(1)
       if (!column || !direction) {
         setSort(null)
       } else {
@@ -259,11 +257,9 @@ export function FkLookupDialog({
   }, [currentPage])
 
   const handleNextPage = useCallback(() => {
-    if (currentPage < totalPages) {
-      setSelectedRowKey(null)
-      setCurrentPage((p) => p + 1)
-    }
-  }, [currentPage, totalPages])
+    setSelectedRowKey(null)
+    setCurrentPage((p) => p + 1)
+  }, [])
 
   const handlePageSizeChange = useCallback((newSize: number) => {
     setSelectedRowKey(null)
@@ -440,42 +436,34 @@ export function FkLookupDialog({
             <div className={styles.toolbarLeft}>
               <StatusArea
                 status={isLoading ? 'loading' : error !== null ? 'error' : 'success'}
-                totalRows={totalRows}
                 executionTimeMs={executionTimeMs > 0 ? executionTimeMs : undefined}
                 errorMessage={error ?? undefined}
               />
             </div>
 
             <div className={styles.toolbarRight}>
-              {/* Filter button */}
-              <div
-                className={`${styles.filterButtonWrapper} ${filterModel.length > 0 ? styles.filterButtonActive : ''}`}
-              >
-                <button
-                  type="button"
-                  className={styles.toolbarButton}
-                  onClick={() => setIsFilterDialogOpen(true)}
-                  disabled={columns.length === 0}
-                  title="Filter"
-                  data-testid="fk-lookup-btn-filter"
-                >
-                  <Funnel size={14} weight={filterModel.length > 0 ? 'fill' : 'regular'} />
-                  <span>Filter</span>
-                </button>
-                {filterModel.length > 0 && (
-                  <span className={styles.filterBadge} data-testid="fk-lookup-filter-badge">
-                    {filterModel.length}
-                  </span>
-                )}
-              </div>
+              <FilterToolbarButton
+                isActive={filterModel.length > 0}
+                activeCount={filterModel.length}
+                onFilterClick={() => setIsFilterDialogOpen(true)}
+                onClearClick={() => handleFilterApply([])}
+                isDisabled={columns.length === 0}
+                filterButtonTestId="fk-lookup-btn-filter"
+                filterBadgeTestId="fk-lookup-filter-badge"
+                clearButtonTestId="fk-lookup-btn-clear-filter"
+              />
 
               {/* Pagination */}
               <PaginationGroup
                 currentPage={currentPage}
-                totalPages={totalPages}
+                paginationMode="unknown"
                 pageSize={pageSize}
                 disabled={isLoading}
                 onPageSizeChange={handlePageSizeChange}
+                onPageSubmit={(page) => {
+                  setSelectedRowKey(null)
+                  setCurrentPage(page)
+                }}
                 onPrevPage={handlePrevPage}
                 onNextPage={handleNextPage}
               />

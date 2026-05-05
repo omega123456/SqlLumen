@@ -63,9 +63,7 @@ pub struct PrimaryKeyInfo {
 pub struct TableDataResponse {
     pub columns: Vec<TableDataColumnMeta>,
     pub rows: Vec<Vec<serde_json::Value>>,
-    pub total_rows: u64,
     pub current_page: u32,
-    pub total_pages: u32,
     pub page_size: u32,
     pub primary_key: Option<PrimaryKeyInfo>,
     pub execution_time_ms: u64,
@@ -99,7 +97,6 @@ pub struct FilterClause {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportTableOptions {
-    pub connection_id: String,
     pub database: String,
     pub table: String,
     pub format: String,
@@ -914,7 +911,6 @@ pub async fn fetch_table_data_impl(
     page_size: u32,
     sort: Option<SortInfo>,
     filter_model: Vec<FilterCondition>,
-    _connection_id: &str,
 ) -> Result<TableDataResponse, String> {
     let start = std::time::Instant::now();
 
@@ -941,23 +937,6 @@ pub async fn fetch_table_data_impl(
 
     let safe_db = safe_identifier(database)?;
     let safe_table = safe_identifier(table)?;
-
-    // Build and execute COUNT query
-    let count_sql = format!("SELECT COUNT(*) FROM {safe_db}.{safe_table}{where_sql}");
-    log_table_data_sql(&count_sql, &filter_clause.params);
-    let mut count_query = sqlx::query(&count_sql);
-    for param in &filter_clause.params {
-        count_query = bind_json_value(count_query, param);
-    }
-    let count_row = count_query
-        .fetch_one(pool)
-        .await
-        .map_err(|e| format!("Count query failed: {e}"))?;
-    crate::mysql::query_log::log_mysql_row(&count_row);
-    let total_rows: i64 = count_row
-        .try_get(0)
-        .map_err(|e| format!("Failed to read count: {e}"))?;
-    let total_rows = total_rows as u64;
 
     // Build and execute DATA query
     let page = if page < 1 { 1 } else { page };
@@ -1007,19 +986,10 @@ pub async fn fetch_table_data_impl(
         serialized_rows.push(serialized_row);
     }
 
-    // Calculate pagination
-    let total_pages = if total_rows == 0 {
-        1u32
-    } else {
-        ((total_rows + page_size as u64 - 1) / page_size as u64) as u32
-    };
-
     Ok(TableDataResponse {
         columns,
         rows: serialized_rows,
-        total_rows,
         current_page: page,
-        total_pages,
         page_size,
         primary_key: pk_info,
         execution_time_ms,
@@ -1036,14 +1006,11 @@ pub async fn fetch_table_data_impl(
     page_size: u32,
     _sort: Option<SortInfo>,
     _filter_model: Vec<FilterCondition>,
-    _connection_id: &str,
 ) -> Result<TableDataResponse, String> {
     Ok(TableDataResponse {
         columns: vec![],
         rows: vec![],
-        total_rows: 0,
         current_page: page,
-        total_pages: 1,
         page_size,
         primary_key: None,
         execution_time_ms: 0,

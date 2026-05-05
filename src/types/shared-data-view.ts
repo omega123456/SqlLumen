@@ -161,18 +161,17 @@ export interface BaseGridViewProps {
 // Shared form view props
 // ---------------------------------------------------------------------------
 
-/** Props for the shared form component. */
-export interface BaseFormViewProps {
+/** Props shared by known-total and unknown-total form modes. */
+interface BaseFormViewCommonProps {
   columns: GridColumnDescriptor[]
   currentRow: unknown[] | null
   currentRowData?: Record<string, unknown> | null
-  totalRows: number
   /** 0-based absolute index across all pages. */
   currentAbsoluteIndex: number
   isFirstRecord: boolean
-  isLastRecord: boolean
   onNavigatePrev?: () => void
   onNavigateNext?: () => void
+  isLoading?: boolean
   editState: RowEditState | null
   onEnsureEditing?: () => void
   onUpdateCell?: (columnKey: string, value: unknown) => void
@@ -187,6 +186,21 @@ export interface BaseFormViewProps {
   canInsert?: boolean
   canDelete?: boolean
 }
+
+export interface KnownTotalBaseFormViewProps extends BaseFormViewCommonProps {
+  recordCountMode?: 'known'
+  totalRows: number
+  isLastRecord: boolean
+}
+
+export interface UnknownTotalBaseFormViewProps extends BaseFormViewCommonProps {
+  recordCountMode: 'unknown'
+  totalRows?: number
+  isLastRecord?: boolean
+}
+
+/** Props for the shared form component. */
+export type BaseFormViewProps = KnownTotalBaseFormViewProps | UnknownTotalBaseFormViewProps
 
 // ---------------------------------------------------------------------------
 // View mode
@@ -205,9 +219,8 @@ export interface ViewModeGroupProps {
   testIdPrefix?: string
 }
 
-export interface PaginationGroupProps {
+interface PaginationGroupCommonProps {
   currentPage: number
-  totalPages: number
   pageSize: number
   disabled?: boolean
   /** When true, the page-size dropdown is disabled (e.g. cache-only results). */
@@ -216,6 +229,20 @@ export interface PaginationGroupProps {
   onPrevPage: () => void
   onNextPage: () => void
 }
+
+export interface KnownTotalPaginationGroupProps extends PaginationGroupCommonProps {
+  paginationMode?: 'known'
+  totalPages: number
+  onPageSubmit?: (page: number) => void
+}
+
+export interface UnknownTotalPaginationGroupProps extends PaginationGroupCommonProps {
+  paginationMode: 'unknown'
+  totalPages?: number
+  onPageSubmit: (page: number) => void
+}
+
+export type PaginationGroupProps = KnownTotalPaginationGroupProps | UnknownTotalPaginationGroupProps
 
 export interface ExportButtonProps {
   disabled?: boolean

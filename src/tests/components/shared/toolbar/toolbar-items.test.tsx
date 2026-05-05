@@ -300,6 +300,113 @@ describe('PaginationGroup', () => {
     expect(screen.getByLabelText('Previous page')).toBeInTheDocument()
     expect(screen.getByLabelText('Next page')).toBeInTheDocument()
   })
+
+  it('renders unknown-total pagination with editable current page input', async () => {
+    const user = userEvent.setup()
+    render(
+      <PaginationGroup
+        paginationMode="unknown"
+        currentPage={3}
+        pageSize={500}
+        onPageSizeChange={() => {}}
+        onPrevPage={() => {}}
+        onNextPage={() => {}}
+        onPageSubmit={() => {}}
+      />
+    )
+
+    expect(screen.queryByTestId('page-indicator')).not.toBeInTheDocument()
+    const input = screen.getByTestId('pagination-page-input') as HTMLInputElement
+    expect(input).toHaveValue('3')
+    expect(screen.getByLabelText('Current page')).toBeInTheDocument()
+
+    await user.click(input)
+  })
+
+  it('submits typed page on Enter in unknown-total mode', async () => {
+    const user = userEvent.setup()
+    const onPageSubmit = vi.fn()
+    render(
+      <PaginationGroup
+        paginationMode="unknown"
+        currentPage={2}
+        pageSize={500}
+        onPageSizeChange={() => {}}
+        onPrevPage={() => {}}
+        onNextPage={() => {}}
+        onPageSubmit={onPageSubmit}
+      />
+    )
+
+    const input = screen.getByTestId('pagination-page-input') as HTMLInputElement
+    await user.clear(input)
+    await user.type(input, '12{Enter}')
+
+    expect(onPageSubmit).toHaveBeenCalledWith(12)
+  })
+
+  it('submits page 1 for invalid unknown-total input', async () => {
+    const user = userEvent.setup()
+    const onPageSubmit = vi.fn()
+    render(
+      <PaginationGroup
+        paginationMode="unknown"
+        currentPage={4}
+        pageSize={500}
+        onPageSizeChange={() => {}}
+        onPrevPage={() => {}}
+        onNextPage={() => {}}
+        onPageSubmit={onPageSubmit}
+      />
+    )
+
+    const input = screen.getByTestId('pagination-page-input') as HTMLInputElement
+    await user.clear(input)
+    await user.type(input, '0{Enter}')
+    expect(onPageSubmit).toHaveBeenCalledWith(1)
+  })
+
+  it('submits page 1 for partially numeric unknown-total input', async () => {
+    const user = userEvent.setup()
+    const onPageSubmit = vi.fn()
+    render(
+      <PaginationGroup
+        paginationMode="unknown"
+        currentPage={4}
+        pageSize={500}
+        onPageSizeChange={() => {}}
+        onPrevPage={() => {}}
+        onNextPage={() => {}}
+        onPageSubmit={onPageSubmit}
+      />
+    )
+
+    const input = screen.getByTestId('pagination-page-input') as HTMLInputElement
+    await user.clear(input)
+    await user.type(input, '2abc{Enter}')
+    expect(onPageSubmit).toHaveBeenCalledWith(1)
+  })
+
+  it('reverts unknown-total page input on blur without submit', async () => {
+    const user = userEvent.setup()
+    render(
+      <PaginationGroup
+        paginationMode="unknown"
+        currentPage={7}
+        pageSize={500}
+        onPageSizeChange={() => {}}
+        onPrevPage={() => {}}
+        onNextPage={() => {}}
+        onPageSubmit={() => {}}
+      />
+    )
+
+    const input = screen.getByTestId('pagination-page-input') as HTMLInputElement
+    await user.clear(input)
+    await user.type(input, '33')
+    fireEvent.blur(input)
+    expect(input).toHaveValue('7')
+  })
 })
 
 // ---------------------------------------------------------------------------

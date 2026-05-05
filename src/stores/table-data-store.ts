@@ -254,9 +254,7 @@ function createDefaultTabState(
   return {
     columns: [],
     rows: [],
-    totalRows: 0,
     currentPage: 1,
-    totalPages: 0,
     pageSize: getDefaultPageSize(),
     primaryKey: null,
     executionTimeMs: 0,
@@ -310,11 +308,7 @@ export interface TableDataStore {
   saveCurrentRow: (tabId: string) => Promise<boolean>
   discardCurrentRow: (tabId: string) => void
   insertNewRow: (tabId: string) => void
-  deleteRow: (
-    tabId: string,
-    rowKey: Record<string, unknown>,
-    rowValues: Record<string, unknown>
-  ) => Promise<void>
+  deleteRow: (tabId: string, rowKey: Record<string, unknown>) => Promise<void>
 
   setViewMode: (tabId: string, mode: 'grid' | 'form') => void
   setSelectedRow: (tabId: string, rowKey: Record<string, unknown> | null) => void
@@ -434,12 +428,11 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         patchTab(tabId, {
           columns: result.columns,
           rows: normalizeTableDataRows(result.columns, result.rows),
-          totalRows: result.totalRows,
           currentPage: result.currentPage,
-          totalPages: result.totalPages,
           pageSize: result.pageSize,
           primaryKey: result.primaryKey,
           executionTimeMs: result.executionTimeMs,
+          selectedRowKey: null,
           isLoading: false,
         })
       } catch (err) {
@@ -600,7 +593,6 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
           patchTab(tabId, {
             rows: newRows,
-            totalRows: tab.totalRows + 1,
             editState: null,
             saveError: null,
           })
@@ -745,8 +737,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     // ------ deleteRow ------
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    deleteRow: async (tabId, rowKey, _rowValues) => {
+    deleteRow: async (tabId, rowKey) => {
       const tab = get().tabs[tabId]
       if (!tab) return
 
@@ -782,7 +773,6 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           newRows.splice(rowIdx, 1)
           patchTab(tabId, {
             rows: newRows,
-            totalRows: tab.totalRows - 1,
             editState: null,
             saveError: null,
           })

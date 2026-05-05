@@ -166,8 +166,6 @@ export function TableDataTab({ tab }: TableDataTabProps) {
         <ExportDialog
           connectionId={connectionId}
           tabId={tabId}
-          columnCount={columns.length}
-          totalRows={tabState?.totalRows ?? 0}
           onClose={() => closeExportDialog(tabId)}
           onExport={handleExport}
           defaultTableName={table}

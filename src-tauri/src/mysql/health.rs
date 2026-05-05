@@ -5,20 +5,16 @@
 //! the connection status to `Disconnected`, then enters a reconnection loop
 //! with a backoff schedule of 5 s → 15 s → 30 s (capped).
 
-#[cfg(not(coverage))]
+#[cfg(any(not(coverage), test, feature = "test-utils"))]
 use crate::credentials;
-#[cfg(not(coverage))]
+#[cfg(any(not(coverage), test, feature = "test-utils"))]
 use crate::mysql::pool;
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
-#[cfg(not(coverage))]
+#[cfg(any(not(coverage), test, feature = "test-utils"))]
 use crate::mysql::registry::ConnectionStatus;
-#[cfg(not(coverage))]
+#[cfg(any(not(coverage), test, feature = "test-utils"))]
 use crate::state::AppState;
-#[cfg(any(test, feature = "test-utils"))]
-use crate::{credentials, mysql::pool, state::AppState};
-#[cfg(any(test, feature = "test-utils"))]
-use crate::mysql::registry::ConnectionStatus;
 use std::time::Duration;
 use tauri::{AppHandle, Runtime};
 #[cfg(not(coverage))]

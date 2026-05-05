@@ -457,8 +457,6 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
         <ExportDialog
           connectionId={connectionId}
           tabId={tabId}
-          columnCount={columns.length}
-          totalRows={totalRows}
           resultIndex={activeResultIndex}
           onClose={() => closeExportDialog(tabId)}
         />

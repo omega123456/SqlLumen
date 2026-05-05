@@ -84,9 +84,7 @@ const mockResponse: TableDataResponse = {
     [1, 'Alice'],
     [2, 'Bob'],
   ],
-  totalRows: 2,
   currentPage: 1,
-  totalPages: 1,
   pageSize: 1000,
   primaryKey: mockPrimaryKey,
   executionTimeMs: 42,
@@ -159,9 +157,7 @@ describe('useTableDataStore — initTab', () => {
     expect(tab.table).toBe('users')
     expect(tab.columns).toEqual([])
     expect(tab.rows).toEqual([])
-    expect(tab.totalRows).toBe(0)
     expect(tab.currentPage).toBe(1)
-    expect(tab.totalPages).toBe(0)
     expect(tab.pageSize).toBe(1000)
     expect(tab.primaryKey).toBeNull()
     expect(tab.executionTimeMs).toBe(0)
@@ -189,7 +185,6 @@ describe('useTableDataStore — loadTableData', () => {
       [1, 'Alice'],
       [2, 'Bob'],
     ])
-    expect(tab.totalRows).toBe(2)
     expect(tab.primaryKey).toEqual(mockPrimaryKey)
     expect(tab.isLoading).toBe(false)
     expect(tab.error).toBeNull()
@@ -249,6 +244,15 @@ describe('useTableDataStore — fetchPage', () => {
     expect(fetchTableData).toHaveBeenCalledTimes(2)
   })
 
+  it('clears selectedRowKey after a successful page fetch', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().setSelectedRow('tab-1', { id: 1 })
+
+    await useTableDataStore.getState().fetchPage('tab-1', 1)
+
+    expect(useTableDataStore.getState().tabs['tab-1'].selectedRowKey).toBeNull()
+  })
+
   it('sets error on IPC failure', async () => {
     ;(fetchTableData as Mock).mockRejectedValue(new Error('Fetch failed'))
 
@@ -284,9 +288,7 @@ describe('useTableDataStore — fetchPage', () => {
     ;(fetchTableData as Mock).mockResolvedValueOnce({
       columns: booleanAliasColumns,
       rows: [[1, true]],
-      totalRows: 1,
       currentPage: 1,
-      totalPages: 1,
       pageSize: 1000,
       primaryKey: mockPrimaryKey,
       executionTimeMs: 12,
@@ -437,7 +439,6 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
     expect(tab.editState).toBeNull()
     // The temp row should be replaced with the returned data
     expect(tab.rows[tab.rows.length - 1]).toEqual([3, 'Charlie'])
-    expect(tab.totalRows).toBe(3) // incremented
   })
 
   it('normalizes boolean alias cells when replacing temp row after insert', async () => {
@@ -454,7 +455,6 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
           ...state.tabs['tab-insert-bool'],
           columns: booleanAliasColumns,
           rows: [[null, null]],
-          totalRows: 0,
           primaryKey: mockPrimaryKey,
           editState: {
             rowKey: { __tempId: 'tmp-1' },
@@ -633,7 +633,7 @@ describe('useTableDataStore — deleteRow (existing row)', () => {
   it('calls deleteTableRow IPC and removes from rows', async () => {
     await setupTabWithData()
 
-    await useTableDataStore.getState().deleteRow('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
+    await useTableDataStore.getState().deleteRow('tab-1', { id: 1 })
 
     expect(deleteTableRow).toHaveBeenCalledWith({
       connectionId: 'conn-1',
@@ -645,7 +645,6 @@ describe('useTableDataStore — deleteRow (existing row)', () => {
 
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.rows).toEqual([[2, 'Bob']])
-    expect(tab.totalRows).toBe(1)
   })
 })
 
@@ -656,9 +655,7 @@ describe('useTableDataStore — deleteRow (new row)', () => {
     const tempId = useTableDataStore.getState().tabs['tab-1'].editState!.tempId!
     const rowCountBefore = useTableDataStore.getState().tabs['tab-1'].rows.length
 
-    await useTableDataStore
-      .getState()
-      .deleteRow('tab-1', { __tempId: tempId }, { id: null, name: null })
+    await useTableDataStore.getState().deleteRow('tab-1', { __tempId: tempId })
 
     expect(deleteTableRow).not.toHaveBeenCalled()
     const tab = useTableDataStore.getState().tabs['tab-1']

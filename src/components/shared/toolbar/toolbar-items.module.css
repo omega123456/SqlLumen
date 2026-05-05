@@ -114,6 +114,29 @@
   user-select: none;
 }
 
+.pageInput {
+  width: 44px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  outline: none;
+}
+
+.pageInput:focus {
+  border-color: var(--primary);
+}
+
+.pageInput:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ── Export button ────────────────────────────────────────────────────────── */
 
 .exportButton {

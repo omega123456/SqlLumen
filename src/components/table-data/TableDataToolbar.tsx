@@ -52,19 +52,18 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const activeConnection = useConnectionStore((state) => state.activeConnections[connectionId])
   const isConnectionReadOnly = activeConnection?.profile?.readOnly ?? false
 
-  const totalRows = tabState?.totalRows ?? 0
   const executionTimeMs = tabState?.executionTimeMs ?? 0
   const isLoading = tabState?.isLoading ?? false
   const primaryKey = tabState?.primaryKey ?? null
   const editState = tabState?.editState ?? null
   const viewMode = tabState?.viewMode ?? 'grid'
   const currentPage = tabState?.currentPage ?? 1
-  const totalPages = tabState?.totalPages ?? 1
   const pageSize = tabState?.pageSize ?? 1000
   const selectedRowKey = tabState?.selectedRowKey ?? null
   const columns = useMemo(() => tabState?.columns ?? [], [tabState?.columns])
-  const filterModel: FilterCondition[] = tabState?.filterModel ?? []
+  const filterModel = useMemo<FilterCondition[]>(() => tabState?.filterModel ?? [], [tabState])
   const selectedCell = tabState?.selectedCell ?? null
+  const hasLoadedTableData = columns.length > 0
 
   const showError = useToastStore((s) => s.showError)
   const showSuccess = useToastStore((s) => s.showSuccess)
@@ -120,7 +119,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
       discardCurrentRow(tabId)
     }
 
-    await deleteRow(tabId, selectedRowKey, {})
+    await deleteRow(tabId, selectedRowKey)
 
     // Show success toast if no error occurred
     const newState = useTableDataStore.getState().tabs[tabId]
@@ -193,12 +192,10 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   }, [currentPage, withNavigationGuard, fetchPage, tabId])
 
   const handleNextPage = useCallback(() => {
-    if (currentPage < totalPages) {
-      withNavigationGuard(() => {
-        fetchPage(tabId, currentPage + 1)
-      })
-    }
-  }, [currentPage, totalPages, withNavigationGuard, fetchPage, tabId])
+    withNavigationGuard(() => {
+      fetchPage(tabId, currentPage + 1)
+    })
+  }, [currentPage, withNavigationGuard, fetchPage, tabId])
 
   const filterDialogInitialConditions: FilterCondition[] = useMemo(
     () => buildInitialConditionsFromCell(selectedCell, filterModel),
@@ -231,7 +228,6 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
         {/* Status — shared component */}
         <StatusArea
           status={isLoading ? 'loading' : 'success'}
-          totalRows={totalRows}
           executionTimeMs={executionTimeMs > 0 ? executionTimeMs : undefined}
         />
 
@@ -346,15 +342,20 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
         />
 
         {/* Export — shared component */}
-        <ExportButton disabled={isLoading || totalRows === 0} onClick={handleExport} />
+        <ExportButton disabled={isLoading || !hasLoadedTableData} onClick={handleExport} />
 
         {/* Pagination — shared component */}
         <PaginationGroup
           currentPage={currentPage}
-          totalPages={totalPages}
+          paginationMode="unknown"
           pageSize={pageSize}
           disabled={isLoading}
           onPageSizeChange={handlePageSizeChange}
+          onPageSubmit={(page) => {
+            withNavigationGuard(() => {
+              fetchPage(tabId, page)
+            })
+          }}
           onPrevPage={handlePrevPage}
           onNextPage={handleNextPage}
         />

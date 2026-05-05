@@ -110,9 +110,7 @@ function makeTableDataResponse(overrides: Partial<TableDataResponse> = {}): Tabl
       [2, 'Bob'],
       [3, 'Charlie'],
     ],
-    totalRows: 3,
     currentPage: 1,
-    totalPages: 1,
     pageSize: 100,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
     executionTimeMs: 12,
@@ -239,12 +237,13 @@ describe('FkLookupDialog', () => {
     expect(screen.getByTestId('pagination-group')).toBeInTheDocument()
   })
 
-  it('shows row count and execution time after loading', async () => {
+  it('shows execution time without row count after loading', async () => {
     render(<FkLookupDialog {...makeDefaultProps()} />)
 
     await waitFor(() => {
-      expect(screen.getByText('3 Rows')).toBeInTheDocument()
+      expect(screen.getByText('Success')).toBeInTheDocument()
     })
+    expect(screen.queryByText('3 Rows')).not.toBeInTheDocument()
     expect(screen.getByText('(12ms)')).toBeInTheDocument()
   })
 
@@ -350,7 +349,7 @@ describe('FkLookupDialog', () => {
   })
 
   it('pagination page change triggers data reload', async () => {
-    mockFetchTableData.mockResolvedValue(makeTableDataResponse({ currentPage: 1, totalPages: 3 }))
+    mockFetchTableData.mockResolvedValue(makeTableDataResponse({ currentPage: 1 }))
 
     render(<FkLookupDialog {...makeDefaultProps({ currentValue: null })} />)
 
@@ -363,6 +362,23 @@ describe('FkLookupDialog', () => {
 
     await waitFor(() => {
       expect(mockFetchTableData).toHaveBeenCalledTimes(2)
+      expect(mockFetchTableData).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }))
+    })
+  })
+
+  it('next page stays enabled and supports optimistic navigation beyond known totals', async () => {
+    mockFetchTableData.mockResolvedValue(makeTableDataResponse({ currentPage: 1 }))
+
+    render(<FkLookupDialog {...makeDefaultProps({ currentValue: null })} />)
+
+    await waitFor(() => {
+      expect(mockFetchTableData).toHaveBeenCalledTimes(1)
+    })
+
+    expect(screen.getByTestId('pagination-next')).toBeEnabled()
+    fireEvent.click(screen.getByTestId('pagination-next'))
+
+    await waitFor(() => {
       expect(mockFetchTableData).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }))
     })
   })
@@ -402,6 +418,28 @@ describe('FkLookupDialog', () => {
           sortColumn: 'name',
           sortDirection: 'ASC',
         })
+      )
+    })
+  })
+
+  it('sort change resets page to 1 before reloading', async () => {
+    render(<FkLookupDialog {...makeDefaultProps({ currentValue: null })} />)
+
+    await waitFor(() => {
+      expect(mockFetchTableData).toHaveBeenCalledTimes(1)
+    })
+
+    fireEvent.click(screen.getByTestId('pagination-next'))
+
+    await waitFor(() => {
+      expect(mockFetchTableData).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }))
+    })
+
+    fireEvent.click(screen.getByTestId('mock-sort-trigger'))
+
+    await waitFor(() => {
+      expect(mockFetchTableData).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, sortColumn: 'name', sortDirection: 'ASC' })
       )
     })
   })
@@ -457,7 +495,7 @@ describe('FkLookupDialog', () => {
   })
 
   it('empty state renders correctly when no rows returned', async () => {
-    mockFetchTableData.mockResolvedValue(makeTableDataResponse({ rows: [], totalRows: 0 }))
+    mockFetchTableData.mockResolvedValue(makeTableDataResponse({ rows: [] }))
 
     render(<FkLookupDialog {...makeDefaultProps()} />)
 
@@ -766,7 +804,7 @@ describe('FkLookupDialog', () => {
   })
 
   it('selection cleared on page change', async () => {
-    mockFetchTableData.mockResolvedValue(makeTableDataResponse({ currentPage: 1, totalPages: 3 }))
+    mockFetchTableData.mockResolvedValue(makeTableDataResponse({ currentPage: 1 }))
 
     render(<FkLookupDialog {...makeDefaultProps({ currentValue: null })} />)
 

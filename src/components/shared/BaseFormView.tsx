@@ -30,7 +30,12 @@ import { TextInput } from '../common/TextInput'
 import { FkLookupTriggerButton } from './FkLookupTriggerButton'
 import tiStyles from '../common/TextInput.module.css'
 import { ENUM_NULL_SENTINEL } from '../table-data/enum-field-utils'
-import type { BaseFormViewProps, GridColumnDescriptor } from '../../types/shared-data-view'
+import type {
+  BaseFormViewProps,
+  GridColumnDescriptor,
+  KnownTotalBaseFormViewProps,
+  UnknownTotalBaseFormViewProps,
+} from '../../types/shared-data-view'
 import styles from './BaseFormView.module.css'
 
 // ---------------------------------------------------------------------------
@@ -64,12 +69,11 @@ export function BaseFormView({
   columns,
   currentRow,
   currentRowData = null,
-  totalRows,
   currentAbsoluteIndex,
   isFirstRecord,
-  isLastRecord,
   onNavigatePrev,
   onNavigateNext,
+  isLoading = false,
   editState,
   onEnsureEditing,
   onUpdateCell,
@@ -77,9 +81,16 @@ export function BaseFormView({
   onDiscard,
   readOnly,
   testId = 'base-form-view',
+  ...rest
 }: BaseFormViewProps) {
   /** Whether the form has edit capability (onSave is the primary signal). */
   const hasEditCapability = onSave != null && !readOnly
+  const recordCountMode = rest.recordCountMode ?? 'known'
+  const knownTotalProps = rest as KnownTotalBaseFormViewProps
+  const unknownTotalProps = rest as UnknownTotalBaseFormViewProps
+  const isLastRecord = recordCountMode === 'known' ? knownTotalProps.isLastRecord : false
+  const totalRows =
+    recordCountMode === 'known' ? knownTotalProps.totalRows : (unknownTotalProps.totalRows ?? null)
 
   // --- Date/time picker state ---
   const [openPickerState, setOpenPickerState] = useState<{
@@ -151,13 +162,11 @@ export function BaseFormView({
         }
       } else {
         // Toggling NULL on — close picker if it's open for this field
-        if (openPickerState?.field === col.key) {
-          setOpenPickerState(null)
-        }
+        setOpenPickerState((prev) => (prev?.field === col.key ? null : prev))
         onUpdateCell?.(col.key, null)
       }
     },
-    [currentRow, ensureEditing, editState, onUpdateCell, openPickerState]
+    [currentRow, ensureEditing, editState, onUpdateCell, setOpenPickerState]
   )
 
   const handleCopy = useCallback(async (value: unknown) => {
@@ -191,7 +200,9 @@ export function BaseFormView({
       {/* Record navigation header */}
       <div className={styles.recordNav}>
         <h2 className={styles.recordTitle}>
-          Record {(currentAbsoluteIndex + 1).toLocaleString()} of {totalRows.toLocaleString()}
+          {recordCountMode === 'known'
+            ? `Record ${(currentAbsoluteIndex + 1).toLocaleString()} of ${knownTotalProps.totalRows.toLocaleString()}`
+            : `Record ${(currentAbsoluteIndex + 1).toLocaleString()}`}
         </h2>
 
         <div className={styles.navGroup}>
@@ -210,7 +221,7 @@ export function BaseFormView({
             <button
               type="button"
               className={styles.navButton}
-              disabled={isLastRecord}
+              disabled={isLoading || (recordCountMode === 'known' ? isLastRecord : false)}
               onClick={onNavigateNext}
               aria-label="Next record"
               data-testid="btn-form-next"
