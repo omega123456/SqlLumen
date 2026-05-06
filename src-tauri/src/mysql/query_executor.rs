@@ -843,8 +843,11 @@ async fn execute_single_statement_inner(
     let total_rows = all_rows.len();
     let page_size_used = if page_size == 0 { 1000 } else { page_size };
     let total_pages = calculate_total_pages(total_rows, page_size_used);
-    let first_page: Vec<Vec<serde_json::Value>> =
-        get_page_rows(&all_rows, 1, page_size_used).to_vec();
+    let first_page: Vec<Vec<serde_json::Value>> = if auto_limit_applied {
+        get_page_rows(&all_rows, 1, page_size_used).to_vec()
+    } else {
+        all_rows.clone()
+    };
 
     let query_id = Uuid::new_v4().to_string();
 

@@ -404,7 +404,11 @@ async fn execute_single_select_statement(
     let execution_time_ms = start.elapsed().as_millis() as u64;
     let total_rows = serialized_rows.len();
     let total_pages = calculate_total_pages(total_rows, page_size_used);
-    let first_page = get_page_rows(&serialized_rows, 1, page_size_used).to_vec();
+    let first_page = if auto_limit_applied {
+        get_page_rows(&serialized_rows, 1, page_size_used).to_vec()
+    } else {
+        serialized_rows.clone()
+    };
     let query_id = uuid::Uuid::new_v4().to_string();
 
     Ok((
@@ -567,7 +571,7 @@ async fn execute_call_statement(
         let execution_time_ms = start.elapsed().as_millis() as u64;
         let total_rows = serialized_rows.len();
         let total_pages = calculate_total_pages(total_rows, page_size_used);
-        let first_page = get_page_rows(&serialized_rows, 1, page_size_used).to_vec();
+        let first_page = serialized_rows.clone();
         let query_id = uuid::Uuid::new_v4().to_string();
 
         pairs.push((
