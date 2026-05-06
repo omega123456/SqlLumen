@@ -37,20 +37,27 @@
   background-color: var(--result-grid-header-bg);
   border-bottom: var(--grid-header-border-bottom);
   box-shadow: var(--grid-header-shadow);
-  z-index: 2;
+  z-index: 10;
 }
 
 /* ---------- Header cells ---------- */
 .rdg-precision .rdg-header-row .rdg-cell {
+  position: sticky;
+  inset-block-start: 0;
   background-color: var(--result-grid-header-bg);
   border-right: 1px solid rgba(var(--outline-variant-rgb), 0.1);
   padding: 0 var(--grid-cell-padding-x);
   overflow: clip;
-  z-index: 3;
+  contain: none;
+  z-index: 20;
+}
+
+.rdg-precision .rdg-header-row .rdg-cell-frozen {
+  z-index: 21;
 }
 
 .rdg-precision .rdg-header-row .rdg-cell:hover {
-  background-color: rgba(var(--on-surface-rgb), 0.06);
+  background-color: color-mix(in srgb, var(--result-grid-header-bg) 94%, var(--on-surface) 6%);
 }
 
 /* Sort indicator icon in header */
@@ -380,7 +387,7 @@
 }
 
 [data-theme='light'] .rdg-precision .rdg-header-row .rdg-cell:hover {
-  background-color: rgba(var(--on-surface-rgb), 0.04);
+  background-color: color-mix(in srgb, var(--result-grid-header-bg) 96%, var(--on-surface) 4%);
 }
 
 [data-theme='light'] .rdg-precision .rdg-row:nth-child(odd) {

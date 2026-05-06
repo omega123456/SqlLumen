@@ -1206,9 +1206,7 @@ describe('useTableDataStore — TINYINT boolean normalization', () => {
         [1, true],
         [2, false],
       ],
-      totalRows: 2,
       currentPage: 1,
-      totalPages: 1,
       pageSize: 1000,
       primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
       executionTimeMs: 10,
@@ -1220,6 +1218,55 @@ describe('useTableDataStore — TINYINT boolean normalization', () => {
 
     const tab = useTableDataStore.getState().tabs['tab-1']
     // If normalization works, boolean true/false should become 1/0
+    expect(tab.rows[0][1]).toBe(1)
+    expect(tab.rows[1][1]).toBe(0)
+  })
+
+  it('normalizes single-byte control strings to 0/1 for TINYINT display', async () => {
+    const tinyintColumns: TableDataColumnMeta[] = [
+      {
+        name: 'id',
+        dataType: 'INT',
+        isBooleanAlias: false,
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: true,
+      },
+      {
+        name: 'is_active',
+        dataType: 'TINYINT',
+        isBooleanAlias: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+    ]
+
+    const responseWithControlStrings: TableDataResponse = {
+      columns: tinyintColumns,
+      rows: [
+        [1, '\u0001'],
+        [2, '\u0000'],
+      ],
+      currentPage: 1,
+      pageSize: 1000,
+      primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+      executionTimeMs: 10,
+    }
+    ;(fetchTableData as Mock).mockResolvedValueOnce(responseWithControlStrings)
+
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'flags')
+    await useTableDataStore.getState().fetchPage('tab-1', 1)
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.rows[0][1]).toBe(1)
     expect(tab.rows[1][1]).toBe(0)
   })

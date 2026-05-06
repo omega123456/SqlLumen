@@ -54,6 +54,23 @@ describe('data-grid-precision header cell stacking context', () => {
       (headerCellRule && /z-index/.test(headerCellRule[1]))
     expect(headerHasZIndex).toBe(true)
   })
+
+  it('keeps header cells sticky, opaque, and above body cells', () => {
+    const headerCellRule = dataGridPrecisionCss.match(
+      /\.rdg-precision\s+\.rdg-header-row\s+\.rdg-cell\s*\{([^}]+)\}/
+    )
+    const headerCellHoverRule = dataGridPrecisionCss.match(
+      /\.rdg-precision\s+\.rdg-header-row\s+\.rdg-cell:hover\s*\{([^}]+)\}/
+    )
+    expect(headerCellRule).not.toBeNull()
+    expect(headerCellHoverRule).not.toBeNull()
+    expect(headerCellRule![1]).toMatch(/position:\s*sticky/)
+    expect(headerCellRule![1]).toMatch(/inset-block-start:\s*0/)
+    expect(headerCellRule![1]).toMatch(/contain:\s*none/)
+    expect(headerCellRule![1]).toMatch(/z-index:\s*20/)
+    expect(headerCellHoverRule![1]).toMatch(/background-color:\s*color-mix\(/)
+    expect(headerCellHoverRule![1]).not.toMatch(/background-color:\s*rgba\(/)
+  })
 })
 
 describe('data-grid-precision editing styles', () => {

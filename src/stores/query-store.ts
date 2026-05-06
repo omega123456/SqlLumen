@@ -462,6 +462,21 @@ function isTinyIntBooleanAlias(dataType: string): boolean {
   )
 }
 
+function normalizeTinyIntDisplayValue(value: unknown): unknown {
+  if (typeof value === 'boolean') {
+    return value ? 1 : 0
+  }
+
+  if (typeof value === 'string' && value.length === 1) {
+    const code = value.charCodeAt(0)
+    if (code === 0 || code === 1) {
+      return code
+    }
+  }
+
+  return value
+}
+
 function normalizeQueryRows(columns: ColumnMeta[], rows: unknown[][]): unknown[][] {
   if (columns.length === 0 || rows.length === 0) {
     return rows
@@ -482,9 +497,12 @@ function normalizeQueryRows(columns: ColumnMeta[], rows: unknown[][]): unknown[]
     let changed = false
 
     const normalizedRow = row.map((value, index) => {
-      if (typeof value === 'boolean' && booleanAliasIndexes.has(index)) {
-        changed = true
-        return value ? 1 : 0
+      if (booleanAliasIndexes.has(index)) {
+        const normalizedValue = normalizeTinyIntDisplayValue(value)
+        if (normalizedValue !== value) {
+          changed = true
+        }
+        return normalizedValue
       }
 
       return value

@@ -175,6 +175,29 @@ describe('useQueryStore — executeQuery', () => {
     expect(flat('tab-bool').rows).toEqual([[1, 0, 'flagged']])
   })
 
+  it('normalizes tinyint single-byte control strings to integer rows on executeQuery', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-tinyint-bytes',
+          columns: BOOLEAN_ALIAS_COLUMNS,
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [['\u0001', '\u0000', 'flagged']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-tinyint-bytes', 'SELECT flags')
+
+    expect(flat('tab-tinyint-bytes').rows).toEqual([[1, 0, 'flagged']])
+  })
+
   it('treats missing or non-array analyze_query_for_edit result as no edit tables', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockIPC((cmd) => {
