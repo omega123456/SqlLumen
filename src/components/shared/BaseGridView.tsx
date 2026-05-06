@@ -160,8 +160,22 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   const selectedCellRef = useRef<SelectedCellState | null>(null)
   const previousSelectedCellRef = useRef<SelectedCellState | null>(null)
   const cellClickGuardRequestIdRef = useRef(0)
+  const clickGuardInFlightRef = useRef(false)
 
-  useImperativeHandle(ref, () => gridRef.current as DataGridHandle, [])
+  useImperativeHandle(
+    ref,
+    () =>
+      ({
+        selectCell: (...args: Parameters<DataGridHandle['selectCell']>) => {
+          gridRef.current?.selectCell(...args)
+        },
+        scrollToCell: (...args: Parameters<DataGridHandle['scrollToCell']>) => {
+          gridRef.current?.scrollToCell(...args)
+        },
+        element: gridRef.current?.element ?? null,
+      }) as unknown as DataGridHandle,
+    []
+  )
 
   const editStateRef = useRef(editState)
   editStateRef.current = editState
@@ -448,6 +462,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     async (args: CellMouseArgs<GridRow>, event: CellMouseEvent) => {
       if (onCellClickGuard) {
         event.preventGridDefault()
+        clickGuardInFlightRef.current = true
         const requestId = ++cellClickGuardRequestIdRef.current
         const selectionAtGuardStart = selectedCellRef.current
         const selectionBeforeGuardStart = previousSelectedCellRef.current
@@ -459,6 +474,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         }
 
         const result = await onCellClickGuard(guardArgs)
+        clickGuardInFlightRef.current = false
         if (requestId !== cellClickGuardRequestIdRef.current) {
           return
         }
@@ -511,6 +527,9 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     [onRowsChangeProp]
   )
 
+  const onCellClickGuardRef = useRef(onCellClickGuard)
+  onCellClickGuardRef.current = onCellClickGuard
+
   const handleSelectedCellChange = useCallback(
     (args: CellSelectArgs<GridRow>) => {
       const editable =
@@ -518,20 +537,50 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
           ? args.column.editable
           : args.column.renderEditCell != null
 
+      const previousCell = selectedCellRef.current
       setTrackedSelectedCell(buildSelectedCellState(args.rowIdx, args.column.idx, editable))
 
       const target = pendingTabNavigationRef.current
-      if (!target) return
+      if (target) {
+        if (target.rowIdx === args.rowIdx && target.idx === args.column.idx && editable) {
+          setTrackedSelectedCell(buildSelectedCellState(args.rowIdx, args.column.idx, true))
+          gridRef.current?.selectCell(
+            { rowIdx: args.rowIdx, idx: args.column.idx },
+            { enableEditor: true, shouldFocusCell: true }
+          )
+        }
 
-      if (target.rowIdx === args.rowIdx && target.idx === args.column.idx && editable) {
-        setTrackedSelectedCell(buildSelectedCellState(args.rowIdx, args.column.idx, true))
-        gridRef.current?.selectCell(
-          { rowIdx: args.rowIdx, idx: args.column.idx },
-          { enableEditor: true, shouldFocusCell: true }
-        )
+        pendingTabNavigationRef.current = null
+        return
       }
 
-      pendingTabNavigationRef.current = null
+      // Keyboard-driven row change (ArrowUp/ArrowDown) — invoke the click guard
+      if (
+        onCellClickGuardRef.current &&
+        !clickGuardInFlightRef.current &&
+        previousCell != null &&
+        previousCell.rowIdx !== args.rowIdx &&
+        args.row != null
+      ) {
+        const guardArgs: CellClickGuardArgs = {
+          rowIdx: args.rowIdx,
+          columnKey: args.column.key,
+          rowData: args.row,
+        }
+        void onCellClickGuardRef.current(guardArgs).then((result) => {
+          if (result.proceed) {
+            gridRef.current?.selectCell(
+              { rowIdx: result.targetRowIdx, idx: result.targetColIdx },
+              { enableEditor: result.enableEditor }
+            )
+          } else if (result.restoreFocus) {
+            gridRef.current?.selectCell(
+              { rowIdx: result.targetRowIdx, idx: result.targetColIdx },
+              { enableEditor: result.enableEditor, shouldFocusCell: true }
+            )
+          }
+        })
+      }
     },
     [setTrackedSelectedCell]
   )
@@ -552,6 +601,19 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
           pendingTabNavigationRef.current = { rowIdx: args.rowIdx, idx: nextIdx }
         } else {
           pendingTabNavigationRef.current = null
+        }
+        return
+      }
+
+      if (args.mode === 'EDIT' && event.key === 'Enter') {
+        event.preventGridDefault()
+        const nextIdx = args.column.idx + 1
+        if (nextIdx < columns.length) {
+          pendingTabNavigationRef.current = { rowIdx: args.rowIdx, idx: nextIdx }
+          gridRef.current?.selectCell(
+            { rowIdx: args.rowIdx, idx: nextIdx },
+            { enableEditor: false }
+          )
         }
         return
       }

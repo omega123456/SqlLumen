@@ -106,6 +106,9 @@ export function ResultGridView({
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
   const editingRowIndexRef = useRef(editingRowIndex)
+  const rowDataRef = useRef<ResultRow[]>([])
+  const columnsRef = useRef(columns)
+  const onSyncCellValueRef = useRef(onSyncCellValue)
 
   useEffect(() => {
     editStateRef.current = editState
@@ -114,6 +117,14 @@ export function ResultGridView({
   useEffect(() => {
     editingRowIndexRef.current = editingRowIndex
   }, [editingRowIndex])
+
+  useEffect(() => {
+    columnsRef.current = columns
+  }, [columns])
+
+  useEffect(() => {
+    onSyncCellValueRef.current = onSyncCellValue
+  }, [onSyncCellValue])
 
   // ---------------------------------------------------------------------------
   // Table column lookup map — case-insensitive name → TableDataColumnMeta.
@@ -150,6 +161,9 @@ export function ResultGridView({
       return obj
     })
   }, [rows, columns, editState, editingRowIndex, boundColumnIndexLookup])
+
+  // Keep rowDataRef in sync for stable callbacks
+  rowDataRef.current = rowData
 
   const resolvedColumns = useMemo(
     () =>
@@ -382,23 +396,27 @@ export function ResultGridView({
       // data.indexes contains the indices of changed rows
       if (!data.indexes || data.indexes.length === 0) return
 
+      const currentColumns = columnsRef.current
+      const currentRowData = rowDataRef.current
+      const syncCellValue = onSyncCellValueRef.current
+
       for (const changedIdx of data.indexes) {
         const newRow = newRows[changedIdx]
-        const oldRow = rowData[changedIdx]
+        const oldRow = currentRowData[changedIdx]
         if (!newRow || !oldRow) continue
 
         // Find which col_N value changed
-        for (let i = 0; i < columns.length; i++) {
+        for (let i = 0; i < currentColumns.length; i++) {
           const key = colKey(i)
           if (newRow[key] !== oldRow[key]) {
-            if (columns[i]) {
-              onSyncCellValue(i, newRow[key])
+            if (currentColumns[i]) {
+              syncCellValue(i, newRow[key])
             }
           }
         }
       }
     },
-    [columns, rowData, onSyncCellValue]
+    []
   )
 
   const autoSizeConfig: AutoSizeConfig | undefined = useMemo(() => {

@@ -60,7 +60,12 @@ function findRowIndexByKey(
 
 function isTinyIntBooleanAlias(dataType: string): boolean {
   const normalized = dataType.trim().toUpperCase()
-  return normalized === 'BOOL' || normalized === 'BOOLEAN'
+  return (
+    normalized === 'BOOL' ||
+    normalized === 'BOOLEAN' ||
+    normalized === 'TINYINT' ||
+    normalized === 'TINYINT(1)'
+  )
 }
 
 function normalizeTableDataRows(columns: TableDataColumnMeta[], rows: unknown[][]): unknown[][] {
@@ -272,6 +277,8 @@ function createDefaultTabState(
     error: null,
     saveError: null,
     isExportDialogOpen: false,
+    scrollTop: 0,
+    scrollLeft: 0,
     pendingNavigationAction: null,
   }
 }
@@ -316,6 +323,8 @@ export interface TableDataStore {
   setPageSize: (tabId: string, newPageSize: number) => Promise<void>
   openExportDialog: (tabId: string) => void
   closeExportDialog: (tabId: string) => void
+
+  setScrollPosition: (tabId: string, scrollTop: number, scrollLeft: number) => void
 
   requestNavigationAction: (tabId: string, action: () => void) => void
   confirmNavigationSave: (tabId: string) => Promise<void>
@@ -819,6 +828,12 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     closeExportDialog: (tabId) => {
       patchTab(tabId, { isExportDialogOpen: false })
+    },
+
+    // ------ setScrollPosition ------
+
+    setScrollPosition: (tabId, scrollTop, scrollLeft) => {
+      patchTab(tabId, { scrollTop, scrollLeft })
     },
 
     // ------ requestNavigationAction ------

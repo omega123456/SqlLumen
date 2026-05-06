@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Mock react-data-grid DataGrid before importing the component
 const mockDataGridFn = vi.fn()
 const mockSelectCell = vi.fn()
+const mockGridElement = document.createElement('div')
 
 vi.mock('../../../components/shared/DataGrid', async () => {
   const React = await import('react')
@@ -11,6 +12,7 @@ vi.mock('../../../components/shared/DataGrid', async () => {
       mockDataGridFn(props)
       React.useImperativeHandle(ref, () => ({
         selectCell: mockSelectCell,
+        element: mockGridElement,
       }))
       const columns = props.columns as Array<{ key: string; name: string }>
       const rows = props.rows as Array<Record<string, unknown>>
@@ -223,6 +225,8 @@ function setupTabState(overrides: Partial<TableDataTabState> = {}) {
     saveError: null,
     isExportDialogOpen: false,
     pendingNavigationAction: null,
+    scrollTop: 0,
+    scrollLeft: 0,
     ...overrides,
   }
 
@@ -1739,5 +1743,171 @@ describe('TableDataGrid', () => {
     // CRITICAL: renderEditCell must be the SAME function reference.
     // If it changes, React unmounts the old editor and mounts a new one → focus lost.
     expect(nameEditCell2).toBe(nameEditCell1)
+  })
+})
+
+describe('TableDataGrid — scroll to new row', () => {
+  const mockScrollToCell = vi.fn()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockScrollToCell.mockClear()
+    mockSelectCell.mockClear()
+
+    // Override the DataGrid mock to also expose scrollToCell
+    // The mock already uses useImperativeHandle — we need to check if scrollToCell is called
+    // We'll check via the mockDataGridFn props and the ref behavior
+
+    setupConnection()
+
+    const tabId = 'tab-scroll-test'
+    const columns: TableDataColumnMeta[] = [
+      {
+        name: 'id',
+        dataType: 'bigint',
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isBooleanAlias: false,
+        isAutoIncrement: true,
+      },
+      {
+        name: 'name',
+        dataType: 'varchar',
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isBooleanAlias: false,
+        isAutoIncrement: false,
+      },
+    ]
+
+    // Seed store with multiple rows so scrolling is meaningful
+    const rows: unknown[][] = Array.from({ length: 50 }, (_, i) => [i + 1, `Row ${i + 1}`])
+
+    useTableDataStore.getState().initTab(tabId, 'conn-1', 'testdb', 'users')
+    useTableDataStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        [tabId]: {
+          ...state.tabs[tabId],
+          columns,
+          rows,
+          totalRows: 50,
+          currentPage: 1,
+          totalPages: 1,
+          pageSize: 1000,
+          primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+        },
+      },
+    }))
+  })
+
+  it('should scroll the grid to the newly inserted row at the bottom', async () => {
+    const tabId = 'tab-scroll-test'
+
+    render(<TableDataGrid tabId={tabId} isReadOnly={false} />)
+
+    // Verify rows are rendered
+    await waitFor(() => {
+      expect(screen.getByTestId('data-grid-row-0')).toBeInTheDocument()
+    })
+
+    // Insert a new row via the store (simulating toolbar click)
+    act(() => {
+      useTableDataStore.getState().insertNewRow(tabId)
+    })
+
+    // After inserting, the grid should scroll to the bottom where the new row is
+    await waitFor(() => {
+      const tab = useTableDataStore.getState().tabs[tabId]
+      // Verify new row was added
+      expect(tab.rows.length).toBe(51)
+    })
+
+    // The grid container's scrollTop should be set to scrollHeight to scroll to bottom
+    await waitFor(
+      () => {
+        expect(mockGridElement.scrollTop).toBe(mockGridElement.scrollHeight)
+      },
+      { timeout: 1000 }
+    )
+
+    // After scrolling, selectCell should also be called to focus the new row
+    await waitFor(
+      () => {
+        expect(mockSelectCell).toHaveBeenCalledWith(expect.objectContaining({ rowIdx: 50 }))
+      },
+      { timeout: 1000 }
+    )
+  })
+})
+
+describe('TableDataGrid scroll position persistence', () => {
+  const tabId = 'tab-1'
+
+  it('saves scroll position to store on scroll events (debounced)', async () => {
+    setupConnection()
+    setupTabState()
+
+    render(<TableDataGrid tabId={tabId} isReadOnly={false} />)
+
+    // Simulate a scroll event on the mock grid element
+    Object.defineProperty(mockGridElement, 'scrollTop', {
+      value: 200,
+      writable: true,
+      configurable: true,
+    })
+    Object.defineProperty(mockGridElement, 'scrollLeft', {
+      value: 50,
+      writable: true,
+      configurable: true,
+    })
+
+    await act(async () => {
+      mockGridElement.dispatchEvent(new Event('scroll'))
+    })
+
+    // Wait for debounce (100ms)
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 150))
+    })
+
+    const tab = useTableDataStore.getState().tabs[tabId]
+    expect(tab.scrollTop).toBe(200)
+    expect(tab.scrollLeft).toBe(50)
+  })
+
+  it('restores scroll position from store on mount', async () => {
+    setupConnection()
+    setupTabState({ scrollTop: 300, scrollLeft: 75 })
+
+    // Reset scrollTop/scrollLeft on mock element
+    Object.defineProperty(mockGridElement, 'scrollTop', {
+      value: 0,
+      writable: true,
+      configurable: true,
+    })
+    Object.defineProperty(mockGridElement, 'scrollLeft', {
+      value: 0,
+      writable: true,
+      configurable: true,
+    })
+
+    render(<TableDataGrid tabId={tabId} isReadOnly={false} />)
+
+    // Wait for rAF-based restore
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(r))
+    })
+
+    expect(mockGridElement.scrollTop).toBe(300)
+    expect(mockGridElement.scrollLeft).toBe(75)
   })
 })

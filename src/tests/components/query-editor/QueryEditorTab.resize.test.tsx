@@ -82,6 +82,7 @@ const mockEditorInstance = {
   revealPositionInCenter: vi.fn(),
   addCommand: vi.fn(),
   updateOptions: vi.fn(),
+  focus: vi.fn(),
 }
 
 // Override @monaco-editor/react to call onMount with our mock editor

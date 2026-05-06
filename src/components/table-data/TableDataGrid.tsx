@@ -83,6 +83,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const clearEditStateIfUnmodified = useTableDataStore((state) => state.clearEditStateIfUnmodified)
   const storeUpdateCellValue = useTableDataStore((state) => state.updateCellValue)
   const setSelectedCell = useTableDataStore((state) => state.setSelectedCell)
+  const setScrollPosition = useTableDataStore((state) => state.setScrollPosition)
   const showError = useToastStore((state) => state.showError)
   const showSuccess = useToastStore((state) => state.showSuccess)
 
@@ -96,6 +97,66 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
 
   const pkColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
   const hasPk = primaryKey !== null
+
+  // ---------------------------------------------------------------------------
+  // Scroll to newly inserted row at the bottom
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (editState?.isNewRow && rows.length > 0) {
+      const lastRowIdx = rows.length - 1
+      const el = (gridRef.current as unknown as { element: HTMLElement | null })?.element
+      if (el) {
+        // Scroll the virtualized grid container to the bottom so the new row is visible
+        requestAnimationFrame(() => {
+          el.scrollTop = el.scrollHeight
+          // After scrolling, select the first cell in the new row
+          gridRef.current?.selectCell({ rowIdx: lastRowIdx, idx: 0 })
+        })
+      } else {
+        gridRef.current?.selectCell({ rowIdx: lastRowIdx, idx: 0 })
+      }
+    }
+  }, [editState?.isNewRow, editState?.tempId, rows.length])
+
+  // ---------------------------------------------------------------------------
+  // Scroll position: save on scroll, restore on mount/tab-switch
+  // ---------------------------------------------------------------------------
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const el = (gridRef.current as unknown as { element: HTMLElement | null })?.element
+    if (!el) return
+
+    const handleScroll = () => {
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+      scrollTimerRef.current = setTimeout(() => {
+        setScrollPosition(tabId, el.scrollTop, el.scrollLeft)
+      }, 100)
+    }
+
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', handleScroll)
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+    }
+  }, [tabId, setScrollPosition])
+
+  // Restore scroll position on mount
+  useEffect(() => {
+    const el = (gridRef.current as unknown as { element: HTMLElement | null })?.element
+    if (!el) return
+    const savedScrollTop = tabState?.scrollTop ?? 0
+    const savedScrollLeft = tabState?.scrollLeft ?? 0
+    if (savedScrollTop || savedScrollLeft) {
+      // Use rAF to ensure the grid has rendered rows before scrolling
+      requestAnimationFrame(() => {
+        el.scrollTop = savedScrollTop
+        el.scrollLeft = savedScrollLeft
+      })
+    }
+    // Only restore on mount — intentionally exclude tabState from deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabId])
 
   // ---------------------------------------------------------------------------
   // Editor callbacks context — provides real updateCellValue to editors inside

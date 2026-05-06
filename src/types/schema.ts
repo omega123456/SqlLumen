@@ -499,6 +499,10 @@ export interface TableDataTabState {
   saveError: string | null
   isExportDialogOpen: boolean
 
+  // Scroll position (retained across tab switches)
+  scrollTop: number
+  scrollLeft: number
+
   // Unsaved changes dialog state
   pendingNavigationAction: (() => void) | null
 }

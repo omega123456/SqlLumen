@@ -37,12 +37,16 @@
   background-color: var(--result-grid-header-bg);
   border-bottom: var(--grid-header-border-bottom);
   box-shadow: var(--grid-header-shadow);
+  z-index: 2;
 }
 
 /* ---------- Header cells ---------- */
 .rdg-precision .rdg-header-row .rdg-cell {
+  background-color: var(--result-grid-header-bg);
   border-right: 1px solid rgba(var(--outline-variant-rgb), 0.1);
   padding: 0 var(--grid-cell-padding-x);
+  overflow: clip;
+  z-index: 3;
 }
 
 .rdg-precision .rdg-header-row .rdg-cell:hover {
@@ -98,10 +102,10 @@
   padding: 0 var(--grid-cell-padding-x);
   border-right: 1px solid rgba(var(--outline-variant-rgb), 0.1);
   border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-  overflow: hidden;
+  overflow: clip;
   text-overflow: ellipsis;
   white-space: nowrap;
-  contain: style;
+  contain: style layout paint;
 }
 
 /* RDG edit cells already manage their own layout; do not re-apply body-cell padding */

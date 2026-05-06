@@ -7,6 +7,55 @@ const dataGridPrecisionCss = readFileSync(
   'utf8'
 )
 
+describe('data-grid-precision header cell stacking context', () => {
+  it('should not apply overflow:hidden to header cells (causes z-index issues with sticky positioning)', () => {
+    // The generic .rdg-precision .rdg-cell rule applies overflow:hidden to ALL cells.
+    // Header cells (.rdg-header-row .rdg-cell) are position:sticky and overflow:hidden
+    // on sticky elements interferes with z-index stacking in Chromium during scroll.
+    // The header-specific rule must override overflow back to 'clip' or 'visible',
+    // or the generic rule must exclude header cells.
+    const genericCellRule = dataGridPrecisionCss.match(/\.rdg-precision\s+\.rdg-cell\s*\{([^}]+)\}/)
+    expect(genericCellRule).not.toBeNull()
+    const genericCellBody = genericCellRule![1]
+    const hasOverflowHidden = /overflow:\s*hidden/.test(genericCellBody)
+
+    if (hasOverflowHidden) {
+      // Then header cells must have an override
+      const headerCellRule = dataGridPrecisionCss.match(
+        /\.rdg-precision\s+\.rdg-header-row\s+\.rdg-cell\s*\{([^}]+)\}/
+      )
+      expect(headerCellRule).not.toBeNull()
+      const headerCellBody = headerCellRule![1]
+      const headerOverridesOverflow = /overflow:\s*(clip|visible)/.test(headerCellBody)
+      expect(headerOverridesOverflow).toBe(true)
+    }
+  })
+
+  it('should set explicit background-color on header cells so they are opaque (display:contents on row means row bg never paints)', () => {
+    const headerCellRule = dataGridPrecisionCss.match(
+      /\.rdg-precision\s+\.rdg-header-row\s+\.rdg-cell\s*\{([^}]+)\}/
+    )
+    expect(headerCellRule).not.toBeNull()
+    const headerCellBody = headerCellRule![1]
+    expect(headerCellBody).toMatch(/background-color:\s*var\(--result-grid-header-bg\)/)
+  })
+
+  it('should set explicit z-index on header row or header cells to prevent data rows from overlapping', () => {
+    // Sticky header needs z-index to stay above scrolled body rows.
+    // The custom CSS should ensure header has z-index defined.
+    const headerRowRule = dataGridPrecisionCss.match(
+      /\.rdg-precision\s+\.rdg-header-row\s*\{([^}]+)\}/
+    )
+    const headerCellRule = dataGridPrecisionCss.match(
+      /\.rdg-precision\s+\.rdg-header-row\s+\.rdg-cell\s*\{([^}]+)\}/
+    )
+    const headerHasZIndex =
+      (headerRowRule && /z-index/.test(headerRowRule[1])) ||
+      (headerCellRule && /z-index/.test(headerCellRule[1]))
+    expect(headerHasZIndex).toBe(true)
+  })
+})
+
 describe('data-grid-precision editing styles', () => {
   it('uses dark-theme left border accent on editing rows', () => {
     expect(dataGridPrecisionCss).toMatch(

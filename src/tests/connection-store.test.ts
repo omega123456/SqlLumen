@@ -770,6 +770,8 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
             isNewRow: false,
           },
           saveError: null,
+          scrollTop: 0,
+          scrollLeft: 0,
         },
       },
     })

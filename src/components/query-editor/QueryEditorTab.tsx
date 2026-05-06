@@ -43,6 +43,7 @@ export function QueryEditorTab({ tab }: QueryEditorTabProps) {
 
   const handleEditorMount = useCallback((editor: MonacoType.editor.IStandaloneCodeEditor) => {
     editorRef.current = editor
+    editor.focus()
   }, [])
 
   /** Explicitly relayout the Monaco editor when the panel is resized so

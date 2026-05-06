@@ -110,6 +110,8 @@ function makeDefaultTabState(overrides: Partial<TableDataTabState> = {}): TableD
     saveError: null,
     isExportDialogOpen: false,
     pendingNavigationAction: null,
+    scrollTop: 0,
+    scrollLeft: 0,
     ...overrides,
   }
 }

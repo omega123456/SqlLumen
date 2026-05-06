@@ -56,7 +56,10 @@ export interface WorkspaceTabsProps {
   connectionId: string
 }
 
-function getTabIconDescriptor(tab: WorkspaceTab): { IconComponent: TabIconComponent; testId: string } {
+function getTabIconDescriptor(tab: WorkspaceTab): {
+  IconComponent: TabIconComponent
+  testId: string
+} {
   if (tab.type === 'object-editor') {
     return {
       IconComponent: OBJECT_EDITOR_ICON_BY_TYPE[tab.objectType],
@@ -138,6 +141,7 @@ export function WorkspaceTabs({ connectionId }: WorkspaceTabsProps) {
             onAuxClick={
               tab.type !== 'history' && tab.type !== 'processlist'
                 ? (e) => {
+                    if (e.button !== 1) return
                     e.preventDefault()
                     closeTab(connectionId, tab.id)
                   }

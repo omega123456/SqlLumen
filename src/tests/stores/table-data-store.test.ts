@@ -172,6 +172,31 @@ describe('useTableDataStore — initTab', () => {
     expect(tab.isExportDialogOpen).toBe(false)
     expect(tab.pendingNavigationAction).toBeNull()
   })
+
+  it('should have scrollTop and scrollLeft fields in tab state', () => {
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+    const tab = useTableDataStore.getState().tabs['tab-1']
+
+    expect(tab.scrollTop).toBe(0)
+    expect(tab.scrollLeft).toBe(0)
+  })
+})
+
+describe('useTableDataStore — setScrollPosition', () => {
+  it('should expose a setScrollPosition action to save scroll offsets', () => {
+    const store = useTableDataStore.getState()
+    expect(typeof store.setScrollPosition).toBe('function')
+  })
+
+  it('should retain scroll position values after being set', async () => {
+    await setupTabWithData()
+
+    useTableDataStore.getState().setScrollPosition('tab-1', 150, 30)
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.scrollTop).toBe(150)
+    expect(tab.scrollLeft).toBe(30)
+  })
 })
 
 describe('useTableDataStore — loadTableData', () => {
@@ -486,6 +511,21 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
     expect(tab.saveError).toBe('Insert failed')
     expect(tab.editState).not.toBeNull()
     expect(tab.editState!.isNewRow).toBe(true)
+  })
+
+  it('sets saveError with actual message when invoke rejects with plain string (real Tauri behavior)', async () => {
+    // Real Tauri invoke rejects with a plain string (not an Error object) for Result<T, String> commands
+    ;(insertTableRow as Mock).mockRejectedValue("Duplicate entry '1' for key 'PRIMARY'")
+
+    await setupTabWithData()
+    useTableDataStore.getState().insertNewRow('tab-1')
+    useTableDataStore.getState().updateCellValue('tab-1', 'name', 'Charlie')
+
+    await useTableDataStore.getState().saveCurrentRow('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.saveError).toBe("Duplicate entry '1' for key 'PRIMARY'")
+    expect(tab.editState).not.toBeNull()
   })
 })
 
@@ -1128,5 +1168,59 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
     await vi.waitFor(() => {
       expect(useTableDataStore.getState().tabs['tab-1'].foreignKeys).toEqual([])
     })
+  })
+})
+
+describe('useTableDataStore — TINYINT boolean normalization', () => {
+  it('normalizes boolean values to 0/1 when dataType is TINYINT and isBooleanAlias is false', async () => {
+    const tinyintColumns: TableDataColumnMeta[] = [
+      {
+        name: 'id',
+        dataType: 'INT',
+        isBooleanAlias: false,
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: true,
+      },
+      {
+        name: 'is_active',
+        dataType: 'TINYINT',
+        isBooleanAlias: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+    ]
+
+    const responseWithBooleans: TableDataResponse = {
+      columns: tinyintColumns,
+      rows: [
+        [1, true],
+        [2, false],
+      ],
+      totalRows: 2,
+      currentPage: 1,
+      totalPages: 1,
+      pageSize: 1000,
+      primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+      executionTimeMs: 10,
+    }
+    ;(fetchTableData as Mock).mockResolvedValueOnce(responseWithBooleans)
+
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'flags')
+    await useTableDataStore.getState().fetchPage('tab-1', 1)
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    // If normalization works, boolean true/false should become 1/0
+    expect(tab.rows[0][1]).toBe(1)
+    expect(tab.rows[1][1]).toBe(0)
   })
 })

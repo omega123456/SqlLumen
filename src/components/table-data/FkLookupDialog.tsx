@@ -109,7 +109,7 @@ export function FkLookupDialog({
           page,
           pageSize: size,
           sortColumn: sortInfo?.column,
-          sortDirection: sortInfo?.direction,
+          sortDirection: sortInfo?.direction?.toLowerCase(),
           filterModel: filters.length > 0 ? filters : undefined,
         })
 

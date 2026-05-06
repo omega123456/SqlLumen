@@ -1889,4 +1889,135 @@ describe('BaseGridView', () => {
     expect(colDefs[0].key).toBe('id')
     expect(colDefs.length).toBe(1)
   })
+
+  // -------------------------------------------------------------------------
+  // Bug: keyboard navigation (Enter/ArrowUp) does not trigger onCellClickGuard
+  // -------------------------------------------------------------------------
+
+  it('invokes onCellClickGuard when keyboard navigates to a different row (ArrowUp)', async () => {
+    const onCellClickGuard = vi.fn().mockResolvedValue({
+      proceed: true,
+      targetRowIdx: 0,
+      targetColIdx: 0,
+      enableEditor: true,
+    })
+
+    render(
+      <BaseGridView
+        columns={testColumns}
+        rows={testRows}
+        editState={null}
+        onCellClickGuard={onCellClickGuard}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const onSelectedCellChange = props.onSelectedCellChange as (args: {
+      rowIdx: number
+      row: Record<string, unknown>
+      column: { key: string; idx: number; editable?: boolean; renderEditCell?: unknown }
+    }) => void
+
+    // Simulate: user is on row 1, presses ArrowUp → RDG fires onSelectedCellChange to row 0
+    act(() => {
+      // First establish current position at row 1
+      onSelectedCellChange({
+        rowIdx: 1,
+        row: testRows[1],
+        column: { key: 'id', idx: 0, editable: true },
+      })
+    })
+
+    onCellClickGuard.mockClear()
+
+    await act(async () => {
+      // Now simulate ArrowUp moving to row 0
+      onSelectedCellChange({
+        rowIdx: 0,
+        row: testRows[0],
+        column: { key: 'id', idx: 0, editable: true },
+      })
+    })
+
+    // The hypothesis says this will NOT be called because handleSelectedCellChange
+    // does not invoke onCellClickGuard for keyboard-driven row changes
+    expect(onCellClickGuard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rowIdx: 0,
+        columnKey: 'id',
+        rowData: testRows[0],
+      })
+    )
+  })
+
+  it('handles Enter in EDIT mode by moving to the next column instead of next row', () => {
+    render(<BaseGridView columns={testColumns} rows={testRows} editState={null} />)
+
+    const props = getLatestGridProps()
+    const onCellKeyDown = props.onCellKeyDown as (
+      args: {
+        mode: 'EDIT'
+        row: Record<string, unknown>
+        rowIdx: number
+        column: { key: string; idx: number; editable?: boolean }
+        navigate: () => void
+        onClose: (commitChanges?: boolean, shouldFocusCell?: boolean) => void
+      },
+      event: {
+        key: string
+        shiftKey?: boolean
+        ctrlKey?: boolean
+        metaKey?: boolean
+        preventGridDefault: () => void
+        isGridDefaultPrevented: () => boolean
+      }
+    ) => void
+    const onSelectedCellChange = props.onSelectedCellChange as (args: {
+      rowIdx: number
+      row: Record<string, unknown>
+      column: { key: string; idx: number; editable?: boolean }
+    }) => void
+
+    const preventGridDefault = vi.fn()
+
+    act(() => {
+      onCellKeyDown(
+        {
+          mode: 'EDIT',
+          row: testRows[0],
+          rowIdx: 0,
+          column: { key: 'id', idx: 0, editable: true },
+          navigate: vi.fn(),
+          onClose: vi.fn(),
+        },
+        {
+          key: 'Enter',
+          shiftKey: false,
+          ctrlKey: false,
+          metaKey: false,
+          preventGridDefault,
+          isGridDefaultPrevented: () => false,
+        }
+      )
+    })
+
+    // The hypothesis says Enter is NOT handled — preventGridDefault should be called
+    // to override RDG's default move-down behavior, but it won't be
+    expect(preventGridDefault).toHaveBeenCalled()
+
+    // Simulate RDG moving to column idx 1 on same row (expected Enter behavior)
+    act(() => {
+      onSelectedCellChange({
+        rowIdx: 0,
+        row: testRows[0],
+        column: { key: 'name', idx: 1, editable: true },
+      })
+    })
+
+    // Should open editor on next column (like Tab does)
+    expect(mockSelectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 1 },
+      { enableEditor: true, shouldFocusCell: true }
+    )
+  })
 })

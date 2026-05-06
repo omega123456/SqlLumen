@@ -47,6 +47,12 @@ vi.mock('../../../components/shared/BaseGridView', () => ({
         <button data-testid="mock-sort-trigger" onClick={() => sortChangeHandler?.('name', 'ASC')}>
           Sort
         </button>
+        <button
+          data-testid="mock-sort-desc-trigger"
+          onClick={() => sortChangeHandler?.('name', 'DESC')}
+        >
+          Sort DESC
+        </button>
         {/* Render clickable rows for row selection / double-click tests */}
         {rows.map((row, idx) => {
           const rowClass = getRowClassFn?.(row) ?? ''
@@ -416,7 +422,7 @@ describe('FkLookupDialog', () => {
       expect(mockFetchTableData).toHaveBeenCalledWith(
         expect.objectContaining({
           sortColumn: 'name',
-          sortDirection: 'ASC',
+          sortDirection: 'asc',
         })
       )
     })
@@ -854,6 +860,28 @@ describe('FkLookupDialog', () => {
 
     // Other rows should not be selected
     expect(screen.getByTestId('mock-row-1').getAttribute('data-row-class')).toBe('')
+  })
+
+  it('passes lowercase sort direction to fetchTableData for DESC sorting', async () => {
+    render(<FkLookupDialog {...makeDefaultProps()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mock-row-0')).toBeInTheDocument()
+    })
+
+    mockFetchTableData.mockClear()
+
+    // Trigger a DESC sort
+    fireEvent.click(screen.getByTestId('mock-sort-desc-trigger'))
+
+    await waitFor(() => {
+      expect(mockFetchTableData).toHaveBeenCalled()
+    })
+
+    const callArgs = mockFetchTableData.mock.calls[0][0] as Record<string, unknown>
+    // The backend expects lowercase "desc" but the frontend sends uppercase "DESC"
+    // This test will FAIL if the frontend sends uppercase (which is the current bug)
+    expect(callArgs.sortDirection).toBe('desc')
   })
 
   it('Cancel closes without calling onApply', async () => {

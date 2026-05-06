@@ -454,7 +454,12 @@ function buildEditBindingContext(
 
 function isTinyIntBooleanAlias(dataType: string): boolean {
   const normalized = dataType.trim().toUpperCase()
-  return normalized === 'BOOL' || normalized === 'BOOLEAN'
+  return (
+    normalized === 'BOOL' ||
+    normalized === 'BOOLEAN' ||
+    normalized === 'TINYINT' ||
+    normalized === 'TINYINT(1)'
+  )
 }
 
 function normalizeQueryRows(columns: ColumnMeta[], rows: unknown[][]): unknown[][] {

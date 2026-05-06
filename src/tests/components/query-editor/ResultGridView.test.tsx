@@ -353,4 +353,22 @@ describe('ResultGridView', () => {
     expect(colDefs[1].dataType).toBe('VARCHAR')
     expect(colDefs[2].dataType).toBe('VARCHAR')
   })
+
+  it('handleRowsChange remains referentially stable when rows change', () => {
+    const { rerender } = render(<ResultGridView {...defaultProps} />)
+    const firstOnRowsChange = getLatestBaseGridProps().onRowsChange
+
+    // Re-render with different row data (simulates new page of results during scroll)
+    const newRows: unknown[][] = [
+      [4, 'Dave', 'dave@example.com'],
+      [5, 'Eve', 'eve@example.com'],
+    ]
+    act(() => {
+      rerender(<ResultGridView {...defaultProps} rows={newRows} />)
+    })
+    const secondOnRowsChange = getLatestBaseGridProps().onRowsChange
+
+    // If handleRowsChange is stable (doesn't depend on rowData), the reference should be the same
+    expect(secondOnRowsChange).toBe(firstOnRowsChange)
+  })
 })

@@ -411,6 +411,29 @@ describe('WorkspaceTabs', () => {
     expect(screen.getByTestId(`workspace-tab-${tabId}`)).not.toHaveTextContent('●')
   })
 
+  it('right-click (auxclick button 2) on a tab does NOT close it', async () => {
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    await act(async () => {
+      const tabEl = screen.getByTestId(`workspace-tab-${tabId}`)
+      tabEl.dispatchEvent(
+        new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 2 })
+      )
+    })
+
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(1)
+  })
+
   it('prevents browser autoscroll by calling preventDefault on middle-button mousedown', () => {
     useWorkspaceStore.getState().openTab({
       type: 'table-data',
