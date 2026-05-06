@@ -445,7 +445,7 @@ describe('FkLookupDialog', () => {
 
     await waitFor(() => {
       expect(mockFetchTableData).toHaveBeenLastCalledWith(
-        expect.objectContaining({ page: 1, sortColumn: 'name', sortDirection: 'ASC' })
+        expect.objectContaining({ page: 1, sortColumn: 'name', sortDirection: 'asc' })
       )
     })
   })
