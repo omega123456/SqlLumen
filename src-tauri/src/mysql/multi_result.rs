@@ -515,7 +515,7 @@ async fn execute_call_statement(
     String,
 > {
     use crate::mysql::query_executor::{
-        calculate_total_pages, get_page_rows, ColumnMeta, MultiQueryResultItem, StoredResult,
+        calculate_total_pages, ColumnMeta, MultiQueryResultItem, StoredResult,
     };
     use mysql_async::prelude::Queryable;
 

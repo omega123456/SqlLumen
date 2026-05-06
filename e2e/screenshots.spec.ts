@@ -1248,10 +1248,13 @@ for (const theme of themes) {
       await page.evaluate(() => {
         window.scrollTo(0, 0)
       })
-      // Screenshot the full viewport with the dialog modal visible
-      await expect(page).toHaveScreenshot(`export-dialog-${theme}.png`, {
+      // Screenshot just the dialog to avoid background-only flake.
+      await expect(page.getByTestId('export-dialog')).toHaveScreenshot(
+        `export-dialog-${theme}.png`,
+        {
         animations: 'disabled',
-      })
+        }
+      )
     })
 
     test('SqlDumpDialog — open via context menu', async ({ page }) => {
