@@ -19,8 +19,8 @@ pnpm dev                # Frontend only (Vite on port 1420, no Rust)
 pnpm build              # tsc + Vite production build
 pnpm tauri build        # Native app bundle (DMG / MSI)
 
-# Testing — run targeted tests for the changed functionality before finishing
-pnpm test:all           # Vitest coverage + Rust coverage + full Playwright (full-suite option)
+# Testing — run pnpm test:all before finishing any change
+pnpm test:all           # Vitest coverage + Rust coverage + full Playwright (non-negotiable gate)
 pnpm test:coverage      # Vitest with v8 coverage (90% threshold lines/functions/statements)
 pnpm test:rust          # Rust tests via nextest, no coverage instrumentation (fast)
 pnpm test:rust:coverage # Rust tests via cargo-llvm-cov (needs cargo-llvm-cov + llvm-tools-preview)
@@ -45,14 +45,14 @@ pnpm format             # Prettier on src/
 pnpm typecheck          # tsc --noEmit
 ```
 
-**Agent rule (always apply):** Before finishing a session where any code was changed, run targeted tests that cover the changed functionality and ensure they are passing.
+**Cursor rule (always apply):** Before finishing a session where any code was changed, re-run `pnpm test:all` and ensure all tests are passing.
 
 ---
 
 ## Critical Rules for Agents
 
 - **Tests live only in separate test files.** Never bundle tests with production code: no `*.test.ts` / `*.spec.ts` next to sources under `src/`, no `describe`/`it` blocks inside application modules, and (Rust) no `#[cfg(test)]` or `#[test]` in `src-tauri/src/` — use `src/tests/` (mirroring `src/`), `src-tauri/tests/`, and `e2e/` only.
-- **Targeted tests for changed functionality must be green before you are done.** Run the most relevant Vitest, Rust, and/or Playwright tests for the touched area; fix failures in those impacted paths before finishing.
+- **`pnpm test:all` must be fully green before you are done.** Fix every failure regardless of whether you think your diff caused it — including pre-existing failures, unrelated suites, and screenshot baselines.
 - **Never lower coverage thresholds.** 90% lines/functions/statements for both TypeScript (Vitest v8) and Rust (llvm-cov `--fail-under-*`). Improve tests instead.
 - **No fixed delays > 5 s** in any test. Use condition-based waiting (Playwright auto-wait, `waitFor`, `findBy*`, polling).
 - **Each individual test must complete in under 2 seconds.** Refactor slow tests to remove unnecessary setup and waiting.
