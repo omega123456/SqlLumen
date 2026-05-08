@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { MonacoEditorWrapper } from '../../../components/query-editor/MonacoEditorWrapper'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
-import { useShortcutStore } from '../../../stores/shortcut-store'
+import { DEFAULT_SHORTCUTS, useShortcutStore } from '../../../stores/shortcut-store'
 
 // Mock the schema-metadata-cache (loadCache is called on mount)
 vi.mock('../../../components/query-editor/schema-metadata-cache', () => ({
@@ -148,7 +148,8 @@ vi.mock('@monaco-editor/react', async () => {
               setTheme: mockSetTheme,
             },
             languages: {},
-            KeyCode: { F9: 78, F12: 81 },
+            KeyCode: { F9: 78, F12: 81, KeyT: 52, KeyN: 49, Enter: 3, Tab: 2, Comma: 6 },
+            KeyMod: { CtrlCmd: 2048, Shift: 1024, Alt: 512 },
           })
         }, [])
 
@@ -180,6 +181,14 @@ vi.mock('@monaco-editor/react', async () => {
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
+  useShortcutStore.setState({
+    shortcuts: { ...DEFAULT_SHORTCUTS },
+    recordingActionId: null,
+    conflictActionId: null,
+    _pendingBinding: null,
+    _pendingActionId: null,
+    _actions: {},
+  })
   // Reset AI store tabs to prevent state leaking between tests
   useAiStore.setState({ tabs: {} })
   // Reset settings store to defaults (no loaded settings)
@@ -527,13 +536,15 @@ describe('MonacoEditorWrapper', () => {
   // -----------------------------------------------------------------------
 
   describe('settings integration', () => {
-    it('registers F9 and F12 keybindings via addCommand on mount', () => {
+    it('registers F9, F12, and CtrlCmd+T keybindings via addCommand on mount', () => {
       render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
-      expect(mockEditorInstance.addCommand).toHaveBeenCalledTimes(2)
+      expect(mockEditorInstance.addCommand).toHaveBeenCalledTimes(3)
       // F9 for execute-query
       expect(mockEditorInstance.addCommand).toHaveBeenCalledWith(78, expect.any(Function))
       // F12 for format-query
       expect(mockEditorInstance.addCommand).toHaveBeenCalledWith(81, expect.any(Function))
+      // CtrlCmd+T for new-query-tab
+      expect(mockEditorInstance.addCommand).toHaveBeenCalledWith(2100, expect.any(Function))
     })
 
     it('applies default editor settings to Monaco options', () => {
@@ -565,6 +576,38 @@ describe('MonacoEditorWrapper', () => {
       expect(props.options.wordWrap).toBe('on')
       expect(props.options.minimap).toEqual({ enabled: true })
       expect(props.options.lineNumbers).toBe('off')
+    })
+
+    it('registers the current shortcut-store binding for new-query-tab', () => {
+      useShortcutStore.setState({
+        shortcuts: {
+          ...DEFAULT_SHORTCUTS,
+          'new-query-tab': { key: 'N', modifiers: ['ctrl', 'shift'] },
+        },
+      })
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      expect(mockEditorInstance.addCommand).toHaveBeenCalledWith(3121, expect.any(Function))
+      expect(capturedAddCommandHandlers[3121]).toBeDefined()
+      expect(capturedAddCommandHandlers[2100]).toBeUndefined()
+    })
+
+    it('re-registers Monaco shortcuts when shortcut settings change', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+      expect(mockEditorInstance.addCommand).toHaveBeenCalledTimes(3)
+
+      act(() => {
+        useShortcutStore.setState({
+          shortcuts: {
+            ...DEFAULT_SHORTCUTS,
+            'new-query-tab': { key: 'N', modifiers: ['ctrl', 'shift'] },
+          },
+        })
+      })
+
+      expect(mockEditorInstance.addCommand).toHaveBeenCalledTimes(6)
+      expect(capturedAddCommandHandlers[3121]).toBeDefined()
     })
   })
 
@@ -677,6 +720,38 @@ describe('MonacoEditorWrapper', () => {
       capturedAddCommandHandlers[81]()
 
       expect(dispatchSpy).toHaveBeenCalledWith('format-query')
+      dispatchSpy.mockRestore()
+    })
+
+    it('CtrlCmd+T handler dispatches new-query-tab action through shortcut store', () => {
+      const dispatchSpy = vi.spyOn(useShortcutStore.getState(), 'dispatchAction')
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      // CtrlCmd+T is KeyMod.CtrlCmd | KeyCode.KeyT in our mock
+      expect(capturedAddCommandHandlers[2100]).toBeDefined()
+      capturedAddCommandHandlers[2100]()
+
+      expect(dispatchSpy).toHaveBeenCalledWith('new-query-tab')
+      dispatchSpy.mockRestore()
+    })
+
+    it('remapped shortcut handler dispatches new-query-tab through shortcut store', () => {
+      useShortcutStore.setState({
+        shortcuts: {
+          ...DEFAULT_SHORTCUTS,
+          'new-query-tab': { key: 'N', modifiers: ['ctrl', 'shift'] },
+        },
+      })
+
+      const dispatchSpy = vi.spyOn(useShortcutStore.getState(), 'dispatchAction')
+
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      expect(capturedAddCommandHandlers[3121]).toBeDefined()
+      capturedAddCommandHandlers[3121]()
+
+      expect(dispatchSpy).toHaveBeenCalledWith('new-query-tab')
       dispatchSpy.mockRestore()
     })
   })
