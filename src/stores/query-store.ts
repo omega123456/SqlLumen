@@ -1049,8 +1049,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         (err) => {
           void logFrontend(
             'warn',
-            '[query-edit] analyze_query_for_edit failed (insert re-exec)',
-            err instanceof Error ? err.message : String(err)
+            `[query-edit] analyze_query_for_edit failed (insert re-exec): ${
+              err instanceof Error ? err.message : String(err)
+            }`
           )
         }
       )

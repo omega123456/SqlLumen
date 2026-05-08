@@ -1771,7 +1771,9 @@ describe('useQueryStore — saveCurrentRow', () => {
 
   it('discards stale single-result insert refresh responses when queryId changes during await', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    let resolveRefresh: ((value: unknown) => void) | null = null
+    let resolveRefresh: (value: unknown) => void = () => {
+      throw new Error('Expected delayed refresh resolver to be captured')
+    }
     let executeQueryCount = 0
 
     mockIPC((cmd) => {
@@ -1833,7 +1835,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     await flushMicrotasks()
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users WHERE id = 9')
 
-    resolveRefresh?.({
+    resolveRefresh({
       queryId: 'q-late-refresh',
       columns: [
         { name: 'id', dataType: 'INT' },
