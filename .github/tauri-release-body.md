@@ -1,1 +1,1 @@
-Added Linux support
+See release assets for platform installers.
