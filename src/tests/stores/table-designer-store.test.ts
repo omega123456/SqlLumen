@@ -622,6 +622,33 @@ describe('useTableDesignerStore — loadSchema', () => {
     expect(tab.isDirty).toBe(false)
   })
 
+  it('loadSchema restores default integer display lengths when metadata omits them', async () => {
+    const schemaWithoutIntegerLengths = clone(loadedSchema)
+    schemaWithoutIntegerLengths.columns[0]!.length = ''
+    schemaWithoutIntegerLengths.columns[2]!.length = ''
+    invokeMock.mockImplementation(async (command) => {
+      if (command === 'load_table_for_designer') {
+        return schemaWithoutIntegerLengths
+      }
+
+      if (command === 'generate_table_ddl') {
+        return { ddl: '', warnings: [] }
+      }
+
+      throw new Error(`Unexpected IPC command: ${String(command)}`)
+    })
+
+    initAlterTab('load-tab')
+    await useTableDesignerStore.getState().loadSchema('load-tab')
+
+    const tab = useTableDesignerStore.getState().tabs['load-tab']
+    expect(tab.originalSchema?.columns[0]?.length).toBe('11')
+    expect(tab.currentSchema.columns[0]?.length).toBe('11')
+    expect(tab.originalSchema?.columns[2]?.length).toBe('11')
+    expect(tab.currentSchema.columns[2]?.length).toBe('11')
+    expect(tab.isDirty).toBe(false)
+  })
+
   it('loadSchema on error sets loadError', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {

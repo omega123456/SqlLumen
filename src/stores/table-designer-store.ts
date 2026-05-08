@@ -16,6 +16,13 @@ import type {
 
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const ddlRequestVersions: Record<string, number> = {}
+const INTEGER_TYPES_WITH_DEFAULT_DISPLAY_LENGTH = new Set([
+  'INT',
+  'TINYINT',
+  'SMALLINT',
+  'MEDIUMINT',
+  'BIGINT',
+])
 
 export interface TableDesignerTabState {
   connectionId: string
@@ -147,6 +154,29 @@ function canonicalizeSchema(schema: TableDesignerSchema): TableDesignerSchema {
   return {
     ...schema,
     columns: schema.columns.map(canonicalizeColumn),
+  }
+}
+
+function normalizeLoadedColumn(column: TableDesignerColumnDef): TableDesignerColumnDef {
+  if (column.length.trim() !== '') {
+    return column
+  }
+
+  const normalizedType = column.type.trim().toUpperCase()
+  if (!INTEGER_TYPES_WITH_DEFAULT_DISPLAY_LENGTH.has(normalizedType)) {
+    return column
+  }
+
+  return {
+    ...column,
+    length: getDefaultLengthForType(normalizedType),
+  }
+}
+
+function normalizeLoadedSchema(schema: TableDesignerSchema): TableDesignerSchema {
+  return {
+    ...schema,
+    columns: schema.columns.map(normalizeLoadedColumn),
   }
 }
 
@@ -424,10 +454,12 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
       patchTab(tabId, { isLoading: true, loadError: null })
 
       try {
-        const loadedSchema = await loadTableForDesigner(
-          tab.connectionId,
-          tab.databaseName,
-          tab.objectName
+        const loadedSchema = normalizeLoadedSchema(
+          await loadTableForDesigner(
+            tab.connectionId,
+            tab.databaseName,
+            tab.objectName
+          )
         )
 
         if (!get().tabs[tabId]) {

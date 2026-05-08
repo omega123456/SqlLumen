@@ -14,7 +14,7 @@ import { useShortcutStore } from '../../stores/shortcut-store'
 import { registerMonacoThemes, getMonacoThemeName } from './monaco-theme'
 import { registerModelConnection, unregisterModelConnection } from './completion-service'
 import { loadCache } from './schema-metadata-cache'
-import type { TabType } from '../../types/schema'
+import type { ShortcutBinding, TabType } from '../../types/schema'
 import styles from './MonacoEditorWrapper.module.css'
 
 // Register the 'mysql' language with Monaco (side-effect import)
@@ -44,6 +44,75 @@ interface MonacoEditorWrapperProps {
   onChange?: (value: string) => void
   /** Override readOnly — when provided, bypasses status-based readOnly computation */
   readOnly?: boolean
+}
+
+const MONACO_SHORTCUT_ACTIONS = ['execute-query', 'format-query', 'new-query-tab'] as const
+
+type MonacoShortcutActionId = (typeof MONACO_SHORTCUT_ACTIONS)[number]
+
+function getMonacoKeyCode(
+  key: string,
+  monacoInstance: typeof MonacoType
+): number | null {
+  const normalizedKey = key.trim().toUpperCase()
+  if (normalizedKey === '') {
+    return null
+  }
+
+  if (/^[A-Z]$/.test(normalizedKey)) {
+    const letterCode = monacoInstance.KeyCode[`Key${normalizedKey}` as keyof typeof monacoInstance.KeyCode]
+    return typeof letterCode === 'number' ? letterCode : null
+  }
+
+  if (/^F([1-9]|1[0-2])$/.test(normalizedKey)) {
+    const functionKeyCode =
+      monacoInstance.KeyCode[normalizedKey as keyof typeof monacoInstance.KeyCode]
+    return typeof functionKeyCode === 'number' ? functionKeyCode : null
+  }
+
+  if (normalizedKey === 'ENTER') {
+    return monacoInstance.KeyCode.Enter
+  }
+
+  if (normalizedKey === 'TAB') {
+    return monacoInstance.KeyCode.Tab
+  }
+
+  if (normalizedKey === ',' || normalizedKey === 'COMMA') {
+    return monacoInstance.KeyCode.Comma
+  }
+
+  return null
+}
+
+function getMonacoModifierMask(
+  modifiers: ShortcutBinding['modifiers'],
+  monacoInstance: typeof MonacoType
+): number {
+  return modifiers.reduce((mask, modifier) => {
+    switch (modifier) {
+      case 'ctrl':
+        return mask | monacoInstance.KeyMod.CtrlCmd
+      case 'shift':
+        return mask | monacoInstance.KeyMod.Shift
+      case 'alt':
+        return mask | monacoInstance.KeyMod.Alt
+      default:
+        return mask
+    }
+  }, 0)
+}
+
+function getMonacoKeybinding(
+  binding: ShortcutBinding,
+  monacoInstance: typeof MonacoType
+): number | null {
+  const keyCode = getMonacoKeyCode(binding.key, monacoInstance)
+  if (keyCode === null) {
+    return null
+  }
+
+  return getMonacoModifierMask(binding.modifiers, monacoInstance) | keyCode
 }
 
 export function MonacoEditorWrapper({
@@ -82,6 +151,9 @@ export function MonacoEditorWrapper({
   const editorLineNumbers = useSettingsStore(
     (state) => state.getSetting('editor.lineNumbers') === 'true'
   )
+  const executeQueryShortcut = useShortcutStore((state) => state.shortcuts['execute-query'])
+  const formatQueryShortcut = useShortcutStore((state) => state.shortcuts['format-query'])
+  const newQueryTabShortcut = useShortcutStore((state) => state.shortcuts['new-query-tab'])
 
   // Determine whether we are using override props (object-editor mode) or query-store bindings
   const isOverrideMode = overrideValue !== undefined
@@ -131,6 +203,15 @@ export function MonacoEditorWrapper({
   }, [connectionId])
 
   const currentThemeName = getMonacoThemeName(theme, resolvedTheme === 'dark')
+  const monacoShortcutBindings: Record<MonacoShortcutActionId, ShortcutBinding> = {
+    'execute-query': executeQueryShortcut,
+    'format-query': formatQueryShortcut,
+    'new-query-tab': newQueryTabShortcut,
+  }
+  const monacoShortcutSignature = MONACO_SHORTCUT_ACTIONS.map((actionId) => {
+    const binding = monacoShortcutBindings[actionId]
+    return `${actionId}:${binding.key}:${binding.modifiers.slice().sort().join('+')}`
+  }).join('|')
 
   function handleEditorMount(
     editor: MonacoType.editor.IStandaloneCodeEditor,
@@ -227,15 +308,20 @@ export function MonacoEditorWrapper({
       if (modelUriRef.current) unregisterModelConnection(modelUriRef.current)
     })
 
-    // Register F9 (Execute Query) and F12 (Format Query) as Monaco keybindings
-    // so they are dispatched through the shortcut system even when the editor is
-    // focused and captures key events before the global listener.
-    editor.addCommand(monacoInstance.KeyCode.F9, () => {
-      useShortcutStore.getState().dispatchAction('execute-query')
-    })
-    editor.addCommand(monacoInstance.KeyCode.F12, () => {
-      useShortcutStore.getState().dispatchAction('format-query')
-    })
+    // Register Monaco-local keybindings so they are dispatched through the
+    // shortcut system even when the editor captures key events before the
+    // global listener.
+    for (const actionId of MONACO_SHORTCUT_ACTIONS) {
+      const binding = monacoShortcutBindings[actionId]
+      const keybinding = getMonacoKeybinding(binding, monacoInstance)
+      if (keybinding === null) {
+        continue
+      }
+
+      editor.addCommand(keybinding, () => {
+        useShortcutStore.getState().dispatchAction(actionId)
+      })
+    }
 
     if (onMount) onMount(editor)
   }
@@ -273,6 +359,7 @@ export function MonacoEditorWrapper({
   return (
     <div className={styles.editorContainer} data-testid="monaco-editor-wrapper">
       <Editor
+        key={monacoShortcutSignature}
         height="100%"
         language="mysql"
         theme={currentThemeName}
