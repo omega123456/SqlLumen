@@ -105,11 +105,13 @@ describe('UnderlineTabs .bar overflow / scrollbar-gutter', () => {
     expect(match![1], '.bar overflow-x must be auto').toBe('auto')
   })
 
-  it('.barScrollable should use overflow-x: scroll', () => {
+  it('.barScrollable should use overflow-x: auto with a reserved scrollbar lane', () => {
     const barScrollableMatch = css.match(/\.barScrollable\s*\{[^}]*\}/)
     expect(barScrollableMatch, '.barScrollable block must exist').toBeTruthy()
     const block = barScrollableMatch![0]
-    expect(block).toMatch(/overflow-x:\s*scroll/)
+    expect(block).toMatch(/overflow-x:\s*auto/)
+    expect(block).toMatch(/--underline-tab-scrollbar-reserve:\s*var\(--grid-scrollbar-size\)/)
+    expect(block).toMatch(/grid-template-rows:[^;]*var\(--underline-tab-scrollbar-reserve\)/)
   })
 
   it('should not have scrollbar-gutter (does not work for horizontal overflow)', () => {

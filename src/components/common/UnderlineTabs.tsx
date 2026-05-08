@@ -26,11 +26,12 @@ export function UnderlineTabBar({
   scrollable,
 }: UnderlineTabBarProps) {
   const barClass = scrollable ? `${styles.bar} ${styles.barScrollable}` : styles.bar
+  const barChildren = scrollable ? <div className={styles.barContent}>{children}</div> : children
   if (suffix) {
     const wrapperClass = className ? `${styles.barWrapper} ${className}` : styles.barWrapper
     return (
       <div className={wrapperClass} data-testid={testId}>
-        <div className={barClass}>{children}</div>
+        <div className={barClass}>{barChildren}</div>
         <div className={styles.barSuffix}>{suffix}</div>
       </div>
     )
@@ -38,7 +39,7 @@ export function UnderlineTabBar({
   const finalBarClass = className ? `${barClass} ${className}` : barClass
   return (
     <div className={finalBarClass} data-testid={testId}>
-      {children}
+      {barChildren}
     </div>
   )
 }
