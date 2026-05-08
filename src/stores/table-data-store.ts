@@ -144,6 +144,49 @@ function getRowKeyFromData(
 // Exported for testing
 export { isSameRowKey, findRowIndexByKey, normalizeTableDataRows }
 
+function buildCurrentValuesFromRow(
+  columns: TableDataColumnMeta[],
+  rowValues: unknown[]
+): Record<string, unknown> {
+  const currentValues: Record<string, unknown> = {}
+  for (let index = 0; index < columns.length; index += 1) {
+    currentValues[columns[index].name] = rowValues[index]
+  }
+  return currentValues
+}
+
+function appendDraftRow(
+  tab: TableDataTabState,
+  patchTab: (tabId: string, partial: Partial<TableDataTabState>) => void,
+  startEditing: (
+    tabId: string,
+    rowKey: Record<string, unknown>,
+    currentValues: Record<string, unknown>
+  ) => void,
+  tabId: string,
+  rowValues: unknown[],
+  modifiedColumns: Set<string>
+): void {
+  const tempId = 'new-' + Date.now()
+  const newRows = [...tab.rows, rowValues]
+
+  patchTab(tabId, { rows: newRows, selectedRowKey: { __tempId: tempId } })
+
+  startEditing(tabId, { __tempId: tempId }, buildCurrentValuesFromRow(tab.columns, rowValues))
+
+  const updatedTab = useTableDataStore.getState().tabs[tabId]
+  if (!updatedTab?.editState) return
+
+  patchTab(tabId, {
+    editState: {
+      ...updatedTab.editState,
+      isNewRow: true,
+      tempId,
+      modifiedColumns,
+    },
+  })
+}
+
 // ---------------------------------------------------------------------------
 // saveCurrentRow helpers (pure functions)
 // ---------------------------------------------------------------------------
@@ -241,6 +284,24 @@ function applyInsertedRow(
   return newRows
 }
 
+function buildPersistedRowKeyFromInsertedData(
+  insertedData: [string, unknown][],
+  primaryKeyColumns: string[]
+): Record<string, unknown> | null {
+  if (primaryKeyColumns.length === 0) return null
+
+  const returnedMap = Object.fromEntries(insertedData)
+  const nextRowKey: Record<string, unknown> = {}
+  for (const keyColumn of primaryKeyColumns) {
+    if (!(keyColumn in returnedMap)) {
+      return null
+    }
+    nextRowKey[keyColumn] = returnedMap[keyColumn]
+  }
+
+  return nextRowKey
+}
+
 /** Update the matching row with edited values. Returns the original rows if no match. */
 function applyUpdatedRow(
   rows: unknown[][],
@@ -333,6 +394,7 @@ export interface TableDataStore {
   saveCurrentRow: (tabId: string) => Promise<boolean>
   discardCurrentRow: (tabId: string) => void
   insertNewRow: (tabId: string) => void
+  cloneSelectedRow: (tabId: string) => void
   deleteRow: (tabId: string, rowKey: Record<string, unknown>) => Promise<void>
 
   setViewMode: (tabId: string, mode: 'grid' | 'form') => void
@@ -617,11 +679,16 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           if (!get().tabs[tabId]) return true
 
           const newRows = applyInsertedRow(tab.rows, columns, returnedData)
+          const persistedRowKey = buildPersistedRowKeyFromInsertedData(
+            returnedData,
+            primaryKey.keyColumns
+          )
 
           patchTab(tabId, {
             rows: newRows,
             editState: null,
             saveError: null,
+            selectedRowKey: persistedRowKey,
           })
           return true
         } catch (err) {
@@ -681,10 +748,15 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         // Remove the temp row (always appended at the end)
         const newRows = [...tab.rows]
         newRows.pop()
+        const selectedWasDraft =
+          tab.selectedRowKey !== null &&
+          '__tempId' in tab.selectedRowKey &&
+          tab.editState.tempId === tab.selectedRowKey.__tempId
         patchTab(tabId, {
           rows: newRows,
           editState: null,
           saveError: null,
+          selectedRowKey: selectedWasDraft ? null : tab.selectedRowKey,
         })
       } else {
         // Restore original values in the row, then clear editState
@@ -726,40 +798,40 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       const tab = get().tabs[tabId]
       if (!tab) return
 
-      const tempId = 'new-' + Date.now()
-
-      // Create a new row seeded from column defaults where available.
       const newRow = tab.columns.map((column) => getInitialValueForNewRow(column))
-      const newRows = [...tab.rows, newRow]
-
-      // Build currentValues map from the seeded row values.
-      const currentValues: Record<string, unknown> = {}
       const seededColumns = new Set<string>()
       for (let index = 0; index < tab.columns.length; index += 1) {
-        currentValues[tab.columns[index].name] = newRow[index]
         if (tab.columns[index].columnDefault != null && !tab.columns[index].isAutoIncrement) {
           seededColumns.add(tab.columns[index].name)
         }
       }
 
-      // Update rows first
-      patchTab(tabId, { rows: newRows, selectedRowKey: { __tempId: tempId } })
+      appendDraftRow(tab, patchTab, get().startEditing, tabId, newRow, seededColumns)
+    },
 
-      // Start editing with __tempId as the key
-      get().startEditing(tabId, { __tempId: tempId }, currentValues)
+    cloneSelectedRow: (tabId) => {
+      const tab = get().tabs[tabId]
+      if (!tab?.selectedRowKey || !tab.primaryKey || tab.editState?.isNewRow) return
+      if ('__tempId' in tab.selectedRowKey) return
 
-      // Mark the editState as a new row
-      const updatedTab = get().tabs[tabId]
-      if (updatedTab?.editState) {
-        patchTab(tabId, {
-          editState: {
-            ...updatedTab.editState,
-            isNewRow: true,
-            tempId,
-            modifiedColumns: seededColumns,
-          },
-        })
-      }
+      const rowIdx = findRowIndexByKey(tab.rows, tab.columns, tab.selectedRowKey)
+      if (rowIdx === -1) return
+
+      const sourceRow = tab.rows[rowIdx]
+      const clonedRow = tab.columns.map((column, index) => {
+        if (tab.primaryKey?.keyColumns.includes(column.name)) {
+          return null
+        }
+        return sourceRow[index] ?? null
+      })
+
+      const modifiedColumns = new Set(
+        tab.columns
+          .filter((column) => !column.isPrimaryKey)
+          .map((column) => column.name)
+      )
+
+      appendDraftRow(tab, patchTab, get().startEditing, tabId, clonedRow, modifiedColumns)
     },
 
     // ------ deleteRow ------

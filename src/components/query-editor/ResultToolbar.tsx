@@ -11,7 +11,7 @@
  */
 
 import { useCallback } from 'react'
-import { FloppyDisk } from '@phosphor-icons/react'
+import { Copy, FloppyDisk } from '@phosphor-icons/react'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { EditModeDropdown } from './EditModeDropdown'
@@ -30,6 +30,8 @@ interface ResultToolbarProps {
   onFilterClick: () => void
   onClearFilterClick: () => void
   isEditingActive?: boolean
+  isCloneVisible?: boolean
+  isCloneDisabled?: boolean
 }
 
 export function ResultToolbar({
@@ -39,10 +41,13 @@ export function ResultToolbar({
   onFilterClick,
   onClearFilterClick,
   isEditingActive = false,
+  isCloneVisible = false,
+  isCloneDisabled = true,
 }: ResultToolbarProps) {
   const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
   const setViewMode = useQueryStore((state) => state.setViewMode)
   const openExportDialog = useQueryStore((state) => state.openExportDialog)
+  const cloneSelectedRow = useQueryStore((state) => state.cloneSelectedRow)
   const saveCurrentRow = useQueryStore((state) => state.saveCurrentRow)
   const discardCurrentRow = useQueryStore((state) => state.discardCurrentRow)
 
@@ -99,6 +104,10 @@ export function ResultToolbar({
     saveCurrentRow(tabId)
   }, [saveCurrentRow, tabId])
 
+  const handleClone = useCallback(() => {
+    cloneSelectedRow(tabId)
+  }, [cloneSelectedRow, tabId])
+
   const handleDiscard = useCallback(() => {
     discardCurrentRow(tabId)
   }, [discardCurrentRow, tabId])
@@ -115,6 +124,23 @@ export function ResultToolbar({
 
       {/* Edit mode dropdown — between view mode and status area */}
       <EditModeDropdown tabId={tabId} connectionId={connectionId} />
+
+      {/* Clone is independently visible whenever editable query-result mode is active. */}
+      {isCloneVisible && (
+        <div className={styles.editActionsGroup} data-testid="clone-actions-group">
+          <button
+            type="button"
+            className={styles.cloneButton}
+            onClick={handleClone}
+            title="Clone selected row; primary key fields are left blank."
+            data-testid="query-clone-button"
+            disabled={isCloneDisabled}
+          >
+            <Copy size={16} weight="regular" />
+            <span>Clone</span>
+          </button>
+        </div>
+      )}
 
       {/* Save/Discard buttons — visible only during active editing */}
       {editState !== null && (

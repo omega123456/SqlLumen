@@ -5,7 +5,12 @@ import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { TableDataTabState } from '../../../types/schema'
-import { updateTableRow, fetchTableData, deleteTableRow } from '../../../lib/table-data-commands'
+import {
+  updateTableRow,
+  fetchTableData,
+  insertTableRow,
+  deleteTableRow,
+} from '../../../lib/table-data-commands'
 
 // Mock toast store
 const mockShowError = vi.fn()
@@ -328,6 +333,96 @@ describe('TableDataToolbar', () => {
     const state = useTableDataStore.getState().tabs['tab-1']
     // A new row editState should be created
     expect(state?.editState?.isNewRow).toBe(true)
+  })
+
+  it('shows Clone between Add and Delete', () => {
+    setupConnection()
+    setupTabState({ selectedRowKey: { id: 1 } })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    const buttons = screen
+      .getAllByRole('button')
+      .filter((button) => ['Add', 'Clone', 'Delete'].includes(button.textContent ?? ''))
+
+    expect(buttons.map((button) => button.textContent)).toEqual(['Add', 'Clone', 'Delete'])
+    expect(screen.getByTestId('btn-clone-row')).toHaveAttribute(
+      'title',
+      'Clone selected row; primary key fields are left blank.'
+    )
+  })
+
+  it('Clone button is disabled when no persisted row is selected', () => {
+    setupConnection()
+    setupTabState({ selectedRowKey: null })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
+  })
+
+  it('Clone button is disabled when read-only, loading, or editing a draft row', () => {
+    setupConnection(true)
+    setupTabState({
+      isLoading: true,
+      selectedRowKey: { __tempId: 'temp-1' },
+      editState: {
+        rowKey: { __tempId: 'temp-1' },
+        originalValues: {},
+        currentValues: {},
+        modifiedColumns: new Set(),
+        isNewRow: true,
+        tempId: 'temp-1',
+      },
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
+  })
+
+  it('clicking Clone creates a selected draft row and saves through insert', async () => {
+    setupConnection()
+    setupTabState({
+      columns: [
+        {
+          name: 'id',
+          dataType: 'bigint',
+          isNullable: false,
+          isPrimaryKey: true,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isBooleanAlias: false,
+          isAutoIncrement: true,
+        },
+        {
+          name: 'name',
+          dataType: 'varchar',
+          isNullable: false,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isBooleanAlias: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [[1, 'Alice']],
+      selectedRowKey: { id: 1 },
+    })
+    render(<TableDataToolbar tabId="tab-1" />)
+
+    fireEvent.click(screen.getByTestId('btn-clone-row'))
+
+    let state = useTableDataStore.getState().tabs['tab-1']
+    expect(state?.selectedRowKey).toEqual({ __tempId: state?.editState?.tempId })
+    expect(state?.rows[state.rows.length - 1]).toEqual([null, 'Alice'])
+
+    fireEvent.click(screen.getByTestId('btn-save'))
+
+    await waitFor(() => {
+      expect(vi.mocked(insertTableRow)).toHaveBeenCalled()
+    })
   })
 
   it('Add Row button is disabled when already editing a new row', () => {

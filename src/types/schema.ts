@@ -449,6 +449,8 @@ export interface RowEditState {
   currentValues: Record<string, unknown>
   /** Set of column names that have been modified. */
   modifiedColumns: Set<string>
+  /** Optional set of insert-eligible columns for new-row flows (for example clone drafts). */
+  insertEligibleColumns?: Set<string>
   /** True if this is an unsaved new row (INSERT pending). */
   isNewRow: boolean
   /** Temporary client-side ID for new rows (cleared after save). */

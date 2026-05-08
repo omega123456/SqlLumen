@@ -1349,4 +1349,250 @@ describe('ResultPanel', () => {
     expect(colDefs[0].width).toBeGreaterThan(editableWidth)
     expect(colDefs[0].width - editableWidth).toBe(14)
   })
+
+  it('disables Clone in text view even when edit mode and selection exist', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          status: 'success',
+          viewMode: 'text',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          rows: [[1, 'Alice']],
+          totalRows: 1,
+          selectedRowIndex: 0,
+          editMode: 'users',
+          editTableMetadata: {
+            users: {
+              database: 'app',
+              table: 'users',
+              columns: [],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+            },
+          },
+        }),
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('query-clone-button')).toBeDisabled()
+  })
+
+  it('disables Clone when primary key metadata is unique-key fallback', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          status: 'success',
+          viewMode: 'grid',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          rows: [[1, 'Alice']],
+          totalRows: 1,
+          selectedRowIndex: 0,
+          editMode: 'users',
+          editTableMetadata: {
+            users: {
+              database: 'app',
+              table: 'users',
+              columns: [],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: false,
+                isUniqueKeyFallback: true,
+              },
+            },
+          },
+        }),
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('query-clone-button')).toBeDisabled()
+  })
+
+  it('disables Clone when no non-primary-key result columns can produce an insert payload', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          status: 'success',
+          viewMode: 'grid',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          rows: [[1]],
+          totalRows: 1,
+          selectedRowIndex: 0,
+          editMode: 'users',
+          editBoundColumnIndexMap: new Map<string, number>([['id', 0]]),
+          editTableMetadata: {
+            users: {
+              database: 'app',
+              table: 'users',
+              columns: [
+                {
+                  name: 'id',
+                  dataType: 'INT',
+                  isNullable: false,
+                  isPrimaryKey: true,
+                  isUniqueKey: false,
+                  hasDefault: false,
+                  columnDefault: null,
+                  isBinary: false,
+                  isAutoIncrement: true,
+                  isBooleanAlias: false,
+                },
+                {
+                  name: 'server_only',
+                  dataType: 'VARCHAR',
+                  isNullable: true,
+                  isPrimaryKey: false,
+                  isUniqueKey: false,
+                  hasDefault: false,
+                  columnDefault: null,
+                  isBinary: false,
+                  isAutoIncrement: false,
+                  isBooleanAlias: false,
+                },
+              ],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+            },
+          },
+        }),
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('query-clone-button')).toBeDisabled()
+  })
+
+  it('keeps Clone disabled in form view while fallback row is shown without store selection', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          status: 'success',
+          viewMode: 'form',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          rows: [[1, 'Alice']],
+          totalRows: 1,
+          selectedRowIndex: null,
+          editMode: 'users',
+          editTableMetadata: {
+            users: {
+              database: 'app',
+              table: 'users',
+              columns: [],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+            },
+          },
+        }),
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('query-clone-button')).toBeDisabled()
+  })
+
+  it('disables Clone when the selected row is already an unsaved draft row', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          status: 'success',
+          viewMode: 'grid',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          rows: [
+            [1, 'Alice'],
+            [null, 'Alice (copy)'],
+          ],
+          totalRows: 2,
+          selectedRowIndex: 1,
+          editingRowIndex: 1,
+          editMode: 'users',
+          editState: {
+            rowKey: { __draft__: true },
+            originalValues: { id: null, name: 'Alice (copy)' },
+            currentValues: { id: null, name: 'Alice (copy)' },
+            modifiedColumns: new Set<string>(),
+            isNewRow: true,
+          },
+          editTableMetadata: {
+            users: {
+              database: 'app',
+              table: 'users',
+              columns: [],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+            },
+          },
+        }),
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('query-clone-button')).toBeDisabled()
+  })
+
+  it('disables Clone when the selected persisted row has unsaved edits', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          status: 'success',
+          viewMode: 'grid',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          rows: [[1, 'Alice']],
+          totalRows: 1,
+          selectedRowIndex: 0,
+          editingRowIndex: 0,
+          editMode: 'users',
+          editState: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1, name: 'Alice' },
+            currentValues: { id: 1, name: 'Alicia' },
+            modifiedColumns: new Set<string>(['name']),
+            isNewRow: false,
+          },
+          editTableMetadata: {
+            users: {
+              database: 'app',
+              table: 'users',
+              columns: [],
+              primaryKey: {
+                keyColumns: ['id'],
+                hasAutoIncrement: true,
+                isUniqueKeyFallback: false,
+              },
+            },
+          },
+        }),
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByTestId('query-clone-button')).toBeDisabled()
+  })
 })

@@ -84,10 +84,13 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const editMode = activeResult.editMode ?? null
   const editableColumnMap = activeResult.editableColumnMap ?? new Map<number, boolean>()
   const editColumnBindings = activeResult.editColumnBindings ?? new Map<number, string>()
+  const editBoundColumnIndexMap = activeResult.editBoundColumnIndexMap ?? new Map<string, number>()
   const editState = activeResult.editState ?? null
   const editingRowIndex = activeResult.editingRowIndex ?? null
   const editForeignKeys = activeResult.editForeignKeys ?? EMPTY_FOREIGN_KEYS
   const saveError = activeResult.saveError ?? null
+  const isAnalyzingQuery = activeResult.isAnalyzingQuery ?? false
+  const primaryKey = editMode ? activeResult.editTableMetadata?.[editMode]?.primaryKey ?? null : null
   const editTableColumns =
     editMode && activeResult.editTableMetadata?.[editMode]?.columns
       ? activeResult.editTableMetadata[editMode].columns
@@ -329,6 +332,29 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   // Tab-level 'running' takes precedence; otherwise use active result's status
   const displayStatus =
     tabStatus === 'running' ? 'running' : tabStatus === 'idle' ? 'idle' : resultStatus
+  const cloneVisible = editMode !== null
+  const selectedRowExists =
+    selectedRowIndex !== null && selectedRowIndex >= 0 && selectedRowIndex < rows.length
+  const selectedRowIsDraft = !!editState?.isNewRow && editingRowIndex === selectedRowIndex
+  const hasBlockingPendingEdit =
+    editState !== null && (editState.isNewRow || editState.modifiedColumns.size > 0)
+  const hasInsertEligibleNonPrimaryCloneColumns =
+    editMode !== null &&
+    editTableColumns.some(
+      (column) =>
+        !column.isPrimaryKey && editBoundColumnIndexMap.has(column.name.toLowerCase())
+    )
+  const cloneDisabled =
+    !cloneVisible ||
+    displayStatus !== 'success' ||
+    isAnalyzingQuery ||
+    viewMode === 'text' ||
+    hasBlockingPendingEdit ||
+    !selectedRowExists ||
+    selectedRowIsDraft ||
+    !primaryKey ||
+    primaryKey.isUniqueKeyFallback ||
+    !hasInsertEligibleNonPrimaryCloneColumns
 
   return (
     <div className={styles.container} data-testid="result-panel">
@@ -364,6 +390,8 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
               onFilterClick={() => setIsFilterDialogOpen(true)}
               onClearFilterClick={handleClearFilter}
               isEditingActive={isEditingActive}
+              isCloneVisible={cloneVisible}
+              isCloneDisabled={cloneDisabled}
             />
             {columns.length > 0 ? (
               <FkLookupProvider onFkLookup={handleFkLookup}>
@@ -445,6 +473,8 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
               onFilterClick={() => setIsFilterDialogOpen(true)}
               onClearFilterClick={handleClearFilter}
               isEditingActive={isEditingActive}
+              isCloneVisible={cloneVisible}
+              isCloneDisabled={true}
             />
             <div className={styles.errorBody}>
               <span className={styles.errorMessage}>{activeResult.errorMessage}</span>

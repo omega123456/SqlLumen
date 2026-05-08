@@ -87,6 +87,17 @@ interface SelectedCellState {
   editable: boolean
 }
 
+function isSameSelectedCell(
+  left: SelectedCellState | null,
+  right: SelectedCellState | null
+): boolean {
+  return (
+    left?.rowIdx === right?.rowIdx &&
+    left?.idx === right?.idx &&
+    left?.editable === right?.editable
+  )
+}
+
 function columnKeysFingerprint(columns: { key: string }[]): string {
   return columns.map((c) => c.key).join('\x00')
 }
@@ -159,6 +170,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   const pendingTabNavigationRef = useRef<{ rowIdx: number; idx: number } | null>(null)
   const selectedCellRef = useRef<SelectedCellState | null>(null)
   const previousSelectedCellRef = useRef<SelectedCellState | null>(null)
+  const programmaticSelectionRef = useRef<SelectedCellState | null>(null)
   const cellClickGuardRequestIdRef = useRef(0)
   const clickGuardInFlightRef = useRef(false)
 
@@ -191,6 +203,30 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     previousSelectedCellRef.current = selectedCellRef.current
     selectedCellRef.current = next
   }, [])
+
+  const selectTrackedCell = useCallback(
+    (
+      next: SelectedCellState,
+      options?: {
+        shouldFocusCell?: boolean
+      }
+    ) => {
+      if (isSameSelectedCell(programmaticSelectionRef.current, next) && !options?.shouldFocusCell) {
+        return
+      }
+
+      programmaticSelectionRef.current = next
+      setTrackedSelectedCell(next)
+      gridRef.current?.selectCell(
+        { rowIdx: next.rowIdx, idx: next.idx },
+        {
+          enableEditor: next.editable,
+          ...(options?.shouldFocusCell ? { shouldFocusCell: true } : {}),
+        }
+      )
+    },
+    [setTrackedSelectedCell]
+  )
 
   const getRestoreTarget = useCallback(
     (
@@ -480,15 +516,12 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         }
 
         if (result.proceed) {
-          const nextSelection = buildSelectedCellState(
-            result.targetRowIdx,
-            result.targetColIdx,
-            result.enableEditor
-          )
-          setTrackedSelectedCell(nextSelection)
-          gridRef.current?.selectCell(
-            { rowIdx: result.targetRowIdx, idx: result.targetColIdx },
-            { enableEditor: result.enableEditor }
+          selectTrackedCell(
+            buildSelectedCellState(
+              result.targetRowIdx,
+              result.targetColIdx,
+              result.enableEditor
+            )
           )
         } else if (result.restoreFocus) {
           const restoreTarget = getRestoreTarget(
@@ -497,11 +530,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
             selectionAtGuardStart,
             selectionBeforeGuardStart
           )
-          setTrackedSelectedCell(restoreTarget)
-          gridRef.current?.selectCell(
-            { rowIdx: restoreTarget.rowIdx, idx: restoreTarget.idx },
-            { enableEditor: restoreTarget.editable, shouldFocusCell: true }
-          )
+          selectTrackedCell(restoreTarget, { shouldFocusCell: true })
         }
         return
       }
@@ -510,7 +539,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         onRowClick(args.row, args.column.key)
       }
     },
-    [getRestoreTarget, onCellClickGuard, onRowClick, setTrackedSelectedCell]
+    [getRestoreTarget, onCellClickGuard, onRowClick, selectTrackedCell]
   )
 
   const handleCellDoubleClick = useCallback(
@@ -537,20 +566,22 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
           ? args.column.editable
           : args.column.renderEditCell != null
 
+      const nextSelection = buildSelectedCellState(args.rowIdx, args.column.idx, editable)
+      if (isSameSelectedCell(programmaticSelectionRef.current, nextSelection)) {
+        programmaticSelectionRef.current = null
+      }
+
       const previousCell = selectedCellRef.current
-      setTrackedSelectedCell(buildSelectedCellState(args.rowIdx, args.column.idx, editable))
+      setTrackedSelectedCell(nextSelection)
 
       const target = pendingTabNavigationRef.current
       if (target) {
-        if (target.rowIdx === args.rowIdx && target.idx === args.column.idx && editable) {
-          setTrackedSelectedCell(buildSelectedCellState(args.rowIdx, args.column.idx, true))
-          gridRef.current?.selectCell(
-            { rowIdx: args.rowIdx, idx: args.column.idx },
-            { enableEditor: true, shouldFocusCell: true }
-          )
-        }
-
         pendingTabNavigationRef.current = null
+        if (target.rowIdx === args.rowIdx && target.idx === args.column.idx && editable) {
+          selectTrackedCell(buildSelectedCellState(args.rowIdx, args.column.idx, true), {
+            shouldFocusCell: true,
+          })
+        }
         return
       }
 
@@ -569,20 +600,27 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         }
         void onCellClickGuardRef.current(guardArgs).then((result) => {
           if (result.proceed) {
-            gridRef.current?.selectCell(
-              { rowIdx: result.targetRowIdx, idx: result.targetColIdx },
-              { enableEditor: result.enableEditor }
+            selectTrackedCell(
+              buildSelectedCellState(
+                result.targetRowIdx,
+                result.targetColIdx,
+                result.enableEditor
+              )
             )
           } else if (result.restoreFocus) {
-            gridRef.current?.selectCell(
-              { rowIdx: result.targetRowIdx, idx: result.targetColIdx },
-              { enableEditor: result.enableEditor, shouldFocusCell: true }
+            selectTrackedCell(
+              buildSelectedCellState(
+                result.targetRowIdx,
+                result.targetColIdx,
+                result.enableEditor
+              ),
+              { shouldFocusCell: true }
             )
           }
         })
       }
     },
-    [setTrackedSelectedCell]
+    [selectTrackedCell, setTrackedSelectedCell]
   )
 
   const handleCellClipboardEdit = useCallback(

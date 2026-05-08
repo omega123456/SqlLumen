@@ -93,6 +93,8 @@ export function ResultFormView({
   onSaveRow,
   onDiscardRow,
 }: ResultFormViewProps) {
+  // Form view can render the first row as a visual fallback before store selection exists.
+  // Clone enablement is handled upstream by checking whether selectedRowIndex is committed.
   const currentIndex = selectedRowIndex ?? 0
   const clampedIndex = Math.max(0, Math.min(currentIndex, rows.length - 1))
   const currentRow = rows.length > 0 ? ((rows[clampedIndex] as unknown[]) ?? null) : null
