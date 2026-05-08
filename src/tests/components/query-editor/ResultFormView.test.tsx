@@ -92,6 +92,12 @@ describe('ResultFormView', () => {
     expect(screen.getByText('Record 1 of 5')).toBeInTheDocument()
   })
 
+  it('shows the first row as a fallback when selectedRowIndex is null', () => {
+    render(<ResultFormView {...defaultProps} selectedRowIndex={null} />)
+    expect(screen.getByTestId('form-input-id')).toHaveTextContent('1')
+    expect(screen.getByTestId('form-input-name')).toHaveTextContent('Alice')
+  })
+
   it('shows column names with original casing', () => {
     render(<ResultFormView {...defaultProps} />)
     expect(screen.getByText('id')).toBeInTheDocument()
@@ -667,6 +673,30 @@ describe('ResultFormView — Edit Mode', () => {
     render(<ResultFormView {...defaultProps} />)
     expect(screen.queryByTestId('btn-form-save')).not.toBeInTheDocument()
     expect(screen.queryByTestId('btn-form-discard')).not.toBeInTheDocument()
+  })
+
+  it('keeps the fallback row uncommitted to store selection while selectedRowIndex is null', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': buildTabState({
+          selectedRowIndex: null,
+        }),
+      },
+    })
+
+    render(
+      <ResultFormView
+        {...defaultProps}
+        selectedRowIndex={null}
+        {...buildEditProps({ editState: null, editingRowIndex: null })}
+      />
+    )
+
+    fireEvent.focus(screen.getByTestId('form-input-name'))
+
+    const result = useQueryStore.getState().tabs['tab-1']?.results[0]
+    expect(result?.selectedRowIndex).toBeNull()
+    expect(screen.getByText('Record 1 of 5')).toBeInTheDocument()
   })
 
   it('enum select onChange fires onUpdateCell with selected value', async () => {

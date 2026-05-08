@@ -735,3 +735,33 @@ export function buildUpdatePayload(
     updatedValues,
   }
 }
+
+/**
+ * Builds the insert_table_row payload from edit state.
+ * Only modified columns appear in values, and generated primary keys remain omitted.
+ */
+export function buildInsertPayload(
+  editState: RowEditState,
+  tableColumns: TableDataColumnMeta[]
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {}
+  const insertEligibleColumns = editState.insertEligibleColumns
+
+  for (const column of tableColumns) {
+    if (column.isAutoIncrement) {
+      continue
+    }
+
+    const isModified = editState.modifiedColumns.has(column.name)
+    const isInsertEligible = insertEligibleColumns?.has(column.name) ?? false
+    if (!isModified && !isInsertEligible) {
+      continue
+    }
+
+    if (editState.currentValues[column.name] !== undefined) {
+      values[column.name] = editState.currentValues[column.name]
+    }
+  }
+
+  return values
+}

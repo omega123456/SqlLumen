@@ -126,6 +126,22 @@ export function ResultGridView({
     onSyncCellValueRef.current = onSyncCellValue
   }, [onSyncCellValue])
 
+  const syncSelection = useCallback(
+    (rowIdx: number, columnKey: string, selectedRow: Record<string, unknown>) => {
+      onRowSelected(rowIdx)
+
+      const columnIndex = colIndexFromKey(columnKey)
+      const column = columns[columnIndex]
+      if (!column) return
+
+      storeSetSelectedCell(tabId, {
+        columnKey: column.name,
+        value: selectedRow[columnKey],
+      })
+    },
+    [columns, onRowSelected, storeSetSelectedCell, tabId]
+  )
+
   // ---------------------------------------------------------------------------
   // Table column lookup map — case-insensitive name → TableDataColumnMeta.
   // Used by column descriptors and shared with the form view pattern.
@@ -320,20 +336,7 @@ export function ResultGridView({
         }
       }
 
-      // Update selection
-      onRowSelected(rowIdx)
-
-      // Track selected cell for filter auto-population
-      {
-        const ci = colIndexFromKey(columnKey)
-        const colMeta = columns[ci]
-        if (colMeta) {
-          storeSetSelectedCell(tabId, {
-            columnKey: colMeta.name,
-            value: args.rowData[columnKey],
-          })
-        }
-      }
+      syncSelection(rowIdx, columnKey, args.rowData)
 
       // Only start editing and enter editor for editable columns
       if (isEditable) {
@@ -352,9 +355,7 @@ export function ResultGridView({
     onAutoSave,
     onRowSelected,
     onStartEditing,
-    columns,
-    tabId,
-    storeSetSelectedCell,
+    syncSelection,
   ])
 
   // In read-only mode, we still need a simple cell click handler for row selection.
@@ -362,17 +363,7 @@ export function ResultGridView({
   // applies (no row selection callback). So for read-only mode we provide a minimal guard.
   const readOnlyCellClickGuard = useCallback(
     async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
-      onRowSelected(args.rowIdx)
-
-      // Track selected cell for filter auto-population
-      const ci = colIndexFromKey(args.columnKey)
-      const colMeta = columns[ci]
-      if (colMeta) {
-        storeSetSelectedCell(tabId, {
-          columnKey: colMeta.name,
-          value: args.rowData[args.columnKey],
-        })
-      }
+      syncSelection(args.rowIdx, args.columnKey, args.rowData)
 
       // Allow selectCell so the cell gets focus/selection, but don't open an editor
       const targetColIdx = colIndexFromKey(args.columnKey)
@@ -383,7 +374,7 @@ export function ResultGridView({
         enableEditor: false,
       }
     },
-    [onRowSelected, columns, tabId, storeSetSelectedCell]
+    [syncSelection]
   )
 
   // ---------------------------------------------------------------------------
@@ -464,7 +455,7 @@ export function ResultGridView({
         }
       }
 
-      onRowSelected(args.rowIdx)
+      syncSelection(args.rowIdx, args.columnKey, args.rowData)
 
       if (currentEditingRow !== args.rowIdx) {
         onStartEditing(args.rowIdx)
@@ -481,9 +472,9 @@ export function ResultGridView({
       columns,
       editableColumnMap,
       onAutoSave,
-      onRowSelected,
       onStartEditing,
       onSyncCellValue,
+      syncSelection,
     ]
   )
 

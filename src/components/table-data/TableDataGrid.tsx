@@ -101,22 +101,34 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   // ---------------------------------------------------------------------------
   // Scroll to newly inserted row at the bottom
   // ---------------------------------------------------------------------------
+  const autoSelectedDraftTempIdRef = useRef<string | null>(null)
   useEffect(() => {
-    if (editState?.isNewRow && rows.length > 0) {
-      const lastRowIdx = rows.length - 1
+    const selectedDraftTempId =
+      selectedRowKey && '__tempId' in selectedRowKey ? selectedRowKey.__tempId : null
+    if (
+      editState?.isNewRow &&
+      selectedDraftTempId === editState.tempId &&
+      rows.length > 0 &&
+      autoSelectedDraftTempIdRef.current !== editState.tempId
+    ) {
+      const draftRowIdx = rows.length - 1
+      autoSelectedDraftTempIdRef.current = editState.tempId ?? null
       const el = (gridRef.current as unknown as { element: HTMLElement | null })?.element
       if (el) {
         // Scroll the virtualized grid container to the bottom so the new row is visible
         requestAnimationFrame(() => {
           el.scrollTop = el.scrollHeight
           // After scrolling, select the first cell in the new row
-          gridRef.current?.selectCell({ rowIdx: lastRowIdx, idx: 0 })
+          gridRef.current?.selectCell({ rowIdx: draftRowIdx, idx: 0 })
         })
       } else {
-        gridRef.current?.selectCell({ rowIdx: lastRowIdx, idx: 0 })
+        gridRef.current?.selectCell({ rowIdx: draftRowIdx, idx: 0 })
       }
     }
-  }, [editState?.isNewRow, editState?.tempId, rows.length])
+    if (!editState?.isNewRow) {
+      autoSelectedDraftTempIdRef.current = null
+    }
+  }, [editState?.isNewRow, editState?.tempId, rows.length, selectedRowKey])
 
   // ---------------------------------------------------------------------------
   // Scroll position: save on scroll, restore on mount/tab-switch

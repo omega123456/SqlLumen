@@ -498,6 +498,93 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
     expect(useTableDataStore.getState().tabs['tab-insert-bool'].rows).toEqual([[3, 1]])
   })
 
+  it('saves a cloned row through insert without copying generated primary keys', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().setSelectedRow('tab-1', { id: 1 })
+    useTableDataStore.getState().cloneSelectedRow('tab-1')
+
+    await useTableDataStore.getState().saveCurrentRow('tab-1')
+
+    expect(insertTableRow).toHaveBeenCalledWith({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      table: 'users',
+      values: { name: 'Alice' },
+      pkInfo: mockPrimaryKey,
+    })
+    expect(useTableDataStore.getState().tabs['tab-1'].selectedRowKey).toEqual({ id: 3 })
+  })
+
+  it('allows replacement natural primary-key values to be entered before saving a cloned row', async () => {
+    const compositeColumns: TableDataColumnMeta[] = [
+      {
+        name: 'tenant_id',
+        dataType: 'INT',
+        isBooleanAlias: false,
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+      {
+        name: 'user_id',
+        dataType: 'INT',
+        isBooleanAlias: false,
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+      {
+        name: 'name',
+        dataType: 'VARCHAR',
+        isBooleanAlias: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+    ]
+    const compositePk: PrimaryKeyInfo = {
+      keyColumns: ['tenant_id', 'user_id'],
+      hasAutoIncrement: false,
+      isUniqueKeyFallback: false,
+    }
+    ;(fetchTableData as Mock).mockResolvedValueOnce({
+      columns: compositeColumns,
+      rows: [[10, 1, 'Alice']],
+      currentPage: 1,
+      pageSize: 1000,
+      primaryKey: compositePk,
+      executionTimeMs: 12,
+    })
+
+    await setupTabWithData()
+    useTableDataStore.getState().setSelectedRow('tab-1', { tenant_id: 10, user_id: 1 })
+    useTableDataStore.getState().cloneSelectedRow('tab-1')
+    useTableDataStore.getState().updateCellValue('tab-1', 'tenant_id', 11)
+    useTableDataStore.getState().updateCellValue('tab-1', 'user_id', 2)
+
+    await useTableDataStore.getState().saveCurrentRow('tab-1')
+
+    expect(insertTableRow).toHaveBeenCalledWith({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      table: 'users',
+      values: { tenant_id: 11, user_id: 2, name: 'Alice' },
+      pkInfo: compositePk,
+    })
+  })
+
   it('sets saveError on insert failure', async () => {
     ;(insertTableRow as Mock).mockRejectedValue(new Error('Insert failed'))
 
@@ -571,6 +658,22 @@ describe('useTableDataStore — discardCurrentRow', () => {
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.editState).toBeNull()
     expect(tab.rows.length).toBe(beforeCount)
+  })
+
+  it('removes only the cloned draft row when discarding', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().setSelectedRow('tab-1', { id: 2 })
+    useTableDataStore.getState().cloneSelectedRow('tab-1')
+
+    useTableDataStore.getState().discardCurrentRow('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.rows).toEqual([
+      [1, 'Alice'],
+      [2, 'Bob'],
+    ])
+    expect(tab.editState).toBeNull()
+    expect(tab.selectedRowKey).toBeNull()
   })
 })
 
@@ -666,6 +769,43 @@ describe('useTableDataStore — insertNewRow', () => {
 
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.selectedRowKey).toEqual({ __tempId: tab.editState!.tempId })
+  })
+})
+
+describe('useTableDataStore — cloneSelectedRow', () => {
+  it('creates a draft row from the selected persisted row with blank primary keys', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().setSelectedRow('tab-1', { id: 1 })
+
+    useTableDataStore.getState().cloneSelectedRow('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.rows).toEqual([
+      [1, 'Alice'],
+      [2, 'Bob'],
+      [null, 'Alice'],
+    ])
+    expect(tab.editState?.isNewRow).toBe(true)
+    expect(tab.editState?.currentValues).toEqual({ id: null, name: 'Alice' })
+    expect(tab.selectedRowKey).toEqual({ __tempId: tab.editState?.tempId })
+  })
+
+  it('does nothing when no persisted row is selected or a draft row already exists', async () => {
+    await setupTabWithData()
+
+    useTableDataStore.getState().cloneSelectedRow('tab-1')
+    expect(useTableDataStore.getState().tabs['tab-1'].rows).toEqual([
+      [1, 'Alice'],
+      [2, 'Bob'],
+    ])
+
+    useTableDataStore.getState().setSelectedRow('tab-1', { id: 1 })
+    useTableDataStore.getState().insertNewRow('tab-1')
+    const rowCountBefore = useTableDataStore.getState().tabs['tab-1'].rows.length
+
+    useTableDataStore.getState().cloneSelectedRow('tab-1')
+
+    expect(useTableDataStore.getState().tabs['tab-1'].rows.length).toBe(rowCountBefore)
   })
 })
 

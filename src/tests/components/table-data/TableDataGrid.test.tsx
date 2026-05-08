@@ -609,6 +609,31 @@ describe('TableDataGrid', () => {
     expect(rowClass({ __tempId: 'temp-1', __rowIndex: 0 })).toBe('rdg-editing-row rdg-new-row')
   })
 
+  it('auto-selects the cloned draft row when the selected temp row matches editState', async () => {
+    setupConnection()
+    setupTabState({
+      rows: [
+        [1, 'Alice', null],
+        [null, 'Alice', null],
+      ],
+      selectedRowKey: { __tempId: 'temp-1' },
+      editState: {
+        rowKey: { __tempId: 'temp-1' },
+        originalValues: { id: null, name: 'Alice', avatar: null },
+        currentValues: { id: null, name: 'Alice', avatar: null },
+        modifiedColumns: new Set(['name']),
+        isNewRow: true,
+        tempId: 'temp-1',
+      },
+    })
+
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    await waitFor(() => {
+      expect(mockSelectCell).toHaveBeenCalledWith({ rowIdx: 1, idx: 0 })
+    })
+  })
+
   it('cellClass includes rdg-modified-cell for modified cells', () => {
     setupConnection()
     const editState: RowEditState = {

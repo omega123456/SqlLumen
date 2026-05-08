@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
+import { useQueryStore } from '../../../stores/query-store'
+import { makeTabState } from '../../helpers/query-test-utils'
 
 // Store captured BaseGridView props for assertions
 let lastBaseGridProps: Record<string, unknown> = {}
@@ -81,6 +83,16 @@ describe('ResultGridView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     lastBaseGridProps = {}
+    useQueryStore.setState({
+      tabs: {
+        'tab-test': makeTabState({
+          status: 'success',
+          columns,
+          rows,
+          totalRows: rows.length,
+        }),
+      },
+    })
   })
 
   it('renders with data-testid="result-grid-view"', () => {
@@ -247,6 +259,73 @@ describe('ResultGridView', () => {
     expect(onRowSelected).toHaveBeenCalledWith(0)
   })
 
+  it('keeps store row and cell selection in sync on cell click', async () => {
+    render(
+      <ResultGridView
+        {...defaultProps}
+        onRowSelected={(rowIndex) => useQueryStore.getState().setSelectedRow('tab-test', rowIndex)}
+      />
+    )
+    const props = getLatestBaseGridProps()
+    const onCellClickGuard = props.onCellClickGuard as (args: {
+      rowIdx: number
+      columnKey: string
+      rowData: Record<string, unknown>
+    }) => Promise<{ proceed: boolean }>
+
+    await act(async () => {
+      await onCellClickGuard({
+        rowIdx: 1,
+        columnKey: 'col_1',
+        rowData: { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
+      })
+    })
+
+    const result = useQueryStore.getState().tabs['tab-test']?.results[0]
+    expect(result?.selectedRowIndex).toBe(1)
+    expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Bob' })
+  })
+
+  it('keeps store selection current during keyboard-only row movement through the shared guard', async () => {
+    render(
+      <ResultGridView
+        {...defaultProps}
+        editMode="users"
+        editableColumnMap={
+          new Map([
+            [0, false],
+            [1, true],
+            [2, true],
+          ])
+        }
+        onRowSelected={(rowIndex) => useQueryStore.getState().setSelectedRow('tab-test', rowIndex)}
+      />
+    )
+    const props = getLatestBaseGridProps()
+    const onCellClickGuard = props.onCellClickGuard as (args: {
+      rowIdx: number
+      columnKey: string
+      rowData: Record<string, unknown>
+    }) => Promise<{ proceed: boolean }>
+
+    await act(async () => {
+      await onCellClickGuard({
+        rowIdx: 0,
+        columnKey: 'col_1',
+        rowData: { __rowIdx: 0, col_0: 1, col_1: 'Alice', col_2: 'alice@example.com' },
+      })
+      await onCellClickGuard({
+        rowIdx: 2,
+        columnKey: 'col_1',
+        rowData: { __rowIdx: 2, col_0: 3, col_1: 'Charlie', col_2: 'charlie@example.com' },
+      })
+    })
+
+    const result = useQueryStore.getState().tabs['tab-test']?.results[0]
+    expect(result?.selectedRowIndex).toBe(2)
+    expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Charlie' })
+  })
+
   it('calls onRowSelected with correct index for different rows', async () => {
     const onRowSelected = vi.fn()
     render(<ResultGridView {...defaultProps} onRowSelected={onRowSelected} />)
@@ -370,5 +449,44 @@ describe('ResultGridView', () => {
 
     // If handleRowsChange is stable (doesn't depend on rowData), the reference should be the same
     expect(secondOnRowsChange).toBe(firstOnRowsChange)
+  })
+
+  it('updates store selection during clipboard edits so toolbar enablement follows the active row', async () => {
+    render(
+      <ResultGridView
+        {...defaultProps}
+        editMode="users"
+        editableColumnMap={
+          new Map([
+            [0, false],
+            [1, true],
+            [2, true],
+          ])
+        }
+        onRowSelected={(rowIndex) => useQueryStore.getState().setSelectedRow('tab-test', rowIndex)}
+      />
+    )
+    const props = getLatestBaseGridProps()
+    const onCellClipboardEdit = props.onCellClipboardEdit as (args: {
+      rowIdx: number
+      rowData: Record<string, unknown>
+      columnKey: string
+      action: 'paste' | 'cut'
+      text?: string
+    }) => Promise<void>
+
+    await act(async () => {
+      await onCellClipboardEdit({
+        rowIdx: 1,
+        rowData: { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
+        columnKey: 'col_1',
+        action: 'paste',
+        text: 'Bobby',
+      })
+    })
+
+    const result = useQueryStore.getState().tabs['tab-test']?.results[0]
+    expect(result?.selectedRowIndex).toBe(1)
+    expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Bob' })
   })
 })

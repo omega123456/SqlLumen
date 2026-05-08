@@ -139,6 +139,49 @@ const mockAnalyzeResult: QueryTableEditInfo[] = [
   },
 ]
 
+const mockNaturalKeyColumns: TableDataColumnMeta[] = [
+  {
+    name: 'code',
+    dataType: 'VARCHAR',
+    isBooleanAlias: false,
+    isNullable: false,
+    isPrimaryKey: true,
+    isUniqueKey: false,
+    hasDefault: false,
+    columnDefault: null,
+    isBinary: false,
+    isAutoIncrement: false,
+  },
+  {
+    name: 'name',
+    dataType: 'VARCHAR',
+    isBooleanAlias: false,
+    isNullable: false,
+    isPrimaryKey: false,
+    isUniqueKey: false,
+    hasDefault: false,
+    columnDefault: null,
+    isBinary: false,
+    isAutoIncrement: false,
+  },
+]
+
+const mockNaturalPk: PrimaryKeyInfo = {
+  keyColumns: ['code'],
+  hasAutoIncrement: false,
+  isUniqueKeyFallback: false,
+}
+
+const mockNaturalAnalyzeResult: QueryTableEditInfo[] = [
+  {
+    database: 'testdb',
+    table: 'projects',
+    columns: mockNaturalKeyColumns,
+    primaryKey: mockNaturalPk,
+    foreignKeys: [],
+  },
+]
+
 const mockJoinAnalyzeResult: QueryTableEditInfo[] = [
   ...mockAnalyzeResult,
   {
@@ -964,6 +1007,220 @@ describe('useQueryStore — startEditingRow', () => {
 })
 
 // ---------------------------------------------------------------------------
+// cloneSelectedRow
+// ---------------------------------------------------------------------------
+
+describe('useQueryStore — cloneSelectedRow', () => {
+  it('creates one unsaved insert draft with blank primary key values and copied non-key values', async () => {
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+
+    const tab = flat('tab-1')
+    expect(tab.rows).toHaveLength(3)
+    expect(tab.selectedRowIndex).toBe(2)
+    expect(tab.editingRowIndex).toBe(2)
+    expect(tab.rows[2]).toEqual([null, 'Alice', 'alice@test.com'])
+    expect(tab.editState?.isNewRow).toBe(true)
+    expect(tab.editState?.rowKey).toEqual({ id: null })
+    expect(tab.editState?.originalValues).toEqual({
+      id: null,
+      name: 'Alice',
+      email: 'alice@test.com',
+    })
+    expect(tab.editState?.currentValues).toEqual({
+      id: null,
+      name: 'Alice',
+      email: 'alice@test.com',
+    })
+    expect(tab.editState?.modifiedColumns.has('name')).toBe(true)
+    expect(tab.editState?.modifiedColumns.has('email')).toBe(true)
+    expect(tab.editState?.modifiedColumns.has('id')).toBe(false)
+  })
+
+  it('lets the user enter required natural primary-key values after clone without copying them from the source row', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-natural',
+          columns: [
+            { name: 'code', dataType: 'VARCHAR' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [['p-001', 'Alpha']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockNaturalAnalyzeResult
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM projects')
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.projects')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+
+    let tab = flat('tab-1')
+    expect(tab.editState?.currentValues.code).toBeNull()
+    expect(tab.editState?.modifiedColumns.has('code')).toBe(false)
+
+    useQueryStore.getState().updateCellValue('tab-1', 0, 'p-002')
+
+    tab = flat('tab-1')
+    expect(tab.editState?.currentValues.code).toBe('p-002')
+    expect(tab.editState?.modifiedColumns.has('code')).toBe(true)
+  })
+
+  it('refuses clone when edit metadata is using a unique-key fallback', async () => {
+    const fallbackAnalyzeResult: QueryTableEditInfo[] = [
+      {
+        ...mockAnalyzeResult[0],
+        primaryKey: {
+          ...mockPrimaryKey,
+          isUniqueKeyFallback: true,
+        },
+      },
+    ]
+
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-fallback',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[1, 'Alice', 'alice@test.com']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return fallbackAnalyzeResult
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users')
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+
+    const tab = flat('tab-1')
+    expect(tab.rows).toHaveLength(1)
+    expect(tab.editState).toBeNull()
+    expect(
+      useToastStore.getState().toasts.some((toast) => toast.message?.includes('unique-key fallback'))
+    ).toBe(true)
+  })
+
+  it('refuses clone when current row has unsaved edits that would be lost', async () => {
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().startEditingRow('tab-1', 0)
+    useQueryStore.getState().syncCellValue('tab-1', 1, 'Unsaved')
+
+    const before = flat('tab-1')
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+
+    const tab = flat('tab-1')
+    expect(tab.rows).toEqual(before.rows)
+    expect(tab.editingRowIndex).toBe(0)
+    expect(tab.editState?.isNewRow).toBe(false)
+    expect(tab.editState?.currentValues.name).toBe('Unsaved')
+    expect(
+      useToastStore.getState().toasts.some(
+        (toast) => toast.variant === 'error' && toast.message?.includes('Save or discard')
+      )
+    ).toBe(true)
+  })
+
+  it('does not create a clone draft when no non-primary bound columns can produce an insert payload', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-no-clone-path',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          totalRows: 1,
+          executionTimeMs: 5,
+          affectedRows: 0,
+          firstPage: [[1]],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') {
+        return [
+          {
+            database: 'testdb',
+            table: 'users',
+            columns: [
+              {
+                name: 'id',
+                dataType: 'INT',
+                isNullable: false,
+                isPrimaryKey: true,
+                isUniqueKey: false,
+                hasDefault: false,
+                columnDefault: null,
+                isBinary: false,
+                isAutoIncrement: true,
+                isBooleanAlias: false,
+              },
+              {
+                name: 'server_only',
+                dataType: 'VARCHAR',
+                isNullable: true,
+                isPrimaryKey: false,
+                isUniqueKey: false,
+                hasDefault: false,
+                columnDefault: null,
+                isBinary: false,
+                isAutoIncrement: false,
+                isBooleanAlias: false,
+              },
+            ],
+            primaryKey: {
+              keyColumns: ['id'],
+              hasAutoIncrement: true,
+              isUniqueKeyFallback: false,
+            },
+            foreignKeys: [],
+          },
+        ]
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT id FROM users')
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+
+    const tab = flat('tab-1')
+    expect(tab.rows).toHaveLength(1)
+    expect(tab.editState).toBeNull()
+    expect(tab.selectedRowIndex).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // updateCellValue
 // ---------------------------------------------------------------------------
 
@@ -1223,6 +1480,388 @@ describe('useQueryStore — saveCurrentRow', () => {
     expect(tab.rows[0][0]).toBe(5)
     expect(tab.rows[0][3]).toBe(101)
   })
+
+  it('inserts a cloned draft through the typed IPC boundary and re-executes the active result', async () => {
+    const insertTableRowSpy = vi.fn()
+    let executeQueryCount = 0
+
+    mockIPC((cmd, args) => {
+      if (cmd === 'execute_query') {
+        executeQueryCount += 1
+        if (executeQueryCount === 1) {
+          return {
+            queryId: 'q-before',
+            columns: [
+              { name: 'id', dataType: 'INT' },
+              { name: 'name', dataType: 'VARCHAR' },
+              { name: 'email', dataType: 'VARCHAR' },
+            ],
+            totalRows: 2,
+            executionTimeMs: 10,
+            affectedRows: 0,
+            firstPage: [
+              [1, 'Alice', 'alice@test.com'],
+              [2, 'Bob', 'bob@test.com'],
+            ],
+            totalPages: 1,
+            autoLimitApplied: false,
+          }
+        }
+        return {
+          queryId: 'q-after',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+          ],
+          totalRows: 3,
+          executionTimeMs: 12,
+          affectedRows: 0,
+          firstPage: [
+            [1, 'Alice', 'alice@test.com'],
+            [2, 'Bob', 'bob@test.com'],
+            [3, 'Alice', 'alice@test.com'],
+          ],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockAnalyzeResult
+      if (cmd === 'insert_table_row') {
+        insertTableRowSpy(args)
+        return [['id', 3]]
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+
+    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+
+    expect(result).toBe(true)
+    expect(insertTableRowSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionId: 'conn-1',
+        database: 'testdb',
+        table: 'users',
+        values: {
+          name: 'Alice',
+          email: 'alice@test.com',
+        },
+      })
+    )
+    expect(executeQueryCount).toBe(2)
+
+    const tab = flat('tab-1')
+    expect(tab.rows).toHaveLength(3)
+    expect(tab.rows[2]).toEqual([3, 'Alice', 'alice@test.com'])
+    expect(tab.editState).toBeNull()
+    expect(tab.editingRowIndex).toBeNull()
+    expect(tab.selectedRowIndex).toBeNull()
+    expect(tab.isStale).toBe(false)
+    expect(tab.queryId).toBe('q-after')
+  })
+
+  it('keeps generated primary keys out of the insert payload but includes user-entered natural keys', async () => {
+    const insertTableRowSpy = vi.fn()
+    let executeQueryCount = 0
+
+    mockIPC((cmd, args) => {
+      if (cmd === 'execute_query') {
+        executeQueryCount += 1
+        if (executeQueryCount === 1) {
+          return {
+            queryId: 'q-natural-before',
+            columns: [
+              { name: 'code', dataType: 'VARCHAR' },
+              { name: 'name', dataType: 'VARCHAR' },
+            ],
+            totalRows: 1,
+            executionTimeMs: 10,
+            affectedRows: 0,
+            firstPage: [['p-001', 'Alpha']],
+            totalPages: 1,
+            autoLimitApplied: false,
+          }
+        }
+        return {
+          queryId: 'q-natural-after',
+          columns: [
+            { name: 'code', dataType: 'VARCHAR' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          totalRows: 2,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [
+            ['p-001', 'Alpha'],
+            ['p-002', 'Alpha'],
+          ],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockNaturalAnalyzeResult
+      if (cmd === 'insert_table_row') {
+        insertTableRowSpy(args)
+        return [['code', 'p-002']]
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM projects')
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.projects')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+    useQueryStore.getState().updateCellValue('tab-1', 0, 'p-002')
+
+    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+
+    expect(result).toBe(true)
+    expect(insertTableRowSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        values: {
+          code: 'p-002',
+          name: 'Alpha',
+        },
+      })
+    )
+    expect(executeQueryCount).toBe(2)
+  })
+
+  it('includes cloned non-primary-key blob values in insert payload even when not inline editable', async () => {
+    const insertTableRowSpy = vi.fn()
+
+    mockIPC((cmd, args) => {
+      if (cmd === 'execute_query') {
+        return {
+          queryId: 'q-blob-before',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'avatar_blob', dataType: 'BLOB' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [[1, 'Alice', '0xABCD']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') {
+        return [
+          {
+            database: 'testdb',
+            table: 'users',
+            columns: [
+              { ...mockTableColumns[0] },
+              { ...mockTableColumns[1] },
+              {
+                name: 'avatar_blob',
+                dataType: 'BLOB',
+                isBooleanAlias: false,
+                isNullable: true,
+                isPrimaryKey: false,
+                isUniqueKey: false,
+                hasDefault: false,
+                columnDefault: null,
+                isBinary: true,
+                isAutoIncrement: false,
+              },
+            ],
+            primaryKey: mockPrimaryKey,
+            foreignKeys: [],
+          },
+        ]
+      }
+      if (cmd === 'insert_table_row') {
+        insertTableRowSpy(args)
+        return [['id', 2]]
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users')
+    await flushMicrotasks()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+
+    const cloned = flat('tab-1')
+    expect(cloned.rows[1]).toEqual([null, 'Alice', '0xABCD'])
+
+    await useQueryStore.getState().saveCurrentRow('tab-1')
+
+    expect(insertTableRowSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        values: {
+          name: 'Alice',
+          avatar_blob: '0xABCD',
+        },
+      })
+    )
+  })
+
+  it('marks the previous result stale and clears the clone draft when refresh fails after a successful insert', async () => {
+    let executeQueryCount = 0
+
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        executeQueryCount += 1
+        if (executeQueryCount > 1) {
+          throw new Error('Refresh failed')
+        }
+        return {
+          queryId: 'q-before-stale',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+          ],
+          totalRows: 2,
+          executionTimeMs: 10,
+          affectedRows: 0,
+          firstPage: [
+            [1, 'Alice', 'alice@test.com'],
+            [2, 'Bob', 'bob@test.com'],
+          ],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockAnalyzeResult
+      if (cmd === 'insert_table_row') return [['id', 3]]
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+
+    const result = await useQueryStore.getState().saveCurrentRow('tab-1')
+
+    expect(result).toBe(true)
+    const tab = flat('tab-1')
+    expect(tab.rows).toEqual([
+      [1, 'Alice', 'alice@test.com'],
+      [2, 'Bob', 'bob@test.com'],
+    ])
+    expect(tab.editState).toBeNull()
+    expect(tab.editingRowIndex).toBeNull()
+    expect(tab.selectedRowIndex).toBeNull()
+    expect(tab.isStale).toBe(true)
+    expect(tab.queryId).toBe('q-before-stale')
+    expect(tab.saveError).toBeNull()
+    expect(
+      useToastStore.getState().toasts.some(
+        (toast) => toast.variant === 'error' && toast.message?.includes('could not be refreshed')
+      )
+    ).toBe(true)
+  })
+
+  it('discards stale single-result insert refresh responses when queryId changes during await', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let resolveRefresh: ((value: unknown) => void) | null = null
+    let executeQueryCount = 0
+
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') {
+        executeQueryCount += 1
+        if (executeQueryCount === 1) {
+          return {
+            queryId: 'q-initial',
+            columns: [
+              { name: 'id', dataType: 'INT' },
+              { name: 'name', dataType: 'VARCHAR' },
+              { name: 'email', dataType: 'VARCHAR' },
+            ],
+            totalRows: 2,
+            executionTimeMs: 10,
+            affectedRows: 0,
+            firstPage: [
+              [1, 'Alice', 'alice@test.com'],
+              [2, 'Bob', 'bob@test.com'],
+            ],
+            totalPages: 1,
+            autoLimitApplied: false,
+          }
+        }
+
+        if (executeQueryCount === 2) {
+          return new Promise((resolve) => {
+            resolveRefresh = resolve
+          })
+        }
+
+        return {
+          queryId: 'q-newer',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'email', dataType: 'VARCHAR' },
+          ],
+          totalRows: 1,
+          executionTimeMs: 8,
+          affectedRows: 0,
+          firstPage: [[9, 'Latest', 'latest@test.com']],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      }
+      if (cmd === 'analyze_query_for_edit') return mockAnalyzeResult
+      if (cmd === 'insert_table_row') return [['id', 3]]
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+
+    const savePromise = useQueryStore.getState().saveCurrentRow('tab-1')
+    await flushMicrotasks()
+    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users WHERE id = 9')
+
+    resolveRefresh?.({
+      queryId: 'q-late-refresh',
+      columns: [
+        { name: 'id', dataType: 'INT' },
+        { name: 'name', dataType: 'VARCHAR' },
+        { name: 'email', dataType: 'VARCHAR' },
+      ],
+      totalRows: 3,
+      executionTimeMs: 15,
+      affectedRows: 0,
+      firstPage: [
+        [1, 'Alice', 'alice@test.com'],
+        [2, 'Bob', 'bob@test.com'],
+        [3, 'Cloned', 'alice@test.com'],
+      ],
+      totalPages: 1,
+      autoLimitApplied: false,
+    })
+    await savePromise
+
+    const tab = flat('tab-1')
+    expect(tab.queryId).toBe('q-newer')
+    expect(tab.rows).toEqual([[9, 'Latest', 'latest@test.com']])
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('reexecuteOnlyResultAfterInsert: discarding stale refresh result')
+    )
+
+    warnSpy.mockRestore()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1297,6 +1936,28 @@ describe('useQueryStore — discardCurrentRow', () => {
     await executeAndAnalyze()
     useQueryStore.getState().discardCurrentRow('tab-1')
     // Should not throw
+  })
+
+  it('removes a cloned draft without changing the source row', async () => {
+    await executeAndAnalyze()
+    await useQueryStore.getState().setEditMode('conn-1', 'tab-1', 'testdb.users')
+    useQueryStore.getState().setSelectedRow('tab-1', 0)
+    useQueryStore.getState().cloneSelectedRow('tab-1')
+    useQueryStore.getState().syncCellValue('tab-1', 1, 'Clone Only')
+
+    expect(flat('tab-1').rows).toHaveLength(3)
+    expect(flat('tab-1').rows[2][1]).toBe('Clone Only')
+
+    useQueryStore.getState().discardCurrentRow('tab-1')
+
+    const tab = flat('tab-1')
+    expect(tab.rows).toEqual([
+      [1, 'Alice', 'alice@test.com'],
+      [2, 'Bob', 'bob@test.com'],
+    ])
+    expect(tab.editState).toBeNull()
+    expect(tab.editingRowIndex).toBeNull()
+    expect(tab.selectedRowIndex).toBeNull()
   })
 
   it('clears editState when editingRowIndex is null', async () => {

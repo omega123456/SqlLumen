@@ -20,7 +20,10 @@ import {
   updateResultCell as updateResultCellCmd,
   cancelQuery as cancelQueryCmd,
 } from '../lib/query-commands'
-import { updateTableRow as updateTableRowCmd } from '../lib/table-data-commands'
+import {
+  insertTableRow as insertTableRowCmd,
+  updateTableRow as updateTableRowCmd,
+} from '../lib/table-data-commands'
 import { showErrorToast, showSuccessToast, showWarningToast } from './toast-store'
 import {
   findAmbiguousColumns,
@@ -29,6 +32,7 @@ import {
   buildQueryEditColumnBindings,
   validateKeyColumnsPresent,
   buildRowEditState,
+  buildInsertPayload,
   buildUpdatePayload,
 } from '../lib/query-edit-utils'
 import { mapSingleColumnForeignKeys } from '../lib/foreign-key-utils'
@@ -36,6 +40,7 @@ import type { ForeignKeyColumnInfo } from '../types/schema'
 import { getFirstSqlKeyword } from '../lib/sql-utils'
 import { useSettingsStore } from './settings-store'
 import { useHistoryStore } from './history-store'
+import { logFrontend } from '../lib/app-log-commands'
 
 // Re-export for backward compatibility (used by tests and other modules)
 export { stripLeadingSqlComments } from '../lib/sql-utils'
@@ -176,6 +181,8 @@ export interface SingleResultState {
   editBoundColumnIndexMap: Map<string, number>
   /** Last save error message. */
   saveError: string | null
+  /** True when the visible result rows no longer reflect the persisted backend state. */
+  isStale: boolean
   /** Connection ID used for edit-mode IPC calls. */
   editConnectionId: string | null
   /** Index of the row being edited in the current page's rows array. */
@@ -250,6 +257,7 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   editColumnBindings: new Map(),
   editBoundColumnIndexMap: new Map(),
   saveError: null,
+  isStale: false,
   editConnectionId: null,
   editingRowIndex: null,
 }
@@ -281,6 +289,7 @@ const EDIT_STATE_DEFAULTS: Partial<SingleResultState> = {
   editColumnBindings: new Map(),
   editBoundColumnIndexMap: new Map(),
   saveError: null,
+  isStale: false,
   editConnectionId: null,
   editingRowIndex: null,
 }
@@ -619,6 +628,9 @@ interface QueryState {
   /** Start editing a specific row by its page-local index. */
   startEditingRow: (tabId: string, rowIndex: number) => void
 
+  /** Clone the selected persisted row into an unsaved insert draft. */
+  cloneSelectedRow: (tabId: string) => void
+
   /** Update a cell value in the current edit state (editState only). */
   updateCellValue: (tabId: string, resultColumnIndex: number, value: unknown) => void
 
@@ -929,6 +941,119 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       _runAnalysis(tabId, connectionId, sql, reResult.queryId, resultIndex).catch((err) => {
         console.error('[query-edit] analyze_query_for_edit failed (re-exec):', err)
       })
+    }
+  }
+
+  const buildClonedDraftRow = (
+    result: SingleResultState,
+    tableInfo: QueryTableEditInfo,
+    sourceRow: unknown[]
+  ): {
+    row: unknown[]
+    modifiedColumns: Set<string>
+    insertEligibleColumns: Set<string>
+  } => {
+    const pkColumns = new Set(tableInfo.primaryKey?.keyColumns.map((column) => column.toLowerCase()) ?? [])
+    const row = result.columns.map((column, index) => {
+      const boundColumnName = result.editColumnBindings.get(index) ?? column.name
+      if (pkColumns.has(boundColumnName.toLowerCase())) {
+        return null
+      }
+      return sourceRow[index] ?? null
+    })
+
+    const modifiedColumns = new Set<string>()
+    const insertEligibleColumns = new Set<string>()
+    for (const tableColumn of tableInfo.columns) {
+      if (tableColumn.isPrimaryKey) {
+        continue
+      }
+      if (result.editBoundColumnIndexMap.has(tableColumn.name.toLowerCase())) {
+        modifiedColumns.add(tableColumn.name)
+        insertEligibleColumns.add(tableColumn.name)
+      }
+    }
+
+    return { row, modifiedColumns, insertEligibleColumns }
+  }
+
+  const reexecuteSingleResultAfterInsert = async (
+    connectionId: string,
+    tabId: string,
+    resultIndex: number,
+    result: SingleResultState
+  ) => {
+    const capturedQueryId = result.queryId
+    await reexecuteAndPatchResult(
+      connectionId,
+      tabId,
+      resultIndex,
+      result.lastExecutedSql!,
+      result.pageSize,
+      capturedQueryId,
+      {
+        isStale: false,
+        saveError: null,
+      }
+    )
+  }
+
+  const reexecuteOnlyResultAfterInsert = async (
+    connectionId: string,
+    tabId: string,
+    resultIndex: number,
+    result: SingleResultState
+  ) => {
+    const capturedQueryId = result.queryId
+    const execResult = await executeQueryCmd(
+      connectionId,
+      tabId,
+      result.lastExecutedSql!,
+      result.pageSize
+    )
+    const normalizedRows = normalizeQueryRows(execResult.columns, execResult.firstPage)
+
+    if (!get().tabs[tabId]) return
+
+    const postTab = get().tabs[tabId]
+    const postResult = postTab?.results[resultIndex]
+    if (capturedQueryId && postResult?.queryId !== capturedQueryId) {
+      console.warn(
+        '[query-store] reexecuteOnlyResultAfterInsert: discarding stale refresh result (queryId mismatch)'
+      )
+      return
+    }
+
+    const refreshedResult = get().tabs[tabId]?.results[resultIndex] ?? result
+    const filterPatch = reapplyFilterIfActive(refreshedResult, normalizedRows, execResult.columns)
+
+    patchResultByIndex(tabId, resultIndex, {
+      ...filterPatch,
+      columns: execResult.columns,
+      currentPage: filterPatch.currentPage ?? 1,
+      totalPages: filterPatch.totalPages ?? execResult.totalPages,
+      totalRows: execResult.totalRows,
+      queryId: execResult.queryId,
+      executionTimeMs: execResult.executionTimeMs,
+      affectedRows: execResult.affectedRows,
+      autoLimitApplied: execResult.autoLimitApplied,
+      resultStatus: 'success',
+      errorMessage: null,
+      selectedRowIndex: null,
+      isStale: false,
+      saveError: null,
+    })
+
+    if (execResult.columns.length > 0 && isEditableSelectSql(result.lastExecutedSql)) {
+      _runAnalysis(tabId, connectionId, result.lastExecutedSql!, execResult.queryId, resultIndex).catch(
+        (err) => {
+          void logFrontend(
+            'warn',
+            '[query-edit] analyze_query_for_edit failed (insert re-exec)',
+            err instanceof Error ? err.message : String(err)
+          )
+        }
+      )
     }
   }
 
@@ -1785,6 +1910,77 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       })
     },
 
+    cloneSelectedRow: (tabId: string) => {
+      const resultIndex = getActiveIndex(tabId)
+      const tab = get().tabs[tabId]
+      const result = tab?.results[resultIndex]
+      if (!result?.editMode) return
+      if (result.editState?.modifiedColumns.size && result.editState.modifiedColumns.size > 0) {
+        showErrorToast(
+          'Unsaved changes',
+          'Save or discard the current row before cloning another row.'
+        )
+        return
+      }
+      if (result.editState?.isNewRow) return
+      if (result.selectedRowIndex === null || result.selectedRowIndex < 0) return
+
+      const tableInfo = result.editTableMetadata[result.editMode]
+      if (!tableInfo?.primaryKey) return
+
+      if (tableInfo.primaryKey.isUniqueKeyFallback) {
+        showErrorToast(
+          'Clone failed',
+          'Cannot clone query-result rows when edit mode is using a unique-key fallback.'
+        )
+        return
+      }
+
+      const sourceRow = result.rows[result.selectedRowIndex]
+      if (!sourceRow) return
+
+      const { row: clonedRow, modifiedColumns, insertEligibleColumns } = buildClonedDraftRow(
+        result,
+        tableInfo,
+        sourceRow
+      )
+      if (modifiedColumns.size === 0 && insertEligibleColumns.size === 0) {
+        return
+      }
+      const newRows = [...result.rows, clonedRow]
+      const draftRowIndex = newRows.length - 1
+      const pkColumns = tableInfo.primaryKey.keyColumns
+      const editState = buildRowEditState(
+        clonedRow,
+        result.columns,
+        result.editableColumnMap,
+        pkColumns,
+        result.editColumnBindings,
+        result.editBoundColumnIndexMap
+      )
+      for (const columnName of insertEligibleColumns) {
+        const boundColumnIndex = result.editBoundColumnIndexMap.get(columnName.toLowerCase())
+        if (boundColumnIndex === undefined || boundColumnIndex < 0) continue
+        const value = clonedRow[boundColumnIndex]
+        editState.originalValues[columnName] = value
+        editState.currentValues[columnName] = value
+      }
+
+      patchResultByIndex(tabId, resultIndex, {
+        rows: newRows,
+        selectedRowIndex: draftRowIndex,
+        editingRowIndex: draftRowIndex,
+        editState: {
+          ...editState,
+          isNewRow: true,
+          modifiedColumns,
+          insertEligibleColumns,
+        },
+        saveError: null,
+        isStale: false,
+      })
+    },
+
     updateCellValue: (tabId: string, resultColumnIndex: number, value: unknown) => {
       const resultIndex = getActiveIndex(tabId)
       const tab = get().tabs[tabId]
@@ -1865,6 +2061,21 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       // Nothing modified — just clear editState
       if (result.editState.modifiedColumns.size === 0) {
+        if (result.editState.isNewRow) {
+          const newRows = [...result.rows]
+          if (result.editingRowIndex >= 0 && result.editingRowIndex < newRows.length) {
+            newRows.splice(result.editingRowIndex, 1)
+          }
+          patchResultByIndex(tabId, resultIndex, {
+            rows: newRows,
+            editState: null,
+            editingRowIndex: null,
+            selectedRowIndex: null,
+            saveError: null,
+          })
+          return true
+        }
+
         patchResultByIndex(tabId, resultIndex, {
           editState: null,
           editingRowIndex: null,
@@ -1879,6 +2090,75 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         patchResultByIndex(tabId, resultIndex, { saveError: msg })
         showErrorToast('Save failed', msg)
         return false
+      }
+
+      if (result.editState.isNewRow) {
+        try {
+          const values = buildInsertPayload(result.editState, tableInfo.columns)
+
+          await insertTableRowCmd({
+            connectionId: result.editConnectionId!,
+            database: tableInfo.database,
+            table: tableInfo.table,
+            values,
+            pkInfo: tableInfo.primaryKey,
+          })
+
+          if (!get().tabs[tabId]) return true
+
+          const newRows = [...result.rows]
+          newRows.splice(result.editingRowIndex, 1)
+          patchResultByIndex(tabId, resultIndex, {
+            rows: newRows,
+            editState: null,
+            editingRowIndex: null,
+            selectedRowIndex: null,
+            saveError: null,
+            isStale: false,
+          })
+
+          if (!result.lastExecutedSql || !result.editConnectionId) {
+            showSuccessToast('Row saved', 'Changes saved successfully.')
+            return true
+          }
+
+          try {
+            if ((tab?.results.length ?? 0) > 1) {
+              await reexecuteSingleResultAfterInsert(
+                result.editConnectionId,
+                tabId,
+                resultIndex,
+                result
+              )
+            } else {
+              await reexecuteOnlyResultAfterInsert(result.editConnectionId, tabId, resultIndex, result)
+            }
+          } catch (refreshErr) {
+            if (!get().tabs[tabId]) return true
+
+            patchResultByIndex(tabId, resultIndex, {
+              isStale: true,
+            })
+
+            const errorMessage =
+              refreshErr instanceof Error ? refreshErr.message : String(refreshErr)
+            showErrorToast(
+              'Refresh failed',
+              `Row inserted successfully, but the query result could not be refreshed: ${errorMessage}`
+            )
+            return true
+          }
+
+          showSuccessToast('Row saved', 'Changes saved successfully.')
+          return true
+        } catch (err) {
+          if (!get().tabs[tabId]) return false
+
+          const errorMsg = err instanceof Error ? err.message : String(err)
+          patchResultByIndex(tabId, resultIndex, { saveError: errorMsg })
+          showErrorToast('Save failed', errorMsg)
+          return false
+        }
       }
 
       const { pkColumns, originalPkValues, updatedValues } = buildUpdatePayload(
@@ -1943,6 +2223,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           editState: null,
           editingRowIndex: null,
           saveError: null,
+          isStale: false,
         })
         showSuccessToast('Row saved', 'Changes saved successfully.')
         return true
@@ -1961,6 +2242,21 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const tab = get().tabs[tabId]
       const result = tab?.results[resultIndex]
       if (!result?.editState) return
+
+      if (result.editState.isNewRow) {
+        const newRows = [...result.rows]
+        if (result.editingRowIndex !== null && result.editingRowIndex < newRows.length) {
+          newRows.splice(result.editingRowIndex, 1)
+        }
+        patchResultByIndex(tabId, resultIndex, {
+          rows: newRows,
+          editState: null,
+          editingRowIndex: null,
+          selectedRowIndex: null,
+          saveError: null,
+        })
+        return
+      }
 
       if (result.editingRowIndex !== null && result.editingRowIndex < result.rows.length) {
         // Restore original values in the row
@@ -1999,11 +2295,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       }
       // Active edit state with no modifications — discard silently and proceed
       if (result.editState.modifiedColumns.size === 0) {
-        patchResultByIndex(tabId, resultIndex, {
-          editState: null,
-          editingRowIndex: null,
-          saveError: null,
-        })
+        get().discardCurrentRow(tabId)
         action()
         return
       }

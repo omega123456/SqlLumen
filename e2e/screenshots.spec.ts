@@ -312,6 +312,15 @@ async function openQueryEditorWithResults(page: Page) {
   await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
 }
 
+async function enableQueryResultEditMode(page: Page) {
+  await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
+  await page.getByTestId('edit-mode-dropdown').click()
+  await page.getByRole('option').nth(1).click()
+  await expect(page.getByTestId('result-grid-view').locator('.rdg-readonly-cell').first()).toBeVisible(
+    { timeout: APP_READY_MS }
+  )
+}
+
 /** Open a table data tab for `sample_table` and wait for data to load. */
 async function openTableDataTab(page: Page) {
   await connectToSample(page)
@@ -1065,8 +1074,9 @@ for (const theme of themes) {
 
     test('QueryEditorTab — edit mode toolbar with detected tables', async ({ page }) => {
       await openQueryEditorWithResults(page)
-      // Wait for analysis to complete — dropdown should be visible with "Read Only"
-      await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
+      await enableQueryResultEditMode(page)
+      await page.getByTestId('result-grid-view').locator('.rdg-row').first().click()
+      await expect(page.getByTestId('query-clone-button')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('result-toolbar')).toHaveScreenshot(
         `query-editor-result-toolbar-edit-mode-dropdown-${theme}.png`,
         { animations: 'disabled' }
@@ -1077,17 +1087,8 @@ for (const theme of themes) {
       page,
     }) => {
       await openQueryEditorWithResults(page)
-      // Wait for analysis to populate detected tables
-      await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
-
-      // Select the detected table for editing
-      await page.getByTestId('edit-mode-dropdown').click()
-      await page.getByRole('option').nth(1).click()
-
-      // Wait for edit mode to apply — look for read-only column header lock icons
-      await expect(
-        page.getByTestId('result-grid-view').locator('.rdg-readonly-cell').first()
-      ).toBeVisible({ timeout: APP_READY_MS })
+      await enableQueryResultEditMode(page)
+      await page.getByTestId('result-grid-view').locator('.rdg-row').first().click()
 
       await expect(page.getByTestId('result-grid-view')).toHaveScreenshot(
         `query-editor-result-grid-edit-mode-${theme}.png`,
@@ -1175,17 +1176,7 @@ for (const theme of themes) {
       page,
     }) => {
       await openQueryEditorWithResults(page)
-      // Wait for analysis to populate detected tables
-      await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
-
-      // Select the detected table for editing
-      await page.getByTestId('edit-mode-dropdown').click()
-      await page.getByRole('option').nth(1).click()
-
-      // Wait for edit mode to apply
-      await expect(
-        page.getByTestId('result-grid-view').locator('.rdg-readonly-cell').first()
-      ).toBeVisible({ timeout: APP_READY_MS })
+      await enableQueryResultEditMode(page)
 
       // Switch to form view
       await page.getByTestId('view-mode-form').click()
@@ -1207,10 +1198,7 @@ for (const theme of themes) {
 
     test('ResultFormView — FK trigger visible in edit mode', async ({ page }) => {
       await openQueryEditorWithResults(page)
-      await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
-
-      await page.getByTestId('edit-mode-dropdown').click()
-      await page.getByRole('option').nth(1).click()
+      await enableQueryResultEditMode(page)
 
       await page.getByTestId('view-mode-form').click()
       await expect(page.getByTestId('result-form-view')).toBeVisible({ timeout: APP_READY_MS })
@@ -1241,6 +1229,8 @@ for (const theme of themes) {
       // Click the Export button
       await page.getByTestId('export-button').click()
       await expect(page.getByTestId('export-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await dismissAllToasts(page)
+      await page.getByTestId('export-file-path-input').fill('/tmp/playwright-export.csv')
       // Reset scroll positions for stable screenshots
       await page.getByTestId('object-browser-scroll').evaluate((el) => {
         el.scrollTop = 0
@@ -1248,11 +1238,16 @@ for (const theme of themes) {
       await page.evaluate(() => {
         window.scrollTo(0, 0)
       })
+      await page.evaluate(() => {
+        const el = document.activeElement
+        if (el && el instanceof HTMLElement) el.blur()
+      })
+      await page.mouse.move(0, 0)
       // Screenshot just the dialog to avoid background-only flake.
       await expect(page.getByTestId('export-dialog')).toHaveScreenshot(
         `export-dialog-${theme}.png`,
         {
-        animations: 'disabled',
+          animations: 'disabled',
         }
       )
     })
@@ -1421,6 +1416,7 @@ for (const theme of themes) {
 
     test('TableDataToolbar — toolbar controls', async ({ page }) => {
       await openTableDataTab(page)
+      await expect(page.getByTestId('btn-clone-row')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('table-data-toolbar')).toHaveScreenshot(
         `table-data-toolbar-${theme}.png`,
         { animations: 'disabled' }

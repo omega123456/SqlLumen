@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react'
-import { Plus, Trash, FloppyDisk, ArrowCounterClockwise } from '@phosphor-icons/react'
+import { Plus, Copy, Trash, FloppyDisk, ArrowCounterClockwise } from '@phosphor-icons/react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useToastStore } from '../../stores/toast-store'
@@ -39,6 +39,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const applyFilters = useTableDataStore((state) => state.applyFilters)
   const fetchPage = useTableDataStore((state) => state.fetchPage)
   const insertNewRow = useTableDataStore((state) => state.insertNewRow)
+  const cloneSelectedRow = useTableDataStore((state) => state.cloneSelectedRow)
   const deleteRow = useTableDataStore((state) => state.deleteRow)
   const saveCurrentRow = useTableDataStore((state) => state.saveCurrentRow)
   const discardCurrentRow = useTableDataStore((state) => state.discardCurrentRow)
@@ -84,6 +85,8 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   // Delete targets the visually selected row; disable for unsaved new rows
   const selectedIsNewRow = selectedRowKey !== null && '__tempId' in selectedRowKey
   const isEditingNewRow = editState?.isNewRow ?? false
+  const canClone =
+    !isMutationDisabled && selectedRowKey !== null && !selectedIsNewRow && !isEditingNewRow
 
   // --- Filter dialog state (only open/close is local) ---
 
@@ -107,6 +110,12 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
     if (!selectedRowKey) return
     setShowDeleteConfirm(true)
   }, [selectedRowKey])
+
+  const handleCloneRow = useCallback(() => {
+    withNavigationGuard(() => {
+      cloneSelectedRow(tabId)
+    })
+  }, [withNavigationGuard, cloneSelectedRow, tabId])
 
   const handleConfirmDelete = useCallback(async () => {
     setShowDeleteConfirm(false)
@@ -268,6 +277,18 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             >
               <Plus size={16} weight="bold" />
               <span>Add</span>
+            </button>
+
+            <button
+              type="button"
+              className={styles.toolbarButton}
+              disabled={!canClone || isLoading}
+              onClick={handleCloneRow}
+              title="Clone selected row; primary key fields are left blank."
+              data-testid="btn-clone-row"
+            >
+              <Copy size={16} weight="regular" />
+              <span>Clone</span>
             </button>
 
             <button

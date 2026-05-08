@@ -350,4 +350,200 @@ describe('ResultToolbar', () => {
     expect(screen.getByTestId('view-mode-text')).toBeInTheDocument()
     expect(screen.getByTestId('export-button')).toBeInTheDocument()
   })
+
+  it('shows Clone before Save and Discard when editable result mode is active', () => {
+    setupTabState(tabId, {
+      status: 'success',
+      columns: [
+        { name: 'id', dataType: 'INT' },
+        { name: 'name', dataType: 'VARCHAR' },
+      ],
+      rows: [[1, 'Alice']],
+      selectedRowIndex: 0,
+      editMode: 'users',
+      editingRowIndex: 0,
+      editableColumnMap: new Map([
+        [0, false],
+        [1, true],
+      ]),
+      editColumnBindings: new Map([
+        [0, 'id'],
+        [1, 'name'],
+      ]),
+      editTableMetadata: {
+        users: {
+          database: 'app',
+          table: 'users',
+          columns: [],
+          primaryKey: {
+            keyColumns: ['id'],
+            isUniqueKeyFallback: false,
+          },
+        },
+      },
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, name: 'Alice' },
+        currentValues: { id: 1, name: 'Alicia' },
+        modifiedColumns: new Set(['name']),
+        isNewRow: false,
+      },
+    })
+
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+        isCloneVisible
+        isCloneDisabled={false}
+      />
+    )
+
+    const actionTexts = screen
+      .getAllByRole('button')
+      .map((button) => button.textContent?.trim())
+      .filter((text): text is string => text === 'Clone' || text === 'Save' || text === 'Discard')
+
+    expect(actionTexts).toEqual(['Clone', 'Save', 'Discard'])
+  })
+
+  it('keeps Clone visible when no unsaved edit exists while Save and Discard stay hidden', () => {
+    setupTabState(tabId, {
+      status: 'success',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      rows: [[1]],
+      selectedRowIndex: 0,
+      editMode: 'users',
+    })
+
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+        isCloneVisible
+        isCloneDisabled={false}
+      />
+    )
+
+    expect(screen.getByTestId('query-clone-button')).toBeInTheDocument()
+    expect(screen.getByTestId('query-clone-button')).toHaveAttribute(
+      'title',
+      'Clone selected row; primary key fields are left blank.'
+    )
+    expect(screen.queryByTestId('query-save-button')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('query-discard-button')).not.toBeInTheDocument()
+  })
+
+  it('disables Clone when the current view does not support selected-row cloning', () => {
+    setupTabState(tabId, {
+      status: 'success',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      rows: [[1]],
+      selectedRowIndex: 0,
+      editMode: 'users',
+      viewMode: 'text',
+    })
+
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+        isCloneVisible
+        isCloneDisabled
+      />
+    )
+
+    expect(screen.getByTestId('query-clone-button')).toBeDisabled()
+  })
+
+  it('clicking Clone selects and edits the cloned draft row', () => {
+    setupTabState(tabId, {
+      status: 'success',
+      columns: [
+        { name: 'id', dataType: 'INT' },
+        { name: 'name', dataType: 'VARCHAR' },
+      ],
+      rows: [[1, 'Alice']],
+      selectedRowIndex: 0,
+      editMode: 'users',
+      editableColumnMap: new Map([
+        [0, false],
+        [1, true],
+      ]),
+      editColumnBindings: new Map([
+        [0, 'id'],
+        [1, 'name'],
+      ]),
+      editBoundColumnIndexMap: new Map([
+        ['id', 0],
+        ['name', 1],
+      ]),
+      editConnectionId: 'conn-1',
+      editTableMetadata: {
+        users: {
+          database: 'app',
+          table: 'users',
+          columns: [
+            {
+              name: 'id',
+              dataType: 'INT',
+              isBooleanAlias: false,
+              isNullable: false,
+              isPrimaryKey: true,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: true,
+            },
+            {
+              name: 'name',
+              dataType: 'VARCHAR',
+              isBooleanAlias: false,
+              isNullable: true,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+          ],
+          primaryKey: {
+            keyColumns: ['id'],
+            isUniqueKeyFallback: false,
+          },
+        },
+      },
+    })
+
+    render(
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={[]}
+        onFilterClick={() => {}}
+        onClearFilterClick={() => {}}
+        isCloneVisible
+        isCloneDisabled={false}
+      />
+    )
+
+    fireEvent.click(screen.getByTestId('query-clone-button'))
+
+    const result = flat(tabId)
+    expect(result.rows).toHaveLength(2)
+    expect(result.selectedRowIndex).toBe(1)
+    expect(result.editingRowIndex).toBe(1)
+    expect(result.editState?.isNewRow).toBe(true)
+  })
 })
