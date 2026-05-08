@@ -117,6 +117,8 @@ export interface BaseGridViewProps {
   sortDirection?: 'ASC' | 'DESC' | null
   onSortChange?: (column: string | null, direction: 'ASC' | 'DESC' | null) => void
   onCellClickGuard?: (args: CellClickGuardArgs) => Promise<CellClickGuardResult>
+  onCellSelectionChange?: (args: CellClickGuardArgs) => void
+  runCellClickGuardOnKeyboardSelection?: boolean
   onCellClipboardEdit?: (args: CellClipboardEditArgs) => Promise<void> | void
   onColumnResize?: (column: string, width: number) => void
   onRowsChange?: (

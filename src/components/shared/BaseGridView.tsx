@@ -148,6 +148,8 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     sortDirection,
     onSortChange,
     onCellClickGuard,
+    onCellSelectionChange,
+    runCellClickGuardOnKeyboardSelection = true,
     onCellClipboardEdit,
     onColumnResize: onColumnResizeProp,
     onRowsChange: onRowsChangeProp,
@@ -573,6 +575,13 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
 
       const previousCell = selectedCellRef.current
       setTrackedSelectedCell(nextSelection)
+      if (args.row != null) {
+        onCellSelectionChange?.({
+          rowIdx: args.rowIdx,
+          columnKey: args.column.key,
+          rowData: args.row,
+        })
+      }
 
       const target = pendingTabNavigationRef.current
       if (target) {
@@ -588,6 +597,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
       // Keyboard-driven row change (ArrowUp/ArrowDown) — invoke the click guard
       if (
         onCellClickGuardRef.current &&
+        runCellClickGuardOnKeyboardSelection &&
         !clickGuardInFlightRef.current &&
         previousCell != null &&
         previousCell.rowIdx !== args.rowIdx &&
@@ -600,13 +610,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         }
         void onCellClickGuardRef.current(guardArgs).then((result) => {
           if (result.proceed) {
-            selectTrackedCell(
-              buildSelectedCellState(
-                result.targetRowIdx,
-                result.targetColIdx,
-                false
-              )
-            )
+            selectTrackedCell(buildSelectedCellState(result.targetRowIdx, result.targetColIdx, false))
           } else if (result.restoreFocus) {
             selectTrackedCell(
               buildSelectedCellState(
@@ -620,7 +624,12 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         })
       }
     },
-    [selectTrackedCell, setTrackedSelectedCell]
+    [
+      onCellSelectionChange,
+      runCellClickGuardOnKeyboardSelection,
+      selectTrackedCell,
+      setTrackedSelectedCell,
+    ]
   )
 
   const handleCellClipboardEdit = useCallback(

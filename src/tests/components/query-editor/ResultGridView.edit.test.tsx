@@ -3,16 +3,19 @@ import { render, act } from '@testing-library/react'
 
 // Store captured BaseGridView props for assertions
 let lastBaseGridProps: Record<string, unknown> = {}
+let lastEditorCallbacks: Record<string, unknown> | null = null
 
 // Mock the shared BaseGridView component (ResultGridView wraps it)
 vi.mock('../../../components/shared/BaseGridView', async () => {
   const React = await import('react')
+  const { useEditorCallbacks } = await import('../../../components/shared/editor-callbacks-context')
   const MockBaseGridView = React.forwardRef(function MockBaseGridView(
     props: Record<string, unknown>,
     ref: React.Ref<unknown>
   ) {
     void ref
     lastBaseGridProps = props
+    lastEditorCallbacks = useEditorCallbacks() as unknown as Record<string, unknown> | null
     const rows = (props.rows as Array<Record<string, unknown>>) ?? []
     return React.createElement(
       'div',
@@ -127,6 +130,7 @@ describe('ResultGridView edit mode', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     lastBaseGridProps = {}
+    lastEditorCallbacks = null
   })
 
   it('sets editable: false on all columns when editMode is null (read-only)', () => {
@@ -356,6 +360,41 @@ describe('ResultGridView edit mode', () => {
     expect(onStartEditing).toHaveBeenCalledWith(0)
     expect(result!.proceed).toBe(true)
     expect(result!.enableEditor).toBe(true)
+  })
+
+  it('provides editor callbacks that update query edit state by result column index', () => {
+    const onUpdateCellValue = vi.fn()
+    const onSyncCellValue = vi.fn()
+    render(
+      <ResultGridView
+        {...baseProps}
+        editMode="users"
+        editableColumnMap={
+          new Map<number, boolean>([
+            [0, false],
+            [1, true],
+            [2, true],
+          ])
+        }
+        editTableColumns={editTableColumns}
+        onUpdateCellValue={onUpdateCellValue}
+        onSyncCellValue={onSyncCellValue}
+      />
+    )
+
+    const updateCellValue = lastEditorCallbacks?.updateCellValue as
+      | ((tabId: string, columnKey: string, value: unknown) => void)
+      | undefined
+    const syncCellValue = lastEditorCallbacks?.syncCellValue as
+      | ((tabId: string, rowData: Record<string, unknown>, columnKey: string, value: unknown) => void)
+      | undefined
+
+    expect(lastEditorCallbacks?.tabId).toBe('tab-42')
+    updateCellValue?.('tab-42', 'col_1', 'Alice Updated')
+    syncCellValue?.('tab-42', { __rowIdx: 0, col_1: 'Alice' }, 'col_1', 'Alice Updated')
+
+    expect(onUpdateCellValue).toHaveBeenCalledWith(1, 'Alice Updated')
+    expect(onSyncCellValue).not.toHaveBeenCalled()
   })
 
   it('does not call onStartEditing for non-editable cell clicks', async () => {

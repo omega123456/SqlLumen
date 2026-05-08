@@ -1950,6 +1950,96 @@ describe('BaseGridView', () => {
     )
   })
 
+  it('skips the keyboard guard when runCellClickGuardOnKeyboardSelection is false', () => {
+    const onCellClickGuard = vi.fn().mockResolvedValue({
+      proceed: true,
+      targetRowIdx: 0,
+      targetColIdx: 0,
+      enableEditor: false,
+    })
+    const onCellSelectionChange = vi.fn()
+
+    render(
+      <BaseGridView
+        columns={testColumns}
+        rows={testRows}
+        editState={null}
+        onCellClickGuard={onCellClickGuard}
+        onCellSelectionChange={onCellSelectionChange}
+        runCellClickGuardOnKeyboardSelection={false}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const onSelectedCellChange = props.onSelectedCellChange as (args: {
+      rowIdx: number
+      row: Record<string, unknown>
+      column: { key: string; idx: number; editable?: boolean; renderEditCell?: unknown }
+    }) => void
+
+    act(() => {
+      onSelectedCellChange({
+        rowIdx: 1,
+        row: testRows[1],
+        column: { key: 'id', idx: 0, editable: false },
+      })
+    })
+
+    expect(onCellClickGuard).not.toHaveBeenCalled()
+    expect(onCellSelectionChange).toHaveBeenCalledWith({
+      rowIdx: 1,
+      columnKey: 'id',
+      rowData: testRows[1],
+    })
+  })
+
+  it('reselects the target after a keyboard guard approves row movement', async () => {
+    const onCellClickGuard = vi.fn().mockResolvedValue({
+      proceed: true,
+      targetRowIdx: 0,
+      targetColIdx: 0,
+      enableEditor: true,
+    })
+
+    render(
+      <BaseGridView
+        columns={testColumns}
+        rows={testRows}
+        editState={null}
+        onCellClickGuard={onCellClickGuard}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const onSelectedCellChange = props.onSelectedCellChange as (args: {
+      rowIdx: number
+      row: Record<string, unknown>
+      column: { key: string; idx: number; editable?: boolean; renderEditCell?: unknown }
+    }) => void
+
+    act(() => {
+      onSelectedCellChange({
+        rowIdx: 1,
+        row: testRows[1],
+        column: { key: 'id', idx: 0, editable: true },
+      })
+    })
+
+    onCellClickGuard.mockClear()
+    mockSelectCell.mockClear()
+
+    await act(async () => {
+      onSelectedCellChange({
+        rowIdx: 0,
+        row: testRows[0],
+        column: { key: 'id', idx: 0, editable: true },
+      })
+    })
+
+    expect(onCellClickGuard).toHaveBeenCalledTimes(1)
+    expect(mockSelectCell).toHaveBeenCalledWith({ rowIdx: 0, idx: 0 }, { enableEditor: false })
+  })
+
   it('handles Enter in EDIT mode by moving to the next column instead of next row', () => {
     render(<BaseGridView columns={testColumns} rows={testRows} editState={null} />)
 

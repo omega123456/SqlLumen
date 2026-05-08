@@ -13,6 +13,10 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { BaseGridView } from '../shared/BaseGridView'
+import {
+  EditorCallbacksContext,
+  type EditorCallbacksContextType,
+} from '../shared/editor-callbacks-context'
 import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
 import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
 import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
@@ -95,12 +99,10 @@ export function ResultGridView({
   editForeignKeys = EMPTY_FOREIGN_KEYS,
   editColumnBindings = EMPTY_BINDINGS,
   onStartEditing,
-  onUpdateCellValue: _onUpdateCellValue,
+  onUpdateCellValue,
   onSyncCellValue,
   onAutoSave,
 }: ResultGridViewProps) {
-  void _onUpdateCellValue
-
   const storeSetSelectedCell = useQueryStore((state) => state.setSelectedCell)
 
   // Refs for stable access in callbacks without re-creating them
@@ -109,6 +111,11 @@ export function ResultGridView({
   const rowDataRef = useRef<ResultRow[]>([])
   const columnsRef = useRef(columns)
   const onSyncCellValueRef = useRef(onSyncCellValue)
+  const lastSyncedSelectionRef = useRef<{
+    rowIdx: number
+    columnKey: string
+    value: unknown
+  } | null>(null)
 
   useEffect(() => {
     editStateRef.current = editState
@@ -126,8 +133,22 @@ export function ResultGridView({
     onSyncCellValueRef.current = onSyncCellValue
   }, [onSyncCellValue])
 
+  useEffect(() => {
+    lastSyncedSelectionRef.current = null
+  }, [rows, columns, tabId])
+
   const syncSelection = useCallback(
     (rowIdx: number, columnKey: string, selectedRow: Record<string, unknown>) => {
+      const nextValue = selectedRow[columnKey]
+      const lastSelection = lastSyncedSelectionRef.current
+      if (
+        lastSelection?.rowIdx === rowIdx &&
+        lastSelection.columnKey === columnKey &&
+        Object.is(lastSelection.value, nextValue)
+      ) {
+        return
+      }
+      lastSyncedSelectionRef.current = { rowIdx, columnKey, value: nextValue }
       onRowSelected(rowIdx)
 
       const columnIndex = colIndexFromKey(columnKey)
@@ -136,10 +157,31 @@ export function ResultGridView({
 
       storeSetSelectedCell(tabId, {
         columnKey: column.name,
-        value: selectedRow[columnKey],
+        value: nextValue,
       })
     },
     [columns, onRowSelected, storeSetSelectedCell, tabId]
+  )
+
+  const handleCellSelectionChange = useCallback(
+    (args: CellClickGuardArgs) => {
+      syncSelection(args.rowIdx, args.columnKey, args.rowData)
+    },
+    [syncSelection]
+  )
+
+  const editorCallbacksCtx: EditorCallbacksContextType = useMemo(
+    () => ({
+      tabId,
+      updateCellValue: (_tabId, columnKey, value) => {
+        const colIndex = colIndexFromKey(columnKey)
+        if (colIndex >= 0) {
+          onUpdateCellValue(colIndex, value)
+        }
+      },
+      syncCellValue: () => { },
+    }),
+    [onUpdateCellValue, tabId]
   )
 
   // ---------------------------------------------------------------------------
@@ -507,22 +549,26 @@ export function ResultGridView({
   )
 
   return (
-    <BaseGridView
-      rows={rowData}
-      columns={gridColumns}
-      editState={sharedEditState}
-      sortColumn={sortColumnKey}
-      sortDirection={sortDirectionUpper}
-      onSortChange={handleSortChange}
-      onCellClickGuard={editMode ? cellClickGuard : readOnlyCellClickGuard}
-      onRowsChange={handleRowsChange}
-      onCellClipboardEdit={handleCellClipboardEdit}
-      rowKeyGetter={rowKeyGetter}
-      getRowClass={getRowClass}
-      isModifiedCell={isModifiedCell}
-      autoSizeConfig={autoSizeConfig}
-      showReadOnlyHeaders={!!editMode}
-      testId="result-grid-view"
-    />
+    <EditorCallbacksContext.Provider value={editorCallbacksCtx}>
+      <BaseGridView
+        rows={rowData}
+        columns={gridColumns}
+        editState={sharedEditState}
+        sortColumn={sortColumnKey}
+        sortDirection={sortDirectionUpper}
+        onSortChange={handleSortChange}
+        onCellClickGuard={editMode ? cellClickGuard : readOnlyCellClickGuard}
+        onCellSelectionChange={!editMode ? handleCellSelectionChange : undefined}
+        runCellClickGuardOnKeyboardSelection={!!editMode}
+        onRowsChange={handleRowsChange}
+        onCellClipboardEdit={handleCellClipboardEdit}
+        rowKeyGetter={rowKeyGetter}
+        getRowClass={getRowClass}
+        isModifiedCell={isModifiedCell}
+        autoSizeConfig={autoSizeConfig}
+        showReadOnlyHeaders={!!editMode}
+        testId="result-grid-view"
+      />
+    </EditorCallbacksContext.Provider>
   )
 }

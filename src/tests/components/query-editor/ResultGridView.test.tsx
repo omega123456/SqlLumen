@@ -326,6 +326,103 @@ describe('ResultGridView', () => {
     expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Charlie' })
   })
 
+  it('uses direct selection sync for read-only keyboard movement instead of the async guard', () => {
+    render(
+      <ResultGridView
+        {...defaultProps}
+        onRowSelected={(rowIndex) => useQueryStore.getState().setSelectedRow('tab-test', rowIndex)}
+      />
+    )
+
+    const props = getLatestBaseGridProps()
+    expect(props.runCellClickGuardOnKeyboardSelection).toBe(false)
+
+    const onCellSelectionChange = props.onCellSelectionChange as (args: {
+      rowIdx: number
+      columnKey: string
+      rowData: Record<string, unknown>
+    }) => void
+
+    act(() => {
+      onCellSelectionChange({
+        rowIdx: 2,
+        columnKey: 'col_1',
+        rowData: { __rowIdx: 2, col_0: 3, col_1: 'Charlie', col_2: 'charlie@example.com' },
+      })
+    })
+
+    const result = useQueryStore.getState().tabs['tab-test']?.results[0]
+    expect(result?.selectedRowIndex).toBe(2)
+    expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Charlie' })
+  })
+
+  it('does not pass direct selection sync while edit mode is active', () => {
+    render(
+      <ResultGridView
+        {...defaultProps}
+        editMode="users"
+        editableColumnMap={
+          new Map([
+            [0, false],
+            [1, true],
+            [2, true],
+          ])
+        }
+      />
+    )
+
+    const props = getLatestBaseGridProps()
+    expect(props.onCellSelectionChange).toBeUndefined()
+    expect(props.runCellClickGuardOnKeyboardSelection).toBe(true)
+  })
+
+  it('keeps the keyboard guard active in edit mode so row movement auto-saves edits', async () => {
+    const onAutoSave = vi.fn().mockResolvedValue(true)
+    const onStartEditing = vi.fn()
+    render(
+      <ResultGridView
+        {...defaultProps}
+        editMode="users"
+        editableColumnMap={
+          new Map([
+            [0, false],
+            [1, true],
+            [2, true],
+          ])
+        }
+        editState={{
+          rowKey: { id: 1 },
+          originalValues: { name: 'Alice' },
+          currentValues: { name: 'Alice Updated' },
+          modifiedColumns: new Set(['name']),
+          isNewRow: false,
+        }}
+        editingRowIndex={0}
+        onAutoSave={onAutoSave}
+        onStartEditing={onStartEditing}
+      />
+    )
+
+    const props = getLatestBaseGridProps()
+    const onCellClickGuard = props.onCellClickGuard as (args: {
+      rowIdx: number
+      columnKey: string
+      rowData: Record<string, unknown>
+    }) => Promise<{ proceed: boolean }>
+
+    await act(async () => {
+      await onCellClickGuard({
+        rowIdx: 1,
+        columnKey: 'col_1',
+        rowData: { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
+      })
+    })
+
+    expect(props.runCellClickGuardOnKeyboardSelection).toBe(true)
+    expect(onAutoSave).toHaveBeenCalledTimes(1)
+    expect(onStartEditing).toHaveBeenCalledWith(1)
+  })
+
   it('calls onRowSelected with correct index for different rows', async () => {
     const onRowSelected = vi.fn()
     render(<ResultGridView {...defaultProps} onRowSelected={onRowSelected} />)

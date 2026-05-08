@@ -1387,11 +1387,20 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
     setSelectedRow: (tabId: string, index: number | null) => {
       const resultIndex = getActiveIndex(tabId)
+      const result = get().tabs[tabId]?.results[resultIndex]
+      if (result?.selectedRowIndex === index) return
       patchResultByIndex(tabId, resultIndex, { selectedRowIndex: index })
     },
 
     setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => {
       const resultIndex = getActiveIndex(tabId)
+      const currentCell = get().tabs[tabId]?.results[resultIndex]?.selectedCell ?? null
+      if (
+        currentCell?.columnKey === cell?.columnKey &&
+        Object.is(currentCell?.value, cell?.value)
+      ) {
+        return
+      }
       patchResultByIndex(tabId, resultIndex, { selectedCell: cell })
     },
 
