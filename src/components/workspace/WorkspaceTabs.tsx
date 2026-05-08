@@ -127,58 +127,72 @@ export function WorkspaceTabs({ connectionId }: WorkspaceTabsProps) {
   const closeTab = useWorkspaceStore((state) => state.closeTab)
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
 
-  return (
-    <UnderlineTabBar className={styles.workspaceTabRailBleed} data-testid="workspace-tabs">
-      {tabs.map((tab) => {
-        const isActive = tab.id === activeTabId
-        return (
-          <UnderlineTab
-            key={tab.id}
-            active={isActive}
-            className={styles.workspaceTab}
-            data-testid={`workspace-tab-${tab.id}`}
-            onSelect={() => setActiveTab(connectionId, tab.id)}
-            onAuxClick={
-              tab.type !== 'history' && tab.type !== 'processlist'
-                ? (e) => {
-                    if (e.button !== 1) return
-                    e.preventDefault()
-                    closeTab(connectionId, tab.id)
-                  }
-                : undefined
-            }
-            suffix={
-              tab.type !== 'history' && tab.type !== 'processlist' ? (
-                <button
-                  type="button"
-                  className={styles.tabClose}
-                  aria-label={`Close ${tab.label}`}
-                  tabIndex={-1}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    closeTab(connectionId, tab.id)
-                  }}
-                >
-                  ×
-                </button>
-              ) : undefined
-            }
-          >
-            <WorkspaceTabLabel tab={tab} />
-          </UnderlineTab>
-        )
-      })}
-      {/* Always-visible "+" button to create a new query tab */}
-      <button
-        type="button"
-        className={styles.newTabButton}
-        title="New Query Tab"
-        aria-label="New Query Tab"
-        onClick={() => openQueryTab(connectionId)}
-        data-testid="new-query-tab-button"
+  const scrollableTabs = tabs.filter((t) => t.type !== 'history' && t.type !== 'processlist')
+  const pinnedTabs = tabs.filter((t) => t.type === 'history' || t.type === 'processlist')
+
+  const renderTab = (tab: WorkspaceTab) => {
+    const isActive = tab.id === activeTabId
+    return (
+      <UnderlineTab
+        key={tab.id}
+        active={isActive}
+        className={styles.workspaceTab}
+        data-testid={`workspace-tab-${tab.id}`}
+        onSelect={() => setActiveTab(connectionId, tab.id)}
+        onAuxClick={
+          tab.type !== 'history' && tab.type !== 'processlist'
+            ? (e) => {
+                if (e.button !== 1) return
+                e.preventDefault()
+                closeTab(connectionId, tab.id)
+              }
+            : undefined
+        }
+        suffix={
+          tab.type !== 'history' && tab.type !== 'processlist' ? (
+            <button
+              type="button"
+              className={styles.tabClose}
+              aria-label={`Close ${tab.label}`}
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation()
+                closeTab(connectionId, tab.id)
+              }}
+            >
+              ×
+            </button>
+          ) : undefined
+        }
       >
-        <PlusIcon size={16} weight="bold" />
-      </button>
+        <WorkspaceTabLabel tab={tab} />
+      </UnderlineTab>
+    )
+  }
+
+  return (
+    <UnderlineTabBar
+      className={styles.workspaceTabRailBleed}
+      data-testid="workspace-tabs"
+      scrollable
+      suffix={
+        <>
+          {pinnedTabs.map(renderTab)}
+          {/* Always-visible "+" button to create a new query tab */}
+          <button
+            type="button"
+            className={styles.newTabButton}
+            title="New Query Tab"
+            aria-label="New Query Tab"
+            onClick={() => openQueryTab(connectionId)}
+            data-testid="new-query-tab-button"
+          >
+            <PlusIcon size={16} weight="bold" />
+          </button>
+        </>
+      }
+    >
+      {scrollableTabs.map(renderTab)}
     </UnderlineTabBar>
   )
 }

@@ -1936,3 +1936,151 @@ describe('TableDataGrid scroll position persistence', () => {
     expect(mockGridElement.scrollLeft).toBe(75)
   })
 })
+
+describe('TableDataGrid — no primary key', () => {
+  it('getRowClass does not highlight every row when there is no PK and a row is selected', () => {
+    setupConnection()
+    // No primary key: primaryKey is null, so pkColumns will be []
+    // selectedRowKey is {} (empty object, as would be set when clicking any row)
+    setupTabState({
+      primaryKey: null,
+      selectedRowKey: { __rowIndex: 0 },
+      rows: [
+        [1, 'Alice', null],
+        [2, 'Bob', null],
+        [3, 'Charlie', null],
+      ],
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={true} />)
+    const props = getLatestGridProps()
+    const rowClass = props.rowClass as (row: Record<string, unknown>) => string | undefined
+
+    const row1Class = rowClass({ id: 1, name: 'Alice', avatar: null, __rowIndex: 0 })
+    const row2Class = rowClass({ id: 2, name: 'Bob', avatar: null, __rowIndex: 1 })
+    const row3Class = rowClass({ id: 3, name: 'Charlie', avatar: null, __rowIndex: 2 })
+
+    // At most ONE row should be highlighted, not all of them
+    const highlightedCount = [row1Class, row2Class, row3Class].filter(
+      (c) => c && c.includes('rdg-row-precision-selected')
+    ).length
+    expect(highlightedCount).toBeLessThanOrEqual(1)
+  })
+
+  it('clicking different rows in a no-PK table produces distinct selectedRowKeys', async () => {
+    setupConnection()
+    setupTabState({
+      primaryKey: null,
+      rows: [
+        [1, 'Alice', null],
+        [2, 'Bob', null],
+      ],
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={true} />)
+    const props = getLatestGridProps()
+    const onCellClick = props.onCellClick as (
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
+      event: { preventGridDefault: () => void }
+    ) => Promise<void>
+
+    // Click row 0
+    await act(async () => {
+      await onCellClick(
+        {
+          row: { id: 1, name: 'Alice', avatar: null, __rowIndex: 0 },
+          column: { key: 'name', idx: 1 },
+          rowIdx: 0,
+        },
+        { preventGridDefault: vi.fn() }
+      )
+    })
+    const key1 = useTableDataStore.getState().tabs['tab-1']?.selectedRowKey
+
+    // Click row 1
+    await act(async () => {
+      await onCellClick(
+        {
+          row: { id: 2, name: 'Bob', avatar: null, __rowIndex: 1 },
+          column: { key: 'name', idx: 1 },
+          rowIdx: 1,
+        },
+        { preventGridDefault: vi.fn() }
+      )
+    })
+    const key2 = useTableDataStore.getState().tabs['tab-1']?.selectedRowKey
+
+    // The two keys should be different so that different rows can be selected
+    expect(key1).not.toEqual(key2)
+  })
+})
+
+describe('TableDataGrid arrow-key navigation should not enable editor', () => {
+  it('should call selectCell with enableEditor: false when navigating rows via arrow keys', async () => {
+    setupConnection()
+    setupTabState({
+      rows: [
+        [1, 'Alice', null],
+        [2, 'Bob', null],
+      ],
+    })
+    render(<TableDataGrid tabId="tab-1" isReadOnly={false} />)
+
+    // First, simulate a click on row 0 to establish a selected cell
+    const props = getLatestGridProps()
+    const onCellClick = props.onCellClick as (
+      args: {
+        row: Record<string, unknown>
+        column: { key: string; idx: number }
+        rowIdx: number
+      },
+      event: { preventGridDefault: () => void }
+    ) => Promise<void>
+
+    await act(async () => {
+      await onCellClick(
+        {
+          row: { id: 1, name: 'Alice', avatar: null, __rowIndex: 0 },
+          column: { key: 'name', idx: 1 },
+          rowIdx: 0,
+        },
+        { preventGridDefault: vi.fn() }
+      )
+    })
+
+    mockSelectCell.mockClear()
+
+    // Now simulate arrow-key navigation: onSelectedCellChange fires with a
+    // different rowIdx (row 1) — this is what happens on ArrowDown.
+    const propsAfterClick = getLatestGridProps()
+    const onSelectedCellChange = propsAfterClick.onSelectedCellChange as (args: {
+      rowIdx: number
+      column: { key: string; idx: number; editable?: boolean; renderEditCell?: unknown }
+      row: Record<string, unknown>
+    }) => void
+
+    act(() => {
+      onSelectedCellChange({
+        rowIdx: 1,
+        column: { key: 'name', idx: 1, renderEditCell: () => null },
+        row: { id: 2, name: 'Bob', avatar: null, __rowIndex: 1 },
+      })
+    })
+
+    // Wait for the async guard to resolve
+    await waitFor(() => {
+      expect(mockSelectCell).toHaveBeenCalled()
+    })
+
+    // The bug: selectCell is called with enableEditor: true on arrow-key navigation.
+    // Correct behavior: enableEditor should be false for keyboard navigation.
+    const lastCall = mockSelectCell.mock.calls[mockSelectCell.mock.calls.length - 1]
+    const selectCellOptions = lastCall[1] as { enableEditor: boolean }
+
+    // This assertion documents the EXPECTED correct behavior:
+    // arrow-key navigation should NOT enable the editor
+    expect(selectCellOptions.enableEditor).toBe(false)
+  })
+})

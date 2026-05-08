@@ -96,6 +96,7 @@ export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
                   indicatorColor={isActive && conn.profile.color ? conn.profile.color : undefined}
                   onSelect={() => switchTab(conn.id)}
                   onAuxClick={(e) => {
+                    if (e.button !== 1) return
                     e.preventDefault()
                     setPendingConnectionClose({
                       id: conn.id,

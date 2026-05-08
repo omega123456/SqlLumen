@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, act, waitFor, within } from '@testing-library/react'
+import { render, screen, act, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ObjectBrowser } from '../../../components/object-browser/ObjectBrowser'
 import { useConnectionStore } from '../../../stores/connection-store'
@@ -1519,6 +1519,42 @@ describe('ObjectBrowser', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // Bug: F5 should refresh the selected/active database
+  // ---------------------------------------------------------------------------
+
+  it('pressing F5 on the tree calls refreshDatabase for the selected database', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+    const refreshDatabase = vi.fn().mockResolvedValue(undefined)
+    useSchemaStore.setState({
+      refreshDatabase,
+      connectionStates: {
+        [CONN_ID]: {
+          ...useSchemaStore.getState().connectionStates[CONN_ID],
+          selectedNodeId: db1Id,
+          expandedNodes: new Set([db1Id]),
+        },
+      },
+    })
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    // Focus a tree item and press F5
+    const dbNode = screen.getByText('ecommerce_db').closest('[role="treeitem"]')
+    expect(dbNode).not.toBeNull()
+    await user.click(dbNode!)
+    await user.keyboard('{F5}')
+
+    await waitFor(() => {
+      expect(refreshDatabase).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // Bug regression: filter text should clear on scope change
   // ---------------------------------------------------------------------------
 
@@ -1588,5 +1624,41 @@ describe('ObjectBrowser', () => {
     // Filter should be cleared
     expect(screen.getByTestId('filter-input')).toHaveValue('')
     expect(useSchemaStore.getState().connectionStates[CONN_ID].filterText).toBe('')
+  })
+
+  it('F5 should call refreshDatabase for selected database', async () => {
+    setupConnectedState()
+    setupDatabaseNodes()
+
+    const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
+
+    // Select a database node and set up mock before render
+    const refreshMock = vi.fn().mockResolvedValue(undefined)
+    const origRefresh = useSchemaStore.getState().refreshDatabase
+
+    act(() => {
+      const state = useSchemaStore.getState()
+      useSchemaStore.setState({
+        refreshDatabase: refreshMock,
+        connectionStates: {
+          ...state.connectionStates,
+          [CONN_ID]: {
+            ...state.connectionStates[CONN_ID],
+            selectedNodeId: db1Id,
+          },
+        },
+      })
+    })
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={vi.fn()} />
+    )
+
+    // Fire F5 keydown on the tree container
+    const treeContainer = screen.getByTestId('object-browser-scroll')
+    fireEvent.keyDown(treeContainer, { key: 'F5' })
+
+    expect(refreshMock).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db')
+    useSchemaStore.setState({ refreshDatabase: origRefresh })
   })
 })

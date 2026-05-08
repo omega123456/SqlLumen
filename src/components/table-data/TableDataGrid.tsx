@@ -55,6 +55,10 @@ function getRowKey(data: Record<string, unknown>, pkColumns: string[]): Record<s
   for (const col of pkColumns) {
     key[col] = data[col]
   }
+  // No PK columns → use row index as unique identity so each row is distinguishable
+  if (Object.keys(key).length === 0 && data.__rowIndex != null) {
+    key.__rowIndex = data.__rowIndex
+  }
   return key
 }
 

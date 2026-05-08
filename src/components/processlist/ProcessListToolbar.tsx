@@ -250,6 +250,7 @@ export function ProcessListToolbar({
           options={FILTER_OPTIONS}
           value={excludeIdleConnections ? EXCLUDE_IDLE_FILTER_VALUE : SHOW_ALL_FILTER_VALUE}
           onChange={handleFilterChange}
+          className={styles.autoWidthDropdown}
           triggerClassName={sharedToolbarStyles.pageSizeSelect}
         />
 
@@ -260,6 +261,7 @@ export function ProcessListToolbar({
           options={INTERVAL_OPTIONS}
           value={String(refreshIntervalMs)}
           onChange={handleIntervalChange}
+          className={styles.autoWidthDropdown}
           triggerClassName={sharedToolbarStyles.pageSizeSelect}
         />
 

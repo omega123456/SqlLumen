@@ -604,7 +604,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
               buildSelectedCellState(
                 result.targetRowIdx,
                 result.targetColIdx,
-                result.enableEditor
+                false
               )
             )
           } else if (result.restoreFocus) {

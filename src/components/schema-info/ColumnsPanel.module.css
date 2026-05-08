@@ -1,5 +1,6 @@
 .container {
   padding: 16px;
+  user-select: text;
 }
 
 .table {

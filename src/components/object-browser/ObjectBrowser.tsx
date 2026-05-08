@@ -59,6 +59,7 @@ export function ObjectBrowser({
     (state) => state.activeConnections[connectionId] ?? null
   )
   const loadDatabases = useSchemaStore((state) => state.loadDatabases)
+  const refreshDatabase = useSchemaStore((state) => state.refreshDatabase)
   const setFilter = useSchemaStore((state) => state.setFilter)
   const filterText = useSchemaStore(
     (state) =>
@@ -198,6 +199,17 @@ export function ObjectBrowser({
         return
       }
 
+      if (e.key === 'F5') {
+        e.preventDefault()
+        const dbName =
+          selectedNode?.databaseName ??
+          (selectedNodeId ? parseNodeId(selectedNodeId).database : null)
+        if (dbName) {
+          void refreshDatabase(connectionId, dbName)
+        }
+        return
+      }
+
       const isPrintableCharacter = e.key.length === 1 && !/\s/.test(e.key)
       const isBackspace = e.key === 'Backspace'
 
@@ -211,7 +223,7 @@ export function ObjectBrowser({
       setFilter(nextValue, connectionId)
       filterInputRef.current?.focus()
     },
-    [connectionId, filterText, setFilter]
+    [connectionId, filterText, setFilter, selectedNode, selectedNodeId, refreshDatabase]
   )
 
   // ---------------------------------------------------------------------------

@@ -21,6 +21,18 @@ body {
   background-color: var(--surface);
   color: var(--on-surface);
   line-height: var(--type-body-lh);
+  user-select: none;
+}
+
+/* Re-enable text selection on code blocks, pre-formatted text, and enabled inputs */
+code,
+pre,
+.hljs,
+input:not(:disabled),
+textarea:not(:disabled),
+[contenteditable='true'],
+[role='gridcell'] {
+  user-select: text;
 }
 
 #root {

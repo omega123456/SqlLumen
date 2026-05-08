@@ -281,6 +281,23 @@ describe('ConnectionTabBar', () => {
     expect(accents.length).toBe(1)
   })
 
+  it('right-click (auxclick button 2) on a tab does NOT open close confirmation', async () => {
+    const conn1 = makeActiveConnection({ id: 'sess-1' })
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1 },
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+
+    const tab = screen.getByTestId('connection-session-tab-sess-1')
+    await act(async () => {
+      tab.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 2 }))
+    })
+
+    expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
+  })
+
   it('clicking theme toggle switches from light to dark', async () => {
     const user = userEvent.setup()
     render(<ConnectionTabBar />)

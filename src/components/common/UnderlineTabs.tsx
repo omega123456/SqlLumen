@@ -1,20 +1,43 @@
-import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react'
 import styles from './UnderlineTabs.module.css'
 
 export interface UnderlineTabBarProps {
   children: ReactNode
   className?: string
   'data-testid'?: string
+  /** Content rendered outside the scrollable tab area (e.g. pinned tabs, action buttons). */
+  suffix?: ReactNode
+  /** When true, always reserve scrollbar space (overflow-x: scroll). Use for tab bars that can overflow. */
+  scrollable?: boolean
 }
 
 export function UnderlineTabBar({
   children,
   className,
   'data-testid': testId,
+  suffix,
+  scrollable,
 }: UnderlineTabBarProps) {
-  const barClass = className ? `${styles.bar} ${className}` : styles.bar
+  const barClass = scrollable ? `${styles.bar} ${styles.barScrollable}` : styles.bar
+  if (suffix) {
+    const wrapperClass = className ? `${styles.barWrapper} ${className}` : styles.barWrapper
+    return (
+      <div className={wrapperClass} data-testid={testId}>
+        <div className={barClass}>{children}</div>
+        <div className={styles.barSuffix}>{suffix}</div>
+      </div>
+    )
+  }
+  const finalBarClass = className ? `${barClass} ${className}` : barClass
   return (
-    <div className={barClass} data-testid={testId}>
+    <div className={finalBarClass} data-testid={testId}>
       {children}
     </div>
   )
@@ -51,6 +74,14 @@ export function UnderlineTab({
   prefix,
   suffix,
 }: UnderlineTabProps) {
+  const elementRef = useRef<HTMLDivElement | HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (active && elementRef.current) {
+      elementRef.current.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+  }, [active])
+
   const split = prefix != null || suffix != null
   const indicatorStyle: CSSProperties | undefined = indicatorColor
     ? ({ '--underline-tab-indicator': indicatorColor } as CSSProperties)
@@ -72,6 +103,7 @@ export function UnderlineTab({
 
     return (
       <div
+        ref={elementRef as React.RefObject<HTMLDivElement>}
         className={cellClass}
         data-active={active ? true : undefined}
         data-testid={testId}
@@ -107,6 +139,7 @@ export function UnderlineTab({
 
   return (
     <button
+      ref={elementRef as React.RefObject<HTMLButtonElement>}
       type="button"
       className={simpleClass}
       data-active={active ? true : undefined}

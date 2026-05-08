@@ -188,6 +188,16 @@ describe('ProcessListToolbar', () => {
     expect(screen.getByTestId('processlist-filter-dropdown')).toHaveTextContent('Exclude idle')
   })
 
+  it('Dropdown root element should support content-based width', () => {
+    render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
+
+    const filterTrigger = screen.getByTestId('processlist-filter-dropdown')
+    const rootElement = filterTrigger.closest('.ui-dropdown') as HTMLElement
+    expect(rootElement).toBeTruthy()
+    // The root element should have the autoWidthDropdown class that sets width: fit-content
+    expect(rootElement.className).toMatch(/autoWidthDropdown/)
+  })
+
   it('updates the filter dropdown state when show all is selected', async () => {
     const user = userEvent.setup()
 

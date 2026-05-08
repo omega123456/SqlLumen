@@ -434,6 +434,41 @@ describe('WorkspaceTabs', () => {
     expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(1)
   })
 
+  it('scrolls newly active tab into view when active tab changes', async () => {
+    const scrollIntoViewMock = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoViewMock
+
+    // Open two tabs
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'orders',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    // Reset mock after initial render
+    scrollIntoViewMock.mockClear()
+
+    // Click the first tab to switch to it
+    const user = userEvent.setup()
+    await user.click(screen.getByText('users'))
+
+    // The active tab element should have been scrolled into view
+    expect(scrollIntoViewMock).toHaveBeenCalled()
+  })
+
   it('prevents browser autoscroll by calling preventDefault on middle-button mousedown', () => {
     useWorkspaceStore.getState().openTab({
       type: 'table-data',
@@ -459,5 +494,33 @@ describe('WorkspaceTabs', () => {
     tabEl.dispatchEvent(mousedownEvent)
 
     expect(preventDefaultSpy).toHaveBeenCalled()
+  })
+
+  it('renders the "+" button outside the scrollable tab area', () => {
+    render(<WorkspaceTabs connectionId="conn-1" />)
+    const tabBar = screen.getByTestId('workspace-tabs')
+    const plusButton = screen.getByTestId('new-query-tab-button')
+
+    // The "+" button should NOT be a direct child of the scrollable container.
+    // It should be outside it so it remains always visible.
+    expect(plusButton.parentElement).not.toBe(tabBar)
+  })
+
+  it('renders history and processlist tabs outside the scrollable tab area', () => {
+    act(() => {
+      useWorkspaceStore.getState().openHistoryTab('conn-1')
+      useWorkspaceStore.getState().openProcessListTab('conn-1')
+    })
+
+    render(<WorkspaceTabs connectionId="conn-1" />)
+    const tabBar = screen.getByTestId('workspace-tabs')
+    const historyTab = screen.getByText('History').closest('[data-testid^="workspace-tab-"]')!
+    const processlistTab = screen
+      .getByText('Process List')
+      .closest('[data-testid^="workspace-tab-"]')!
+
+    // History and processlist tabs should be pinned outside the scrollable area
+    expect(historyTab.parentElement).not.toBe(tabBar)
+    expect(processlistTab.parentElement).not.toBe(tabBar)
   })
 })

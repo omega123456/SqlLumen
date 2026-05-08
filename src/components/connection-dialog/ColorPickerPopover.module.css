@@ -22,11 +22,7 @@
 }
 
 .popover {
-  position: absolute;
-  top: calc(100% + var(--space-xs));
-  right: 0;
-  left: auto;
-  z-index: 10;
+  z-index: 10000;
   background: var(--ui-popover-bg);
   -webkit-backdrop-filter: var(--ui-popover-backdrop-filter);
   backdrop-filter: var(--ui-popover-backdrop-filter);

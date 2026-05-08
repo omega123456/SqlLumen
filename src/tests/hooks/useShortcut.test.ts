@@ -139,6 +139,36 @@ describe('useShortcut', () => {
     unmount()
   })
 
+  it('fires new-query-tab shortcut (Ctrl+T) when Monaco editor is focused', () => {
+    const callback = vi.fn()
+    useShortcutStore.getState().registerAction('new-query-tab', callback)
+
+    const { unmount } = renderHook(() => useShortcut())
+
+    // Create a mock Monaco editor container
+    const monacoContainer = document.createElement('div')
+    monacoContainer.classList.add('monaco-editor')
+    const innerElement = document.createElement('div')
+    monacoContainer.appendChild(innerElement)
+    document.body.appendChild(monacoContainer)
+
+    Object.defineProperty(document, 'activeElement', {
+      value: innerElement,
+      configurable: true,
+    })
+
+    fireKeydown('T', { ctrlKey: true })
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    // Cleanup
+    Object.defineProperty(document, 'activeElement', {
+      value: document.body,
+      configurable: true,
+    })
+    document.body.removeChild(monacoContainer)
+    unmount()
+  })
+
   it('does NOT fire non-editor-context shortcuts when Monaco editor is focused', () => {
     const callback = vi.fn()
     useShortcutStore.getState().registerAction('settings', callback)

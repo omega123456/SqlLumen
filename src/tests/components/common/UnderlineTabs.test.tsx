@@ -154,4 +154,24 @@ describe('UnderlineTabs', () => {
     dispatchAuxClick(screen.getByTestId('split-cell'))
     expect(onAuxSplit).toHaveBeenCalledTimes(1)
   })
+
+  it('should use overflow-x: scroll to always reserve scrollbar height', () => {
+    const fs = require('fs')
+    const css = fs.readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
+    expect(css).toContain('overflow-x: scroll')
+    expect(css).not.toContain('scrollbar-gutter')
+  })
+
+  it('should have custom scrollbar styling for the tab bar', () => {
+    const fs = require('fs')
+    const css = fs.readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
+    expect(css).toContain('::-webkit-scrollbar')
+  })
+
+  it('should hide scrollbar buttons to prevent floating arrow icons', () => {
+    const fs = require('fs')
+    const css = fs.readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
+    expect(css).toContain('::-webkit-scrollbar-button')
+    expect(css).toMatch(/scrollbar-button[^}]*display:\s*none/)
+  })
 })

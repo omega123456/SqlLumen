@@ -144,6 +144,11 @@
   flex-shrink: 0;
 }
 
+/* Auto-width dropdown — prevents text truncation in toolbar dropdowns */
+.autoWidthDropdown {
+  width: fit-content;
+}
+
 /* Read-only badge — matches TableDataToolbar */
 .readonlyBadge {
   display: flex;

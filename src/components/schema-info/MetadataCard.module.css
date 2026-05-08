@@ -1,5 +1,6 @@
 .card {
   padding: 20px;
+  user-select: text;
 }
 
 .title {

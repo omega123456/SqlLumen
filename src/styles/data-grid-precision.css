@@ -109,10 +109,10 @@
   padding: 0 var(--grid-cell-padding-x);
   border-right: 1px solid rgba(var(--outline-variant-rgb), 0.1);
   border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-  overflow: clip;
+  overflow: visible;
   text-overflow: ellipsis;
   white-space: nowrap;
-  contain: style layout paint;
+  contain: style layout;
 }
 
 /* RDG edit cells already manage their own layout; do not re-apply body-cell padding */
@@ -166,6 +166,11 @@
   font-style: italic;
   color: var(--on-surface-variant);
   opacity: 0.6;
+}
+
+/* ---------- Selected cell z-index (keeps focus ring above neighbors) ---------- */
+.rdg-precision .rdg-cell[aria-selected='true'] {
+  z-index: 1;
 }
 
 /* ---------- Scrollbar styling ---------- */

@@ -73,6 +73,64 @@ describe('data-grid-precision header cell stacking context', () => {
   })
 })
 
+describe('data-grid-precision focus ring visibility', () => {
+  it('should not use overflow:clip on body cells because it clips the focus ring box-shadow', () => {
+    // RDG renders focused-cell highlight as a box-shadow sitting at the cell boundary.
+    // `overflow: clip` truncates any visual overflow outside the content box, cutting off
+    // the blue focus border. Must use `overflow: visible` instead.
+    const genericCellRule = dataGridPrecisionCss.match(/\.rdg-precision\s+\.rdg-cell\s*\{([^}]+)\}/)
+    expect(genericCellRule).not.toBeNull()
+    const cellBody = genericCellRule![1]
+    const overflowMatch = cellBody.match(/overflow:\s*([^;]+)/)
+    if (overflowMatch) {
+      const overflowValue = overflowMatch[1].trim()
+      expect(
+        overflowValue,
+        'Body cell overflow must not be "clip" — it clips the focused-cell box-shadow border'
+      ).not.toBe('clip')
+      expect(
+        overflowValue,
+        'Body cell overflow must not be "hidden" — it clips the focused-cell box-shadow border'
+      ).not.toBe('hidden')
+    }
+  })
+
+  it('should not use paint containment on body cells because it clips the focus ring / selection border', () => {
+    // `contain: ... paint` on .rdg-precision .rdg-cell prevents box-shadow and outline
+    // from rendering outside the cell's border-box. RDG's selection color uses a box-shadow
+    // that extends beyond the cell boundary; paint containment clips it at random edges
+    // depending on neighboring cell stacking order.
+    const genericCellRule = dataGridPrecisionCss.match(/\.rdg-precision\s+\.rdg-cell\s*\{([^}]+)\}/)
+    expect(genericCellRule).not.toBeNull()
+    const cellBody = genericCellRule![1]
+
+    // If contain is present, it must NOT include "paint"
+    const containMatch = cellBody.match(/contain:\s*([^;]+)/)
+    if (containMatch) {
+      const containValue = containMatch[1].trim()
+      expect(
+        containValue,
+        'Body cell contain property must not include "paint" — it clips the focused-cell border/outline'
+      ).not.toMatch(/\bpaint\b/)
+    }
+  })
+})
+
+describe('data-grid-precision selected cell z-index', () => {
+  it('should set z-index on aria-selected cells so the focus box-shadow is not painted over by neighbors', () => {
+    // RDG uses box-shadow on the selected cell for the blue selection border.
+    // Without z-index, adjacent cells paint over the shared edge, clipping the shadow.
+    const selectedCellRule = dataGridPrecisionCss.match(
+      /\.rdg-precision\s+\.rdg-cell\[aria-selected=['"]true['"]\]\s*\{([^}]+)\}/
+    )
+    expect(
+      selectedCellRule,
+      'Must have a rule for .rdg-precision .rdg-cell[aria-selected="true"] with z-index'
+    ).not.toBeNull()
+    expect(selectedCellRule![1]).toMatch(/z-index:\s*[1-9]/)
+  })
+})
+
 describe('data-grid-precision editing styles', () => {
   it('uses dark-theme left border accent on editing rows', () => {
     expect(dataGridPrecisionCss).toMatch(

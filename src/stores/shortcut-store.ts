@@ -18,7 +18,12 @@ export const DEFAULT_SHORTCUTS: Record<string, ShortcutBinding> = {
 }
 
 /** Action IDs that should fire even when the Monaco editor is focused. */
-export const EDITOR_CONTEXT_ACTIONS = new Set(['execute-query', 'execute-all', 'format-query'])
+export const EDITOR_CONTEXT_ACTIONS = new Set([
+  'execute-query',
+  'execute-all',
+  'format-query',
+  'new-query-tab',
+])
 
 // ---------------------------------------------------------------------------
 // Store
