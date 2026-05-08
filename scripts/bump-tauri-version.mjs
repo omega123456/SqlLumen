@@ -14,14 +14,6 @@ const releaseBodyPath = path.join(repoRoot, releaseBodyRelative)
 
 const DEFAULT_RELEASE_BODY = 'See release assets for platform installers.'
 
-function readCanonicalReleaseBody() {
-  try {
-    return readFileSync(releaseBodyPath, 'utf8').trim() || DEFAULT_RELEASE_BODY
-  } catch {
-    return DEFAULT_RELEASE_BODY
-  }
-}
-
 function parseSemver(s) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(s).trim())
   if (!m) {
@@ -161,7 +153,7 @@ function restoreVersionFilesAndReleaseBody(
 
 /** @param {import('node:readline').Interface} rl */
 async function readReleaseNotes(rl) {
-  const canonicalReleaseBody = readCanonicalReleaseBody()
+  const canonicalReleaseBody = DEFAULT_RELEASE_BODY
   console.log('')
   console.log('Release notes for the GitHub release (shown on the Releases page).')
   console.log('  Press Enter once to use the default message, or')
