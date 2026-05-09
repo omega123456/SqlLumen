@@ -165,6 +165,7 @@ describe('ResultGridView', () => {
     expect(colDefs[0].key).toBe('id')
     expect(colDefs[1].key).toBe('name')
     expect(colDefs[2].key).toBe('email')
+    expect((colDefs[0] as { key: string; editable: boolean }).editable).toBe(true)
     expect(rowData[0]).toEqual({
       __rowIdx: 0,
       id: 1,

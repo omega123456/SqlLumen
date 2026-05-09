@@ -142,6 +142,7 @@ export function ResultGridView({
     editMode === null &&
     readNavigatorPlatform() === 'MacIntel'
   const disableReadOnlyCellStylesDiagnostic = useNativeKeyDiagnostic
+  const emulateEditableColumnPathDiagnostic = useNativeKeyDiagnostic
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -196,7 +197,8 @@ export function ResultGridView({
       logFrontend(
         'info',
         `[query-result-grid-debug] mode=${QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC_MODE} ` +
-          `tabId=${tabId} keyStrategy=native-column-names disableReadOnlyCellStyles=true`
+          `tabId=${tabId} keyStrategy=native-column-names disableReadOnlyCellStyles=true ` +
+          `emulateEditableColumnPath=true`
       )
     }
     return () => {
@@ -475,21 +477,32 @@ export function ResultGridView({
   // ---------------------------------------------------------------------------
   // Column descriptors: build GridColumnDescriptor[] from ColumnMeta[].
   // ---------------------------------------------------------------------------
-  const gridColumns: GridColumnDescriptor[] = useMemo(() => {
-    return resolvedColumns.map((column) => ({
-      key: column.key,
-      displayName: column.displayName,
-      dataType: column.dataType,
-      editable: column.editable,
-      isBinary: false,
-      isNullable: column.tableColumnMeta?.isNullable ?? true,
-      isPrimaryKey: column.tableColumnMeta?.isPrimaryKey ?? false,
-      isUniqueKey: column.tableColumnMeta?.isUniqueKey ?? false,
-      enumValues: column.tableColumnMeta?.enumValues,
-      tableColumnMeta: column.editable ? column.tableColumnMeta : undefined,
-      foreignKey: column.foreignKey,
-    }))
-  }, [resolvedColumns])
+const gridColumns: GridColumnDescriptor[] = useMemo(() => {
+    return resolvedColumns.map((column) => {
+      const editable = emulateEditableColumnPathDiagnostic ? true : column.editable
+      const tableColumnMeta =
+        editable && !column.tableColumnMeta
+          ? {
+              ...column.effectiveTableMeta,
+              enumValues: undefined,
+            }
+          : column.tableColumnMeta
+
+      return {
+        key: column.key,
+        displayName: column.displayName,
+        dataType: column.dataType,
+        editable,
+        isBinary: false,
+        isNullable: tableColumnMeta?.isNullable ?? true,
+        isPrimaryKey: tableColumnMeta?.isPrimaryKey ?? false,
+        isUniqueKey: tableColumnMeta?.isUniqueKey ?? false,
+        enumValues: tableColumnMeta?.enumValues,
+        tableColumnMeta: editable ? tableColumnMeta : undefined,
+        foreignKey: column.foreignKey,
+      }
+    })
+  }, [emulateEditableColumnPathDiagnostic, resolvedColumns])
 
   // ---------------------------------------------------------------------------
   // Sort state: translate between app (lowercase, real names) and BaseGridView
