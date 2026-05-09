@@ -1,1 +1,1 @@
-Added ability to reorder tabs 
+Added the ability to reorder tabs 
