@@ -11,7 +11,7 @@
  * The external props interface remains unchanged — ResultPanel.tsx does not need modification.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BaseGridView } from '../shared/BaseGridView'
 import {
   EditorCallbacksContext,
@@ -81,6 +81,7 @@ const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
 const EMPTY_FOREIGN_KEYS: import('../../types/schema').ForeignKeyColumnInfo[] = []
 const EMPTY_BINDINGS = new Map<number, string>()
+const READ_ONLY_SELECTION_SYNC_DELAY_MS = 75
 
 export function ResultGridView({
   columns,
@@ -111,6 +112,15 @@ export function ResultGridView({
   const rowDataRef = useRef<ResultRow[]>([])
   const columnsRef = useRef(columns)
   const onSyncCellValueRef = useRef(onSyncCellValue)
+  const onRowSelectedRef = useRef(onRowSelected)
+  const storeSetSelectedCellRef = useRef(storeSetSelectedCell)
+  const pendingReadOnlySelectionRef = useRef<{
+    rowIdx: number
+    columnKey: string
+    value: unknown
+  } | null>(null)
+  const readOnlySelectionSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [localSelectedRowIndex, setLocalSelectedRowIndex] = useState(selectedRowIndex)
   const lastSyncedSelectionRef = useRef<{
     rowIdx: number
     columnKey: string
@@ -134,8 +144,71 @@ export function ResultGridView({
   }, [onSyncCellValue])
 
   useEffect(() => {
+    onRowSelectedRef.current = onRowSelected
+  }, [onRowSelected])
+
+  useEffect(() => {
+    storeSetSelectedCellRef.current = storeSetSelectedCell
+  }, [storeSetSelectedCell])
+
+  useEffect(() => {
+    setLocalSelectedRowIndex(selectedRowIndex)
+  }, [selectedRowIndex])
+
+  useEffect(() => {
     lastSyncedSelectionRef.current = null
+    pendingReadOnlySelectionRef.current = null
+    if (readOnlySelectionSyncTimerRef.current) {
+      clearTimeout(readOnlySelectionSyncTimerRef.current)
+      readOnlySelectionSyncTimerRef.current = null
+    }
   }, [rows, columns, tabId])
+
+  useEffect(() => {
+    return () => {
+      if (readOnlySelectionSyncTimerRef.current) {
+        clearTimeout(readOnlySelectionSyncTimerRef.current)
+      }
+    }
+  }, [])
+
+  const flushPendingReadOnlySelection = useCallback(() => {
+    readOnlySelectionSyncTimerRef.current = null
+    const pendingSelection = pendingReadOnlySelectionRef.current
+    if (!pendingSelection) return
+
+    pendingReadOnlySelectionRef.current = null
+    const columnIndex = colIndexFromKey(pendingSelection.columnKey)
+    const column = columnsRef.current[columnIndex]
+
+    onRowSelectedRef.current(pendingSelection.rowIdx)
+    if (!column) return
+
+    storeSetSelectedCellRef.current(tabId, {
+      columnKey: column.name,
+      value: pendingSelection.value,
+    })
+  }, [tabId])
+
+  const scheduleReadOnlySelectionSync = useCallback(
+    (rowIdx: number, columnKey: string, selectedRow: Record<string, unknown>) => {
+      pendingReadOnlySelectionRef.current = {
+        rowIdx,
+        columnKey,
+        value: selectedRow[columnKey],
+      }
+
+      if (readOnlySelectionSyncTimerRef.current) {
+        clearTimeout(readOnlySelectionSyncTimerRef.current)
+      }
+
+      readOnlySelectionSyncTimerRef.current = setTimeout(
+        flushPendingReadOnlySelection,
+        READ_ONLY_SELECTION_SYNC_DELAY_MS
+      )
+    },
+    [flushPendingReadOnlySelection]
+  )
 
   const syncSelection = useCallback(
     (rowIdx: number, columnKey: string, selectedRow: Record<string, unknown>) => {
@@ -165,9 +238,10 @@ export function ResultGridView({
 
   const handleCellSelectionChange = useCallback(
     (args: CellClickGuardArgs) => {
-      syncSelection(args.rowIdx, args.columnKey, args.rowData)
+      setLocalSelectedRowIndex(args.rowIdx)
+      scheduleReadOnlySelectionSync(args.rowIdx, args.columnKey, args.rowData)
     },
-    [syncSelection]
+    [scheduleReadOnlySelectionSync]
   )
 
   const editorCallbacksCtx: EditorCallbacksContextType = useMemo(
@@ -221,7 +295,9 @@ export function ResultGridView({
   }, [rows, columns, editState, editingRowIndex, boundColumnIndexLookup])
 
   // Keep rowDataRef in sync for stable callbacks
-  rowDataRef.current = rowData
+  useEffect(() => {
+    rowDataRef.current = rowData
+  }, [rowData])
 
   const resolvedColumns = useMemo(
     () =>
@@ -395,7 +471,6 @@ export function ResultGridView({
     editMode,
     editableColumnMap,
     onAutoSave,
-    onRowSelected,
     onStartEditing,
     syncSelection,
   ])
@@ -539,13 +614,13 @@ export function ResultGridView({
       }
 
       // Selected row highlight
-      if (selectedRowIndex != null && rowIdx === selectedRowIndex) {
+      if (localSelectedRowIndex != null && rowIdx === localSelectedRowIndex) {
         classes.push('rdg-row-precision-selected')
       }
 
       return classes.length > 0 ? classes.join(' ') : undefined
     },
-    [selectedRowIndex, editingRowIndex]
+    [localSelectedRowIndex, editingRowIndex]
   )
 
   return (

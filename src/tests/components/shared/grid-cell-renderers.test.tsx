@@ -58,6 +58,7 @@ describe('TableDataCellRenderer', () => {
 
     const span = container.querySelector('.td-null-value')
     expect(span).not.toBeNull()
+    expect(span).toHaveClass('td-cell-value')
     expect(span?.textContent).toBe('NULL')
   })
 
@@ -72,6 +73,7 @@ describe('TableDataCellRenderer', () => {
 
     const span = container.querySelector('.td-null-value')
     expect(span).not.toBeNull()
+    expect(span).toHaveClass('td-cell-value')
     expect(span?.textContent).toBe('NULL')
   })
 
@@ -82,6 +84,7 @@ describe('TableDataCellRenderer', () => {
 
     const span = container.querySelector('.td-blob-value')
     expect(span).not.toBeNull()
+    expect(span).toHaveClass('td-cell-value')
     expect(span?.textContent).toBe('[BLOB 1024 bytes]')
   })
 
@@ -90,6 +93,7 @@ describe('TableDataCellRenderer', () => {
 
     const span = container.querySelector('span')
     expect(span?.textContent).toBe('Alice')
+    expect(span).toHaveClass('td-cell-value')
     expect(container.querySelector('.td-null-value')).toBeNull()
     expect(container.querySelector('.td-blob-value')).toBeNull()
   })
@@ -99,6 +103,7 @@ describe('TableDataCellRenderer', () => {
 
     const span = container.querySelector('span')
     expect(span?.textContent).toBe('42')
+    expect(span).toHaveClass('td-cell-value')
     expect(container.querySelector('.td-null-value')).toBeNull()
     expect(container.querySelector('.td-blob-value')).toBeNull()
   })

@@ -116,6 +116,23 @@ describe('data-grid-precision focus ring visibility', () => {
   })
 })
 
+describe('data-grid-precision cell value overflow', () => {
+  it('clips rendered cell values inside the cell without clipping selected-cell decoration', () => {
+    const valueRule = dataGridPrecisionCss.match(/\.rdg-precision\s+\.td-cell-value\s*\{([^}]+)\}/)
+    expect(valueRule, 'Must have a value wrapper rule that constrains long cell text').not.toBeNull()
+    expect(valueRule![1]).toMatch(/display:\s*block/)
+    expect(valueRule![1]).toMatch(/max-width:\s*100%/)
+    expect(valueRule![1]).toMatch(/min-width:\s*0/)
+    expect(valueRule![1]).toMatch(/overflow:\s*hidden/)
+    expect(valueRule![1]).toMatch(/text-overflow:\s*ellipsis/)
+    expect(valueRule![1]).toMatch(/white-space:\s*nowrap/)
+
+    const genericCellRule = dataGridPrecisionCss.match(/\.rdg-precision\s+\.rdg-cell\s*\{([^}]+)\}/)
+    expect(genericCellRule).not.toBeNull()
+    expect(genericCellRule![1]).toMatch(/overflow:\s*visible/)
+  })
+})
+
 describe('data-grid-precision selected cell z-index', () => {
   it('should set z-index on aria-selected cells so the focus box-shadow is not painted over by neighbors', () => {
     // RDG uses box-shadow on the selected cell for the blue selection border.

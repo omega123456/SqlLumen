@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { useQueryStore } from '../../../stores/query-store'
 import { makeTabState } from '../../helpers/query-test-utils'
@@ -81,6 +81,7 @@ describe('ResultGridView', () => {
   }
 
   beforeEach(() => {
+    vi.useRealTimers()
     vi.clearAllMocks()
     lastBaseGridProps = {}
     useQueryStore.setState({
@@ -93,6 +94,10 @@ describe('ResultGridView', () => {
         }),
       },
     })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('renders with data-testid="result-grid-view"', () => {
@@ -326,7 +331,9 @@ describe('ResultGridView', () => {
     expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Charlie' })
   })
 
-  it('uses direct selection sync for read-only keyboard movement instead of the async guard', () => {
+  it('uses local selection for read-only keyboard movement instead of the async guard', async () => {
+    vi.useFakeTimers()
+
     render(
       <ResultGridView
         {...defaultProps}
@@ -351,9 +358,71 @@ describe('ResultGridView', () => {
       })
     })
 
-    const result = useQueryStore.getState().tabs['tab-test']?.results[0]
+    const getRowClass = getLatestBaseGridProps().getRowClass as (
+      row: Record<string, unknown>
+    ) => string | undefined
+    expect(getRowClass({ __rowIdx: 2 })).toBe('rdg-row-precision-selected')
+
+    let result = useQueryStore.getState().tabs['tab-test']?.results[0]
+    expect(result?.selectedRowIndex).toBeNull()
+    expect(result?.selectedCell).toBeNull()
+
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync()
+    })
+
+    result = useQueryStore.getState().tabs['tab-test']?.results[0]
     expect(result?.selectedRowIndex).toBe(2)
     expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Charlie' })
+  })
+
+  it('updates read-only keyboard row highlight locally and coalesces global selection sync', async () => {
+    vi.useFakeTimers()
+    const onRowSelected = vi.fn()
+
+    render(<ResultGridView {...defaultProps} onRowSelected={onRowSelected} />)
+
+    let props = getLatestBaseGridProps()
+    const onCellSelectionChange = props.onCellSelectionChange as (args: {
+      rowIdx: number
+      columnKey: string
+      rowData: Record<string, unknown>
+    }) => void
+
+    act(() => {
+      onCellSelectionChange({
+        rowIdx: 0,
+        columnKey: 'col_1',
+        rowData: { __rowIdx: 0, col_0: 1, col_1: 'Alice', col_2: 'alice@example.com' },
+      })
+      onCellSelectionChange({
+        rowIdx: 1,
+        columnKey: 'col_1',
+        rowData: { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
+      })
+      onCellSelectionChange({
+        rowIdx: 2,
+        columnKey: 'col_1',
+        rowData: { __rowIdx: 2, col_0: 3, col_1: 'Charlie', col_2: 'charlie@example.com' },
+      })
+    })
+
+    props = getLatestBaseGridProps()
+    const getRowClass = props.getRowClass as (row: Record<string, unknown>) => string | undefined
+    expect(getRowClass({ __rowIdx: 2 })).toBe('rdg-row-precision-selected')
+    expect(onRowSelected).not.toHaveBeenCalled()
+    expect(useQueryStore.getState().tabs['tab-test']?.results[0]?.selectedCell).toBeNull()
+
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync()
+    })
+
+    expect(onRowSelected).toHaveBeenCalledTimes(1)
+    expect(onRowSelected).toHaveBeenCalledWith(2)
+    expect(useQueryStore.getState().tabs['tab-test']?.results[0]?.selectedCell).toEqual({
+      columnKey: 'name',
+      value: 'Charlie',
+    })
   })
 
   it('does not pass direct selection sync while edit mode is active', () => {

@@ -45,10 +45,22 @@ interface ResultPanelProps {
 
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
 const EMPTY_FOREIGN_KEYS: ForeignKeyColumnInfo[] = []
+const EMPTY_RESULTS: readonly unknown[] = []
+const EMPTY_COLUMNS: ColumnMeta[] = []
+const EMPTY_ROWS: unknown[][] = []
+const EMPTY_FILTER_MODEL: FilterCondition[] = []
+const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
+const EMPTY_BINDINGS = new Map<number, string>()
+const EMPTY_BOUND_COLUMN_INDEX_MAP = new Map<string, number>()
 
 export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
-  const tabState = useQueryStore((state) => state.tabs[tabId])
   const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
+  const tabStatus = useQueryStore((state) => state.tabs[tabId]?.tabStatus ?? 'idle')
+  const results = useQueryStore((state) => state.tabs[tabId]?.results ?? EMPTY_RESULTS)
+  const activeResultIndex = useQueryStore((state) => state.tabs[tabId]?.activeResultIndex ?? 0)
+  const pendingNavigationAction = useQueryStore(
+    (state) => state.tabs[tabId]?.pendingNavigationAction ?? null
+  )
 
   // Individual action selectors — stable references that never change
   const requestNavigationAction = useQueryStore((s) => s.requestNavigationAction)
@@ -64,14 +76,10 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const closeExportDialog = useQueryStore((s) => s.closeExportDialog)
   const applyQueryFilters = useQueryStore((s) => s.applyQueryFilters)
 
-  const tabStatus = tabState?.tabStatus ?? 'idle'
-  const results = tabState?.results ?? []
-  const activeResultIndex = tabState?.activeResultIndex ?? 0
-
   // Read from active result
   const resultStatus = activeResult.resultStatus
-  const columns = (activeResult.columns ?? []) as ColumnMeta[]
-  const rows = (activeResult.rows ?? []) as unknown[][]
+  const columns = (activeResult.columns ?? EMPTY_COLUMNS) as ColumnMeta[]
+  const rows = (activeResult.rows ?? EMPTY_ROWS) as unknown[][]
   const affectedRows = activeResult.affectedRows ?? 0
   const viewMode = activeResult.viewMode ?? 'grid'
   const sortColumn = activeResult.sortColumn ?? null
@@ -82,9 +90,10 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
 
   // Edit mode state from active result
   const editMode = activeResult.editMode ?? null
-  const editableColumnMap = activeResult.editableColumnMap ?? new Map<number, boolean>()
-  const editColumnBindings = activeResult.editColumnBindings ?? new Map<number, string>()
-  const editBoundColumnIndexMap = activeResult.editBoundColumnIndexMap ?? new Map<string, number>()
+  const editableColumnMap = activeResult.editableColumnMap ?? EMPTY_EDITABLE_MAP
+  const editColumnBindings = activeResult.editColumnBindings ?? EMPTY_BINDINGS
+  const editBoundColumnIndexMap =
+    activeResult.editBoundColumnIndexMap ?? EMPTY_BOUND_COLUMN_INDEX_MAP
   const editState = activeResult.editState ?? null
   const editingRowIndex = activeResult.editingRowIndex ?? null
   const editForeignKeys = activeResult.editForeignKeys ?? EMPTY_FOREIGN_KEYS
@@ -96,12 +105,9 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
       ? activeResult.editTableMetadata[editMode].columns
       : EMPTY_TABLE_COLUMNS
 
-  // Tab-level pending navigation
-  const pendingNavigationAction = tabState?.pendingNavigationAction ?? null
-
   // Filter state
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
-  const filterModel: FilterCondition[] = activeResult.filterModel ?? []
+  const filterModel: FilterCondition[] = activeResult.filterModel ?? EMPTY_FILTER_MODEL
   const filterColumns = useMemo(() => columns.map((c) => c.name), [columns])
   const selectedCell = activeResult?.selectedCell ?? null
 

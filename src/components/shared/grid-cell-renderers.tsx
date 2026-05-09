@@ -26,22 +26,22 @@ function isNullish(value: unknown): value is null | undefined {
 /**
  * Renders a cell value as a React node with consistent NULL/BLOB handling.
  *
- * - null / undefined → `<span class="td-null-value">{nullDisplay}</span>`
+ * - null / undefined → `<span class="td-cell-value td-null-value">{nullDisplay}</span>`
  *   where nullDisplay is read from the settings store (`results.nullDisplay`).
- * - string starting with "[BLOB" → `<span class="td-blob-value">{value}</span>`
- * - anything else → `<span>{String(value)}</span>`
+ * - string starting with "[BLOB" → `<span class="td-cell-value td-blob-value">{value}</span>`
+ * - anything else → `<span class="td-cell-value">{String(value)}</span>`
  */
 export function renderCellValue(value: unknown): React.ReactNode {
   if (isNullish(value)) {
     const nullDisplay = useSettingsStore.getState().getSetting('results.nullDisplay')
-    return <span className="td-null-value">{nullDisplay}</span>
+    return <span className="td-cell-value td-null-value">{nullDisplay}</span>
   }
 
   if (typeof value === 'string' && value.startsWith('[BLOB')) {
-    return <span className="td-blob-value">{value}</span>
+    return <span className="td-cell-value td-blob-value">{value}</span>
   }
 
-  return <span>{String(value)}</span>
+  return <span className="td-cell-value">{String(value)}</span>
 }
 
 // ---------------------------------------------------------------------------
