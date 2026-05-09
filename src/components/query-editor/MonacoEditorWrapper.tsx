@@ -3,7 +3,7 @@
  * theme switching, query store integration, and autocomplete.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Editor, { useMonaco } from '@monaco-editor/react'
 import type * as MonacoType from 'monaco-editor'
 import { useThemeStore } from '../../stores/theme-store'
@@ -11,6 +11,10 @@ import { useQueryStore } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useShortcutStore } from '../../stores/shortcut-store'
+import {
+  createGridPerformanceLogger,
+  type GridPerformanceLogger,
+} from '../../lib/grid-performance-logger'
 import { registerMonacoThemes, getMonacoThemeName } from './monaco-theme'
 import { registerModelConnection, unregisterModelConnection } from './completion-service'
 import { loadCache } from './schema-metadata-cache'
@@ -47,8 +51,15 @@ interface MonacoEditorWrapperProps {
 }
 
 const MONACO_SHORTCUT_ACTIONS = ['execute-query', 'format-query', 'new-query-tab'] as const
+const MONACO_PERF_SCOPE = 'query-editor'
+const SLOW_MONACO_HANDLER_MS = 16
+const SLOW_MONACO_RENDER_COMMIT_MS = 50
 
 type MonacoShortcutActionId = (typeof MONACO_SHORTCUT_ACTIONS)[number]
+
+function readPerformanceNow(): number {
+  return globalThis.performance?.now() ?? Date.now()
+}
 
 function getMonacoKeyCode(
   key: string,
@@ -124,6 +135,7 @@ export function MonacoEditorWrapper({
   onChange: overrideOnChange,
   readOnly: overrideReadOnly,
 }: MonacoEditorWrapperProps) {
+  const renderStartedAt = readPerformanceNow()
   const monaco = useMonaco()
   const editorRef = useRef<MonacoType.editor.IStandaloneCodeEditor | null>(null)
   const modelUriRef = useRef<string | undefined>(undefined)
@@ -164,6 +176,35 @@ export function MonacoEditorWrapper({
       : status === 'running' || status === 'ai-pending' || status === 'ai-reviewing'
   const isAiLocked =
     overrideReadOnly === undefined && (status === 'ai-pending' || status === 'ai-reviewing')
+  const performanceContext = {
+    scope: MONACO_PERF_SCOPE,
+    tabId,
+    view: 'sql-editor',
+    editMode: isReadOnly ? 'read-only' : 'editable',
+  }
+  const [performanceLogger] = useState<GridPerformanceLogger>(() =>
+    createGridPerformanceLogger(performanceContext)
+  )
+
+  useEffect(() => {
+    performanceLogger.updateContext(performanceContext)
+  }, [isReadOnly, performanceLogger, tabId])
+
+  useEffect(() => {
+    performanceLogger.logMount()
+    return () => {
+      performanceLogger.flush('unmount')
+    }
+  }, [performanceLogger])
+
+  useEffect(() => {
+    performanceLogger.recordTiming('editor-render-commit', readPerformanceNow() - renderStartedAt, {
+      thresholdMs: SLOW_MONACO_RENDER_COMMIT_MS,
+      fields: {
+        contentLength: effectiveContent.length,
+      },
+    })
+  })
 
   // Register themes once Monaco is loaded
   useEffect(() => {
@@ -260,11 +301,27 @@ export function MonacoEditorWrapper({
 
     if (!isOverrideMode) {
       cursorDisposable = editor.onDidChangeCursorPosition((e) => {
+        const startedAt = readPerformanceNow()
         setCursorPosition(tabId, { lineNumber: e.position.lineNumber, column: e.position.column })
+        performanceLogger.recordTiming(
+          'editor-cursor-position-handler',
+          readPerformanceNow() - startedAt,
+          {
+            thresholdMs: SLOW_MONACO_HANDLER_MS,
+          }
+        )
       })
 
       selectionDisposable = editor.onDidChangeCursorSelection(() => {
+        const startedAt = readPerformanceNow()
         syncSelectedText()
+        performanceLogger.recordTiming(
+          'editor-selection-handler',
+          readPerformanceNow() - startedAt,
+          {
+            thresholdMs: SLOW_MONACO_HANDLER_MS,
+          }
+        )
       })
 
       syncSelectedText()
@@ -273,6 +330,8 @@ export function MonacoEditorWrapper({
     // Subscribe to content changes so CodeLens positions refresh as the user types.
     // Also keep the AI attached context in sync when the user edits inline.
     const contentChangeDisposable = editor.onDidChangeModelContent(() => {
+      const startedAt = readPerformanceNow()
+      performanceLogger.increment('editor-model-content-change')
       triggerCodeLensRefresh()
       syncSelectedText()
 
@@ -298,6 +357,13 @@ export function MonacoEditorWrapper({
           })
         }
       }
+      performanceLogger.recordTiming(
+        'editor-model-content-handler',
+        readPerformanceNow() - startedAt,
+        {
+          thresholdMs: SLOW_MONACO_HANDLER_MS,
+        }
+      )
     })
 
     editor.onDidDispose(() => {
@@ -348,12 +414,19 @@ export function MonacoEditorWrapper({
   ])
 
   function handleChange(value: string | undefined) {
+    const startedAt = readPerformanceNow()
     const v = value ?? ''
     if (overrideOnChange) {
       overrideOnChange(v)
     } else {
       setContent(tabId, v)
     }
+    performanceLogger.recordTiming('editor-on-change', readPerformanceNow() - startedAt, {
+      thresholdMs: SLOW_MONACO_HANDLER_MS,
+      fields: {
+        contentLength: v.length,
+      },
+    })
   }
 
   return (

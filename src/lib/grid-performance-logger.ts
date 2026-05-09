@@ -151,20 +151,19 @@ export class GridPerformanceLogger {
     if (this.metrics.size === 0) return
 
     const now = this.now()
-    const metrics = Array.from(this.metrics.entries())
-      .map(([metric, summary]) => {
-        const avgMs = summary.count > 0 ? summary.totalMs / summary.count : 0
-        return `${metric}:count=${summary.count},avgMs=${roundMs(avgMs)},maxMs=${roundMs(
-          summary.maxMs
-        )},slow=${summary.slowCount}`
+    const windowMs = now - this.windowStartedAt
+    for (const [metric, summary] of this.metrics.entries()) {
+      const avgMs = summary.count > 0 ? summary.totalMs / summary.count : 0
+      this.emit('info', 'summary', {
+        reason,
+        metric,
+        windowMs,
+        count: summary.count,
+        avgMs,
+        maxMs: summary.maxMs,
+        slowCount: summary.slowCount,
       })
-      .join('|')
-
-    this.emit('info', 'summary', {
-      reason,
-      windowMs: now - this.windowStartedAt,
-      metrics,
-    })
+    }
     this.metrics.clear()
     this.windowStartedAt = now
   }
