@@ -135,12 +135,37 @@
   border-radius: 1px 1px 0 0;
 }
 
+.dragging {
+  opacity: 0.65;
+}
+
+.dropBefore::before,
+.dropAfter::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--primary);
+  pointer-events: none;
+}
+
+.dropBefore::before {
+  left: 0;
+}
+
+.dropAfter::before {
+  right: 0;
+}
+
 /* -------- Split tab (cell + label button + optional suffix) -------- */
 .cell {
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
   position: relative;
+  cursor: pointer;
   color: var(--on-surface-variant);
   font-family: var(--font-body);
   font-size: var(--type-nav-tab);

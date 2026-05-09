@@ -36,6 +36,12 @@
   white-space: nowrap;
 }
 
+.tabLabelRoot {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
 .tabLabelText {
   min-width: 0;
 }
@@ -75,6 +81,25 @@
   opacity: 1;
   color: var(--error);
   background-color: rgba(var(--error-rgb), 0.1);
+}
+
+.renameInput {
+  min-width: 84px;
+  max-width: 220px;
+  padding: 0 var(--space-xs);
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface);
+  color: var(--on-surface);
+  font: inherit;
+}
+
+.workspaceTab[data-active] .renameInput {
+  border-color: var(--primary);
+}
+
+.workspaceTab:has(.renameInput) {
+  cursor: text;
 }
 
 /* New query tab button */

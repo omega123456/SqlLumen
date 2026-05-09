@@ -40,6 +40,7 @@ interface ConnectionState {
 
   // Active connections (open tabs)
   activeConnections: Record<string, ActiveConnection>
+  activeConnectionOrder: string[]
   activeTabId: string | null
 
   // Dialog state
@@ -53,6 +54,9 @@ interface ConnectionState {
   openConnection: (id: string) => Promise<void>
   closeConnection: (id: string) => Promise<void>
   switchTab: (id: string) => void
+  reorderActiveConnection: (id: string, insertIndex: number) => void
+  moveActiveConnection: (id: string, direction: 'left' | 'right') => void
+  normalizeActiveConnectionOrder: () => void
   updateConnectionStatus: (event: ConnectionStatusEvent) => void
   openDialog: () => void
   closeDialog: () => void
@@ -66,6 +70,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
   savedConnections: [],
   connectionGroups: [],
   activeConnections: {},
+  activeConnectionOrder: [],
   activeTabId: null,
   dialogOpen: false,
   error: null,
@@ -103,6 +108,10 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
 
       set((state) => ({
         activeConnections: { ...state.activeConnections, [result.sessionId]: active },
+        activeConnectionOrder: normalizeActiveConnectionOrder(
+          [...state.activeConnectionOrder, result.sessionId],
+          { ...state.activeConnections, [result.sessionId]: active }
+        ),
         activeTabId: result.sessionId,
         error: null,
       }))
@@ -208,18 +217,29 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       invalidateRoutineCache(id)
 
       set((state) => {
+        const orderedIdsBeforeClose = normalizeActiveConnectionOrder(
+          state.activeConnectionOrder,
+          state.activeConnections
+        )
+        const closedIndex = orderedIdsBeforeClose.indexOf(id)
         const remaining = { ...state.activeConnections }
         delete remaining[id]
-        const remainingIds = Object.keys(remaining)
+        const remainingIds = normalizeActiveConnectionOrder(
+          state.activeConnectionOrder.filter((sessionId) => sessionId !== id),
+          remaining
+        )
+        const fallbackIndex =
+          closedIndex >= 0 ? Math.min(closedIndex, Math.max(remainingIds.length - 1, 0)) : 0
         const newActiveTabId =
           state.activeTabId === id
             ? remainingIds.length > 0
-              ? remainingIds[0]
+              ? remainingIds[fallbackIndex]
               : null
             : state.activeTabId
 
         return {
           activeConnections: remaining,
+          activeConnectionOrder: remainingIds,
           activeTabId: newActiveTabId,
           error: null,
         }
@@ -233,6 +253,55 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
 
   switchTab: (id: string) => {
     set({ activeTabId: id })
+  },
+
+  reorderActiveConnection: (id: string, insertIndex: number) => {
+    set((state) => {
+      const orderedIds = normalizeActiveConnectionOrder(
+        state.activeConnectionOrder,
+        state.activeConnections
+      )
+      const fromIndex = orderedIds.indexOf(id)
+      if (fromIndex < 0) {
+        return state
+      }
+      const clampedInsertIndex = Math.max(0, Math.min(insertIndex, orderedIds.length))
+      const next = [...orderedIds]
+      next.splice(fromIndex, 1)
+      const adjustedInsertIndex =
+        fromIndex < clampedInsertIndex ? clampedInsertIndex - 1 : clampedInsertIndex
+      next.splice(adjustedInsertIndex, 0, id)
+      return {
+        activeConnectionOrder: next,
+      }
+    })
+  },
+
+  moveActiveConnection: (id: string, direction: 'left' | 'right') => {
+    const orderedIds = normalizeActiveConnectionOrder(
+      get().activeConnectionOrder,
+      get().activeConnections
+    )
+    const fromIndex = orderedIds.indexOf(id)
+    if (fromIndex < 0) {
+      return
+    }
+    const delta = direction === 'left' ? -1 : 1
+    const targetIndex = fromIndex + delta
+    if (targetIndex < 0 || targetIndex >= orderedIds.length) {
+      return
+    }
+    const insertIndex = direction === 'right' ? targetIndex + 1 : targetIndex
+    get().reorderActiveConnection(id, insertIndex)
+  },
+
+  normalizeActiveConnectionOrder: () => {
+    set((state) => ({
+      activeConnectionOrder: normalizeActiveConnectionOrder(
+        state.activeConnectionOrder,
+        state.activeConnections
+      ),
+    }))
   },
 
   updateConnectionStatus: (event: ConnectionStatusEvent) => {
@@ -388,3 +457,29 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
     }
   },
 }))
+
+export function normalizeActiveConnectionOrder(
+  activeConnectionOrder: string[],
+  activeConnections: Record<string, ActiveConnection>
+): string[] {
+  const orderedIds: string[] = []
+  const seen = new Set<string>()
+
+  for (const sessionId of activeConnectionOrder) {
+    if (!activeConnections[sessionId] || seen.has(sessionId)) {
+      continue
+    }
+    seen.add(sessionId)
+    orderedIds.push(sessionId)
+  }
+
+  for (const sessionId of Object.keys(activeConnections)) {
+    if (seen.has(sessionId)) {
+      continue
+    }
+    seen.add(sessionId)
+    orderedIds.push(sessionId)
+  }
+
+  return orderedIds
+}

@@ -56,6 +56,8 @@ interface WorkspaceState {
   closeTab: (connectionId: string, tabId: string) => void
   forceCloseTab: (connectionId: string, tabId: string) => void
   setActiveTab: (connectionId: string, tabId: string) => void
+  renameQueryTab: (connectionId: string, tabId: string, nextLabel: string) => void
+  reorderWorkspaceTab: (connectionId: string, tabId: string, insertIndex: number) => void
   closeTabsByDatabase: (connectionId: string, databaseName: string) => void
   closeTabsByObject: (
     connectionId: string,
@@ -161,6 +163,10 @@ function updateConnectionTabs(
       [connectionId]: newActive,
     },
   }
+}
+
+function isPinnedWorkspaceTab(tab: WorkspaceTab): boolean {
+  return tab.type === 'history' || tab.type === 'processlist'
 }
 
 // ---------------------------------------------------------------------------
@@ -547,6 +553,61 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         [connectionId]: tabId,
       },
     }))
+  },
+
+  renameQueryTab: (connectionId: string, tabId: string, nextLabel: string) => {
+    const normalizedLabel = nextLabel.trim()
+    if (!normalizedLabel) {
+      return
+    }
+
+    set((state) =>
+      updateConnectionTabs(state, connectionId, (tabs) =>
+        tabs.map((tab) => {
+          if (tab.id !== tabId || tab.type !== 'query-editor') {
+            return tab
+          }
+
+          if (tab.label === normalizedLabel) {
+            return tab
+          }
+
+          return {
+            ...tab,
+            label: normalizedLabel,
+          }
+        })
+      )
+    )
+  },
+
+  reorderWorkspaceTab: (connectionId: string, tabId: string, insertIndex: number) => {
+    set((state) =>
+      updateConnectionTabs(state, connectionId, (tabs) => {
+        const sourceTab = tabs.find((tab) => tab.id === tabId)
+        if (!sourceTab || isPinnedWorkspaceTab(sourceTab)) {
+          return tabs
+        }
+
+        const pinnedTabs = tabs.filter(isPinnedWorkspaceTab)
+        const movableTabs = tabs.filter((tab) => !isPinnedWorkspaceTab(tab))
+        const sourceIndex = movableTabs.findIndex((tab) => tab.id === tabId)
+        if (sourceIndex < 0) {
+          return tabs
+        }
+
+        const maxInsertIndex = movableTabs.length
+        const clampedInsertIndex = Math.max(0, Math.min(insertIndex, maxInsertIndex))
+
+        const nextMovableTabs = [...movableTabs]
+        const [movedTab] = nextMovableTabs.splice(sourceIndex, 1)
+        const targetIndex =
+          clampedInsertIndex > sourceIndex ? clampedInsertIndex - 1 : clampedInsertIndex
+
+        nextMovableTabs.splice(targetIndex, 0, movedTab)
+        return [...pinnedTabs, ...nextMovableTabs]
+      })
+    )
   },
 
   // ------ closeTabsByDatabase ------

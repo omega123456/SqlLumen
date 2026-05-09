@@ -14,6 +14,7 @@ import { getSetting, setSetting } from './tauri-commands'
 export interface SessionState {
   version: 1
   connections: SessionConnectionState[]
+  activeConnectionIndex?: number
 }
 
 export interface SessionConnectionState {

@@ -67,6 +67,7 @@ beforeEach(() => {
     savedConnections: [],
     connectionGroups: [],
     activeConnections: {},
+    activeConnectionOrder: [],
     activeTabId: null,
     dialogOpen: false,
     error: null,
@@ -91,6 +92,7 @@ describe('useConnectionStore — initial state', () => {
     expect(state.savedConnections).toEqual([])
     expect(state.connectionGroups).toEqual([])
     expect(state.activeConnections).toEqual({})
+    expect(state.activeConnectionOrder).toEqual([])
     expect(state.activeTabId).toBeNull()
     expect(state.dialogOpen).toBe(false)
     expect(state.error).toBeNull()
@@ -159,6 +161,7 @@ describe('useConnectionStore — openConnection', () => {
       serverVersion: '8.0.35',
     })
     expect(state.activeTabId).toBe('sess-1')
+    expect(state.activeConnectionOrder).toEqual(['sess-1'])
     expect(state.error).toBeNull()
   })
 
@@ -181,6 +184,7 @@ describe('useConnectionStore — openConnection', () => {
     expect(state.activeConnections['sess-1'].profile.id).toBe('conn-1')
     expect(state.activeConnections['sess-2'].profile.id).toBe('conn-1')
     expect(state.activeTabId).toBe('sess-2')
+    expect(state.activeConnectionOrder).toEqual(['sess-1', 'sess-2'])
   })
 
   it('sets error when profile not found in savedConnections', async () => {
@@ -225,6 +229,7 @@ describe('useConnectionStore — closeConnection', () => {
           serverVersion: '8.0.35',
         },
       },
+      activeConnectionOrder: ['sess-1'],
       activeTabId: 'sess-1',
     })
     mockIPC((cmd) => {
@@ -254,6 +259,7 @@ describe('useConnectionStore — closeConnection', () => {
           serverVersion: '8.0.35',
         },
       },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
       activeTabId: 'sess-1',
     })
     mockIPC((cmd) => {
@@ -277,6 +283,7 @@ describe('useConnectionStore — closeConnection', () => {
           serverVersion: '8.0.35',
         },
       },
+      activeConnectionOrder: ['sess-1'],
       activeTabId: 'sess-1',
     })
     mockIPC((cmd) => {
@@ -306,6 +313,7 @@ describe('useConnectionStore — closeConnection', () => {
           serverVersion: '8.0.35',
         },
       },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
       activeTabId: 'sess-1',
     })
     mockIPC((cmd) => {
@@ -329,6 +337,7 @@ describe('useConnectionStore — closeConnection', () => {
           serverVersion: '8.0.35',
         },
       },
+      activeConnectionOrder: ['sess-1'],
       activeTabId: 'sess-1',
     })
     mockIPC((cmd) => {
@@ -349,6 +358,52 @@ describe('useConnectionStore — switchTab', () => {
   it('sets activeTabId', () => {
     useConnectionStore.getState().switchTab('sess-2')
     expect(useConnectionStore.getState().activeTabId).toBe('sess-2')
+  })
+})
+
+describe('useConnectionStore — active connection order normalization', () => {
+  it('normalizes missing order values and renders every active session once', () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'sess-1': { id: 'sess-1', profile: mockSavedConnection, status: 'connected', serverVersion: '8.0.35' },
+        'sess-2': { id: 'sess-2', profile: mockSavedConnection2, status: 'connected', serverVersion: '8.0.35' },
+      },
+      activeConnectionOrder: [],
+    })
+
+    useConnectionStore.getState().normalizeActiveConnectionOrder()
+
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['sess-1', 'sess-2'])
+  })
+
+  it('drops stale and duplicate ids during normalization', () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'sess-1': { id: 'sess-1', profile: mockSavedConnection, status: 'connected', serverVersion: '8.0.35' },
+        'sess-2': { id: 'sess-2', profile: mockSavedConnection2, status: 'connected', serverVersion: '8.0.35' },
+      },
+      activeConnectionOrder: ['stale', 'sess-2', 'sess-2', 'sess-1'],
+    })
+
+    useConnectionStore.getState().normalizeActiveConnectionOrder()
+
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['sess-2', 'sess-1'])
+  })
+
+  it('reorders without changing active selection', () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'sess-1': { id: 'sess-1', profile: mockSavedConnection, status: 'connected', serverVersion: '8.0.35' },
+        'sess-2': { id: 'sess-2', profile: mockSavedConnection2, status: 'connected', serverVersion: '8.0.35' },
+      },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
+      activeTabId: 'sess-1',
+    })
+
+    useConnectionStore.getState().reorderActiveConnection('sess-2', 0)
+
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['sess-2', 'sess-1'])
+    expect(useConnectionStore.getState().activeTabId).toBe('sess-1')
   })
 })
 

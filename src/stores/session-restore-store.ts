@@ -7,7 +7,7 @@
 
 import { create } from 'zustand'
 import { useSettingsStore } from './settings-store'
-import { useConnectionStore } from './connection-store'
+import { normalizeActiveConnectionOrder, useConnectionStore } from './connection-store'
 import { useWorkspaceStore } from './workspace-store'
 import { useQueryStore } from './query-store'
 import { showErrorToast } from './toast-store'
@@ -122,13 +122,18 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
 
       // Ensure saved connections are loaded so we can look them up by profile ID
       await useConnectionStore.getState().fetchSavedConnections()
+      const restoredSessionIdsBySavedIndex: Array<string | null> = Array.from(
+        { length: state.connections.length },
+        () => null
+      )
 
-      for (const connState of state.connections) {
+      for (const [savedIndex, connState] of state.connections.entries()) {
         try {
           const sessionId = await connectByProfileId(connState.profileId)
           if (!sessionId) {
             continue
           }
+          restoredSessionIdsBySavedIndex[savedIndex] = sessionId
 
           // Restore tabs for this connection
           await restoreConnectionTabs(sessionId, connState)
@@ -139,6 +144,13 @@ export const useSessionRestoreStore = create<SessionRestoreState>()((set, get) =
             `[session-restore] Failed to restore connection ${connState.profileId}: ${msg}`
           )
           showErrorToast('Session restore failed', `Could not reconnect: ${msg}`)
+        }
+      }
+
+      if (typeof state.activeConnectionIndex === 'number') {
+        const activeSessionId = restoredSessionIdsBySavedIndex[state.activeConnectionIndex] ?? null
+        if (activeSessionId) {
+          useConnectionStore.getState().switchTab(activeSessionId)
         }
       }
     } catch (e) {
@@ -202,7 +214,20 @@ function buildSessionState(): SessionState {
 
   const connections: SessionConnectionState[] = []
 
-  for (const [sessionId, active] of Object.entries(connectionStore.activeConnections)) {
+  const orderedConnectionIds = normalizeActiveConnectionOrder(
+    connectionStore.activeConnectionOrder,
+    connectionStore.activeConnections
+  )
+  const activeConnectionIndex =
+    connectionStore.activeTabId != null
+      ? orderedConnectionIds.indexOf(connectionStore.activeTabId)
+      : -1
+
+  for (const sessionId of orderedConnectionIds) {
+    const active = connectionStore.activeConnections[sessionId]
+    if (!active) {
+      continue
+    }
     const profileId = active.profile.id
     const tabs = workspaceStore.tabsByConnection[sessionId] ?? []
     const activeTabId = workspaceStore.activeTabByConnection[sessionId] ?? null
@@ -232,7 +257,11 @@ function buildSessionState(): SessionState {
     })
   }
 
-  return { version: 1, connections }
+  return {
+    version: 1,
+    connections,
+    activeConnectionIndex: activeConnectionIndex >= 0 ? activeConnectionIndex : undefined,
+  }
 }
 
 /**

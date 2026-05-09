@@ -58,6 +58,14 @@
   align-self: stretch;
 }
 
+.connectionTab {
+  cursor: grab;
+}
+
+.connectionTab:active {
+  cursor: grabbing;
+}
+
 /* Prefix row: flex inside split-tab label (div role=button, not native <button>) */
 .tabPrefix {
   display: flex;
