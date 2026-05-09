@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { dispatchAuxClick } from '../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
 import { ConnectionTabBar } from '../../components/layout/ConnectionTabBar'
@@ -47,6 +47,7 @@ beforeEach(() => {
   useThemeStore.setState({ theme: 'light', resolvedTheme: 'light' })
   useConnectionStore.setState({
     activeConnections: {},
+    activeConnectionOrder: [],
     activeTabId: null,
     dialogOpen: false,
     error: null,
@@ -103,6 +104,7 @@ describe('ConnectionTabBar', () => {
 
     useConnectionStore.setState({
       activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
       activeTabId: 'sess-1',
     })
 
@@ -120,6 +122,7 @@ describe('ConnectionTabBar', () => {
 
     useConnectionStore.setState({
       activeConnections: { 'sess-a': connA, 'sess-b': connB, 'sess-c': connC },
+      activeConnectionOrder: ['sess-a', 'sess-b', 'sess-c'],
       activeTabId: 'sess-a',
     })
 
@@ -138,6 +141,7 @@ describe('ConnectionTabBar', () => {
 
     useConnectionStore.setState({
       activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
       activeTabId: 'sess-1',
     })
 
@@ -273,6 +277,7 @@ describe('ConnectionTabBar', () => {
 
     useConnectionStore.setState({
       activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
       activeTabId: 'sess-1',
     })
 
@@ -319,5 +324,274 @@ describe('ConnectionTabBar', () => {
     await user.click(toggleButton)
 
     expect(useThemeStore.getState().resolvedTheme).toBe('light')
+  })
+
+  it('renders connection tabs using explicit connection order', () => {
+    const conn1 = makeActiveConnection({ id: 'sess-1', profile: makeSavedConnection({ name: 'One' }) })
+    const conn2 = makeActiveConnection({ id: 'sess-2', profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }) })
+    const conn3 = makeActiveConnection({ id: 'sess-3', profile: makeSavedConnection({ id: 'conn-3', name: 'Three' }) })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1, 'sess-2': conn2, 'sess-3': conn3 },
+      activeConnectionOrder: ['sess-3', 'sess-1', 'sess-2'],
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+
+    const labels = screen.getAllByRole('button').map((el) => el.textContent ?? '')
+    const compact = labels.join(' ')
+    expect(compact.indexOf('Three')).toBeLessThan(compact.indexOf('One'))
+    expect(compact.indexOf('One')).toBeLessThan(compact.indexOf('Two'))
+  })
+
+  it('supports pointer-driven reorder without changing active tab', async () => {
+    const conn1 = makeActiveConnection({
+      id: 'sess-1',
+      profile: makeSavedConnection({ name: 'One' }),
+    })
+    const conn2 = makeActiveConnection({
+      id: 'sess-2',
+      profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }),
+    })
+    const conn3 = makeActiveConnection({
+      id: 'sess-3',
+      profile: makeSavedConnection({ id: 'conn-3', name: 'Three' }),
+    })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1, 'sess-2': conn2, 'sess-3': conn3 },
+      activeConnectionOrder: ['sess-1', 'sess-2', 'sess-3'],
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+
+    const from = screen.getByTestId('connection-session-tab-sess-3')
+    const to = screen.getByTestId('connection-session-tab-sess-1')
+    vi.spyOn(to, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      width: 100,
+      right: 200,
+      top: 0,
+      bottom: 30,
+      height: 30,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    fireEvent.pointerDown(from, { button: 0, clientX: 280, clientY: 15 })
+    fireEvent.pointerMove(window, { clientX: 198, clientY: 15 })
+    await waitFor(() => expect(from.className).toContain('dragging'))
+    fireEvent.pointerUp(window, { clientX: 198, clientY: 15 })
+
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual([
+      'sess-1',
+      'sess-3',
+      'sess-2',
+    ])
+    expect(useConnectionStore.getState().activeTabId).toBe('sess-1')
+  })
+
+  it('does not initiate pointer reorder from the close button', () => {
+    const conn1 = makeActiveConnection({
+      id: 'sess-1',
+      profile: makeSavedConnection({ name: 'One' }),
+    })
+    const conn2 = makeActiveConnection({
+      id: 'sess-2',
+      profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }),
+    })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+
+    const close = screen.getByLabelText('Close Two')
+    fireEvent.pointerDown(close, { button: 0, clientX: 210, clientY: 15 })
+    fireEvent.pointerMove(window, { clientX: 120, clientY: 15 })
+    fireEvent.pointerUp(window, { clientX: 120, clientY: 15 })
+
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['sess-1', 'sess-2'])
+  })
+
+  it('starts pointer reorder from the connection tab container body (not only label hotspot)', async () => {
+    const conn1 = makeActiveConnection({
+      id: 'sess-1',
+      profile: makeSavedConnection({ name: 'One' }),
+    })
+    const conn2 = makeActiveConnection({
+      id: 'sess-2',
+      profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }),
+    })
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+    const tab = screen.getByTestId('connection-session-tab-sess-1')
+    const targetTab = screen.getByTestId('connection-session-tab-sess-2')
+    vi.spyOn(targetTab, 'getBoundingClientRect').mockReturnValue({
+      left: 220,
+      width: 100,
+      right: 320,
+      top: 0,
+      bottom: 30,
+      height: 30,
+      x: 220,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    fireEvent.pointerDown(tab, { button: 0, clientX: 180, clientY: 15 })
+    fireEvent.pointerMove(window, { clientX: 222, clientY: 15 })
+
+    await waitFor(() => expect(tab.className).toContain('dragging'))
+    fireEvent.pointerUp(window, { clientX: 222, clientY: 15 })
+
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['sess-1', 'sess-2'])
+  })
+
+  it('opens context menu from right-click and supports move actions', async () => {
+    const user = userEvent.setup()
+    const conn1 = makeActiveConnection({ id: 'sess-1', profile: makeSavedConnection({ name: 'One' }) })
+    const conn2 = makeActiveConnection({ id: 'sess-2', profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }) })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+
+    fireEvent.contextMenu(screen.getByTestId('connection-session-tab-sess-2'), {
+      clientX: 40,
+      clientY: 50,
+    })
+    expect(screen.getByTestId('tab-context-menu')).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('tab-context-menu-item-move-left'))
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['sess-2', 'sess-1'])
+
+    fireEvent.contextMenu(screen.getByTestId('connection-session-tab-sess-2'), {
+      clientX: 40,
+      clientY: 50,
+    })
+    await user.click(screen.getByTestId('tab-context-menu-item-move-right'))
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['sess-1', 'sess-2'])
+
+    fireEvent.contextMenu(screen.getByTestId('connection-session-tab-sess-1'), {
+      clientX: 40,
+      clientY: 50,
+    })
+    await user.click(screen.getByTestId('tab-context-menu-item-move-end'))
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['sess-2', 'sess-1'])
+
+    fireEvent.contextMenu(screen.getByTestId('connection-session-tab-sess-1'), {
+      clientX: 40,
+      clientY: 50,
+    })
+    await user.click(screen.getByTestId('tab-context-menu-item-move-start'))
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['sess-1', 'sess-2'])
+  })
+
+  it('opens context menu with Shift+F10 and Menu key and anchors from tab rectangle', () => {
+    const conn1 = makeActiveConnection({ id: 'sess-1' })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1 },
+      activeConnectionOrder: ['sess-1'],
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+
+    const tab = screen.getByTestId('connection-session-tab-sess-1')
+    vi.spyOn(tab, 'getBoundingClientRect').mockReturnValue({
+      left: 123,
+      width: 100,
+      right: 223,
+      top: 10,
+      bottom: 34,
+      height: 24,
+      x: 123,
+      y: 10,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    fireEvent.keyDown(tab.querySelector('[role="button"]') ?? tab, { key: 'F10', shiftKey: true })
+    const menu = screen.getByTestId('tab-context-menu')
+    const left = Number.parseFloat(menu.style.left)
+    const top = Number.parseFloat(menu.style.top)
+    expect(left).toBeGreaterThanOrEqual(0)
+    expect(top).toBeGreaterThanOrEqual(0)
+
+    fireEvent.keyDown(tab.querySelector('[role="button"]') ?? tab, { key: 'ContextMenu' })
+    expect(screen.getByTestId('tab-context-menu')).toBeInTheDocument()
+  })
+
+  it('restores focus to invoker tab after context-menu action, or active tab when invoker is missing', async () => {
+    const user = userEvent.setup()
+    const conn1 = makeActiveConnection({ id: 'sess-1', profile: makeSavedConnection({ name: 'One' }) })
+    const conn2 = makeActiveConnection({ id: 'sess-2', profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }) })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },
+      activeConnectionOrder: ['sess-1', 'sess-2'],
+      activeTabId: 'sess-1',
+    })
+
+    render(<ConnectionTabBar />)
+
+    const tab2 = screen.getByTestId('connection-session-tab-sess-2')
+    const tab2Label = tab2.querySelector('[role="button"]') as HTMLElement
+    tab2Label.focus()
+    fireEvent.contextMenu(tab2, { clientX: 20, clientY: 20 })
+    await user.click(screen.getByTestId('tab-context-menu-item-move-left'))
+    expect(tab2Label).toHaveFocus()
+
+    fireEvent.contextMenu(screen.getByTestId('connection-session-tab-sess-2'), {
+      clientX: 20,
+      clientY: 20,
+    })
+    act(() => {
+      useConnectionStore.setState({
+        activeConnections: { 'sess-1': conn1 },
+        activeConnectionOrder: ['sess-1'],
+        activeTabId: 'sess-1',
+      })
+    })
+    fireEvent.keyDown(document, { key: 'Escape' })
+    const tab1Label = screen
+      .getByTestId('connection-session-tab-sess-1')
+      .querySelector('[role="button"]') as HTMLElement
+    await waitFor(() => expect(tab1Label).toHaveFocus())
+  })
+
+  it('keeps duplicate suffix ordering deterministic after reorder', () => {
+    const profile = makeSavedConnection({ id: 'shared', name: 'Prod' })
+    const a = makeActiveConnection({ id: 'sess-a', profile })
+    const b = makeActiveConnection({ id: 'sess-b', profile })
+    const c = makeActiveConnection({ id: 'sess-c', profile })
+
+    useConnectionStore.setState({
+      activeConnections: { 'sess-a': a, 'sess-b': b, 'sess-c': c },
+      activeConnectionOrder: ['sess-b', 'sess-a', 'sess-c'],
+      activeTabId: 'sess-b',
+    })
+
+    render(<ConnectionTabBar />)
+
+    expect(screen.getByText(/^Prod$/)).toBeInTheDocument()
+    expect(screen.getByText('Prod (2)')).toBeInTheDocument()
+    expect(screen.getByText('Prod (3)')).toBeInTheDocument()
   })
 })

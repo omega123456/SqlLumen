@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { dispatchAuxClick } from '../../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
 import { WorkspaceTabs } from '../../../components/workspace/WorkspaceTabs'
@@ -522,5 +522,291 @@ describe('WorkspaceTabs', () => {
     // History and processlist tabs should be pinned outside the scrollable area
     expect(historyTab.parentElement).not.toBe(tabBar)
     expect(processlistTab.parentElement).not.toBe(tabBar)
+  })
+
+  it('opens tab context menu with Shift+F10 and triggers rename action for query tabs', async () => {
+    const user = userEvent.setup()
+    const onRequestRenameTab = vi.fn()
+    const tabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+
+    render(<WorkspaceTabs connectionId="conn-1" onRequestRenameTab={onRequestRenameTab} />)
+
+    const tabLabelButton = screen
+      .getByText('Query A')
+      .closest('[role="button"]') as HTMLElement
+    tabLabelButton.focus()
+    await user.keyboard('{Shift>}{F10}{/Shift}')
+
+    await user.click(screen.getByTestId('tab-context-menu-item-rename'))
+    expect(onRequestRenameTab).toHaveBeenCalledWith(tabId)
+  })
+
+  it('shows move actions disabled when movement is not possible', async () => {
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    const tabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    render(<WorkspaceTabs connectionId="conn-1" onRequestMoveTab={vi.fn()} />)
+
+    fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${tabId}`), {
+      clientX: 100,
+      clientY: 120,
+    })
+
+    expect(screen.getByTestId('tab-context-menu-item-move-left')).toBeDisabled()
+    expect(screen.getByTestId('tab-context-menu-item-move-right')).toBeDisabled()
+    expect(screen.getByTestId('tab-context-menu-item-move-start')).toBeDisabled()
+    expect(screen.getByTestId('tab-context-menu-item-move-end')).toBeDisabled()
+  })
+
+  it('renames a query tab on double-click and Enter', async () => {
+    const user = userEvent.setup()
+    const tabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    await user.dblClick(screen.getByText('Query 1'))
+    const renameInput = screen.getByTestId('workspace-tab-rename-input')
+    await user.clear(renameInput)
+    await user.type(renameInput, 'Revenue-Query{Enter}')
+
+    const tab = useWorkspaceStore.getState().tabsByConnection['conn-1'].find((t) => t.id === tabId)
+    expect(tab?.label).toBe('Revenue-Query')
+    expect(screen.getByText('Revenue-Query')).toBeInTheDocument()
+  })
+
+  it('supports rename with F2, Escape cancel, and rejects blank commit', async () => {
+    const user = userEvent.setup()
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Original')
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    const tabButton = screen.getByText('Original').closest('[role="button"]') as HTMLElement
+    tabButton.focus()
+    await user.keyboard('{F2}')
+    const firstRenameInput = screen.getByTestId('workspace-tab-rename-input')
+    await user.clear(firstRenameInput)
+    await user.type(firstRenameInput, 'Updated{Escape}')
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1'][0].label).toBe('Original')
+    expect(tabButton).toHaveFocus()
+
+    tabButton.focus()
+    await user.keyboard('{F2}')
+    const renameInput = screen.getByTestId('workspace-tab-rename-input')
+    await user.clear(renameInput)
+    await user.type(renameInput, '   {Enter}')
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1'][0].label).toBe('Original')
+  })
+
+  it('right-click inside rename input does not open tab context menu', async () => {
+    const user = userEvent.setup()
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    await user.dblClick(screen.getByText('Query 1'))
+    const renameInput = screen.getByTestId('workspace-tab-rename-input')
+    fireEvent.contextMenu(renameInput, { clientX: 120, clientY: 80 })
+
+    expect(screen.queryByTestId('tab-context-menu')).not.toBeInTheDocument()
+  })
+
+  it('opens context menu with Menu key, anchors from tab rect, and restores focus on close', async () => {
+    const user = userEvent.setup()
+    const tabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    const tabEl = screen.getByTestId(`workspace-tab-${tabId}`)
+    vi.spyOn(tabEl, 'getBoundingClientRect').mockReturnValue({
+      left: 44,
+      top: 22,
+      right: 144,
+      bottom: 66,
+      width: 100,
+      height: 44,
+      x: 44,
+      y: 22,
+      toJSON: () => ({}),
+    })
+
+    const tabButton = tabEl.querySelector('[role="button"]') as HTMLElement
+    tabButton.focus()
+    await user.keyboard('{ContextMenu}')
+
+    const menu = screen.getByTestId('tab-context-menu')
+    expect(menu).toBeInTheDocument()
+    expect(menu.style.left).not.toBe('')
+    expect(menu.style.top).not.toBe('')
+
+    await user.keyboard('{Escape}')
+    expect(tabButton).toHaveFocus()
+  })
+
+  it('moves query tabs via context-menu move actions', async () => {
+    const user = userEvent.setup()
+    const q1 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    const q2 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q2')
+    const q3 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q3')
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${q2}`), {
+      clientX: 120,
+      clientY: 120,
+    })
+    await user.click(screen.getByTestId('tab-context-menu-item-move-left'))
+    expect(
+      useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1']
+        .filter((tab) => tab.type === 'query-editor')
+        .map((tab) => tab.id)
+    ).toEqual([q2, q1, q3])
+
+    fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${q2}`), {
+      clientX: 120,
+      clientY: 120,
+    })
+    await user.click(screen.getByTestId('tab-context-menu-item-move-right'))
+    expect(
+      useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1']
+        .filter((tab) => tab.type === 'query-editor')
+        .map((tab) => tab.id)
+    ).toEqual([q1, q2, q3])
+
+    fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${q1}`), {
+      clientX: 120,
+      clientY: 120,
+    })
+    await user.click(screen.getByTestId('tab-context-menu-item-move-end'))
+    expect(
+      useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1']
+        .filter((tab) => tab.type === 'query-editor')
+        .map((tab) => tab.id)
+    ).toEqual([q2, q3, q1])
+
+    fireEvent.contextMenu(screen.getByTestId(`workspace-tab-${q1}`), {
+      clientX: 120,
+      clientY: 120,
+    })
+    await user.click(screen.getByTestId('tab-context-menu-item-move-start'))
+    expect(
+      useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1']
+        .filter((tab) => tab.type === 'query-editor')
+        .map((tab) => tab.id)
+    ).toEqual([q1, q2, q3])
+  })
+
+  it('reorders movable tabs via drag and drop and keeps pinned tabs fixed', () => {
+    useWorkspaceStore.getState().openHistoryTab('conn-1', false)
+    useWorkspaceStore.getState().openProcessListTab('conn-1')
+    const q1 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    const q2 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q2')
+    const q3 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q3')
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    const draggingTab = screen.getByTestId(`workspace-tab-${q3}`)
+    const targetTab = screen.getByTestId(`workspace-tab-${q1}`)
+    vi.spyOn(targetTab, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      top: 0,
+      right: 200,
+      bottom: 30,
+      width: 100,
+      height: 30,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    fireEvent.pointerDown(draggingTab, { button: 0, clientX: 260, clientY: 15 })
+    fireEvent.pointerMove(window, { clientX: 198, clientY: 15 })
+    fireEvent.pointerUp(window, { clientX: 198, clientY: 15 })
+
+    const ordered = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    expect(ordered[0].type).toBe('history')
+    expect(ordered[1].type).toBe('processlist')
+    expect(ordered.slice(2).map((tab) => tab.id)).toEqual([q1, q3, q2])
+  })
+
+  it('does not reorder when pointer drag starts from the close button', () => {
+    const q1 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    const q2 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q2')
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    const closeButton = screen.getByLabelText('Close Q2')
+    const tab = screen.getByTestId(`workspace-tab-${q2}`)
+    fireEvent.pointerDown(closeButton, { button: 0, clientX: 210, clientY: 15 })
+    fireEvent.pointerMove(window, { clientX: 120, clientY: 15 })
+    fireEvent.pointerUp(window, { clientX: 120, clientY: 15 })
+
+    expect(
+      useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1']
+        .filter((entry) => entry.type === 'query-editor')
+        .map((entry) => entry.id)
+    ).toEqual([q1, q2])
+  })
+
+  it('starts pointer reorder from the tab container body (not only label hotspot)', async () => {
+    const q1 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    const q2 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q2')
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    const tab = screen.getByTestId(`workspace-tab-${q1}`)
+    const targetTab = screen.getByTestId(`workspace-tab-${q2}`)
+    vi.spyOn(targetTab, 'getBoundingClientRect').mockReturnValue({
+      left: 220,
+      top: 0,
+      right: 320,
+      bottom: 30,
+      width: 100,
+      height: 30,
+      x: 220,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    fireEvent.pointerDown(tab, { button: 0, clientX: 180, clientY: 15 })
+    fireEvent.pointerMove(window, { clientX: 222, clientY: 15 })
+
+    await waitFor(() => expect(tab.className).toContain('dragging'))
+    fireEvent.pointerUp(window, { clientX: 222, clientY: 15 })
+
+    expect(
+      useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1']
+        .filter((entry) => entry.type === 'query-editor')
+        .map((entry) => entry.id)
+    ).toEqual([q1, q2])
+  })
+
+  it('does not start pointer reorder for pinned tabs', () => {
+    useWorkspaceStore.getState().openHistoryTab('conn-1')
+    useWorkspaceStore.getState().openProcessListTab('conn-1')
+    render(<WorkspaceTabs connectionId="conn-1" />)
+
+    const historyTab = screen.getByText('History').closest('[data-testid^="workspace-tab-"]')
+    const processTab = screen
+      .getByText('Process List')
+      .closest('[data-testid^="workspace-tab-"]')
+
+    fireEvent.pointerDown(historyTab, { button: 0, clientX: 180, clientY: 15 })
+    fireEvent.pointerMove(window, { clientX: 188, clientY: 15 })
+    expect(historyTab?.className ?? '').not.toContain('dragging')
+
+    fireEvent.pointerDown(processTab, { button: 0, clientX: 180, clientY: 15 })
+    fireEvent.pointerMove(window, { clientX: 188, clientY: 15 })
+    expect(processTab?.className ?? '').not.toContain('dragging')
   })
 })
