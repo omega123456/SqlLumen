@@ -11,7 +11,7 @@
  * The external props interface remains unchanged — ResultPanel.tsx does not need modification.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BaseGridView } from '../shared/BaseGridView'
 import {
   EditorCallbacksContext,
@@ -19,6 +19,10 @@ import {
 } from '../shared/editor-callbacks-context'
 import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
 import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
+import {
+  createGridPerformanceLogger,
+  type GridPerformanceLogger,
+} from '../../lib/grid-performance-logger'
 import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
 import { useQueryStore } from '../../stores/query-store'
@@ -82,6 +86,13 @@ const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
 const EMPTY_FOREIGN_KEYS: import('../../types/schema').ForeignKeyColumnInfo[] = []
 const EMPTY_BINDINGS = new Map<number, string>()
 const READ_ONLY_SELECTION_SYNC_DELAY_MS = 75
+const RESULT_GRID_PERF_SCOPE = 'query-result-grid'
+const SLOW_RESULT_RENDER_COMMIT_MS = 50
+const SLOW_RESULT_DERIVATION_MS = 16
+
+function readPerformanceNow(): number {
+  return globalThis.performance?.now() ?? Date.now()
+}
 
 export function ResultGridView({
   columns,
@@ -104,6 +115,7 @@ export function ResultGridView({
   onSyncCellValue,
   onAutoSave,
 }: ResultGridViewProps) {
+  const renderStartedAt = readPerformanceNow()
   const storeSetSelectedCell = useQueryStore((state) => state.setSelectedCell)
 
   // Refs for stable access in callbacks without re-creating them
@@ -125,6 +137,37 @@ export function ResultGridView({
     columnKey: string
     value: unknown
   } | null>(null)
+  const performanceContext = useMemo(
+    () => ({
+      scope: RESULT_GRID_PERF_SCOPE,
+      tabId,
+      view: 'grid',
+      rows: rows.length,
+      columns: columns.length,
+      editMode,
+    }),
+    [columns.length, editMode, rows.length, tabId]
+  )
+  const [performanceLogger] = useState<GridPerformanceLogger>(() =>
+    createGridPerformanceLogger(performanceContext)
+  )
+
+  useEffect(() => {
+    performanceLogger.updateContext(performanceContext)
+  }, [performanceContext, performanceLogger])
+
+  useEffect(() => {
+    performanceLogger.logMount()
+    return () => {
+      performanceLogger.flush('unmount')
+    }
+  }, [performanceLogger])
+
+  useEffect(() => {
+    performanceLogger.recordTiming('result-render-commit', readPerformanceNow() - renderStartedAt, {
+      thresholdMs: SLOW_RESULT_RENDER_COMMIT_MS,
+    })
+  })
 
   useEffect(() => {
     editStateRef.current = editState
@@ -168,6 +211,7 @@ export function ResultGridView({
   }, [])
 
   const flushPendingReadOnlySelection = useCallback(() => {
+    const startedAt = readPerformanceNow()
     readOnlySelectionSyncTimerRef.current = null
     const pendingSelection = pendingReadOnlySelectionRef.current
     if (!pendingSelection) return
@@ -183,7 +227,14 @@ export function ResultGridView({
       columnKey: column.name,
       value: pendingSelection.value,
     })
-  }, [tabId])
+    performanceLogger.recordTiming(
+      'result-readonly-selection-flush',
+      readPerformanceNow() - startedAt,
+      {
+        thresholdMs: SLOW_RESULT_DERIVATION_MS,
+      }
+    )
+  }, [performanceLogger, tabId])
 
   const scheduleReadOnlySelectionSync = useCallback(
     (rowIdx: number, columnKey: string, selectedRow: Record<string, unknown>) => {
@@ -201,12 +252,14 @@ export function ResultGridView({
         flushPendingReadOnlySelection,
         READ_ONLY_SELECTION_SYNC_DELAY_MS
       )
+      performanceLogger.increment('result-readonly-selection-scheduled')
     },
-    [flushPendingReadOnlySelection]
+    [flushPendingReadOnlySelection, performanceLogger]
   )
 
   const syncSelection = useCallback(
     (rowIdx: number, columnKey: string, selectedRow: Record<string, unknown>) => {
+      const startedAt = readPerformanceNow()
       const nextValue = selectedRow[columnKey]
       const lastSelection = lastSyncedSelectionRef.current
       if (
@@ -227,8 +280,11 @@ export function ResultGridView({
         columnKey: column.name,
         value: nextValue,
       })
+      performanceLogger.recordTiming('result-selection-sync', readPerformanceNow() - startedAt, {
+        thresholdMs: SLOW_RESULT_DERIVATION_MS,
+      })
     },
-    [columns, onRowSelected, storeSetSelectedCell, tabId]
+    [columns, onRowSelected, performanceLogger, storeSetSelectedCell, tabId]
   )
 
   const handleCellSelectionChange = useCallback(
@@ -247,7 +303,7 @@ export function ResultGridView({
           onUpdateCellValue(colIndex, value)
         }
       },
-      syncCellValue: () => { },
+      syncCellValue: () => {},
     }),
     [onUpdateCellValue, tabId]
   )
@@ -268,8 +324,9 @@ export function ResultGridView({
   // Row data: transform array-of-arrays to array-of-objects with col_N keys.
   // Overlays editState current values on the editing row.
   // ---------------------------------------------------------------------------
-  const rowData: ResultRow[] = useMemo(() => {
-    return rows.map((row, rowIdx) => {
+  const rowDataBuild = useMemo(() => {
+    const startedAt = readPerformanceNow()
+    const materializedRows = rows.map((row, rowIdx) => {
       const obj: ResultRow = { __rowIdx: rowIdx }
       columns.forEach((_, i) => {
         obj[colKey(i)] = row[i] ?? null
@@ -286,25 +343,50 @@ export function ResultGridView({
 
       return obj
     })
+    return {
+      rows: materializedRows,
+      durationMs: readPerformanceNow() - startedAt,
+    }
   }, [rows, columns, editState, editingRowIndex, boundColumnIndexLookup])
+  const rowData: ResultRow[] = rowDataBuild.rows
+
+  useEffect(() => {
+    performanceLogger.recordTiming('result-row-materialize', rowDataBuild.durationMs, {
+      thresholdMs: SLOW_RESULT_DERIVATION_MS,
+      fields: {
+        sourceRows: rows.length,
+        sourceColumns: columns.length,
+      },
+    })
+  }, [columns.length, performanceLogger, rowDataBuild.durationMs, rows.length])
 
   // Keep rowDataRef in sync for stable callbacks
   useEffect(() => {
     rowDataRef.current = rowData
   }, [rowData])
 
-  const resolvedColumns = useMemo(
-    () =>
-      resolveQueryResultColumns({
-        resultColumns: columns,
-        editMode,
-        editableColumnMap,
-        editTableColumns,
-        editForeignKeys,
-        editColumnBindings,
-      }),
-    [columns, editMode, editableColumnMap, editTableColumns, editForeignKeys, editColumnBindings]
-  )
+  const resolvedColumnsBuild = useMemo(() => {
+    const startedAt = readPerformanceNow()
+    const resolved = resolveQueryResultColumns({
+      resultColumns: columns,
+      editMode,
+      editableColumnMap,
+      editTableColumns,
+      editForeignKeys,
+      editColumnBindings,
+    })
+    return {
+      columns: resolved,
+      durationMs: readPerformanceNow() - startedAt,
+    }
+  }, [columns, editMode, editableColumnMap, editTableColumns, editForeignKeys, editColumnBindings])
+  const resolvedColumns = resolvedColumnsBuild.columns
+
+  useEffect(() => {
+    performanceLogger.recordTiming('result-column-resolve', resolvedColumnsBuild.durationMs, {
+      thresholdMs: SLOW_RESULT_DERIVATION_MS,
+    })
+  }, [performanceLogger, resolvedColumnsBuild.durationMs])
 
   // ---------------------------------------------------------------------------
   // Column descriptors: build GridColumnDescriptor[] from ColumnMeta[].
@@ -461,13 +543,7 @@ export function ResultGridView({
       // Non-editable column: select but don't edit
       return { proceed: true, targetRowIdx: rowIdx, targetColIdx, enableEditor: false }
     }
-  }, [
-    editMode,
-    editableColumnMap,
-    onAutoSave,
-    onStartEditing,
-    syncSelection,
-  ])
+  }, [editMode, editableColumnMap, onAutoSave, onStartEditing, syncSelection])
 
   // In read-only mode, we still need a simple cell click handler for row selection.
   // BaseGridView only calls onCellClickGuard; when it's undefined, RDG default behavior
@@ -495,6 +571,7 @@ export function ResultGridView({
   // ---------------------------------------------------------------------------
   const handleRowsChange = useCallback(
     (newRows: Record<string, unknown>[], data: RowsChangeData<Record<string, unknown>>) => {
+      const startedAt = readPerformanceNow()
       // data.indexes contains the indices of changed rows
       if (!data.indexes || data.indexes.length === 0) return
 
@@ -517,8 +594,15 @@ export function ResultGridView({
           }
         }
       }
+      performanceLogger.recordTiming('result-rows-change-scan', readPerformanceNow() - startedAt, {
+        thresholdMs: SLOW_RESULT_DERIVATION_MS,
+        fields: {
+          changedRows: data.indexes.length,
+          scannedColumns: currentColumns.length,
+        },
+      })
     },
-    []
+    [performanceLogger]
   )
 
   const autoSizeConfig: AutoSizeConfig | undefined = useMemo(() => {
@@ -638,6 +722,7 @@ export function ResultGridView({
         isModifiedCell={isModifiedCell}
         autoSizeConfig={autoSizeConfig}
         showReadOnlyHeaders={!!editMode}
+        performanceLogger={performanceLogger}
         testId="result-grid-view"
       />
     </EditorCallbacksContext.Provider>
