@@ -127,6 +127,8 @@ export interface BaseGridViewProps {
   ) => void
   rowKeyGetter?: (row: Record<string, unknown>) => string
   getRowClass?: (row: Record<string, unknown>) => string | undefined
+  selectedRowIndex?: number | null
+  selectedRowClassName?: string
   isModifiedCell?: (rowData: Record<string, unknown>, columnKey: string) => boolean
   applyReadOnlyCellStyles?: boolean
   autoSizeConfig?: AutoSizeConfig

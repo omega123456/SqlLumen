@@ -155,6 +155,8 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     onRowsChange: onRowsChangeProp,
     rowKeyGetter: rowKeyGetterProp,
     getRowClass: getRowClassProp,
+    selectedRowIndex,
+    selectedRowClassName,
     isModifiedCell,
     applyReadOnlyCellStyles = true,
     autoSizeConfig,
@@ -175,6 +177,8 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   const programmaticSelectionRef = useRef<SelectedCellState | null>(null)
   const cellClickGuardRequestIdRef = useRef(0)
   const clickGuardInFlightRef = useRef(false)
+  const selectedRowElementRef = useRef<HTMLElement | null>(null)
+  const selectedRowFrameRef = useRef<number | null>(null)
 
   useImperativeHandle(
     ref,
@@ -205,6 +209,38 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     previousSelectedCellRef.current = selectedCellRef.current
     selectedCellRef.current = next
   }, [])
+
+  const applySelectedRowClass = useCallback(
+    (rowIdx: number | null | undefined) => {
+      if (!selectedRowClassName) return
+
+      if (selectedRowFrameRef.current !== null) {
+        cancelAnimationFrame(selectedRowFrameRef.current)
+        selectedRowFrameRef.current = null
+      }
+
+      const apply = () => {
+        selectedRowFrameRef.current = null
+        selectedRowElementRef.current?.classList.remove(selectedRowClassName)
+        selectedRowElementRef.current = null
+
+        if (rowIdx == null || rowIdx < 0) return
+
+        const gridElement = gridRef.current?.element
+        const rowElement = gridElement?.querySelector<HTMLElement>(
+          `[aria-rowindex="${rowIdx + 2}"]`
+        )
+        if (!rowElement) return
+
+        rowElement.classList.add(selectedRowClassName)
+        selectedRowElementRef.current = rowElement
+      }
+
+      apply()
+      selectedRowFrameRef.current = requestAnimationFrame(apply)
+    },
+    [selectedRowClassName]
+  )
 
   const selectTrackedCell = useCallback(
     (
@@ -283,6 +319,21 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
       document.removeEventListener(DISMISS_ALL_CONTEXT_MENUS, handleDismissAll)
     }
   }, [cellContextMenu])
+
+  useEffect(() => {
+    applySelectedRowClass(selectedRowIndex)
+  }, [applySelectedRowClass, rows, selectedRowIndex])
+
+  useEffect(() => {
+    return () => {
+      if (selectedRowFrameRef.current !== null) {
+        cancelAnimationFrame(selectedRowFrameRef.current)
+      }
+      if (selectedRowClassName) {
+        selectedRowElementRef.current?.classList.remove(selectedRowClassName)
+      }
+    }
+  }, [selectedRowClassName])
 
   useEffect(() => {
     if (!cellContextMenu) return
@@ -575,6 +626,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
 
       const previousCell = selectedCellRef.current
       setTrackedSelectedCell(nextSelection)
+      applySelectedRowClass(args.rowIdx)
       if (args.row != null) {
         onCellSelectionChange?.({
           rowIdx: args.rowIdx,
@@ -626,6 +678,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     },
     [
       onCellSelectionChange,
+      applySelectedRowClass,
       runCellClickGuardOnKeyboardSelection,
       selectTrackedCell,
       setTrackedSelectedCell,

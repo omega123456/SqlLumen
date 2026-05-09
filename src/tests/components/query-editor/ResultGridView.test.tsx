@@ -5,6 +5,7 @@ import { makeTabState } from '../../helpers/query-test-utils'
 
 // Store captured BaseGridView props for assertions
 let lastBaseGridProps: Record<string, unknown> = {}
+let baseGridRenderCount = 0
 
 // Mock the shared BaseGridView component (ResultGridView wraps it)
 vi.mock('../../../components/shared/BaseGridView', async () => {
@@ -15,6 +16,7 @@ vi.mock('../../../components/shared/BaseGridView', async () => {
   ) {
     void ref
     // Capture props for test assertions
+    baseGridRenderCount += 1
     lastBaseGridProps = props
     const rows = (props.rows as Array<Record<string, unknown>>) ?? []
     return React.createElement(
@@ -84,6 +86,7 @@ describe('ResultGridView', () => {
     vi.useRealTimers()
     vi.clearAllMocks()
     lastBaseGridProps = {}
+    baseGridRenderCount = 0
     useQueryStore.setState({
       tabs: {
         'tab-test': makeTabState({
@@ -331,7 +334,7 @@ describe('ResultGridView', () => {
     expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Charlie' })
   })
 
-  it('uses local selection for read-only keyboard movement instead of the async guard', async () => {
+  it('uses imperative row highlighting for read-only keyboard movement instead of the async guard', async () => {
     vi.useFakeTimers()
 
     render(
@@ -343,6 +346,7 @@ describe('ResultGridView', () => {
 
     const props = getLatestBaseGridProps()
     expect(props.runCellClickGuardOnKeyboardSelection).toBe(false)
+    expect(props.selectedRowClassName).toBe('rdg-row-precision-selected')
 
     const onCellSelectionChange = props.onCellSelectionChange as (args: {
       rowIdx: number
@@ -358,10 +362,7 @@ describe('ResultGridView', () => {
       })
     })
 
-    const getRowClass = getLatestBaseGridProps().getRowClass as (
-      row: Record<string, unknown>
-    ) => string | undefined
-    expect(getRowClass({ __rowIdx: 2 })).toBe('rdg-row-precision-selected')
+    expect(baseGridRenderCount).toBe(1)
 
     let result = useQueryStore.getState().tabs['tab-test']?.results[0]
     expect(result?.selectedRowIndex).toBeNull()
@@ -376,13 +377,15 @@ describe('ResultGridView', () => {
     expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Charlie' })
   })
 
-  it('updates read-only keyboard row highlight locally and coalesces global selection sync', async () => {
+  it('coalesces global selection sync without re-rendering on every read-only keyboard move', async () => {
     vi.useFakeTimers()
     const onRowSelected = vi.fn()
 
     render(<ResultGridView {...defaultProps} onRowSelected={onRowSelected} />)
 
     let props = getLatestBaseGridProps()
+    const initialGetRowClass = props.getRowClass
+    const initialRenderCount = baseGridRenderCount
     const onCellSelectionChange = props.onCellSelectionChange as (args: {
       rowIdx: number
       columnKey: string
@@ -408,8 +411,8 @@ describe('ResultGridView', () => {
     })
 
     props = getLatestBaseGridProps()
-    const getRowClass = props.getRowClass as (row: Record<string, unknown>) => string | undefined
-    expect(getRowClass({ __rowIdx: 2 })).toBe('rdg-row-precision-selected')
+    expect(baseGridRenderCount).toBe(initialRenderCount)
+    expect(props.getRowClass).toBe(initialGetRowClass)
     expect(onRowSelected).not.toHaveBeenCalled()
     expect(useQueryStore.getState().tabs['tab-test']?.results[0]?.selectedCell).toBeNull()
 
