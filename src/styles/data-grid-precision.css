@@ -23,6 +23,10 @@
 
   border: none;
   block-size: 100%;
+  /* RDG enables content-visibility:auto on the scroll root. WKWebView/WebKit
+     pays for that optimization badly with sticky/display:contents grid rows,
+     making sibling interactions like Monaco typing sluggish while the grid is visible. */
+  content-visibility: visible;
   color-scheme: dark;
 }
 

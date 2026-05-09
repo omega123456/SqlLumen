@@ -8,6 +8,12 @@ const dataGridPrecisionCss = readFileSync(
 )
 
 describe('data-grid-precision header cell stacking context', () => {
+  it('disables content-visibility:auto on the RDG root for WebKit/Tauri scroll performance', () => {
+    const rootRule = dataGridPrecisionCss.match(/\.rdg-precision\s*\{([^}]+)\}/)
+    expect(rootRule).not.toBeNull()
+    expect(rootRule![1]).toMatch(/content-visibility:\s*visible/)
+  })
+
   it('should not apply overflow:hidden to header cells (causes z-index issues with sticky positioning)', () => {
     // The generic .rdg-precision .rdg-cell rule applies overflow:hidden to ALL cells.
     // Header cells (.rdg-header-row .rdg-cell) are position:sticky and overflow:hidden
