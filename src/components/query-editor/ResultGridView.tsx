@@ -101,7 +101,7 @@ const READ_ONLY_DIAGNOSTIC_FLAGS = {
   disableImperativeRowHighlight: true,
 } as const
 const ENABLE_QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC = true
-const QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC_MODE = 'rdg-native-keys'
+const QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC_MODE = 'rdg-native-keys-no-readonly-styles'
 
 function readPerformanceNow(): number {
   return globalThis.performance?.now() ?? Date.now()
@@ -141,6 +141,7 @@ export function ResultGridView({
     ENABLE_QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC &&
     editMode === null &&
     readNavigatorPlatform() === 'MacIntel'
+  const disableReadOnlyCellStylesDiagnostic = useNativeKeyDiagnostic
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -195,7 +196,7 @@ export function ResultGridView({
       logFrontend(
         'info',
         `[query-result-grid-debug] mode=${QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC_MODE} ` +
-          `tabId=${tabId} keyStrategy=native-column-names`
+          `tabId=${tabId} keyStrategy=native-column-names disableReadOnlyCellStyles=true`
       )
     }
     return () => {
@@ -828,6 +829,7 @@ export function ResultGridView({
             : undefined
         }
         isModifiedCell={isModifiedCell}
+        applyReadOnlyCellStyles={!disableReadOnlyCellStylesDiagnostic}
         autoSizeConfig={autoSizeConfig}
         showReadOnlyHeaders={!!editMode}
         performanceLogger={performanceLogger}

@@ -171,6 +171,7 @@ describe('ResultGridView', () => {
       name: 'Alice',
       email: 'alice@example.com',
     })
+    expect(props.applyReadOnlyCellStyles).toBe(false)
   })
 
   it('enables auto-sizing based on the visible query result values', () => {
