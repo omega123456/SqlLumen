@@ -14,8 +14,11 @@ vi.mock('../../../components/shared/BaseGridView', async () => {
     ref: React.Ref<unknown>
   ) {
     void ref
-    lastBaseGridProps = props
-    lastEditorCallbacks = useEditorCallbacks() as unknown as Record<string, unknown> | null
+    const editorCallbacks = useEditorCallbacks() as unknown as Record<string, unknown> | null
+    React.useEffect(() => {
+      lastBaseGridProps = props
+      lastEditorCallbacks = editorCallbacks
+    }, [editorCallbacks, props])
     const rows = (props.rows as Array<Record<string, unknown>>) ?? []
     return React.createElement(
       'div',
@@ -140,6 +143,12 @@ describe('ResultGridView edit mode', () => {
     colDefs.forEach((col) => {
       expect(col.editable).toBe(false)
     })
+  })
+
+  it('passes a performance logger to the shared grid for live query-grid diagnostics', () => {
+    render(<ResultGridView {...baseProps} />)
+    const props = getLatestBaseGridProps()
+    expect(props.performanceLogger).toBeDefined()
   })
 
   it('sets editable: true on columns marked as editable in editableColumnMap', () => {
@@ -386,7 +395,12 @@ describe('ResultGridView edit mode', () => {
       | ((tabId: string, columnKey: string, value: unknown) => void)
       | undefined
     const syncCellValue = lastEditorCallbacks?.syncCellValue as
-      | ((tabId: string, rowData: Record<string, unknown>, columnKey: string, value: unknown) => void)
+      | ((
+          tabId: string,
+          rowData: Record<string, unknown>,
+          columnKey: string,
+          value: unknown
+        ) => void)
       | undefined
 
     expect(lastEditorCallbacks?.tabId).toBe('tab-42')

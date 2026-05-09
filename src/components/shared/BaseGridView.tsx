@@ -64,6 +64,14 @@ const NOOP_EDITOR_CALLBACKS: CellEditorCallbackProps = {
   updateCellValue: () => {},
   syncCellValue: () => {},
 }
+const SLOW_BASE_RENDER_COMMIT_MS = 50
+const SLOW_BASE_DERIVATION_MS = 16
+const MAIN_THREAD_SAMPLE_MS = 1_000
+const MAIN_THREAD_DELAY_WARN_MS = 80
+
+function readPerformanceNow(): number {
+  return globalThis.performance?.now() ?? Date.now()
+}
 
 type GridRow = Record<string, unknown>
 type ColumnWidthsMap = ReadonlyMap<string, ColumnWidth>
@@ -92,9 +100,7 @@ function isSameSelectedCell(
   right: SelectedCellState | null
 ): boolean {
   return (
-    left?.rowIdx === right?.rowIdx &&
-    left?.idx === right?.idx &&
-    left?.editable === right?.editable
+    left?.rowIdx === right?.rowIdx && left?.idx === right?.idx && left?.editable === right?.editable
   )
 }
 
@@ -140,6 +146,7 @@ function buildSelectedCellState(rowIdx: number, idx: number, editable: boolean):
 }
 
 function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHandle>) {
+  const renderStartedAt = readPerformanceNow()
   const {
     rows,
     columns,
@@ -161,6 +168,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     applyReadOnlyCellStyles = true,
     autoSizeConfig,
     showReadOnlyHeaders,
+    performanceLogger,
     testId,
     onCellDoubleClick,
     onRowClick,
@@ -179,6 +187,54 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   const clickGuardInFlightRef = useRef(false)
   const selectedRowElementRef = useRef<HTMLElement | null>(null)
   const selectedRowFrameRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    performanceLogger?.recordTiming('base-render-commit', readPerformanceNow() - renderStartedAt, {
+      thresholdMs: SLOW_BASE_RENDER_COMMIT_MS,
+    })
+  })
+
+  useEffect(() => {
+    if (!performanceLogger) return
+
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let expectedAt = readPerformanceNow() + MAIN_THREAD_SAMPLE_MS
+
+    const tick = () => {
+      const currentTime = readPerformanceNow()
+      const delayMs = Math.max(0, currentTime - expectedAt)
+      if (delayMs >= MAIN_THREAD_DELAY_WARN_MS) {
+        performanceLogger.recordTiming('main-thread-delay', delayMs, {
+          thresholdMs: MAIN_THREAD_DELAY_WARN_MS,
+        })
+      }
+      expectedAt = currentTime + MAIN_THREAD_SAMPLE_MS
+      timer = setTimeout(tick, MAIN_THREAD_SAMPLE_MS)
+    }
+
+    timer = setTimeout(tick, MAIN_THREAD_SAMPLE_MS)
+    return () => {
+      if (timer !== null) {
+        clearTimeout(timer)
+      }
+    }
+  }, [performanceLogger])
+
+  useEffect(() => {
+    if (!performanceLogger) return
+
+    const gridElement = gridRef.current?.element
+    if (!gridElement) return
+
+    const handleScroll = () => {
+      performanceLogger.increment('rdg-scroll')
+    }
+
+    gridElement.addEventListener('scroll', handleScroll, { capture: true, passive: true })
+    return () => {
+      gridElement.removeEventListener('scroll', handleScroll, { capture: true })
+    }
+  }, [performanceLogger])
 
   useImperativeHandle(
     ref,
@@ -220,26 +276,46 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
       }
 
       const apply = () => {
+        const startedAt = readPerformanceNow()
         selectedRowFrameRef.current = null
         selectedRowElementRef.current?.classList.remove(selectedRowClassName)
         selectedRowElementRef.current = null
 
-        if (rowIdx == null || rowIdx < 0) return
+        if (rowIdx == null || rowIdx < 0) {
+          performanceLogger?.recordTiming(
+            'base-selected-row-class',
+            readPerformanceNow() - startedAt,
+            { thresholdMs: SLOW_BASE_DERIVATION_MS }
+          )
+          return
+        }
 
         const gridElement = gridRef.current?.element
         const rowElement = gridElement?.querySelector<HTMLElement>(
           `[aria-rowindex="${rowIdx + 2}"]`
         )
-        if (!rowElement) return
+        if (!rowElement) {
+          performanceLogger?.recordTiming(
+            'base-selected-row-class',
+            readPerformanceNow() - startedAt,
+            { thresholdMs: SLOW_BASE_DERIVATION_MS }
+          )
+          return
+        }
 
         rowElement.classList.add(selectedRowClassName)
         selectedRowElementRef.current = rowElement
+        performanceLogger?.recordTiming(
+          'base-selected-row-class',
+          readPerformanceNow() - startedAt,
+          { thresholdMs: SLOW_BASE_DERIVATION_MS }
+        )
       }
 
       apply()
       selectedRowFrameRef.current = requestAnimationFrame(apply)
     },
-    [selectedRowClassName]
+    [performanceLogger, selectedRowClassName]
   )
 
   const selectTrackedCell = useCallback(
@@ -375,22 +451,41 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
   const autoColumnWidthsRef = useRef<Record<string, number>>({})
   const autoColumnWidthsSourceRef = useRef<string>('')
 
-  const autoColumnWidths = useMemo(() => {
-    if (!autoSizeConfig?.enabled) return autoColumnWidthsRef.current
+  const autoColumnWidthsResult = useMemo(() => {
+    if (!autoSizeConfig?.enabled) {
+      return { widths: autoColumnWidthsRef.current, durationMs: 0, computed: false }
+    }
 
     const nextSourceFingerprint = autoWidthColumnsFingerprint(columns)
     if (editState != null && autoColumnWidthsSourceRef.current === nextSourceFingerprint) {
-      return autoColumnWidthsRef.current
+      return { widths: autoColumnWidthsRef.current, durationMs: 0, computed: false }
     }
 
+    const startedAt = readPerformanceNow()
     const widths: Record<string, number> = {}
     for (const col of columns) {
       widths[col.key] = autoSizeConfig.computeWidth(col, rows)
     }
     autoColumnWidthsRef.current = widths
     autoColumnWidthsSourceRef.current = nextSourceFingerprint
-    return widths
+    return {
+      widths,
+      durationMs: readPerformanceNow() - startedAt,
+      computed: true,
+    }
   }, [autoSizeConfig, columns, rows, editState])
+  const autoColumnWidths = autoColumnWidthsResult.widths
+
+  useEffect(() => {
+    if (!autoColumnWidthsResult.computed) return
+    performanceLogger?.recordTiming('base-auto-width', autoColumnWidthsResult.durationMs, {
+      thresholdMs: SLOW_BASE_DERIVATION_MS,
+      fields: {
+        sourceRows: rows.length,
+        sourceColumns: columns.length,
+      },
+    })
+  }, [autoColumnWidthsResult, columns.length, performanceLogger, rows.length])
 
   // When FK metadata arrives asynchronously, autoColumnWidths recomputes with
   // wider widths (FK icon offset). However, react-data-grid caches the initial
@@ -441,7 +536,8 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     [onSortChange]
   )
 
-  const rdgColumns: readonly Column<GridRow>[] = useMemo(() => {
+  const rdgColumnsResult = useMemo(() => {
+    const startedAt = readPerformanceNow()
     const pkColumnNames = columns.filter((c) => c.isPrimaryKey).map((c) => c.key)
 
     const dataColumns = columns.map((col) => {
@@ -535,7 +631,10 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     if (suffixColumns && suffixColumns.length > 0) {
       result = [...result, ...suffixColumns]
     }
-    return result
+    return {
+      columns: result,
+      durationMs: readPerformanceNow() - startedAt,
+    }
   }, [
     columns,
     autoColumnWidths,
@@ -546,9 +645,20 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     prefixColumns,
     suffixColumns,
   ])
+  const rdgColumns: readonly Column<GridRow>[] = rdgColumnsResult.columns
+
+  useEffect(() => {
+    performanceLogger?.recordTiming('base-rdg-columns-build', rdgColumnsResult.durationMs, {
+      thresholdMs: SLOW_BASE_DERIVATION_MS,
+      fields: {
+        sourceColumns: columns.length,
+      },
+    })
+  }, [columns.length, performanceLogger, rdgColumnsResult])
 
   const handleCellClick = useCallback(
     async (args: CellMouseArgs<GridRow>, event: CellMouseEvent) => {
+      const startedAt = readPerformanceNow()
       if (onCellClickGuard) {
         event.preventGridDefault()
         clickGuardInFlightRef.current = true
@@ -570,11 +680,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
 
         if (result.proceed) {
           selectTrackedCell(
-            buildSelectedCellState(
-              result.targetRowIdx,
-              result.targetColIdx,
-              result.enableEditor
-            )
+            buildSelectedCellState(result.targetRowIdx, result.targetColIdx, result.enableEditor)
           )
         } else if (result.restoreFocus) {
           const restoreTarget = getRestoreTarget(
@@ -585,14 +691,20 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
           )
           selectTrackedCell(restoreTarget, { shouldFocusCell: true })
         }
+        performanceLogger?.recordTiming('rdg-cell-click-guard', readPerformanceNow() - startedAt, {
+          thresholdMs: SLOW_BASE_DERIVATION_MS,
+        })
         return
       }
 
       if (onRowClick) {
         onRowClick(args.row, args.column.key)
       }
+      performanceLogger?.recordTiming('rdg-cell-click', readPerformanceNow() - startedAt, {
+        thresholdMs: SLOW_BASE_DERIVATION_MS,
+      })
     },
-    [getRestoreTarget, onCellClickGuard, onRowClick, selectTrackedCell]
+    [getRestoreTarget, onCellClickGuard, onRowClick, performanceLogger, selectTrackedCell]
   )
 
   const handleCellDoubleClick = useCallback(
@@ -604,9 +716,16 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
 
   const handleRowsChange = useCallback(
     (newRows: GridRow[], data: RowsChangeData<GridRow>) => {
+      const startedAt = readPerformanceNow()
       onRowsChangeProp?.(newRows, data)
+      performanceLogger?.recordTiming('rdg-rows-change', readPerformanceNow() - startedAt, {
+        thresholdMs: SLOW_BASE_DERIVATION_MS,
+        fields: {
+          changedRows: data.indexes?.length ?? 0,
+        },
+      })
     },
-    [onRowsChangeProp]
+    [onRowsChangeProp, performanceLogger]
   )
 
   const onCellClickGuardRef = useRef(onCellClickGuard)
@@ -614,6 +733,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
 
   const handleSelectedCellChange = useCallback(
     (args: CellSelectArgs<GridRow>) => {
+      const startedAt = readPerformanceNow()
       const editable =
         typeof args.column.editable === 'boolean'
           ? args.column.editable
@@ -659,24 +779,38 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
           columnKey: args.column.key,
           rowData: args.row,
         }
+        const guardStartedAt = readPerformanceNow()
         void onCellClickGuardRef.current(guardArgs).then((result) => {
           if (result.proceed) {
-            selectTrackedCell(buildSelectedCellState(result.targetRowIdx, result.targetColIdx, false))
+            selectTrackedCell(
+              buildSelectedCellState(result.targetRowIdx, result.targetColIdx, false)
+            )
           } else if (result.restoreFocus) {
             selectTrackedCell(
-              buildSelectedCellState(
-                result.targetRowIdx,
-                result.targetColIdx,
-                result.enableEditor
-              ),
+              buildSelectedCellState(result.targetRowIdx, result.targetColIdx, result.enableEditor),
               { shouldFocusCell: true }
             )
           }
+          performanceLogger?.recordTiming(
+            'rdg-keyboard-row-guard',
+            readPerformanceNow() - guardStartedAt,
+            {
+              thresholdMs: SLOW_BASE_DERIVATION_MS,
+            }
+          )
         })
       }
+      performanceLogger?.recordTiming(
+        'rdg-selected-cell-change',
+        readPerformanceNow() - startedAt,
+        {
+          thresholdMs: SLOW_BASE_DERIVATION_MS,
+        }
+      )
     },
     [
       onCellSelectionChange,
+      performanceLogger,
       runCellClickGuardOnKeyboardSelection,
       selectTrackedCell,
       setTrackedSelectedCell,
@@ -692,6 +826,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
 
   const handleCellKeyDown = useCallback(
     (args: CellKeyDownArgs<GridRow>, event: CellKeyboardEvent) => {
+      performanceLogger?.increment('rdg-cell-keydown')
       if (args.mode === 'EDIT' && event.key === 'Tab') {
         const direction = event.shiftKey ? -1 : 1
         const nextIdx = args.column.idx + direction
@@ -770,7 +905,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         })()
       }
     },
-    [columns, handleCellClipboardEdit]
+    [columns, handleCellClipboardEdit, performanceLogger]
   )
 
   const handleCellContextMenu = useCallback(

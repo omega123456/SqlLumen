@@ -11,6 +11,7 @@
 
 import type { ReactNode } from 'react'
 import type { Column, RowsChangeData } from 'react-data-grid'
+import type { GridPerformanceLogger } from '../lib/grid-performance-logger'
 import type { ForeignKeyColumnInfo, TableDataColumnMeta } from './schema'
 
 // ---------------------------------------------------------------------------
@@ -133,6 +134,7 @@ export interface BaseGridViewProps {
   applyReadOnlyCellStyles?: boolean
   autoSizeConfig?: AutoSizeConfig
   showReadOnlyHeaders?: boolean
+  performanceLogger?: GridPerformanceLogger
   testId?: string
 
   // Optional insert/delete capabilities (table-data exposes these, query-editor does not)
