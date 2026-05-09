@@ -1,1 +1,1 @@
-Added the ability to reorder tabs 
+See release assets for platform installers.
