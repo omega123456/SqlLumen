@@ -334,9 +334,7 @@ describe('ResultGridView', () => {
     expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Charlie' })
   })
 
-  it('uses imperative row highlighting for read-only keyboard movement instead of the async guard', async () => {
-    vi.useFakeTimers()
-
+  it('uses parity-lite mode for read-only query results by disabling keyboard selection sync', () => {
     render(
       <ResultGridView
         {...defaultProps}
@@ -346,78 +344,28 @@ describe('ResultGridView', () => {
 
     const props = getLatestBaseGridProps()
     expect(props.runCellClickGuardOnKeyboardSelection).toBe(false)
-    expect(props.selectedRowClassName).toBe('rdg-row-precision-selected')
-
-    const onCellSelectionChange = props.onCellSelectionChange as (args: {
-      rowIdx: number
-      columnKey: string
-      rowData: Record<string, unknown>
-    }) => void
-
-    act(() => {
-      onCellSelectionChange({
-        rowIdx: 2,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 2, col_0: 3, col_1: 'Charlie', col_2: 'charlie@example.com' },
-      })
-    })
-
-    expect(baseGridRenderCount).toBe(1)
-
-    let result = useQueryStore.getState().tabs['tab-test']?.results[0]
-    expect(result?.selectedRowIndex).toBeNull()
-    expect(result?.selectedCell).toBeNull()
-
-    await act(async () => {
-      await vi.runOnlyPendingTimersAsync()
-    })
-
-    result = useQueryStore.getState().tabs['tab-test']?.results[0]
-    expect(result?.selectedRowIndex).toBe(2)
-    expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Charlie' })
+    expect(props.selectedRowClassName).toBeUndefined()
+    expect(props.onCellSelectionChange).toBeUndefined()
   })
 
-  it('coalesces global selection sync without re-rendering on every read-only keyboard move', async () => {
-    vi.useFakeTimers()
+  it('keeps direct click selection working in read-only parity-lite mode', async () => {
     const onRowSelected = vi.fn()
 
     render(<ResultGridView {...defaultProps} onRowSelected={onRowSelected} />)
 
-    let props = getLatestBaseGridProps()
-    const initialGetRowClass = props.getRowClass
-    const initialRenderCount = baseGridRenderCount
-    const onCellSelectionChange = props.onCellSelectionChange as (args: {
+    const props = getLatestBaseGridProps()
+    const onCellClickGuard = props.onCellClickGuard as (args: {
       rowIdx: number
       columnKey: string
       rowData: Record<string, unknown>
-    }) => void
+    }) => Promise<{ proceed: boolean }>
 
-    act(() => {
-      onCellSelectionChange({
-        rowIdx: 0,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 0, col_0: 1, col_1: 'Alice', col_2: 'alice@example.com' },
-      })
-      onCellSelectionChange({
-        rowIdx: 1,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
-      })
-      onCellSelectionChange({
+    await act(async () => {
+      await onCellClickGuard({
         rowIdx: 2,
         columnKey: 'col_1',
         rowData: { __rowIdx: 2, col_0: 3, col_1: 'Charlie', col_2: 'charlie@example.com' },
       })
-    })
-
-    props = getLatestBaseGridProps()
-    expect(baseGridRenderCount).toBe(initialRenderCount)
-    expect(props.getRowClass).toBe(initialGetRowClass)
-    expect(onRowSelected).not.toHaveBeenCalled()
-    expect(useQueryStore.getState().tabs['tab-test']?.results[0]?.selectedCell).toBeNull()
-
-    await act(async () => {
-      await vi.runOnlyPendingTimersAsync()
     })
 
     expect(onRowSelected).toHaveBeenCalledTimes(1)
@@ -546,6 +494,7 @@ describe('ResultGridView', () => {
     // Selected row should get the highlight regardless of edit mode
     expect(getRowClass({ __rowIdx: 1 })).toBe('rdg-row-precision-selected')
     expect(getRowClass({ __rowIdx: 0 })).toBeUndefined()
+    expect(props.selectedRowClassName).toBeUndefined()
   })
 
   it('getRowClass returns selected class when editMode is active', () => {

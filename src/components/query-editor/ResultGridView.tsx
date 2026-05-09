@@ -23,7 +23,11 @@ import {
   createGridPerformanceLogger,
   type GridPerformanceLogger,
 } from '../../lib/grid-performance-logger'
-import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
+import { logFrontend } from '../../lib/app-log-commands'
+import {
+  resolveQueryResultColumns,
+  type ResolvedQueryResultColumn,
+} from '../../lib/query-result-column-utils'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
 import { useQueryStore } from '../../stores/query-store'
 import type {
@@ -89,6 +93,13 @@ const READ_ONLY_SELECTION_SYNC_DELAY_MS = 75
 const RESULT_GRID_PERF_SCOPE = 'query-result-grid'
 const SLOW_RESULT_RENDER_COMMIT_MS = 50
 const SLOW_RESULT_DERIVATION_MS = 16
+const ENABLE_QUERY_RESULT_PARITY_LITE_DIAGNOSTIC = true
+const QUERY_RESULT_GRID_DIAGNOSTIC_MODE = 'parity-lite'
+const READ_ONLY_DIAGNOSTIC_FLAGS = {
+  bypassColumnResolution: true,
+  disableSelectionSync: true,
+  disableImperativeRowHighlight: true,
+} as const
 
 function readPerformanceNow(): number {
   return globalThis.performance?.now() ?? Date.now()
@@ -117,6 +128,9 @@ export function ResultGridView({
 }: ResultGridViewProps) {
   const renderStartedAt = readPerformanceNow()
   const storeSetSelectedCell = useQueryStore((state) => state.setSelectedCell)
+  const isReadOnlyDiagnosticMode =
+    ENABLE_QUERY_RESULT_PARITY_LITE_DIAGNOSTIC && editMode === null
+  const diagnosticFlags = isReadOnlyDiagnosticMode ? READ_ONLY_DIAGNOSTIC_FLAGS : null
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -158,10 +172,19 @@ export function ResultGridView({
 
   useEffect(() => {
     performanceLogger.logMount()
+    if (diagnosticFlags) {
+      logFrontend(
+        'info',
+        `[query-result-grid-debug] mode=${QUERY_RESULT_GRID_DIAGNOSTIC_MODE} tabId=${tabId} ` +
+          `disableSelectionSync=${diagnosticFlags.disableSelectionSync} ` +
+          `disableImperativeRowHighlight=${diagnosticFlags.disableImperativeRowHighlight} ` +
+          `bypassColumnResolution=${diagnosticFlags.bypassColumnResolution}`
+      )
+    }
     return () => {
       performanceLogger.flush('unmount')
     }
-  }, [performanceLogger])
+  }, [diagnosticFlags, performanceLogger, tabId])
 
   useEffect(() => {
     performanceLogger.recordTiming('result-render-commit', readPerformanceNow() - renderStartedAt, {
@@ -289,9 +312,10 @@ export function ResultGridView({
 
   const handleCellSelectionChange = useCallback(
     (args: CellClickGuardArgs) => {
+      if (diagnosticFlags?.disableSelectionSync) return
       scheduleReadOnlySelectionSync(args.rowIdx, args.columnKey, args.rowData)
     },
-    [scheduleReadOnlySelectionSync]
+    [diagnosticFlags, scheduleReadOnlySelectionSync]
   )
 
   const editorCallbacksCtx: EditorCallbacksContextType = useMemo(
@@ -367,19 +391,50 @@ export function ResultGridView({
 
   const resolvedColumnsBuild = useMemo(() => {
     const startedAt = readPerformanceNow()
-    const resolved = resolveQueryResultColumns({
-      resultColumns: columns,
-      editMode,
-      editableColumnMap,
-      editTableColumns,
-      editForeignKeys,
-      editColumnBindings,
-    })
+    const resolved: ResolvedQueryResultColumn[] =
+      diagnosticFlags?.bypassColumnResolution
+        ? columns.map((resultColumn, index) => ({
+            key: colKey(index),
+            displayName: resultColumn.name,
+            dataType: resultColumn.dataType,
+            boundName: resultColumn.name,
+            editable: false,
+            tableColumnMeta: undefined,
+            effectiveTableMeta: {
+              name: resultColumn.name,
+              dataType: resultColumn.dataType,
+              isNullable: true,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isBooleanAlias: false,
+              isAutoIncrement: false,
+            },
+            foreignKey: undefined,
+          }))
+        : resolveQueryResultColumns({
+            resultColumns: columns,
+            editMode,
+            editableColumnMap,
+            editTableColumns,
+            editForeignKeys,
+            editColumnBindings,
+          })
     return {
       columns: resolved,
       durationMs: readPerformanceNow() - startedAt,
     }
-  }, [columns, editMode, editableColumnMap, editTableColumns, editForeignKeys, editColumnBindings])
+  }, [
+    columns,
+    diagnosticFlags?.bypassColumnResolution,
+    editMode,
+    editableColumnMap,
+    editTableColumns,
+    editForeignKeys,
+    editColumnBindings,
+  ])
   const resolvedColumns = resolvedColumnsBuild.columns
 
   useEffect(() => {
@@ -711,14 +766,22 @@ export function ResultGridView({
         sortDirection={sortDirectionUpper}
         onSortChange={handleSortChange}
         onCellClickGuard={editMode ? cellClickGuard : readOnlyCellClickGuard}
-        onCellSelectionChange={!editMode ? handleCellSelectionChange : undefined}
+        onCellSelectionChange={
+          !editMode && !diagnosticFlags?.disableSelectionSync
+            ? handleCellSelectionChange
+            : undefined
+        }
         runCellClickGuardOnKeyboardSelection={!!editMode}
         onRowsChange={handleRowsChange}
         onCellClipboardEdit={handleCellClipboardEdit}
         rowKeyGetter={rowKeyGetter}
         getRowClass={getRowClass}
         selectedRowIndex={selectedRowIndex}
-        selectedRowClassName={!editMode ? 'rdg-row-precision-selected' : undefined}
+        selectedRowClassName={
+          !editMode && !diagnosticFlags?.disableImperativeRowHighlight
+            ? 'rdg-row-precision-selected'
+            : undefined
+        }
         isModifiedCell={isModifiedCell}
         autoSizeConfig={autoSizeConfig}
         showReadOnlyHeaders={!!editMode}
