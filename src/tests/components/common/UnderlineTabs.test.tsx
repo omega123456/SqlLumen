@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { dispatchAuxClick } from '../../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
 import { UnderlineTabBar, UnderlineTab } from '../../../components/common/UnderlineTabs'
@@ -153,6 +153,27 @@ describe('UnderlineTabs', () => {
 
     dispatchAuxClick(screen.getByTestId('split-cell'))
     expect(onAuxSplit).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts split-tab drag from label surface using outer draggable container', () => {
+    const onDragStart = vi.fn()
+
+    render(
+      <UnderlineTabBar>
+        <UnderlineTab
+          data-testid="split-cell"
+          onSelect={() => {}}
+          onDragStart={onDragStart}
+          draggable
+          suffix={<span>suffix</span>}
+        >
+          Drag Label
+        </UnderlineTab>
+      </UnderlineTabBar>
+    )
+
+    fireEvent.dragStart(screen.getByRole('button', { name: 'Drag Label' }))
+    expect(onDragStart).toHaveBeenCalledTimes(1)
   })
 
   it('should use overflow-x: auto with a reserved scrollbar lane', () => {

@@ -208,6 +208,114 @@ describe('useWorkspaceStore — openQueryTab', () => {
   })
 })
 
+describe('useWorkspaceStore — renameQueryTab', () => {
+  it('renames query-editor tabs only', () => {
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Old Name')
+    useWorkspaceStore.getState().openTab(makeTab({ label: 'users' }))
+    const dataTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'].find((tab) => tab.type === 'table-data')?.id
+
+    useWorkspaceStore.getState().renameQueryTab('conn-1', queryTabId, 'New Name')
+    if (!dataTabId) {
+      throw new Error('Expected table-data tab id')
+    }
+    useWorkspaceStore.getState().renameQueryTab('conn-1', dataTabId, 'Nope')
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const queryTab = tabs.find((tab) => tab.id === queryTabId)
+    const dataTab = tabs.find((tab) => tab.id === dataTabId)
+    expect(queryTab?.label).toBe('New Name')
+    expect(dataTab?.label).toBe('users')
+  })
+
+  it('rejects blank and whitespace-only labels', () => {
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Original')
+    useWorkspaceStore.getState().renameQueryTab('conn-1', queryTabId, '   ')
+    useWorkspaceStore.getState().renameQueryTab('conn-1', queryTabId, '')
+
+    const queryTab = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1']
+      .find((tab) => tab.id === queryTabId)
+    expect(queryTab?.label).toBe('Original')
+  })
+})
+
+describe('useWorkspaceStore — reorderWorkspaceTab', () => {
+  it('reorders movable tabs while keeping pinned tabs fixed', () => {
+    useWorkspaceStore.getState().openHistoryTab('conn-1', false)
+    useWorkspaceStore.getState().openProcessListTab('conn-1')
+    const q1 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    const q2 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q2')
+    const q3 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q3')
+
+    useWorkspaceStore.getState().reorderWorkspaceTab('conn-1', q3, 0)
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    expect(tabs[0].type).toBe('history')
+    expect(tabs[1].type).toBe('processlist')
+    expect(tabs.slice(2).map((tab) => tab.id)).toEqual([q3, q1, q2])
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(q3)
+  })
+
+  it('ignores pinned tab reorder requests', () => {
+    useWorkspaceStore.getState().openHistoryTab('conn-1', false)
+    useWorkspaceStore.getState().openProcessListTab('conn-1')
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    const before = useWorkspaceStore.getState().tabsByConnection['conn-1'].map((tab) => tab.id)
+    const historyId = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1']
+      .find((tab) => tab.type === 'history')?.id
+
+    if (!historyId) {
+      throw new Error('Expected history tab id')
+    }
+
+    useWorkspaceStore.getState().reorderWorkspaceTab('conn-1', historyId, 2)
+    const after = useWorkspaceStore.getState().tabsByConnection['conn-1'].map((tab) => tab.id)
+    expect(after).toEqual(before)
+  })
+
+  it('preserves AI tab state after rename and reorder', () => {
+    const q1 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    const q2 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q2')
+
+    useAiStore.setState({
+      tabs: {
+        [q1]: {
+          messages: [{ id: 'm1', role: 'user', content: 'hello', timestamp: 1 }],
+          isGenerating: false,
+          activeStreamId: null,
+          previousResponseId: null,
+          attachedContext: null,
+          isPanelOpen: true,
+          error: null,
+          providedChunkKeys: {},
+          cumulativeSchemaTokens: 0,
+          providedMemoryIds: {},
+          lastCompletedSystemPrompt: '',
+          lastCompletedTransport: null,
+          lastCompletedEndpoint: '',
+          lastCompletedModel: '',
+          activeRequestEndpoint: '',
+          activeRequestModel: '',
+          activeStreamHasAssistantOutput: false,
+          isWaitingForIndex: false,
+          connectionId: null,
+          _unlisten: null,
+        },
+      },
+    })
+
+    useWorkspaceStore.getState().renameQueryTab('conn-1', q1, 'Renamed Q1')
+    useWorkspaceStore.getState().reorderWorkspaceTab('conn-1', q1, 2)
+
+    expect(useAiStore.getState().tabs[q1]?.messages).toHaveLength(1)
+    expect(useAiStore.getState().tabs[q1]?.isPanelOpen).toBe(true)
+    expect(useAiStore.getState().tabs[q2]).toBeUndefined()
+  })
+})
+
 describe('useWorkspaceStore — closeTab', () => {
   it('removes the tab', () => {
     useWorkspaceStore.getState().openTab(makeTab())

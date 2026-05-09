@@ -413,6 +413,67 @@ describe('useSessionRestoreStore — saveSession', () => {
     expect(parsed.connections[0].tabs).toHaveLength(1)
     expect(parsed.connections[0].tabs[0].type).toBe('history')
   })
+
+  it('preserves renamed query labels and workspace order in saved session state', async () => {
+    let savedValue: string | null = null
+
+    mockIPC((cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'set_setting' && a?.key === 'session.state') {
+        savedValue = a.value as string
+        return null
+      }
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': {
+          id: 'session-1',
+          profile: {
+            id: 'profile-1',
+            name: 'Test',
+            host: '127.0.0.1',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+      },
+    })
+
+    const q1 = useWorkspaceStore.getState().openQueryTab('session-1', 'Q1')
+    const q2 = useWorkspaceStore.getState().openQueryTab('session-1', 'Q2')
+    useWorkspaceStore.getState().renameQueryTab('session-1', q2, 'Renamed Q2')
+    useWorkspaceStore.getState().reorderWorkspaceTab('session-1', q2, 0)
+    useWorkspaceStore.getState().setActiveTab('session-1', q1)
+
+    await useSessionRestoreStore.getState().saveSession()
+
+    const parsed = JSON.parse(savedValue ?? '{}')
+    expect(parsed.connections[0].tabs[0].type).toBe('query-editor')
+    expect(parsed.connections[0].tabs[0].label).toBe('Renamed Q2')
+    expect(parsed.connections[0].tabs[1].type).toBe('query-editor')
+    expect(parsed.connections[0].tabs[1].label).toBe('Q1')
+    expect(parsed.connections[0].activeTabIndex).toBe(1)
+  })
 })
 
 describe('useSessionRestoreStore — restoreSession', () => {
@@ -503,6 +564,167 @@ describe('useSessionRestoreStore — restoreSession', () => {
     const processlistTab = workspaceTabs.find((t) => t.type === 'processlist')
     expect(processlistTab).toBeDefined()
     expect(processlistTab!.label).toBe('Process List')
+  })
+
+  it('restores active connection using saved activeConnectionIndex', async () => {
+    const savedState = {
+      version: 1,
+      activeConnectionIndex: 0,
+      connections: [
+        { profileId: 'profile-2', activeTabIndex: 0, tabs: [] },
+        { profileId: 'profile-1', activeTabIndex: 0, tabs: [] },
+      ],
+    }
+
+    mockIPC((cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      switch (cmd) {
+        case 'log_frontend':
+          return undefined
+        case 'get_setting':
+          if (a?.key === 'session.state') return JSON.stringify(savedState)
+          return null
+        case 'list_connections':
+          return [
+            {
+              id: 'profile-1',
+              name: 'Test MySQL 1',
+              host: '127.0.0.1',
+              port: 3306,
+              username: 'root',
+              hasPassword: true,
+              defaultDatabase: 'testdb',
+              sslEnabled: false,
+              sslCaPath: null,
+              sslCertPath: null,
+              sslKeyPath: null,
+              color: null,
+              groupId: null,
+              readOnly: false,
+              sortOrder: 0,
+              connectTimeoutSecs: 10,
+              keepaliveIntervalSecs: 60,
+              createdAt: '2024-01-01T00:00:00Z',
+              updatedAt: '2024-01-01T00:00:00Z',
+            },
+            {
+              id: 'profile-2',
+              name: 'Test MySQL 2',
+              host: '127.0.0.1',
+              port: 3306,
+              username: 'root',
+              hasPassword: true,
+              defaultDatabase: 'testdb',
+              sslEnabled: false,
+              sslCaPath: null,
+              sslCertPath: null,
+              sslKeyPath: null,
+              color: null,
+              groupId: null,
+              readOnly: false,
+              sortOrder: 1,
+              connectTimeoutSecs: 10,
+              keepaliveIntervalSecs: 60,
+              createdAt: '2024-01-01T00:00:00Z',
+              updatedAt: '2024-01-01T00:00:00Z',
+            },
+          ]
+        case 'list_connection_groups':
+          return []
+        case 'open_connection':
+          return {
+            sessionId: `session-${(a?.payload as { profileId?: string } | undefined)?.profileId}`,
+            serverVersion: '8.0.0',
+          }
+        default:
+          return null
+      }
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    expect(useConnectionStore.getState().activeTabId).toBe('session-profile-2')
+  })
+
+  it('preserves saved active connection position when earlier restore entries fail', async () => {
+    const savedState = {
+      version: 1,
+      activeConnectionIndex: 1,
+      connections: [
+        { profileId: 'missing-profile', activeTabIndex: 0, tabs: [] },
+        { profileId: 'profile-2', activeTabIndex: 0, tabs: [] },
+        { profileId: 'profile-1', activeTabIndex: 0, tabs: [] },
+      ],
+    }
+
+    mockIPC((cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      switch (cmd) {
+        case 'log_frontend':
+          return undefined
+        case 'get_setting':
+          if (a?.key === 'session.state') return JSON.stringify(savedState)
+          return null
+        case 'list_connections':
+          return [
+            {
+              id: 'profile-1',
+              name: 'Test MySQL 1',
+              host: '127.0.0.1',
+              port: 3306,
+              username: 'root',
+              hasPassword: true,
+              defaultDatabase: 'testdb',
+              sslEnabled: false,
+              sslCaPath: null,
+              sslCertPath: null,
+              sslKeyPath: null,
+              color: null,
+              groupId: null,
+              readOnly: false,
+              sortOrder: 0,
+              connectTimeoutSecs: 10,
+              keepaliveIntervalSecs: 60,
+              createdAt: '2024-01-01T00:00:00Z',
+              updatedAt: '2024-01-01T00:00:00Z',
+            },
+            {
+              id: 'profile-2',
+              name: 'Test MySQL 2',
+              host: '127.0.0.1',
+              port: 3306,
+              username: 'root',
+              hasPassword: true,
+              defaultDatabase: 'testdb',
+              sslEnabled: false,
+              sslCaPath: null,
+              sslCertPath: null,
+              sslKeyPath: null,
+              color: null,
+              groupId: null,
+              readOnly: false,
+              sortOrder: 1,
+              connectTimeoutSecs: 10,
+              keepaliveIntervalSecs: 60,
+              createdAt: '2024-01-01T00:00:00Z',
+              updatedAt: '2024-01-01T00:00:00Z',
+            },
+          ]
+        case 'list_connection_groups':
+          return []
+        case 'open_connection':
+          return {
+            sessionId: `session-${(a?.payload as { profileId?: string } | undefined)?.profileId}`,
+            serverVersion: '8.0.0',
+          }
+        default:
+          return null
+      }
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    expect(useConnectionStore.getState().activeTabId).toBe('session-profile-2')
   })
 
   it('does nothing when session restore is disabled', async () => {
@@ -948,6 +1170,42 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
     const activeTabId =
       useWorkspaceStore.getState().activeTabByConnection['session-profile-1'] ?? null
     expect(activeTabId).toBe(tableDataTabs[0].id)
+  })
+
+  it('restores renamed query labels and restored tab order', async () => {
+    restoreIpc({
+      version: 1,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 1,
+          tabs: [
+            {
+              type: 'query-editor',
+              tabId: 'old-q2',
+              sql: 'SELECT 2',
+              label: 'Renamed Q2',
+            },
+            {
+              type: 'query-editor',
+              tabId: 'old-q1',
+              sql: 'SELECT 1',
+              label: 'Q1',
+            },
+          ],
+        },
+      ],
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
+    const queryTabs = tabs.filter((tab) => tab.type === 'query-editor')
+    expect(queryTabs).toHaveLength(2)
+    expect(queryTabs[0].label).toBe('Renamed Q2')
+    expect(queryTabs[1].label).toBe('Q1')
+    const activeTabId = useWorkspaceStore.getState().activeTabByConnection['session-profile-1']
+    expect(activeTabId).toBe(queryTabs[1].id)
   })
 })
 
@@ -1478,5 +1736,89 @@ describe('useSessionRestoreStore — saveSession with schema-info tabs', () => {
     expect(parsed.connections[0].tabs[0].databaseName).toBe('testdb')
     expect(parsed.connections[0].tabs[0].objectName).toBe('users')
     expect(parsed.connections[0].tabs[0].objectType).toBe('table')
+  })
+})
+
+describe('useSessionRestoreStore — active connection order persistence', () => {
+  it('saves connections using normalized active connection order', async () => {
+    let savedValue: string | null = null
+
+    mockIPC((cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'set_setting' && a?.key === 'session.state') {
+        savedValue = String(a.value)
+        return null
+      }
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-a': {
+          id: 'session-a',
+          profile: {
+            id: 'profile-a',
+            name: 'A',
+            host: '127.0.0.1',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'a',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+        'session-b': {
+          id: 'session-b',
+          profile: {
+            id: 'profile-b',
+            name: 'B',
+            host: '127.0.0.1',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'b',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+      },
+      activeConnectionOrder: ['stale', 'session-b'],
+      activeTabId: 'session-a',
+    })
+
+    await useSessionRestoreStore.getState().saveSession()
+
+    const parsed = JSON.parse(savedValue ?? '{}')
+    expect(parsed.connections.map((c: { profileId: string }) => c.profileId)).toEqual([
+      'profile-b',
+      'profile-a',
+    ])
+    expect(parsed.activeConnectionIndex).toBe(1)
   })
 })

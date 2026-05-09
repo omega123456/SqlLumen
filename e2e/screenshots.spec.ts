@@ -766,6 +766,58 @@ for (const theme of themes) {
       )
     })
 
+    test('ConnectionTabBar — context menu reorder actions', async ({ page }) => {
+      await openTwoConnectionSessionsFirstActive(page)
+      await page.getByTestId('connection-session-tab-session-playwright-2').click({ button: 'right' })
+      await expect(page.getByTestId('tab-context-menu')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('tab-context-menu')).toHaveScreenshot(
+        `connection-tab-context-menu-reorder-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('ConnectionTabBar — drag reorder affordance (drop indicator)', async ({ page }) => {
+      await openTwoConnectionSessionsFirstActive(page)
+
+      await page.evaluate(() => {
+        const dragSource = document.querySelector<HTMLElement>(
+          '[data-testid="connection-session-tab-session-playwright-2"]'
+        )
+        const dropTarget = document.querySelector<HTMLElement>(
+          '[data-testid="connection-session-tab-session-playwright-1"]'
+        )
+        if (!dragSource || !dropTarget) {
+          throw new Error('Could not find connection tabs required for drag affordance screenshot')
+        }
+
+        const rect = dropTarget.getBoundingClientRect()
+        dragSource.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 21,
+            button: 0,
+            clientX: rect.left + 10,
+            clientY: rect.top + rect.height / 2,
+          })
+        )
+        window.dispatchEvent(
+          new PointerEvent('pointermove', {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 21,
+            clientX: rect.left + 2,
+            clientY: rect.top + rect.height / 2,
+          })
+        )
+      })
+
+      await expect(page.getByTestId('connection-tab-bar')).toHaveScreenshot(
+        `connection-tab-bar-drag-drop-indicator-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('ObjectBrowser — connected sidebar with databases', async ({ page }) => {
       await connectToSample(page)
       await expect(page.getByTestId('object-browser')).toHaveScreenshot(
@@ -818,6 +870,81 @@ for (const theme of themes) {
       await openSchemaInfoWithWorkspaceTabStrip(page)
       await expect(page.getByTestId('workspace-tabs')).toHaveScreenshot(
         `workspace-tabs-above-schema-info-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceTabs — query rename inline input state', async ({ page }) => {
+      await openQueryEditorTab(page)
+      const queryTab = page.getByText('Query 1').first()
+      await expect(queryTab).toBeVisible({ timeout: APP_READY_MS })
+      await queryTab.dblclick()
+      await expect(page.getByTestId('workspace-tab-rename-input')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await expect(page.getByTestId('workspace-tabs')).toHaveScreenshot(
+        `workspace-tabs-rename-inline-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceTabs — context menu with reorder actions', async ({ page }) => {
+      await connectToSample(page)
+      await page.getByTestId('new-query-tab-button').click()
+      await page.getByTestId('new-query-tab-button').click()
+      await page.getByTestId('new-query-tab-button').click()
+
+      const middleQueryTab = page.getByText('Query 2').first()
+      await expect(middleQueryTab).toBeVisible({ timeout: APP_READY_MS })
+      await middleQueryTab.click({ button: 'right' })
+      await expect(page.getByTestId('tab-context-menu')).toBeVisible({ timeout: APP_READY_MS })
+
+      await expect(page.getByTestId('tab-context-menu')).toHaveScreenshot(
+        `workspace-tab-context-menu-reorder-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceTabs — drag reorder affordance (drop indicator)', async ({ page }) => {
+      await connectToSample(page)
+      await page.getByTestId('new-query-tab-button').click()
+      await page.getByTestId('new-query-tab-button').click()
+      await page.getByTestId('new-query-tab-button').click()
+
+      await page.evaluate(() => {
+        const tabs = Array.from(
+          document.querySelectorAll<HTMLElement>('[data-testid^="workspace-tab-"]')
+        )
+        const dragSource = tabs.find((tab) => tab.textContent?.includes('Query 2'))
+        const dropTarget = tabs.find((tab) => tab.textContent?.includes('Query 3'))
+        if (!dragSource || !dropTarget) {
+          throw new Error('Could not find workspace tabs required for drag affordance screenshot')
+        }
+
+        const rect = dropTarget.getBoundingClientRect()
+        dragSource.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 22,
+            button: 0,
+            clientX: rect.left + 10,
+            clientY: rect.top + rect.height / 2,
+          })
+        )
+        window.dispatchEvent(
+          new PointerEvent('pointermove', {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 22,
+            clientX: rect.right - 2,
+            clientY: rect.top + rect.height / 2,
+          })
+        )
+      })
+
+      await expect(page.getByTestId('workspace-tabs')).toHaveScreenshot(
+        `workspace-tabs-drag-drop-indicator-${theme}.png`,
         { animations: 'disabled' }
       )
     })
@@ -1228,7 +1355,7 @@ for (const theme of themes) {
       await openQueryEditorWithResults(page)
       // Click the Export button
       await page.getByTestId('export-button').click()
-      await expect(page.getByTestId('export-dialog')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('export-dialog-panel')).toBeVisible({ timeout: APP_READY_MS })
       await dismissAllToasts(page)
       await page.getByTestId('export-file-path-input').fill('/tmp/playwright-export.csv')
       // Reset scroll positions for stable screenshots
@@ -1243,8 +1370,8 @@ for (const theme of themes) {
         if (el && el instanceof HTMLElement) el.blur()
       })
       await page.mouse.move(0, 0)
-      // Screenshot just the dialog to avoid background-only flake.
-      await expect(page.getByTestId('export-dialog')).toHaveScreenshot(
+      // Screenshot the dialog panel rather than the backdrop wrapper to avoid background drift.
+      await expect(page.getByTestId('export-dialog-panel')).toHaveScreenshot(
         `export-dialog-${theme}.png`,
         {
           animations: 'disabled',

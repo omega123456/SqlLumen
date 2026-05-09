@@ -26,6 +26,7 @@ A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://t
 - **Connections** — save and open connections; test connectivity from the connection dialog
 - **Object browser** — navigate databases, tables, views, and related objects
 - **Query editor** — Monaco-based SQL editing with formatting and completion-oriented tooling
+- **Workspace tabs** — inline query-tab rename plus context-menu and drag/drop reordering for workspace and connection tabs
 - **Result sets** — grid, form, and text views; execution feedback and toolbars
 - **Table data** — browse and edit rows with validation and related UI (foreign keys, unsaved changes)
 - **Table designer** — column, index, and foreign-key editing with DDL preview and apply flow

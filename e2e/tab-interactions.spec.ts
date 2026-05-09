@@ -1,0 +1,159 @@
+import { expect, test, type Page } from '@playwright/test'
+import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
+
+async function openSecondConnectionSession(page: Page) {
+  await page.evaluate(() => {
+    const useConnectionStore = (window as unknown as Record<string, unknown>)
+      .__connectionStore__ as {
+      setState: (
+        fn: (state: {
+          activeConnections: Record<
+            string,
+            { id: string; profile: Record<string, unknown>; status: string; serverVersion: string }
+          >
+          activeConnectionOrder: string[]
+        }) => Record<string, unknown>
+      ) => void
+    }
+
+    const stagingProfile = {
+      id: 'conn-playwright-2',
+      name: 'Staging MySQL',
+      host: '10.0.0.5',
+      port: 3307,
+      username: 'staging',
+      hasPassword: true,
+      defaultDatabase: null,
+      sslEnabled: false,
+      sslCaPath: null,
+      sslCertPath: null,
+      sslKeyPath: null,
+      color: '#d97706',
+      groupId: null,
+      readOnly: false,
+      sortOrder: 1,
+      connectTimeoutSecs: 10,
+      keepaliveIntervalSecs: 60,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      updatedAt: '2025-01-01T00:00:00.000Z',
+    }
+
+    useConnectionStore.setState((state) => ({
+      activeConnections: {
+        ...state.activeConnections,
+        'session-playwright-2': {
+          id: 'session-playwright-2',
+          profile: stagingProfile,
+          status: 'connected',
+          serverVersion: '8.0.33-mock',
+        },
+      },
+      activeConnectionOrder: ['session-playwright-1', 'session-playwright-2'],
+    }))
+  })
+
+  await expect(page.getByTestId('connection-session-tab-session-playwright-2')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+}
+
+test.describe('Tab interactions', () => {
+  test.beforeEach(async ({ page }) => {
+    await waitForApp(page)
+  })
+
+  test('renames a query tab via context menu action', async ({ page }) => {
+    await connectToSample(page)
+    await page.getByTestId('new-query-tab-button').click()
+    await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+
+    const tab = page.getByText('Query 1').first()
+    await expect(tab).toBeVisible({ timeout: APP_READY_MS })
+
+    await tab.click({ button: 'right' })
+    await expect(page.getByTestId('tab-context-menu')).toBeVisible({ timeout: APP_READY_MS })
+    await page.getByTestId('tab-context-menu-item-rename').click()
+
+    const renameInput = page.getByTestId('workspace-tab-rename-input')
+    await expect(renameInput).toBeVisible({ timeout: APP_READY_MS })
+    await renameInput.fill('Revenue Query')
+    await renameInput.press('Enter')
+
+    await expect(page.getByText('Revenue Query').first()).toBeVisible({ timeout: APP_READY_MS })
+  })
+
+  test('moves workspace query tabs with context menu actions', async ({ page }) => {
+    await connectToSample(page)
+    await page.getByTestId('new-query-tab-button').click()
+    await page.getByTestId('new-query-tab-button').click()
+    await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+
+    const firstQueryTab = page.getByText('Query 1').first()
+    const secondQueryTab = page.getByText('Query 2').first()
+    await expect(firstQueryTab).toBeVisible({ timeout: APP_READY_MS })
+    await expect(secondQueryTab).toBeVisible({ timeout: APP_READY_MS })
+
+    await firstQueryTab.click({ button: 'right' })
+    await expect(page.getByTestId('tab-context-menu')).toBeVisible({ timeout: APP_READY_MS })
+    await page.getByTestId('tab-context-menu-item-move-right').click()
+
+    const orderedLabels = await page
+      .locator('[data-testid="workspace-tabs"] [data-testid^="workspace-tab-"]')
+      .allTextContents()
+    const filtered = orderedLabels.filter((label) => label.startsWith('Query ')).slice(0, 2)
+    expect(filtered[0]).toContain('Query 2')
+    expect(filtered[1]).toContain('Query 1')
+
+    await secondQueryTab.click({ button: 'right' })
+    await page.getByTestId('tab-context-menu-item-move-end').click()
+    const movedEndLabels = await page
+      .locator('[data-testid="workspace-tabs"] [data-testid^="workspace-tab-"]')
+      .allTextContents()
+    const movedEndQueries = movedEndLabels.filter((label) => label.startsWith('Query ')).slice(0, 2)
+    expect(movedEndQueries[0]).toContain('Query 1')
+    expect(movedEndQueries[1]).toContain('Query 2')
+
+    await secondQueryTab.click({ button: 'right' })
+    await page.getByTestId('tab-context-menu-item-move-start').click()
+    const movedStartLabels = await page
+      .locator('[data-testid="workspace-tabs"] [data-testid^="workspace-tab-"]')
+      .allTextContents()
+    const movedStartQueries = movedStartLabels.filter((label) => label.startsWith('Query ')).slice(0, 2)
+    expect(movedStartQueries[0]).toContain('Query 2')
+    expect(movedStartQueries[1]).toContain('Query 1')
+  })
+
+  test('reorders connection tabs from context menu actions', async ({ page }) => {
+    await connectToSample(page)
+    await openSecondConnectionSession(page)
+
+    const firstTab = page.getByTestId('connection-session-tab-session-playwright-1')
+    const secondTab = page.getByTestId('connection-session-tab-session-playwright-2')
+    await expect(firstTab).toBeVisible({ timeout: APP_READY_MS })
+    await expect(secondTab).toBeVisible({ timeout: APP_READY_MS })
+
+    await secondTab.click({ button: 'right' })
+    await expect(page.getByTestId('tab-context-menu')).toBeVisible({ timeout: APP_READY_MS })
+    await page.getByTestId('tab-context-menu-item-move-left').click()
+
+    const orderedNames = await page
+      .locator('[data-testid="connection-tab-bar"] [data-testid^="connection-session-tab-"]')
+      .allTextContents()
+    expect(orderedNames.slice(0, 2)).toEqual(['Staging MySQL', 'Sample MySQL'])
+
+    await secondTab.click({ button: 'right' })
+    await page.getByTestId('tab-context-menu-item-move-end').click()
+    const movedEndNames = await page
+      .locator('[data-testid="connection-tab-bar"] [data-testid^="connection-session-tab-"]')
+      .allTextContents()
+    expect(movedEndNames.slice(0, 2)).toEqual(['Sample MySQL', 'Staging MySQL'])
+
+    await secondTab.click({ button: 'right' })
+    await page.getByTestId('tab-context-menu-item-move-start').click()
+    const movedStartNames = await page
+      .locator('[data-testid="connection-tab-bar"] [data-testid^="connection-session-tab-"]')
+      .allTextContents()
+    expect(movedStartNames.slice(0, 2)).toEqual(['Staging MySQL', 'Sample MySQL'])
+  })
+
+})

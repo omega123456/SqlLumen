@@ -18,6 +18,7 @@ beforeEach(() => {
     savedConnections: [],
     connectionGroups: [],
     activeConnections: {},
+    activeConnectionOrder: [],
     activeTabId: null,
     dialogOpen: false,
     error: null,
@@ -470,5 +471,143 @@ describe('useConnectionStore — openConnection creates default workspace tabs',
     expect(tabs!.length).toBeGreaterThanOrEqual(2)
     expect(tabs![0].type).toBe('history')
     expect(tabs![1].type).toBe('processlist')
+  })
+})
+
+describe('useConnectionStore — explicit active connection order lifecycle', () => {
+  it('removes closed sessions from explicit order and activates next by order', async () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': {
+          id: 'session-1',
+          profile: {
+            id: 'profile-1',
+            name: 'A',
+            host: 'localhost',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+        'session-2': {
+          id: 'session-2',
+          profile: {
+            id: 'profile-2',
+            name: 'B',
+            host: 'localhost',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+      },
+      activeConnectionOrder: ['session-2', 'session-1'],
+      activeTabId: 'session-2',
+    })
+
+    await useConnectionStore.getState().closeConnection('session-2')
+
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['session-1'])
+    expect(useConnectionStore.getState().activeTabId).toBe('session-1')
+  })
+
+  it('reorders active sessions by insert index', () => {
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': {
+          id: 'session-1',
+          profile: {
+            id: 'profile-1',
+            name: 'A',
+            host: 'localhost',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+        'session-2': {
+          id: 'session-2',
+          profile: {
+            id: 'profile-2',
+            name: 'B',
+            host: 'localhost',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+      },
+      activeConnectionOrder: ['session-1', 'session-2'],
+      activeTabId: 'session-1',
+    })
+
+    useConnectionStore.getState().reorderActiveConnection('session-2', 0)
+
+    expect(useConnectionStore.getState().activeConnectionOrder).toEqual(['session-2', 'session-1'])
+    expect(useConnectionStore.getState().activeTabId).toBe('session-1')
   })
 })
