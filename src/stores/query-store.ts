@@ -1070,6 +1070,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     },
 
     setSelectedText: (tabId: string, selectedText: string) => {
+      if (get().tabs[tabId]?.selectedText === selectedText) return
       patchTab(tabId, { selectedText })
     },
 
