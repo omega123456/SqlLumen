@@ -743,7 +743,6 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs connectionId="conn-1" />)
 
     const closeButton = screen.getByLabelText('Close Q2')
-    const tab = screen.getByTestId(`workspace-tab-${q2}`)
     fireEvent.pointerDown(closeButton, { button: 0, clientX: 210, clientY: 15 })
     fireEvent.pointerMove(window, { clientX: 120, clientY: 15 })
     fireEvent.pointerUp(window, { clientX: 120, clientY: 15 })
@@ -800,6 +799,10 @@ describe('WorkspaceTabs', () => {
     const processTab = screen
       .getByText('Process List')
       .closest('[data-testid^="workspace-tab-"]')
+
+    if (historyTab === null || processTab === null) {
+      throw new Error('Expected pinned tabs to be rendered')
+    }
 
     fireEvent.pointerDown(historyTab, { button: 0, clientX: 180, clientY: 15 })
     fireEvent.pointerMove(window, { clientX: 188, clientY: 15 })
