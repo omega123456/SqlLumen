@@ -11,6 +11,7 @@ import { makeTabState } from '../../helpers/query-test-utils'
 let capturedFkLookupDialogProps: Record<string, unknown> | null = null
 
 let lastReactDataGridProps: Record<string, unknown> = {}
+let reactDataGridRenderCount = 0
 
 // Mock react-data-grid (used by the shared DataGrid wrapper via ResultGridView)
 vi.mock('react-data-grid', async () => {
@@ -20,6 +21,7 @@ vi.mock('react-data-grid', async () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       (props: Record<string, unknown>, _ref: unknown) => {
         lastReactDataGridProps = props
+        reactDataGridRenderCount += 1
         return React.createElement(
           'div',
           {
@@ -123,6 +125,7 @@ beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   mockIPC(() => null)
   lastReactDataGridProps = {}
+  reactDataGridRenderCount = 0
   capturedFkLookupDialogProps = null
 })
 
@@ -135,6 +138,33 @@ describe('ResultPanel', () => {
   it('shows idle state with "Run a query to see results" when no tab state', () => {
     render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
     expect(screen.getByText('Run a query to see results')).toBeInTheDocument()
+  })
+
+  it('does not rerender the result grid for editor-only tab state updates', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          content: 'select 1',
+          status: 'success',
+          viewMode: 'grid',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          rows: [[1]],
+          totalRows: 1,
+          queryId: 'q1',
+        }),
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    const initialRenderCount = reactDataGridRenderCount
+
+    act(() => {
+      useQueryStore.getState().setCursorPosition('tab-1', { lineNumber: 1, column: 2 })
+      useQueryStore.getState().setSelectedText('tab-1', 'select')
+      useQueryStore.getState().setContent('tab-1', 'select 1;')
+    })
+
+    expect(reactDataGridRenderCount).toBe(initialRenderCount)
   })
 
   it('opens FK lookup dialog from query result form view when FK trigger is clicked', async () => {

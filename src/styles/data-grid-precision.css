@@ -157,6 +157,15 @@
 }
 
 /* NULL and BLOB value spans within cells */
+.rdg-precision .td-cell-value {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rdg-precision .td-null-value {
   font-style: italic;
   color: var(--td-null-text-color);
