@@ -453,8 +453,18 @@ describe('global command registration', () => {
 // ---------------------------------------------------------------------------
 
 describe('triggerCodeLensRefresh', () => {
-  it('fires the onDidChangeEmitter', () => {
+  it('coalesces repeated refresh requests until the debounce timer fires', async () => {
+    vi.useFakeTimers()
+    vi.mocked(onDidChangeEmitter.fire).mockClear()
+
     triggerCodeLensRefresh()
-    expect(onDidChangeEmitter.fire).toHaveBeenCalled()
+    triggerCodeLensRefresh()
+    triggerCodeLensRefresh()
+
+    expect(onDidChangeEmitter.fire).not.toHaveBeenCalled()
+
+    await vi.runOnlyPendingTimersAsync()
+
+    expect(onDidChangeEmitter.fire).toHaveBeenCalledTimes(1)
   })
 })

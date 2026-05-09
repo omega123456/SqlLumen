@@ -616,7 +616,7 @@ describe('MonacoEditorWrapper', () => {
   // -----------------------------------------------------------------------
 
   describe('onDidChangeModelContent callback', () => {
-    it('calls triggerCodeLensRefresh when editor content changes', () => {
+    it('requests a CodeLens refresh when editor content changes', () => {
       render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
 
       // The onDidChangeModelContent callback was captured during mount
@@ -624,6 +624,18 @@ describe('MonacoEditorWrapper', () => {
       capturedContentChangeHandler!()
 
       expect(mockTriggerCodeLensRefresh).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not rewrite unchanged selected text on plain typing', () => {
+      render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
+
+      const beforeTabState = useQueryStore.getState().tabs['tab-1']
+      act(() => {
+        capturedContentChangeHandler!()
+        capturedContentChangeHandler!()
+      })
+
+      expect(useQueryStore.getState().tabs['tab-1']).toBe(beforeTabState)
     })
 
     it('updates AI attached context when content changes and context exists', () => {
