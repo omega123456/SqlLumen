@@ -151,7 +151,7 @@ describe('ResultGridView', () => {
     expect(rowData[1]).toEqual({ __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null })
   })
 
-  it('uses native column-name keys for read-only macOS diagnostics', () => {
+  it('uses table-data-shape props for read-only macOS diagnostics', () => {
     Object.defineProperty(window.navigator, 'platform', {
       configurable: true,
       value: 'MacIntel',
@@ -159,22 +159,32 @@ describe('ResultGridView', () => {
 
     render(<ResultGridView {...defaultProps} />)
     const props = getLatestBaseGridProps()
-    const colDefs = props.columns as Array<{ key: string }>
+    const colDefs = props.columns as Array<{
+      key: string
+      editable: boolean
+      tableColumnMeta?: unknown
+    }>
     const rowData = props.rows as Array<Record<string, unknown>>
 
     expect(colDefs[0].key).toBe('id')
     expect(colDefs[1].key).toBe('name')
     expect(colDefs[2].key).toBe('email')
+    expect(colDefs[0].editable).toBe(true)
+    expect(colDefs[0].tableColumnMeta).toBeUndefined()
     expect(rowData[0]).toEqual({
-      __rowIdx: 0,
+      __rowIndex: 0,
       id: 1,
       name: 'Alice',
       email: 'alice@example.com',
     })
     expect(props.applyReadOnlyCellStyles).toBe(false)
-    expect(props.useCustomCellRenderer).toBe(false)
-    expect(props.useDefaultSortRenderer).toBe(false)
-    expect(props.autoSizeConfig).toBeUndefined()
+    expect(props.useCustomCellRenderer).toBe(true)
+    expect(props.useDefaultSortRenderer).toBe(true)
+    expect(props.autoSizeConfig).toBeDefined()
+    expect(props.selectedRowIndex).toBeUndefined()
+    expect(props.selectedRowClassName).toBeUndefined()
+    expect(props.performanceLogger).toBeUndefined()
+    expect(props.runCellClickGuardOnKeyboardSelection).toBe(true)
   })
 
   it('enables auto-sizing based on the visible query result values', () => {
