@@ -165,7 +165,6 @@ describe('ResultGridView', () => {
     expect(colDefs[0].key).toBe('id')
     expect(colDefs[1].key).toBe('name')
     expect(colDefs[2].key).toBe('email')
-    expect((colDefs[0] as { key: string; editable: boolean }).editable).toBe(true)
     expect(rowData[0]).toEqual({
       __rowIdx: 0,
       id: 1,
@@ -173,6 +172,9 @@ describe('ResultGridView', () => {
       email: 'alice@example.com',
     })
     expect(props.applyReadOnlyCellStyles).toBe(false)
+    expect(props.useCustomCellRenderer).toBe(false)
+    expect(props.useDefaultSortRenderer).toBe(false)
+    expect(props.autoSizeConfig).toBeUndefined()
   })
 
   it('enables auto-sizing based on the visible query result values', () => {

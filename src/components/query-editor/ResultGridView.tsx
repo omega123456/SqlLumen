@@ -101,7 +101,7 @@ const READ_ONLY_DIAGNOSTIC_FLAGS = {
   disableImperativeRowHighlight: true,
 } as const
 const ENABLE_QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC = true
-const QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC_MODE = 'rdg-native-keys-no-readonly-styles'
+const QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC_MODE = 'rdg-minimal'
 
 function readPerformanceNow(): number {
   return globalThis.performance?.now() ?? Date.now()
@@ -142,7 +142,6 @@ export function ResultGridView({
     editMode === null &&
     readNavigatorPlatform() === 'MacIntel'
   const disableReadOnlyCellStylesDiagnostic = useNativeKeyDiagnostic
-  const emulateEditableColumnPathDiagnostic = useNativeKeyDiagnostic
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -198,7 +197,7 @@ export function ResultGridView({
         'info',
         `[query-result-grid-debug] mode=${QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC_MODE} ` +
           `tabId=${tabId} keyStrategy=native-column-names disableReadOnlyCellStyles=true ` +
-          `emulateEditableColumnPath=true`
+          `disableAutoSize=true disableCustomCellRenderer=true disableDefaultSortRenderer=true`
       )
     }
     return () => {
@@ -477,32 +476,23 @@ export function ResultGridView({
   // ---------------------------------------------------------------------------
   // Column descriptors: build GridColumnDescriptor[] from ColumnMeta[].
   // ---------------------------------------------------------------------------
-const gridColumns: GridColumnDescriptor[] = useMemo(() => {
+  const gridColumns: GridColumnDescriptor[] = useMemo(() => {
     return resolvedColumns.map((column) => {
-      const editable = emulateEditableColumnPathDiagnostic ? true : column.editable
-      const tableColumnMeta =
-        editable && !column.tableColumnMeta
-          ? {
-              ...column.effectiveTableMeta,
-              enumValues: undefined,
-            }
-          : column.tableColumnMeta
-
       return {
         key: column.key,
         displayName: column.displayName,
         dataType: column.dataType,
-        editable,
+        editable: column.editable,
         isBinary: false,
-        isNullable: tableColumnMeta?.isNullable ?? true,
-        isPrimaryKey: tableColumnMeta?.isPrimaryKey ?? false,
-        isUniqueKey: tableColumnMeta?.isUniqueKey ?? false,
-        enumValues: tableColumnMeta?.enumValues,
-        tableColumnMeta: editable ? tableColumnMeta : undefined,
+        isNullable: column.tableColumnMeta?.isNullable ?? true,
+        isPrimaryKey: column.tableColumnMeta?.isPrimaryKey ?? false,
+        isUniqueKey: column.tableColumnMeta?.isUniqueKey ?? false,
+        enumValues: column.tableColumnMeta?.enumValues,
+        tableColumnMeta: column.editable ? column.tableColumnMeta : undefined,
         foreignKey: column.foreignKey,
       }
     })
-  }, [emulateEditableColumnPathDiagnostic, resolvedColumns])
+  }, [resolvedColumns])
 
   // ---------------------------------------------------------------------------
   // Sort state: translate between app (lowercase, real names) and BaseGridView
@@ -843,7 +833,9 @@ const gridColumns: GridColumnDescriptor[] = useMemo(() => {
         }
         isModifiedCell={isModifiedCell}
         applyReadOnlyCellStyles={!disableReadOnlyCellStylesDiagnostic}
-        autoSizeConfig={autoSizeConfig}
+        useCustomCellRenderer={!useNativeKeyDiagnostic}
+        useDefaultSortRenderer={!useNativeKeyDiagnostic}
+        autoSizeConfig={useNativeKeyDiagnostic ? undefined : autoSizeConfig}
         showReadOnlyHeaders={!!editMode}
         performanceLogger={performanceLogger}
         testId="result-grid-view"

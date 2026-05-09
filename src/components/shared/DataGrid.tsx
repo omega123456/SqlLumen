@@ -53,6 +53,7 @@ export interface DataGridWrapperProps<R, SR = unknown> {
   rowClass?: RDGProps<R, SR>['rowClass']
   defaultColumnOptions?: DefaultColumnOptions<R, SR>
   renderers?: Renderers<R, SR>
+  useDefaultSortRenderer?: boolean
   'data-testid'?: string
   className?: string
 }
@@ -85,6 +86,7 @@ function DataGridInner<R, SR = unknown>(
     rowClass,
     defaultColumnOptions,
     renderers: userRenderers,
+    useDefaultSortRenderer = true,
     'data-testid': testId,
     className,
   } = props
@@ -93,7 +95,7 @@ function DataGridInner<R, SR = unknown>(
 
   // Merge our default sort status renderer with any user-provided renderers
   const mergedRenderers: Renderers<R, SR> = {
-    renderSortStatus: SortStatusRenderer,
+    ...(useDefaultSortRenderer ? { renderSortStatus: SortStatusRenderer } : {}),
     ...userRenderers,
   }
 

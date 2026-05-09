@@ -132,6 +132,8 @@ export interface BaseGridViewProps {
   selectedRowClassName?: string
   isModifiedCell?: (rowData: Record<string, unknown>, columnKey: string) => boolean
   applyReadOnlyCellStyles?: boolean
+  useCustomCellRenderer?: boolean
+  useDefaultSortRenderer?: boolean
   autoSizeConfig?: AutoSizeConfig
   showReadOnlyHeaders?: boolean
   performanceLogger?: GridPerformanceLogger

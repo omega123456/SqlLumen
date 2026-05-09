@@ -166,6 +166,8 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     selectedRowClassName,
     isModifiedCell,
     applyReadOnlyCellStyles = true,
+    useCustomCellRenderer = true,
+    useDefaultSortRenderer = true,
     autoSizeConfig,
     showReadOnlyHeaders,
     performanceLogger,
@@ -573,7 +575,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         width: colWidth,
         resizable: true,
         sortable: !!onSortChange,
-        renderCell: TableDataCellRenderer,
+        ...(useCustomCellRenderer ? { renderCell: TableDataCellRenderer } : {}),
         cellClass,
         ...(highlightColumnKey &&
           col.key === highlightColumnKey && {
@@ -608,7 +610,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         return {
           ...baseProps,
           renderHeaderCell: ForeignKeyColumnHeaderCell,
-          renderCell: FkCellRenderer,
+          ...(useCustomCellRenderer ? { renderCell: FkCellRenderer } : {}),
           foreignKey: col.foreignKey,
         } as Column<GridRow>
       }
@@ -644,6 +646,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     highlightColumnKey,
     prefixColumns,
     suffixColumns,
+    useCustomCellRenderer,
   ])
   const rdgColumns: readonly Column<GridRow>[] = rdgColumnsResult.columns
 
@@ -1054,6 +1057,7 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
         onColumnResize={handleColumnResize}
         rowKeyGetter={rowKeyGetterProp}
         rowClass={getRowClassProp}
+        useDefaultSortRenderer={useDefaultSortRenderer}
         data-testid={testId ? `${testId}-inner` : 'base-grid-view-inner'}
       />
       {contextMenuPortal}
