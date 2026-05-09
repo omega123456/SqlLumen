@@ -76,3 +76,63 @@
   contain: layout paint style;
   isolation: isolate;
 }
+
+.plainGridShell {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+}
+
+.plainGridScroller {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background: var(--result-grid-bg);
+}
+
+.plainGridTable {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--type-size-md);
+}
+
+.plainGridHeaderCell {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0 var(--grid-cell-padding-x);
+  height: var(--grid-row-height);
+  font-family: var(--type-table-header-font);
+  font-size: var(--type-table-header-size);
+  font-weight: var(--type-table-header-weight);
+  letter-spacing: var(--type-table-header-tracking);
+  text-align: left;
+  white-space: nowrap;
+  background: var(--result-grid-header-bg);
+  color: var(--on-surface);
+  border-right: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+}
+
+.plainGridCell {
+  padding: 0 var(--grid-cell-padding-x);
+  height: var(--grid-row-height);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  color: var(--on-surface);
+  border-right: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
+}
+
+.plainGridNullCell {
+  color: var(--on-surface-variant);
+  font-style: italic;
+  opacity: 0.5;
+}
+
+.plainGridSelectedRow {
+  background: var(--result-grid-row-selected-bg);
+}

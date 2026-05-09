@@ -8,6 +8,10 @@ import { getFlatTabState } from '../../../stores/query-store'
 import { fetchTableData } from '../../../lib/table-data-commands'
 import { makeTabState } from '../../helpers/query-test-utils'
 
+const { logFrontendMock } = vi.hoisted(() => ({
+  logFrontendMock: vi.fn(),
+}))
+
 let capturedFkLookupDialogProps: Record<string, unknown> | null = null
 
 let lastReactDataGridProps: Record<string, unknown> = {}
@@ -94,6 +98,10 @@ vi.mock('../../../lib/table-data-commands', () => ({
   exportTableData: vi.fn().mockResolvedValue(undefined),
 }))
 
+vi.mock('../../../lib/app-log-commands', () => ({
+  logFrontend: logFrontendMock,
+}))
+
 vi.mock('../../../components/table-data/FkLookupDialog', () => ({
   FkLookupDialog: (props: Record<string, unknown>) => {
     capturedFkLookupDialogProps = props
@@ -124,9 +132,15 @@ function flat(tabId: string) {
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   mockIPC(() => null)
+  window.localStorage.clear()
   lastReactDataGridProps = {}
   reactDataGridRenderCount = 0
   capturedFkLookupDialogProps = null
+  logFrontendMock.mockReset()
+  Object.defineProperty(window.navigator, 'platform', {
+    configurable: true,
+    value: 'Win32',
+  })
 })
 
 describe('ResultPanel', () => {
@@ -948,6 +962,73 @@ describe('ResultPanel', () => {
     expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
     expect(screen.queryByTestId('result-form-view')).not.toBeInTheDocument()
     expect(screen.queryByTestId('result-text-view')).not.toBeInTheDocument()
+  })
+
+  it('uses the plain query-result renderer for macOS read-only grid diagnostics', () => {
+    const platformSpy = vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel')
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          status: 'success',
+          viewMode: 'grid',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          rows: [
+            ['1', 'Alice'],
+            ['2', null],
+          ],
+          totalRows: 2,
+          queryId: 'q1',
+        }),
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+
+    expect(screen.getByTestId('plain-query-result-grid')).toBeInTheDocument()
+    expect(reactDataGridRenderCount).toBe(0)
+    expect(screen.getByText('Alice')).toBeInTheDocument()
+    expect(logFrontendMock).toHaveBeenCalledWith(
+      'info',
+      expect.stringContaining('[query-result-grid-debug] mode="plain"')
+    )
+    platformSpy.mockRestore()
+  })
+
+  it('keeps edit-mode query results on the react-data-grid renderer on macOS', () => {
+    const platformSpy = vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel')
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          status: 'success',
+          viewMode: 'grid',
+          columns: [
+            { name: 'id', dataType: 'INT' },
+            { name: 'name', dataType: 'VARCHAR' },
+          ],
+          rows: [['1', 'Alice']],
+          queryId: 'q1',
+          editMode: 'users',
+          editableColumnMap: new Map([
+            [0, false],
+            [1, true],
+          ]),
+        }),
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+
+    expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
+    expect(screen.queryByTestId('plain-query-result-grid')).not.toBeInTheDocument()
+    expect(reactDataGridRenderCount).toBeGreaterThan(0)
+    expect(logFrontendMock).not.toHaveBeenCalledWith(
+      'info',
+      expect.stringContaining('renderer=plain-table')
+    )
+    platformSpy.mockRestore()
   })
 
   it('handleRowSelected sets selected row index directly', () => {

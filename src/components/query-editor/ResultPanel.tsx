@@ -13,7 +13,7 @@
  * Supports multi-result tabs — renders ResultSubTabs when results.length > 1.
  */
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Play, CheckCircle } from '@phosphor-icons/react'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { useToastStore } from '../../stores/toast-store'
@@ -33,6 +33,7 @@ import type {
   ForeignKeyColumnInfo,
   TableDataColumnMeta,
 } from '../../types/schema'
+import { logFrontend } from '../../lib/app-log-commands'
 import { colIndexFromKey } from '../../lib/col-key-utils'
 import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
 import { buildInitialConditionsFromCell } from '../../lib/filter-utils'
@@ -52,6 +53,108 @@ const EMPTY_FILTER_MODEL: FilterCondition[] = []
 const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
 const EMPTY_BINDINGS = new Map<number, string>()
 const EMPTY_BOUND_COLUMN_INDEX_MAP = new Map<string, number>()
+const QUERY_RESULT_RENDERER_STORAGE_KEY = 'sqllumen.queryResultRenderer'
+const QUERY_RESULT_PLAIN_RENDERER_MODE = 'plain'
+
+type QueryResultRendererMode = 'rdg' | 'plain'
+
+function readNavigatorPlatform(): string {
+  return globalThis.navigator?.platform ?? 'unknown'
+}
+
+function isPlainResultGridDiagnosticEnabled(): boolean {
+  try {
+    const override = globalThis.localStorage?.getItem(QUERY_RESULT_RENDERER_STORAGE_KEY)
+    if (override === 'plain') return true
+    if (override === 'rdg') return false
+    return readNavigatorPlatform() === 'MacIntel'
+  } catch {
+    return readNavigatorPlatform() === 'MacIntel'
+  }
+}
+
+function shouldUsePlainResultGridDiagnostic(args: {
+  viewMode: string
+  editMode: string | null
+  columnsLength: number
+}): boolean {
+  if (args.viewMode !== 'grid' || args.editMode !== null || args.columnsLength === 0) return false
+  return isPlainResultGridDiagnosticEnabled()
+}
+
+function formatPlainResultValue(value: unknown): string {
+  if (value == null) return 'NULL'
+  if (value instanceof Date) return value.toISOString()
+  return String(value)
+}
+
+interface PlainResultGridDiagnosticProps {
+  columns: ColumnMeta[]
+  rows: unknown[][]
+  selectedRowIndex: number | null
+  onRowSelected: (rowIndex: number) => void
+}
+
+function PlainResultGridDiagnostic({
+  columns,
+  rows,
+  selectedRowIndex,
+  onRowSelected,
+}: PlainResultGridDiagnosticProps) {
+  return (
+    <div
+      className={styles.plainGridShell}
+      data-testid="plain-query-result-grid"
+      data-renderer={QUERY_RESULT_PLAIN_RENDERER_MODE}
+    >
+      <div className={styles.plainGridScroller}>
+        <table className={styles.plainGridTable}>
+          <thead>
+            <tr>
+              {columns.map((column, index) => (
+                <th
+                  key={`${column.name}-${index}`}
+                  className={styles.plainGridHeaderCell}
+                  scope="col"
+                >
+                  {column.name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => (
+              <tr
+                key={rowIndex}
+                className={
+                  selectedRowIndex === rowIndex ? styles.plainGridSelectedRow : undefined
+                }
+                onClick={() => onRowSelected(rowIndex)}
+              >
+                {columns.map((column, columnIndex) => {
+                  const value = row[columnIndex]
+                  const isNull = value == null
+                  return (
+                    <td
+                      key={`${rowIndex}-${column.name}-${columnIndex}`}
+                      className={
+                        isNull
+                          ? `${styles.plainGridCell} ${styles.plainGridNullCell}`
+                          : styles.plainGridCell
+                      }
+                    >
+                      {formatPlainResultValue(value)}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
 
 export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
@@ -365,6 +468,37 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
     viewMode === 'grid' && columns.length > 0
       ? `${styles.tabPanel} ${styles.gridTabPanel}`
       : styles.tabPanel
+  const usePlainResultGridDiagnostic = useMemo(
+    () =>
+      shouldUsePlainResultGridDiagnostic({
+        viewMode,
+        editMode,
+        columnsLength: columns.length,
+      }),
+    [columns.length, editMode, viewMode]
+  )
+  const queryResultRendererMode: QueryResultRendererMode = usePlainResultGridDiagnostic
+    ? 'plain'
+    : 'rdg'
+
+  useEffect(() => {
+    if (displayStatus !== 'success' || viewMode !== 'grid' || columns.length === 0) return
+
+    logFrontend(
+      'info',
+      `[query-result-grid-debug] mode="${queryResultRendererMode}" tabId="${tabId}" ` +
+        `platform=${readNavigatorPlatform()} rows=${rows.length} columns=${columns.length} ` +
+        `editMode="${editMode ?? 'read-only'}"`
+    )
+  }, [
+    columns.length,
+    displayStatus,
+    editMode,
+    queryResultRendererMode,
+    rows.length,
+    tabId,
+    viewMode,
+  ])
 
   return (
     <div className={styles.container} data-testid="result-panel">
@@ -406,27 +540,38 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
             {columns.length > 0 ? (
               <FkLookupProvider onFkLookup={handleFkLookup}>
                 {viewMode === 'grid' && (
-                  <ResultGridView
-                    columns={columns}
-                    rows={rows}
-                    sortColumn={sortColumn}
-                    sortDirection={sortDirection}
-                    onSortChanged={handleSortChanged}
-                    onRowSelected={handleRowSelected}
-                    selectedRowIndex={selectedRowIndex}
-                    tabId={tabId}
-                    editMode={editMode}
-                    editableColumnMap={editableColumnMap}
-                    editColumnBindings={editColumnBindings}
-                    editState={editState}
-                    editingRowIndex={editingRowIndex}
-                    editTableColumns={editTableColumns}
-                    editForeignKeys={editForeignKeys}
-                    onStartEditing={handleStartEditing}
-                    onUpdateCellValue={handleUpdateCellValue}
-                    onSyncCellValue={handleSyncCellValue}
-                    onAutoSave={handleAutoSave}
-                  />
+                  <>
+                    {usePlainResultGridDiagnostic ? (
+                      <PlainResultGridDiagnostic
+                        columns={columns}
+                        rows={rows}
+                        selectedRowIndex={selectedRowIndex}
+                        onRowSelected={handleRowSelected}
+                      />
+                    ) : (
+                      <ResultGridView
+                        columns={columns}
+                        rows={rows}
+                        sortColumn={sortColumn}
+                        sortDirection={sortDirection}
+                        onSortChanged={handleSortChanged}
+                        onRowSelected={handleRowSelected}
+                        selectedRowIndex={selectedRowIndex}
+                        tabId={tabId}
+                        editMode={editMode}
+                        editableColumnMap={editableColumnMap}
+                        editColumnBindings={editColumnBindings}
+                        editState={editState}
+                        editingRowIndex={editingRowIndex}
+                        editTableColumns={editTableColumns}
+                        editForeignKeys={editForeignKeys}
+                        onStartEditing={handleStartEditing}
+                        onUpdateCellValue={handleUpdateCellValue}
+                        onSyncCellValue={handleSyncCellValue}
+                        onAutoSave={handleAutoSave}
+                      />
+                    )}
+                  </>
                 )}
                 {viewMode === 'form' && (
                   <ResultFormView
