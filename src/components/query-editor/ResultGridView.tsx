@@ -11,7 +11,7 @@
  * The external props interface remains unchanged — ResultPanel.tsx does not need modification.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { BaseGridView } from '../shared/BaseGridView'
 import {
   EditorCallbacksContext,
@@ -120,7 +120,6 @@ export function ResultGridView({
     value: unknown
   } | null>(null)
   const readOnlySelectionSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [localSelectedRowIndex, setLocalSelectedRowIndex] = useState(selectedRowIndex)
   const lastSyncedSelectionRef = useRef<{
     rowIdx: number
     columnKey: string
@@ -150,10 +149,6 @@ export function ResultGridView({
   useEffect(() => {
     storeSetSelectedCellRef.current = storeSetSelectedCell
   }, [storeSetSelectedCell])
-
-  useEffect(() => {
-    setLocalSelectedRowIndex(selectedRowIndex)
-  }, [selectedRowIndex])
 
   useEffect(() => {
     lastSyncedSelectionRef.current = null
@@ -238,7 +233,6 @@ export function ResultGridView({
 
   const handleCellSelectionChange = useCallback(
     (args: CellClickGuardArgs) => {
-      setLocalSelectedRowIndex(args.rowIdx)
       scheduleReadOnlySelectionSync(args.rowIdx, args.columnKey, args.rowData)
     },
     [scheduleReadOnlySelectionSync]
@@ -614,13 +608,13 @@ export function ResultGridView({
       }
 
       // Selected row highlight
-      if (localSelectedRowIndex != null && rowIdx === localSelectedRowIndex) {
+      if (selectedRowIndex != null && rowIdx === selectedRowIndex) {
         classes.push('rdg-row-precision-selected')
       }
 
       return classes.length > 0 ? classes.join(' ') : undefined
     },
-    [localSelectedRowIndex, editingRowIndex]
+    [selectedRowIndex, editingRowIndex]
   )
 
   return (
@@ -639,6 +633,8 @@ export function ResultGridView({
         onCellClipboardEdit={handleCellClipboardEdit}
         rowKeyGetter={rowKeyGetter}
         getRowClass={getRowClass}
+        selectedRowIndex={selectedRowIndex}
+        selectedRowClassName={!editMode ? 'rdg-row-precision-selected' : undefined}
         isModifiedCell={isModifiedCell}
         autoSizeConfig={autoSizeConfig}
         showReadOnlyHeaders={!!editMode}
