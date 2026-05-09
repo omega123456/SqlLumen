@@ -64,12 +64,9 @@ function readNavigatorPlatform(): string {
 
 function isPlainResultGridDiagnosticEnabled(): boolean {
   try {
-    const override = globalThis.localStorage?.getItem(QUERY_RESULT_RENDERER_STORAGE_KEY)
-    if (override === 'plain') return true
-    if (override === 'rdg') return false
-    return readNavigatorPlatform() === 'MacIntel'
+    return globalThis.localStorage?.getItem(QUERY_RESULT_RENDERER_STORAGE_KEY) === 'plain'
   } catch {
-    return readNavigatorPlatform() === 'MacIntel'
+    return false
   }
 }
 

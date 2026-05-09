@@ -87,6 +87,10 @@ describe('ResultGridView', () => {
     vi.clearAllMocks()
     lastBaseGridProps = {}
     baseGridRenderCount = 0
+    Object.defineProperty(window.navigator, 'platform', {
+      configurable: true,
+      value: 'Win32',
+    })
     useQueryStore.setState({
       tabs: {
         'tab-test': makeTabState({
@@ -147,6 +151,28 @@ describe('ResultGridView', () => {
     expect(rowData[1]).toEqual({ __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null })
   })
 
+  it('uses native column-name keys for read-only macOS diagnostics', () => {
+    Object.defineProperty(window.navigator, 'platform', {
+      configurable: true,
+      value: 'MacIntel',
+    })
+
+    render(<ResultGridView {...defaultProps} />)
+    const props = getLatestBaseGridProps()
+    const colDefs = props.columns as Array<{ key: string }>
+    const rowData = props.rows as Array<Record<string, unknown>>
+
+    expect(colDefs[0].key).toBe('id')
+    expect(colDefs[1].key).toBe('name')
+    expect(colDefs[2].key).toBe('email')
+    expect(rowData[0]).toEqual({
+      __rowIdx: 0,
+      id: 1,
+      name: 'Alice',
+      email: 'alice@example.com',
+    })
+  })
+
   it('enables auto-sizing based on the visible query result values', () => {
     render(<ResultGridView {...defaultProps} />)
 
@@ -177,6 +203,18 @@ describe('ResultGridView', () => {
     render(<ResultGridView {...defaultProps} sortColumn="name" sortDirection="asc" />)
     const props = getLatestBaseGridProps()
     expect(props.sortColumn).toBe('col_1')
+    expect(props.sortDirection).toBe('ASC')
+  })
+
+  it('passes native sort keys for read-only macOS diagnostics', () => {
+    Object.defineProperty(window.navigator, 'platform', {
+      configurable: true,
+      value: 'MacIntel',
+    })
+
+    render(<ResultGridView {...defaultProps} sortColumn="name" sortDirection="asc" />)
+    const props = getLatestBaseGridProps()
+    expect(props.sortColumn).toBe('name')
     expect(props.sortDirection).toBe('ASC')
   })
 

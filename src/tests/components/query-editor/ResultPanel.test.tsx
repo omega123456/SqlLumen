@@ -964,8 +964,8 @@ describe('ResultPanel', () => {
     expect(screen.queryByTestId('result-text-view')).not.toBeInTheDocument()
   })
 
-  it('uses the plain query-result renderer for macOS read-only grid diagnostics', () => {
-    const platformSpy = vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel')
+  it('uses the plain query-result renderer when explicitly forced', () => {
+    window.localStorage.setItem('sqllumen.queryResultRenderer', 'plain')
     useQueryStore.setState({
       tabs: {
         'tab-1': makeTabState({
@@ -994,11 +994,10 @@ describe('ResultPanel', () => {
       'info',
       expect.stringContaining('[query-result-grid-debug] mode="plain"')
     )
-    platformSpy.mockRestore()
   })
 
-  it('keeps edit-mode query results on the react-data-grid renderer on macOS', () => {
-    const platformSpy = vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel')
+  it('keeps edit-mode query results on the react-data-grid renderer when plain mode is forced', () => {
+    window.localStorage.setItem('sqllumen.queryResultRenderer', 'plain')
     useQueryStore.setState({
       tabs: {
         'tab-1': makeTabState({
@@ -1028,7 +1027,6 @@ describe('ResultPanel', () => {
       'info',
       expect.stringContaining('renderer=plain-table')
     )
-    platformSpy.mockRestore()
   })
 
   it('handleRowSelected sets selected row index directly', () => {

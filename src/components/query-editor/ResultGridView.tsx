@@ -100,9 +100,15 @@ const READ_ONLY_DIAGNOSTIC_FLAGS = {
   disableSelectionSync: true,
   disableImperativeRowHighlight: true,
 } as const
+const ENABLE_QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC = true
+const QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC_MODE = 'rdg-native-keys'
 
 function readPerformanceNow(): number {
   return globalThis.performance?.now() ?? Date.now()
+}
+
+function readNavigatorPlatform(): string {
+  return globalThis.navigator?.platform ?? 'unknown'
 }
 
 export function ResultGridView({
@@ -131,6 +137,10 @@ export function ResultGridView({
   const isReadOnlyDiagnosticMode =
     ENABLE_QUERY_RESULT_PARITY_LITE_DIAGNOSTIC && editMode === null
   const diagnosticFlags = isReadOnlyDiagnosticMode ? READ_ONLY_DIAGNOSTIC_FLAGS : null
+  const useNativeKeyDiagnostic =
+    ENABLE_QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC &&
+    editMode === null &&
+    readNavigatorPlatform() === 'MacIntel'
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -181,10 +191,17 @@ export function ResultGridView({
           `bypassColumnResolution=${diagnosticFlags.bypassColumnResolution}`
       )
     }
+    if (useNativeKeyDiagnostic) {
+      logFrontend(
+        'info',
+        `[query-result-grid-debug] mode=${QUERY_RESULT_NATIVE_KEY_DIAGNOSTIC_MODE} ` +
+          `tabId=${tabId} keyStrategy=native-column-names`
+      )
+    }
     return () => {
       performanceLogger.flush('unmount')
     }
-  }, [diagnosticFlags, performanceLogger, tabId])
+  }, [diagnosticFlags, performanceLogger, tabId, useNativeKeyDiagnostic])
 
   useEffect(() => {
     performanceLogger.recordTiming('result-render-commit', readPerformanceNow() - renderStartedAt, {
@@ -240,8 +257,10 @@ export function ResultGridView({
     if (!pendingSelection) return
 
     pendingReadOnlySelectionRef.current = null
-    const columnIndex = colIndexFromKey(pendingSelection.columnKey)
-    const column = columnsRef.current[columnIndex]
+      const columnIndex = colIndexFromKey(pendingSelection.columnKey)
+    const column = useNativeKeyDiagnostic
+      ? columnsRef.current.find((candidate) => candidate.name === pendingSelection.columnKey)
+      : columnsRef.current[columnIndex]
 
     onRowSelectedRef.current(pendingSelection.rowIdx)
     if (!column) return
@@ -295,8 +314,10 @@ export function ResultGridView({
       lastSyncedSelectionRef.current = { rowIdx, columnKey, value: nextValue }
       onRowSelected(rowIdx)
 
-      const columnIndex = colIndexFromKey(columnKey)
-      const column = columns[columnIndex]
+      const column =
+        useNativeKeyDiagnostic
+          ? columns.find((candidate) => candidate.name === columnKey)
+          : columns[colIndexFromKey(columnKey)]
       if (!column) return
 
       storeSetSelectedCell(tabId, {
@@ -322,14 +343,16 @@ export function ResultGridView({
     () => ({
       tabId,
       updateCellValue: (_tabId, columnKey, value) => {
-        const colIndex = colIndexFromKey(columnKey)
+        const colIndex = useNativeKeyDiagnostic
+          ? columns.findIndex((column) => column.name === columnKey)
+          : colIndexFromKey(columnKey)
         if (colIndex >= 0) {
           onUpdateCellValue(colIndex, value)
         }
       },
       syncCellValue: () => {},
     }),
-    [onUpdateCellValue, tabId]
+    [columns, onUpdateCellValue, tabId, useNativeKeyDiagnostic]
   )
 
   // ---------------------------------------------------------------------------
@@ -353,14 +376,18 @@ export function ResultGridView({
     const materializedRows = rows.map((row, rowIdx) => {
       const obj: ResultRow = { __rowIdx: rowIdx }
       columns.forEach((_, i) => {
-        obj[colKey(i)] = row[i] ?? null
+        const key = useNativeKeyDiagnostic ? columns[i].name : colKey(i)
+        obj[key] = row[i] ?? null
       })
 
       if (editState && editingRowIndex !== null && rowIdx === editingRowIndex) {
         for (const [colName, value] of Object.entries(editState.currentValues)) {
           const colIdx = boundColumnIndexLookup.get(colName) ?? -1
           if (colIdx !== -1) {
-            obj[colKey(colIdx)] = value
+            const key = useNativeKeyDiagnostic ? columns[colIdx]?.name : colKey(colIdx)
+            if (key) {
+              obj[key] = value
+            }
           }
         }
       }
@@ -371,7 +398,7 @@ export function ResultGridView({
       rows: materializedRows,
       durationMs: readPerformanceNow() - startedAt,
     }
-  }, [rows, columns, editState, editingRowIndex, boundColumnIndexLookup])
+  }, [rows, columns, editState, editingRowIndex, boundColumnIndexLookup, useNativeKeyDiagnostic])
   const rowData: ResultRow[] = rowDataBuild.rows
 
   useEffect(() => {
@@ -394,7 +421,7 @@ export function ResultGridView({
     const resolved: ResolvedQueryResultColumn[] =
       diagnosticFlags?.bypassColumnResolution
         ? columns.map((resultColumn, index) => ({
-            key: colKey(index),
+            key: useNativeKeyDiagnostic ? resultColumn.name : colKey(index),
             displayName: resultColumn.name,
             dataType: resultColumn.dataType,
             boundName: resultColumn.name,
@@ -434,6 +461,7 @@ export function ResultGridView({
     editTableColumns,
     editForeignKeys,
     editColumnBindings,
+    useNativeKeyDiagnostic,
   ])
   const resolvedColumns = resolvedColumnsBuild.columns
 
@@ -468,11 +496,12 @@ export function ResultGridView({
   // ---------------------------------------------------------------------------
   const sortColumnKey = useMemo(() => {
     if (sortColumn && sortDirection) {
+      if (useNativeKeyDiagnostic) return sortColumn
       const colIdx = columns.findIndex((c) => c.name === sortColumn)
       if (colIdx >= 0) return colKey(colIdx)
     }
     return null
-  }, [sortColumn, sortDirection, columns])
+  }, [sortColumn, sortDirection, columns, useNativeKeyDiagnostic])
 
   const sortDirectionUpper = useMemo(() => {
     if (sortDirection) return sortDirection.toUpperCase() as 'ASC' | 'DESC'
@@ -490,14 +519,18 @@ export function ResultGridView({
         }
         return
       }
+      const dir = direction ? (direction.toLowerCase() as 'asc' | 'desc') : null
+      if (useNativeKeyDiagnostic) {
+        onSortChanged(colKey_, dir)
+        return
+      }
       const colIndex = colIndexFromKey(colKey_)
       const colName = columns[colIndex]?.name
       if (colName) {
-        const dir = direction ? (direction.toLowerCase() as 'asc' | 'desc') : null
         onSortChanged(colName, dir)
       }
     },
-    [columns, sortColumn, onSortChanged]
+    [columns, sortColumn, onSortChanged, useNativeKeyDiagnostic]
   )
 
   // ---------------------------------------------------------------------------
@@ -543,13 +576,15 @@ export function ResultGridView({
       if (rowIdx !== currentEditingRowIndex) return false
 
       // Only bound source columns can be considered modified query-edit fields.
-      const colIndex = colIndexFromKey(columnKey)
+      const colIndex = useNativeKeyDiagnostic
+        ? columns.findIndex((column) => column.name === columnKey)
+        : colIndexFromKey(columnKey)
       const boundName = editColumnBindings.get(colIndex)
       if (!boundName) return false
 
       return currentEditState.modifiedColumns.has(boundName)
     },
-    [editMode, editColumnBindings]
+    [columns, editMode, editColumnBindings, useNativeKeyDiagnostic]
   )
 
   // ---------------------------------------------------------------------------
@@ -561,11 +596,13 @@ export function ResultGridView({
     return async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
       const { rowIdx, columnKey } = args
 
-      const colIndex = colIndexFromKey(columnKey)
+      const colIndex = useNativeKeyDiagnostic
+        ? columns.findIndex((column) => column.name === columnKey)
+        : colIndexFromKey(columnKey)
       const isEditable = editableColumnMap.get(colIndex) ?? false
 
       // Determine target column index for selectCell
-      const targetColIdx = colIndexFromKey(columnKey)
+      const targetColIdx = colIndex
 
       // Run async guard (save, validate) if switching rows
       const currentEditingRow = editingRowIndexRef.current
@@ -598,7 +635,7 @@ export function ResultGridView({
       // Non-editable column: select but don't edit
       return { proceed: true, targetRowIdx: rowIdx, targetColIdx, enableEditor: false }
     }
-  }, [editMode, editableColumnMap, onAutoSave, onStartEditing, syncSelection])
+  }, [columns, editMode, editableColumnMap, onAutoSave, onStartEditing, syncSelection, useNativeKeyDiagnostic])
 
   // In read-only mode, we still need a simple cell click handler for row selection.
   // BaseGridView only calls onCellClickGuard; when it's undefined, RDG default behavior
@@ -608,7 +645,9 @@ export function ResultGridView({
       syncSelection(args.rowIdx, args.columnKey, args.rowData)
 
       // Allow selectCell so the cell gets focus/selection, but don't open an editor
-      const targetColIdx = colIndexFromKey(args.columnKey)
+      const targetColIdx = useNativeKeyDiagnostic
+        ? columns.findIndex((column) => column.name === args.columnKey)
+        : colIndexFromKey(args.columnKey)
       return {
         proceed: true,
         targetRowIdx: args.rowIdx,
@@ -616,7 +655,7 @@ export function ResultGridView({
         enableEditor: false,
       }
     },
-    [syncSelection]
+    [columns, syncSelection, useNativeKeyDiagnostic]
   )
 
   // ---------------------------------------------------------------------------
@@ -641,7 +680,7 @@ export function ResultGridView({
 
         // Find which col_N value changed
         for (let i = 0; i < currentColumns.length; i++) {
-          const key = colKey(i)
+          const key = useNativeKeyDiagnostic ? currentColumns[i].name : colKey(i)
           if (newRow[key] !== oldRow[key]) {
             if (currentColumns[i]) {
               syncCellValue(i, newRow[key])
@@ -657,14 +696,16 @@ export function ResultGridView({
         },
       })
     },
-    [performanceLogger]
+    [performanceLogger, useNativeKeyDiagnostic]
   )
 
   const autoSizeConfig: AutoSizeConfig | undefined = useMemo(() => {
     return {
       enabled: true,
       computeWidth: (col, gridRows) => {
-        const index = colIndexFromKey(col.key)
+        const index = useNativeKeyDiagnostic
+          ? columns.findIndex((column) => column.name === col.key)
+          : colIndexFromKey(col.key)
         const tableMeta = resolvedColumns[index]?.effectiveTableMeta
         if (!tableMeta) return 150
         // Build a lightweight proxy array that extracts only the target column
@@ -672,7 +713,8 @@ export function ResultGridView({
         // previously created N temporary arrays per column.
         const columnRows: unknown[][] = new Array(gridRows.length)
         for (let i = 0; i < gridRows.length; i++) {
-          columnRows[i] = [gridRows[i][colKey(index)]]
+          const key = useNativeKeyDiagnostic ? col.key : colKey(index)
+          columnRows[i] = [gridRows[i][key]]
         }
         // Lock icon shown for non-editable columns in edit mode: 10px icon + 4px gap
         const isEditable = editableColumnMap.get(index) ?? false
@@ -686,13 +728,15 @@ export function ResultGridView({
         )
       },
     }
-  }, [editableColumnMap, resolvedColumns])
+  }, [columns, editableColumnMap, resolvedColumns, useNativeKeyDiagnostic])
 
   const handleCellClipboardEdit = useCallback(
     async (args: CellClipboardEditArgs) => {
       if (!editMode) return
 
-      const colIndex = colIndexFromKey(args.columnKey)
+      const colIndex = useNativeKeyDiagnostic
+        ? columns.findIndex((column) => column.name === args.columnKey)
+        : colIndexFromKey(args.columnKey)
       const isEditable = editableColumnMap.get(colIndex) ?? false
       if (!columns[colIndex] || !isEditable) return
 
@@ -725,6 +769,7 @@ export function ResultGridView({
       onStartEditing,
       onSyncCellValue,
       syncSelection,
+      useNativeKeyDiagnostic,
     ]
   )
 
