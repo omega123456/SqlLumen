@@ -361,6 +361,10 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
     !primaryKey ||
     primaryKey.isUniqueKeyFallback ||
     !hasInsertEligibleNonPrimaryCloneColumns
+  const gridTabPanelClassName =
+    viewMode === 'grid' && columns.length > 0
+      ? `${styles.tabPanel} ${styles.gridTabPanel}`
+      : styles.tabPanel
 
   return (
     <div className={styles.container} data-testid="result-panel">
@@ -387,7 +391,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
             aria-labelledby={
               results.length > 1 ? `result-tab-${tabId}-${activeResultIndex}` : undefined
             }
-            className={styles.tabPanel}
+            className={gridTabPanelClassName}
           >
             <ResultToolbar
               tabId={tabId}

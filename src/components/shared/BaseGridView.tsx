@@ -626,7 +626,6 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
 
       const previousCell = selectedCellRef.current
       setTrackedSelectedCell(nextSelection)
-      applySelectedRowClass(args.rowIdx)
       if (args.row != null) {
         onCellSelectionChange?.({
           rowIdx: args.rowIdx,
@@ -678,7 +677,6 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
     },
     [
       onCellSelectionChange,
-      applySelectedRowClass,
       runCellClickGuardOnKeyboardSelection,
       selectTrackedCell,
       setTrackedSelectedCell,

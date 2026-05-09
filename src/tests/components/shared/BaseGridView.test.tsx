@@ -39,16 +39,18 @@ vi.mock('../../../components/shared/DataGrid', async () => {
   const React = await import('react')
   return {
     DataGrid: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
+      const elementRef = React.useRef<HTMLDivElement | null>(null)
       mockDataGridFn(props)
       React.useImperativeHandle(ref, () => ({
         selectCell: mockSelectCell,
+        element: elementRef.current,
       }))
       const columns = props.columns as Array<{ key: string; name: string }>
       const rows = props.rows as Array<Record<string, unknown>>
 
       return React.createElement(
         'div',
-        { 'data-testid': props['data-testid'] },
+        { ref: elementRef, 'data-testid': props['data-testid'] },
         React.createElement(
           'div',
           { 'data-testid': 'data-grid-headers' },
@@ -1991,6 +1993,42 @@ describe('BaseGridView', () => {
       columnKey: 'id',
       rowData: testRows[1],
     })
+  })
+
+  it('does not query rows for imperative highlighting during keyboard selection changes', () => {
+    const querySelectorSpy = vi.spyOn(Element.prototype, 'querySelector')
+
+    render(
+      <BaseGridView
+        columns={testColumns}
+        rows={testRows}
+        editState={null}
+        selectedRowIndex={null}
+        selectedRowClassName="rdg-row-precision-selected"
+        onCellSelectionChange={vi.fn()}
+        runCellClickGuardOnKeyboardSelection={false}
+      />
+    )
+
+    const props = getLatestGridProps()
+    const onSelectedCellChange = props.onSelectedCellChange as (args: {
+      rowIdx: number
+      row: Record<string, unknown>
+      column: { key: string; idx: number; editable?: boolean; renderEditCell?: unknown }
+    }) => void
+
+    querySelectorSpy.mockClear()
+
+    act(() => {
+      onSelectedCellChange({
+        rowIdx: 1,
+        row: testRows[1],
+        column: { key: 'id', idx: 0, editable: false },
+      })
+    })
+
+    expect(querySelectorSpy).not.toHaveBeenCalled()
+    querySelectorSpy.mockRestore()
   })
 
   it('reselects the target after a keyboard guard approves row movement', async () => {

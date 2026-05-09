@@ -68,3 +68,11 @@
   min-height: 0;
   overflow: hidden;
 }
+
+/* Query result grids share a vertical split with Monaco. The virtualized grid's
+   sticky/header/cell subtree needs its own containment boundary so WebKit does
+   not drag that subtree into editor typing paint/layout work. */
+.gridTabPanel {
+  contain: layout paint style;
+  isolation: isolate;
+}

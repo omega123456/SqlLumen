@@ -167,6 +167,44 @@ describe('ResultPanel', () => {
     expect(reactDataGridRenderCount).toBe(initialRenderCount)
   })
 
+  it('isolates the tab panel only while the query result grid is mounted', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          content: 'select 1',
+          status: 'success',
+          viewMode: 'grid',
+          columns: [{ name: 'id', dataType: 'INT' }],
+          rows: [[1]],
+          totalRows: 1,
+          queryId: 'q1',
+        }),
+      },
+    })
+
+    const { rerender } = render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByRole('tabpanel').className).toMatch(/gridTabPanel/)
+
+    act(() => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': makeTabState({
+            content: 'select 1',
+            status: 'success',
+            viewMode: 'text',
+            columns: [{ name: 'id', dataType: 'INT' }],
+            rows: [[1]],
+            totalRows: 1,
+            queryId: 'q1',
+          }),
+        },
+      })
+    })
+
+    rerender(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
+    expect(screen.getByRole('tabpanel').className).not.toMatch(/gridTabPanel/)
+  })
+
   it('opens FK lookup dialog from query result form view when FK trigger is clicked', async () => {
     vi.mocked(fetchTableData).mockResolvedValueOnce({
       columns: [
