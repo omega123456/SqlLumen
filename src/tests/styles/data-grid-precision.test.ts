@@ -129,6 +129,19 @@ describe('data-grid-precision selected cell z-index', () => {
     ).not.toBeNull()
     expect(selectedCellRule![1]).toMatch(/z-index:\s*[1-9]/)
   })
+
+  it('should suppress selected-cell decoration on header cells', () => {
+    const selectedHeaderCellRule = dataGridPrecisionCss.match(
+      /\.rdg-precision\s+\.rdg-header-row\s+\.rdg-cell\[aria-selected=['"]true['"]\]\s*\{([^}]+)\}/
+    )
+    expect(selectedHeaderCellRule).not.toBeNull()
+    expect(selectedHeaderCellRule![1]).toMatch(/z-index:\s*20/)
+    expect(selectedHeaderCellRule![1]).toMatch(
+      /background-color:\s*var\(--result-grid-header-bg\)/
+    )
+    expect(selectedHeaderCellRule![1]).toMatch(/box-shadow:\s*none/)
+    expect(selectedHeaderCellRule![1]).toMatch(/outline:\s*none/)
+  })
 })
 
 describe('data-grid-precision editing styles', () => {

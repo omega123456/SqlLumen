@@ -667,6 +667,11 @@ function BaseGridViewInner(props: BaseGridViewProps, ref: React.Ref<DataGridHand
 
       if (args.mode !== 'SELECT') return
 
+      if (event.key === 'ArrowUp' && args.rowIdx === 0) {
+        event.preventGridDefault()
+        return
+      }
+
       if (isClipboardShortcut(event, 'c')) {
         event.preventGridDefault()
         void writeClipboardText(getClipboardText(args.row[args.column.key])).catch((err) => {

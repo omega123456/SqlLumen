@@ -173,6 +173,16 @@
   z-index: 1;
 }
 
+.rdg-precision .rdg-header-row .rdg-cell[aria-selected='true'] {
+  z-index: 20;
+  background-color: var(--result-grid-header-bg);
+  box-shadow: none;
+  outline: none;
+}
+
+.rdg-precision .rdg-header-row .rdg-cell-frozen[aria-selected='true'] {
+  z-index: 21;
+}
 /* ---------- Scrollbar styling ---------- */
 .rdg-precision::-webkit-scrollbar {
   width: var(--grid-scrollbar-size);

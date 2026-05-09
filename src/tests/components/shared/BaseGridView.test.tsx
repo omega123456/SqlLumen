@@ -2110,4 +2110,48 @@ describe('BaseGridView', () => {
       { enableEditor: true, shouldFocusCell: true }
     )
   })
+
+  it('prevents ArrowUp on the first row from moving selection into the header', () => {
+    render(<BaseGridView columns={testColumns} rows={testRows} editState={null} />)
+
+    const props = getLatestGridProps()
+    const onCellKeyDown = props.onCellKeyDown as (
+      args: {
+        mode: 'SELECT'
+        row: Record<string, unknown>
+        rowIdx: number
+        column: { key: string; idx: number; editable?: boolean }
+      },
+      event: {
+        key: string
+        shiftKey?: boolean
+        ctrlKey?: boolean
+        metaKey?: boolean
+        preventGridDefault: () => void
+        isGridDefaultPrevented: () => boolean
+      }
+    ) => void
+    const preventGridDefault = vi.fn()
+
+    act(() => {
+      onCellKeyDown(
+        {
+          mode: 'SELECT',
+          row: testRows[0],
+          rowIdx: 0,
+          column: { key: 'id', idx: 0, editable: true },
+        },
+        {
+          key: 'ArrowUp',
+          shiftKey: false,
+          ctrlKey: false,
+          metaKey: false,
+          preventGridDefault,
+          isGridDefaultPrevented: () => false,
+        }
+      )
+    })
+
+    expect(preventGridDefault).toHaveBeenCalled()
+  })
 })
