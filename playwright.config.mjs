@@ -8,23 +8,25 @@ import { DEV_SERVER_HOST } from './scripts/pick-dev-port.mjs'
 const root = path.dirname(fileURLToPath(import.meta.url))
 const portFile = path.join(root, '.playwright-dev-port')
 
-// The port file is written by a pre-script (ensure-playwright-port.mjs) that
-// runs before both `test:e2e` and `test:screenshots`.  Reading from a file
+// The port file is written by a pre-script (ensure-playwright-port.mjs) before
+// `test:e2e`; screenshot runs pass PLAYWRIGHT_DEV_PORT directly. Reading from a file
 // (rather than calling pickDevPort at config-evaluation time) is critical
 // because Playwright evaluates the config module in EVERY worker process —
 // each call to pickDevPort would race and pick a different port than the one
 // the webServer is actually bound to.
-if (!existsSync(portFile)) {
+const portText =
+  process.env.PLAYWRIGHT_DEV_PORT ?? (existsSync(portFile) ? readFileSync(portFile, 'utf8') : null)
+
+if (portText === null) {
   throw new Error(
     'Missing .playwright-dev-port. Run Playwright via pnpm test:e2e / pnpm test:screenshots, ' +
-      'or first run: node scripts/ensure-playwright-port.mjs'
+    'set PLAYWRIGHT_DEV_PORT, or first run: node scripts/ensure-playwright-port.mjs'
   )
 }
 
-const portText = readFileSync(portFile, 'utf8')
 const port = parseInt(portText.trim(), 10)
 if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid port in .playwright-dev-port: ${portText.trim()}`)
+  throw new Error(`Invalid Playwright dev server port: ${portText.trim()}`)
 }
 
 const baseURL = `http://${DEV_SERVER_HOST}:${port}`

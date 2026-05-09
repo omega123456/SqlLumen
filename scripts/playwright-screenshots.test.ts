@@ -9,4 +9,12 @@ describe('playwright screenshot runner', () => {
 
     expect(source).not.toContain("process.env.PLAYWRIGHT_SCREENSHOT_RUN = '1'")
   })
+
+  it('passes a dynamically selected port to Playwright', () => {
+    const scriptPath = path.resolve('scripts/playwright-screenshots.mjs')
+    const source = readFileSync(scriptPath, 'utf8')
+
+    expect(source).toContain('pickRandomDevPort')
+    expect(source).toContain('PLAYWRIGHT_DEV_PORT')
+  })
 })

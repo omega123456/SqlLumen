@@ -5,8 +5,10 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { DEV_SERVER_HOST, pickRandomDevPort } from './pick-dev-port.mjs'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
+const port = await pickRandomDevPort(DEV_SERVER_HOST)
 
 const extraArgs = process.argv.slice(2)
 const result = spawnSync(
@@ -16,7 +18,10 @@ const result = spawnSync(
     cwd: root,
     stdio: 'inherit',
     shell: true,
-    env: process.env,
+    env: {
+      ...process.env,
+      PLAYWRIGHT_DEV_PORT: String(port),
+    },
   }
 )
 

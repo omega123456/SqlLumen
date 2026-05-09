@@ -41,3 +41,23 @@ export function pickDevPort(host = DEV_SERVER_HOST, preferredPort = PREFERRED_DE
     tryListen()
   })
 }
+
+export function pickRandomDevPort(host = DEV_SERVER_HOST) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer()
+    server.once('error', reject)
+    server.listen(0, host, () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close(() => {
+          reject(new Error(`Could not determine free TCP port on ${host}`))
+        })
+        return
+      }
+
+      server.close(() => {
+        resolve(address.port)
+      })
+    })
+  })
+}
