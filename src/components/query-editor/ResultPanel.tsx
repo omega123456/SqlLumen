@@ -55,11 +55,20 @@ const EMPTY_BINDINGS = new Map<number, string>()
 const EMPTY_BOUND_COLUMN_INDEX_MAP = new Map<string, number>()
 const QUERY_RESULT_RENDERER_STORAGE_KEY = 'sqllumen.queryResultRenderer'
 const QUERY_RESULT_PLAIN_RENDERER_MODE = 'plain'
+const QUERY_RESULT_NO_CONTAIN_KEY = 'sqllumen.queryResultNoContain'
 
 type QueryResultRendererMode = 'rdg' | 'plain'
 
 function readNavigatorPlatform(): string {
   return globalThis.navigator?.platform ?? 'unknown'
+}
+
+function isNoContainDiagnosticEnabled(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(QUERY_RESULT_NO_CONTAIN_KEY) === 'true'
+  } catch {
+    return false
+  }
 }
 
 function isPlainResultGridDiagnosticEnabled(): boolean {
@@ -123,9 +132,7 @@ function PlainResultGridDiagnostic({
             {rows.map((row, rowIndex) => (
               <tr
                 key={rowIndex}
-                className={
-                  selectedRowIndex === rowIndex ? styles.plainGridSelectedRow : undefined
-                }
+                className={selectedRowIndex === rowIndex ? styles.plainGridSelectedRow : undefined}
                 onClick={() => onRowSelected(rowIndex)}
               >
                 {columns.map((column, columnIndex) => {
@@ -199,7 +206,9 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const editForeignKeys = activeResult.editForeignKeys ?? EMPTY_FOREIGN_KEYS
   const saveError = activeResult.saveError ?? null
   const isAnalyzingQuery = activeResult.isAnalyzingQuery ?? false
-  const primaryKey = editMode ? activeResult.editTableMetadata?.[editMode]?.primaryKey ?? null : null
+  const primaryKey = editMode
+    ? (activeResult.editTableMetadata?.[editMode]?.primaryKey ?? null)
+    : null
   const editTableColumns =
     editMode && activeResult.editTableMetadata?.[editMode]?.columns
       ? activeResult.editTableMetadata[editMode].columns
@@ -447,8 +456,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const hasInsertEligibleNonPrimaryCloneColumns =
     editMode !== null &&
     editTableColumns.some(
-      (column) =>
-        !column.isPrimaryKey && editBoundColumnIndexMap.has(column.name.toLowerCase())
+      (column) => !column.isPrimaryKey && editBoundColumnIndexMap.has(column.name.toLowerCase())
     )
   const cloneDisabled =
     !cloneVisible ||
@@ -461,8 +469,9 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
     !primaryKey ||
     primaryKey.isUniqueKeyFallback ||
     !hasInsertEligibleNonPrimaryCloneColumns
+  const noContainDiagnostic = useMemo(() => isNoContainDiagnosticEnabled(), [])
   const gridTabPanelClassName =
-    viewMode === 'grid' && columns.length > 0
+    viewMode === 'grid' && columns.length > 0 && !noContainDiagnostic
       ? `${styles.tabPanel} ${styles.gridTabPanel}`
       : styles.tabPanel
   const usePlainResultGridDiagnostic = useMemo(

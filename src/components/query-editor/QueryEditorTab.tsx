@@ -9,7 +9,7 @@
  * unmounts this component. Eviction is handled by workspace-store.closeTab.
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import type { QueryEditorTab as QueryEditorTabType } from '../../types/schema'
 import { useQueryStore } from '../../stores/query-store'
@@ -21,6 +21,7 @@ import { QueryExecutionOverlay } from './QueryExecutionOverlay'
 import { DiffOverlay } from './DiffOverlay'
 import { useRegisterAiDiffHandler } from './ai-diff-bridge-context'
 import { WORKSPACE_LAYOUT_EVENT } from '../../lib/workspace-layout-events'
+import { logFrontend } from '../../lib/app-log-commands'
 import {
   buildDiffState,
   applyDiff,
@@ -31,6 +32,29 @@ import type { DiffOverlayState, PlainRange } from './diff-overlay-utils'
 import type * as MonacoType from 'monaco-editor'
 import styles from './QueryEditorTab.module.css'
 
+// ---------------------------------------------------------------------------
+// Diagnostic: layout mode override for macOS RDG performance investigation.
+//
+// Set in localStorage:
+//   sqllumen.queryEditorLayout = 'stacked'   — plain flex stacking (no resizable panels)
+//   sqllumen.queryEditorLayout = 'no-editor'  — hide Monaco, show only result panel
+//
+// Both modes help isolate whether the react-resizable-panels split or Monaco
+// co-existence triggers the WebKit/macOS main-thread stall with RDG.
+// ---------------------------------------------------------------------------
+const LAYOUT_DIAGNOSTIC_KEY = 'sqllumen.queryEditorLayout'
+type LayoutDiagnosticMode = 'normal' | 'stacked' | 'no-editor'
+
+function readLayoutDiagnosticMode(): LayoutDiagnosticMode {
+  try {
+    const value = globalThis.localStorage?.getItem(LAYOUT_DIAGNOSTIC_KEY)
+    if (value === 'stacked' || value === 'no-editor') return value
+  } catch {
+    // ignore
+  }
+  return 'normal'
+}
+
 interface QueryEditorTabProps {
   tab: QueryEditorTabType
 }
@@ -40,6 +64,14 @@ export function QueryEditorTab({ tab }: QueryEditorTabProps) {
   const editorRef = useRef<MonacoType.editor.IStandaloneCodeEditor | null>(null)
 
   const status = useQueryStore((state) => state.tabs[tab.id]?.tabStatus ?? 'idle')
+
+  const layoutMode = useMemo(() => readLayoutDiagnosticMode(), [])
+
+  useEffect(() => {
+    if (layoutMode !== 'normal') {
+      logFrontend('info', `[query-editor-layout-diagnostic] mode=${layoutMode} tabId=${tab.id}`)
+    }
+  }, [layoutMode, tab.id])
 
   const handleEditorMount = useCallback((editor: MonacoType.editor.IStandaloneCodeEditor) => {
     editorRef.current = editor
@@ -111,6 +143,59 @@ export function QueryEditorTab({ tab }: QueryEditorTabProps) {
     />
   )
 
+  // -------------------------------------------------------------------------
+  // Diagnostic: "no-editor" — hide Monaco entirely, show only result panel.
+  // Tests whether Monaco co-existence with RDG triggers the WebKit slowdown.
+  // -------------------------------------------------------------------------
+  if (layoutMode === 'no-editor') {
+    return (
+      <div className={styles.container} data-testid="query-editor-tab">
+        <EditorToolbar connectionId={tab.connectionId} tabId={tab.id} />
+        <div className={styles.contentArea}>
+          {status === 'running' && <QueryExecutionOverlay />}
+          <div className={styles.diagnosticResultOnly}>
+            <ResultPanel tabId={tab.id} connectionId={tab.connectionId} />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Diagnostic: "stacked" — plain CSS flex stacking without react-resizable-panels.
+  // Tests whether the resizable panel library triggers the WebKit slowdown.
+  // -------------------------------------------------------------------------
+  if (layoutMode === 'stacked') {
+    return (
+      <div className={styles.container} data-testid="query-editor-tab">
+        <EditorToolbar connectionId={tab.connectionId} tabId={tab.id} />
+        <div className={styles.contentArea}>
+          {status === 'running' && <QueryExecutionOverlay />}
+          <div className={styles.diagnosticStacked}>
+            <div className={styles.diagnosticEditorHalf}>
+              <div className={styles.editorPanel}>{editorContent}</div>
+              {diffOverlayState.visible && (
+                <DiffOverlay
+                  originalSql={diffOverlayState.originalSql}
+                  proposedSql={diffOverlayState.proposedSql}
+                  originalRange={diffOverlayState.originalRange}
+                  onAccept={handleDiffAccept}
+                  onReject={handleDiffReject}
+                />
+              )}
+            </div>
+            <div className={styles.diagnosticResultHalf}>
+              <ResultPanel tabId={tab.id} connectionId={tab.connectionId} />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Normal layout — resizable vertical split with Monaco (top) + results (bottom).
+  // -------------------------------------------------------------------------
   return (
     <div className={styles.container} data-testid="query-editor-tab">
       <EditorToolbar connectionId={tab.connectionId} tabId={tab.id} />

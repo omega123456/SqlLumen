@@ -66,3 +66,42 @@
 .resizeHandle[data-resize-handle-state='drag'] .resizePill {
   background-color: var(--primary);
 }
+
+/* ---------------------------------------------------------------------------
+   Diagnostic layout modes for macOS RDG performance investigation.
+   Activated via localStorage: sqllumen.queryEditorLayout = 'stacked' | 'no-editor'
+   --------------------------------------------------------------------------- */
+
+/* "stacked" — plain CSS flex split, no react-resizable-panels */
+.diagnosticStacked {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.diagnosticEditorHalf {
+  position: relative;
+  flex: 0 0 60%;
+  overflow: hidden;
+}
+
+.diagnosticResultHalf {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface-container-low);
+}
+
+/* "no-editor" — result panel fills the entire content area */
+.diagnosticResultOnly {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface-container-low);
+}
