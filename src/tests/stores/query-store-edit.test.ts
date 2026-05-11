@@ -1858,9 +1858,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     const tab = flat('tab-1')
     expect(tab.queryId).toBe('q-newer')
     expect(tab.rows).toEqual([[9, 'Latest', 'latest@test.com']])
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('reexecuteOnlyResultAfterInsert: discarding stale refresh result')
-    )
+    expect(warnSpy).not.toHaveBeenCalled()
 
     warnSpy.mockRestore()
   })
@@ -2191,10 +2189,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT 1')
     await flushMicrotasks()
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      '[query-edit] analyze_query_for_edit failed:',
-      expect.any(Error)
-    )
+    expect(consoleSpy).not.toHaveBeenCalled()
     consoleSpy.mockRestore()
 
     const tab = flat('tab-1')

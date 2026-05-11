@@ -6,10 +6,10 @@ import { useConnectionStore } from '../../stores/connection-store'
 import { listMemories, deleteMemory } from '../../lib/ai-memory-commands'
 import type { AiMemory } from '../../lib/ai-memory-commands'
 import { showErrorToast } from '../../stores/toast-store'
-import { logFrontend } from '../../lib/app-log-commands'
 import { formatFromEpochSeconds } from '../../lib/format-utils'
 import styles from './AiMemoriesSettings.module.css'
 
+import { logFrontend } from '../../lib/app-log-commands'
 interface ConnectionMemories {
   connectionId: string
   connectionName: string

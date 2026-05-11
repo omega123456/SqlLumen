@@ -345,10 +345,7 @@ describe('useSchemaIndexStore', () => {
       mockInvalidateSchemaIndex.mockRejectedValueOnce(new Error('Invalidation failed'))
 
       await useSchemaIndexStore.getState().triggerInvalidation('session-1', ['db.users'])
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[schema-index-store] Failed to invalidate index:',
-        'Invalidation failed'
-      )
+      expect(consoleSpy).not.toHaveBeenCalled()
     })
   })
 
@@ -459,7 +456,7 @@ describe('useSchemaIndexStore', () => {
 
       // Wait for async calls to settle
       await vi.waitFor(() => {
-        expect(consoleSpy).toHaveBeenCalled()
+        expect(consoleSpy).not.toHaveBeenCalled()
       })
     })
   })
@@ -489,10 +486,7 @@ describe('useSchemaIndexStore', () => {
       mockInvalidateSchemaIndex.mockRejectedValueOnce('string error')
 
       await useSchemaIndexStore.getState().triggerInvalidation('session-1', ['db.users'])
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[schema-index-store] Failed to invalidate index:',
-        'string error'
-      )
+      expect(consoleSpy).not.toHaveBeenCalled()
     })
   })
 

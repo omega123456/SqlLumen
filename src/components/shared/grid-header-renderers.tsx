@@ -1,25 +1,18 @@
-/**
- * Shared header renderers for react-data-grid.
- *
- * - SortStatusRenderer: renders sort direction arrow icons (Phosphor)
- * - ReadOnlyColumnHeaderCell: renders lock icon + column name + sort indicator
- *   for read-only columns
- * - ForeignKeyColumnHeaderCell: renders link icon + column name + sort indicator
- *   for foreign key columns
- */
+import { ArrowDown, ArrowUp, Link, Lock } from '@phosphor-icons/react'
+import type { GridSortDirection } from './glide/glide-grid-types'
 
-import { ArrowUp, ArrowDown, Lock, Link } from '@phosphor-icons/react'
-import type { RenderSortStatusProps, RenderHeaderCellProps } from 'react-data-grid'
+export interface SortStatusRendererProps {
+  sortDirection?: GridSortDirection | null
+  priority?: number
+}
 
-// ---------------------------------------------------------------------------
-// SortStatusRenderer — sort direction arrow icons
-// ---------------------------------------------------------------------------
+export interface HeaderCellRendererProps {
+  column: { name?: React.ReactNode; key?: string }
+  sortDirection?: GridSortDirection | null
+  tabIndex?: number
+}
 
-/**
- * Custom `renderSortStatus` renderer for react-data-grid's `renderers` prop.
- * Shows a Phosphor ArrowUp for ASC, ArrowDown for DESC, nothing otherwise.
- */
-export function SortStatusRenderer({ sortDirection }: RenderSortStatusProps) {
+export function SortStatusRenderer({ sortDirection }: SortStatusRendererProps) {
   if (sortDirection === 'ASC') {
     return <ArrowUp size={12} weight="bold" style={{ opacity: 0.6 }} />
   }
@@ -29,22 +22,9 @@ export function SortStatusRenderer({ sortDirection }: RenderSortStatusProps) {
   return null
 }
 
-// ---------------------------------------------------------------------------
-// HeaderCellWithIcon — internal shared helper for icon header cells
-// ---------------------------------------------------------------------------
-
-/**
- * Internal helper that renders the shared structure for icon-annotated header
- * cells: column name → icon → optional sort arrow.
- *
- * NOT exported — used only by ReadOnlyColumnHeaderCell and
- * ForeignKeyColumnHeaderCell below.
- */
-function HeaderCellWithIcon<R, SR>(
-  props: RenderHeaderCellProps<R, SR> & { icon: React.ReactNode }
-) {
+function HeaderCellWithIcon(props: HeaderCellRendererProps & { icon: React.ReactNode }) {
   const { column, sortDirection, tabIndex, icon } = props
-  const columnName = typeof column.name === 'string' ? column.name : ''
+  const columnName = typeof column.name === 'string' ? column.name : (column.key ?? '')
 
   return (
     <div
@@ -57,39 +37,16 @@ function HeaderCellWithIcon<R, SR>(
       }}
       tabIndex={tabIndex}
     >
-      <span
-        style={{
-          flex: 1,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {columnName}
       </span>
       {icon}
-      {sortDirection === 'ASC' && (
-        <ArrowUp size={12} weight="bold" style={{ opacity: 0.6, flexShrink: 0 }} />
-      )}
-      {sortDirection === 'DESC' && (
-        <ArrowDown size={12} weight="bold" style={{ opacity: 0.6, flexShrink: 0 }} />
-      )}
+      <SortStatusRenderer sortDirection={sortDirection} />
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// ReadOnlyColumnHeaderCell — lock icon header for non-editable columns
-// ---------------------------------------------------------------------------
-
-/**
- * Custom `renderHeaderCell` for read-only columns. Renders the column name,
- * a lock icon, and the sort direction indicator (if applicable).
- *
- * CRITICAL: Must also render the sort indicator alongside the lock icon,
- * otherwise sort arrows will be lost on read-only columns.
- */
-export function ReadOnlyColumnHeaderCell<R, SR>(props: RenderHeaderCellProps<R, SR>) {
+export function ReadOnlyColumnHeaderCell(props: HeaderCellRendererProps) {
   return (
     <HeaderCellWithIcon
       {...props}
@@ -98,18 +55,7 @@ export function ReadOnlyColumnHeaderCell<R, SR>(props: RenderHeaderCellProps<R, 
   )
 }
 
-// ---------------------------------------------------------------------------
-// ForeignKeyColumnHeaderCell — link icon header for FK columns
-// ---------------------------------------------------------------------------
-
-/**
- * Custom `renderHeaderCell` for foreign key columns. Renders the column name,
- * a link icon, and the sort direction indicator (if applicable).
- *
- * CRITICAL: Must also render the sort indicator alongside the link icon,
- * otherwise sort arrows will be lost on FK columns.
- */
-export function ForeignKeyColumnHeaderCell<R, SR>(props: RenderHeaderCellProps<R, SR>) {
+export function ForeignKeyColumnHeaderCell(props: HeaderCellRendererProps) {
   return (
     <HeaderCellWithIcon
       {...props}

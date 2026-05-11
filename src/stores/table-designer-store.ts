@@ -14,6 +14,7 @@ import type {
   TableDesignerSchema,
 } from '../types/schema'
 
+import { logFrontend } from '../lib/app-log-commands'
 const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 const ddlRequestVersions: Record<string, number> = {}
 const INTEGER_TYPES_WITH_DEFAULT_DISPLAY_LENGTH = new Set([
@@ -455,11 +456,7 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
       try {
         const loadedSchema = normalizeLoadedSchema(
-          await loadTableForDesigner(
-            tab.connectionId,
-            tab.databaseName,
-            tab.objectName
-          )
+          await loadTableForDesigner(tab.connectionId, tab.databaseName, tab.objectName)
         )
 
         if (!get().tabs[tabId]) {
@@ -477,7 +474,10 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
 
         await get().regenerateDdl(tabId)
       } catch (error) {
-        console.error('[table-designer-store] Failed to load table schema', error)
+        logFrontend(
+          'error',
+          ['[table-designer-store] Failed to load table schema', error].map(String).join(' ')
+        )
 
         if (!get().tabs[tabId]) {
           return
@@ -809,7 +809,10 @@ export const useTableDesignerStore = create<TableDesignerStore>()((set, get) => 
           isDdlLoading: false,
         })
       } catch (error) {
-        console.error('[table-designer-store] Failed to regenerate DDL', error)
+        logFrontend(
+          'error',
+          ['[table-designer-store] Failed to regenerate DDL', error].map(String).join(' ')
+        )
 
         if (!get().tabs[tabId]) {
           return

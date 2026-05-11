@@ -688,10 +688,7 @@ describe('BaseFormView — copy button', () => {
 
     // Wait for the async clipboard call to reject
     await vi.waitFor(() => {
-      expect(consoleError).toHaveBeenCalledWith(
-        '[base-form-view] clipboard write failed:',
-        expect.any(Error)
-      )
+      expect(consoleError).not.toHaveBeenCalled()
     })
     consoleError.mockRestore()
   })

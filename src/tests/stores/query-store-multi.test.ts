@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { useQueryStore, getFlatTabState, DEFAULT_RESULT_STATE } from '../../stores/query-store'
+import { _resetToastTimeoutsForTests } from '../../stores/toast-store'
 
 /** Shorthand: get a flat (tab + active result) view for assertions. */
 function flat(tabId: string) {
@@ -58,6 +59,7 @@ const multiQueryResult = {
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
+  _resetToastTimeoutsForTests()
   mockIPC((cmd) => {
     switch (cmd) {
       case 'execute_multi_query':
@@ -549,6 +551,40 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
     await vi.waitFor(() => {
       expect(analyzeHandler).toHaveBeenCalled()
     })
+  })
+
+  it('ignores deferred analysis errors when the switched result was replaced before failure resolves', async () => {
+    setupMultiResultForAnalysis()
+
+    mockIPC((cmd) => {
+      if (cmd === 'analyze_query_for_edit') {
+        useQueryStore.setState((prev) => {
+          const tab = prev.tabs['tab-1']
+          if (!tab) return prev
+          const nextResults = [...tab.results]
+          nextResults[1] = {
+            ...nextResults[1],
+            queryId: 'q2-newer',
+          }
+          return {
+            tabs: {
+              ...prev.tabs,
+              'tab-1': { ...tab, results: nextResults },
+            },
+          }
+        })
+        throw new Error('analysis exploded')
+      }
+      return null
+    })
+
+    useQueryStore.getState().setActiveResultIndex('tab-1', 1)
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(1)
+    expect(useQueryStore.getState().tabs['tab-1']!.results[1]!.queryId).toBe('q2-newer')
   })
 
   it('discards clean editState when switching result', () => {
@@ -1137,9 +1173,7 @@ describe('useQueryStore — sortResults stale re-execution discard', () => {
     const tab = useQueryStore.getState().tabs['tab-1']!
     expect(tab.results[0].rows).toEqual([[999]])
     expect(tab.results[0].queryId).toBe('q1-replaced-by-newer-query')
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('discarding stale re-execution result')
-    )
+    expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 })
@@ -1238,9 +1272,7 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
     const tab = useQueryStore.getState().tabs['tab-1']!
     expect(tab.results[0].rows).toEqual([[777]])
     expect(tab.results[0].queryId).toBe('q1-replaced-newer')
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('discarding stale re-execution result')
-    )
+    expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 

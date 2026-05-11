@@ -9,6 +9,7 @@ import { Button } from '../common/Button'
 import { ElevatedSurface } from '../common/ElevatedSurface'
 import styles from './DdlPreviewTab.module.css'
 
+import { logFrontend } from '../../lib/app-log-commands'
 interface DdlPreviewTabProps {
   tabId: string
 }
@@ -40,7 +41,7 @@ export function DdlPreviewTab({ tabId }: DdlPreviewTabProps) {
       await writeClipboardText(ddl)
       showSuccessToast('Copied to clipboard')
     } catch (error) {
-      console.error('[ddl-preview-tab] Failed to copy DDL', error)
+      logFrontend('error', ['[ddl-preview-tab] Failed to copy DDL', error].map(String).join(' '))
       showErrorToast('Copy failed', error instanceof Error ? error.message : String(error))
     }
   }

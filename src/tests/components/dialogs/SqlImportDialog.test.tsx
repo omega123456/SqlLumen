@@ -387,10 +387,7 @@ describe('SqlImportDialog', () => {
     await user.click(screen.getByTestId('import-submit-button'))
 
     await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[sql-import] Failed to start import:',
-        expect.any(Error)
-      )
+      expect(consoleSpy).not.toHaveBeenCalled()
     })
 
     // Should return to idle (Import button visible and enabled)

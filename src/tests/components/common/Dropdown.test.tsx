@@ -255,6 +255,21 @@ describe('Dropdown', () => {
     expect(listbox.parentElement).toBe(document.body)
   })
 
+  it('marks the portal listbox as click-outside-ignore for overlay editors', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <>
+        <span id="lb-ignore">Pick</span>
+        <Dropdown id="d-ignore" labelledBy="lb-ignore" options={options} value="" onChange={vi.fn()} />
+      </>
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Pick' }))
+
+    expect(screen.getByRole('listbox')).toHaveClass('click-outside-ignore')
+  })
+
   it('opens upward when there is not enough room below the trigger', async () => {
     const user = userEvent.setup()
 

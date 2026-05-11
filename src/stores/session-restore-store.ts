@@ -1,3 +1,4 @@
+import { logFrontend } from '../lib/app-log-commands'
 /**
  * Session restore store — saves workspace state on app close and restores it on relaunch.
  *
@@ -11,7 +12,6 @@ import { normalizeActiveConnectionOrder, useConnectionStore } from './connection
 import { useWorkspaceStore } from './workspace-store'
 import { useQueryStore } from './query-store'
 import { showErrorToast } from './toast-store'
-import { logFrontend } from '../lib/app-log-commands'
 import type {
   SessionState,
   SessionConnectionState,

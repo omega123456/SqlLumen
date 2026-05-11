@@ -271,10 +271,7 @@ describe('useShortcutStore', () => {
 
       const state = useShortcutStore.getState()
       expect(state.shortcuts).toEqual(DEFAULT_SHORTCUTS)
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[shortcut-store] Failed to load shortcuts from backend:',
-        expect.any(Error)
-      )
+      expect(consoleSpy).not.toHaveBeenCalled()
       consoleSpy.mockRestore()
     })
 

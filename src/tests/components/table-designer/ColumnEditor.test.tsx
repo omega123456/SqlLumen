@@ -748,10 +748,13 @@ describe('ColumnEditor', () => {
     await user.click(screen.getByRole('option', { name: 'Custom' }))
 
     const input = screen.getByTestId('column-default-input-0')
+    await user.click(input)
     await user.type(input, 'draft_value')
-    expect(getTab()?.currentSchema.columns[0]?.defaultValue).toEqual({
-      tag: 'LITERAL',
-      value: 'draft_value',
+    await waitFor(() => {
+      expect(getTab()?.currentSchema.columns[0]?.defaultValue).toEqual({
+        tag: 'LITERAL',
+        value: 'draft_value',
+      })
     })
 
     // Press Escape to revert

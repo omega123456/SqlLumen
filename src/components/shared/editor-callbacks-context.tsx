@@ -13,8 +13,8 @@
  * IMPORTANT: The context's syncCellValue should typically be a no-op for
  * table data editing — calling the real syncCellValue during typing would
  * update the backing row array, triggering rows → autoColumnWidths →
- * rdgColumns recomputation, which creates new renderEditCell references
- * and causes editor focus loss.
+ * column recomputation, which creates new editor references and causes editor
+ * focus loss.
  */
 
 import { createContext, useContext } from 'react'

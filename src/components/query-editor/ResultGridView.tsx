@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BaseGridView } from '../shared/BaseGridView'
+import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
 import {
   EditorCallbacksContext,
   type EditorCallbacksContextType,
@@ -34,7 +34,7 @@ import type {
   CellClipboardEditArgs,
   AutoSizeConfig,
 } from '../../types/shared-data-view'
-import type { RowsChangeData } from 'react-data-grid'
+import type { GridCellPosition, GridRowsChangeData } from '../shared/glide/glide-grid-types'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -404,8 +404,36 @@ export function ResultGridView({
       enumValues: column.tableColumnMeta?.enumValues,
       tableColumnMeta: column.editable ? column.tableColumnMeta : undefined,
       foreignKey: column.foreignKey,
+      editorType: column.tableColumnMeta?.enumValues?.length
+        ? 'enum'
+        : column.tableColumnMeta
+          ? 'text'
+          : 'none',
     }))
   }, [resolvedColumns])
+
+  const editableColumnKeys = useMemo(() => {
+    const keys = new Set<string>()
+    for (const [index, editable] of editableColumnMap) {
+      if (editable) keys.add(colKey(index))
+    }
+    return keys
+  }, [editableColumnMap])
+
+  const selectedCellPosition = useMemo<GridCellPosition | null>(() => {
+    if (selectedRowIndex == null) return null
+    return { rowIdx: selectedRowIndex, idx: 0 }
+  }, [selectedRowIndex])
+
+  const handleSelectedCellChange = useCallback(
+    (pos: GridCellPosition) => {
+      const row = rowDataRef.current[pos.rowIdx]
+      const column = columnsRef.current[pos.idx]
+      if (!row || !column) return
+      syncSelection(pos.rowIdx, colKey(pos.idx), row)
+    },
+    [syncSelection]
+  )
 
   // ---------------------------------------------------------------------------
   // Sort state: translate between app (lowercase, real names) and BaseGridView
@@ -546,7 +574,7 @@ export function ResultGridView({
   }, [editMode, editableColumnMap, onAutoSave, onStartEditing, syncSelection])
 
   // In read-only mode, we still need a simple cell click handler for row selection.
-  // BaseGridView only calls onCellClickGuard; when it's undefined, RDG default behavior
+  // BaseGridView only calls onCellClickGuard when row-change validation is needed.
   // applies (no row selection callback). So for read-only mode we provide a minimal guard.
   const readOnlyCellClickGuard = useCallback(
     async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
@@ -565,12 +593,12 @@ export function ResultGridView({
   )
 
   // ---------------------------------------------------------------------------
-  // onRowsChange: handle cell editor updates via RDG's onRowChange protocol.
-  // When a cell editor changes a value, RDG fires onRowsChange. We detect
+  // onRowsChange: handle cell editor updates from the shared grid protocol.
+  // When a cell editor changes a value, the grid fires onRowsChange. We detect
   // which col_N changed and call onSyncCellValue with the real column name.
   // ---------------------------------------------------------------------------
   const handleRowsChange = useCallback(
-    (newRows: Record<string, unknown>[], data: RowsChangeData<Record<string, unknown>>) => {
+    (newRows: Record<string, unknown>[], data: GridRowsChangeData<Record<string, unknown>>) => {
       const startedAt = readPerformanceNow()
       // data.indexes contains the indices of changed rows
       if (!data.indexes || data.indexes.length === 0) return
@@ -688,12 +716,12 @@ export function ResultGridView({
 
       // Editing row highlight
       if (editingRowIndex !== null && rowIdx === editingRowIndex) {
-        classes.push('rdg-editing-row')
+        classes.push('grid-editing-row')
       }
 
       // Selected row highlight
       if (selectedRowIndex != null && rowIdx === selectedRowIndex) {
-        classes.push('rdg-row-precision-selected')
+        classes.push('grid-row-precision-selected')
       }
 
       return classes.length > 0 ? classes.join(' ') : undefined
@@ -703,7 +731,7 @@ export function ResultGridView({
 
   return (
     <EditorCallbacksContext.Provider value={editorCallbacksCtx}>
-      <BaseGridView
+      <CanvasBaseGridView
         rows={rowData}
         columns={gridColumns}
         editState={sharedEditState}
@@ -715,15 +743,29 @@ export function ResultGridView({
         runCellClickGuardOnKeyboardSelection={!!editMode}
         onRowsChange={handleRowsChange}
         onCellClipboardEdit={handleCellClipboardEdit}
+        selectedCellPosition={selectedCellPosition}
+        onSelectedCellChange={handleSelectedCellChange}
+        isEditMode={!!editMode}
+        editableColumnKeys={editableColumnKeys}
+        onCellValueChange={(rowIdx, columnKey, newValue) => {
+          void rowIdx
+          const colIndex = colIndexFromKey(columnKey)
+          if (colIndex >= 0) onSyncCellValue(colIndex, newValue)
+        }}
+        onRowChanging={async (_from, _to) => {
+          const currentEditState = editStateRef.current
+          if (currentEditState && currentEditState.modifiedColumns.size > 0) return onAutoSave()
+          return true
+        }}
         rowKeyGetter={rowKeyGetter}
         getRowClass={getRowClass}
         selectedRowIndex={selectedRowIndex}
-        selectedRowClassName={!editMode ? 'rdg-row-precision-selected' : undefined}
+        selectedRowClassName={!editMode ? 'grid-row-precision-selected' : undefined}
         isModifiedCell={isModifiedCell}
         autoSizeConfig={autoSizeConfig}
         showReadOnlyHeaders={!!editMode}
         performanceLogger={performanceLogger}
-        testId="result-grid-view"
+        testId="result-grid"
       />
     </EditorCallbacksContext.Provider>
   )

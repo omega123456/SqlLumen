@@ -118,7 +118,9 @@ test.describe('Tab interactions', () => {
     const movedStartLabels = await page
       .locator('[data-testid="workspace-tabs"] [data-testid^="workspace-tab-"]')
       .allTextContents()
-    const movedStartQueries = movedStartLabels.filter((label) => label.startsWith('Query ')).slice(0, 2)
+    const movedStartQueries = movedStartLabels
+      .filter((label) => label.startsWith('Query '))
+      .slice(0, 2)
     expect(movedStartQueries[0]).toContain('Query 2')
     expect(movedStartQueries[1]).toContain('Query 1')
   })
@@ -155,5 +157,4 @@ test.describe('Tab interactions', () => {
       .allTextContents()
     expect(movedStartNames.slice(0, 2)).toEqual(['Staging MySQL', 'Sample MySQL'])
   })
-
 })

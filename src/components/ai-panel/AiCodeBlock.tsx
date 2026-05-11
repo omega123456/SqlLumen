@@ -4,6 +4,7 @@ import { Button } from '../common/Button'
 import { splitStatements } from '../query-editor/sql-parser-utils'
 import styles from './AiCodeBlock.module.css'
 
+import { logFrontend } from '../../lib/app-log-commands'
 export interface AiCodeBlockProps {
   language?: string
   children: ReactNode
@@ -61,7 +62,7 @@ export function AiCodeBlock({
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch (err) {
-      console.error('[ai-panel] Failed to copy code:', err)
+      logFrontend('error', ['[ai-panel] Failed to copy code:', err].map(String).join(' '))
     }
   }, [getTextContent])
 

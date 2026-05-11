@@ -81,7 +81,7 @@ describe('useSettingsStore', () => {
 
       const state = useSettingsStore.getState()
       expect(state.isLoading).toBe(false)
-      expect(consoleSpy).toHaveBeenCalled()
+      expect(consoleSpy).not.toHaveBeenCalled()
       consoleSpy.mockRestore()
     })
   })

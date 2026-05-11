@@ -40,8 +40,8 @@ import type { ForeignKeyColumnInfo } from '../types/schema'
 import { getFirstSqlKeyword } from '../lib/sql-utils'
 import { useSettingsStore } from './settings-store'
 import { useHistoryStore } from './history-store'
-import { logFrontend } from '../lib/app-log-commands'
 
+import { logFrontend } from '../lib/app-log-commands'
 // Re-export for backward compatibility (used by tests and other modules)
 export { stripLeadingSqlComments } from '../lib/sql-utils'
 
@@ -848,7 +848,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       ) {
         _runAnalysis(tabId, connectionId, results[0].lastExecutedSql!, results[0].queryId, 0).catch(
           (err) => {
-            console.error('[query-edit] analyze_query_for_edit failed (multi):', err)
+            logFrontend(
+              'error',
+              ['[query-edit] analyze_query_for_edit failed (multi):', err].map(String).join(' ')
+            )
           }
         )
       }
@@ -908,8 +911,13 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     const postResult = postTab?.results[resultIndex]
     if (capturedQueryId && postResult?.queryId !== capturedQueryId) {
       // Stale re-execution — silently discard
-      console.warn(
-        '[query-store] reexecuteAndPatchResult: discarding stale re-execution result (queryId mismatch)'
+      logFrontend(
+        'warn',
+        [
+          '[query-store] reexecuteAndPatchResult: discarding stale re-execution result (queryId mismatch)',
+        ]
+          .map(String)
+          .join(' ')
       )
       return
     }
@@ -939,7 +947,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
     if (reResult.columns.length > 0 && isEditableSelectSql(sql)) {
       _runAnalysis(tabId, connectionId, sql, reResult.queryId, resultIndex).catch((err) => {
-        console.error('[query-edit] analyze_query_for_edit failed (re-exec):', err)
+        logFrontend(
+          'error',
+          ['[query-edit] analyze_query_for_edit failed (re-exec):', err].map(String).join(' ')
+        )
       })
     }
   }
@@ -953,7 +964,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     modifiedColumns: Set<string>
     insertEligibleColumns: Set<string>
   } => {
-    const pkColumns = new Set(tableInfo.primaryKey?.keyColumns.map((column) => column.toLowerCase()) ?? [])
+    const pkColumns = new Set(
+      tableInfo.primaryKey?.keyColumns.map((column) => column.toLowerCase()) ?? []
+    )
     const row = result.columns.map((column, index) => {
       const boundColumnName = result.editColumnBindings.get(index) ?? column.name
       if (pkColumns.has(boundColumnName.toLowerCase())) {
@@ -1018,8 +1031,13 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     const postTab = get().tabs[tabId]
     const postResult = postTab?.results[resultIndex]
     if (capturedQueryId && postResult?.queryId !== capturedQueryId) {
-      console.warn(
-        '[query-store] reexecuteOnlyResultAfterInsert: discarding stale refresh result (queryId mismatch)'
+      logFrontend(
+        'warn',
+        [
+          '[query-store] reexecuteOnlyResultAfterInsert: discarding stale refresh result (queryId mismatch)',
+        ]
+          .map(String)
+          .join(' ')
       )
       return
     }
@@ -1045,16 +1063,20 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     })
 
     if (execResult.columns.length > 0 && isEditableSelectSql(result.lastExecutedSql)) {
-      _runAnalysis(tabId, connectionId, result.lastExecutedSql!, execResult.queryId, resultIndex).catch(
-        (err) => {
-          void logFrontend(
-            'warn',
-            `[query-edit] analyze_query_for_edit failed (insert re-exec): ${
-              err instanceof Error ? err.message : String(err)
-            }`
-          )
-        }
-      )
+      _runAnalysis(
+        tabId,
+        connectionId,
+        result.lastExecutedSql!,
+        execResult.queryId,
+        resultIndex
+      ).catch((err) => {
+        void logFrontend(
+          'warn',
+          `[query-edit] analyze_query_for_edit failed (insert re-exec): ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        )
+      })
     }
   }
 
@@ -1144,7 +1166,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         // Only for SELECT/WITH queries with columns
         if (result.columns.length > 0 && isEditableSelectSql(sql)) {
           _runAnalysis(tabId, connectionId, sql, result.queryId, 0).catch((err) => {
-            console.error('[query-edit] analyze_query_for_edit failed:', err)
+            logFrontend(
+              'error',
+              ['[query-edit] analyze_query_for_edit failed:', err].map(String).join(' ')
+            )
             showErrorToast(
               'Edit mode analysis failed',
               err instanceof Error ? err.message : String(err),
@@ -1233,7 +1258,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 newResult.queryId,
                 index
               ).catch((err) => {
-                console.error('[query-edit] deferred analysis failed:', err)
+                logFrontend(
+                  'error',
+                  ['[query-edit] deferred analysis failed:', err].map(String).join(' ')
+                )
               })
             }
           }
@@ -1270,7 +1298,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             newResult.queryId,
             index
           ).catch((err) => {
-            console.error('[query-edit] deferred analysis failed:', err)
+            logFrontend(
+              'error',
+              ['[query-edit] deferred analysis failed:', err].map(String).join(' ')
+            )
           })
         }
       }
@@ -1287,8 +1318,13 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         const raw = await fetchResultPageCmd(connectionId, tabId, result.queryId, page, resultIndex)
         const parsed = parseResultPagePayload(raw)
         if (!parsed) {
-          console.error(
-            '[query-store] fetchPage failed: invalid fetch_result_page payload (expected rows, page, totalPages)'
+          logFrontend(
+            'error',
+            [
+              '[query-store] fetchPage failed: invalid fetch_result_page payload (expected rows, page, totalPages)',
+            ]
+              .map(String)
+              .join(' ')
           )
           return
         }
@@ -1311,14 +1347,17 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           totalPages: filterPatch.totalPages ?? parsed.totalPages,
         })
       } catch (err) {
-        console.error('[query-store] fetchPage failed:', err)
+        logFrontend('error', ['[query-store] fetchPage failed:', err].map(String).join(' '))
       }
     },
 
     cleanupTab: (connectionId: string, tabId: string) => {
       // Fire-and-forget eviction
       evictResultsCmd(connectionId, tabId).catch((err) => {
-        console.error('[query-store] evictResults failed (cleanupTab):', err)
+        logFrontend(
+          'error',
+          ['[query-store] evictResults failed (cleanupTab):', err].map(String).join(' ')
+        )
       })
       set((state) => {
         const newTabs = { ...state.tabs }
@@ -1331,7 +1370,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       // Evict Rust-side results for each tab (fire-and-forget)
       for (const id of tabIds) {
         evictResultsCmd(connectionId, id).catch((err) => {
-          console.error('[query-store] evictResults failed (cleanupConnection):', err)
+          logFrontend(
+            'error',
+            ['[query-store] evictResults failed (cleanupConnection):', err].map(String).join(' ')
+          )
         })
       }
       set((state) => {
@@ -1374,7 +1416,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             }
           })
           .catch((err) => {
-            console.error('[query-store] saveCurrentRow failed while switching to text view:', err)
+            logFrontend(
+              'error',
+              ['[query-store] saveCurrentRow failed while switching to text view:', err]
+                .map(String)
+                .join(' ')
+            )
             showErrorToast(
               'Cannot switch to text view',
               'Save failed. Fix or discard edits before switching to text view.'
@@ -1543,7 +1590,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
               if (execResult.columns.length > 0 && isEditableSelectSql(lastSql)) {
                 _runAnalysis(tabId, connectionId, lastSql, execResult.queryId, resultIndex).catch(
                   (err) => {
-                    console.error('[query-edit] analyze_query_for_edit failed (sort re-exec):', err)
+                    logFrontend(
+                      'error',
+                      ['[query-edit] analyze_query_for_edit failed (sort re-exec):', err]
+                        .map(String)
+                        .join(' ')
+                    )
                   }
                 )
               }
@@ -1564,8 +1616,13 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         const raw = await sortResultsCmd(connectionId, tabId, column, direction, resultIndex)
         const parsed = parseResultPagePayload(raw)
         if (!parsed) {
-          console.error(
-            '[query-store] sortResults failed: invalid sort_results payload (expected rows, page, totalPages)'
+          logFrontend(
+            'error',
+            [
+              '[query-store] sortResults failed: invalid sort_results payload (expected rows, page, totalPages)',
+            ]
+              .map(String)
+              .join(' ')
           )
           return
         }
@@ -1590,7 +1647,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           totalPages: filterPatch.totalPages ?? parsed.totalPages,
         })
       } catch (error) {
-        console.error('[query-store] sortResults failed:', error)
+        logFrontend('error', ['[query-store] sortResults failed:', error].map(String).join(' '))
       }
     },
 
@@ -1644,7 +1701,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           const postTab = get().tabs[tabId]
           const postResult = postTab?.results[resultIndex]
           if (capturedQueryId && postResult?.queryId !== capturedQueryId) {
-            console.warn('[query-store] changePageSize: discarding stale error (queryId mismatch)')
+            logFrontend(
+              'warn',
+              ['[query-store] changePageSize: discarding stale error (queryId mismatch)']
+                .map(String)
+                .join(' ')
+            )
             return
           }
           const errorMessage = error instanceof Error ? error.message : String(error)
@@ -1696,7 +1758,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           if (execResult.columns.length > 0 && isEditableSelectSql(result.lastExecutedSql)) {
             _runAnalysis(tabId, connectionId, result.lastExecutedSql!, execResult.queryId, 0).catch(
               (err) => {
-                console.error('[query-edit] analyze_query_for_edit failed (page re-exec):', err)
+                logFrontend(
+                  'error',
+                  ['[query-edit] analyze_query_for_edit failed (page re-exec):', err]
+                    .map(String)
+                    .join(' ')
+                )
               }
             )
           }
@@ -1800,7 +1867,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           if (!metadata) return // stale or tab closed
           tableInfo = metadata[tableName]
         } catch (err) {
-          console.error('[query-store] setEditMode analyze_query_for_edit failed:', err)
+          logFrontend(
+            'error',
+            ['[query-store] setEditMode analyze_query_for_edit failed:', err].map(String).join(' ')
+          )
           showErrorToast('Edit mode failed', err instanceof Error ? err.message : String(err))
           return
         }
@@ -1950,11 +2020,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const sourceRow = result.rows[result.selectedRowIndex]
       if (!sourceRow) return
 
-      const { row: clonedRow, modifiedColumns, insertEligibleColumns } = buildClonedDraftRow(
-        result,
-        tableInfo,
-        sourceRow
-      )
+      const {
+        row: clonedRow,
+        modifiedColumns,
+        insertEligibleColumns,
+      } = buildClonedDraftRow(result, tableInfo, sourceRow)
       if (modifiedColumns.size === 0 && insertEligibleColumns.size === 0) {
         return
       }
@@ -2142,7 +2212,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 result
               )
             } else {
-              await reexecuteOnlyResultAfterInsert(result.editConnectionId, tabId, resultIndex, result)
+              await reexecuteOnlyResultAfterInsert(
+                result.editConnectionId,
+                tabId,
+                resultIndex,
+                result
+              )
             }
           } catch (refreshErr) {
             if (!get().tabs[tabId]) return true
@@ -2219,7 +2294,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             resultIndex
           )
         } catch (cacheErr) {
-          console.warn('[query-store] Result cache sync failed:', cacheErr)
+          logFrontend(
+            'warn',
+            ['[query-store] Result cache sync failed:', cacheErr].map(String).join(' ')
+          )
           showWarningToast(
             'Cache sync warning',
             'Row saved successfully, but the result cache may be stale. Re-run the query to refresh pagination/sort/export.'

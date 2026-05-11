@@ -105,10 +105,7 @@ describe('loadSessionState', () => {
     getSettingReturn = 'not-json{{'
     const result = await loadSessionState()
     expect(result).toBeNull()
-    expect(warnSpy).toHaveBeenCalledWith(
-      '[session-restore] Failed to parse session state JSON:',
-      expect.any(SyntaxError)
-    )
+    expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 

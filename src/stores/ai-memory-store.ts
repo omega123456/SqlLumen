@@ -5,8 +5,8 @@ import { reembedMemories } from '../lib/ai-memory-commands'
 import { hasTauriApis } from '../lib/tauri-env'
 import { useSettingsStore } from './settings-store'
 import { useConnectionStore } from './connection-store'
-import { logFrontend } from '../lib/app-log-commands'
 
+import { logFrontend } from '../lib/app-log-commands'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

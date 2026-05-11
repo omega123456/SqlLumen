@@ -13,7 +13,7 @@
     "test:watch": "vitest",
     "test:coverage": "pnpm exec vitest run --coverage --reporter=default",
     "test:rust": "cargo sqllumen-test-integration",
-    "test:rust:coverage": "cargo sqllumen-llvm-cov",
+    "test:rust:coverage": "node scripts/run-rust-coverage.mjs",
     "test:all": "pnpm test:coverage && pnpm test:rust:coverage && pnpm test:e2e",
     "test:e2e": "node scripts/ensure-playwright-port.mjs && pnpm exec playwright test --reporter=line",
     "test:screenshots": "node scripts/playwright-screenshots.mjs",
@@ -25,6 +25,7 @@
     "release:tauri-version": "node scripts/bump-tauri-version.mjs"
   },
   "dependencies": {
+    "@glideapps/glide-data-grid": "6.0.3",
     "@monaco-editor/react": "^4.7.0",
     "@phosphor-icons/react": "^2.1.10",
     "@tauri-apps/api": "^2.11.0",
@@ -37,7 +38,6 @@
     "monaco-editor": "^0.55.1",
     "monaco-sql-languages": "1.0.0",
     "react-colorful": "^5.6.1",
-    "react-data-grid": "7.0.0-beta.59",
     "react-datepicker": "^9.1.0",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^4.7.3",
@@ -51,8 +51,12 @@
       "esbuild"
     ],
     "peerDependencyRules": {
+      "_peerDependencyNote": "marked and react-responsive-carousel are transitive peer resolutions only, not direct dependencies. Accepted intentionally.",
       "allowedVersions": {
-        "eslint": "10"
+        "eslint": "10",
+        "marked": ">=4",
+        "react": "19",
+        "react-dom": "19"
       }
     }
   },

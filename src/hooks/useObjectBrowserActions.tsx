@@ -20,9 +20,9 @@ import { showErrorToast, showSuccessToast, showWarningToast } from '../stores/to
 import { useQueryStore } from '../stores/query-store'
 import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
 import { invalidateCache as invalidateSchemaMetadataCache } from '../components/query-editor/schema-metadata-cache'
-import { logFrontend } from '../lib/app-log-commands'
 import type { EditableObjectType } from '../types/schema'
 
+import { logFrontend } from '../lib/app-log-commands'
 const RENAME_DB_WARNING =
   'This operation will create a new database, move all tables, and drop the original. Only works for databases containing tables only (no views, procedures, functions, triggers, or events).'
 

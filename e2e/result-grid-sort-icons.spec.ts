@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
-import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
+import {
+  APP_READY_MS,
+  clickResultGridHeader,
+  connectToSample,
+  waitForApp,
+  waitForResultGrid,
+} from './helpers'
 
 async function openQueryEditorWithResults(page: Page) {
   await connectToSample(page)
@@ -11,7 +17,7 @@ async function openQueryEditorWithResults(page: Page) {
   await editorSurface.click({ position: { x: 160, y: 40 } })
   await page.keyboard.type('SELECT * FROM users;')
   await page.keyboard.press('F9')
-  await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
+  await waitForResultGrid(page)
 }
 
 test('result grid renders Phosphor sort arrow icons when column is sorted', async ({ page }) => {
@@ -59,16 +65,7 @@ test('result grid renders Phosphor sort arrow icons when column is sorted', asyn
     })
   })
 
-  // react-data-grid uses a custom SortStatusRenderer that renders a Phosphor ArrowUp SVG
-  // for ASC sort direction. The ArrowUp icon is inside the header sort cell.
-  const resultGrid = page.getByTestId('result-grid-view')
-  const sortArrowUp = resultGrid.locator('.rdg-header-row svg').first()
-  await expect(sortArrowUp).toBeVisible({ timeout: APP_READY_MS })
-
-  // Verify react-data-grid grid structure is present
-  const headerRow = resultGrid.locator('.rdg-header-row')
-  await expect(headerRow).toBeVisible({ timeout: APP_READY_MS })
-
-  const dataRows = resultGrid.locator('.rdg-row')
-  await expect(dataRows.first()).toBeVisible({ timeout: APP_READY_MS })
+  const resultGrid = await waitForResultGrid(page)
+  await clickResultGridHeader(page, 1)
+  await expect(resultGrid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
 })

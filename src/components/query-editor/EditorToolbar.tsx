@@ -1,3 +1,4 @@
+import { logFrontend } from '../../lib/app-log-commands'
 /**
  * Toolbar above the Monaco editor with Execute, Execute All, Save, Open,
  * History (placeholder), and Format actions.
@@ -75,7 +76,10 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
         setFilePath(tabId, path)
       }
     } catch (err) {
-      console.warn('[editor-toolbar] save or save dialog failed:', err)
+      logFrontend(
+        'warn',
+        ['[editor-toolbar] save or save dialog failed:', err].map(String).join(' ')
+      )
     } finally {
       setIsSaving(false)
     }
@@ -102,7 +106,10 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
         }
       }
     } catch (err) {
-      console.warn('[editor-toolbar] open file or open dialog failed:', err)
+      logFrontend(
+        'warn',
+        ['[editor-toolbar] open file or open dialog failed:', err].map(String).join(' ')
+      )
     } finally {
       setIsOpening(false)
     }
@@ -115,7 +122,7 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
       const formatted = formatSQL(content, { language: 'mysql', tabWidth: 2 })
       setContent(tabId, formatted)
     } catch (err) {
-      console.warn('[editor-toolbar] format SQL failed:', err)
+      logFrontend('warn', ['[editor-toolbar] format SQL failed:', err].map(String).join(' '))
     }
   }
 
@@ -131,7 +138,10 @@ export function EditorToolbar({ connectionId, tabId }: EditorToolbarProps) {
         useImportDialogStore.getState().openImportDialog(connectionId, path)
       }
     } catch (err) {
-      console.warn('[editor-toolbar] import SQL file picker failed:', err)
+      logFrontend(
+        'warn',
+        ['[editor-toolbar] import SQL file picker failed:', err].map(String).join(' ')
+      )
     }
   }
 

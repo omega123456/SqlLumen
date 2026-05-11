@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 
 import { logFrontend } from '../lib/app-log-commands'
-
 export type ToastVariant = 'success' | 'error' | 'warning'
 
 export interface ToastItem {

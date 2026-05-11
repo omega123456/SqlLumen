@@ -1,3 +1,4 @@
+import { logFrontend } from '../../lib/app-log-commands'
 /**
  * BaseFormView — shared editable single-record form component.
  *
@@ -174,7 +175,7 @@ export function BaseFormView({
     try {
       await writeClipboardText(text)
     } catch (err) {
-      console.error('[base-form-view] clipboard write failed:', err)
+      logFrontend('error', ['[base-form-view] clipboard write failed:', err].map(String).join(' '))
     }
   }, [])
 

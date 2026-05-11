@@ -109,6 +109,39 @@ async function waitForQueryContent(page: Page, expectedContent: string) {
     .toBe(true)
 }
 
+async function waitForActiveResultValue(page: Page, expectedValue: unknown) {
+  await expect
+    .poll(
+      async () =>
+        page.evaluate((expected) => {
+          const queryStore = (
+            window as unknown as {
+              __queryStore__?: {
+                getState?: () => {
+                  tabs?: Record<
+                    string,
+                    {
+                      activeResultIndex?: number
+                      results?: Array<{ rows?: unknown[][]; resultStatus?: string }>
+                    }
+                  >
+                }
+              }
+            }
+          ).__queryStore__
+
+          return Object.values(queryStore?.getState?.().tabs ?? {}).some((tab) => {
+            const resultIndex = tab?.activeResultIndex ?? 0
+            const activeResult = tab?.results?.[resultIndex]
+            const value = activeResult?.rows?.[0]?.[0]
+            return activeResult?.resultStatus === 'success' && value === expected
+          })
+        }, expectedValue),
+      { timeout: 5_000, intervals: [100, 200, 300] }
+    )
+    .toBe(true)
+}
+
 async function typeQuery(page: Page, sql: string) {
   await focusMonacoEditor(page)
   await page.keyboard.type(sql)
@@ -158,7 +191,7 @@ function expectAutocomplete(
 
 test.describe('Monaco SQL autocomplete', () => {
   // The first test in this serial project absorbs the cold-start cost: Vite module
-  // transforms, V8 compilation of React/Monaco/react-data-grid, AND the autocomplete code paths
+  // transforms, V8 compilation of React/Monaco/data grid code, AND the autocomplete code paths
   // (completion provider, suggestion widget rendering).  Each subsequent test gets a fresh
   // page but reuses V8's compiled bytecode from the same browser instance.
   test('warm-up: full autocomplete flow to prime all browser caches', async ({ page }) => {
@@ -331,9 +364,8 @@ test.describe('Monaco SQL autocomplete', () => {
     await typeQuery(page, 'SELECT DATABASE();')
     await page.keyboard.press('F9')
 
-    await expect(page.getByTestId('result-grid-view')).toContainText('analytics_db', {
-      timeout: APP_READY_MS,
-    })
+    await expect(page.getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
+    await waitForActiveResultValue(page, 'analytics_db')
   })
 
   test('FROM with a selected database suggests databases and scoped tables before keywords', async ({

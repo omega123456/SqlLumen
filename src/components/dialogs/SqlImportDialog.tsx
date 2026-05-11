@@ -10,6 +10,7 @@ import {
 import { showSuccessToast, showErrorToast, showWarningToast } from '../../stores/toast-store'
 import styles from './SqlImportDialog.module.css'
 
+import { logFrontend } from '../../lib/app-log-commands'
 const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
 
 /** Polling interval for progress updates (ms). */
@@ -77,7 +78,7 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
           }
         })
         .catch((err) => {
-          console.error('[sql-import] Failed to poll progress:', err)
+          logFrontend('error', ['[sql-import] Failed to poll progress:', err].map(String).join(' '))
         })
     }
 
@@ -104,7 +105,7 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
       setJobId(id)
     } catch (err) {
       setIsImporting(false)
-      console.error('[sql-import] Failed to start import:', err)
+      logFrontend('error', ['[sql-import] Failed to start import:', err].map(String).join(' '))
     }
   }, [connectionId, filePath, stopOnError])
 
@@ -114,7 +115,7 @@ export default function SqlImportDialog({ connectionId, filePath, onClose }: Sql
     try {
       await cancelImport(jobId)
     } catch (err) {
-      console.error('[sql-import] Failed to cancel import:', err)
+      logFrontend('error', ['[sql-import] Failed to cancel import:', err].map(String).join(' '))
     }
   }, [jobId])
 

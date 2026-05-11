@@ -610,10 +610,7 @@ describe('useConnectionStore — updateDefaultDatabase', () => {
       mockSavedConnection.defaultDatabase
     )
     expect(state.savedConnections[0].defaultDatabase).toBe(mockSavedConnection.defaultDatabase)
-    expect(consoleSpy).toHaveBeenCalledWith(
-      'Failed to persist defaultDatabase change:',
-      expect.any(Error)
-    )
+    expect(consoleSpy).not.toHaveBeenCalled()
     consoleSpy.mockRestore()
   })
 })

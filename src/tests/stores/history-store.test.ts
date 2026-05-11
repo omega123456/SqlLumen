@@ -80,7 +80,7 @@ describe('useHistoryStore', () => {
       const state = useHistoryStore.getState()
       expect(state.isLoadingByConnection['conn-1']).toBe(false)
       expect(state.errorByConnection['conn-1']).toBe('IPC failure')
-      expect(consoleSpy).toHaveBeenCalled()
+      expect(consoleSpy).not.toHaveBeenCalled()
     })
   })
 
@@ -106,7 +106,7 @@ describe('useHistoryStore', () => {
       })
 
       await useHistoryStore.getState().deleteEntry('conn-1', 1)
-      expect(consoleSpy).toHaveBeenCalled()
+      expect(consoleSpy).not.toHaveBeenCalled()
     })
   })
 
@@ -130,7 +130,7 @@ describe('useHistoryStore', () => {
       })
 
       await useHistoryStore.getState().clearAll('conn-1')
-      expect(consoleSpy).toHaveBeenCalled()
+      expect(consoleSpy).not.toHaveBeenCalled()
     })
   })
 

@@ -9,32 +9,33 @@ import styles from './InfoCellPopover.module.css'
 
 export interface InfoCellPopoverProps {
   sql: string | null
-  anchorEl: HTMLElement | null
+  anchorEl?: HTMLElement | null
+  anchorRect?: DOMRect | null
   onClose: () => void
 }
 
-export function InfoCellPopover({ sql, anchorEl, onClose }: InfoCellPopoverProps) {
+export function InfoCellPopover({ sql, anchorEl, anchorRect, onClose }: InfoCellPopoverProps) {
   const popoverRef = useRef<HTMLDivElement>(null)
 
   const position = useMemo(() => {
-    if (!anchorEl) return { top: 0, left: 0 }
-    const anchorRect = anchorEl.getBoundingClientRect()
-    let top = anchorRect.bottom + 4
-    let left = anchorRect.left
+    const rect = anchorRect ?? anchorEl?.getBoundingClientRect()
+    if (!rect) return { top: 0, left: 0 }
+    let top = rect.bottom + 4
+    let left = rect.left
     // Approximate popover size for initial positioning; refined via CSS max-width/max-height
     const popoverWidth = 480
     const popoverHeight = 320
     const vh = window.innerHeight
     if (top + popoverHeight > vh - 8) {
-      top = anchorRect.top - popoverHeight - 4
+      top = rect.top - popoverHeight - 4
     }
     if (left + popoverWidth > window.innerWidth - 8) {
       left = window.innerWidth - 8 - popoverWidth
     }
     return { top: Math.max(8, top), left: Math.max(8, left) }
-  }, [anchorEl])
+  }, [anchorEl, anchorRect])
 
-  const isOpen = anchorEl != null && sql != null
+  const isOpen = (anchorEl != null || anchorRect != null) && sql != null
   useDismissOnOutsideClick(popoverRef, isOpen, onClose, { closeOnEscape: true })
 
   const handleCopy = useCallback(async () => {
@@ -48,7 +49,7 @@ export function InfoCellPopover({ sql, anchorEl, onClose }: InfoCellPopoverProps
     }
   }, [sql])
 
-  if (!anchorEl || !sql) return null
+  if (!isOpen || !sql) return null
 
   return (
     <div

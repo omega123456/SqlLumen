@@ -60,6 +60,7 @@ export default defineConfig({
     baseURL,
     trace: 'on-first-retry',
     viewport: { width: 1280, height: 720 },
+    permissions: ['clipboard-read', 'clipboard-write'],
   },
   projects: [
     // Monaco + shared Vite: run autocomplete in isolation first so other workers cannot

@@ -38,21 +38,29 @@ function variantClasses(variant: TextInputVariant): string {
 }
 
 export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function TextInput(
-  { variant = 'default', invalid, passwordToggleGutter, className, ...rest },
+  {
+    variant = 'default',
+    invalid,
+    passwordToggleGutter,
+    className,
+    autoCapitalize = 'none',
+    autoCorrect = 'off',
+    ...rest
+  },
   ref
 ) {
   return (
     <input
       ref={ref}
+      {...rest}
       className={mergeClassNames(
         variantClasses(variant),
         invalid && styles.invalid,
         passwordToggleGutter && styles.passwordToggleGutter,
         className
       )}
-      autoCapitalize="none"
-      autoCorrect="off"
-      {...rest}
+      autoCapitalize={autoCapitalize}
+      autoCorrect={autoCorrect}
     />
   )
 })

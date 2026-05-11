@@ -1,3 +1,4 @@
+import { logFrontend } from '../../lib/app-log-commands'
 /**
  * Pure-logic helpers for diff overlay operations in the query editor.
  * Extracted from QueryEditorTab callbacks to enable isolated unit testing.
@@ -40,7 +41,7 @@ export function buildDiffState(
 ): DiffOverlayState | null {
   const model = editor?.getModel()
   if (!model) {
-    console.error('[query-editor] Cannot open diff: no editor model')
+    logFrontend('error', ['[query-editor] Cannot open diff: no editor model'].map(String).join(' '))
     return null
   }
 

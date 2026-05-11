@@ -5,6 +5,7 @@ import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
 import { getAppInfo } from '../../lib/app-info-commands'
 import type { AppInfo } from '../../types/schema'
 
+import { logFrontend } from '../../lib/app-log-commands'
 const LOG_LEVEL_OPTIONS = [
   { value: 'error', label: 'Error' },
   { value: 'warn', label: 'Warn' },
@@ -27,7 +28,7 @@ export function LoggingSettings() {
         if (!cancelled) setAppInfo(info)
       })
       .catch((err) => {
-        console.error('[settings] Failed to load app info:', err)
+        logFrontend('error', ['[settings] Failed to load app info:', err].map(String).join(' '))
       })
     return () => {
       cancelled = true

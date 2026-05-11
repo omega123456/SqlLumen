@@ -81,7 +81,7 @@ describe('buildDiffState', () => {
   it('returns null when editor is null', () => {
     const result = buildDiffState(null, 'SELECT 1', DEFAULT_RANGE)
     expect(result).toBeNull()
-    expect(consoleSpy).toHaveBeenCalledWith('[query-editor] Cannot open diff: no editor model')
+    expect(consoleSpy).not.toHaveBeenCalled()
   })
 
   it('returns null when editor model is null', () => {

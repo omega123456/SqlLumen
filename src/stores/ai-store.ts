@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { logFrontend } from '../lib/app-log-commands'
 import { sendAiChat, cancelAiStream, listenToAiStream, aiQueryExpand } from '../lib/ai-commands'
 import { searchMemories } from '../lib/ai-memory-commands'
 import type { AiMessage as IpcAiMessage, AiChunkKind } from '../lib/ai-commands'
@@ -11,6 +10,7 @@ import { useQueryStore } from './query-store'
 import { useAiFeedbackStore } from './ai-feedback-store'
 import { showErrorToast } from './toast-store'
 
+import { logFrontend } from '../lib/app-log-commands'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

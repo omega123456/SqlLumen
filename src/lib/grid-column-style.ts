@@ -221,7 +221,7 @@ export function getAutoSizedColumnWidth(
   return Math.max(sizing.autoMinWidth, Math.min(AUTO_WIDTH_MAX, measuredWidth))
 }
 
-/** Default column width (in px) based on SQL data type — used by react-data-grid columns. */
+/** Default column width (in px) based on SQL data type — used by shared grid columns. */
 export function getDefaultColumnWidth(dataType: string): number {
   return getColumnWidthSizing(dataType).defaultWidth
 }

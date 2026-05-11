@@ -4,7 +4,6 @@ import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { filterCommands, findCommand } from '../../lib/slash-commands'
 import { showErrorToast } from '../../stores/toast-store'
-import { logFrontend } from '../../lib/app-log-commands'
 import { Textarea } from '../common/Textarea'
 import { Button } from '../common/Button'
 import { IconButton } from '../common/IconButton'
@@ -12,6 +11,7 @@ import { SlashCommandDropdown } from './SlashCommandDropdown'
 import type { SlashCommand } from '../../lib/slash-commands'
 import styles from './AiChatInput.module.css'
 
+import { logFrontend } from '../../lib/app-log-commands'
 const MIN_TEXTAREA_HEIGHT_PX = 36
 const MAX_TEXTAREA_HEIGHT_PX = 140
 

@@ -1,7 +1,7 @@
 import { saveMemory } from './ai-memory-commands'
 import { showSuccessToast, showErrorToast } from '../stores/toast-store'
-import { logFrontend } from './app-log-commands'
 
+import { logFrontend } from './app-log-commands'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

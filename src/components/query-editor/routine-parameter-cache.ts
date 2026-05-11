@@ -1,3 +1,4 @@
+import { logFrontend } from '../../lib/app-log-commands'
 /**
  * Per-connection routine parameter cache.
  * Module-level singleton — NOT a React component.
@@ -6,7 +7,6 @@
 
 import type { RoutineParameter } from '../../types/schema'
 import { getRoutineParametersWithReturnType } from '../../lib/object-editor-commands'
-import { logFrontend } from '../../lib/app-log-commands'
 
 export interface RoutineParameterCacheEntry {
   parameters: RoutineParameter[] // ordinalPosition > 0 rows only
@@ -119,7 +119,12 @@ export async function getRoutineParameters(
       return entry
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error(`[routine-param-cache] Failed to fetch parameters for ${routineName}: ${msg}`)
+      logFrontend(
+        'error',
+        [`[routine-param-cache] Failed to fetch parameters for ${routineName}: ${msg}`]
+          .map(String)
+          .join(' ')
+      )
       logFrontend(
         'error',
         `[routine-param-cache] Failed to fetch parameters for ${routineName}: ${msg}`

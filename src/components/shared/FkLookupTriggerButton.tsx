@@ -1,9 +1,8 @@
 /**
  * FkLookupTriggerButton — shared trigger button for opening the FK lookup dialog.
  *
- * Used by both FkCellRenderer (read-mode overlay) and the cell editors
- * (NullableCellEditor / EnumCellEditor) in edit-mode. The visual differences
- * between renderer and editor usage are handled via the `className` prop.
+ * Used by cell editors (NullableCellEditor / EnumCellEditor) in edit-mode.
+ * Visual placement is handled by the caller via the `className` prop.
  *
  * The button carries `data-fk-trigger=""` for CSS attribute selectors and
  * `data-testid="fk-lookup-trigger"` for tests.
@@ -38,7 +37,13 @@ export function FkLookupTriggerButton({
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    fkLookup?.onFkLookup({ columnKey, currentValue, foreignKey, rowData })
+    fkLookup?.onFkLookup({
+      columnKey,
+      currentValue,
+      foreignKey,
+      rowData,
+      source: 'editor-trigger',
+    })
   }
 
   return (

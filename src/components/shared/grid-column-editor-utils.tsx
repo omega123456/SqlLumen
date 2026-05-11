@@ -9,8 +9,11 @@ import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/sche
 import type { CellEditorBaseProps, CellEditorCallbackProps } from './grid-cell-editors'
 import { EnumCellEditor, NullableCellEditor } from './grid-cell-editors'
 
+export type GridEditorType = 'text' | 'enum' | 'datetime' | 'fk' | 'none'
+
 export interface CellEditorConfig {
   renderEditCell: (props: CellEditorBaseProps) => React.ReactElement
+  editorType: GridEditorType
   editorOptions?: {
     commitOnOutsideClick?: boolean
     closeOnExternalRowChange?: boolean
@@ -30,6 +33,7 @@ export function getCellEditorForColumn(
 
   if (temporalType && col) {
     return {
+      editorType: 'datetime',
       renderEditCell: (props: CellEditorBaseProps) => (
         <DateTimeCellEditor
           {...props}
@@ -49,6 +53,7 @@ export function getCellEditorForColumn(
 
   if (col && isEnumColumn(col)) {
     return {
+      editorType: foreignKey ? 'fk' : 'enum',
       renderEditCell: (props: CellEditorBaseProps) => (
         <EnumCellEditor
           {...props}
@@ -60,11 +65,15 @@ export function getCellEditorForColumn(
           syncCellValue={callbacks.syncCellValue}
         />
       ),
-      editorOptions: sharedEditorOptions,
+      editorOptions: {
+        ...sharedEditorOptions,
+        commitOnOutsideClick: false,
+      },
     }
   }
 
   return {
+    editorType: foreignKey ? 'fk' : 'text',
     renderEditCell: (props: CellEditorBaseProps) => (
       <NullableCellEditor
         {...props}

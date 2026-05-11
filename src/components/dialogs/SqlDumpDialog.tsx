@@ -13,6 +13,7 @@ import {
 import { showSuccessToast, showErrorToast } from '../../stores/toast-store'
 import styles from './SqlDumpDialog.module.css'
 
+import { logFrontend } from '../../lib/app-log-commands'
 const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
 
 /** Polling interval for progress updates (ms). */
@@ -92,7 +93,10 @@ export default function SqlDumpDialog({
         if (cancelled) return
         const msg = err instanceof Error ? err.message : String(err)
         setLoadError(msg)
-        console.error('[sql-dump] Failed to load exportable objects:', msg)
+        logFrontend(
+          'error',
+          ['[sql-dump] Failed to load exportable objects:', msg].map(String).join(' ')
+        )
       })
       .finally(() => {
         if (!cancelled) setLoadingObjects(false)
@@ -126,7 +130,7 @@ export default function SqlDumpDialog({
           }
         })
         .catch((err) => {
-          console.error('[sql-dump] Failed to poll progress:', err)
+          logFrontend('error', ['[sql-dump] Failed to poll progress:', err].map(String).join(' '))
         })
     }
 

@@ -127,6 +127,101 @@ describe('ShortcutsSettings', () => {
     // The conflict state is now local, not in the store
   })
 
+  it('reassigns a conflicting shortcut and resets the previous action to its default', async () => {
+    const user = userEvent.setup()
+    render(<ShortcutsSettings />)
+
+    await user.click(screen.getByTestId('shortcut-record-save-file'))
+    await user.keyboard('{F9}')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('shortcut-resolve-execute-query')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByTestId('shortcut-resolve-execute-query'))
+
+    await waitFor(() => {
+      expect(screen.queryByText('Conflict!')).not.toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('shortcut-record-save-file').textContent).toContain('F9')
+    expect(screen.getByTestId('shortcut-record-execute-query').textContent).toContain('F9')
+
+    const pending = JSON.parse(useSettingsStore.getState().pendingChanges.shortcuts!) as Record<
+      string,
+      { key: string; modifiers: string[] }
+    >
+    expect(pending['save-file']).toEqual({ key: 'F9', modifiers: [] })
+    expect(pending['execute-query']).toEqual(DEFAULT_SHORTCUTS['execute-query'])
+  })
+
+  it('resets a modified shortcut back to default', async () => {
+    const user = userEvent.setup()
+    const modifiedShortcuts = {
+      ...DEFAULT_SHORTCUTS,
+      'execute-query': { key: 'F5', modifiers: [] as string[] },
+    }
+    useSettingsStore.setState({
+      pendingChanges: { shortcuts: JSON.stringify(modifiedShortcuts) },
+    })
+
+    render(<ShortcutsSettings />)
+
+    await user.click(screen.getByTestId('shortcut-reset-execute-query'))
+
+    expect(screen.queryByTestId('shortcut-reset-execute-query')).not.toBeInTheDocument()
+    expect(screen.getByTestId('shortcut-record-execute-query').textContent).toContain('F9')
+
+    const pending = JSON.parse(useSettingsStore.getState().pendingChanges.shortcuts!) as Record<
+      string,
+      { key: string; modifiers: string[] }
+    >
+    expect(pending['execute-query']).toEqual(DEFAULT_SHORTCUTS['execute-query'])
+  })
+
+  it('loads pending shortcuts safely when pending JSON is invalid', () => {
+    useSettingsStore.setState({
+      pendingChanges: { shortcuts: '{invalid json' },
+    })
+
+    render(<ShortcutsSettings />)
+
+    expect(screen.getByTestId('shortcut-record-execute-query').textContent).toContain('F9')
+  })
+
+  it('ignores modifier-only key presses while recording', async () => {
+    const user = userEvent.setup()
+    render(<ShortcutsSettings />)
+
+    await user.click(screen.getByTestId('shortcut-record-execute-query'))
+    await user.keyboard('{Control>}')
+
+    expect(screen.getByTestId('shortcut-recording-execute-query')).toBeInTheDocument()
+
+    await user.keyboard('{/Control}')
+    await user.keyboard('{Shift>}')
+
+    expect(screen.getByTestId('shortcut-recording-execute-query')).toBeInTheDocument()
+  })
+
+  it('records ctrl and shift modifiers in a new binding', async () => {
+    const user = userEvent.setup()
+    render(<ShortcutsSettings />)
+
+    await user.click(screen.getByTestId('shortcut-record-execute-query'))
+    await user.keyboard('{Control>}{Shift>}x{/Shift}{/Control}')
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('shortcut-recording-execute-query')).not.toBeInTheDocument()
+    })
+
+    const pending = JSON.parse(useSettingsStore.getState().pendingChanges.shortcuts!) as Record<
+      string,
+      { key: string; modifiers: string[] }
+    >
+    expect(pending['execute-query']).toEqual({ key: 'x', modifiers: ['ctrl', 'shift'] })
+  })
+
   it('shows reset button when a shortcut is modified', async () => {
     // Manually set pending changes to simulate a modified shortcut
     const modifiedShortcuts = {

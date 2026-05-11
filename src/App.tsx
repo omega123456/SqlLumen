@@ -8,8 +8,8 @@ import { useShortcutStore } from './stores/shortcut-store'
 import { useUpdateStore } from './stores/update-store'
 import { useSystemTheme } from './hooks/use-system-theme'
 
-// react-data-grid base styles + Precision Studio custom theme
-import 'react-data-grid/lib/styles.css'
+// Glide Data Grid base styles + Precision Studio custom theme
+import '@glideapps/glide-data-grid/dist/index.css'
 import './styles/data-grid-precision.css'
 
 function App() {

@@ -1,72 +1,21 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, act } from '@testing-library/react'
-
-// Store captured BaseGridView props for assertions
-let lastBaseGridProps: Record<string, unknown> = {}
-let lastEditorCallbacks: Record<string, unknown> | null = null
-
-// Mock the shared BaseGridView component (ResultGridView wraps it)
-vi.mock('../../../components/shared/BaseGridView', async () => {
-  const React = await import('react')
-  const { useEditorCallbacks } = await import('../../../components/shared/editor-callbacks-context')
-  const MockBaseGridView = React.forwardRef(function MockBaseGridView(
-    props: Record<string, unknown>,
-    ref: React.Ref<unknown>
-  ) {
-    void ref
-    const editorCallbacks = useEditorCallbacks() as unknown as Record<string, unknown> | null
-    React.useEffect(() => {
-      lastBaseGridProps = props
-      lastEditorCallbacks = editorCallbacks
-    }, [editorCallbacks, props])
-    const rows = (props.rows as Array<Record<string, unknown>>) ?? []
-    return React.createElement(
-      'div',
-      { 'data-testid': props.testId ?? 'base-grid-view' },
-      rows.map((row: Record<string, unknown>, i: number) =>
-        React.createElement(
-          'div',
-          { key: i, 'data-testid': `grid-row-${i}` },
-          ...Object.entries(row)
-            .filter(([k]: [string, unknown]) => !k.startsWith('__'))
-            .map(([k, v]: [string, unknown]) =>
-              React.createElement(
-                'span',
-                { key: k, 'data-key': k },
-                v === null ? 'NULL' : String(v)
-              )
-            )
-        )
-      )
-    )
-  })
-  return { BaseGridView: MockBaseGridView }
-})
-
+import { render } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { ResultGridView } from '../../../components/query-editor/ResultGridView'
-import type { RowEditState, TableDataColumnMeta } from '../../../types/schema'
-import type {
-  GridColumnDescriptor,
-  CellClickGuardArgs,
-  CellClickGuardResult,
-} from '../../../types/shared-data-view'
+import type { ColumnMeta, RowEditState, TableDataColumnMeta } from '../../../types/schema'
 
-const columns = [
-  { name: 'id', dataType: 'INT' },
-  { name: 'name', dataType: 'VARCHAR' },
-  { name: 'email', dataType: 'VARCHAR' },
-]
+const mockCanvasBaseGridView = vi.hoisted(() => vi.fn((props: Record<string, unknown>) => (
+  <div data-testid="mock-result-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
+)))
 
-const rows: unknown[][] = [
-  [1, 'Alice', 'alice@example.com'],
-  [2, 'Bob', null],
-  [3, 'Charlie', 'charlie@example.com'],
-]
+vi.mock('../../../components/shared/glide/CanvasBaseGridView', () => ({
+  CanvasBaseGridView: mockCanvasBaseGridView,
+}))
 
-const editTableColumns: TableDataColumnMeta[] = [
+const columns: ColumnMeta[] = [{ name: 'name', dataType: 'VARCHAR' }]
+const tableColumns: TableDataColumnMeta[] = [
   {
-    name: 'id',
-    dataType: 'INT',
+    name: 'name',
+    dataType: 'varchar',
     isBooleanAlias: false,
     isNullable: false,
     isPrimaryKey: true,
@@ -74,960 +23,399 @@ const editTableColumns: TableDataColumnMeta[] = [
     hasDefault: false,
     columnDefault: null,
     isBinary: false,
-    isAutoIncrement: true,
-  },
-  {
-    name: 'name',
-    dataType: 'VARCHAR',
-    isBooleanAlias: false,
-    isNullable: true,
-    isPrimaryKey: false,
-    isUniqueKey: false,
-    hasDefault: false,
-    columnDefault: null,
-    isBinary: false,
-    isAutoIncrement: false,
-  },
-  {
-    name: 'email',
-    dataType: 'VARCHAR',
-    isBooleanAlias: false,
-    isNullable: true,
-    isPrimaryKey: false,
-    isUniqueKey: false,
-    hasDefault: false,
-    columnDefault: null,
-    isBinary: false,
     isAutoIncrement: false,
   },
 ]
-
-function getLatestBaseGridProps(): Record<string, unknown> {
-  return lastBaseGridProps
+const editState: RowEditState = {
+  rowKey: { name: 'Ada' },
+  originalValues: { name: 'Ada' },
+  currentValues: { name: 'Ada' },
+  modifiedColumns: new Set(),
+  isNewRow: false,
 }
 
-describe('ResultGridView edit mode', () => {
-  const baseProps = {
-    columns,
-    rows,
-    sortColumn: null as string | null,
-    sortDirection: null as 'asc' | 'desc' | null,
-    onSortChanged: vi.fn(),
-    onRowSelected: vi.fn(),
-    selectedRowIndex: null as number | null,
-    currentPage: 1,
-    pageSize: 1000,
-    tabId: 'tab-42',
-    editMode: null as string | null,
-    editableColumnMap: new Map<number, boolean>(),
-    editColumnBindings: new Map<number, string>(),
-    editState: null as RowEditState | null,
-    editingRowIndex: null as number | null,
-    editTableColumns: [] as TableDataColumnMeta[],
-    onStartEditing: vi.fn(),
-    onUpdateCellValue: vi.fn(),
-    onSyncCellValue: vi.fn(),
-    onAutoSave: vi.fn().mockResolvedValue(true),
+const props = {
+  columns,
+  rows: [['Ada']],
+  sortColumn: null,
+  sortDirection: null,
+  onSortChanged: vi.fn(),
+  onRowSelected: vi.fn(),
+  selectedRowIndex: 0,
+  tabId: 'tab-1',
+  editMode: 'people',
+  editableColumnMap: new Map([[0, true]]),
+  editState,
+  editingRowIndex: 0,
+  editTableColumns: tableColumns,
+  editColumnBindings: new Map([[0, 'name']]),
+  onStartEditing: vi.fn(),
+  onUpdateCellValue: vi.fn(),
+  onSyncCellValue: vi.fn(),
+  onAutoSave: vi.fn(async () => true),
+}
+
+function getGridProps() {
+  return mockCanvasBaseGridView.mock.calls[mockCanvasBaseGridView.mock.calls.length - 1]?.[0] as {
+    rows: Array<Record<string, unknown>>
+    columns: Array<{ editable: boolean }>
+    editState: { currentValues: Record<string, unknown>; originalValues: Record<string, unknown> } | null
+    editableColumnKeys: Set<string>
+    isModifiedCell: (row: Record<string, unknown>, columnKey: string) => boolean
+    onCellClickGuard: (args: {
+      rowIdx: number
+      columnKey: string
+      rowData: Record<string, unknown>
+    }) => Promise<{
+      proceed: boolean
+      targetRowIdx: number
+      targetColIdx: number
+      enableEditor: boolean
+      restoreFocus?: boolean
+    }>
+    onCellClipboardEdit: (args: {
+      rowIdx: number
+      columnKey: string
+      rowData: Record<string, unknown>
+      action: 'copy' | 'cut' | 'paste'
+      text?: string | null
+    }) => Promise<void>
+    onRowsChange: (rows: Record<string, unknown>[], data: { indexes: number[] }) => void
+    onRowChanging: (_from: number, _to: number) => Promise<boolean>
+    onCellValueChange: (rowIdx: number, columnKey: string, value: unknown) => void
+    getRowClass: (row: Record<string, unknown>) => string | undefined
+    selectedRowClassName?: string
+    showReadOnlyHeaders: boolean
   }
+}
 
-  beforeEach(() => {
-    vi.clearAllMocks()
-    lastBaseGridProps = {}
-    lastEditorCallbacks = null
-  })
-
-  it('sets editable: false on all columns when editMode is null (read-only)', () => {
-    render(<ResultGridView {...baseProps} />)
-    const props = getLatestBaseGridProps()
-    const colDefs = props.columns as GridColumnDescriptor[]
-    colDefs.forEach((col) => {
-      expect(col.editable).toBe(false)
-    })
-  })
-
-  it('passes a performance logger to the shared grid for live query-grid diagnostics', () => {
-    render(<ResultGridView {...baseProps} />)
-    const props = getLatestBaseGridProps()
-    expect(props.performanceLogger).toBeDefined()
-  })
-
-  it('sets editable: true on columns marked as editable in editableColumnMap', () => {
-    const editableMap = new Map<number, boolean>([
-      [0, false], // id — not editable
-      [1, true], // name — editable
-      [2, true], // email — editable
-    ])
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const colDefs = props.columns as GridColumnDescriptor[]
-    expect(colDefs[0].editable).toBe(false) // id — not editable
-    expect(colDefs[1].editable).toBe(true) // name — editable
-    expect(colDefs[2].editable).toBe(true) // email — editable
-  })
-
-  it('uses bound source metadata for aliased editable columns', () => {
-    const aliasColumns = [
-      { name: 'user_id', dataType: 'INT' },
-      { name: 'name', dataType: 'VARCHAR' },
-      { name: 'email', dataType: 'VARCHAR' },
-    ]
-    const aliasRows: unknown[][] = [[1, 'Alice', 'alice@example.com']]
-    const editableMap = new Map<number, boolean>([
-      [0, true],
-      [1, true],
-      [2, true],
-    ])
-    const bindings = new Map<number, string>([
-      [0, 'id'],
-      [1, 'name'],
-      [2, 'email'],
-    ])
-
-    render(
-      <ResultGridView
-        {...baseProps}
-        columns={aliasColumns}
-        rows={aliasRows}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editColumnBindings={bindings}
-        editTableColumns={editTableColumns}
-      />
-    )
-
-    const props = getLatestBaseGridProps()
-    const colDefs = props.columns as GridColumnDescriptor[]
-    expect(colDefs[0].editable).toBe(true)
-    expect(colDefs[0].tableColumnMeta?.name).toBe('id')
-    expect(colDefs[0].tableColumnMeta?.isPrimaryKey).toBe(true)
-  })
-
-  it('passes tableColumnMeta only for editable columns', () => {
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-      [2, true],
-    ])
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const colDefs = props.columns as GridColumnDescriptor[]
-    expect(colDefs[0].tableColumnMeta).toBeUndefined() // id — not editable
-    expect(colDefs[1].tableColumnMeta).toBeDefined() // name — editable
-    expect(colDefs[2].tableColumnMeta).toBeDefined() // email — editable
-  })
-
-  it('adds foreignKey metadata for bound FK columns', () => {
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-      [2, true],
-    ])
-    const bindings = new Map<number, string>([
-      [1, 'name'],
-      [2, 'email'],
-    ])
-    const editForeignKeys = [
-      {
-        columnName: 'email',
-        referencedDatabase: 'testdb',
-        referencedTable: 'users',
-        referencedColumn: 'id',
-        constraintName: 'fk_users_email',
-      },
-    ]
-
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editColumnBindings={bindings}
-        editTableColumns={editTableColumns}
-        editForeignKeys={editForeignKeys}
-      />
-    )
-
-    const props = getLatestBaseGridProps()
-    const colDefs = props.columns as GridColumnDescriptor[]
-    expect(colDefs[2].foreignKey).toEqual(editForeignKeys[0])
-    expect(colDefs[1].foreignKey).toBeUndefined()
-  })
-
-  it('passes showReadOnlyHeaders=true when editMode is active', () => {
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-      [2, true],
-    ])
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    expect(props.showReadOnlyHeaders).toBe(true)
-  })
-
-  it('passes showReadOnlyHeaders=false when editMode is null', () => {
-    render(<ResultGridView {...baseProps} />)
-    const props = getLatestBaseGridProps()
-    expect(props.showReadOnlyHeaders).toBe(false)
-  })
-
-  it('passes tableColumnMeta for enum columns', () => {
-    const enumTableColumns: TableDataColumnMeta[] = [
-      ...editTableColumns.slice(0, 2),
-      {
-        name: 'email',
-        dataType: 'ENUM',
-        isBooleanAlias: false,
-        enumValues: ['a@test.com', 'b@test.com'],
-        isNullable: true,
-        isPrimaryKey: false,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isAutoIncrement: false,
-      },
-    ]
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-      [2, true],
-    ])
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={enumTableColumns}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const colDefs = props.columns as GridColumnDescriptor[]
-    // Editable columns should have tableColumnMeta for editor factory
-    expect(colDefs[1].tableColumnMeta).toBeDefined()
-    expect(colDefs[2].tableColumnMeta).toBeDefined()
-    expect(colDefs[2].tableColumnMeta?.dataType).toBe('ENUM')
-  })
-
-  it('calls onStartEditing when an editable cell is clicked via guard', async () => {
-    const onStartEditing = vi.fn()
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-      [2, true],
-    ])
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-        onStartEditing={onStartEditing}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (
-      args: CellClickGuardArgs
-    ) => Promise<CellClickGuardResult>
-
-    expect(onCellClickGuard).toBeDefined()
-
-    let result: CellClickGuardResult & { restoreFocus?: boolean } = {
-      proceed: true,
-      targetRowIdx: -1,
-      targetColIdx: -1,
-      enableEditor: false,
-    }
-    await act(async () => {
-      result = await onCellClickGuard({
-        rowIdx: 0,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 0, col_0: 1, col_1: 'Alice' },
-      })
-    })
-
-    expect(onStartEditing).toHaveBeenCalledWith(0)
-    expect(result!.proceed).toBe(true)
-    expect(result!.enableEditor).toBe(true)
-  })
-
-  it('provides editor callbacks that update query edit state by result column index', () => {
-    const onUpdateCellValue = vi.fn()
+describe('ResultGridView editing', () => {
+  it('cell editing triggers onSyncCellValue', () => {
     const onSyncCellValue = vi.fn()
+    render(<ResultGridView {...props} onSyncCellValue={onSyncCellValue} />)
+    const gridProps = getGridProps()
+    gridProps.onCellValueChange(0, 'col_0', 'Grace')
+    gridProps.onRowsChange([{ col_0: 'Grace', __rowIdx: 0 }], { indexes: [0] })
+    expect(onSyncCellValue).toHaveBeenCalledWith(0, 'Grace')
+  })
+
+  it('read-only mode prevents edit mode', () => {
+    render(<ResultGridView {...props} editMode={null} />)
+    const gridProps = getGridProps() as unknown as {
+      isEditMode: boolean
+      columns: Array<{ editable: boolean }>
+    }
+    expect(gridProps.isEditMode).toBe(false)
+    expect(gridProps.columns[0].editable).toBe(false)
+  })
+
+  it('passes the current edit value to the grid edit state', () => {
+    render(<ResultGridView {...props} />)
+    const gridProps = getGridProps()
+    expect(gridProps.editState.currentValues).toEqual({ col_0: 'Ada' })
+    expect(gridProps.editState.originalValues).toEqual({ col_0: 'Ada' })
+    expect(gridProps.editableColumnKeys.has('col_0')).toBe(true)
+  })
+
+  it('overlays current edit values onto the editing row data', () => {
+    const editedState: RowEditState = {
+      ...editState,
+      currentValues: { name: 'Grace' },
+      modifiedColumns: new Set(['name']),
+    }
+
+    render(<ResultGridView {...props} editState={editedState} />)
+
+    expect(getGridProps().rows[0]).toMatchObject({ col_0: 'Grace', __rowIdx: 0 })
+  })
+
+  it('marks modified cells only for the active editing row and bound column', () => {
+    const editedState: RowEditState = {
+      ...editState,
+      currentValues: { name: 'Grace' },
+      modifiedColumns: new Set(['name']),
+    }
+
+    render(<ResultGridView {...props} editState={editedState} />)
+
+    const gridProps = getGridProps()
+    expect(gridProps.isModifiedCell(gridProps.rows[0], 'col_0')).toBe(true)
+    expect(gridProps.isModifiedCell({ __rowIdx: 1, col_0: 'Other' }, 'col_0')).toBe(false)
+    expect(gridProps.isModifiedCell(gridProps.rows[0], 'col_99')).toBe(false)
+  })
+
+  it('starts editing when an editable cell is clicked', async () => {
+    const onStartEditing = vi.fn()
+    const onRowSelected = vi.fn()
+
     render(
       <ResultGridView
-        {...baseProps}
-        editMode="users"
+        {...props}
+        editingRowIndex={null}
+        editState={null}
+        onStartEditing={onStartEditing}
+        onRowSelected={onRowSelected}
+      />
+    )
+
+    const gridProps = getGridProps()
+    const result = await gridProps.onCellClickGuard({
+      rowIdx: 0,
+      columnKey: 'col_0',
+      rowData: gridProps.rows[0],
+    })
+
+    expect(result).toEqual({
+      proceed: true,
+      targetRowIdx: 0,
+      targetColIdx: 0,
+      enableEditor: true,
+    })
+    expect(onStartEditing).toHaveBeenCalledWith(0)
+    expect(onRowSelected).toHaveBeenCalledWith(0)
+  })
+
+  it('selects but does not edit non-editable cells', async () => {
+    render(<ResultGridView {...props} editableColumnMap={new Map([[0, false]])} />)
+
+    const gridProps = getGridProps()
+    const result = await gridProps.onCellClickGuard({
+      rowIdx: 0,
+      columnKey: 'col_0',
+      rowData: gridProps.rows[0],
+    })
+
+    expect(result).toEqual({
+      proceed: true,
+      targetRowIdx: 0,
+      targetColIdx: 0,
+      enableEditor: false,
+    })
+  })
+
+  it('keeps focus on the current row when auto-save fails during row switch', async () => {
+    const onAutoSave = vi.fn(async () => false)
+
+    render(
+      <ResultGridView
+        {...props}
+        rows={[
+          ['Ada'],
+          ['Bob'],
+        ]}
+        editState={{ ...editState, modifiedColumns: new Set(['name']) }}
+        onAutoSave={onAutoSave}
+      />
+    )
+
+    const gridProps = getGridProps()
+    const result = await gridProps.onCellClickGuard({
+      rowIdx: 1,
+      columnKey: 'col_0',
+      rowData: gridProps.rows[1],
+    })
+
+    expect(onAutoSave).toHaveBeenCalledTimes(1)
+    expect(result).toEqual({
+      proceed: false,
+      targetRowIdx: 0,
+      targetColIdx: 0,
+      enableEditor: true,
+      restoreFocus: true,
+    })
+  })
+
+  it('scans changed rows and only syncs modified cells', () => {
+    const onSyncCellValue = vi.fn()
+
+    render(
+      <ResultGridView
+        {...props}
+        columns={[
+          { name: 'id', dataType: 'INT' },
+          { name: 'name', dataType: 'VARCHAR' },
+        ]}
+        rows={[[1, 'Ada']]}
+        editTableColumns={[
+          {
+            name: 'id',
+            dataType: 'int',
+            isBooleanAlias: false,
+            isNullable: false,
+            isPrimaryKey: true,
+            isUniqueKey: false,
+            hasDefault: false,
+            columnDefault: null,
+            isBinary: false,
+            isAutoIncrement: false,
+          },
+          {
+            name: 'name',
+            dataType: 'varchar',
+            isBooleanAlias: false,
+            isNullable: true,
+            isPrimaryKey: false,
+            isUniqueKey: false,
+            hasDefault: false,
+            columnDefault: null,
+            isBinary: false,
+            isAutoIncrement: false,
+          },
+        ]}
         editableColumnMap={
-          new Map<number, boolean>([
+          new Map([
             [0, false],
             [1, true],
-            [2, true],
           ])
         }
-        editTableColumns={editTableColumns}
-        onUpdateCellValue={onUpdateCellValue}
+        editColumnBindings={
+          new Map([
+            [0, 'id'],
+            [1, 'name'],
+          ])
+        }
         onSyncCellValue={onSyncCellValue}
       />
     )
 
-    const updateCellValue = lastEditorCallbacks?.updateCellValue as
-      | ((tabId: string, columnKey: string, value: unknown) => void)
-      | undefined
-    const syncCellValue = lastEditorCallbacks?.syncCellValue as
-      | ((
-          tabId: string,
-          rowData: Record<string, unknown>,
-          columnKey: string,
-          value: unknown
-        ) => void)
-      | undefined
+    const gridProps = getGridProps()
+    gridProps.onRowsChange([{ col_0: 1, col_1: 'Grace', __rowIdx: 0 }], { indexes: [0] })
 
-    expect(lastEditorCallbacks?.tabId).toBe('tab-42')
-    updateCellValue?.('tab-42', 'col_1', 'Alice Updated')
-    syncCellValue?.('tab-42', { __rowIdx: 0, col_1: 'Alice' }, 'col_1', 'Alice Updated')
+    expect(onSyncCellValue).toHaveBeenCalledTimes(1)
+    expect(onSyncCellValue).toHaveBeenCalledWith(1, 'Grace')
+  })
 
-    expect(onUpdateCellValue).toHaveBeenCalledWith(1, 'Alice Updated')
+  it('ignores clipboard edits for non-editable columns', async () => {
+    const onSyncCellValue = vi.fn()
+
+    render(
+      <ResultGridView
+        {...props}
+        editableColumnMap={new Map([[0, false]])}
+        onSyncCellValue={onSyncCellValue}
+      />
+    )
+
+    const gridProps = getGridProps()
+    await gridProps.onCellClipboardEdit({
+      rowIdx: 0,
+      columnKey: 'col_0',
+      rowData: gridProps.rows[0],
+      action: 'paste',
+      text: 'Ignored',
+    })
+
     expect(onSyncCellValue).not.toHaveBeenCalled()
   })
 
-  it('does not call onStartEditing for non-editable cell clicks', async () => {
-    const onStartEditing = vi.fn()
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-      [2, true],
-    ])
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-        onStartEditing={onStartEditing}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (
-      args: CellClickGuardArgs
-    ) => Promise<CellClickGuardResult & { restoreFocus?: boolean }>
-
-    let result: CellClickGuardResult & { restoreFocus?: boolean } = {
-      proceed: true,
-      targetRowIdx: -1,
-      targetColIdx: -1,
-      enableEditor: false,
-    }
-    await act(async () => {
-      result = await onCellClickGuard({
-        rowIdx: 0,
-        columnKey: 'col_0',
-        rowData: { __rowIdx: 0, col_0: 1 },
-      })
-    })
-
-    // Non-editable column should not trigger editing
-    expect(onStartEditing).not.toHaveBeenCalled()
-    // But proceed should be true (for row selection)
-    expect(result!.proceed).toBe(true)
-    expect(result!.enableEditor).toBe(false)
-  })
-
-  it('calls onAutoSave when switching rows with modifications', async () => {
-    const onAutoSave = vi.fn().mockResolvedValue(true)
-    const onStartEditing = vi.fn()
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-      [2, true],
-    ])
-    const editState: RowEditState = {
-      rowKey: { id: 1 },
-      originalValues: { name: 'Alice' },
-      currentValues: { name: 'Alice Updated' },
-      modifiedColumns: new Set(['name']),
-      isNewRow: false,
-    }
-
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-        editState={editState}
-        editingRowIndex={0}
-        onAutoSave={onAutoSave}
-        onStartEditing={onStartEditing}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (
-      args: CellClickGuardArgs
-    ) => Promise<CellClickGuardResult>
-
-    // Click a cell on a DIFFERENT row (row 1 instead of current row 0)
-    await act(async () => {
-      await onCellClickGuard({
-        rowIdx: 1,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 1 },
-      })
-    })
-
-    expect(onAutoSave).toHaveBeenCalled()
-    expect(onStartEditing).toHaveBeenCalledWith(1)
-  })
-
-  it('does not call onAutoSave when clicking same row', async () => {
-    const onAutoSave = vi.fn().mockResolvedValue(true)
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-      [2, true],
-    ])
-    const editState: RowEditState = {
-      rowKey: { id: 1 },
-      originalValues: { name: 'Alice' },
-      currentValues: { name: 'Alice Updated' },
-      modifiedColumns: new Set(['name']),
-      isNewRow: false,
-    }
-
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-        editState={editState}
-        editingRowIndex={0}
-        onAutoSave={onAutoSave}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (
-      args: CellClickGuardArgs
-    ) => Promise<CellClickGuardResult>
-
-    // Click a cell on the SAME row (row 0)
-    await act(async () => {
-      await onCellClickGuard({
-        rowIdx: 0,
-        columnKey: 'col_2',
-        rowData: { __rowIdx: 0 },
-      })
-    })
-
-    expect(onAutoSave).not.toHaveBeenCalled()
-  })
-
-  it('does not start editing new row when auto-save fails', async () => {
-    const onAutoSave = vi.fn().mockResolvedValue(false) // save failed
-    const onStartEditing = vi.fn()
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-      [2, true],
-    ])
-    const editState: RowEditState = {
-      rowKey: { id: 1 },
-      originalValues: { name: 'Alice' },
-      currentValues: { name: 'Alice Updated' },
-      modifiedColumns: new Set(['name']),
-      isNewRow: false,
-    }
-
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-        editState={editState}
-        editingRowIndex={0}
-        onAutoSave={onAutoSave}
-        onStartEditing={onStartEditing}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (
-      args: CellClickGuardArgs
-    ) => Promise<CellClickGuardResult & { restoreFocus?: boolean }>
-
-    let result: CellClickGuardResult & { restoreFocus?: boolean } = {
-      proceed: true,
-      targetRowIdx: -1,
-      targetColIdx: -1,
-      enableEditor: false,
-    }
-    await act(async () => {
-      result = await onCellClickGuard({
-        rowIdx: 1,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 1 },
-      })
-    })
-
-    expect(onAutoSave).toHaveBeenCalled()
-    expect(onStartEditing).not.toHaveBeenCalled()
-    expect(result.proceed).toBe(false)
-    expect(result.targetRowIdx).toBe(0)
-    expect(result.restoreFocus).toBe(true)
-  })
-
-  it('isModifiedCell detects modified columns via editState ref', () => {
-    const editState: RowEditState = {
-      rowKey: { id: 1 },
-      originalValues: { name: 'Alice' },
-      currentValues: { name: 'Modified' },
-      modifiedColumns: new Set(['name']),
-      isNewRow: false,
-    }
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={
-          new Map<number, boolean>([
-            [0, false],
-            [1, true],
-            [2, true],
-          ])
-        }
-        editTableColumns={editTableColumns}
-        editColumnBindings={
-          new Map<number, string>([
-            [0, 'id'],
-            [1, 'name'],
-            [2, 'email'],
-          ])
-        }
-        editState={editState}
-        editingRowIndex={0}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const isModifiedCell = props.isModifiedCell as (
-      rowData: Record<string, unknown>,
-      columnKey: string
-    ) => boolean
-
-    // 'name' column (col_1) on the editing row should be modified
-    expect(isModifiedCell({ __rowIdx: 0, col_1: 'Modified' }, 'col_1')).toBe(true)
-
-    // 'email' column (col_2) on the editing row should NOT be modified
-    expect(isModifiedCell({ __rowIdx: 0, col_2: 'test' }, 'col_2')).toBe(false)
-
-    // Different row should not be modified
-    expect(isModifiedCell({ __rowIdx: 1, col_1: 'Bob' }, 'col_1')).toBe(false)
-  })
-
-  it('isModifiedCell returns false in read-only mode', () => {
-    render(<ResultGridView {...baseProps} />)
-    const props = getLatestBaseGridProps()
-    const isModifiedCell = props.isModifiedCell as (
-      rowData: Record<string, unknown>,
-      columnKey: string
-    ) => boolean
-    // In read-only mode (editMode=null), should always return false
-    expect(isModifiedCell({ __rowIdx: 0, col_0: 1 }, 'col_0')).toBe(false)
-  })
-
-  it('overlays editState values on the editing row in rowData', () => {
-    const editState: RowEditState = {
-      rowKey: { id: 1 },
-      originalValues: { name: 'Alice' },
-      currentValues: { name: 'Alice Updated' },
-      modifiedColumns: new Set(['name']),
-      isNewRow: false,
-    }
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={
-          new Map<number, boolean>([
-            [0, false],
-            [1, true],
-            [2, true],
-          ])
-        }
-        editTableColumns={editTableColumns}
-        editColumnBindings={
-          new Map<number, string>([
-            [0, 'id'],
-            [1, 'name'],
-            [2, 'email'],
-          ])
-        }
-        editState={editState}
-        editingRowIndex={0}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const rowData = props.rows as Array<Record<string, unknown>>
-    // Row 0 should have the updated value
-    expect(rowData[0].col_1).toBe('Alice Updated')
-    // Row 1 should be unchanged
-    expect(rowData[1].col_1).toBe('Bob')
-  })
-
-  it('does not mark unbound duplicate columns as modified when bindings target an alias', () => {
-    const joinedColumns = [
-      { name: 'id', dataType: 'INT' },
-      { name: 'user_id', dataType: 'INT' },
-      { name: 'name', dataType: 'VARCHAR' },
-    ]
-    const joinedRows: unknown[][] = [[100, 1, 'Alice']]
-    const joinedEditState: RowEditState = {
-      rowKey: { id: 1 },
-      originalValues: { id: 1, name: 'Alice' },
-      currentValues: { id: 5, name: 'Alice' },
-      modifiedColumns: new Set(['id']),
-      isNewRow: false,
-    }
-
-    render(
-      <ResultGridView
-        {...baseProps}
-        columns={joinedColumns}
-        rows={joinedRows}
-        editMode="users"
-        editableColumnMap={
-          new Map<number, boolean>([
-            [0, false],
-            [1, true],
-            [2, true],
-          ])
-        }
-        editColumnBindings={
-          new Map<number, string>([
-            [1, 'id'],
-            [2, 'name'],
-          ])
-        }
-        editTableColumns={editTableColumns}
-        editState={joinedEditState}
-        editingRowIndex={0}
-      />
-    )
-
-    const props = getLatestBaseGridProps()
-    const isModifiedCell = props.isModifiedCell as (
-      rowData: Record<string, unknown>,
-      columnKey: string
-    ) => boolean
-
-    expect(isModifiedCell({ __rowIdx: 0, col_0: 100 }, 'col_0')).toBe(false)
-    expect(isModifiedCell({ __rowIdx: 0, col_1: 5 }, 'col_1')).toBe(true)
-  })
-
-  // --- getRowClass editing row tests ---
-
-  it('getRowClass returns rdg-editing-row for editing row', () => {
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-    ])
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-        editingRowIndex={1}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const getRowClass = props.getRowClass as (row: Record<string, unknown>) => string | undefined
-
-    expect(getRowClass({ __rowIdx: 1 })).toContain('rdg-editing-row')
-    expect(getRowClass({ __rowIdx: 0 })).toBeUndefined()
-  })
-
-  it('getRowClass combines editing and selected classes', () => {
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-    ])
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-        editingRowIndex={1}
-        selectedRowIndex={1}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const getRowClass = props.getRowClass as (row: Record<string, unknown>) => string | undefined
-
-    const result = getRowClass({ __rowIdx: 1 })
-    expect(result).toContain('rdg-editing-row')
-    expect(result).toContain('rdg-row-precision-selected')
-  })
-
-  // --- onRowsChange tests (cell editor store sync) ---
-
-  it('onRowsChange translates col_N changes to onSyncCellValue with result column index', () => {
+  it('cuts editable cells by syncing null', async () => {
     const onSyncCellValue = vi.fn()
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-    ])
-    render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-        onSyncCellValue={onSyncCellValue}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const onRowsChange = props.onRowsChange as (
-      rows: Record<string, unknown>[],
-      data: { indexes: number[] }
-    ) => void
 
-    // Simulate RDG calling onRowsChange with a modified row
-    const modifiedRows = [
-      { __rowIdx: 0, col_0: 1, col_1: 'Alice Modified', col_2: 'alice@example.com' },
-      { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
-      { __rowIdx: 2, col_0: 3, col_1: 'Charlie', col_2: 'charlie@example.com' },
-    ]
-    onRowsChange(modifiedRows, { indexes: [0] })
+    render(<ResultGridView {...props} onSyncCellValue={onSyncCellValue} />)
 
-    expect(onSyncCellValue).toHaveBeenCalledWith(1, 'Alice Modified')
+    const gridProps = getGridProps()
+    await gridProps.onCellClipboardEdit({
+      rowIdx: 0,
+      columnKey: 'col_0',
+      rowData: gridProps.rows[0],
+      action: 'cut',
+      text: 'Ignored',
+    })
+
+    expect(onSyncCellValue).toHaveBeenCalledWith(0, null)
   })
 
-  it('provides a cell clipboard edit handler that pastes into editable query result cells', async () => {
-    const onAutoSave = vi.fn().mockResolvedValue(true)
+  it('starts editing and pastes text into editable cells on another row', async () => {
     const onStartEditing = vi.fn()
-    const onRowSelected = vi.fn()
     const onSyncCellValue = vi.fn()
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-      [2, true],
-    ])
 
     render(
       <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-        editState={{
-          rowKey: { id: 1 },
-          originalValues: { name: 'Alice' },
-          currentValues: { name: 'Alice Updated' },
-          modifiedColumns: new Set(['name']),
-          isNewRow: false,
-        }}
+        {...props}
+        rows={[
+          ['Ada'],
+          ['Bob'],
+        ]}
         editingRowIndex={0}
-        onAutoSave={onAutoSave}
+        editState={editState}
         onStartEditing={onStartEditing}
-        onRowSelected={onRowSelected}
         onSyncCellValue={onSyncCellValue}
       />
     )
 
-    const props = getLatestBaseGridProps()
-    const onCellClipboardEdit = props.onCellClipboardEdit as
-      | ((args: {
-          rowIdx: number
-          rowData: Record<string, unknown>
-          columnKey: string
-          action: 'paste' | 'cut'
-          text?: string
-        }) => Promise<void>)
-      | undefined
-
-    await act(async () => {
-      await onCellClipboardEdit?.({
-        rowIdx: 1,
-        rowData: { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
-        columnKey: 'col_1',
-        action: 'paste',
-        text: 'Pasted Name',
-      })
+    const gridProps = getGridProps()
+    await gridProps.onCellClipboardEdit({
+      rowIdx: 1,
+      columnKey: 'col_0',
+      rowData: gridProps.rows[1],
+      action: 'paste',
+      text: 'Charlie',
     })
 
-    expect(onAutoSave).toHaveBeenCalled()
-    expect(onRowSelected).toHaveBeenCalledWith(1)
     expect(onStartEditing).toHaveBeenCalledWith(1)
-    expect(onSyncCellValue).toHaveBeenCalledWith(1, 'Pasted Name')
+    expect(onSyncCellValue).toHaveBeenCalledWith(0, 'Charlie')
   })
 
-  it('does not call onCellClick edit logic in read-only mode', async () => {
-    const onStartEditing = vi.fn()
-    const onRowSelected = vi.fn()
+  it('blocks clipboard edits when saving the current row fails', async () => {
+    const onAutoSave = vi.fn(async () => false)
+    const onSyncCellValue = vi.fn()
+
     render(
       <ResultGridView
-        {...baseProps}
-        onStartEditing={onStartEditing}
-        onRowSelected={onRowSelected}
+        {...props}
+        rows={[
+          ['Ada'],
+          ['Bob'],
+        ]}
+        editingRowIndex={0}
+        editState={{ ...editState, modifiedColumns: new Set(['name']) }}
+        onAutoSave={onAutoSave}
+        onSyncCellValue={onSyncCellValue}
       />
     )
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (
-      args: CellClickGuardArgs
-    ) => Promise<CellClickGuardResult>
 
-    let result: CellClickGuardResult
-    await act(async () => {
-      result = await onCellClickGuard({
-        rowIdx: 0,
-        columnKey: 'col_0',
-        rowData: { __rowIdx: 0, col_0: 1 },
-      })
+    const gridProps = getGridProps()
+    await gridProps.onCellClipboardEdit({
+      rowIdx: 1,
+      columnKey: 'col_0',
+      rowData: gridProps.rows[1],
+      action: 'paste',
+      text: 'Blocked',
     })
 
-    expect(onStartEditing).not.toHaveBeenCalled()
-    // Read-only guard still calls onRowSelected
-    expect(onRowSelected).toHaveBeenCalledWith(0)
-    // proceed=true so BaseGridView calls selectCell (cell focus), but enableEditor=false
-    expect(result!.proceed).toBe(true)
-    expect(result!.enableEditor).toBe(false)
+    expect(onAutoSave).toHaveBeenCalledTimes(1)
+    expect(onSyncCellValue).not.toHaveBeenCalled()
   })
 
-  // --- column descriptor stability tests (focus-loss regression) ---
+  it('auto-saves on row change only when there are modified columns', async () => {
+    const dirtySave = vi.fn(async () => true)
+    const cleanSave = vi.fn(async () => true)
 
-  it('column descriptors stay stable when editState changes (focus-loss regression)', () => {
-    const editableMap = new Map<number, boolean>([
-      [0, false],
-      [1, true],
-      [2, true],
-    ])
-    const editState1: RowEditState = {
-      rowKey: { id: 1 },
-      originalValues: { name: 'Alice' },
-      currentValues: { name: 'Alice' },
-      modifiedColumns: new Set<string>(),
-      isNewRow: false,
-    }
-
-    const { rerender } = render(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-        editState={editState1}
-        editingRowIndex={0}
-      />
-    )
-
-    const props1 = getLatestBaseGridProps()
-    const cols1 = props1.columns as GridColumnDescriptor[]
-
-    // Simulate a keystroke: editState changes (new currentValues, new modifiedColumns)
-    const editState2: RowEditState = {
-      rowKey: { id: 1 },
-      originalValues: { name: 'Alice' },
-      currentValues: { name: 'Alice2' },
-      modifiedColumns: new Set<string>(['name']),
-      isNewRow: false,
-    }
-
-    rerender(
-      <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={editableMap}
-        editTableColumns={editTableColumns}
-        editState={editState2}
-        editingRowIndex={0}
-      />
-    )
-
-    const props2 = getLatestBaseGridProps()
-    const cols2 = props2.columns as GridColumnDescriptor[]
-
-    // CRITICAL: columns must be the SAME array reference.
-    // If they change, BaseGridView recomputes rdgColumns, which changes renderEditCell
-    // references → React unmounts/remounts the editor → focus lost.
-    expect(cols2).toBe(cols1)
-  })
-
-  // --- editState adaptation tests ---
-
-  it('adapts rich RowEditState to shared RowEditState with col_N keys', () => {
-    const editState: RowEditState = {
-      rowKey: { id: 1 },
-      originalValues: { name: 'Alice', email: 'alice@test.com' },
-      currentValues: { name: 'Alice Updated', email: 'alice@test.com' },
-      modifiedColumns: new Set(['name']),
-      isNewRow: false,
-    }
     render(
       <ResultGridView
-        {...baseProps}
-        editMode="users"
-        editableColumnMap={
-          new Map<number, boolean>([
-            [0, false],
-            [1, true],
-            [2, true],
-          ])
-        }
-        editTableColumns={editTableColumns}
-        editColumnBindings={
-          new Map<number, string>([
-            [0, 'id'],
-            [1, 'name'],
-            [2, 'email'],
-          ])
-        }
-        editState={editState}
-        editingRowIndex={0}
+        {...props}
+        editState={{ ...editState, modifiedColumns: new Set(['name']) }}
+        onAutoSave={dirtySave}
       />
     )
-    const props = getLatestBaseGridProps()
-    const sharedEditState = props.editState as {
-      rowKey: string
-      currentValues: Record<string, unknown>
-      originalValues: Record<string, unknown>
-    }
 
-    expect(sharedEditState).not.toBeNull()
-    expect(sharedEditState.rowKey).toBe(JSON.stringify({ id: 1 }))
-    expect(sharedEditState.currentValues).toEqual({
-      col_1: 'Alice Updated',
-      col_2: 'alice@test.com',
-    })
-    expect(sharedEditState.originalValues).toEqual({
-      col_1: 'Alice',
-      col_2: 'alice@test.com',
-    })
+    await expect(getGridProps().onRowChanging(0, 1)).resolves.toBe(true)
+    expect(dirtySave).toHaveBeenCalledTimes(1)
+
+    render(<ResultGridView {...props} onAutoSave={cleanSave} />)
+
+    await expect(getGridProps().onRowChanging(0, 1)).resolves.toBe(true)
+    expect(cleanSave).not.toHaveBeenCalled()
   })
 
-  it('passes null editState when no editing is active', () => {
-    render(<ResultGridView {...baseProps} />)
-    const props = getLatestBaseGridProps()
-    expect(props.editState).toBeNull()
+  it('applies editing and selected row classes together', () => {
+    render(<ResultGridView {...props} />)
+
+    const gridProps = getGridProps()
+    expect(gridProps.getRowClass(gridProps.rows[0])).toBe(
+      'grid-editing-row grid-row-precision-selected'
+    )
+    expect(gridProps.showReadOnlyHeaders).toBe(true)
+    expect(gridProps.selectedRowClassName).toBeUndefined()
   })
 })

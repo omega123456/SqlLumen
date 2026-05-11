@@ -7,6 +7,7 @@ import { Button } from '../common/Button'
 import { DialogShell } from '../dialogs/DialogShell'
 import styles from './ApplySchemaChangesDialog.module.css'
 
+import { logFrontend } from '../../lib/app-log-commands'
 const isPlaywright = import.meta.env.VITE_PLAYWRIGHT === 'true'
 
 export interface ApplySchemaChangesDialogProps {
@@ -66,7 +67,10 @@ export function ApplySchemaChangesDialog({
       showSuccessToast(successTitle, tableLabel)
       onSuccess()
     } catch (applyError) {
-      console.error('[apply-schema-dialog] Failed to apply schema changes', applyError)
+      logFrontend(
+        'error',
+        ['[apply-schema-dialog] Failed to apply schema changes', applyError].map(String).join(' ')
+      )
       const msg = applyError instanceof Error ? applyError.message : String(applyError)
       setError(msg)
       showErrorToast('Failed to apply schema changes', msg)

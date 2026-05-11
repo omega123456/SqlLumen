@@ -10,7 +10,11 @@
  */
 
 import type { ReactNode } from 'react'
-import type { Column, RowsChangeData } from 'react-data-grid'
+import type {
+  GridCellPosition,
+  GridColumn,
+  GridRowsChangeData,
+} from '../components/shared/glide/glide-grid-types'
 import type { GridPerformanceLogger } from '../lib/grid-performance-logger'
 import type { ForeignKeyColumnInfo, TableDataColumnMeta } from './schema'
 
@@ -23,7 +27,7 @@ import type { ForeignKeyColumnInfo, TableDataColumnMeta } from './schema'
  * Used by all shared data view components (grid, form, toolbar).
  */
 export interface GridColumnDescriptor {
-  /** RDG column key (real name or col_N for query results). */
+  /** Grid column key (real name or col_N for query results). */
   key: string
   /** Header display name (always the real column name). */
   displayName: string
@@ -45,6 +49,10 @@ export interface GridColumnDescriptor {
   tableColumnMeta?: TableDataColumnMeta
   /** FK metadata for this column (set when the column is an FK source). */
   foreignKey?: ForeignKeyColumnInfo
+  /** Vendor-neutral editor type used by grid adapters. */
+  editorType?: 'text' | 'enum' | 'datetime' | 'fk' | 'none'
+  /** Preferred column width in pixels. */
+  width?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +83,7 @@ export interface CellClickGuardArgs {
   rowIdx: number
   columnKey: string
   rowData: Record<string, unknown>
+  source?: 'grid-pointer' | 'keyboard'
 }
 
 export interface CellClickGuardResult {
@@ -89,7 +98,7 @@ export interface CellClipboardEditArgs {
   rowIdx: number
   rowData: Record<string, unknown>
   columnKey: string
-  action: 'paste' | 'cut'
+  action: 'paste' | 'cut' | 'copy'
   text?: string
 }
 
@@ -124,11 +133,13 @@ export interface BaseGridViewProps {
   onColumnResize?: (column: string, width: number) => void
   onRowsChange?: (
     rows: Record<string, unknown>[],
-    data: RowsChangeData<Record<string, unknown>>
+    data: GridRowsChangeData<Record<string, unknown>>
   ) => void
   rowKeyGetter?: (row: Record<string, unknown>) => string
   getRowClass?: (row: Record<string, unknown>) => string | undefined
   selectedRowIndex?: number | null
+  selectedCellPosition?: GridCellPosition | null
+  onSelectedCellChange?: (pos: GridCellPosition) => void
   selectedRowClassName?: string
   isModifiedCell?: (rowData: Record<string, unknown>, columnKey: string) => boolean
   applyReadOnlyCellStyles?: boolean
@@ -136,6 +147,15 @@ export interface BaseGridViewProps {
   showReadOnlyHeaders?: boolean
   performanceLogger?: GridPerformanceLogger
   testId?: string
+  isEditMode?: boolean
+  editableColumnKeys?: ReadonlySet<string>
+  onCellValueChange?: (rowIdx: number, columnKey: string, newValue: unknown) => void
+  onRowChanging?: (fromRowIdx: number, toRowIdx: number) => Promise<boolean>
+  onScrollPositionChange?: (top: number, left: number) => void
+  initialScrollPosition?: { top: number; left: number }
+  scrollToRowIndex?: number | null
+  onFkCellAction?: (args: CellClickGuardArgs) => void | Promise<void>
+  showInfoColumn?: boolean
 
   // Optional insert/delete capabilities (table-data exposes these, query-editor does not)
   onInsertRow?: () => void
@@ -151,16 +171,16 @@ export interface BaseGridViewProps {
   highlightColumnKey?: string
 
   /**
-   * Raw react-data-grid columns to prepend before the auto-generated data columns.
+   * Raw grid columns to prepend before the auto-generated data columns.
    * Useful for adding selection checkboxes or other prefix columns.
    */
-  prefixColumns?: ReadonlyArray<Column<Record<string, unknown>>>
+  prefixColumns?: ReadonlyArray<GridColumn<Record<string, unknown>>>
 
   /**
-   * Raw react-data-grid columns to append after the auto-generated data columns.
+   * Raw grid columns to append after the auto-generated data columns.
    * Useful for adding custom action or display columns at the end.
    */
-  suffixColumns?: ReadonlyArray<Column<Record<string, unknown>>>
+  suffixColumns?: ReadonlyArray<GridColumn<Record<string, unknown>>>
 }
 
 // ---------------------------------------------------------------------------

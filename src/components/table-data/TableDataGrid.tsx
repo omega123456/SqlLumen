@@ -9,9 +9,9 @@
  * dispatch) lives here — BaseGridView stays store-agnostic.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BaseGridView } from '../shared/BaseGridView'
-import type { DataGridHandle } from '../shared/DataGrid'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
+import type { GridHandle } from '../shared/glide/glide-grid-types'
 import {
   EditorCallbacksContext,
   type EditorCallbacksContextType,
@@ -72,7 +72,7 @@ interface TableDataGridProps {
 }
 
 export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
-  const gridRef = useRef<DataGridHandle | null>(null)
+  const gridRef = useRef<GridHandle | null>(null)
 
   // ---------------------------------------------------------------------------
   // Store subscriptions
@@ -88,6 +88,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const storeUpdateCellValue = useTableDataStore((state) => state.updateCellValue)
   const setSelectedCell = useTableDataStore((state) => state.setSelectedCell)
   const setScrollPosition = useTableDataStore((state) => state.setScrollPosition)
+  const setColumnWidth = useTableDataStore((state) => state.setColumnWidth)
   const showError = useToastStore((state) => state.showError)
   const showSuccess = useToastStore((state) => state.showSuccess)
 
@@ -98,6 +99,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const sort = tabState?.sort ?? null
   const selectedRowKey = tabState?.selectedRowKey ?? null
   const foreignKeys = useMemo(() => tabState?.foreignKeys ?? [], [tabState?.foreignKeys])
+  const columnWidths = useMemo(() => tabState?.columnWidths ?? {}, [tabState?.columnWidths])
 
   const pkColumns = useMemo(() => primaryKey?.keyColumns ?? [], [primaryKey?.keyColumns])
   const hasPk = primaryKey !== null
@@ -117,17 +119,9 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
     ) {
       const draftRowIdx = rows.length - 1
       autoSelectedDraftTempIdRef.current = editState.tempId ?? null
-      const el = (gridRef.current as unknown as { element: HTMLElement | null })?.element
-      if (el) {
-        // Scroll the virtualized grid container to the bottom so the new row is visible
-        requestAnimationFrame(() => {
-          el.scrollTop = el.scrollHeight
-          // After scrolling, select the first cell in the new row
-          gridRef.current?.selectCell({ rowIdx: draftRowIdx, idx: 0 })
-        })
-      } else {
-        gridRef.current?.selectCell({ rowIdx: draftRowIdx, idx: 0 })
-      }
+      requestAnimationFrame(() => {
+        gridRef.current?.selectCell({ rowIdx: draftRowIdx, idx: 0 }, { shouldFocusCell: true })
+      })
     }
     if (!editState?.isNewRow) {
       autoSelectedDraftTempIdRef.current = null
@@ -137,42 +131,19 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   // ---------------------------------------------------------------------------
   // Scroll position: save on scroll, restore on mount/tab-switch
   // ---------------------------------------------------------------------------
-  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleScrollPositionChange = useCallback(
+    (top: number, left: number) => {
+      setScrollPosition(tabId, top, left)
+    },
+    [setScrollPosition, tabId]
+  )
 
-  useEffect(() => {
-    const el = (gridRef.current as unknown as { element: HTMLElement | null })?.element
-    if (!el) return
-
-    const handleScroll = () => {
-      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
-      scrollTimerRef.current = setTimeout(() => {
-        setScrollPosition(tabId, el.scrollTop, el.scrollLeft)
-      }, 100)
-    }
-
-    el.addEventListener('scroll', handleScroll, { passive: true })
-    return () => {
-      el.removeEventListener('scroll', handleScroll)
-      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
-    }
-  }, [tabId, setScrollPosition])
-
-  // Restore scroll position on mount
-  useEffect(() => {
-    const el = (gridRef.current as unknown as { element: HTMLElement | null })?.element
-    if (!el) return
-    const savedScrollTop = tabState?.scrollTop ?? 0
-    const savedScrollLeft = tabState?.scrollLeft ?? 0
-    if (savedScrollTop || savedScrollLeft) {
-      // Use rAF to ensure the grid has rendered rows before scrolling
-      requestAnimationFrame(() => {
-        el.scrollTop = savedScrollTop
-        el.scrollLeft = savedScrollLeft
-      })
-    }
-    // Only restore on mount — intentionally exclude tabState from deps
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabId])
+  const handleColumnResize = useCallback(
+    (columnKey: string, width: number) => {
+      setColumnWidth(tabId, columnKey, width)
+    },
+    [setColumnWidth, tabId]
+  )
 
   // ---------------------------------------------------------------------------
   // Editor callbacks context — provides real updateCellValue to editors inside
@@ -180,7 +151,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   //
   // syncCellValue is intentionally a no-op here: calling the real one during
   // typing would update the backing row array, changing the rows prop, which
-  // triggers autoColumnWidths → rdgColumns recomputation → new renderEditCell
+  // triggers auto column width recomputation → new editor configuration
   // references → editor unmount/remount → focus loss.
   // ---------------------------------------------------------------------------
   const editorCallbacksCtx: EditorCallbacksContextType = useMemo(
@@ -203,13 +174,19 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
     foreignKey: ForeignKeyColumnInfo
     rowData: Record<string, unknown>
   } | null>(null)
+  const ignoreFkShortcutUntilRef = useRef(0)
+  const restoreGridFocusAfterFkCloseRef = useRef(false)
 
   // ---------------------------------------------------------------------------
   // Column descriptors: TableDataColumnMeta[] → GridColumnDescriptor[]
   // ---------------------------------------------------------------------------
   const descriptorColumns = useMemo(
-    () => buildColumnDescriptors(columns, isReadOnly, hasPk, foreignKeys),
-    [columns, isReadOnly, hasPk, foreignKeys]
+    () =>
+      buildColumnDescriptors(columns, isReadOnly, hasPk, foreignKeys).map((column) => ({
+        ...column,
+        width: columnWidths[column.key],
+      })),
+    [columns, isReadOnly, hasPk, foreignKeys, columnWidths]
   )
 
   // ---------------------------------------------------------------------------
@@ -274,14 +251,14 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       if (editState) {
         const isEditing = isSameRowKey(rowKey, editState.rowKey)
         if (isEditing && editState.isNewRow) {
-          classes.push('rdg-editing-row', 'rdg-new-row')
+          classes.push('grid-editing-row', 'grid-new-row')
         } else if (isEditing) {
-          classes.push('rdg-editing-row')
+          classes.push('grid-editing-row')
         }
       }
 
       if (selectedRowKey && isSameRowKey(rowKey, selectedRowKey)) {
-        classes.push('rdg-row-precision-selected')
+        classes.push('grid-row-precision-selected')
       }
 
       return classes.length > 0 ? classes.join(' ') : undefined
@@ -323,8 +300,8 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   // Auto-size configuration
   //
   // Always enabled — the editStateRef pattern already prevents the rowData →
-  // rows → autoColumnWidths → rdgColumns recomputation chain that would
-  // destabilise renderEditCell references during editing.
+  // rows → autoColumnWidths → column recomputation chain that would
+  // destabilise editor references during editing.
   //
   // Precomputed: column lookup map is built once in the surrounding useMemo.
   // computeWidth builds a lightweight single-column proxy array (N×1) instead
@@ -656,12 +633,25 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
     ]
   )
 
+  const handleCellValueChange = useCallback(
+    (rowIdx: number, columnKey: string, nextValue: unknown) => {
+      const row = rowDataRef.current[rowIdx]
+      if (!row) return
+      storeUpdateCellValue(tabId, columnKey, nextValue)
+    },
+    [storeUpdateCellValue, tabId]
+  )
+
   // ---------------------------------------------------------------------------
   // FK Lookup callback — runs the unsaved-edit guard, then stores the lookup
   // request in local state. Phase 6B renders FkLookupDialog with this context.
   // ---------------------------------------------------------------------------
   const handleFkLookup = useCallback(
     async (args: FkLookupArgs) => {
+      if (args.source === 'grid-pointer' && Date.now() < ignoreFkShortcutUntilRef.current) {
+        return
+      }
+
       const targetRowKey = getRowKey(args.rowData, pkColumns)
 
       // Find the row index in the latest rowData snapshot
@@ -693,6 +683,49 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
     },
     [pkColumns, descriptorColumns, validateAndCommitCurrentEdit, setSelectedRow, tabId]
   )
+
+  const handleFkCellAction = useCallback(
+    async (args: CellClickGuardArgs) => {
+      const fk = descriptorColumns.find((column) => column.key === args.columnKey)?.foreignKey
+      if (!fk) return
+      await handleFkLookup({
+        columnKey: args.columnKey,
+        currentValue: args.rowData[args.columnKey],
+        foreignKey: fk,
+        rowData: args.rowData,
+        source: args.source === 'keyboard' ? 'keyboard' : 'grid-pointer',
+      })
+    },
+    [descriptorColumns, handleFkLookup]
+  )
+
+  const editableColumnKeys = useMemo(() => {
+    return new Set(
+      descriptorColumns.filter((column) => column.editable).map((column) => column.key)
+    )
+  }, [descriptorColumns])
+
+  const selectedCellPosition = useMemo(() => {
+    const selected = tabState?.selectedCell
+    if (!selected) return null
+    const rowIdx = selectedRowKey
+      ? rowData.findIndex((row) => isSameRowKey(getRowKey(row, pkColumns), selectedRowKey))
+      : -1
+    const idx = descriptorColumns.findIndex((column) => column.key === selected.columnKey)
+    return rowIdx >= 0 && idx >= 0 ? { rowIdx, idx } : null
+  }, [descriptorColumns, pkColumns, rowData, selectedRowKey, tabState?.selectedCell])
+
+  useLayoutEffect(() => {
+    if (fkLookupOpen || !restoreGridFocusAfterFkCloseRef.current || !selectedCellPosition) {
+      return
+    }
+
+    restoreGridFocusAfterFkCloseRef.current = false
+    gridRef.current?.selectCell(selectedCellPosition, {
+      shouldFocusCell: true,
+      enableEditor: false,
+    })
+  }, [fkLookupOpen, selectedCellPosition])
 
   // ---------------------------------------------------------------------------
   // FK Apply callback — applies the selected FK value to the editing cell.
@@ -749,7 +782,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   return (
     <EditorCallbacksContext.Provider value={editorCallbacksCtx}>
       <FkLookupProvider onFkLookup={handleFkLookup}>
-        <BaseGridView
+        <CanvasBaseGridView
           ref={gridRef}
           rows={rowData}
           columns={descriptorColumns}
@@ -760,16 +793,35 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
           onCellClickGuard={handleCellClickGuard}
           onCellClipboardEdit={handleCellClipboardEdit}
           onRowsChange={handleRowsChange}
+          onCellValueChange={handleCellValueChange}
           rowKeyGetter={rowKeyGetter}
           getRowClass={getRowClass}
           isModifiedCell={isModifiedCell}
           autoSizeConfig={autoSizeConfig}
+          isEditMode={!isReadOnly && hasPk}
+          editableColumnKeys={editableColumnKeys}
+          selectedCellPosition={selectedCellPosition}
+          onSelectedCellChange={(pos) => {
+            const column = descriptorColumns[pos.idx]
+            const row = rowData[pos.rowIdx]
+            if (column && row)
+              setSelectedCell(tabId, { columnKey: column.key, value: row[column.key] })
+          }}
+          onColumnResize={handleColumnResize}
+          onScrollPositionChange={handleScrollPositionChange}
+          initialScrollPosition={{ top: tabState?.scrollTop ?? 0, left: tabState?.scrollLeft ?? 0 }}
+          scrollToRowIndex={editState?.isNewRow ? rows.length - 1 : null}
+          onFkCellAction={handleFkCellAction}
           testId="table-data-grid"
         />
         {fkLookupOpen && fkLookupContext && (
           <FkLookupDialog
             isOpen={fkLookupOpen}
-            onClose={() => setFkLookupOpen(false)}
+            onClose={() => {
+              ignoreFkShortcutUntilRef.current = Date.now() + 250
+              restoreGridFocusAfterFkCloseRef.current = true
+              setFkLookupOpen(false)
+            }}
             onApply={handleFkApply}
             connectionId={tabState.connectionId}
             database={fkLookupContext.foreignKey.referencedDatabase || tabState.database}

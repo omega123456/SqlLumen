@@ -1,41 +1,21 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useProcessListStore } from '../../stores/processlist-store'
 import { filterProcessListRows } from '../../lib/processlist-filter'
-import { Checkbox } from '../common/Checkbox'
-import { BaseGridView } from '../shared/BaseGridView'
+import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
 import { InfoCellPopover } from './InfoCellPopover'
 import type { ProcessRow } from '../../lib/processlist-commands'
 import type { GridColumnDescriptor } from '../../types/shared-data-view'
-import type { Column } from '../shared/DataGrid'
+import type { GridHandle } from '../shared/glide/glide-grid-types'
 import styles from './ProcessListGridView.module.css'
 
 type GridRow = ProcessRow & Record<string, unknown>
+type ProcessListPlaywrightApi = {
+  openInfoPopover: (connectionId: string, rowIndex: number) => boolean
+}
 
 const EMPTY_SET = new Set<number>()
 const EMPTY_PROCESS_ROWS: ProcessRow[] = []
-
-/** Checkbox cell that subscribes to the store directly to avoid recreating prefixColumns. */
-function ProcessCheckboxCell({
-  connectionId,
-  processId,
-}: {
-  connectionId: string
-  processId: number
-}) {
-  const checked = useProcessListStore((s) =>
-    (s.selectedIdsByConnection[connectionId] ?? EMPTY_SET).has(processId)
-  )
-  const toggleSelectedId = useProcessListStore((s) => s.toggleSelectedId)
-  return (
-    <div className={styles.checkboxWrapper} onClick={(e) => e.stopPropagation()}>
-      <Checkbox
-        checked={checked}
-        onChange={() => toggleSelectedId(connectionId, processId)}
-        aria-label={`Select process ${processId}`}
-      />
-    </div>
-  )
-}
+const IS_PLAYWRIGHT = import.meta.env.VITE_PLAYWRIGHT === 'true'
 
 const PROCESSLIST_COLUMNS: GridColumnDescriptor[] = [
   {
@@ -115,6 +95,7 @@ export interface ProcessListGridViewProps {
 }
 
 export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) {
+  const gridRef = useRef<GridHandle | null>(null)
   const rows = useProcessListStore((s) => s.rowsByConnection[connectionId] ?? EMPTY_PROCESS_ROWS)
   const selectedIds = useProcessListStore(
     (s) => s.selectedIdsByConnection[connectionId] ?? EMPTY_SET
@@ -124,9 +105,10 @@ export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) 
   )
   const sortColumn = useProcessListStore((s) => s.sortColumnByConnection[connectionId] ?? null)
   const setSortColumn = useProcessListStore((s) => s.setSortColumn)
+  const setSelectedIds = useProcessListStore((s) => s.setSelectedIds)
 
   const [popoverSql, setPopoverSql] = useState<string | null>(null)
-  const [popoverAnchor, setPopoverAnchor] = useState<HTMLElement | null>(null)
+  const [popoverAnchorRect, setPopoverAnchorRect] = useState<DOMRect | null>(null)
 
   const visibleRows = useMemo(
     () => filterProcessListRows(rows, excludeIdleConnections),
@@ -165,94 +147,124 @@ export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) 
 
   const handleClosePopover = useCallback(() => {
     setPopoverSql(null)
-    setPopoverAnchor(null)
+    setPopoverAnchorRect(null)
   }, [])
 
-  const handleInfoCellClick = useCallback((e: React.MouseEvent<HTMLSpanElement>, info: string) => {
-    e.stopPropagation()
+  const computeInfoAnchorRect = useCallback((rowIndex: number): DOMRect | null => {
+    const host = gridRef.current?.element
+    if (!host) return null
+
+    const parsedWidths: unknown = JSON.parse(host.dataset.glideColumnWidth ?? '[]')
+    const columnWidths = Array.isArray(parsedWidths)
+      ? parsedWidths.filter((width): width is number => typeof width === 'number' && width > 0)
+      : []
+    const infoColumnIndex = columnWidths.length - 1
+    if (infoColumnIndex < 0) return null
+
+    const scroller = host.querySelector<HTMLElement>('.dvn-scroller') ?? host
+    const rowMarkerWidth = parseFloat(host.dataset.rowMarkerWidth ?? '0') || 0
+    const hostRect = host.getBoundingClientRect()
+    const rootStyles = getComputedStyle(document.documentElement)
+    const headerHeight = parseFloat(rootStyles.getPropertyValue('--grid-header-height')) || 32
+    const rowHeight = parseFloat(rootStyles.getPropertyValue('--grid-row-height')) || 32
+    const columnStart =
+      rowMarkerWidth +
+      columnWidths.slice(0, infoColumnIndex).reduce((sum, next) => sum + next, 0) -
+      scroller.scrollLeft
+
+    return new DOMRect(
+      hostRect.x + columnStart,
+      hostRect.y + headerHeight + rowIndex * rowHeight - scroller.scrollTop,
+      columnWidths[infoColumnIndex] ?? 260,
+      rowHeight
+    )
+  }, [])
+
+  const openInfoPopoverForRow = useCallback(
+    (rowIndex: number): boolean => {
+      const row = gridRows[rowIndex]
+      const info = row?.info
+      if (typeof info !== 'string' || info.length === 0) return false
+      setPopoverSql(info)
+      setPopoverAnchorRect(computeInfoAnchorRect(rowIndex) ?? new DOMRect(320, 200, 260, 36))
+      return true
+    },
+    [computeInfoAnchorRect, gridRows]
+  )
+
+  const handleInfoCellClick = useCallback((row: Record<string, unknown>, anchorRect: DOMRect) => {
+    const info = row.info
+    if (typeof info !== 'string' || info.length === 0) return
     setPopoverSql(info)
-    setPopoverAnchor(e.currentTarget)
+    setPopoverAnchorRect(anchorRect)
   }, [])
 
-  const prefixColumns = useMemo<Column<Record<string, unknown>>[]>(
-    () => [
-      {
-        key: '__select__',
-        name: '',
-        width: 48,
-        minWidth: 48,
-        maxWidth: 48,
-        resizable: false,
-        sortable: false,
-        cellClass: 'rdg-checkbox-cell',
-        renderCell: ({ row }: { row: Record<string, unknown> }) => {
-          return <ProcessCheckboxCell connectionId={connectionId} processId={row.id as number} />
-        },
-      },
-    ],
-    [connectionId]
-  )
+  useEffect(() => {
+    if (!IS_PLAYWRIGHT) return
 
-  const suffixColumns = useMemo<Column<Record<string, unknown>>[]>(
-    () => [
-      {
-        key: 'info',
-        name: 'Info',
-        resizable: true,
-        sortable: true,
-        renderCell: ({ row }: { row: Record<string, unknown> }) => {
-          const info = row.info as string | null
-          if (!info) return null
-          return (
-            <span
-              role="button"
-              tabIndex={0}
-              className={styles.infoCell}
-              onClick={(e) => handleInfoCellClick(e, info)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  setPopoverSql(info)
-                  setPopoverAnchor(e.currentTarget)
-                }
-              }}
-              data-testid="processlist-info-cell"
-            >
-              {info}
-            </span>
-          )
-        },
-      },
-    ],
-    [handleInfoCellClick]
-  )
+    const playwrightWindow = window as typeof window & {
+      __processListTestApi__?: ProcessListPlaywrightApi
+    }
+    const previousApi = playwrightWindow.__processListTestApi__
 
-  const rowKeyGetter = useCallback((row: Record<string, unknown>) => String(row.id), [])
+    playwrightWindow.__processListTestApi__ = {
+      ...previousApi,
+      openInfoPopover: (targetConnectionId: string, rowIndex: number) => {
+        if (targetConnectionId !== connectionId) return false
+        return openInfoPopoverForRow(rowIndex)
+      },
+    }
+
+    return () => {
+      if (playwrightWindow.__processListTestApi__?.openInfoPopover) {
+        delete playwrightWindow.__processListTestApi__.openInfoPopover
+      }
+      if (
+        playwrightWindow.__processListTestApi__ &&
+        Object.keys(playwrightWindow.__processListTestApi__).length === 0
+      ) {
+        delete playwrightWindow.__processListTestApi__
+      }
+    }
+  }, [connectionId, openInfoPopoverForRow])
+
+  const handleRowMarkersChange = useCallback(
+    (selectedRows: Record<string, unknown>[]) => {
+      setSelectedIds(connectionId, new Set(selectedRows.map((row) => Number(row.id))))
+    },
+    [connectionId, setSelectedIds]
+  )
 
   const getRowClass = useCallback(
     (row: Record<string, unknown>) => {
-      return selectedIds.has(row.id as number) ? 'rdg-row-precision-selected' : undefined
+      return selectedIds.has(row.id as number) ? 'grid-row-precision-selected' : undefined
     },
     [selectedIds]
   )
 
   return (
     <div className={styles.container}>
-      <BaseGridView
+      <CanvasBaseGridView
+        ref={gridRef}
         rows={gridRows}
         columns={PROCESSLIST_COLUMNS}
         editState={null}
         sortColumn={sortColumn?.columnKey ?? null}
         sortDirection={sortColumn?.direction ?? null}
         onSortChange={handleSortChange}
-        rowKeyGetter={rowKeyGetter}
-        prefixColumns={prefixColumns}
-        suffixColumns={suffixColumns}
         getRowClass={getRowClass}
+        rowMarkers="checkbox"
+        onRowMarkersChange={handleRowMarkersChange}
+        onInfoCellClick={handleInfoCellClick}
+        showInfoColumn={true}
         applyReadOnlyCellStyles={false}
         testId="processlist-grid-view"
       />
-      <InfoCellPopover sql={popoverSql} anchorEl={popoverAnchor} onClose={handleClosePopover} />
+      <InfoCellPopover
+        sql={popoverSql}
+        anchorRect={popoverAnchorRect}
+        onClose={handleClosePopover}
+      />
     </div>
   )
 }

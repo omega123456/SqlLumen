@@ -1,167 +1,71 @@
-/* ==========================================================================
-   react-data-grid — Precision Studio Custom Theme
-   Maps design tokens to react-data-grid's CSS class structure.
-   Aligned with Precision Studio design tokens.
-   
-   NOTE: Do NOT import react-data-grid's base CSS here — that is done
-   separately in App.tsx (Phase 3b).
+/* ========================================================================== 
+   Glide Data Grid — Precision Studio Custom Theme
+   Shared host, overlay, editor, and portal styles for canvas-backed grids.
    ========================================================================== */
 
-/* ---------- Dark theme (default) ---------- */
-.rdg-precision {
-  --rdg-color: var(--on-surface);
-  --rdg-background-color: var(--result-grid-bg);
-  --rdg-header-background-color: var(--result-grid-header-bg);
-  --rdg-header-draggable-background-color: var(--result-grid-header-bg);
-  --rdg-row-hover-background-color: var(--result-grid-row-hover-bg);
-  --rdg-row-selected-background-color: var(--result-grid-row-selected-bg);
-  --rdg-row-selected-hover-background-color: var(--result-grid-row-selected-bg);
-  --rdg-frozen-cell-box-shadow: 2px 0 4px rgba(0, 0, 0, 0.3);
-  --rdg-border-color: rgba(var(--outline-variant-rgb), 0.1);
-  --rdg-selection-color: var(--primary);
-  --rdg-font-size: 13px;
-
-  border: none;
-  block-size: 100%;
-  /* RDG enables content-visibility:auto on the scroll root. WKWebView/WebKit
-     pays for that optimization badly with sticky/display:contents grid rows,
-     making sibling interactions like Monaco typing sluggish while the grid is visible. */
-  content-visibility: visible;
+.glide-grid-host {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--result-grid-bg);
+  color: var(--on-surface);
   color-scheme: dark;
 }
 
-/* ---------- Header row ---------- */
-.rdg-precision .rdg-header-row {
-  font-family: var(--type-table-header-font);
-  font-weight: var(--type-table-header-weight);
-  font-size: var(--type-table-header-size);
-  letter-spacing: var(--type-table-header-tracking);
-
-  color: var(--on-surface-variant);
-  background-color: var(--result-grid-header-bg);
-  border-bottom: var(--grid-header-border-bottom);
-  box-shadow: var(--grid-header-shadow);
-  z-index: 10;
+[data-theme='light'] .glide-grid-host {
+  color-scheme: light;
 }
 
-/* ---------- Header cells ---------- */
-.rdg-precision .rdg-header-row .rdg-cell {
-  position: sticky;
-  inset-block-start: 0;
-  background-color: var(--result-grid-header-bg);
-  border-right: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-  padding: 0 var(--grid-cell-padding-x);
-  overflow: clip;
-  contain: none;
-  z-index: 20;
+.glide-grid-host .dvn-scroller::-webkit-scrollbar {
+  width: var(--grid-scrollbar-size);
+  height: var(--grid-scrollbar-size);
 }
 
-.rdg-precision .rdg-header-row .rdg-cell-frozen {
-  z-index: 21;
+.glide-grid-host .dvn-scroller::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.rdg-precision .rdg-header-row .rdg-cell:hover {
-  background-color: color-mix(in srgb, var(--result-grid-header-bg) 94%, var(--on-surface) 6%);
+.glide-grid-host .dvn-scroller::-webkit-scrollbar-thumb {
+  background: var(--grid-scrollbar-thumb);
+  border-radius: 4px;
 }
 
-/* Sort indicator icon in header */
-.rdg-precision .rdg-header-sort-cell {
-  cursor: pointer;
+.glide-grid-host .dvn-scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--grid-scrollbar-thumb-hover);
 }
 
-/* ---------- Body rows ---------- */
-.rdg-precision .rdg-row {
-  cursor: pointer;
-  background-color: var(--result-grid-bg);
-}
-
-/* Row striping — odd rows (0-indexed, so :nth-child(odd) = visual even) */
-.rdg-precision .rdg-row:nth-child(odd) {
-  background-color: rgba(var(--on-surface-rgb), 0.03);
-}
-
-.rdg-precision .rdg-row:nth-child(even) {
-  background-color: var(--result-grid-bg);
-}
-
-/* Row hover */
-.rdg-precision .rdg-row:hover {
-  background-color: var(--result-grid-row-hover-bg);
-}
-
-/* Selected row highlight (custom class) */
-.rdg-precision .rdg-row-precision-selected {
-  background-color: var(--result-grid-row-selected-bg) !important;
-  border-left: 2px solid var(--result-grid-row-selected-accent) !important;
-}
-
-.rdg-precision .rdg-row-precision-selected .rdg-cell {
-  background-color: var(--result-grid-row-selected-bg) !important;
-}
-
-/* Ensure read-only cells in selected rows inherit selected styling */
-.rdg-precision .rdg-row-precision-selected .rdg-readonly-cell {
-  background-color: var(--result-grid-row-selected-bg) !important;
-  opacity: 1 !important;
-}
-
-/* ---------- Body cells ---------- */
-.rdg-precision .rdg-cell {
+.glide-grid-host .gdg-clip-region,
+.glide-grid-host .gdg-cell-edit {
   font-family: var(--font-mono);
-  font-size: var(--type-size-md);
   color: var(--on-surface);
-  padding: 0 var(--grid-cell-padding-x);
-  border-right: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-  overflow: visible;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  contain: style layout;
 }
 
-/* RDG edit cells already manage their own layout; do not re-apply body-cell padding */
-.rdg-precision .rdg-editor-container {
-  padding: 0;
-}
-
-/* Cell type classes — td-cell-* styling for grid cells */
-.rdg-precision .td-cell-mono-muted {
+.glide-grid-host .td-cell-mono-muted {
   font-family: var(--font-mono);
   font-size: var(--type-size-md);
   color: var(--on-surface-variant);
 }
 
-.rdg-precision .td-cell-mono {
+.glide-grid-host .td-cell-mono {
   font-family: var(--font-mono);
   font-size: var(--type-size-md);
   color: var(--on-surface);
 }
 
-.rdg-precision .td-cell-body {
+.glide-grid-host .td-cell-body {
   font-family: var(--font-body);
   font-size: var(--type-size-md);
   font-weight: 500;
   color: var(--on-surface);
 }
 
-.rdg-precision .td-cell-primary {
+.glide-grid-host .td-cell-primary {
   color: var(--primary);
   font-weight: 500;
 }
 
-/* Null cell styling */
-.rdg-precision .rdg-cell-null {
-  font-style: italic;
-  color: var(--on-surface-variant);
-  opacity: 0.5;
-}
-
-.rdg-precision .rdg-cell-null.td-cell-primary {
-  color: var(--on-surface-variant);
-}
-
-/* NULL and BLOB value spans within cells */
-.rdg-precision .td-cell-value {
+.glide-grid-host .td-cell-value {
   display: block;
   min-width: 0;
   max-width: 100%;
@@ -170,57 +74,19 @@
   white-space: nowrap;
 }
 
-.rdg-precision .td-null-value {
+.glide-grid-host .td-null-value {
   font-style: italic;
   color: var(--td-null-text-color);
 }
 
-.rdg-precision .td-blob-value {
+.glide-grid-host .td-blob-value {
   font-style: italic;
   color: var(--on-surface-variant);
   opacity: 0.6;
 }
 
-/* ---------- Selected cell z-index (keeps focus ring above neighbors) ---------- */
-.rdg-precision .rdg-cell[aria-selected='true'] {
-  z-index: 1;
-}
-
-.rdg-precision .rdg-header-row .rdg-cell[aria-selected='true'] {
-  z-index: 20;
-  background-color: var(--result-grid-header-bg);
-  box-shadow: none;
-  outline: none;
-}
-
-.rdg-precision .rdg-header-row .rdg-cell-frozen[aria-selected='true'] {
-  z-index: 21;
-}
-/* ---------- Scrollbar styling ---------- */
-.rdg-precision::-webkit-scrollbar {
-  width: var(--grid-scrollbar-size);
-  height: var(--grid-scrollbar-size);
-}
-
-.rdg-precision::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.rdg-precision::-webkit-scrollbar-thumb {
-  background: var(--grid-scrollbar-thumb);
-  border-radius: 4px;
-}
-
-.rdg-precision::-webkit-scrollbar-thumb:hover {
-  background: var(--grid-scrollbar-thumb-hover);
-}
-
-/* ==========================================================================
-   Table Data & Query Result Editing — Unified Classes
-   ========================================================================== */
-
-/* Cell editor shell */
-.rdg-precision .td-cell-editor-shell {
+.glide-grid-host .td-cell-editor-shell,
+.gdg-portal .td-cell-editor-shell {
   display: flex;
   align-items: stretch;
   flex: 1;
@@ -235,28 +101,30 @@
   border-radius: var(--radius-sm);
 }
 
-.rdg-precision .td-cell-editor-shell > .ui-dropdown {
+.glide-grid-host .td-cell-editor-shell > .ui-dropdown,
+.gdg-portal .td-cell-editor-shell > .ui-dropdown {
   flex: 1 1 auto;
   min-width: 0;
   align-self: stretch;
 }
 
-/* Cell editor shell — light */
-[data-theme='light'] .rdg-precision .td-cell-editor-shell {
+[data-theme='light'] .glide-grid-host .td-cell-editor-shell,
+[data-theme='light'] .gdg-portal .td-cell-editor-shell {
   background: var(--surface-container-lowest);
   box-shadow:
     0 1px 2px rgba(var(--on-surface-rgb), 0.06),
     0 0 0 1px rgba(var(--primary-rgb), 0.2);
 }
 
-/* Cell editor shell — dark */
-[data-theme='dark'] .rdg-precision .td-cell-editor-shell {
+[data-theme='dark'] .glide-grid-host .td-cell-editor-shell,
+[data-theme='dark'] .gdg-portal .td-cell-editor-shell {
   background: var(--surface-container-highest);
 }
 
-/* Cell editor input/select */
-.rdg-precision .td-cell-editor-input,
-.rdg-precision .td-cell-editor-select {
+.glide-grid-host .td-cell-editor-input,
+.glide-grid-host .td-cell-editor-select,
+.gdg-portal .td-cell-editor-input,
+.gdg-portal .td-cell-editor-select {
   flex: 1;
   width: 100%;
   max-width: 100%;
@@ -265,27 +133,29 @@
   min-height: 22px;
   border: none;
   background: transparent;
-  color: var(--on-surface);
+  color: var(--primary);
   font-family: var(--font-mono);
   font-size: var(--type-size-md);
   outline: none;
   padding: 2px 4px;
   line-height: 1.25;
-  color: var(--primary);
 }
 
-.rdg-precision .td-cell-editor-select:focus,
-.rdg-precision .td-cell-editor-input:focus {
+.glide-grid-host .td-cell-editor-select:focus,
+.glide-grid-host .td-cell-editor-input:focus,
+.gdg-portal .td-cell-editor-select:focus,
+.gdg-portal .td-cell-editor-input:focus {
   outline: none;
 }
 
-.rdg-precision .td-cell-editor-input:disabled {
+.glide-grid-host .td-cell-editor-input:disabled,
+.gdg-portal .td-cell-editor-input:disabled {
   color: var(--td-null-text-color);
   font-style: italic;
 }
 
-/* NULL toggle button */
-.rdg-precision .td-null-toggle {
+.glide-grid-host .td-null-toggle,
+.gdg-portal .td-null-toggle {
   display: flex;
   align-self: center;
   align-items: center;
@@ -307,7 +177,8 @@
   flex-shrink: 0;
 }
 
-[data-theme='dark'] .rdg-precision .td-null-toggle {
+[data-theme='dark'] .glide-grid-host .td-null-toggle,
+[data-theme='dark'] .gdg-portal .td-null-toggle {
   font-size: var(--type-size-3xs);
   font-weight: 700;
   height: 16px;
@@ -315,172 +186,24 @@
   background: transparent;
 }
 
-.rdg-precision .td-null-toggle:hover {
+.glide-grid-host .td-null-toggle:hover,
+.gdg-portal .td-null-toggle:hover {
   border-color: var(--primary);
   color: var(--primary);
   background: rgba(var(--primary-rgb), 0.06);
 }
 
-.rdg-precision .td-null-toggle.td-null-active {
+.glide-grid-host .td-null-toggle.td-null-active,
+.gdg-portal .td-null-toggle.td-null-active {
   border-color: var(--primary);
   color: var(--primary);
   background: rgba(var(--primary-rgb), 0.1);
 }
 
-/* Editing row highlight */
-.rdg-precision .rdg-editing-row {
-  background-color: var(--td-editing-row-bg) !important;
-}
-
-[data-theme='dark'] .rdg-precision .rdg-editing-row {
-  border-left: 2px solid var(--primary) !important;
-}
-
-/* Editable cell cursor */
-.rdg-precision .rdg-editable-cell {
-  cursor: text;
-}
-
-/* Read-only cell */
-.rdg-precision .rdg-readonly-cell {
-  background-color: var(--color-cell-readonly-bg);
-  opacity: var(--color-cell-readonly-opacity);
-  cursor: default;
-}
-
-.rdg-precision .rdg-header-row .rdg-readonly-cell {
-  opacity: var(--color-cell-readonly-opacity);
-}
-
-/* Modified cell indicator */
-.rdg-precision .rdg-modified-cell {
-  position: relative;
-}
-
-/* Light: dot + ring */
-[data-theme='light'] .rdg-precision .rdg-modified-cell::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  right: 5px;
-  width: 6px;
-  height: 6px;
-  background: var(--td-modified-cell-indicator);
-  border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--surface-container-lowest);
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Dark: top-left corner tick */
-[data-theme='dark'] .rdg-precision .rdg-modified-cell::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 6px;
-  height: 6px;
-  box-sizing: border-box;
-  border-top: 1px solid var(--td-modified-cell-indicator);
-  border-left: 1px solid var(--td-modified-cell-indicator);
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* New row */
-.rdg-precision .rdg-new-row {
-  background-color: var(--td-editing-row-bg) !important;
-}
-
-/* ---------- Light theme ---------- */
-[data-theme='light'] .rdg-precision {
-  --rdg-color: var(--on-surface);
-  --rdg-background-color: var(--result-grid-bg);
-  --rdg-header-background-color: var(--result-grid-header-bg);
-  --rdg-header-draggable-background-color: var(--result-grid-header-bg);
-  --rdg-row-hover-background-color: var(--result-grid-row-hover-bg);
-  --rdg-row-selected-background-color: var(--result-grid-row-selected-bg);
-  --rdg-row-selected-hover-background-color: var(--result-grid-row-selected-bg);
-  --rdg-frozen-cell-box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
-  --rdg-border-color: rgba(var(--outline-variant-rgb), 0.15);
-  --rdg-selection-color: var(--primary);
-
-  color-scheme: light;
-}
-
-[data-theme='light'] .rdg-precision .rdg-header-row {
-  background-color: var(--result-grid-header-bg);
-  border-bottom: var(--grid-header-border-bottom);
-  box-shadow: var(--grid-header-shadow);
-}
-
-[data-theme='light'] .rdg-precision .rdg-header-row .rdg-cell:hover {
-  background-color: color-mix(in srgb, var(--result-grid-header-bg) 96%, var(--on-surface) 4%);
-}
-
-[data-theme='light'] .rdg-precision .rdg-row:nth-child(odd) {
-  background-color: var(--result-grid-row-alt-bg);
-}
-
-[data-theme='light'] .rdg-precision .rdg-row:nth-child(even) {
-  background-color: var(--result-grid-bg);
-}
-
-[data-theme='light'] .rdg-precision .rdg-row:hover {
-  background-color: var(--result-grid-row-hover-bg);
-}
-
-[data-theme='light'] .rdg-precision .rdg-cell {
-  border-right: 1px solid rgba(var(--outline-variant-rgb), 0.15);
-  border-bottom: 1px solid rgba(var(--outline-variant-rgb), 0.1);
-}
-
-/* No-rows overlay */
-.rdg-precision .rdg-empty-rows-view {
-  color: var(--on-surface-variant);
-  font-size: 13px;
-}
-
-/* Checkbox column cell — centered with comfortable spacing */
-.rdg-precision .rdg-checkbox-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 !important;
-}
-
-/* ==========================================================================
-   FK Trigger Button — visibility controlled via [data-fk-trigger] attribute
-   ========================================================================== */
-
-/* FK trigger button — hidden by default, shown on row hover/selection */
-.rdg-precision [data-fk-trigger] {
-  opacity: 0;
+#portal {
   pointer-events: none;
 }
 
-.rdg-precision .rdg-row:hover [data-fk-trigger],
-.rdg-precision .rdg-row-precision-selected [data-fk-trigger] {
-  opacity: 1;
+#portal > * {
   pointer-events: auto;
-}
-
-.rdg-precision .rdg-editing-row [data-fk-trigger] {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.rdg-precision [data-fk-trigger]:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* FK referenced column highlight (for FK lookup dialog) */
-.rdg-highlight-column {
-  background-color: var(--fk-lookup-target-col-bg) !important;
-}
-
-.rdg-highlight-column-header {
-  color: var(--fk-lookup-target-col-header-fg) !important;
-  border-bottom: 2px solid var(--fk-lookup-target-col-header-fg) !important;
 }

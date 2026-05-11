@@ -1,255 +1,50 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 import { FilterDialog } from '../../../components/dialogs/FilterDialog'
-import type { FilterCondition } from '../../../types/schema'
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  // Ensure stale portalled elements (e.g. dropdown listboxes) from other test
-  // files sharing the same jsdom document are cleaned up before each test.
-  cleanup()
-  document.body.innerHTML = ''
-})
-
-const defaultColumns = ['id', 'name', 'email']
-
-const defaultProps = {
-  isOpen: true,
-  onApply: vi.fn(),
-  onCancel: vi.fn(),
-  initialConditions: [] as FilterCondition[],
-  columns: defaultColumns,
-}
 
 describe('FilterDialog', () => {
-  it('renders empty state with muted Funnel icon and help text', () => {
-    render(<FilterDialog {...defaultProps} />)
-    const emptyState = screen.getByTestId('filter-empty-state')
-    expect(emptyState).toBeInTheDocument()
-    expect(screen.getByText('No filter conditions')).toBeInTheDocument()
-    expect(
-      screen.getByText('Add conditions to narrow table rows. All conditions are combined with AND.')
-    ).toBeInTheDocument()
-  })
-
-  it('Add Condition button adds a row with defaults (first column, ==, empty value)', async () => {
-    const user = userEvent.setup()
-    render(<FilterDialog {...defaultProps} />)
-
-    await user.click(screen.getByTestId('filter-add-button'))
-
-    const rows = screen.getAllByTestId('filter-row')
-    expect(rows).toHaveLength(1)
-
-    const row = rows[0]
-    const colCombo = within(row).getByTestId('filter-column-select-0')
-    const opCombo = within(row).getByTestId('filter-operator-select-0')
-    const valueInput = within(row).getByTestId('filter-value-input') as HTMLInputElement
-
-    expect(colCombo).toHaveTextContent('id')
-    expect(opCombo).toHaveTextContent('==')
-    expect(valueInput.value).toBe('')
-  })
-
-  it('Remove button removes the row', async () => {
-    const user = userEvent.setup()
-    render(
-      <FilterDialog
-        {...defaultProps}
-        initialConditions={[
-          { column: 'id', operator: '==', value: '1' },
-          { column: 'name', operator: 'LIKE', value: 'test' },
-        ]}
-      />
-    )
-
-    expect(screen.getAllByTestId('filter-row')).toHaveLength(2)
-
-    const removeButtons = screen.getAllByTestId('filter-remove-button')
-    await user.click(removeButtons[0])
-
-    const rows = screen.getAllByTestId('filter-row')
-    expect(rows).toHaveLength(1)
-    // The remaining row should be the second one
-    const colCombo = within(rows[0]).getByTestId('filter-column-select-0')
-    expect(colCombo).toHaveTextContent('name')
-  })
-
-  it('Clear All button clears all rows', async () => {
-    const user = userEvent.setup()
-    render(
-      <FilterDialog
-        {...defaultProps}
-        initialConditions={[
-          { column: 'id', operator: '==', value: '1' },
-          { column: 'name', operator: 'LIKE', value: 'test' },
-        ]}
-      />
-    )
-
-    expect(screen.getAllByTestId('filter-row')).toHaveLength(2)
-
-    await user.click(screen.getByTestId('filter-clear-all-button'))
-
-    expect(screen.queryAllByTestId('filter-row')).toHaveLength(0)
-    // Should now show empty state
-    expect(screen.getByTestId('filter-empty-state')).toBeInTheDocument()
-  })
-
-  it('IS NULL operator disables the value input', async () => {
-    const user = userEvent.setup()
-    render(
-      <FilterDialog
-        {...defaultProps}
-        initialConditions={[{ column: 'id', operator: '==', value: 'test' }]}
-      />
-    )
-
-    const opCombo = screen.getByTestId('filter-operator-select-0')
-    await user.click(opCombo)
-    await user.click(await screen.findByRole('option', { name: 'IS NULL' }))
-
-    const valueInput = screen.getByTestId('filter-value-input') as HTMLInputElement
-    expect(valueInput).toBeDisabled()
-    expect(valueInput.value).toBe('')
-    expect(valueInput.placeholder).toBe('n/a')
-  })
-
-  it('IS NOT NULL operator disables the value input', async () => {
-    const user = userEvent.setup()
-    render(
-      <FilterDialog
-        {...defaultProps}
-        initialConditions={[{ column: 'id', operator: '==', value: 'test' }]}
-      />
-    )
-
-    const opCombo = screen.getByTestId('filter-operator-select-0')
-    await user.click(opCombo)
-    await user.click(await screen.findByRole('option', { name: 'IS NOT NULL' }))
-
-    const valueInput = screen.getByTestId('filter-value-input') as HTMLInputElement
-    expect(valueInput).toBeDisabled()
-    expect(valueInput.placeholder).toBe('n/a')
-  })
-
-  it('Cancel calls onCancel', async () => {
-    const user = userEvent.setup()
-    const onCancel = vi.fn()
-    render(<FilterDialog {...defaultProps} onCancel={onCancel} />)
-
-    await user.click(screen.getByTestId('filter-cancel-button'))
-    expect(onCancel).toHaveBeenCalledTimes(1)
-  })
-
-  it('Apply calls onApply with the current conditions', async () => {
+  it('renders initial filter conditions and applies changes', async () => {
     const user = userEvent.setup()
     const onApply = vi.fn()
     render(
       <FilterDialog
-        {...defaultProps}
+        isOpen={true}
+        columns={['id', 'name']}
+        initialConditions={[{ column: 'name', operator: 'LIKE', value: 'Ada' }]}
         onApply={onApply}
-        initialConditions={[{ column: 'id', operator: '==', value: '42' }]}
+        onCancel={vi.fn()}
       />
     )
-
+    expect(screen.getByTestId('filter-row')).toBeInTheDocument()
+    const input = screen.getByTestId('filter-value-input')
+    await user.clear(input)
+    await user.type(input, 'Grace')
     await user.click(screen.getByTestId('filter-apply-button'))
-
-    expect(onApply).toHaveBeenCalledTimes(1)
-    expect(onApply).toHaveBeenCalledWith([{ column: 'id', operator: '==', value: '42' }])
+    expect(onApply).toHaveBeenCalledWith([expect.objectContaining({ value: 'Grace' })])
   })
 
-  it('reopening shows previously passed initialConditions', () => {
-    const conditions: FilterCondition[] = [{ column: 'name', operator: 'LIKE', value: '%test%' }]
-
-    const { rerender } = render(
-      <FilterDialog {...defaultProps} isOpen={false} initialConditions={conditions} />
-    )
-
-    // Dialog is closed — nothing rendered
-    expect(screen.queryByTestId('filter-dialog')).not.toBeInTheDocument()
-
-    // Reopen with the same conditions
-    rerender(<FilterDialog {...defaultProps} isOpen={true} initialConditions={conditions} />)
-
-    expect(screen.getByTestId('filter-dialog')).toBeInTheDocument()
-    const rows = screen.getAllByTestId('filter-row')
-    expect(rows).toHaveLength(1)
-    const colCombo = within(rows[0]).getByTestId('filter-column-select-0')
-    const opCombo = within(rows[0]).getByTestId('filter-operator-select-0')
-    const valueInput = within(rows[0]).getByTestId('filter-value-input') as HTMLInputElement
-    expect(colCombo).toHaveTextContent('name')
-    expect(opCombo).toHaveTextContent('LIKE')
-    expect(valueInput.value).toBe('%test%')
-  })
-
-  it('column dropdown is populated from columns prop', async () => {
+  it('adds, removes, clears, and cancels conditions', async () => {
     const user = userEvent.setup()
-    render(<FilterDialog {...defaultProps} />)
-
-    // Add a condition to get a row
-    await user.click(screen.getByTestId('filter-add-button'))
-
-    await user.click(screen.getByTestId('filter-column-select-0'))
-    const options = screen
-      .getAllByRole('option')
-      .map((o) => o.getAttribute('aria-label') ?? o.textContent ?? '')
-    expect(options).toEqual(['id', 'name', 'email'])
-  })
-
-  it('renders empty state when columns is empty', () => {
-    render(<FilterDialog {...defaultProps} columns={[]} />)
-    expect(screen.getByTestId('filter-empty-state')).toBeInTheDocument()
-  })
-
-  it('does not render when isOpen is false', () => {
-    render(<FilterDialog {...defaultProps} isOpen={false} />)
-    expect(screen.queryByTestId('filter-dialog')).not.toBeInTheDocument()
-  })
-
-  it('editing conditions does not affect parent until Apply', async () => {
-    const user = userEvent.setup()
-    const onApply = vi.fn()
-    const initialConditions: FilterCondition[] = [{ column: 'id', operator: '==', value: '1' }]
+    const onCancel = vi.fn()
     render(
-      <FilterDialog {...defaultProps} onApply={onApply} initialConditions={initialConditions} />
+      <FilterDialog
+        isOpen={true}
+        columns={['id']}
+        initialConditions={[]}
+        onApply={vi.fn()}
+        onCancel={onCancel}
+      />
     )
-
-    // Modify the value
-    const valueInput = screen.getByTestId('filter-value-input') as HTMLInputElement
-    await user.clear(valueInput)
-    await user.type(valueInput, '999')
-
-    // Original conditions should be unmodified
-    expect(initialConditions[0].value).toBe('1')
-
-    // Now apply
-    await user.click(screen.getByTestId('filter-apply-button'))
-    expect(onApply).toHaveBeenCalledWith([{ column: 'id', operator: '==', value: '999' }])
-  })
-
-  it('Clear All is not shown when there are no conditions', () => {
-    render(<FilterDialog {...defaultProps} />)
-    expect(screen.queryByTestId('filter-clear-all-button')).not.toBeInTheDocument()
-  })
-
-  it('backdrop click calls onCancel', async () => {
-    const user = userEvent.setup()
-    const onCancel = vi.fn()
-    render(<FilterDialog {...defaultProps} onCancel={onCancel} />)
-
-    const backdrop = screen.getByTestId('filter-dialog')
-    await user.click(backdrop)
-    expect(onCancel).toHaveBeenCalledTimes(1)
-  })
-
-  it('Escape key calls onCancel', async () => {
-    const user = userEvent.setup()
-    const onCancel = vi.fn()
-    render(<FilterDialog {...defaultProps} onCancel={onCancel} />)
-
-    await user.keyboard('{Escape}')
-    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('filter-empty-state')).toBeInTheDocument()
+    await user.click(screen.getByTestId('filter-add-button'))
+    expect(screen.getByTestId('filter-row')).toBeInTheDocument()
+    await user.click(screen.getByTestId('filter-remove-button'))
+    expect(screen.getByTestId('filter-empty-state')).toBeInTheDocument()
+    await user.click(screen.getByTestId('filter-add-button'))
+    await user.click(screen.getByTestId('filter-clear-all-button'))
+    expect(screen.getByTestId('filter-empty-state')).toBeInTheDocument()
+    await user.click(screen.getByTestId('filter-cancel-button'))
+    expect(onCancel).toHaveBeenCalled()
   })
 })

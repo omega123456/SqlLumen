@@ -15,9 +15,7 @@ test('theme toggle switches between light and dark', async ({ page }) => {
   await page.getByTestId('theme-toggle').click()
 
   // Theme should have changed
-  const newTheme = await page.evaluate(() =>
-    document.documentElement.getAttribute('data-theme')
-  )
+  const newTheme = await page.evaluate(() => document.documentElement.getAttribute('data-theme'))
 
   expect(newTheme).not.toBe(initialTheme)
 })

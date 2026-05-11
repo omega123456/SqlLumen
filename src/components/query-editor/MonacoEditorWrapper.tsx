@@ -61,17 +61,15 @@ function readPerformanceNow(): number {
   return globalThis.performance?.now() ?? Date.now()
 }
 
-function getMonacoKeyCode(
-  key: string,
-  monacoInstance: typeof MonacoType
-): number | null {
+function getMonacoKeyCode(key: string, monacoInstance: typeof MonacoType): number | null {
   const normalizedKey = key.trim().toUpperCase()
   if (normalizedKey === '') {
     return null
   }
 
   if (/^[A-Z]$/.test(normalizedKey)) {
-    const letterCode = monacoInstance.KeyCode[`Key${normalizedKey}` as keyof typeof monacoInstance.KeyCode]
+    const letterCode =
+      monacoInstance.KeyCode[`Key${normalizedKey}` as keyof typeof monacoInstance.KeyCode]
     return typeof letterCode === 'number' ? letterCode : null
   }
 

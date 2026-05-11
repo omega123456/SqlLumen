@@ -54,9 +54,10 @@ export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
     portalRoot: HTMLElement
   } | null>(null)
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null)
-  const [dropTarget, setDropTarget] = useState<{ tabId: string; indicator: 'before' | 'after' } | null>(
-    null
-  )
+  const [dropTarget, setDropTarget] = useState<{
+    tabId: string
+    indicator: 'before' | 'after'
+  } | null>(null)
   const suppressNextSelectRef = useRef(false)
   const pointerDragRef = useRef<{
     tabId: string
@@ -139,7 +140,9 @@ export function ConnectionTabBar({ onOpenSettings }: ConnectionTabBarProps) {
   }
 
   const focusConnectionTab = (sessionId: string): boolean => {
-    const tabEl = document.querySelector<HTMLElement>(`[data-testid="connection-session-tab-${sessionId}"]`)
+    const tabEl = document.querySelector<HTMLElement>(
+      `[data-testid="connection-session-tab-${sessionId}"]`
+    )
     if (!tabEl) {
       return false
     }

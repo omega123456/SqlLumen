@@ -13,7 +13,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { X } from '@phosphor-icons/react'
 import { DialogShell } from '../dialogs/DialogShell'
 import { FilterDialog } from '../dialogs/FilterDialog'
-import { BaseGridView } from '../shared/BaseGridView'
+import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
 import { FilterToolbarButton } from '../shared/FilterToolbarButton'
 import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
 import { StatusArea } from '../shared/toolbar/StatusArea'
@@ -306,18 +306,6 @@ export function FkLookupDialog({
     [primaryKey]
   )
 
-  /** Row key getter for BaseGridView (returns a string for RDG identity). */
-  const rowKeyGetter = useCallback(
-    (row: Record<string, unknown>) => {
-      if (primaryKey?.keyColumns.length) {
-        return JSON.stringify(primaryKey.keyColumns.map((c) => row[c]))
-      }
-      // Fallback: use the synthetic __rowIdx field
-      return String(row['__rowIdx'] ?? -1)
-    },
-    [primaryKey]
-  )
-
   // ---------------------------------------------------------------------------
   // Row selection and Apply logic (Phase 6B)
   // ---------------------------------------------------------------------------
@@ -344,7 +332,7 @@ export function FkLookupDialog({
   /** Get row class — highlight the selected row. */
   const handleGetRowClass = useCallback(
     (rowData: Record<string, unknown>) => {
-      return computeRowKey(rowData) === selectedRowKey ? 'rdg-row-precision-selected' : undefined
+      return computeRowKey(rowData) === selectedRowKey ? 'glide-row-precision-selected' : undefined
     },
     [computeRowKey, selectedRowKey]
   )
@@ -494,20 +482,19 @@ export function FkLookupDialog({
           )}
 
           {showGrid && (
-            <div className={styles.gridContainer} data-testid="fk-lookup-grid">
-              <BaseGridView
+            <div className={styles.gridContainer}>
+              <CanvasBaseGridView
                 rows={rows}
                 columns={descriptorColumns}
                 editState={null}
                 sortColumn={sort?.column ?? null}
                 sortDirection={sort?.direction ?? null}
                 onSortChange={handleSortChange}
-                rowKeyGetter={rowKeyGetter}
                 onRowClick={handleRowClick}
-                onCellDoubleClick={handleCellDoubleClick}
+                onRowDoubleClicked={handleCellDoubleClick}
                 getRowClass={handleGetRowClass}
                 highlightColumnKey={referencedColumn}
-                testId="fk-lookup-base-grid"
+                testId="fk-lookup-grid"
               />
             </div>
           )}

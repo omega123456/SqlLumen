@@ -1,7 +1,7 @@
 /**
- * Shared cell editor components for react-data-grid.
+ * Shared cell editor components for grid adapters.
  *
- * Both editors follow the react-data-grid declarative editor protocol:
+ * Both editors follow the shared declarative editor protocol:
  * - Accept { row, column, onRowChange, onClose } props
  * - Plus explicit callback props for store updates
  *
@@ -33,11 +33,11 @@ function isNullish(value: unknown): value is null | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Shared editor props (react-data-grid protocol + store callbacks)
+// Shared editor props (grid editor protocol + store callbacks)
 // ---------------------------------------------------------------------------
 
 export interface CellEditorBaseProps {
-  // react-data-grid editor protocol
+  // grid editor protocol
   row: Record<string, unknown>
   column: { key: string }
   onRowChange: (row: Record<string, unknown>, commitChanges?: boolean) => void
@@ -170,6 +170,7 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
                 currentValue: isNull ? null : value,
                 foreignKey: foreignKey,
                 rowData: row,
+                source: 'keyboard',
               })
               return
             }
@@ -323,6 +324,7 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
           currentValue: isNull ? null : value,
           foreignKey: foreignKey,
           rowData: row,
+          source: 'keyboard',
         })
         return
       }

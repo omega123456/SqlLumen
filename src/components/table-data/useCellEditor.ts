@@ -1,5 +1,5 @@
 /**
- * useCellEditor — shared hook for react-data-grid cell editors with NULL toggle support.
+ * useCellEditor — shared hook for grid cell editors with NULL toggle support.
  *
  * Encapsulates the common logic shared between NullableCellEditor and
  * DateTimeCellEditor:
@@ -27,15 +27,15 @@ import type { TableDataColumnMeta } from '../../types/schema'
 // Types
 // ---------------------------------------------------------------------------
 
-/** Props that react-data-grid passes to editor components. */
-export interface RdgEditorProps {
+/** Props that grid adapters pass to editor components. */
+export interface GridEditorProps {
   row: Record<string, unknown>
   column: { key: string }
   onRowChange: (row: Record<string, unknown>, commitChanges?: boolean) => void
   onClose: (commitChanges?: boolean, shouldFocusCell?: boolean) => void
 }
 
-export interface CellEditorParams extends RdgEditorProps {
+export interface CellEditorParams extends GridEditorProps {
   isNullable: boolean
   columnMeta: TableDataColumnMeta
 }

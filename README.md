@@ -45,7 +45,7 @@ A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://t
 | ------------- | ----------------------------------------------------------------------------------------------------------- |
 | Desktop shell | Tauri 2, Rust (async MySQL pool, migrations, export writers)                                                |
 | UI            | React 19, TypeScript, Vite 8, Zustand, `react-resizable-panels`, Monaco                                     |
-| Data grid     | `react-data-grid` (via a shared app wrapper)                                                                |
+| Data grid     | `@glideapps/glide-data-grid` (via a shared app wrapper)                                                     |
 | Tests         | Vitest (coverage gates), Rust integration tests (nextest / llvm-cov), Playwright E2E + screenshot baselines |
 
 ## Requirements
@@ -161,11 +161,11 @@ Releases are published directly (non-draft) by default. macOS artifacts from CI 
 
 Download installers from **[GitHub Releases](https://github.com/omega123456/SqlLumen/releases)**. Use the platform table below, then see the linked sections for prerequisites, updates, and troubleshooting.
 
-| OS | Artifacts (CI) | Install | In-app updates | More detail |
-| -- | ---------------- | ------- | -------------- | ----------- |
-| **Windows (x64)** | `.msi`, `.exe`, updater bundle | Run the installer from the release asset. | Yes — download then restart to finish. | [GitHub releases](#github-releases-ci) |
-| **macOS (Apple Silicon)** | `.dmg`, `.app.tar.gz`, updater artifact | Open the `.dmg` and drag **SqlLumen** to **Applications** (or use the packaged `.app` flow your release uses). | Yes on supported installs. | Unsigned CI builds: [macOS quarantine](#macos-quarantine-exclusion-step-by-step) · [Tauri macOS signing](https://v2.tauri.app/distribute/sign-macos/) |
-| **Linux (x64)** | `.deb`, `.AppImage`, `.AppImage.tar.gz` | **`.deb`:** `sudo apt install ./SqlLumen_x.x.x_amd64.deb` · **AppImage:** `chmod +x` then run. | **AppImage** only — `.deb` users reinstall from Releases. | [Linux installation](#linux-installation-updates-and-saved-password-troubleshooting) (prerequisites, keyring, restart-after-update) |
+| OS                        | Artifacts (CI)                          | Install                                                                                                        | In-app updates                                            | More detail                                                                                                                                           |
+| ------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Windows (x64)**         | `.msi`, `.exe`, updater bundle          | Run the installer from the release asset.                                                                      | Yes — download then restart to finish.                    | [GitHub releases](#github-releases-ci)                                                                                                                |
+| **macOS (Apple Silicon)** | `.dmg`, `.app.tar.gz`, updater artifact | Open the `.dmg` and drag **SqlLumen** to **Applications** (or use the packaged `.app` flow your release uses). | Yes on supported installs.                                | Unsigned CI builds: [macOS quarantine](#macos-quarantine-exclusion-step-by-step) · [Tauri macOS signing](https://v2.tauri.app/distribute/sign-macos/) |
+| **Linux (x64)**           | `.deb`, `.AppImage`, `.AppImage.tar.gz` | **`.deb`:** `sudo apt install ./SqlLumen_x.x.x_amd64.deb` · **AppImage:** `chmod +x` then run.                 | **AppImage** only — `.deb` users reinstall from Releases. | [Linux installation](#linux-installation-updates-and-saved-password-troubleshooting) (prerequisites, keyring, restart-after-update)                   |
 
 For **building from source** on any OS, use [Requirements](#requirements), [Setup](#setup), and [Quick start](#quick-start) instead of prebuilt installers.
 

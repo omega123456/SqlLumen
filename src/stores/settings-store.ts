@@ -3,6 +3,7 @@ import { getAllSettings, setSetting } from '../lib/tauri-commands'
 import { DEFAULT_UPDATE_INTERVAL } from '../lib/update-intervals'
 import type { SettingsSection } from '../types/schema'
 
+import { logFrontend } from '../lib/app-log-commands'
 // ---------------------------------------------------------------------------
 // Default values for all settings keys
 // ---------------------------------------------------------------------------
@@ -119,7 +120,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       const loaded = await getAllSettings()
       set({ settings: loaded, pendingChanges: {}, isDirty: false, isLoading: false })
     } catch (error) {
-      console.error('[settings-store] Failed to load settings:', error)
+      logFrontend(
+        'error',
+        ['[settings-store] Failed to load settings:', error].map(String).join(' ')
+      )
       set({ isLoading: false })
     }
   },
@@ -139,7 +143,10 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       try {
         await setSetting(key, value)
       } catch (error) {
-        console.error(`[settings-store] Failed to save setting "${key}":`, error)
+        logFrontend(
+          'error',
+          [`[settings-store] Failed to save setting "${key}":`, error].map(String).join(' ')
+        )
         errors.push(key)
       }
     }

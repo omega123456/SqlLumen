@@ -1,11 +1,100 @@
 import { test, expect, type Page } from '@playwright/test'
 import {
   APP_READY_MS,
+  clickFkEllipsis,
+  clickResultGridCell,
+  clickResultGridHeader,
   connectToSample,
+  getColumnIndexByName,
   getGridCellByColumnName,
   getGridHeaderCellByColumnName,
+  waitForTableDataGrid,
   waitForApp,
 } from './helpers'
+
+async function expectCellValue(
+  page: Page,
+  gridTestId: 'table-data-grid' | 'result-grid',
+  columnName: string,
+  rowIndex: number,
+  expectedValue: unknown
+) {
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(
+          ({ grid, column, row }) => {
+            if (grid === 'table-data-grid') {
+              const store = (window as unknown as {
+                __tableDataStore__?: {
+                  getState?: () => {
+                    tabs?: Record<string, { columns?: Array<{ name: string }>; rows?: unknown[][] }>
+                  }
+                }
+              }).__tableDataStore__
+
+              const tabs = Object.values(store?.getState?.().tabs ?? {})
+              for (const tab of tabs) {
+                const columnIndex = tab?.columns?.findIndex((candidate) => candidate?.name === column) ?? -1
+                if (columnIndex >= 0) {
+                  return tab?.rows?.[row]?.[columnIndex]
+                }
+              }
+              return undefined
+            }
+
+            const store = (window as unknown as {
+              __queryStore__?: {
+                getState?: () => {
+                  tabs?: Record<
+                    string,
+                    {
+                      activeResultIndex?: number
+                      results?: Array<{ columns?: Array<{ name: string }>; rows?: unknown[][] }>
+                    }
+                  >
+                }
+              }
+            }).__queryStore__
+
+            const tabs = Object.values(store?.getState?.().tabs ?? {})
+            for (const tab of tabs) {
+              const resultIndex = tab?.activeResultIndex ?? 0
+              const result = tab?.results?.[resultIndex]
+              const columnIndex = result?.columns?.findIndex((candidate) => candidate?.name === column) ?? -1
+              if (columnIndex >= 0) {
+                return result?.rows?.[row]?.[columnIndex]
+              }
+            }
+            return undefined
+          },
+          { grid: gridTestId, column: columnName, row: rowIndex }
+        ),
+      { timeout: APP_READY_MS, intervals: [100, 200, 300] }
+    )
+    .toBe(expectedValue)
+}
+
+async function expectSelectedTableDataColumn(page: Page, columnName: string) {
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const store = (window as unknown as {
+            __tableDataStore__?: {
+              getState?: () => {
+                tabs?: Record<string, { selectedCell?: { columnKey?: string } | null }>
+              }
+            }
+          }).__tableDataStore__
+
+          const tabs = Object.values(store?.getState?.().tabs ?? {})
+          return tabs.find((tab) => tab?.selectedCell?.columnKey)?.selectedCell?.columnKey ?? null
+        }),
+      { timeout: APP_READY_MS, intervals: [100, 200, 300] }
+    )
+    .toBe(columnName)
+}
 
 async function openTableDataTab(page: Page) {
   await connectToSample(page)
@@ -28,7 +117,7 @@ async function openTableDataTab(page: Page) {
   await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
     timeout: APP_READY_MS,
   })
-  await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
+  await expect(page.getByTestId('table-data-grid')).toBeVisible({
     timeout: APP_READY_MS,
   })
 }
@@ -60,16 +149,14 @@ async function openQueryEditorWithResults(page: Page) {
   await expect(page.getByTestId('toolbar-execute-all')).toBeEnabled({ timeout: APP_READY_MS })
   await page.keyboard.press('F9')
   await expect(page.getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
   const editModeDropdown = page.getByTestId('edit-mode-dropdown')
   await expect(editModeDropdown).toBeVisible({ timeout: APP_READY_MS })
   await editModeDropdown.click()
   await expect(page.getByRole('option')).toHaveCount(2, { timeout: APP_READY_MS })
   await page.getByRole('option').nth(1).click()
   await expect(editModeDropdown).not.toHaveText('Read Only', { timeout: APP_READY_MS })
-  await expect(
-    page.getByTestId('result-grid-view').locator('.rdg-editable-cell').first()
-  ).toBeVisible({
+  await expect(page.getByTestId('result-grid')).toBeVisible({
     timeout: APP_READY_MS,
   })
 }
@@ -125,7 +212,7 @@ test('editing a cell then clicking the next cell keeps editing on the clicked ce
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   // Wait for grid data to render (at least one row)
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   for (let index = 0; index < 3; index += 1) {
     // Click the name cell in the first row
@@ -152,7 +239,7 @@ test('table data grid editor keeps focus across multiple keypresses', async ({ p
 
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   await clickCellByColumnName(grid, 0, 'name')
   await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
@@ -164,7 +251,7 @@ test('table data grid auto-sizes columns from visible data by default', async ({
 
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   const nameHeader = await getHeaderCellByColumnName(grid, 'name')
   const emailHeader = await getHeaderCellByColumnName(grid, 'email')
@@ -204,7 +291,7 @@ test('table data FK header width survives form-to-grid switching without runtime
 
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
   await page.waitForTimeout(500)
 
   const beforeHeader = await getHeaderCellByColumnName(grid, 'user_id')
@@ -221,7 +308,7 @@ test('table data FK header width survives form-to-grid switching without runtime
 
   await page.getByTestId('view-mode-grid').click()
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   const afterHeader = await getHeaderCellByColumnName(grid, 'user_id')
   const afterBox = await afterHeader.boundingBox()
@@ -239,13 +326,13 @@ test('table data datetime editor gives the input enough width for the full field
 
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   const createdAtCell = await getCellByColumnName(grid, 0, 'created_at')
   await createdAtCell.click()
 
-  const editorInput = createdAtCell.locator('input.td-cell-editor-input')
-  const calendarButton = createdAtCell.getByTestId('grid-calendar-btn')
+  const editorInput = page.locator('input.td-cell-editor-input').first()
+  const calendarButton = page.getByTestId('grid-calendar-btn')
 
   await expect(editorInput).toBeVisible({ timeout: APP_READY_MS })
   await expect(calendarButton).toBeVisible({ timeout: APP_READY_MS })
@@ -267,7 +354,7 @@ test('table data enum editor fills the cell height and gives options comfortable
 
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   const statusCell = await getCellByColumnName(grid, 0, 'status')
   await statusCell.click()
@@ -304,7 +391,7 @@ test('table data enum editor opens its dropdown and supports typeahead selection
 
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   await clickCellByColumnName(grid, 0, 'status')
 
@@ -318,8 +405,7 @@ test('table data enum editor opens its dropdown and supports typeahead selection
   await page.keyboard.type('i')
   await page.keyboard.press('Enter')
 
-  const statusCell = await getCellByColumnName(grid, 0, 'status')
-  await expect(statusCell).toContainText('inactive', { timeout: APP_READY_MS })
+  await expectCellValue(page, 'table-data-grid', 'status', 0, 'inactive')
 })
 
 test('table data enum editor applies the clicked dropdown option', async ({ page }) => {
@@ -328,7 +414,7 @@ test('table data enum editor applies the clicked dropdown option', async ({ page
 
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   await clickCellByColumnName(grid, 0, 'status')
 
@@ -338,8 +424,7 @@ test('table data enum editor applies the clicked dropdown option', async ({ page
 
   await page.getByRole('option', { name: 'inactive' }).click()
 
-  const statusCell = await getCellByColumnName(grid, 0, 'status')
-  await expect(statusCell).toContainText('inactive', { timeout: APP_READY_MS })
+  await expectCellValue(page, 'table-data-grid', 'status', 0, 'inactive')
 })
 
 test('table data enum editor supports uppercase letter typeahead selection', async ({ page }) => {
@@ -348,7 +433,7 @@ test('table data enum editor supports uppercase letter typeahead selection', asy
 
   const grid = page.getByTestId('table-data-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   await clickCellByColumnName(grid, 0, 'status')
 
@@ -359,17 +444,16 @@ test('table data enum editor supports uppercase letter typeahead selection', asy
   await page.keyboard.type('I')
   await page.keyboard.press('Enter')
 
-  const statusCell = await getCellByColumnName(grid, 0, 'status')
-  await expect(statusCell).toContainText('inactive', { timeout: APP_READY_MS })
+  await expectCellValue(page, 'table-data-grid', 'status', 0, 'inactive')
 })
 
 test('query result grid editor keeps focus across multiple keypresses', async ({ page }) => {
   await waitForApp(page)
   await openQueryEditorWithResults(page)
 
-  const grid = page.getByTestId('result-grid-view')
+  const grid = page.getByTestId('result-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   await clickCellByColumnName(grid, 0, 'name')
   await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
@@ -381,15 +465,95 @@ test('query result grid keeps read-only header icon width when edit mode turns o
   await waitForApp(page)
   await openQueryEditorWithResults(page)
 
-  const grid = page.getByTestId('result-grid-view')
+  const grid = page.getByTestId('result-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   const statusHeader = await getHeaderCellByColumnName(grid, 'status')
   const statusBox = await statusHeader.boundingBox()
 
   expect(statusBox).not.toBeNull()
   expect(statusBox!.width).toBeGreaterThan(120)
+})
+
+test('query result grid supports keyboard navigation, copy, edit cancel, and tab commit', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await openQueryEditorWithResults(page)
+
+  const grid = page.getByTestId('result-grid')
+  await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
+
+  await clickResultGridCell(page, 1, 0)
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+C')
+  const copied = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''))
+  expect(copied.length).toBeGreaterThan(0)
+
+  await clickCellByColumnName(page.getByTestId('result-grid'), 0, 'name')
+  const editor = page.locator('.td-cell-editor-input').first()
+  await expect(editor).toBeVisible({ timeout: APP_READY_MS })
+  await editor.fill('Cancelled Value')
+  await page.keyboard.press('Escape')
+  await expect(editor).not.toBeVisible({ timeout: APP_READY_MS })
+
+  await clickCellByColumnName(page.getByTestId('result-grid'), 0, 'name')
+  const commitEditor = page.locator('.td-cell-editor-input').first()
+  await expect(commitEditor).toBeVisible({ timeout: APP_READY_MS })
+  await commitEditor.fill('Committed Value')
+  await page.keyboard.press('Tab')
+  await expect(commitEditor).not.toBeVisible({ timeout: APP_READY_MS })
+})
+
+test('result grid header clicks cycle sort ascending, descending, and clear', async ({ page }) => {
+  await waitForApp(page)
+  await openQueryEditorWithResults(page)
+
+  await clickResultGridHeader(page, 1)
+  await expect(page.getByTestId('result-grid').locator('canvas').first()).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+  await clickResultGridHeader(page, 1)
+  await expect(page.getByTestId('result-grid').locator('canvas').first()).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+  await clickResultGridHeader(page, 1)
+  await expect(page.getByTestId('result-grid').locator('canvas').first()).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+})
+
+test('table data FK lookup opens from ellipsis click and F4 shortcut', async ({ page }) => {
+  await waitForApp(page)
+  await connectToSample(page)
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-data',
+      label: 'orders',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+  })
+
+  const grid = await waitForTableDataGrid(page)
+  const userIdColumn = await getColumnIndexByName(grid, 'user_id')
+  await clickFkEllipsis(page, userIdColumn, 0)
+  await expect(page.getByTestId('fk-lookup-dialog')).toBeVisible({ timeout: APP_READY_MS })
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('fk-lookup-dialog')).not.toBeVisible({ timeout: APP_READY_MS })
+
+  await clickCellByColumnName(grid, 0, 'user_id')
+  await expectSelectedTableDataColumn(page, 'user_id')
+  await page.keyboard.press('F4')
+  await expect(page.getByTestId('fk-lookup-dialog')).toBeVisible({ timeout: APP_READY_MS })
 })
 
 test('query result form-to-grid switch keeps header widths and avoids runtime errors', async ({
@@ -403,9 +567,9 @@ test('query result form-to-grid switch keeps header widths and avoids runtime er
   await waitForApp(page)
   await openQueryEditorWithResults(page)
 
-  const grid = page.getByTestId('result-grid-view')
+  const grid = page.getByTestId('result-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   const beforeHeader = await getHeaderCellByColumnName(grid, 'status')
   const beforeBox = await beforeHeader.boundingBox()
@@ -420,7 +584,7 @@ test('query result form-to-grid switch keeps header widths and avoids runtime er
 
   await page.getByTestId('view-mode-grid').click()
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   const afterHeader = await getHeaderCellByColumnName(grid, 'status')
   const afterBox = await afterHeader.boundingBox()

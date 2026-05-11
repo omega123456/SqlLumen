@@ -99,7 +99,9 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const editForeignKeys = activeResult.editForeignKeys ?? EMPTY_FOREIGN_KEYS
   const saveError = activeResult.saveError ?? null
   const isAnalyzingQuery = activeResult.isAnalyzingQuery ?? false
-  const primaryKey = editMode ? activeResult.editTableMetadata?.[editMode]?.primaryKey ?? null : null
+  const primaryKey = editMode
+    ? (activeResult.editTableMetadata?.[editMode]?.primaryKey ?? null)
+    : null
   const editTableColumns =
     editMode && activeResult.editTableMetadata?.[editMode]?.columns
       ? activeResult.editTableMetadata[editMode].columns
@@ -347,8 +349,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
   const hasInsertEligibleNonPrimaryCloneColumns =
     editMode !== null &&
     editTableColumns.some(
-      (column) =>
-        !column.isPrimaryKey && editBoundColumnIndexMap.has(column.name.toLowerCase())
+      (column) => !column.isPrimaryKey && editBoundColumnIndexMap.has(column.name.toLowerCase())
     )
   const cloneDisabled =
     !cloneVisible ||

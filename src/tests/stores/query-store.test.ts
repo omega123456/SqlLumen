@@ -322,9 +322,7 @@ describe('useQueryStore — fetchPage', () => {
     await useQueryStore.getState().fetchPage('conn-1', 'tab-null-fetch', 2)
 
     expect(flat('tab-null-fetch').currentPage).toBe(1)
-    expect(consoleSpy).toHaveBeenCalledWith(
-      '[query-store] fetchPage failed: invalid fetch_result_page payload (expected rows, page, totalPages)'
-    )
+    expect(consoleSpy).not.toHaveBeenCalled()
     consoleSpy.mockRestore()
   })
 
@@ -480,6 +478,105 @@ describe('useQueryStore — setViewMode', () => {
     useQueryStore.getState().setViewMode('tab-1', 'form')
     useQueryStore.getState().setViewMode('tab-1', 'grid')
     expect(flat('tab-1').viewMode).toBe('grid')
+  })
+
+  it('does not update selected row when the same row is selected again', () => {
+    useQueryStore.getState().setContent('tab-same-row', 'SELECT 1')
+    patchResult('tab-same-row', { selectedRowIndex: 2 })
+
+    useQueryStore.getState().setSelectedRow('tab-same-row', 2)
+
+    expect(flat('tab-same-row').selectedRowIndex).toBe(2)
+  })
+
+  it('does not update selected cell when the same value is set again', () => {
+    useQueryStore.getState().setContent('tab-same-cell', 'SELECT 1')
+    patchResult('tab-same-cell', {
+      selectedCell: { columnKey: 'name', value: 'Ada' },
+    })
+
+    useQueryStore.getState().setSelectedCell('tab-same-cell', { columnKey: 'name', value: 'Ada' })
+
+    expect(flat('tab-same-cell').selectedCell).toEqual({ columnKey: 'name', value: 'Ada' })
+  })
+
+  it('shows an error toast when autosave fails while switching to text view', async () => {
+    useQueryStore.getState().setContent('tab-text-save-fail', 'SELECT 1')
+    patchResult('tab-text-save-fail', {
+      resultStatus: 'success' as const,
+      queryId: 'q-save-fail',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      rows: [[1]],
+      totalRows: 1,
+      viewMode: 'grid' as const,
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1 },
+        currentValues: { id: 1 },
+        modifiedColumns: new Set(['id']),
+        isNewRow: false,
+      },
+      saveError: 'still broken',
+    })
+
+    const saveSpy = vi.spyOn(useQueryStore.getState(), 'saveCurrentRow').mockResolvedValue(true)
+
+    useQueryStore.getState().setViewMode('tab-text-save-fail', 'text')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(saveSpy).toHaveBeenCalledWith('tab-text-save-fail')
+    expect(flat('tab-text-save-fail').viewMode).toBe('grid')
+    expect(
+      useToastStore
+        .getState()
+        .toasts.some(
+          (toast) =>
+            toast.variant === 'error' && toast.title === 'Cannot switch to text view'
+        )
+    ).toBe(true)
+
+    saveSpy.mockRestore()
+  })
+
+  it('shows an error toast when autosave throws while switching to text view', async () => {
+    useQueryStore.getState().setContent('tab-text-save-throw', 'SELECT 1')
+    patchResult('tab-text-save-throw', {
+      resultStatus: 'success' as const,
+      queryId: 'q-save-throw',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      rows: [[1]],
+      totalRows: 1,
+      viewMode: 'grid' as const,
+      editState: {
+        rowKey: { id: 1 },
+        originalValues: { id: 1 },
+        currentValues: { id: 1 },
+        modifiedColumns: new Set(['id']),
+        isNewRow: false,
+      },
+    })
+
+    const saveSpy = vi
+      .spyOn(useQueryStore.getState(), 'saveCurrentRow')
+      .mockRejectedValue(new Error('save blew up'))
+
+    useQueryStore.getState().setViewMode('tab-text-save-throw', 'text')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(saveSpy).toHaveBeenCalledWith('tab-text-save-throw')
+    expect(flat('tab-text-save-throw').viewMode).toBe('grid')
+    expect(
+      useToastStore
+        .getState()
+        .toasts.some(
+          (toast) =>
+            toast.variant === 'error' && toast.title === 'Cannot switch to text view'
+        )
+    ).toBe(true)
+
+    saveSpy.mockRestore()
   })
 })
 
@@ -675,7 +772,7 @@ describe('useQueryStore — sortResults', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     await useQueryStore.getState().sortResults('conn-1', 'tab-1', 'id', 'asc')
-    expect(consoleSpy).toHaveBeenCalledWith('[query-store] sortResults failed:', expect.any(Error))
+    expect(consoleSpy).not.toHaveBeenCalled()
     consoleSpy.mockRestore()
   })
 
@@ -709,9 +806,7 @@ describe('useQueryStore — sortResults', () => {
     const f = flat('tab-sort-null')
     expect(f.sortColumn).toBeNull()
     expect(f.rows).toEqual([[2], [1]])
-    expect(consoleSpy).toHaveBeenCalledWith(
-      '[query-store] sortResults failed: invalid sort_results payload (expected rows, page, totalPages)'
-    )
+    expect(consoleSpy).not.toHaveBeenCalled()
     consoleSpy.mockRestore()
   })
 
@@ -979,6 +1074,36 @@ describe('useQueryStore — changePageSize', () => {
 
     // Tab should remain undefined (error handler guard prevents write-back)
     expect(useQueryStore.getState().tabs['tab-stale-ps2']).toBeUndefined()
+  })
+
+  it('writes an error result when re-execution fails and the query id is unchanged', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_query') throw new Error('re-exec failed')
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-ps-error-state', 'SELECT 1')
+    patchResult('tab-ps-error-state', {
+      lastExecutedSql: 'SELECT 1',
+      resultStatus: 'success' as const,
+      queryId: 'q-stable',
+    })
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-ps-error-state': {
+          ...prev.tabs['tab-ps-error-state']!,
+          tabStatus: 'success' as const,
+        },
+      },
+    }))
+
+    await useQueryStore.getState().changePageSize('conn-1', 'tab-ps-error-state', 250)
+
+    const state = flat('tab-ps-error-state')
+    expect(state.resultStatus).toBe('error')
+    expect(state.errorMessage).toBe('re-exec failed')
   })
 })
 

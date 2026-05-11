@@ -1,143 +1,98 @@
-/**
- * Shared DataGrid wrapper around react-data-grid.
- *
- * Provides a consistent API surface and applies the Precision Studio theme
- * (rdg-precision CSS class). Row height and header height are sourced from
- * CSS tokens via the useGridDimensions hook.
- *
- * This component does NOT maintain a secondary local rows array — the store
- * is the single source of truth for row data.
- */
-
-import { forwardRef } from 'react'
-import { DataGrid as RDG } from 'react-data-grid'
+import { forwardRef, useCallback } from 'react'
 import type {
-  DataGridHandle,
-  DataGridProps as RDGProps,
-  CalculatedColumn,
-  SortColumn,
-  Renderers,
-  DefaultColumnOptions,
-  ColumnWidth,
-} from 'react-data-grid'
-import { useGridDimensions } from '../../hooks/use-grid-dimensions'
-import { SortStatusRenderer } from './grid-header-renderers'
-import styles from './DataGrid.module.css'
+  EditableGridCell,
+  GridCell,
+  GridColumn as GlideColumn,
+  Item,
+} from '@glideapps/glide-data-grid'
+import { GlideDataGrid } from './glide/GlideDataGrid'
+import type {
+  GridColumn,
+  GridHandle,
+  GridRowsChangeData,
+  GridSortColumn,
+} from './glide/glide-grid-types'
 
-// Re-export types consumers will need
-export type { DataGridHandle, CalculatedColumn, Column, SortColumn } from 'react-data-grid'
+export type Column<TRow> = GridColumn<TRow>
+export type SortColumn = GridSortColumn
+export type DataGridHandle = GridHandle
+export type CalculatedColumn<TRow> = GridColumn<TRow> & { idx: number }
+export type ColumnWidth = number | string
 
-type CellMouseEventHandler<R, SR> = RDGProps<R, SR>['onCellClick']
-
-// ---------------------------------------------------------------------------
-// Props interface
-// ---------------------------------------------------------------------------
-
-export interface DataGridWrapperProps<R, SR = unknown> {
-  columns: RDGProps<R, SR>['columns']
+export interface DataGridWrapperProps<R extends Record<string, unknown>> {
+  columns: readonly GridColumn<R>[]
   rows: readonly R[]
-  columnWidths?: ReadonlyMap<string, ColumnWidth>
-  onColumnWidthsChange?: (columnWidths: ReadonlyMap<string, ColumnWidth>) => void
-  sortColumns?: readonly SortColumn[]
-  onSortColumnsChange?: (sortColumns: SortColumn[]) => void
-  onCellClick?: CellMouseEventHandler<R, SR>
-  onCellDoubleClick?: CellMouseEventHandler<R, SR>
-  onCellContextMenu?: RDGProps<R, SR>['onCellContextMenu']
-  onCellKeyDown?: RDGProps<R, SR>['onCellKeyDown']
-  onCellCopy?: RDGProps<R, SR>['onCellCopy']
-  onCellPaste?: RDGProps<R, SR>['onCellPaste']
-  onSelectedCellChange?: RDGProps<R, SR>['onSelectedCellChange']
-  onRowsChange?: RDGProps<R, SR>['onRowsChange']
-  onColumnResize?: (column: CalculatedColumn<R, SR>, width: number) => void
-  rowKeyGetter?: RDGProps<R, SR>['rowKeyGetter']
-  rowClass?: RDGProps<R, SR>['rowClass']
-  defaultColumnOptions?: DefaultColumnOptions<R, SR>
-  renderers?: Renderers<R, SR>
+  sortColumns?: readonly GridSortColumn[]
+  onSortColumnsChange?: (sortColumns: GridSortColumn[]) => void
+  onRowsChange?: (rows: R[], data: GridRowsChangeData<R>) => void
+  onColumnResize?: (column: CalculatedColumn<R>, width: number) => void
+  rowKeyGetter?: (row: R) => string | number
+  rowClass?: (row: R) => string | undefined
+  getCellContent?: (cell: Item) => GridCell
+  onCellEdited?: (cell: Item, newValue: EditableGridCell) => void
   'data-testid'?: string
   className?: string
 }
 
-// ---------------------------------------------------------------------------
-// DataGrid component
-// ---------------------------------------------------------------------------
-
-function DataGridInner<R, SR = unknown>(
-  props: DataGridWrapperProps<R, SR>,
-  ref: React.Ref<DataGridHandle>
-) {
-  const {
-    columns,
-    rows,
-    columnWidths,
-    onColumnWidthsChange,
-    sortColumns,
-    onSortColumnsChange,
-    onCellClick,
-    onCellDoubleClick,
-    onCellContextMenu,
-    onCellKeyDown,
-    onCellCopy,
-    onCellPaste,
-    onSelectedCellChange,
-    onRowsChange,
-    onColumnResize,
-    rowKeyGetter,
-    rowClass,
-    defaultColumnOptions,
-    renderers: userRenderers,
-    'data-testid': testId,
-    className,
-  } = props
-
-  const { rowHeight, headerHeight } = useGridDimensions()
-
-  // Merge our default sort status renderer with any user-provided renderers
-  const mergedRenderers: Renderers<R, SR> = {
-    renderSortStatus: SortStatusRenderer,
-    ...userRenderers,
+function toGlideColumn<TRow>(column: GridColumn<TRow>): GlideColumn {
+  return {
+    id: column.key,
+    title: typeof column.name === 'string' ? column.name : column.key,
+    width: typeof column.width === 'number' ? column.width : 150,
   }
+}
 
-  // Build the className — always include rdg-precision, plus any extra classes
-  const containerClassName = className ? `rdg-precision ${className}` : 'rdg-precision'
+function DataGridInner<R extends Record<string, unknown>>(
+  props: DataGridWrapperProps<R>,
+  ref: React.Ref<GridHandle>
+) {
+  const { columns, rows, onColumnResize, getCellContent, 'data-testid': testId, className } = props
+  const glideColumns = columns.map(toGlideColumn)
+
+  const fallbackGetCellContent = useCallback(
+    ([colIndex, rowIndex]: Item): GridCell => {
+      const column = columns[colIndex]
+      const row = rows[rowIndex]
+      return {
+        kind: 'text',
+        data: column && row ? String(row[column.key] ?? '') : '',
+        displayData: column && row ? String(row[column.key] ?? '') : '',
+        allowOverlay: true,
+      } as GridCell
+    },
+    [columns, rows]
+  )
+
+  const handleColumnResize = useCallback(
+    (columnIndex: number, width: number) => {
+      const column = columns[columnIndex]
+      if (!column) return
+      onColumnResize?.({ ...column, idx: columnIndex }, width)
+    },
+    [columns, onColumnResize]
+  )
 
   return (
-    <div className={styles.container}>
-      <RDG<R, SR>
-        ref={ref}
-        columns={columns}
-        rows={rows}
-        columnWidths={columnWidths}
-        onColumnWidthsChange={onColumnWidthsChange}
-        sortColumns={sortColumns}
-        onSortColumnsChange={onSortColumnsChange}
-        onCellClick={onCellClick}
-        onCellDoubleClick={onCellDoubleClick}
-        onCellContextMenu={onCellContextMenu}
-        onCellKeyDown={onCellKeyDown}
-        onCellCopy={onCellCopy}
-        onCellPaste={onCellPaste}
-        onSelectedCellChange={onSelectedCellChange}
-        onRowsChange={onRowsChange}
-        onColumnResize={onColumnResize}
-        rowKeyGetter={rowKeyGetter}
-        rowClass={rowClass}
-        rowHeight={rowHeight}
-        headerRowHeight={headerHeight}
-        defaultColumnOptions={defaultColumnOptions}
-        renderers={mergedRenderers}
-        className={containerClassName}
-        data-testid={testId}
-        enableVirtualization={true}
-      />
-    </div>
+    <GlideDataGrid
+      ref={ref}
+      columns={glideColumns}
+      rows={rows}
+      getCellContent={getCellContent ?? fallbackGetCellContent}
+      onColumnResize={handleColumnResize}
+      data-testid={testId}
+      className={className}
+    />
   )
 }
 
-/**
- * Shared DataGrid wrapper with forwardRef to expose DataGridHandle.
- * Applies the rdg-precision theme and reads row/header heights from CSS tokens.
- */
-
-export const DataGrid = forwardRef(DataGridInner) as <R, SR = unknown>(
-  props: DataGridWrapperProps<R, SR> & { ref?: React.Ref<DataGridHandle> }
+export const DataGrid = forwardRef(DataGridInner) as <R extends Record<string, unknown>>(
+  props: DataGridWrapperProps<R> & { ref?: React.Ref<GridHandle> }
 ) => React.ReactElement | null
+
+export type {
+  GridCellPosition,
+  GridColumn,
+  GridHandle,
+  GridRowsChangeData,
+  GridSortColumn,
+} from './glide/glide-grid-types'

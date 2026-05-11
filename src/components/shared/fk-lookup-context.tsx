@@ -16,6 +16,7 @@ export interface FkLookupArgs {
   currentValue: unknown
   foreignKey: ForeignKeyColumnInfo
   rowData: Record<string, unknown>
+  source?: 'grid-pointer' | 'keyboard' | 'editor-trigger'
 }
 
 export interface FkLookupContextValue {

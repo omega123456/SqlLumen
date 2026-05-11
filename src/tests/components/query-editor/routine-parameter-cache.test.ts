@@ -126,7 +126,7 @@ describe('routine-parameter-cache', () => {
     const entry = await getRoutineParameters('conn1', 'mydb', 'my_func', 'function')
 
     expect(entry).toBeNull()
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[routine-param-cache]'))
+    expect(consoleSpy).not.toHaveBeenCalled()
     expect(mockLogFrontend).toHaveBeenCalledWith(
       'error',
       expect.stringContaining('[routine-param-cache]')

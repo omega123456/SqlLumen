@@ -5,7 +5,6 @@ import { Dropdown } from '../common/Dropdown'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { SettingsSection } from './SettingsSection'
 import { getAppInfo } from '../../lib/app-info-commands'
-import { logFrontend } from '../../lib/app-log-commands'
 import { UPDATE_INTERVAL_OPTIONS } from '../../lib/update-intervals'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
@@ -17,6 +16,7 @@ import { useUpdateStore } from '../../stores/update-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import styles from './UpdatesSettings.module.css'
 
+import { logFrontend } from '../../lib/app-log-commands'
 interface PendingWorkSummary {
   hasWork: boolean
   items: string[]

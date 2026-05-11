@@ -169,9 +169,10 @@ export function WorkspaceTabs({
     invokerTabId: string
   } | null>(null)
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null)
-  const [dropTarget, setDropTarget] = useState<{ tabId: string; indicator: 'before' | 'after' } | null>(
-    null
-  )
+  const [dropTarget, setDropTarget] = useState<{
+    tabId: string
+    indicator: 'before' | 'after'
+  } | null>(null)
   const pointerDragRef = useRef<{
     tabId: string
     dragging: boolean
@@ -189,7 +190,9 @@ export function WorkspaceTabs({
   const contextMenuTabIndex = contextMenu
     ? movableTabIds.findIndex((tabId) => tabId === contextMenu.tabId)
     : -1
-  const contextMenuTab = contextMenu ? tabs.find((tab) => tab.id === contextMenu.tabId) ?? null : null
+  const contextMenuTab = contextMenu
+    ? (tabs.find((tab) => tab.id === contextMenu.tabId) ?? null)
+    : null
 
   useEffect(() => {
     activeTabIdRef.current = activeTabId

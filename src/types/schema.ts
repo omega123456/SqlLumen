@@ -484,6 +484,7 @@ export interface TableDataTabState {
   // View state
   viewMode: 'grid' | 'form'
   selectedRowKey: Record<string, unknown> | null
+  columnWidths?: Record<string, number>
 
   // Selection
   selectedCell: SelectedCellInfo | null

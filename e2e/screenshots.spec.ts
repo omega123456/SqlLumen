@@ -2,13 +2,21 @@ import { test, expect, type Locator, type Page } from '@playwright/test'
 import {
   APP_READY_MS,
   connectToSample,
+  clickResultGridCell,
   dismissAllToasts,
   getColumnIndexByName,
+  getGridCellByColumnName,
   openConnectionManager,
   selectSampleConnection,
   waitForApp,
   waitForAutocomplete,
+  waitForGlideGrid,
 } from './helpers'
+import {
+  clickGlideCell,
+  clickGlideRowMarker,
+  getGlideGridGeometry,
+} from './glide-grid-helpers'
 
 const themes = ['light', 'dark'] as const
 const SCREENSHOT_TEST_TIMEOUT_MS = 25_000
@@ -309,16 +317,16 @@ async function openQueryEditorWithResults(page: Page) {
 
   // Wait for results to appear
   await expect(page.getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('result-grid-view')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
 }
 
 async function enableQueryResultEditMode(page: Page) {
   await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
   await page.getByTestId('edit-mode-dropdown').click()
   await page.getByRole('option').nth(1).click()
-  await expect(page.getByTestId('result-grid-view').locator('.rdg-readonly-cell').first()).toBeVisible(
-    { timeout: APP_READY_MS }
-  )
+  await expect(page.getByTestId('result-grid').locator('canvas').first()).toBeVisible({
+    timeout: APP_READY_MS,
+  })
 }
 
 /** Open a table data tab for `sample_table` and wait for data to load. */
@@ -346,7 +354,7 @@ async function openTableDataTab(page: Page) {
   await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
     timeout: APP_READY_MS,
   })
-  await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
+  await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
     timeout: APP_READY_MS,
   })
 }
@@ -376,7 +384,7 @@ async function openViewDataTab(page: Page) {
   await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
     timeout: APP_READY_MS,
   })
-  await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
+  await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
     timeout: APP_READY_MS,
   })
 }
@@ -406,7 +414,7 @@ async function openOrdersTableDataTab(page: Page) {
   await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
     timeout: APP_READY_MS,
   })
-  await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
+  await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
     timeout: APP_READY_MS,
   })
 }
@@ -418,11 +426,7 @@ async function openProcessListTab(page: Page) {
   const tabStrip = page.getByTestId('workspace-tabs')
   await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
   await tabStrip.getByText('Process List').click()
-  await expect(page.getByTestId('processlist-grid')).toBeVisible({ timeout: APP_READY_MS })
-  // Wait for at least one data row to render
-  await expect(page.getByTestId('processlist-grid').locator('.rdg-row').first()).toBeVisible({
-    timeout: APP_READY_MS,
-  })
+  await waitForGlideGrid(page, 'processlist-grid-view')
 
   await page.evaluate(() => {
     const processListStore = (window as unknown as Record<string, unknown>)
@@ -768,7 +772,9 @@ for (const theme of themes) {
 
     test('ConnectionTabBar — context menu reorder actions', async ({ page }) => {
       await openTwoConnectionSessionsFirstActive(page)
-      await page.getByTestId('connection-session-tab-session-playwright-2').click({ button: 'right' })
+      await page
+        .getByTestId('connection-session-tab-session-playwright-2')
+        .click({ button: 'right' })
       await expect(page.getByTestId('tab-context-menu')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('tab-context-menu')).toHaveScreenshot(
         `connection-tab-context-menu-reorder-${theme}.png`,
@@ -1140,7 +1146,7 @@ for (const theme of themes) {
         `query-editor-result-toolbar-success-${theme}.png`,
         { animations: 'disabled' }
       )
-      await expect(page.getByTestId('result-grid-view')).toHaveScreenshot(
+      await expect(page.getByTestId('result-grid')).toHaveScreenshot(
         `query-editor-result-grid-success-${theme}.png`,
         { animations: 'disabled' }
       )
@@ -1188,12 +1194,12 @@ for (const theme of themes) {
         })
       })
 
-      // react-data-grid renders Phosphor ArrowUp SVG for ASC sort via SortStatusRenderer
-      await expect(
-        page.getByTestId('result-grid-view').locator('.rdg-header-row svg').first()
-      ).toBeVisible({ timeout: APP_READY_MS })
+      // Glide renders the ASC sort affordance directly on the canvas header.
+      await expect(page.getByTestId('result-grid').locator('canvas').first()).toBeVisible({
+        timeout: APP_READY_MS,
+      })
 
-      await expect(page.getByTestId('result-grid-view')).toHaveScreenshot(
+      await expect(page.getByTestId('result-grid')).toHaveScreenshot(
         `query-editor-result-grid-sorted-name-${theme}.png`,
         { animations: 'disabled' }
       )
@@ -1202,7 +1208,7 @@ for (const theme of themes) {
     test('QueryEditorTab — edit mode toolbar with detected tables', async ({ page }) => {
       await openQueryEditorWithResults(page)
       await enableQueryResultEditMode(page)
-      await page.getByTestId('result-grid-view').locator('.rdg-row').first().click()
+      await clickResultGridCell(page, 1, 0)
       await expect(page.getByTestId('query-clone-button')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('result-toolbar')).toHaveScreenshot(
         `query-editor-result-toolbar-edit-mode-dropdown-${theme}.png`,
@@ -1215,9 +1221,9 @@ for (const theme of themes) {
     }) => {
       await openQueryEditorWithResults(page)
       await enableQueryResultEditMode(page)
-      await page.getByTestId('result-grid-view').locator('.rdg-row').first().click()
+      await clickResultGridCell(page, 1, 0)
 
-      await expect(page.getByTestId('result-grid-view')).toHaveScreenshot(
+      await expect(page.getByTestId('result-grid')).toHaveScreenshot(
         `query-editor-result-grid-edit-mode-${theme}.png`,
         { animations: 'disabled' }
       )
@@ -1432,10 +1438,10 @@ for (const theme of themes) {
 
     test('TableDataGrid — grid view with data', async ({ page }) => {
       await openTableDataTab(page)
-      // Wait for the react-data-grid to be rendered with data
+      // Wait for the data grid to be rendered with data
       await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
       // Wait for at least one data row to render
-      await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
+      await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
         timeout: APP_READY_MS,
       })
       await resetChromeScrollPositions(page)
@@ -1449,7 +1455,7 @@ for (const theme of themes) {
       await openOrdersTableDataTab(page)
       const grid = page.getByTestId('table-data-grid')
       await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-      await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
       // Wait for FK metadata to load (async fire-and-forget in store)
       await page.waitForTimeout(500)
       await resetChromeScrollPositions(page)
@@ -1465,11 +1471,11 @@ for (const theme of themes) {
       await openOrdersTableDataTab(page)
       const grid = page.getByTestId('table-data-grid')
       await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-      await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
       // Wait for FK metadata to load (async fire-and-forget in store)
       await page.waitForTimeout(500)
-      // Hover over the first data row to trigger the FK button CSS visibility
-      await grid.locator('.rdg-row').first().hover()
+      const userIdCell = await getGridCellByColumnName(grid, 0, 'user_id')
+      await userIdCell.click()
       await page.waitForTimeout(200) // Let CSS transition settle
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
@@ -1482,11 +1488,11 @@ for (const theme of themes) {
       await openOrdersTableDataTab(page)
       const grid = page.getByTestId('table-data-grid')
       await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-      await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
       // Wait for FK metadata to load (async fire-and-forget in store)
       await page.waitForTimeout(500)
-      // Hover over the first data row to make the FK trigger button visible
-      await grid.locator('.rdg-row').first().hover()
+      const userIdCell = await getGridCellByColumnName(grid, 0, 'user_id')
+      await userIdCell.click()
       await page.waitForTimeout(200) // Let CSS transition settle
       // Click the FK lookup trigger button
       const fkTrigger = page.getByTestId('fk-lookup-trigger').first()
@@ -1494,7 +1500,10 @@ for (const theme of themes) {
       await fkTrigger.click()
       // Wait for the FK lookup dialog to appear and data to load
       await expect(page.getByTestId('fk-lookup-dialog')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('fk-lookup-base-grid')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('fk-lookup-grid')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('fk-lookup-grid').locator('canvas').first()).toBeVisible({
+        timeout: APP_READY_MS,
+      })
       // Reset scroll positions for stable screenshots
       await resetChromeScrollPositions(page)
       // Full viewport screenshot — dialog is a modal
@@ -1531,7 +1540,7 @@ for (const theme of themes) {
     test('full app layout — table data grid', async ({ page }) => {
       await openTableDataTab(page)
       await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
+      await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
         timeout: APP_READY_MS,
       })
       await resetChromeScrollPositions(page)
@@ -1554,7 +1563,7 @@ for (const theme of themes) {
       await openViewDataTab(page)
       await expect(page.getByTestId('view-badge')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
+      await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
         timeout: APP_READY_MS,
       })
       await resetChromeScrollPositions(page)
@@ -1569,13 +1578,12 @@ for (const theme of themes) {
 
       const grid = page.getByTestId('table-data-grid')
       await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-      await expect(grid.locator('.rdg-row').first()).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
 
       const statusColIdx = await getColumnIndexByName(grid, 'status')
       expect(statusColIdx).toBeGreaterThanOrEqual(0)
 
-      const statusCell = grid.locator('.rdg-row').first().locator('.rdg-cell').nth(statusColIdx)
-      await expect(statusCell).toBeVisible({ timeout: APP_READY_MS })
+      const statusCell = await getGridCellByColumnName(grid, 0, 'status')
       await statusCell.click()
 
       const enumEditor = page.locator('.td-cell-editor-select').first()
@@ -3045,7 +3053,7 @@ for (const theme of themes) {
     test('ProcessListTab — grid with data', async ({ page }) => {
       await openProcessListTab(page)
       await resetChromeScrollPositions(page)
-      await expect(page.getByTestId('processlist-grid')).toHaveScreenshot(
+      await expect(page.getByTestId('processlist-grid-view')).toHaveScreenshot(
         `processlist-grid-${theme}.png`,
         { animations: 'disabled' }
       )
@@ -3053,11 +3061,10 @@ for (const theme of themes) {
 
     test('ProcessListTab — selected row highlight', async ({ page }) => {
       await openProcessListTab(page)
-      const firstRow = page.getByTestId('processlist-grid').locator('.rdg-row').first()
-      await firstRow.locator('input[type="checkbox"]').click()
-      await expect(firstRow).toHaveClass(/rdg-row-precision-selected/)
+      const geometry = await getGlideGridGeometry(page, 'processlist-grid-view')
+      await clickGlideRowMarker(page, 'processlist-grid-view', 0, geometry)
       await resetChromeScrollPositions(page)
-      await expect(page.getByTestId('processlist-grid')).toHaveScreenshot(
+      await expect(page.getByTestId('processlist-grid-view')).toHaveScreenshot(
         `processlist-grid-selected-${theme}.png`,
         { animations: 'disabled' }
       )
@@ -3086,11 +3093,9 @@ for (const theme of themes) {
     test('ProcessListTab — kill confirmation dialog', async ({ page }) => {
       await openProcessListTab(page)
       // Select first two rows by clicking checkboxes
-      const grid = page.getByTestId('processlist-grid')
-      const rows = grid.locator('.rdg-row')
-      // Click the checkbox in the first row
-      await rows.nth(0).locator('input[type="checkbox"]').click()
-      await rows.nth(1).locator('input[type="checkbox"]').click()
+      const geometry = await getGlideGridGeometry(page, 'processlist-grid-view')
+      await clickGlideRowMarker(page, 'processlist-grid-view', 0, geometry)
+      await clickGlideRowMarker(page, 'processlist-grid-view', 1, geometry)
       // Click the Kill button to open confirm dialog
       await page.getByTestId('processlist-kill-button').click()
       await expect(page.getByTestId('confirm-dialog')).toBeVisible({ timeout: APP_READY_MS })
@@ -3103,16 +3108,14 @@ for (const theme of themes) {
 
     test('ProcessListTab — info cell popover', async ({ page }) => {
       await openProcessListTab(page)
-      const grid = page.getByTestId('processlist-grid')
-      // Scroll the grid to the right to ensure the Info column is visible
-      const rdgElement = grid.locator('.rdg')
-      await rdgElement.evaluate((el) => {
-        el.scrollLeft = el.scrollWidth
+      await page.evaluate(() => {
+        const api = (window as typeof window & {
+          __processListTestApi__?: { openInfoPopover?: (connectionId: string, rowIndex: number) => boolean }
+        }).__processListTestApi__
+        if (!api?.openInfoPopover?.('session-playwright-1', 0)) {
+          throw new Error('Failed to open Process List info popover via Playwright test API')
+        }
       })
-      // Wait for the info cell to appear after scroll
-      const infoCell = grid.getByTestId('processlist-info-cell').first()
-      await infoCell.waitFor({ state: 'visible', timeout: APP_READY_MS })
-      await infoCell.click()
       await expect(page.getByTestId('info-cell-popover')).toBeVisible({ timeout: APP_READY_MS })
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('info-cell-popover')).toHaveScreenshot(
@@ -3176,38 +3179,19 @@ test.describe('Date picker', () => {
       test('DateTimePicker — Grid View (calendar popup open)', async ({ page }) => {
         await openTableDataTab(page)
 
-        // Grid view is the default — wait for data rows (react-data-grid)
+        // Grid view is the default — wait for data rows
         await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
-        await expect(page.getByTestId('table-data-grid').locator('.rdg-row').first()).toBeVisible({
+        await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
           timeout: APP_READY_MS,
         })
 
         // Dismiss any lingering toasts before interaction
         await dismissAllToasts(page)
 
-        // Click on the created_at cell in the first data row to start editing.
-        // The grid enters edit mode on single click via its custom onCellClick
-        // handler. Avoid double-click here: once the editor mounts, the second
-        // click can land on inline controls (NULL toggle / calendar button)
-        // inside narrow temporal cells and flip the editor into an unintended
-        // state before the screenshot is taken.
-        const headerCells = page.getByTestId('table-data-grid').locator('.rdg-header-row .rdg-cell')
-        const headerCount = await headerCells.count()
-        let createdAtColIdx = -1
-        for (let i = 0; i < headerCount; i++) {
-          const text = await headerCells.nth(i).textContent()
-          if (text?.trim() === 'created_at') {
-            createdAtColIdx = i
-            break
-          }
-        }
-        expect(createdAtColIdx).toBeGreaterThanOrEqual(0)
-        const firstRow = page.getByTestId('table-data-grid').locator('.rdg-row').first()
-        const createdAtCell = firstRow.locator('.rdg-cell').nth(createdAtColIdx)
-        await expect(createdAtCell).toBeVisible({ timeout: APP_READY_MS })
+        // Click the created_at cell in the first row to start editing.
+        const grid = page.getByTestId('table-data-grid')
+        const createdAtCell = await getGridCellByColumnName(grid, 0, 'created_at')
         await createdAtCell.click()
-        // The editor opening is async (guard → startEditing → selectCell) — wait a bit
-        await page.waitForTimeout(500)
 
         // Wait for the DateTimeCellEditor to mount with the calendar button
         const gridCalendarBtn = page.getByTestId('grid-calendar-btn')

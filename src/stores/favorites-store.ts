@@ -8,6 +8,7 @@ import {
 } from '../lib/favorites-commands'
 import { showErrorToast, showSuccessToast } from './toast-store'
 
+import { logFrontend } from '../lib/app-log-commands'
 interface FavoritesState {
   /** Current entries. */
   entries: FavoriteEntry[]
@@ -53,7 +54,7 @@ export const useFavoritesStore = create<FavoritesState>()((set, get) => ({
       set({ entries, isLoading: false })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[favorites-store] loadFavorites failed:', err)
+      logFrontend('error', ['[favorites-store] loadFavorites failed:', err].map(String).join(' '))
       set({ isLoading: false, error: msg })
     }
   },
@@ -70,7 +71,7 @@ export const useFavoritesStore = create<FavoritesState>()((set, get) => ({
       return id
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[favorites-store] createFavorite failed:', err)
+      logFrontend('error', ['[favorites-store] createFavorite failed:', err].map(String).join(' '))
       showErrorToast('Failed to save favorite', msg)
       return null
     }
@@ -89,7 +90,7 @@ export const useFavoritesStore = create<FavoritesState>()((set, get) => ({
       return updated
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[favorites-store] updateFavorite failed:', err)
+      logFrontend('error', ['[favorites-store] updateFavorite failed:', err].map(String).join(' '))
       showErrorToast('Failed to update favorite', msg)
       return false
     }
@@ -105,7 +106,7 @@ export const useFavoritesStore = create<FavoritesState>()((set, get) => ({
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[favorites-store] deleteFavorite failed:', err)
+      logFrontend('error', ['[favorites-store] deleteFavorite failed:', err].map(String).join(' '))
       showErrorToast('Failed to delete favorite', msg)
     }
   },

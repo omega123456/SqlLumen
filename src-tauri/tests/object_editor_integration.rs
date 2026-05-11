@@ -1015,15 +1015,19 @@ mod ipc_paths {
         cmd: &str,
         body: serde_json::Value,
     ) -> Result<T, serde_json::Value> {
+        let url = if cfg!(any(windows, target_os = "android")) {
+            "http://tauri.localhost"
+        } else {
+            "tauri://localhost"
+        };
+
         get_ipc_response(
             webview,
             InvokeRequest {
                 cmd: cmd.into(),
                 callback: CallbackFn(0),
                 error: CallbackFn(1),
-                url: "http://tauri.localhost"
-                    .parse()
-                    .expect("test URL should parse"),
+                url: url.parse().expect("test URL should parse"),
                 body: InvokeBody::Json(body),
                 headers: Default::default(),
                 invoke_key: INVOKE_KEY.to_string(),

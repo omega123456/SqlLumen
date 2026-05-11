@@ -232,11 +232,7 @@ export function UnderlineTab({
   const simpleClass = [styles.simple, active ? styles.simpleActive : '', className ?? '']
     .filter(Boolean)
     .join(' ')
-  const finalSimpleClass = [
-    simpleClass,
-    dragging ? styles.dragging : '',
-    dropIndicatorClass,
-  ]
+  const finalSimpleClass = [simpleClass, dragging ? styles.dragging : '', dropIndicatorClass]
     .filter(Boolean)
     .join(' ')
 

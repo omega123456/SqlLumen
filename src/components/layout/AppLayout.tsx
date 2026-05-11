@@ -26,6 +26,7 @@ import {
 } from '../query-editor/sql-parser-utils'
 import styles from './AppLayout.module.css'
 
+import { logFrontend } from '../../lib/app-log-commands'
 type ExecuteQueryPlan =
   | { kind: 'single'; payload: string }
   | { kind: 'call'; payload: string }
@@ -264,7 +265,7 @@ export function AppLayout() {
             queryState.setFilePath(tabId, filePath)
           }
         } catch (err) {
-          console.error('[app-layout] open-file failed:', err)
+          logFrontend('error', ['[app-layout] open-file failed:', err].map(String).join(' '))
         }
       })()
     })

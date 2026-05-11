@@ -7,6 +7,7 @@ import {
 } from '../lib/history-commands'
 import { showErrorToast, showSuccessToast } from './toast-store'
 
+import { logFrontend } from '../lib/app-log-commands'
 const DEFAULT_PAGE_SIZE = 50
 
 interface HistoryState {
@@ -75,7 +76,7 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[history-store] loadHistory failed:', err)
+      logFrontend('error', ['[history-store] loadHistory failed:', err].map(String).join(' '))
       set({
         isLoadingByConnection: { ...get().isLoadingByConnection, [connectionId]: false },
         errorByConnection: { ...get().errorByConnection, [connectionId]: msg },
@@ -93,7 +94,7 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
       await get().loadHistory(connectionId, page, search)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[history-store] deleteEntry failed:', err)
+      logFrontend('error', ['[history-store] deleteEntry failed:', err].map(String).join(' '))
       showErrorToast('Failed to delete history entry', msg)
     }
   },
@@ -109,7 +110,7 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
       showSuccessToast('History cleared', `Removed ${count} entries`)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.error('[history-store] clearAll failed:', err)
+      logFrontend('error', ['[history-store] clearAll failed:', err].map(String).join(' '))
       showErrorToast('Failed to clear history', msg)
     }
   },

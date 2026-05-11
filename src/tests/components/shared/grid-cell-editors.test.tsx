@@ -470,6 +470,9 @@ describe('getCellEditorForColumn', () => {
       callbacks
     )
 
-    expect(config.editorOptions).toEqual({ closeOnExternalRowChange: false })
+    expect(config.editorOptions).toEqual({
+      closeOnExternalRowChange: false,
+      commitOnOutsideClick: false,
+    })
   })
 })

@@ -29,6 +29,7 @@ import { useTableDataStore } from '../../../stores/table-data-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { useUpdateStore } from '../../../stores/update-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
+import type { ObjectEditorTab, TableDataTab, TableDesignerTab } from '../../../types/schema'
 
 const mockCheckForUpdate = vi.fn<(manual: boolean) => Promise<void>>()
 const mockDownloadAndInstall = vi.fn<() => Promise<void>>()
@@ -244,6 +245,38 @@ describe('UpdatesSettings', () => {
     expect(screen.getByTestId('updates-try-again-button')).toHaveTextContent('Try Again')
   })
 
+  it('manual check button triggers a manual update check from idle state', async () => {
+    const user = userEvent.setup()
+    render(<UpdatesSettings />)
+
+    await user.click(await screen.findByTestId('updates-check-button'))
+
+    expect(mockCheckForUpdate).toHaveBeenCalledWith(true)
+  })
+
+  it('try again button triggers a manual update check from error state', async () => {
+    const user = userEvent.setup()
+    useUpdateStore.setState({ status: 'error', errorMessage: 'network down' })
+
+    render(<UpdatesSettings />)
+
+    await user.click(await screen.findByTestId('updates-try-again-button'))
+
+    expect(mockCheckForUpdate).toHaveBeenCalledWith(true)
+  })
+
+  it('shows unavailable app version and logs when app info loading fails', async () => {
+    mockGetAppInfo.mockRejectedValueOnce(new Error('boom'))
+
+    render(<UpdatesSettings />)
+
+    expect(await screen.findByTestId('updates-app-version')).toHaveTextContent('Unavailable')
+    expect(mockLogFrontend).toHaveBeenCalledWith(
+      'error',
+      expect.stringContaining('Failed to load app version')
+    )
+  })
+
   it('shows confirmation dialog before download when active work exists', async () => {
     const user = userEvent.setup()
     useUpdateStore.setState(makeAvailableUpdate())
@@ -291,6 +324,17 @@ describe('UpdatesSettings', () => {
     })
   })
 
+  it('restarts immediately on Windows when no active work exists', async () => {
+    const user = userEvent.setup()
+    setReadyToFinishState('2.0.0', 'windows')
+
+    render(<UpdatesSettings />)
+    await user.click(await screen.findByTestId('updates-restart-button'))
+
+    expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
+    expect(mockRestartApp).toHaveBeenCalledTimes(1)
+  })
+
   it('linux ready-to-finish restart button does not relaunch', async () => {
     const user = userEvent.setup()
     useSettingsStore.setState({
@@ -310,6 +354,262 @@ describe('UpdatesSettings', () => {
 
     expect(mockRestartApp).not.toHaveBeenCalled()
     expect(useSettingsStore.getState().isDialogOpen).toBe(false)
+  })
+
+  it('lists running queries and unsaved workspace work in the confirmation dialog', async () => {
+    const user = userEvent.setup()
+    useUpdateStore.setState(makeAvailableUpdate())
+    useConnectionStore.setState({ activeConnections: makeActiveConnections(2) })
+    useQueryStore.setState({
+      tabs: {
+        'query-1': {
+          content: '',
+          selectedText: '',
+          filePath: null,
+          tabStatus: 'running',
+          prevTabStatus: 'idle',
+          cursorPosition: null,
+          connectionId: 'conn-1',
+          results: [
+            {
+              resultStatus: 'running',
+              columns: [],
+              rows: [],
+              totalRows: 0,
+              executionTimeMs: 0,
+              affectedRows: 0,
+              queryId: 'q1',
+              currentPage: 1,
+              totalPages: 1,
+              pageSize: 100,
+              autoLimitApplied: false,
+              errorMessage: null,
+              viewMode: 'grid',
+              sortColumn: null,
+              sortDirection: null,
+              selectedRowIndex: null,
+              exportDialogOpen: false,
+              lastExecutedSql: 'select 1',
+              reExecutable: true,
+              isAnalyzed: false,
+              selectedCell: null,
+              filterModel: [],
+              unfilteredRows: null,
+              editMode: null,
+              editTableMetadata: {},
+              editForeignKeys: [],
+              editState: null,
+              isAnalyzingQuery: false,
+              editableColumnMap: new Map(),
+              editColumnBindings: new Map(),
+              editBoundColumnIndexMap: new Map(),
+              saveError: null,
+              isStale: false,
+              editConnectionId: null,
+              editingRowIndex: null,
+            },
+          ],
+          activeResultIndex: 0,
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+        },
+        'query-2': {
+          content: '',
+          selectedText: '',
+          filePath: null,
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
+          cursorPosition: null,
+          connectionId: 'conn-1',
+          results: [
+            {
+              resultStatus: 'success',
+              columns: [],
+              rows: [],
+              totalRows: 1,
+              executionTimeMs: 0,
+              affectedRows: 0,
+              queryId: 'q2',
+              currentPage: 1,
+              totalPages: 1,
+              pageSize: 100,
+              autoLimitApplied: false,
+              errorMessage: null,
+              viewMode: 'grid',
+              sortColumn: null,
+              sortDirection: null,
+              selectedRowIndex: null,
+              exportDialogOpen: false,
+              lastExecutedSql: 'select 2',
+              reExecutable: true,
+              isAnalyzed: false,
+              selectedCell: null,
+              filterModel: [],
+              unfilteredRows: null,
+              editMode: 'users',
+              editTableMetadata: {},
+              editForeignKeys: [],
+              editState: {
+                rowKey: { id: 1 },
+                originalValues: { id: 1, name: 'Alice' },
+                currentValues: { id: 1, name: 'Alicia' },
+                modifiedColumns: new Set(['name']),
+                isNewRow: false,
+              },
+              isAnalyzingQuery: false,
+              editableColumnMap: new Map(),
+              editColumnBindings: new Map(),
+              editBoundColumnIndexMap: new Map(),
+              saveError: null,
+              isStale: false,
+              editConnectionId: 'conn-1',
+              editingRowIndex: 0,
+            },
+          ],
+          activeResultIndex: 0,
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+        },
+      },
+    })
+
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'conn-1': [
+          {
+            id: 'table-tab',
+            type: 'table-data',
+            label: 'users',
+            connectionId: 'conn-1',
+            databaseName: 'db',
+            objectName: 'users',
+            objectType: 'table',
+          } as TableDataTab,
+          {
+            id: 'designer-tab',
+            type: 'table-designer',
+            label: 'orders',
+            connectionId: 'conn-1',
+            databaseName: 'db',
+            objectName: 'orders',
+            mode: 'alter',
+          } as TableDesignerTab,
+          {
+            id: 'object-tab',
+            type: 'object-editor',
+            label: 'View: v_users',
+            connectionId: 'conn-1',
+            databaseName: 'db',
+            objectName: 'v_users',
+            objectType: 'view',
+            mode: 'alter',
+          } as ObjectEditorTab,
+        ],
+      },
+      activeTabByConnection: { 'conn-1': 'table-tab' },
+    })
+
+    useTableDataStore.setState({
+      tabs: {
+        'table-tab': {
+          columns: [],
+          rows: [],
+          currentPage: 1,
+          pageSize: 100,
+          primaryKey: null,
+          executionTimeMs: 0,
+          connectionId: 'conn-1',
+          database: 'db',
+          table: 'users',
+          editState: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1 },
+            currentValues: { id: 1, name: 'Changed' },
+            modifiedColumns: new Set(['name']),
+            isNewRow: false,
+          },
+          viewMode: 'grid',
+          selectedRowKey: null,
+          selectedCell: null,
+          filterModel: [],
+          sort: null,
+          isLoading: false,
+          error: null,
+          saveError: null,
+          isExportDialogOpen: false,
+          scrollTop: 0,
+          scrollLeft: 0,
+          pendingNavigationAction: null,
+        },
+      },
+    })
+
+    useTableDesignerStore.setState({
+      tabs: {
+        'designer-tab': {
+          connectionId: 'conn-1',
+          databaseName: 'db',
+          objectName: 'orders',
+          mode: 'alter',
+          originalSchema: null,
+          currentSchema: {
+            tableName: 'orders',
+            columns: [],
+            indexes: [],
+            foreignKeys: [],
+            properties: {
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              collation: 'utf8mb4_unicode_ci',
+              autoIncrement: null,
+              rowFormat: 'DEFAULT',
+              comment: '',
+            },
+          },
+          isDirty: true,
+          isLoading: false,
+          loadError: null,
+          ddl: '',
+          ddlWarnings: [],
+          isDdlLoading: false,
+          ddlError: null,
+          validationErrors: {},
+          pendingNavigationAction: null,
+          selectedSubTab: 'columns',
+        },
+      },
+    })
+
+    useObjectEditorStore.setState({
+      tabs: {
+        'object-tab': {
+          connectionId: 'conn-1',
+          database: 'db',
+          objectName: 'v_users',
+          objectType: 'view',
+          mode: 'alter',
+          content: 'changed',
+          originalContent: 'original',
+          isLoading: false,
+          isSaving: false,
+          error: null,
+          pendingNavigationAction: null,
+          savedObjectName: null,
+        },
+      },
+    })
+
+    render(<UpdatesSettings />)
+    await user.click(await screen.findByTestId('updates-download-button'))
+
+    expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+    expect(screen.getByText(/2 active database connections/)).toBeInTheDocument()
+    expect(screen.getByText(/1 running query/)).toBeInTheDocument()
+    expect(screen.getByText(/4 unsaved tabs/)).toBeInTheDocument()
   })
 
   it('check interval dropdown updates pendingChanges', async () => {

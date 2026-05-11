@@ -769,6 +769,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
                 id={listboxId}
                 className={[
                   'ui-dropdown__panel',
+                  'click-outside-ignore',
                   isPortalInDialog ? 'ui-dropdown__panel--in-dialog' : '',
                   placement === 'top' ? 'ui-dropdown__panel--top' : '',
                 ]

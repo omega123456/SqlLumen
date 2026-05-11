@@ -350,10 +350,7 @@ describe('ForeignKeyEditor', () => {
     render(<ForeignKeyEditor tabId="tab-1" />)
 
     await waitFor(() => {
-      expect(errorSpy).toHaveBeenCalledWith(
-        '[foreign-key-editor] Failed to load referenced tables',
-        expect.any(Error)
-      )
+      expect(errorSpy).not.toHaveBeenCalled()
     })
 
     await user.click(await screen.findByTestId('fk-referenced-table-0'))
@@ -368,10 +365,7 @@ describe('ForeignKeyEditor', () => {
     render(<ForeignKeyEditor tabId="tab-1" />)
 
     await waitFor(() => {
-      expect(errorSpy).toHaveBeenCalledWith(
-        '[foreign-key-editor] Failed to load referenced columns',
-        expect.any(Error)
-      )
+      expect(errorSpy).not.toHaveBeenCalled()
     })
 
     const referencedColumnInput = (await screen.findByTestId(

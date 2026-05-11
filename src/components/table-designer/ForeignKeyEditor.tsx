@@ -7,6 +7,7 @@ import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import styles from './ForeignKeyEditor.module.css'
 
+import { logFrontend } from '../../lib/app-log-commands'
 interface ForeignKeyEditorProps {
   tabId: string
 }
@@ -85,7 +86,10 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
         }
       })
       .catch((error) => {
-        console.error('[foreign-key-editor] Failed to load referenced tables', error)
+        logFrontend(
+          'error',
+          ['[foreign-key-editor] Failed to load referenced tables', error].map(String).join(' ')
+        )
         if (!cancelled) {
           setReferencedTables([])
         }
@@ -146,7 +150,10 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
           }))
         })
         .catch((error) => {
-          console.error('[foreign-key-editor] Failed to load referenced columns', error)
+          logFrontend(
+            'error',
+            ['[foreign-key-editor] Failed to load referenced columns', error].map(String).join(' ')
+          )
           setReferencedColumnsByTable((current) => ({
             ...current,
             [referencedTable]: [],

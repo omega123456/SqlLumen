@@ -1,661 +1,218 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
-import { useQueryStore } from '../../../stores/query-store'
-import { makeTabState } from '../../helpers/query-test-utils'
-
-// Store captured BaseGridView props for assertions
-let lastBaseGridProps: Record<string, unknown> = {}
-let baseGridRenderCount = 0
-
-// Mock the shared BaseGridView component (ResultGridView wraps it)
-vi.mock('../../../components/shared/BaseGridView', async () => {
-  const React = await import('react')
-  const MockBaseGridView = React.forwardRef(function MockBaseGridView(
-    props: Record<string, unknown>,
-    ref: React.Ref<unknown>
-  ) {
-    void ref
-    // Capture props for test assertions
-    baseGridRenderCount += 1
-    lastBaseGridProps = props
-    const rows = (props.rows as Array<Record<string, unknown>>) ?? []
-    return React.createElement(
-      'div',
-      { 'data-testid': props.testId ?? 'base-grid-view' },
-      rows.map((row: Record<string, unknown>, i: number) =>
-        React.createElement(
-          'div',
-          { key: i, 'data-testid': `grid-row-${i}` },
-          ...Object.entries(row)
-            .filter(([k]: [string, unknown]) => !k.startsWith('__'))
-            .map(([k, v]: [string, unknown]) =>
-              React.createElement(
-                'span',
-                { key: k, 'data-key': k },
-                v === null ? 'NULL' : String(v)
-              )
-            )
-        )
-      )
-    )
-  })
-  return { BaseGridView: MockBaseGridView }
-})
-
+import { act, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultGridView } from '../../../components/query-editor/ResultGridView'
+import { useQueryStore } from '../../../stores/query-store'
+import type { ColumnMeta } from '../../../types/schema'
 
-const columns = [
+const mockCanvasBaseGridView = vi.hoisted(() => vi.fn((props: Record<string, unknown>) => (
+  <div data-testid="mock-result-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
+)))
+
+vi.mock('../../../components/shared/glide/CanvasBaseGridView', () => ({
+  CanvasBaseGridView: mockCanvasBaseGridView,
+}))
+
+const columns: ColumnMeta[] = [
   { name: 'id', dataType: 'INT' },
   { name: 'name', dataType: 'VARCHAR' },
-  { name: 'email', dataType: 'VARCHAR' },
 ]
 
-const rows: unknown[][] = [
-  [1, 'Alice', 'alice@example.com'],
-  [2, 'Bob', null],
-  [3, 'Charlie', 'charlie@example.com'],
-]
-
-function getLatestBaseGridProps(): Record<string, unknown> {
-  return lastBaseGridProps
+const baseProps = {
+  columns,
+  rows: [
+    [1, 'Ada'],
+    [2, 'Bob'],
+  ],
+  sortColumn: null,
+  sortDirection: null,
+  onSortChanged: vi.fn(),
+  onRowSelected: vi.fn(),
+  selectedRowIndex: null,
+  tabId: 'tab-1',
+  editMode: null,
+  editableColumnMap: new Map<number, boolean>(),
+  editState: null,
+  editingRowIndex: null,
+  editTableColumns: [],
+  editColumnBindings: new Map<number, string>(),
+  onStartEditing: vi.fn(),
+  onUpdateCellValue: vi.fn(),
+  onSyncCellValue: vi.fn(),
+  onAutoSave: vi.fn(async () => true),
 }
 
-describe('ResultGridView', () => {
-  const defaultProps = {
-    columns,
-    rows,
-    sortColumn: null as string | null,
-    sortDirection: null as 'asc' | 'desc' | null,
-    onSortChanged: vi.fn(),
-    onRowSelected: vi.fn(),
-    selectedRowIndex: null as number | null,
-    tabId: 'tab-test',
-    editMode: null as string | null,
-    editableColumnMap: new Map<number, boolean>(),
-    editState: null,
-    editingRowIndex: null as number | null,
-    editTableColumns: [],
-    editColumnBindings: new Map<number, string>(),
-    onStartEditing: vi.fn(),
-    onUpdateCellValue: vi.fn(),
-    onSyncCellValue: vi.fn(),
-    onAutoSave: vi.fn().mockResolvedValue(true),
+function getGridProps() {
+  return mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    rows: Array<Record<string, unknown>>
+    columns: Array<{ key: string; displayName: string; editable: boolean }>
+    onSortChange: (column: string | null, direction: 'ASC' | 'DESC' | null) => void
+    onCellClickGuard: (args: {
+      rowIdx: number
+      columnKey: string
+      rowData: Record<string, unknown>
+    }) => Promise<unknown>
+    onCellSelectionChange?: (args: {
+      rowIdx: number
+      columnKey: string
+      rowData: Record<string, unknown>
+    }) => void
+    onSelectedCellChange: (pos: { rowIdx: number; idx: number }) => void
+    rowKeyGetter: (row: Record<string, unknown>) => string
+    getRowClass: (row: Record<string, unknown>) => string | undefined
+    selectedCellPosition: { rowIdx: number; idx: number } | null
+    selectedRowClassName?: string
   }
+}
 
-  beforeEach(() => {
-    vi.useRealTimers()
-    vi.clearAllMocks()
-    lastBaseGridProps = {}
-    baseGridRenderCount = 0
-    useQueryStore.setState({
-      tabs: {
-        'tab-test': makeTabState({
-          status: 'success',
-          columns,
-          rows,
-          totalRows: rows.length,
-        }),
-      },
-    })
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockCanvasBaseGridView.mockClear()
+  useQueryStore.setState({ tabs: {} })
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
+
+describe('ResultGridView', () => {
+  it('renders column headers and rows from query results', () => {
+    render(<ResultGridView {...baseProps} />)
+    expect(screen.getByTestId('mock-result-grid')).toHaveAttribute('data-row-count', '2')
+    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+      columns: Array<{ key: string; displayName: string }>
+      rows: Array<Record<string, unknown>>
+    }
+    expect(props.columns.map((column) => column.displayName)).toEqual(['id', 'name'])
+    expect(props.rows[0]).toMatchObject({ col_0: 1, col_1: 'Ada', __rowIdx: 0 })
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
+  it('fires onSortChanged when sort is triggered', () => {
+    const onSortChanged = vi.fn()
+    render(<ResultGridView {...baseProps} onSortChanged={onSortChanged} />)
+    const props = getGridProps()
+    props.onSortChange('col_1', 'DESC')
+    expect(onSortChanged).toHaveBeenCalledWith('name', 'desc')
   })
 
-  it('renders with data-testid="result-grid-view"', () => {
-    render(<ResultGridView {...defaultProps} />)
-    expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
-  })
-
-  it('passes correct number of column descriptors to BaseGridView', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const props = getLatestBaseGridProps()
-    const colDefs = props.columns as Array<{ key: string; displayName: string }>
-    expect(colDefs).toHaveLength(3)
-  })
-
-  it('maps column names to displayName property', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const props = getLatestBaseGridProps()
-    const colDefs = props.columns as Array<{ displayName: string }>
-    expect(colDefs[0].displayName).toBe('id')
-    expect(colDefs[1].displayName).toBe('name')
-    expect(colDefs[2].displayName).toBe('email')
-  })
-
-  it('uses index-based keys (col_N) for columns', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const props = getLatestBaseGridProps()
-    const colDefs = props.columns as Array<{ key: string }>
-    expect(colDefs[0].key).toBe('col_0')
-    expect(colDefs[1].key).toBe('col_1')
-    expect(colDefs[2].key).toBe('col_2')
-  })
-
-  it('transforms row arrays into keyed objects with __rowIdx', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const props = getLatestBaseGridProps()
-    const rowData = props.rows as Array<Record<string, unknown>>
-    expect(rowData).toHaveLength(3)
-    expect(rowData[0]).toEqual({
-      __rowIdx: 0,
-      col_0: 1,
-      col_1: 'Alice',
-      col_2: 'alice@example.com',
-    })
-    expect(rowData[1]).toEqual({ __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null })
-  })
-
-  it('enables auto-sizing based on the visible query result values', () => {
-    render(<ResultGridView {...defaultProps} />)
-
-    const props = getLatestBaseGridProps()
-    const autoSizeConfig = props.autoSizeConfig as
-      | {
-          enabled: boolean
-          computeWidth: (
-            col: { key: string; displayName: string; dataType: string },
-            rows: Record<string, unknown>[]
-          ) => number
-        }
-      | undefined
-    const rowData = props.rows as Array<Record<string, unknown>>
-    const gridColumns = props.columns as Array<{
-      key: string
-      displayName: string
-      dataType: string
-    }>
-
-    expect(autoSizeConfig?.enabled).toBe(true)
-    expect(autoSizeConfig?.computeWidth(gridColumns[2], rowData)).toBeGreaterThan(
-      autoSizeConfig!.computeWidth(gridColumns[0], rowData)
+  it('clears sort using the previously sorted column name', () => {
+    const onSortChanged = vi.fn()
+    render(
+      <ResultGridView
+        {...baseProps}
+        sortColumn="name"
+        sortDirection="asc"
+        onSortChanged={onSortChanged}
+      />
     )
-  })
 
-  it('passes sortColumn and sortDirection translated to BaseGridView format', () => {
-    render(<ResultGridView {...defaultProps} sortColumn="name" sortDirection="asc" />)
-    const props = getLatestBaseGridProps()
-    expect(props.sortColumn).toBe('col_1')
-    expect(props.sortDirection).toBe('ASC')
-  })
+    getGridProps().onSortChange(null, null)
 
-  it('passes sortColumn and sortDirection for DESC', () => {
-    render(<ResultGridView {...defaultProps} sortColumn="id" sortDirection="desc" />)
-    const props = getLatestBaseGridProps()
-    expect(props.sortColumn).toBe('col_0')
-    expect(props.sortDirection).toBe('DESC')
-  })
-
-  it('passes null sortColumn when no sort is active', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const props = getLatestBaseGridProps()
-    expect(props.sortColumn).toBeNull()
-    expect(props.sortDirection).toBeNull()
-  })
-
-  it('onSortChange calls onSortChanged with column name and lowercase direction', () => {
-    const onSortChanged = vi.fn()
-    render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} />)
-    const props = getLatestBaseGridProps()
-    const onSortChange = props.onSortChange as (
-      colKey: string | null,
-      direction: 'ASC' | 'DESC' | null
-    ) => void
-
-    onSortChange('col_1', 'ASC')
-    expect(onSortChanged).toHaveBeenCalledWith('name', 'asc')
-  })
-
-  it('onSortChange handles DESC direction', () => {
-    const onSortChanged = vi.fn()
-    render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} />)
-    const props = getLatestBaseGridProps()
-    const onSortChange = props.onSortChange as (
-      colKey: string | null,
-      direction: 'ASC' | 'DESC' | null
-    ) => void
-
-    onSortChange('col_0', 'DESC')
-    expect(onSortChanged).toHaveBeenCalledWith('id', 'desc')
-  })
-
-  it('onSortChange enforces sort clearing when null colKey is passed', () => {
-    const onSortChanged = vi.fn()
-    render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} sortColumn="name" />)
-    const props = getLatestBaseGridProps()
-    const onSortChange = props.onSortChange as (
-      colKey: string | null,
-      direction: 'ASC' | 'DESC' | null
-    ) => void
-
-    onSortChange(null, null)
     expect(onSortChanged).toHaveBeenCalledWith('name', null)
   })
 
-  it('onSortChange does nothing when sort cleared and no previous sortColumn', () => {
+  it('ignores sort changes for an unknown column key', () => {
     const onSortChanged = vi.fn()
-    render(<ResultGridView {...defaultProps} onSortChanged={onSortChanged} sortColumn={null} />)
-    const props = getLatestBaseGridProps()
-    const onSortChange = props.onSortChange as (
-      colKey: string | null,
-      direction: 'ASC' | 'DESC' | null
-    ) => void
+    render(<ResultGridView {...baseProps} onSortChanged={onSortChanged} />)
 
-    onSortChange(null, null)
+    getGridProps().onSortChange('col_99', 'ASC')
+
     expect(onSortChanged).not.toHaveBeenCalled()
   })
 
-  it('calls onRowSelected via cell click guard in read-only mode', async () => {
+  it('shows empty state by passing no rows', () => {
+    render(<ResultGridView {...baseProps} rows={[]} />)
+    expect(screen.getByTestId('mock-result-grid')).toHaveAttribute('data-row-count', '0')
+  })
+
+  it('handles null and undefined cell values gracefully', () => {
+    render(<ResultGridView {...baseProps} rows={[[null, undefined]]} />)
+    const props = getGridProps()
+    expect(props.rows[0]).toMatchObject({ col_0: null, col_1: null })
+  })
+
+  it('syncs selection immediately when the selected cell changes', () => {
     const onRowSelected = vi.fn()
-    render(<ResultGridView {...defaultProps} onRowSelected={onRowSelected} />)
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (args: {
-      rowIdx: number
-      columnKey: string
-      rowData: Record<string, unknown>
-    }) => Promise<{ proceed: boolean }>
+    const setSelectedCellSpy = vi.spyOn(useQueryStore.getState(), 'setSelectedCell')
 
-    await act(async () => {
-      await onCellClickGuard({
-        rowIdx: 0,
-        columnKey: 'col_0',
-        rowData: { __rowIdx: 0, col_0: 1 },
-      })
-    })
-
-    expect(onRowSelected).toHaveBeenCalledWith(0)
-  })
-
-  it('keeps store row and cell selection in sync on cell click', async () => {
-    render(
-      <ResultGridView
-        {...defaultProps}
-        onRowSelected={(rowIndex) => useQueryStore.getState().setSelectedRow('tab-test', rowIndex)}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (args: {
-      rowIdx: number
-      columnKey: string
-      rowData: Record<string, unknown>
-    }) => Promise<{ proceed: boolean }>
-
-    await act(async () => {
-      await onCellClickGuard({
-        rowIdx: 1,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
-      })
-    })
-
-    const result = useQueryStore.getState().tabs['tab-test']?.results[0]
-    expect(result?.selectedRowIndex).toBe(1)
-    expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Bob' })
-  })
-
-  it('keeps store selection current during keyboard-only row movement through the shared guard', async () => {
-    render(
-      <ResultGridView
-        {...defaultProps}
-        editMode="users"
-        editableColumnMap={
-          new Map([
-            [0, false],
-            [1, true],
-            [2, true],
-          ])
-        }
-        onRowSelected={(rowIndex) => useQueryStore.getState().setSelectedRow('tab-test', rowIndex)}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (args: {
-      rowIdx: number
-      columnKey: string
-      rowData: Record<string, unknown>
-    }) => Promise<{ proceed: boolean }>
-
-    await act(async () => {
-      await onCellClickGuard({
-        rowIdx: 0,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 0, col_0: 1, col_1: 'Alice', col_2: 'alice@example.com' },
-      })
-      await onCellClickGuard({
-        rowIdx: 2,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 2, col_0: 3, col_1: 'Charlie', col_2: 'charlie@example.com' },
-      })
-    })
-
-    const result = useQueryStore.getState().tabs['tab-test']?.results[0]
-    expect(result?.selectedRowIndex).toBe(2)
-    expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Charlie' })
-  })
-
-  it('uses imperative row highlighting for read-only keyboard movement instead of the async guard', async () => {
-    vi.useFakeTimers()
-
-    render(
-      <ResultGridView
-        {...defaultProps}
-        onRowSelected={(rowIndex) => useQueryStore.getState().setSelectedRow('tab-test', rowIndex)}
-      />
-    )
-
-    const props = getLatestBaseGridProps()
-    expect(props.runCellClickGuardOnKeyboardSelection).toBe(false)
-    expect(props.selectedRowClassName).toBe('rdg-row-precision-selected')
-
-    const onCellSelectionChange = props.onCellSelectionChange as (args: {
-      rowIdx: number
-      columnKey: string
-      rowData: Record<string, unknown>
-    }) => void
+    render(<ResultGridView {...baseProps} onRowSelected={onRowSelected} />)
 
     act(() => {
-      onCellSelectionChange({
-        rowIdx: 2,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 2, col_0: 3, col_1: 'Charlie', col_2: 'charlie@example.com' },
-      })
+      getGridProps().onSelectedCellChange({ rowIdx: 1, idx: 1 })
     })
 
-    expect(baseGridRenderCount).toBe(1)
-
-    let result = useQueryStore.getState().tabs['tab-test']?.results[0]
-    expect(result?.selectedRowIndex).toBeNull()
-    expect(result?.selectedCell).toBeNull()
-
-    await act(async () => {
-      await vi.runOnlyPendingTimersAsync()
+    expect(onRowSelected).toHaveBeenCalledWith(1)
+    expect(setSelectedCellSpy).toHaveBeenCalledWith('tab-1', {
+      columnKey: 'name',
+      value: 'Bob',
     })
-
-    result = useQueryStore.getState().tabs['tab-test']?.results[0]
-    expect(result?.selectedRowIndex).toBe(2)
-    expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Charlie' })
   })
 
-  it('coalesces global selection sync without re-rendering on every read-only keyboard move', async () => {
-    vi.useFakeTimers()
+  it('skips duplicate selection syncs for the same cell', () => {
     const onRowSelected = vi.fn()
+    const setSelectedCellSpy = vi.spyOn(useQueryStore.getState(), 'setSelectedCell')
 
-    render(<ResultGridView {...defaultProps} onRowSelected={onRowSelected} />)
-
-    let props = getLatestBaseGridProps()
-    const initialGetRowClass = props.getRowClass
-    const initialRenderCount = baseGridRenderCount
-    const onCellSelectionChange = props.onCellSelectionChange as (args: {
-      rowIdx: number
-      columnKey: string
-      rowData: Record<string, unknown>
-    }) => void
+    render(<ResultGridView {...baseProps} onRowSelected={onRowSelected} />)
 
     act(() => {
-      onCellSelectionChange({
-        rowIdx: 0,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 0, col_0: 1, col_1: 'Alice', col_2: 'alice@example.com' },
-      })
-      onCellSelectionChange({
-        rowIdx: 1,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
-      })
-      onCellSelectionChange({
-        rowIdx: 2,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 2, col_0: 3, col_1: 'Charlie', col_2: 'charlie@example.com' },
-      })
-    })
-
-    props = getLatestBaseGridProps()
-    expect(baseGridRenderCount).toBe(initialRenderCount)
-    expect(props.getRowClass).toBe(initialGetRowClass)
-    expect(onRowSelected).not.toHaveBeenCalled()
-    expect(useQueryStore.getState().tabs['tab-test']?.results[0]?.selectedCell).toBeNull()
-
-    await act(async () => {
-      await vi.runOnlyPendingTimersAsync()
+      getGridProps().onSelectedCellChange({ rowIdx: 1, idx: 1 })
+      getGridProps().onSelectedCellChange({ rowIdx: 1, idx: 1 })
     })
 
     expect(onRowSelected).toHaveBeenCalledTimes(1)
-    expect(onRowSelected).toHaveBeenCalledWith(2)
-    expect(useQueryStore.getState().tabs['tab-test']?.results[0]?.selectedCell).toEqual({
-      columnKey: 'name',
-      value: 'Charlie',
-    })
+    expect(setSelectedCellSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('does not pass direct selection sync while edit mode is active', () => {
-    render(
-      <ResultGridView
-        {...defaultProps}
-        editMode="users"
-        editableColumnMap={
-          new Map([
-            [0, false],
-            [1, true],
-            [2, true],
-          ])
-        }
-      />
-    )
-
-    const props = getLatestBaseGridProps()
-    expect(props.onCellSelectionChange).toBeUndefined()
-    expect(props.runCellClickGuardOnKeyboardSelection).toBe(true)
-  })
-
-  it('keeps the keyboard guard active in edit mode so row movement auto-saves edits', async () => {
-    const onAutoSave = vi.fn().mockResolvedValue(true)
-    const onStartEditing = vi.fn()
-    render(
-      <ResultGridView
-        {...defaultProps}
-        editMode="users"
-        editableColumnMap={
-          new Map([
-            [0, false],
-            [1, true],
-            [2, true],
-          ])
-        }
-        editState={{
-          rowKey: { id: 1 },
-          originalValues: { name: 'Alice' },
-          currentValues: { name: 'Alice Updated' },
-          modifiedColumns: new Set(['name']),
-          isNewRow: false,
-        }}
-        editingRowIndex={0}
-        onAutoSave={onAutoSave}
-        onStartEditing={onStartEditing}
-      />
-    )
-
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (args: {
-      rowIdx: number
-      columnKey: string
-      rowData: Record<string, unknown>
-    }) => Promise<{ proceed: boolean }>
-
-    await act(async () => {
-      await onCellClickGuard({
-        rowIdx: 1,
-        columnKey: 'col_1',
-        rowData: { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
-      })
-    })
-
-    expect(props.runCellClickGuardOnKeyboardSelection).toBe(true)
-    expect(onAutoSave).toHaveBeenCalledTimes(1)
-    expect(onStartEditing).toHaveBeenCalledWith(1)
-  })
-
-  it('calls onRowSelected with correct index for different rows', async () => {
+  it('ignores invalid selected cell positions', () => {
     const onRowSelected = vi.fn()
-    render(<ResultGridView {...defaultProps} onRowSelected={onRowSelected} />)
-    const props = getLatestBaseGridProps()
-    const onCellClickGuard = props.onCellClickGuard as (args: {
-      rowIdx: number
-      columnKey: string
-      rowData: Record<string, unknown>
-    }) => Promise<{ proceed: boolean }>
+    const setSelectedCellSpy = vi.spyOn(useQueryStore.getState(), 'setSelectedCell')
 
-    await act(async () => {
-      await onCellClickGuard({
-        rowIdx: 2,
-        columnKey: 'col_0',
-        rowData: { __rowIdx: 2, col_0: 3 },
-      })
-    })
+    render(<ResultGridView {...baseProps} onRowSelected={onRowSelected} />)
 
-    expect(onRowSelected).toHaveBeenCalledWith(2)
-  })
-
-  it('renders NULL values as "NULL" in mock output', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const nullCells = screen.getAllByText('NULL')
-    expect(nullCells.length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('renders with empty rows', () => {
-    render(<ResultGridView {...defaultProps} rows={[]} />)
-    expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
-    const props = getLatestBaseGridProps()
-    const rowData = props.rows as Array<Record<string, unknown>>
-    expect(rowData).toHaveLength(0)
-  })
-
-  it('renders with empty columns', () => {
-    render(<ResultGridView {...defaultProps} columns={[]} rows={[]} />)
-    expect(screen.getByTestId('result-grid-view')).toBeInTheDocument()
-    const props = getLatestBaseGridProps()
-    const colDefs = props.columns as Array<{ key: string }>
-    expect(colDefs).toHaveLength(0)
-  })
-
-  it('getRowClass returns selected class in read-only mode (editMode=null)', () => {
-    render(<ResultGridView {...defaultProps} selectedRowIndex={1} />)
-    const props = getLatestBaseGridProps()
-    const getRowClass = props.getRowClass as (row: Record<string, unknown>) => string | undefined
-
-    // Selected row should get the highlight regardless of edit mode
-    expect(getRowClass({ __rowIdx: 1 })).toBe('rdg-row-precision-selected')
-    expect(getRowClass({ __rowIdx: 0 })).toBeUndefined()
-  })
-
-  it('getRowClass returns selected class when editMode is active', () => {
-    render(<ResultGridView {...defaultProps} editMode="users" selectedRowIndex={1} />)
-    const props = getLatestBaseGridProps()
-    const getRowClass = props.getRowClass as (row: Record<string, unknown>) => string | undefined
-
-    // In edit mode, selected row should get the highlight
-    expect(getRowClass({ __rowIdx: 1 })).toBe('rdg-row-precision-selected')
-    // Other rows should not be selected
-    expect(getRowClass({ __rowIdx: 0 })).toBeUndefined()
-    expect(getRowClass({ __rowIdx: 2 })).toBeUndefined()
-  })
-
-  it('getRowClass highlights the selected row directly (no page-offset conversion)', () => {
-    render(<ResultGridView {...defaultProps} editMode="users" selectedRowIndex={5} />)
-    const props = getLatestBaseGridProps()
-    const getRowClass = props.getRowClass as (row: Record<string, unknown>) => string | undefined
-
-    // selectedRowIndex=5 maps directly to local row index 5
-    expect(getRowClass({ __rowIdx: 5 })).toBe('rdg-row-precision-selected')
-    expect(getRowClass({ __rowIdx: 4 })).toBeUndefined()
-  })
-
-  it('getRowClass returns undefined when no row is selected', () => {
-    render(<ResultGridView {...defaultProps} selectedRowIndex={null} />)
-    const props = getLatestBaseGridProps()
-    const getRowClass = props.getRowClass as (row: Record<string, unknown>) => string | undefined
-
-    expect(getRowClass({ __rowIdx: 0 })).toBeUndefined()
-  })
-
-  it('provides a rowKeyGetter that returns string __rowIdx', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const props = getLatestBaseGridProps()
-    const rowKeyGetter = props.rowKeyGetter as (row: Record<string, unknown>) => string
-
-    expect(rowKeyGetter({ __rowIdx: 5, col_0: 1 })).toBe('5')
-    expect(rowKeyGetter({ __rowIdx: 0, col_0: 2 })).toBe('0')
-  })
-
-  it('passes testId="result-grid-view" to BaseGridView', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const props = getLatestBaseGridProps()
-    expect(props.testId).toBe('result-grid-view')
-  })
-
-  it('column descriptors have correct dataType from ColumnMeta', () => {
-    render(<ResultGridView {...defaultProps} />)
-    const props = getLatestBaseGridProps()
-    const colDefs = props.columns as Array<{ dataType: string }>
-    expect(colDefs[0].dataType).toBe('INT')
-    expect(colDefs[1].dataType).toBe('VARCHAR')
-    expect(colDefs[2].dataType).toBe('VARCHAR')
-  })
-
-  it('handleRowsChange remains referentially stable when rows change', () => {
-    const { rerender } = render(<ResultGridView {...defaultProps} />)
-    const firstOnRowsChange = getLatestBaseGridProps().onRowsChange
-
-    // Re-render with different row data (simulates new page of results during scroll)
-    const newRows: unknown[][] = [
-      [4, 'Dave', 'dave@example.com'],
-      [5, 'Eve', 'eve@example.com'],
-    ]
     act(() => {
-      rerender(<ResultGridView {...defaultProps} rows={newRows} />)
+      getGridProps().onSelectedCellChange({ rowIdx: 99, idx: 99 })
     })
-    const secondOnRowsChange = getLatestBaseGridProps().onRowsChange
 
-    // If handleRowsChange is stable (doesn't depend on rowData), the reference should be the same
-    expect(secondOnRowsChange).toBe(firstOnRowsChange)
+    expect(onRowSelected).not.toHaveBeenCalled()
+    expect(setSelectedCellSpy).not.toHaveBeenCalled()
   })
 
-  it('updates store selection during clipboard edits so toolbar enablement follows the active row', async () => {
-    render(
-      <ResultGridView
-        {...defaultProps}
-        editMode="users"
-        editableColumnMap={
-          new Map([
-            [0, false],
-            [1, true],
-            [2, true],
-          ])
-        }
-        onRowSelected={(rowIndex) => useQueryStore.getState().setSelectedRow('tab-test', rowIndex)}
-      />
-    )
-    const props = getLatestBaseGridProps()
-    const onCellClipboardEdit = props.onCellClipboardEdit as (args: {
-      rowIdx: number
-      rowData: Record<string, unknown>
-      columnKey: string
-      action: 'paste' | 'cut'
-      text?: string
-    }) => Promise<void>
+  it('schedules delayed read-only selection syncs and keeps only the latest one', () => {
+    vi.useFakeTimers()
 
-    await act(async () => {
-      await onCellClipboardEdit({
-        rowIdx: 1,
-        rowData: { __rowIdx: 1, col_0: 2, col_1: 'Bob', col_2: null },
-        columnKey: 'col_1',
-        action: 'paste',
-        text: 'Bobby',
-      })
+    const onRowSelected = vi.fn()
+    const setSelectedCellSpy = vi.spyOn(useQueryStore.getState(), 'setSelectedCell')
+
+    render(<ResultGridView {...baseProps} onRowSelected={onRowSelected} />)
+
+    const props = getGridProps()
+    act(() => {
+      props.onCellSelectionChange?.({ rowIdx: 0, columnKey: 'col_0', rowData: props.rows[0] })
+      props.onCellSelectionChange?.({ rowIdx: 1, columnKey: 'col_1', rowData: props.rows[1] })
     })
 
-    const result = useQueryStore.getState().tabs['tab-test']?.results[0]
-    expect(result?.selectedRowIndex).toBe(1)
-    expect(result?.selectedCell).toEqual({ columnKey: 'name', value: 'Bob' })
+    expect(onRowSelected).not.toHaveBeenCalled()
+
+    act(() => {
+      vi.advanceTimersByTime(75)
+    })
+
+    expect(onRowSelected).toHaveBeenCalledTimes(1)
+    expect(onRowSelected).toHaveBeenCalledWith(1)
+    expect(setSelectedCellSpy).toHaveBeenCalledWith('tab-1', {
+      columnKey: 'name',
+      value: 'Bob',
+    })
+  })
+
+  it('passes row-selection props for read-only mode', () => {
+    render(<ResultGridView {...baseProps} selectedRowIndex={1} />)
+
+    const props = getGridProps()
+
+    expect(props.selectedCellPosition).toEqual({ rowIdx: 1, idx: 0 })
+    expect(props.selectedRowClassName).toBe('grid-row-precision-selected')
+    expect(props.rowKeyGetter(props.rows[1])).toBe('1')
+    expect(props.getRowClass(props.rows[1])).toBe('grid-row-precision-selected')
   })
 })

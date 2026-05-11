@@ -1,160 +1,114 @@
-/**
- * Tests for the shared DataGrid wrapper component.
- *
- * Mocks react-data-grid since it uses CSS Grid layout which jsdom
- * cannot handle properly.
- */
-
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { createRef } from 'react'
+import { render, screen } from '@testing-library/react'
+import { GridCellKind, type EditableGridCell, type GridCell, type Item } from '@glideapps/glide-data-grid'
+import { DataGrid, type DataGridHandle } from '../../../components/shared/DataGrid'
 
-// ---------------------------------------------------------------------------
-// Mock react-data-grid
-// ---------------------------------------------------------------------------
+const mockGlideDataGrid = vi.fn()
 
-const mockDataGrid = vi.fn()
+vi.mock('../../../components/shared/glide/GlideDataGrid', async () => {
+  const React = await import('react')
+  return {
+    GlideDataGrid: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
+      mockGlideDataGrid(props)
+      React.useImperativeHandle(ref, () => ({
+        scrollToCell: vi.fn(),
+        selectCell: vi.fn(),
+        element: null,
+      }))
+      return React.createElement(
+        'div',
+        { className: props.className as string | undefined, 'data-testid': props['data-testid'] },
+        'grid'
+      )
+    }),
+  }
+})
 
-vi.mock('react-data-grid', () => ({
-  DataGrid: (props: Record<string, unknown>) => {
-    mockDataGrid(props)
-    return (
-      <div
-        data-testid={props['data-testid'] as string}
-        className={props.className as string}
-        data-mock="react-data-grid"
-      >
-        {/* Render column count and row count for assertion */}
-        <span data-testid="column-count">{(props.columns as unknown[])?.length ?? 0}</span>
-        <span data-testid="row-count">{(props.rows as unknown[])?.length ?? 0}</span>
-      </div>
+describe('DataGrid', () => {
+  it('adapts SqlLumen columns to Glide columns', () => {
+    render(
+      <DataGrid
+        columns={[
+          { key: 'id', name: 'ID', width: 80 },
+          { key: 'name', name: 'Name', width: 'auto' },
+        ]}
+        rows={[{ id: 1, name: 'Ada' }]}
+        data-testid="data-grid"
+        className="custom-grid"
+      />
     )
-  },
-}))
 
-// Mock the dimensions hook
-vi.mock('../../../hooks/use-grid-dimensions', () => ({
-  useGridDimensions: () => ({ rowHeight: 32, headerHeight: 32 }),
-}))
-
-// Import AFTER mocks
-import { DataGrid } from '../../../components/shared/DataGrid'
-import type { DataGridHandle } from '../../../components/shared/DataGrid'
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe('DataGrid wrapper', () => {
-  beforeEach(() => {
-    mockDataGrid.mockClear()
+    expect(screen.getByTestId('data-grid')).toHaveClass('custom-grid')
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as Record<string, unknown>
+    expect(props.columns).toEqual([
+      { id: 'id', title: 'ID', width: 80 },
+      { id: 'name', title: 'Name', width: 150 },
+    ])
+    expect(props.rows).toEqual([{ id: 1, name: 'Ada' }])
   })
 
-  it('renders with the rdg-precision class', () => {
-    render(<DataGrid columns={[]} rows={[]} data-testid="test-grid" />)
-
-    const grid = screen.getByTestId('test-grid')
-    expect(grid).toBeInTheDocument()
-    expect(grid.className).toContain('rdg-precision')
-  })
-
-  it('passes columns and rows through to react-data-grid', () => {
-    const columns = [
-      { key: 'id', name: 'ID' },
-      { key: 'name', name: 'Name' },
-    ]
-    const rows = [
-      { id: 1, name: 'Alice' },
-      { id: 2, name: 'Bob' },
-    ]
-
-    render(<DataGrid columns={columns} rows={rows} data-testid="test-grid" />)
-
-    expect(screen.getByTestId('column-count').textContent).toBe('2')
-    expect(screen.getByTestId('row-count').textContent).toBe('2')
-
-    // Verify the mock was called with the correct column and row props
-    expect(mockDataGrid).toHaveBeenCalledWith(
-      expect.objectContaining({
-        columns,
-        rows,
-      })
+  it('builds fallback text cells from row values', () => {
+    render(
+      <DataGrid
+        columns={[{ key: 'name', name: 'Name' }]}
+        rows={[{ name: 'Grace' }, { name: null }]}
+      />
     )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as Record<string, unknown>
+    const getCellContent = props.getCellContent as (cell: Item) => GridCell
+    expect(getCellContent([0, 0])).toMatchObject({
+      kind: GridCellKind.Text,
+      data: 'Grace',
+      displayData: 'Grace',
+      allowOverlay: true,
+    })
+    expect(getCellContent([0, 1])).toMatchObject({ data: '', displayData: '' })
+    expect(getCellContent([1, 0])).toMatchObject({ data: '', displayData: '' })
   })
 
-  it('forwards the data-testid prop', () => {
-    render(<DataGrid columns={[]} rows={[]} data-testid="my-custom-grid" />)
-
-    expect(screen.getByTestId('my-custom-grid')).toBeInTheDocument()
-  })
-
-  it('passes rowHeight and headerRowHeight from dimensions hook', () => {
-    render(<DataGrid columns={[]} rows={[]} data-testid="dim-grid" />)
-
-    expect(mockDataGrid).toHaveBeenCalledWith(
-      expect.objectContaining({
-        rowHeight: 32,
-        headerRowHeight: 32,
-      })
-    )
-  })
-
-  it('forwards ref to react-data-grid', () => {
-    const ref = createRef<DataGridHandle>()
-
-    // Since we're mocking RDG, the ref won't actually be set by the mock.
-    // But we can verify the component accepts the ref prop without errors.
-    expect(() => {
-      render(<DataGrid ref={ref} columns={[]} rows={[]} data-testid="ref-grid" />)
-    }).not.toThrow()
-
-    // The mock passes ref through, which verifies forwardRef works
-    expect(mockDataGrid).toHaveBeenCalledWith(
-      expect.objectContaining({
-        'data-testid': 'ref-grid',
-      })
-    )
-  })
-
-  it('passes sortColumns and onSortColumnsChange through', () => {
-    const sortColumns = [{ columnKey: 'id', direction: 'ASC' as const }]
-    const onSortColumnsChange = vi.fn()
+  it('uses custom cell content and maps resize callbacks', () => {
+    const getCellContent = vi.fn((): GridCell => ({
+      kind: GridCellKind.Text,
+      data: 'custom',
+      displayData: 'custom',
+      allowOverlay: true,
+    }))
+    const onColumnResize = vi.fn()
 
     render(
       <DataGrid
         columns={[{ key: 'id', name: 'ID' }]}
-        rows={[]}
-        sortColumns={sortColumns}
-        onSortColumnsChange={onSortColumnsChange}
-        data-testid="sort-grid"
+        rows={[{ id: 1 }]}
+        getCellContent={getCellContent}
+        onColumnResize={onColumnResize}
       />
     )
 
-    expect(mockDataGrid).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sortColumns,
-        onSortColumnsChange,
-      })
-    )
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as Record<string, unknown>
+    expect(props.getCellContent).toBe(getCellContent)
+
+    const onResize = props.onColumnResize as (columnIndex: number, width: number) => void
+    onResize(0, 120)
+    onResize(5, 200)
+    expect(onColumnResize).toHaveBeenCalledTimes(1)
+    expect(onColumnResize).toHaveBeenCalledWith({ key: 'id', name: 'ID', idx: 0 }, 120)
   })
 
-  it('includes custom className alongside rdg-precision', () => {
-    render(<DataGrid columns={[]} rows={[]} className="extra-class" data-testid="class-grid" />)
-
-    const grid = screen.getByTestId('class-grid')
-    expect(grid.className).toContain('rdg-precision')
-    expect(grid.className).toContain('extra-class')
+  it('forwards the grid handle ref', () => {
+    const ref = createRef<DataGridHandle>()
+    render(<DataGrid ref={ref} columns={[]} rows={[]} />)
+    expect(ref.current).toEqual({
+      scrollToCell: expect.any(Function),
+      selectCell: expect.any(Function),
+      element: null,
+    })
   })
 
-  it('passes renderers with default SortStatusRenderer', () => {
-    render(<DataGrid columns={[]} rows={[]} data-testid="renderer-grid" />)
-
-    expect(mockDataGrid).toHaveBeenCalledWith(
-      expect.objectContaining({
-        renderers: expect.objectContaining({
-          renderSortStatus: expect.any(Function),
-        }),
-      })
-    )
+  it('accepts editing callbacks without invoking them in the wrapper', () => {
+    const onCellEdited = vi.fn((_cell: Item, _value: EditableGridCell) => undefined)
+    render(<DataGrid columns={[]} rows={[]} onCellEdited={onCellEdited} />)
+    expect(onCellEdited).not.toHaveBeenCalled()
   })
 })

@@ -1,5 +1,5 @@
 /**
- * DateTimeCellEditor — react-data-grid cell editor for MySQL temporal columns.
+ * DateTimeCellEditor — shared grid cell editor for MySQL temporal columns.
  *
  * Uses the shared useCellEditor hook for value state, NULL toggle, and
  * store syncing. Adds a calendar/clock icon button that opens the
@@ -8,7 +8,7 @@
  * Focus management:
  *
  * 1. The column definition includes `editorOptions: { commitOnOutsideClick: false }`
- *    which prevents react-data-grid from prematurely committing the editor
+ *    which prevents the grid from prematurely committing the editor
  *    when the user clicks inside the portal-rendered DateTimePicker popup.
  *    The editor manages its own commit/close lifecycle via onClose().
  *
@@ -81,7 +81,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
   // preventDefault() for clicks on non-focusable areas (keeps focus on cell
   // editor input when the user clicks calendar background, labels, etc.).
   // Note: commitOnOutsideClick is disabled in the column definition, so
-  // we no longer need stopPropagation() to prevent RDG's outside-click
+  // we no longer need stopPropagation() to prevent grid outside-click
   // detection from firing.
   // -----------------------------------------------------------------------
   useEffect(() => {
@@ -122,7 +122,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
   useEffect(() => {
     if (!pickerOpen) return
 
-    const gridBody = containerRef.current?.closest('.rdg')
+    const gridBody = containerRef.current?.closest('.glide-grid-host')
     if (!gridBody) return
 
     const closeOnScroll = () => setPickerOpen(false)

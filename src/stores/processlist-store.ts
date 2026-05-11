@@ -4,8 +4,8 @@ import { getProcesslist, killQueries } from '../lib/processlist-commands'
 import { filterProcessListRows } from '../lib/processlist-filter'
 import { getProcessListRefreshTimestamp } from '../lib/processlist-time'
 import { showErrorToast } from './toast-store'
-import { logFrontend } from '../lib/app-log-commands'
 
+import { logFrontend } from '../lib/app-log-commands'
 const DEFAULT_REFRESH_INTERVAL_MS = 5000
 const DEFAULT_EXCLUDE_IDLE_CONNECTIONS = true
 const ERROR_TOAST_COOLDOWN_MS = 30_000

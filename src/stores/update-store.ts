@@ -2,11 +2,11 @@ import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { platform } from '@tauri-apps/plugin-os'
 import { create } from 'zustand'
-import { logFrontend } from '../lib/app-log-commands'
 import { hasTauriApis } from '../lib/tauri-env'
 import { UPDATE_INTERVAL_MS } from '../lib/update-intervals'
 import { useSettingsStore } from './settings-store'
 
+import { logFrontend } from '../lib/app-log-commands'
 type UpdateStatus =
   | 'idle'
   | 'checking'

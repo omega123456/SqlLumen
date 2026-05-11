@@ -26,6 +26,7 @@ import { invalidateCache } from '../components/query-editor/schema-metadata-cach
 import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
 import { hasTauriApis } from '../lib/tauri-env'
 
+import { logFrontend } from '../lib/app-log-commands'
 let listenersSetup = false
 
 /** Reset the listeners flag — for testing only */
@@ -124,7 +125,10 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       schemaIndexStore.registerSession(result.sessionId, id)
       schemaIndexStore.triggerBuild(result.sessionId).catch((err) => {
         const msg = err instanceof Error ? err.message : String(err)
-        console.error('[connection-store] Schema index build failed:', msg)
+        logFrontend(
+          'error',
+          ['[connection-store] Schema index build failed:', msg].map(String).join(' ')
+        )
       })
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err)
@@ -418,7 +422,7 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
         keepaliveIntervalSecs: updatedProfile.keepaliveIntervalSecs,
       })
     } catch (e) {
-      console.error('Failed to persist defaultDatabase change:', e)
+      logFrontend('error', ['Failed to persist defaultDatabase change:', e].map(String).join(' '))
       const msg = e instanceof Error ? e.message : String(e)
       showErrorToast('Failed to save default database', msg)
       const revertedProfile = { ...updatedProfile, defaultDatabase: originalDefault }
@@ -448,9 +452,14 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       })
       return unlisten
     } catch (err) {
-      console.warn(
-        '[connection-store] connection-status-changed listen failed (unexpected Tauri error):',
-        err
+      logFrontend(
+        'warn',
+        [
+          '[connection-store] connection-status-changed listen failed (unexpected Tauri error):',
+          err,
+        ]
+          .map(String)
+          .join(' ')
       )
       listenersSetup = false
       return undefined

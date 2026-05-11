@@ -8,6 +8,7 @@ import { useTableDesignerStore } from '../../stores/table-designer-store'
 import type { CharsetInfo, CollationInfo, TableDesignerProperties } from '../../types/schema'
 import styles from './TablePropertiesEditor.module.css'
 
+import { logFrontend } from '../../lib/app-log-commands'
 interface TablePropertiesEditorProps {
   tabId: string
   connectionId: string
@@ -84,7 +85,10 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
         }
       })
       .catch((error) => {
-        console.error('[table-properties-editor] Failed to load charsets', error)
+        logFrontend(
+          'error',
+          ['[table-properties-editor] Failed to load charsets', error].map(String).join(' ')
+        )
         if (!cancelled) {
           setCharsets([])
         }
@@ -148,7 +152,10 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
         }
       })
       .catch((error) => {
-        console.error('[table-properties-editor] Failed to load collations', error)
+        logFrontend(
+          'error',
+          ['[table-properties-editor] Failed to load collations', error].map(String).join(' ')
+        )
         if (!cancelled) {
           setCollations([])
         }

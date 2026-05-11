@@ -1,15 +1,12 @@
 /**
- * Shared cell renderers for react-data-grid.
- *
- * Adapted from the original `TableDataCellRenderer` in grid-cell-editors.tsx
- * to work with react-data-grid's `RenderCellProps<R>` interface.
+ * Shared cell value renderers for grid surfaces.
  *
  * - renderCellValue: shared NULL/BLOB/normal value display logic
  * - TableDataCellRenderer: displays NULL/BLOB indicators with styled spans
  */
 
-import type { RenderCellProps } from 'react-data-grid'
 import { useSettingsStore } from '../../stores/settings-store'
+import type { GridColumn } from './glide/glide-grid-types'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -45,18 +42,20 @@ export function renderCellValue(value: unknown): React.ReactNode {
 }
 
 // ---------------------------------------------------------------------------
-// TableDataCellRenderer — NULL/BLOB display for react-data-grid
+// TableDataCellRenderer — NULL/BLOB display for grid adapters
 // ---------------------------------------------------------------------------
 
 /**
  * Cell renderer that displays NULL values with muted styling and BLOB values
- * distinctively. Designed for react-data-grid's `renderCell` column property.
+ * distinctively. Designed for vendor-neutral grid render props.
  *
  * Reads the cell value from `row[column.key]`.
  */
-export function TableDataCellRenderer<R extends Record<string, unknown>>(
-  props: RenderCellProps<R>
-) {
+export function TableDataCellRenderer<R extends Record<string, unknown>>(props: {
+  row: R
+  column: GridColumn<R>
+  rowIdx: number
+}) {
   const value = props.row[props.column.key as keyof R]
   return renderCellValue(value)
 }

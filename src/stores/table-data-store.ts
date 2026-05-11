@@ -13,13 +13,13 @@ import {
   deleteTableRow as deleteTableRowCmd,
 } from '../lib/table-data-commands'
 import { getTableForeignKeys } from '../lib/schema-commands'
-import { logFrontend } from '../lib/app-log-commands'
 import { getTemporalValidationResult } from '../lib/table-data-save-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../lib/date-utils'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { mapSingleColumnForeignKeys } from '../lib/foreign-key-utils'
 import { getDefaultPageSize } from './query-store'
 
+import { logFrontend } from '../lib/app-log-commands'
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -348,6 +348,7 @@ function createDefaultTabState(
     editState: null,
     viewMode: 'grid',
     selectedRowKey: null,
+    columnWidths: {},
     selectedCell: null,
     filterModel: [],
     sort: null,
@@ -400,6 +401,7 @@ export interface TableDataStore {
   setViewMode: (tabId: string, mode: 'grid' | 'form') => void
   setSelectedRow: (tabId: string, rowKey: Record<string, unknown> | null) => void
   setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => void
+  setColumnWidth: (tabId: string, column: string, width: number) => void
   setPageSize: (tabId: string, newPageSize: number) => Promise<void>
   openExportDialog: (tabId: string) => void
   closeExportDialog: (tabId: string) => void
@@ -826,9 +828,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       })
 
       const modifiedColumns = new Set(
-        tab.columns
-          .filter((column) => !column.isPrimaryKey)
-          .map((column) => column.name)
+        tab.columns.filter((column) => !column.isPrimaryKey).map((column) => column.name)
       )
 
       appendDraftRow(tab, patchTab, get().startEditing, tabId, clonedRow, modifiedColumns)
@@ -901,6 +901,14 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     setSelectedCell: (tabId, cell) => {
       patchTab(tabId, { selectedCell: cell })
+    },
+
+    // ------ setColumnWidth ------
+
+    setColumnWidth: (tabId, column, width) => {
+      const tab = get().tabs[tabId]
+      if (!tab || !Number.isFinite(width)) return
+      patchTab(tabId, { columnWidths: { ...(tab.columnWidths ?? {}), [column]: width } })
     },
 
     // ------ setPageSize ------

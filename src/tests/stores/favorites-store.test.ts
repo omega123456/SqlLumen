@@ -74,7 +74,7 @@ describe('useFavoritesStore', () => {
       const state = useFavoritesStore.getState()
       expect(state.isLoading).toBe(false)
       expect(state.error).toBe('IPC failure')
-      expect(consoleSpy).toHaveBeenCalled()
+      expect(consoleSpy).not.toHaveBeenCalled()
     })
   })
 
@@ -107,7 +107,7 @@ describe('useFavoritesStore', () => {
       })
 
       expect(id).toBeNull()
-      expect(consoleSpy).toHaveBeenCalled()
+      expect(consoleSpy).not.toHaveBeenCalled()
     })
   })
 
@@ -139,7 +139,7 @@ describe('useFavoritesStore', () => {
       })
 
       expect(result).toBe(false)
-      expect(consoleSpy).toHaveBeenCalled()
+      expect(consoleSpy).not.toHaveBeenCalled()
     })
   })
 
@@ -162,7 +162,7 @@ describe('useFavoritesStore', () => {
       })
 
       await useFavoritesStore.getState().deleteFavorite(1)
-      expect(consoleSpy).toHaveBeenCalled()
+      expect(consoleSpy).not.toHaveBeenCalled()
     })
   })
 
