@@ -30,7 +30,9 @@ describe('TabContextMenu', () => {
     expect(screen.getByTestId('tab-context-menu-item-rename')).toBeEnabled()
     expect(screen.getByTestId('tab-context-menu-item-move-left')).toBeDisabled()
     expect(screen.getByTestId('tab-context-menu-item-move-right')).toBeDisabled()
-    expect(screen.getByTestId('tab-context-menu-item-rename').querySelector('svg')).toBeInTheDocument()
+    expect(
+      screen.getByTestId('tab-context-menu-item-rename').querySelector('svg')
+    ).toBeInTheDocument()
   })
 
   it('calls action and closes when an enabled item is selected', async () => {

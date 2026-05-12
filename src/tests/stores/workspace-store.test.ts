@@ -212,7 +212,9 @@ describe('useWorkspaceStore — renameQueryTab', () => {
   it('renames query-editor tabs only', () => {
     const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Old Name')
     useWorkspaceStore.getState().openTab(makeTab({ label: 'users' }))
-    const dataTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'].find((tab) => tab.type === 'table-data')?.id
+    const dataTabId = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1'].find((tab) => tab.type === 'table-data')?.id
 
     useWorkspaceStore.getState().renameQueryTab('conn-1', queryTabId, 'New Name')
     if (!dataTabId) {
@@ -234,8 +236,7 @@ describe('useWorkspaceStore — renameQueryTab', () => {
 
     const queryTab = useWorkspaceStore
       .getState()
-      .tabsByConnection['conn-1']
-      .find((tab) => tab.id === queryTabId)
+      .tabsByConnection['conn-1'].find((tab) => tab.id === queryTabId)
     expect(queryTab?.label).toBe('Original')
   })
 })
@@ -264,8 +265,7 @@ describe('useWorkspaceStore — reorderWorkspaceTab', () => {
     const before = useWorkspaceStore.getState().tabsByConnection['conn-1'].map((tab) => tab.id)
     const historyId = useWorkspaceStore
       .getState()
-      .tabsByConnection['conn-1']
-      .find((tab) => tab.type === 'history')?.id
+      .tabsByConnection['conn-1'].find((tab) => tab.type === 'history')?.id
 
     if (!historyId) {
       throw new Error('Expected history tab id')

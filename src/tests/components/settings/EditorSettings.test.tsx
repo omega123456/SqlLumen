@@ -52,7 +52,9 @@ describe('EditorSettings', () => {
     expect(screen.getByTestId('settings-word-wrap').querySelector('input')).toBeChecked()
     expect(screen.getByTestId('settings-minimap').querySelector('input')).toBeChecked()
     expect(screen.getByTestId('settings-line-numbers').querySelector('input')).not.toBeChecked()
-    expect(screen.getByTestId('settings-autocomplete-backticks').querySelector('input')).toBeChecked()
+    expect(
+      screen.getByTestId('settings-autocomplete-backticks').querySelector('input')
+    ).toBeChecked()
   })
 
   it('updates font family, font size, and line height', async () => {
@@ -77,13 +79,15 @@ describe('EditorSettings', () => {
     const user = userEvent.setup()
     render(<EditorSettings />)
 
-    const wordWrap = screen.getByTestId('settings-word-wrap').querySelector(
-      'input'
-    ) as HTMLInputElement
-    const minimap = screen.getByTestId('settings-minimap').querySelector('input') as HTMLInputElement
-    const lineNumbers = screen.getByTestId('settings-line-numbers').querySelector(
-      'input'
-    ) as HTMLInputElement
+    const wordWrap = screen
+      .getByTestId('settings-word-wrap')
+      .querySelector('input') as HTMLInputElement
+    const minimap = screen
+      .getByTestId('settings-minimap')
+      .querySelector('input') as HTMLInputElement
+    const lineNumbers = screen
+      .getByTestId('settings-line-numbers')
+      .querySelector('input') as HTMLInputElement
     const autocompleteBackticks = screen
       .getByTestId('settings-autocomplete-backticks')
       .querySelector('input') as HTMLInputElement

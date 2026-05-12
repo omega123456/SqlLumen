@@ -181,7 +181,9 @@ describe('UnderlineTabs', () => {
     const css = fs.readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
     expect(css).toContain('overflow-x: auto')
     expect(css).toContain('--underline-tab-scrollbar-reserve: var(--grid-scrollbar-size)')
-    expect(css).toContain('grid-template-rows: var(--underline-tab-row-height) var(--underline-tab-scrollbar-reserve)')
+    expect(css).toContain(
+      'grid-template-rows: var(--underline-tab-row-height) var(--underline-tab-scrollbar-reserve)'
+    )
     expect(css).not.toContain('scrollbar-gutter')
   })
 

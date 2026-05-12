@@ -7,7 +7,6 @@ import { CanvasBaseGridView } from '../../../../components/shared/glide/CanvasBa
 const mockGlideDataGrid = vi.fn()
 const mockSelectCell = vi.fn()
 const mockScrollToCell = vi.fn()
-const mockScrollToOffset = vi.fn()
 
 vi.mock('../../../../components/shared/glide/GlideDataGrid', async () => {
   const React = await import('react')
@@ -17,7 +16,6 @@ vi.mock('../../../../components/shared/glide/GlideDataGrid', async () => {
       React.useImperativeHandle(ref, () => ({
         selectCell: mockSelectCell,
         scrollToCell: mockScrollToCell,
-        scrollToOffset: mockScrollToOffset,
         element: null,
       }))
       return React.createElement('div', { 'data-testid': props['data-testid'] }, 'glide')
@@ -51,7 +49,6 @@ beforeEach(() => {
   mockGlideDataGrid.mockClear()
   mockSelectCell.mockClear()
   mockScrollToCell.mockClear()
-  mockScrollToOffset.mockClear()
 })
 
 function mockCanvasContext(): CanvasRenderingContext2D {
@@ -426,7 +423,7 @@ describe('CanvasBaseGridView', () => {
     const onCellValueChange = vi.fn()
     const onRowsChange = vi.fn()
     const onCellClipboardEdit = vi.fn()
-    const onScrollPositionChange = vi.fn()
+    const onScrollCellChange = vi.fn()
     const onFkCellAction = vi.fn()
     const onRowMarkersChange = vi.fn()
     const fkColumns = [{ ...columns[0], foreignKey }]
@@ -438,7 +435,7 @@ describe('CanvasBaseGridView', () => {
         onCellValueChange={onCellValueChange}
         onRowsChange={onRowsChange}
         onCellClipboardEdit={onCellClipboardEdit}
-        onScrollPositionChange={onScrollPositionChange}
+        onScrollCellChange={onScrollCellChange}
         onFkCellAction={onFkCellAction}
         onRowMarkersChange={onRowMarkersChange}
       />
@@ -457,7 +454,11 @@ describe('CanvasBaseGridView', () => {
         target: readonly [number, number],
         values: readonly (readonly string[])[]
       ) => boolean
-      onVisibleRegionChanged: (range: unknown, tx: number, ty: number) => void
+      onVisibleRegionChanged: (
+        range: { x: number; y: number; width: number; height: number },
+        tx: number,
+        ty: number
+      ) => void
       onCellClicked: (
         cell: readonly [number, number],
         event: {
@@ -494,8 +495,8 @@ describe('CanvasBaseGridView', () => {
     })
     expect(props.onPaste([5, 0], [['ignored']])).toBe(false)
 
-    props.onVisibleRegionChanged({}, 11, 22)
-    expect(onScrollPositionChange).toHaveBeenCalledWith(22, 11)
+    props.onVisibleRegionChanged({ x: 3, y: 4, width: 10, height: 5 }, 11, 22)
+    expect(onScrollCellChange).toHaveBeenCalledWith(4, 3)
 
     act(() =>
       props.onCellClicked([0, 0], {
@@ -514,6 +515,200 @@ describe('CanvasBaseGridView', () => {
 
     props.onSelectionChange({ rows: [0] })
     expect(onRowMarkersChange).toHaveBeenCalledWith(rows)
+  })
+
+  it('persists visible scroll cells from range coordinates instead of pixel transforms', () => {
+    const onScrollCellChange = vi.fn()
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={columns}
+        editState={null}
+        onScrollCellChange={onScrollCellChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onVisibleRegionChanged: (
+        range: { x: number; y: number; width: number; height: number },
+        tx: number,
+        ty: number
+      ) => void
+    }
+
+    props.onVisibleRegionChanged({ x: 2, y: 7, width: 4, height: 3 }, 128, 512)
+
+    expect(onScrollCellChange).toHaveBeenCalledWith(7, 2)
+  })
+
+  it('keeps no-op editor commits out of the value change path while preserving cleanup', () => {
+    const onCellValueChange = vi.fn()
+    const onRowsChange = vi.fn()
+
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[{ ...columns[0], editable: true }]}
+        editState={{
+          rowKey: '1',
+          currentValues: { name: 'alpha' },
+          originalValues: { name: 'alpha' },
+        }}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellActivated: (cell: readonly [number, number]) => void
+      onCellEdited: (
+        cell: readonly [number, number],
+        value: { kind: GridCellKind; data: string; copyData?: string }
+      ) => void
+    }
+
+    props.onCellActivated([0, 0])
+    props.onCellEdited([0, 0], { kind: GridCellKind.Text, data: 'alpha', copyData: 'alpha' })
+
+    expect(onCellValueChange).not.toHaveBeenCalled()
+    expect(onRowsChange).toHaveBeenCalledWith(rows, {
+      indexes: [0],
+      column: expect.objectContaining({ key: 'name' }),
+    })
+  })
+
+  it('captures the editor baseline before live row previews mutate the rendered row', () => {
+    const onCellValueChange = vi.fn()
+    const onRowsChange = vi.fn()
+    const { rerender } = render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[{ ...columns[0], editable: true }]}
+        editState={{
+          rowKey: '1',
+          currentValues: { name: 'alpha' },
+          originalValues: { name: 'alpha' },
+        }}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+      />
+    )
+
+    const initialProps = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellActivated: (cell: readonly [number, number]) => void
+    }
+    initialProps.onCellActivated([0, 0])
+
+    rerender(
+      <CanvasBaseGridView
+        rows={[{ id: 1, name: 'preview', info: 'SELECT 1' }]}
+        columns={[{ ...columns[0], editable: true }]}
+        editState={{
+          rowKey: '1',
+          currentValues: { name: 'alpha' },
+          originalValues: { name: 'alpha' },
+        }}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+      />
+    )
+
+    const updatedProps = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellEdited: (
+        cell: readonly [number, number],
+        value: { kind: GridCellKind; data: string; copyData?: string }
+      ) => void
+    }
+    updatedProps.onCellEdited([0, 0], { kind: GridCellKind.Text, data: 'alpha', copyData: 'alpha' })
+
+    expect(onCellValueChange).not.toHaveBeenCalled()
+    expect(onRowsChange).toHaveBeenCalledWith([{ id: 1, name: 'preview', info: 'SELECT 1' }], {
+      indexes: [0],
+      column: expect.objectContaining({ key: 'name' }),
+    })
+  })
+
+  it('propagates genuine editor commits through the value and row change paths', () => {
+    const onCellValueChange = vi.fn()
+    const onRowsChange = vi.fn()
+
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[{ ...columns[0], editable: true }]}
+        editState={{
+          rowKey: '1',
+          currentValues: { name: 'alpha' },
+          originalValues: { name: 'alpha' },
+        }}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellActivated: (cell: readonly [number, number]) => void
+      onCellEdited: (
+        cell: readonly [number, number],
+        value: { kind: GridCellKind; data: string; copyData?: string }
+      ) => void
+    }
+
+    props.onCellActivated([0, 0])
+    props.onCellEdited([0, 0], { kind: GridCellKind.Text, data: 'beta', copyData: 'beta' })
+
+    expect(onCellValueChange).toHaveBeenCalledWith(0, 'name', 'beta')
+    expect(onRowsChange).toHaveBeenCalledWith([{ ...rows[0], name: 'beta' }], {
+      indexes: [0],
+      column: expect.objectContaining({ key: 'name' }),
+    })
+  })
+
+  it('leaves an already dirty cell dirty when reopened and closed without further changes', () => {
+    const onCellValueChange = vi.fn()
+    const onRowsChange = vi.fn()
+    const dirtyRows = [{ id: 1, name: 'dirty', info: 'SELECT 1' }]
+
+    render(
+      <CanvasBaseGridView
+        rows={dirtyRows}
+        columns={[{ ...columns[0], editable: true }]}
+        editState={{
+          rowKey: '1',
+          currentValues: { name: 'dirty' },
+          originalValues: { name: 'alpha' },
+        }}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellActivated: (cell: readonly [number, number]) => void
+      onCellEdited: (
+        cell: readonly [number, number],
+        value: { kind: GridCellKind; data: string; copyData?: string }
+      ) => void
+    }
+
+    props.onCellActivated([0, 0])
+    props.onCellEdited([0, 0], { kind: GridCellKind.Text, data: 'dirty', copyData: 'dirty' })
+
+    expect(onCellValueChange).not.toHaveBeenCalled()
+    expect(onRowsChange).toHaveBeenCalledWith(dirtyRows, {
+      indexes: [0],
+      column: expect.objectContaining({ key: 'name' }),
+    })
   })
 
   it('copies, cuts, pastes, and dismisses the grid clipboard context menu', async () => {
@@ -615,9 +810,163 @@ describe('CanvasBaseGridView', () => {
     }
     const cell = props.getCellContent([0, 0])
     const editorConfig = props.provideEditor(cell)
-    expect(editorConfig).toMatchObject({ editor: expect.any(Function) })
+    expect(editorConfig).toMatchObject({
+      editor: expect.any(Function),
+    })
     expect(editorConfig).not.toHaveProperty('disablePadding')
     expect(editorConfig).not.toHaveProperty('disableStyling')
+  })
+
+  it('keeps editable NULL cells in the editable path while preserving NULL styling', () => {
+    const nullableRows = [{ id: 1, name: null, info: 'SELECT 1' }]
+    render(
+      <CanvasBaseGridView
+        rows={nullableRows}
+        columns={[{ ...columns[0], editable: true, isNullable: true }]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      getCellContent: (cell: readonly [number, number]) => {
+        kind: GridCellKind
+        displayData?: string
+        data?: string
+        copyData?: string
+        readonly?: boolean
+        allowOverlay?: boolean
+        themeOverride?: unknown
+        glideEditorData?: { row: unknown; columnKey: string; isNullable: boolean }
+      }
+      provideEditor: (cell: unknown) => unknown
+    }
+    const cell = props.getCellContent([0, 0])
+
+    expect(cell).toMatchObject({
+      kind: GridCellKind.Text,
+      displayData: 'NULL',
+      data: '',
+      copyData: 'NULL',
+      readonly: false,
+      allowOverlay: true,
+      glideEditorData: { row: nullableRows[0], columnKey: 'name', isNullable: true },
+    })
+    expect(cell.themeOverride).toBeDefined()
+    expect(props.provideEditor(cell)).toMatchObject({ editor: expect.any(Function) })
+  })
+
+  it('keeps read-only and binary NULL cells non-editable', () => {
+    const nullableRows = [{ id: 1, name: null, info: 'SELECT 1' }]
+    const { rerender } = render(
+      <CanvasBaseGridView
+        rows={nullableRows}
+        columns={[{ ...columns[0], editable: false, isNullable: true }]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+      />
+    )
+
+    let props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      getCellContent: (cell: readonly [number, number]) => {
+        displayData?: string
+        readonly?: boolean
+        allowOverlay?: boolean
+        glideEditorData?: unknown
+      }
+      provideEditor: (cell: unknown) => unknown
+    }
+    let cell = props.getCellContent([0, 0])
+    expect(cell).toMatchObject({ displayData: 'NULL', readonly: true, allowOverlay: false })
+    expect(cell.glideEditorData).toBeUndefined()
+    expect(props.provideEditor(cell)).toBeUndefined()
+
+    rerender(
+      <CanvasBaseGridView
+        rows={nullableRows}
+        columns={[{ ...columns[0], editable: true, isNullable: true, isBinary: true }]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+      />
+    )
+    props = mockGlideDataGrid.mock.lastCall?.[0] as typeof props
+    cell = props.getCellContent([0, 0])
+    expect(cell).toMatchObject({ displayData: 'NULL', readonly: true, allowOverlay: false })
+    expect(cell.glideEditorData).toBeUndefined()
+    expect(props.provideEditor(cell)).toBeUndefined()
+  })
+
+  it('keeps unchanged NULL edits out of the dirty path while preserving cleanup', () => {
+    const onCellValueChange = vi.fn()
+    const onRowsChange = vi.fn()
+    const nullableRows = [{ id: 1, name: null, info: 'SELECT 1' }]
+
+    render(
+      <CanvasBaseGridView
+        rows={nullableRows}
+        columns={[{ ...columns[0], editable: true, isNullable: true }]}
+        editState={{ rowKey: '1', currentValues: { name: null }, originalValues: { name: null } }}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellActivated: (cell: readonly [number, number]) => void
+      onCellEdited: (
+        cell: readonly [number, number],
+        value: { kind: GridCellKind; data: string; copyData?: string }
+      ) => void
+    }
+
+    props.onCellActivated([0, 0])
+    props.onCellEdited([0, 0], { kind: GridCellKind.Text, data: '', copyData: 'NULL' })
+
+    expect(onCellValueChange).not.toHaveBeenCalled()
+    expect(onRowsChange).toHaveBeenCalledWith(nullableRows, {
+      indexes: [0],
+      column: expect.objectContaining({ key: 'name' }),
+    })
+  })
+
+  it('keeps numeric no-op editor commits out of the dirty path after string normalization', () => {
+    const onCellValueChange = vi.fn()
+    const onRowsChange = vi.fn()
+    const numericRows = [{ id: 1, name: 1, info: 'SELECT 1' }]
+
+    render(
+      <CanvasBaseGridView
+        rows={numericRows}
+        columns={[{ ...columns[0], editable: true, dataType: 'INT' }]}
+        editState={{ rowKey: '1', currentValues: { name: 1 }, originalValues: { name: 1 } }}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellActivated: (cell: readonly [number, number]) => void
+      onCellEdited: (
+        cell: readonly [number, number],
+        value: { kind: GridCellKind; data: string; copyData?: string }
+      ) => void
+    }
+
+    props.onCellActivated([0, 0])
+    props.onCellEdited([0, 0], { kind: GridCellKind.Text, data: '1', copyData: '1' })
+
+    expect(onCellValueChange).not.toHaveBeenCalled()
+    expect(onRowsChange).toHaveBeenCalledWith(numericRows, {
+      indexes: [0],
+      column: expect.objectContaining({ key: 'name' }),
+    })
   })
 
   it('guards cell clicks and restores focus when navigation is denied', async () => {
@@ -683,14 +1032,19 @@ describe('CanvasBaseGridView', () => {
     expect(cancel).toHaveBeenCalled()
   })
 
-  it('restores persisted scroll and does not replay the same offset after user scrolling', async () => {
+  it('restores persisted scroll cell and does not replay the same cell after user scrolling', async () => {
     vi.useFakeTimers()
+    const manyRows = Array.from({ length: 20 }, (_, index) => ({
+      id: index + 1,
+      name: `row-${index + 1}`,
+      info: 'SELECT 1',
+    }))
     render(
       <CanvasBaseGridView
-        rows={rows}
+        rows={manyRows}
         columns={columns}
         editState={null}
-        initialScrollPosition={{ top: 7, left: 3 }}
+        initialScrollCell={{ scrollRow: 7, scrollCol: 0 }}
       />
     )
 
@@ -699,27 +1053,36 @@ describe('CanvasBaseGridView', () => {
       await Promise.resolve()
     })
 
-    expect(mockScrollToOffset).toHaveBeenCalledTimes(1)
-    expect(mockScrollToOffset).toHaveBeenCalledWith({ left: 3, top: 7 })
+    expect(mockScrollToCell).toHaveBeenCalledTimes(1)
+    expect(mockScrollToCell).toHaveBeenCalledWith({ rowIdx: 7, idx: 0 })
 
     const firstProps = mockGlideDataGrid.mock.lastCall?.[0] as {
-      onVisibleRegionChanged: (range: unknown, tx: number, ty: number) => void
+      onVisibleRegionChanged: (
+        range: { x: number; y: number; width: number; height: number },
+        tx: number,
+        ty: number
+      ) => void
     }
 
-    act(() => firstProps.onVisibleRegionChanged({}, 11, 22))
+    act(() => firstProps.onVisibleRegionChanged({ x: 0, y: 7, width: 10, height: 5 }, 11, 22))
 
-    expect(mockScrollToOffset).toHaveBeenCalledTimes(1)
+    expect(mockScrollToCell).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
   })
 
-  it('reapplies a new persisted scroll offset when tab state changes', async () => {
+  it('reapplies a new persisted scroll cell when tab state changes', async () => {
     vi.useFakeTimers()
+    const manyRows = Array.from({ length: 20 }, (_, index) => ({
+      id: index + 1,
+      name: `row-${index + 1}`,
+      info: 'SELECT 1',
+    }))
     const { rerender } = render(
       <CanvasBaseGridView
-        rows={rows}
+        rows={manyRows}
         columns={columns}
         editState={null}
-        initialScrollPosition={{ top: 7, left: 3 }}
+        initialScrollCell={{ scrollRow: 7, scrollCol: 0 }}
       />
     )
 
@@ -729,16 +1092,20 @@ describe('CanvasBaseGridView', () => {
     })
 
     const firstProps = mockGlideDataGrid.mock.lastCall?.[0] as {
-      onVisibleRegionChanged: (range: unknown, tx: number, ty: number) => void
+      onVisibleRegionChanged: (
+        range: { x: number; y: number; width: number; height: number },
+        tx: number,
+        ty: number
+      ) => void
     }
-    act(() => firstProps.onVisibleRegionChanged({}, 3, 7))
+    act(() => firstProps.onVisibleRegionChanged({ x: 0, y: 7, width: 10, height: 5 }, 3, 7))
 
     rerender(
       <CanvasBaseGridView
-        rows={rows}
+        rows={manyRows}
         columns={columns}
         editState={null}
-        initialScrollPosition={{ top: 14, left: 9 }}
+        initialScrollCell={{ scrollRow: 14, scrollCol: 0 }}
       />
     )
 
@@ -747,9 +1114,256 @@ describe('CanvasBaseGridView', () => {
       await Promise.resolve()
     })
 
-    expect(mockScrollToOffset).toHaveBeenCalledTimes(2)
-    expect(mockScrollToOffset).toHaveBeenLastCalledWith({ left: 9, top: 14 })
+    expect(mockScrollToCell).toHaveBeenCalledTimes(2)
+    expect(mockScrollToCell).toHaveBeenLastCalledWith({ rowIdx: 14, idx: 0 })
     vi.useRealTimers()
+  })
+
+  it('reapplies the same persisted scroll cell after remounting the grid', async () => {
+    vi.useFakeTimers()
+    const wideColumns = [
+      ...columns,
+      {
+        key: 'second',
+        displayName: 'Second',
+        dataType: 'VARCHAR',
+        editable: false,
+        isBinary: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+      },
+      {
+        key: 'third',
+        displayName: 'Third',
+        dataType: 'VARCHAR',
+        editable: false,
+        isBinary: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+      },
+    ]
+    const manyRows = Array.from({ length: 20 }, (_, index) => ({
+      id: index + 1,
+      name: `row-${index + 1}`,
+      second: `second-${index + 1}`,
+      third: `third-${index + 1}`,
+      info: 'SELECT 1',
+    }))
+
+    try {
+      const { unmount } = render(
+        <CanvasBaseGridView
+          rows={manyRows}
+          columns={wideColumns}
+          editState={null}
+          initialScrollCell={{ scrollRow: 7, scrollCol: 2 }}
+        />
+      )
+
+      await act(async () => {
+        vi.runAllTimers()
+        await Promise.resolve()
+      })
+
+      expect(mockScrollToCell).toHaveBeenCalledTimes(1)
+      expect(mockScrollToCell).toHaveBeenLastCalledWith({ rowIdx: 7, idx: 2 })
+
+      const firstProps = mockGlideDataGrid.mock.lastCall?.[0] as {
+        onVisibleRegionChanged: (
+          range: { x: number; y: number; width: number; height: number },
+          tx: number,
+          ty: number
+        ) => void
+      }
+
+      act(() => firstProps.onVisibleRegionChanged({ x: 2, y: 7, width: 10, height: 5 }, 0, 0))
+      unmount()
+
+      render(
+        <CanvasBaseGridView
+          rows={manyRows}
+          columns={wideColumns}
+          editState={null}
+          initialScrollCell={{ scrollRow: 7, scrollCol: 2 }}
+        />
+      )
+
+      await act(async () => {
+        vi.runAllTimers()
+        await Promise.resolve()
+      })
+
+      expect(mockScrollToCell).toHaveBeenCalledTimes(2)
+      expect(mockScrollToCell).toHaveBeenLastCalledWith({ rowIdx: 7, idx: 2 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ignores pre-restore visible-region resets before persisted scroll is replayed', async () => {
+    vi.useFakeTimers()
+    const manyRows = Array.from({ length: 20 }, (_, index) => ({
+      id: index + 1,
+      name: `row-${index + 1}`,
+      info: 'SELECT 1',
+    }))
+    const onScrollCellChange = vi.fn()
+
+    try {
+      render(
+        <CanvasBaseGridView
+          rows={manyRows}
+          columns={columns}
+          editState={null}
+          initialScrollCell={{ scrollRow: 7, scrollCol: 0 }}
+          onScrollCellChange={onScrollCellChange}
+        />
+      )
+
+      const firstProps = mockGlideDataGrid.mock.lastCall?.[0] as {
+        onVisibleRegionChanged: (
+          range: { x: number; y: number; width: number; height: number },
+          tx: number,
+          ty: number
+        ) => void
+      }
+
+      act(() => firstProps.onVisibleRegionChanged({ x: 0, y: 0, width: 10, height: 5 }, 0, 0))
+      expect(onScrollCellChange).not.toHaveBeenCalled()
+
+      await act(async () => {
+        vi.runOnlyPendingTimers()
+        await Promise.resolve()
+      })
+
+      expect(mockScrollToCell).toHaveBeenCalledWith({ rowIdx: 7, idx: 0 })
+
+      act(() => firstProps.onVisibleRegionChanged({ x: 0, y: 7, width: 10, height: 5 }, 0, 0))
+      expect(onScrollCellChange).not.toHaveBeenCalled()
+
+      await act(async () => {
+        vi.runOnlyPendingTimers()
+        await Promise.resolve()
+      })
+
+      act(() => firstProps.onVisibleRegionChanged({ x: 3, y: 9, width: 10, height: 5 }, 0, 0))
+      expect(onScrollCellChange).toHaveBeenCalledWith(9, 3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not replay restore when the parent echoes a user-persisted scroll cell back as props', async () => {
+    vi.useFakeTimers()
+    const wideColumns = [
+      ...columns,
+      {
+        key: 'second',
+        displayName: 'Second',
+        dataType: 'VARCHAR',
+        editable: false,
+        isBinary: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+      },
+      {
+        key: 'third',
+        displayName: 'Third',
+        dataType: 'VARCHAR',
+        editable: false,
+        isBinary: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+      },
+      {
+        key: 'fourth',
+        displayName: 'Fourth',
+        dataType: 'VARCHAR',
+        editable: false,
+        isBinary: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+      },
+      {
+        key: 'fifth',
+        displayName: 'Fifth',
+        dataType: 'VARCHAR',
+        editable: false,
+        isBinary: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+      },
+    ]
+    const manyRows = Array.from({ length: 20 }, (_, index) => ({
+      id: index + 1,
+      name: `row-${index + 1}`,
+      second: `second-${index + 1}`,
+      third: `third-${index + 1}`,
+      fourth: `fourth-${index + 1}`,
+      fifth: `fifth-${index + 1}`,
+      info: 'SELECT 1',
+    }))
+    const onScrollCellChange = vi.fn()
+
+    try {
+      const { rerender } = render(
+        <CanvasBaseGridView
+          rows={manyRows}
+          columns={wideColumns}
+          editState={null}
+          initialScrollCell={{ scrollRow: 7, scrollCol: 0 }}
+          onScrollCellChange={onScrollCellChange}
+        />
+      )
+
+      await act(async () => {
+        vi.runOnlyPendingTimers()
+        await Promise.resolve()
+      })
+
+      const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+        onVisibleRegionChanged: (
+          range: { x: number; y: number; width: number; height: number },
+          tx: number,
+          ty: number
+        ) => void
+      }
+
+      act(() => props.onVisibleRegionChanged({ x: 0, y: 7, width: 10, height: 5 }, 0, 0))
+
+      await act(async () => {
+        vi.runOnlyPendingTimers()
+        await Promise.resolve()
+      })
+
+      act(() => props.onVisibleRegionChanged({ x: 4, y: 11, width: 10, height: 5 }, 0, 0))
+      expect(onScrollCellChange).toHaveBeenCalledWith(11, 4)
+
+      rerender(
+        <CanvasBaseGridView
+          rows={manyRows}
+          columns={wideColumns}
+          editState={null}
+          initialScrollCell={{ scrollRow: 11, scrollCol: 4 }}
+          onScrollCellChange={onScrollCellChange}
+        />
+      )
+
+      await act(async () => {
+        vi.runOnlyPendingTimers()
+        await Promise.resolve()
+      })
+
+      expect(mockScrollToCell).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('uses the click guard during keyboard row navigation when requested', async () => {
@@ -808,7 +1422,12 @@ describe('CanvasBaseGridView', () => {
     const fkColumns = [{ ...columns[0], foreignKey }]
 
     render(
-      <CanvasBaseGridView rows={rows} columns={fkColumns} editState={null} onFkCellAction={onFkCellAction} />
+      <CanvasBaseGridView
+        rows={rows}
+        columns={fkColumns}
+        editState={null}
+        onFkCellAction={onFkCellAction}
+      />
     )
 
     const props = mockGlideDataGrid.mock.lastCall?.[0] as {
@@ -853,7 +1472,12 @@ describe('CanvasBaseGridView', () => {
     const fkColumns = [{ ...columns[0], foreignKey }]
 
     render(
-      <CanvasBaseGridView rows={rows} columns={fkColumns} editState={null} onFkCellAction={onFkCellAction} />
+      <CanvasBaseGridView
+        rows={rows}
+        columns={fkColumns}
+        editState={null}
+        onFkCellAction={onFkCellAction}
+      />
     )
 
     const props = mockGlideDataGrid.mock.lastCall?.[0] as {
@@ -890,9 +1514,10 @@ describe('CanvasBaseGridView', () => {
   it('falls back to the last clicked FK cell for F4 before async selection settles', async () => {
     const onFkCellAction = vi.fn()
     const onCellClickGuard = vi.fn(
-      () => new Promise<never>(() => {
-        // Intentionally unresolved to simulate async guard delay.
-      })
+      () =>
+        new Promise<never>(() => {
+          // Intentionally unresolved to simulate async guard delay.
+        })
     )
     const fkColumns = [{ ...columns[0], foreignKey }]
 
@@ -911,7 +1536,9 @@ describe('CanvasBaseGridView', () => {
     }
 
     act(() => props.onCellClicked([0, 0], {}))
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F4', bubbles: true, cancelable: true }))
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'F4', bubbles: true, cancelable: true })
+    )
 
     await waitFor(() =>
       expect(onFkCellAction).toHaveBeenCalledWith({

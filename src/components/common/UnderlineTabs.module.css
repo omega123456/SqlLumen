@@ -3,7 +3,7 @@
 /* Outer wrapper when suffix is used: flex row, no overflow */
 .barWrapper {
   --underline-tab-row-height: 48px;
-    --underline-tab-scrollbar-reserve: 0px;
+  --underline-tab-scrollbar-reserve: 0px;
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
@@ -30,7 +30,7 @@
 
 .bar {
   --underline-tab-row-height: 48px;
-    --underline-tab-scrollbar-reserve: 0px;
+  --underline-tab-scrollbar-reserve: 0px;
   display: flex;
   align-items: stretch;
   gap: 0;
@@ -72,9 +72,9 @@
 
 .barScrollable {
   --underline-tab-scrollbar-reserve: var(--grid-scrollbar-size);
-    display: grid;
-    grid-template-rows: var(--underline-tab-row-height) var(--underline-tab-scrollbar-reserve);
-    overflow-x: auto;
+  display: grid;
+  grid-template-rows: var(--underline-tab-row-height) var(--underline-tab-scrollbar-reserve);
+  overflow-x: auto;
 }
 
 .barScrollable::-webkit-scrollbar-button {

@@ -32,13 +32,32 @@ vi.mock('@glideapps/glide-data-grid', async (importOriginal) => {
 const mockScrollTo = vi.fn()
 const mockFocus = vi.fn()
 const mockGetBounds = vi.fn(() => ({ x: 1, y: 2, width: 3, height: 4 }))
+const mockMutationObserverObserve = vi.fn()
+const mockMutationObserverDisconnect = vi.fn()
+
+class MockMutationObserver {
+  constructor(private readonly callback: MutationCallback) {}
+
+  observe = mockMutationObserverObserve
+  disconnect = mockMutationObserverDisconnect
+  takeRecords() {
+    return []
+  }
+
+  flush() {
+    this.callback([], this as unknown as MutationObserver)
+  }
+}
 
 beforeEach(() => {
   mockDataEditor.mockClear()
   mockScrollTo.mockClear()
   mockFocus.mockClear()
   mockGetBounds.mockClear()
+  mockMutationObserverObserve.mockClear()
+  mockMutationObserverDisconnect.mockClear()
   mockSize = { width: 400, height: 300 }
+  vi.stubGlobal('MutationObserver', MockMutationObserver)
 })
 
 describe('GlideDataGrid', () => {
@@ -131,7 +150,7 @@ describe('GlideDataGrid', () => {
     expect(onKeyDown).toHaveBeenCalledWith({ key: 'ArrowDown' })
   })
 
-  it('exposes scrolling, focus, and element through the grid handle', () => {
+  it('exposes cell scrolling, focus, and element through the grid handle', () => {
     const ref = createRef<{
       scrollToCell: (pos: { idx?: number; rowIdx?: number }) => void
       selectCell: (pos: { idx: number; rowIdx: number }) => void
@@ -149,17 +168,6 @@ describe('GlideDataGrid', () => {
 
     ref.current?.scrollToCell({ rowIdx: 4 })
     expect(mockScrollTo).toHaveBeenCalledWith(0, 4, 'both')
-
-    const host = screen.getByTestId('handle-grid')
-    const scroller = document.createElement('div')
-    scroller.className = 'dvn-scroller'
-    Object.defineProperty(scroller, 'scrollLeft', { configurable: true, value: 0, writable: true })
-    Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: 0, writable: true })
-    host.appendChild(scroller)
-
-    ref.current?.scrollToOffset?.({ left: 15, top: 28 })
-    expect(scroller.scrollLeft).toBe(15)
-    expect(scroller.scrollTop).toBe(28)
 
     ref.current?.selectCell({ idx: 2, rowIdx: 3 })
     expect(mockScrollTo).toHaveBeenCalledWith(2, 3, 'both')
@@ -215,6 +223,36 @@ describe('GlideDataGrid', () => {
     }
 
     expect(props.provideEditor).toBe(provideEditor)
+  })
+
+  it('constrains Glide overlay width from the editor target width', async () => {
+    vi.useFakeTimers()
+    const portal = document.createElement('div')
+    portal.id = 'portal'
+    const overlay = document.createElement('div')
+    overlay.className = 'gdg-d19meir1'
+    const editorRoot = document.createElement('div')
+    editorRoot.setAttribute('data-sqllumen-glide-editor-root', 'true')
+    editorRoot.setAttribute('data-sqllumen-editor-width', '38')
+    overlay.appendChild(editorRoot)
+    portal.appendChild(overlay)
+    document.body.appendChild(portal)
+
+    render(
+      <GlideDataGrid columns={[{ title: 'Id', width: 80 }]} rows={[{ id: 1 }]} getCellContent={vi.fn()} />
+    )
+
+    await act(async () => {
+      vi.runAllTimers()
+      await Promise.resolve()
+    })
+
+    expect(overlay.style.width).toBe('54px')
+    expect(overlay.style.maxWidth).toBe('54px')
+    expect(overlay.style.overflow).toBe('hidden')
+
+    portal.remove()
+    vi.useRealTimers()
   })
 
   it('maps cell activation to double-click with current bounds', () => {

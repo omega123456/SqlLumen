@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FkLookupDialog } from '../../../components/table-data/FkLookupDialog'
 import { fetchTableData } from '../../../lib/table-data-commands'
 
-const mockCanvasBaseGridView = vi.hoisted(() => vi.fn((props: Record<string, unknown>) => (
-  <div data-testid="fk-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
-)))
+const mockCanvasBaseGridView = vi.hoisted(() =>
+  vi.fn((props: Record<string, unknown>) => (
+    <div data-testid="fk-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
+  ))
+)
 
 vi.mock('../../../components/shared/glide/CanvasBaseGridView', () => ({
   CanvasBaseGridView: mockCanvasBaseGridView,
@@ -72,7 +74,9 @@ describe('FkLookupDialog', () => {
   it('renders FK lookup results', async () => {
     render(<FkLookupDialog {...props} />)
     expect(screen.getByTestId('fk-lookup-loading')).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByTestId('fk-grid')).toHaveAttribute('data-row-count', '1'))
+    await waitFor(() =>
+      expect(screen.getByTestId('fk-grid')).toHaveAttribute('data-row-count', '1')
+    )
     expect(screen.getByTestId('fk-lookup-title')).toHaveTextContent('customers.id')
   })
 

@@ -1123,7 +1123,9 @@ describe('useQueryStore — cloneSelectedRow', () => {
     expect(tab.rows).toHaveLength(1)
     expect(tab.editState).toBeNull()
     expect(
-      useToastStore.getState().toasts.some((toast) => toast.message?.includes('unique-key fallback'))
+      useToastStore
+        .getState()
+        .toasts.some((toast) => toast.message?.includes('unique-key fallback'))
     ).toBe(true)
   })
 
@@ -1142,9 +1144,11 @@ describe('useQueryStore — cloneSelectedRow', () => {
     expect(tab.editState?.isNewRow).toBe(false)
     expect(tab.editState?.currentValues.name).toBe('Unsaved')
     expect(
-      useToastStore.getState().toasts.some(
-        (toast) => toast.variant === 'error' && toast.message?.includes('Save or discard')
-      )
+      useToastStore
+        .getState()
+        .toasts.some(
+          (toast) => toast.variant === 'error' && toast.message?.includes('Save or discard')
+        )
     ).toBe(true)
   })
 
@@ -1763,9 +1767,11 @@ describe('useQueryStore — saveCurrentRow', () => {
     expect(tab.queryId).toBe('q-before-stale')
     expect(tab.saveError).toBeNull()
     expect(
-      useToastStore.getState().toasts.some(
-        (toast) => toast.variant === 'error' && toast.message?.includes('could not be refreshed')
-      )
+      useToastStore
+        .getState()
+        .toasts.some(
+          (toast) => toast.variant === 'error' && toast.message?.includes('could not be refreshed')
+        )
     ).toBe(true)
   })
 
@@ -1833,7 +1839,9 @@ describe('useQueryStore — saveCurrentRow', () => {
 
     const savePromise = useQueryStore.getState().saveCurrentRow('tab-1')
     await flushMicrotasks()
-    await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT * FROM users WHERE id = 9')
+    await useQueryStore
+      .getState()
+      .executeQuery('conn-1', 'tab-1', 'SELECT * FROM users WHERE id = 9')
 
     resolveRefresh({
       queryId: 'q-late-refresh',

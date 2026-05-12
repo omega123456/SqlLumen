@@ -11,7 +11,7 @@
   box-sizing: border-box;
   padding: 0;
   gap: 4px;
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* FK trigger button inside Glide's native cell editor overlay */

@@ -26,10 +26,7 @@ vi.mock('../../../components/query-editor/ResultToolbar', () => ({
         <button data-testid="toolbar-open-filter" onClick={props.onFilterClick as () => void}>
           Filter
         </button>
-        <button
-          data-testid="toolbar-clear-filter"
-          onClick={props.onClearFilterClick as () => void}
-        >
+        <button data-testid="toolbar-clear-filter" onClick={props.onClearFilterClick as () => void}>
           Clear
         </button>
         <span data-testid="toolbar-clone-disabled">{String(props.isCloneDisabled)}</span>
@@ -125,7 +122,9 @@ vi.mock('../../../components/dialogs/FilterDialog', () => ({
       <div data-testid="filter-dialog-mock">
         <button
           data-testid="filter-dialog-apply"
-          onClick={() => (props.onApply as (conditions: FilterCondition[]) => void)(applyConditions)}
+          onClick={() =>
+            (props.onApply as (conditions: FilterCondition[]) => void)(applyConditions)
+          }
         >
           Apply
         </button>
@@ -146,7 +145,10 @@ vi.mock('../../../components/table-data/FkLookupDialog', () => ({
       <div data-testid="fk-lookup-dialog-mock">
         <div data-testid="fk-lookup-database">{String(props.database)}</div>
         <div data-testid="fk-lookup-source-column">{String(props.sourceColumn)}</div>
-        <button data-testid="fk-lookup-apply-same" onClick={() => props.onApply?.(props.currentValue)}>
+        <button
+          data-testid="fk-lookup-apply-same"
+          onClick={() => props.onApply?.(props.currentValue)}
+        >
           Apply Same
         </button>
         <button data-testid="fk-lookup-apply-new" onClick={() => props.onApply?.(9)}>
@@ -320,11 +322,9 @@ describe('ResultPanel actions and states', () => {
       .mockResolvedValue(undefined)
 
     renderPanel()
-
-    ;(capturedGridProps.onSortChanged as (column: string, direction: 'asc' | 'desc' | null) => void)(
-      'name',
-      'desc'
-    )
+    ;(
+      capturedGridProps.onSortChanged as (column: string, direction: 'asc' | 'desc' | null) => void
+    )('name', 'desc')
 
     expect(requestNavigationActionSpy).toHaveBeenCalledWith('tab-1', expect.any(Function))
     expect(sortResultsSpy).toHaveBeenCalledWith('conn-1', 'tab-1', 'name', 'desc')

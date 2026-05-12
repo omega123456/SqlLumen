@@ -502,9 +502,9 @@ export interface TableDataTabState {
   saveError: string | null
   isExportDialogOpen: boolean
 
-  // Scroll position (retained across tab switches)
-  scrollTop: number
-  scrollLeft: number
+  // Scroll cell position (retained across tab switches; Glide visibleRegion y/x)
+  scrollRow: number
+  scrollCol: number
 
   // Unsaved changes dialog state
   pendingNavigationAction: (() => void) | null

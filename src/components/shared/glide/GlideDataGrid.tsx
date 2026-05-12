@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import {
   CompactSelection,
   DataEditor,
@@ -24,9 +24,41 @@ export type GlideRowMarkerKind = 'none' | 'checkbox' | 'number' | 'both'
 
 const DEFAULT_ROW_MARKER_WIDTH = 32
 const DEFAULT_COLUMN_WIDTH = 120
+const GLIDE_OVERLAY_HORIZONTAL_PADDING = 16
 
 function getColumnWidth(column: GlideGridColumn): number {
   return 'width' in column && typeof column.width === 'number' ? column.width : DEFAULT_COLUMN_WIDTH
+}
+
+function getTargetEditorWidth(element: HTMLElement): number | null {
+  const explicitWidth = Number.parseFloat(element.dataset.sqllumenEditorWidth ?? '')
+  if (Number.isFinite(explicitWidth) && explicitWidth > 0) {
+    return explicitWidth
+  }
+
+  const computed = getComputedStyle(element)
+  const minWidth = Number.parseFloat(computed.minWidth)
+  if (Number.isFinite(minWidth) && minWidth > 0) {
+    return minWidth
+  }
+
+  const fallbackWidth = Number.parseFloat(computed.width)
+  return Number.isFinite(fallbackWidth) && fallbackWidth > 0 ? fallbackWidth : null
+}
+
+function constrainGlideEditorOverlay(element: HTMLElement): void {
+  const editorRoot = element.querySelector<HTMLElement>('[data-sqllumen-glide-editor-root="true"]')
+  if (!editorRoot) return
+
+  const targetWidth = getTargetEditorWidth(editorRoot)
+
+  if (!Number.isFinite(targetWidth) || targetWidth <= 0) return
+
+  const constrainedWidth = `${Math.max(1, Math.floor(targetWidth + GLIDE_OVERLAY_HORIZONTAL_PADDING))}px`
+
+  if (element.style.width !== constrainedWidth) element.style.width = constrainedWidth
+  if (element.style.maxWidth !== constrainedWidth) element.style.maxWidth = constrainedWidth
+  if (element.style.overflow !== 'hidden') element.style.overflow = 'hidden'
 }
 
 export type GlideDataGridProps<TRow> = {
@@ -91,6 +123,37 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
   const [internalSelection, setInternalSelection] = useState<GridSelection | undefined>(undefined)
   const activeSelection = selection ?? internalSelection
 
+  useEffect(() => {
+    const portal = document.getElementById('portal')
+    if (!portal) return
+
+    let animationFrameId: number | null = null
+    const constrainOverlays = () => {
+      animationFrameId = null
+      portal
+        .querySelectorAll<HTMLElement>('.gdg-d19meir1')
+        .forEach((element) => constrainGlideEditorOverlay(element))
+    }
+    const scheduleConstrainOverlays = () => {
+      if (animationFrameId !== null) return
+      animationFrameId = requestAnimationFrame(constrainOverlays)
+    }
+
+    scheduleConstrainOverlays()
+    const observer = new MutationObserver(scheduleConstrainOverlays)
+    observer.observe(portal, {
+      attributes: true,
+      attributeFilter: ['class', 'style'],
+      childList: true,
+      subtree: true,
+    })
+
+    return () => {
+      observer.disconnect()
+      if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+    }
+  }, [])
+
   const openSelectedCellEditor = useCallback(() => {
     requestAnimationFrame(() => {
       editorRef.current?.focus()
@@ -119,17 +182,6 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
     () => ({
       scrollToCell: (pos) => {
         editorRef.current?.scrollTo(pos.idx ?? 0, pos.rowIdx ?? 0, 'both')
-      },
-      scrollToOffset: (offset) => {
-        const host = hostRef.current
-        const scroller = host?.querySelector<HTMLElement>('.dvn-scroller')
-        if (!scroller) return
-        if (typeof offset.left === 'number') {
-          scroller.scrollLeft = Math.max(0, offset.left)
-        }
-        if (typeof offset.top === 'number') {
-          scroller.scrollTop = Math.max(0, offset.top)
-        }
       },
       selectCell: (pos, options) => {
         const enableEditor = typeof options === 'object' ? options.enableEditor === true : false
@@ -189,10 +241,10 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
       data-testid={testId}
       data-glide-column-width={serializedColumnWidths}
       data-row-marker-width={String(rowMarkerWidth)}
-        role="grid"
-        aria-label={ariaLabel ?? testId ?? 'Data grid'}
-        tabIndex={0}
-      >
+      role="grid"
+      aria-label={ariaLabel ?? testId ?? 'Data grid'}
+      tabIndex={0}
+    >
       {hasSize ? (
         <DataEditor
           ref={editorRef}

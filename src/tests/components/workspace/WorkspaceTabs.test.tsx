@@ -531,9 +531,7 @@ describe('WorkspaceTabs', () => {
 
     render(<WorkspaceTabs connectionId="conn-1" onRequestRenameTab={onRequestRenameTab} />)
 
-    const tabLabelButton = screen
-      .getByText('Query A')
-      .closest('[role="button"]') as HTMLElement
+    const tabLabelButton = screen.getByText('Query A').closest('[role="button"]') as HTMLElement
     tabLabelButton.focus()
     await user.keyboard('{Shift>}{F10}{/Shift}')
 
@@ -660,8 +658,7 @@ describe('WorkspaceTabs', () => {
     expect(
       useWorkspaceStore
         .getState()
-        .tabsByConnection['conn-1']
-        .filter((tab) => tab.type === 'query-editor')
+        .tabsByConnection['conn-1'].filter((tab) => tab.type === 'query-editor')
         .map((tab) => tab.id)
     ).toEqual([q2, q1, q3])
 
@@ -673,8 +670,7 @@ describe('WorkspaceTabs', () => {
     expect(
       useWorkspaceStore
         .getState()
-        .tabsByConnection['conn-1']
-        .filter((tab) => tab.type === 'query-editor')
+        .tabsByConnection['conn-1'].filter((tab) => tab.type === 'query-editor')
         .map((tab) => tab.id)
     ).toEqual([q1, q2, q3])
 
@@ -686,8 +682,7 @@ describe('WorkspaceTabs', () => {
     expect(
       useWorkspaceStore
         .getState()
-        .tabsByConnection['conn-1']
-        .filter((tab) => tab.type === 'query-editor')
+        .tabsByConnection['conn-1'].filter((tab) => tab.type === 'query-editor')
         .map((tab) => tab.id)
     ).toEqual([q2, q3, q1])
 
@@ -699,8 +694,7 @@ describe('WorkspaceTabs', () => {
     expect(
       useWorkspaceStore
         .getState()
-        .tabsByConnection['conn-1']
-        .filter((tab) => tab.type === 'query-editor')
+        .tabsByConnection['conn-1'].filter((tab) => tab.type === 'query-editor')
         .map((tab) => tab.id)
     ).toEqual([q1, q2, q3])
   })
@@ -750,8 +744,7 @@ describe('WorkspaceTabs', () => {
     expect(
       useWorkspaceStore
         .getState()
-        .tabsByConnection['conn-1']
-        .filter((entry) => entry.type === 'query-editor')
+        .tabsByConnection['conn-1'].filter((entry) => entry.type === 'query-editor')
         .map((entry) => entry.id)
     ).toEqual([q1, q2])
   })
@@ -784,8 +777,7 @@ describe('WorkspaceTabs', () => {
     expect(
       useWorkspaceStore
         .getState()
-        .tabsByConnection['conn-1']
-        .filter((entry) => entry.type === 'query-editor')
+        .tabsByConnection['conn-1'].filter((entry) => entry.type === 'query-editor')
         .map((entry) => entry.id)
     ).toEqual([q1, q2])
   })
@@ -796,9 +788,7 @@ describe('WorkspaceTabs', () => {
     render(<WorkspaceTabs connectionId="conn-1" />)
 
     const historyTab = screen.getByText('History').closest('[data-testid^="workspace-tab-"]')
-    const processTab = screen
-      .getByText('Process List')
-      .closest('[data-testid^="workspace-tab-"]')
+    const processTab = screen.getByText('Process List').closest('[data-testid^="workspace-tab-"]')
 
     if (historyTab === null || processTab === null) {
       throw new Error('Expected pinned tabs to be rendered')

@@ -176,3 +176,10 @@
 #portal > * {
   pointer-events: auto;
 }
+
+/* Constrain Glide's editor overlay to the active cell instead of its 400px default.
+   JS sets the final width from the editor target rectangle; CSS keeps a stable fallback. */
+#portal .gdg-d19meir1 {
+  width: var(--d19meir1-2, 400px) !important;
+  max-width: var(--d19meir1-2, 400px) !important;
+}

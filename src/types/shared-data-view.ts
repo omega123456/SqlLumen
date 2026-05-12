@@ -151,8 +151,8 @@ export interface BaseGridViewProps {
   editableColumnKeys?: ReadonlySet<string>
   onCellValueChange?: (rowIdx: number, columnKey: string, newValue: unknown) => void
   onRowChanging?: (fromRowIdx: number, toRowIdx: number) => Promise<boolean>
-  onScrollPositionChange?: (top: number, left: number) => void
-  initialScrollPosition?: { top: number; left: number }
+  onScrollCellChange?: (scrollRow: number, scrollCol: number) => void
+  initialScrollCell?: { scrollRow: number; scrollCol: number }
   scrollToRowIndex?: number | null
   onFkCellAction?: (args: CellClickGuardArgs) => void | Promise<void>
   showInfoColumn?: boolean

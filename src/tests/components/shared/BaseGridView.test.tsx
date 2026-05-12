@@ -2,9 +2,11 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { BaseGridView } from '../../../components/shared/BaseGridView'
 
-const mockCanvasBaseGridView = vi.hoisted(() => vi.fn((props: Record<string, unknown>) => (
-  <div data-testid="mock-canvas-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
-)))
+const mockCanvasBaseGridView = vi.hoisted(() =>
+  vi.fn((props: Record<string, unknown>) => (
+    <div data-testid="mock-canvas-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
+  ))
+)
 
 vi.mock('../../../components/shared/glide/CanvasBaseGridView', () => ({
   CanvasBaseGridView: mockCanvasBaseGridView,
@@ -42,7 +44,12 @@ describe('BaseGridView', () => {
       />
     )
     expect(mockCanvasBaseGridView).toHaveBeenLastCalledWith(
-      expect.objectContaining({ rows: [{ name: 'Ada' }], columns, sortColumn: 'name', onSortChange }),
+      expect.objectContaining({
+        rows: [{ name: 'Ada' }],
+        columns,
+        sortColumn: 'name',
+        onSortChange,
+      }),
       undefined
     )
   })

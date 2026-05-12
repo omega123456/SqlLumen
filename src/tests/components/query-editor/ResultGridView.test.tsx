@@ -4,9 +4,11 @@ import { ResultGridView } from '../../../components/query-editor/ResultGridView'
 import { useQueryStore } from '../../../stores/query-store'
 import type { ColumnMeta } from '../../../types/schema'
 
-const mockCanvasBaseGridView = vi.hoisted(() => vi.fn((props: Record<string, unknown>) => (
-  <div data-testid="mock-result-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
-)))
+const mockCanvasBaseGridView = vi.hoisted(() =>
+  vi.fn((props: Record<string, unknown>) => (
+    <div data-testid="mock-result-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
+  ))
+)
 
 vi.mock('../../../components/shared/glide/CanvasBaseGridView', () => ({
   CanvasBaseGridView: mockCanvasBaseGridView,

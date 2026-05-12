@@ -20,6 +20,14 @@ describe('data-grid-precision.css', () => {
     expect(css).toMatch(/#portal\s+\.td-null-toggle/)
   })
 
+  it('uses stable portal selectors for cell editor styling', () => {
+    expect(css).toMatch(/#portal\s+\.td-cell-editor-input/)
+    expect(css).toMatch(/#portal\s+\.td-null-toggle/)
+    expect(css).toContain('#portal .gdg-d19meir1')
+    expect(css).toContain('max-width: var(--d19meir1-2, 400px)')
+    expect(css).not.toContain(":has([data-testid='fk-lookup-trigger'])")
+  })
+
   it('does not contain legacy react-data-grid selectors', () => {
     expect(css).not.toMatch(/\.rdg[-_]/)
     expect(css).not.toContain('react-data-grid')

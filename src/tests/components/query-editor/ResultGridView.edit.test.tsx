@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { ResultGridView } from '../../../components/query-editor/ResultGridView'
 import type { ColumnMeta, RowEditState, TableDataColumnMeta } from '../../../types/schema'
 
-const mockCanvasBaseGridView = vi.hoisted(() => vi.fn((props: Record<string, unknown>) => (
-  <div data-testid="mock-result-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
-)))
+const mockCanvasBaseGridView = vi.hoisted(() =>
+  vi.fn((props: Record<string, unknown>) => (
+    <div data-testid="mock-result-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
+  ))
+)
 
 vi.mock('../../../components/shared/glide/CanvasBaseGridView', () => ({
   CanvasBaseGridView: mockCanvasBaseGridView,
@@ -65,13 +67,17 @@ function getGridProps() {
       disablePadding?: unknown
       disableStyling?: unknown
     }>
-    editState: { currentValues: Record<string, unknown>; originalValues: Record<string, unknown> } | null
+    editState: {
+      currentValues: Record<string, unknown>
+      originalValues: Record<string, unknown>
+    } | null
     editableColumnKeys: Set<string>
     isModifiedCell: (row: Record<string, unknown>, columnKey: string) => boolean
     onCellClickGuard: (args: {
       rowIdx: number
       columnKey: string
       rowData: Record<string, unknown>
+      source?: 'grid-pointer' | 'keyboard'
     }) => Promise<{
       proceed: boolean
       targetRowIdx: number
@@ -102,6 +108,26 @@ describe('ResultGridView editing', () => {
     const gridProps = getGridProps()
     gridProps.onCellValueChange(0, 'col_0', 'Grace')
     gridProps.onRowsChange([{ col_0: 'Grace', __rowIdx: 0 }], { indexes: [0] })
+    expect(onSyncCellValue).toHaveBeenCalledWith(0, 'Grace')
+  })
+
+  it('cleanup-only no-op row changes do not reach the query sync path', () => {
+    const onSyncCellValue = vi.fn()
+    render(<ResultGridView {...props} onSyncCellValue={onSyncCellValue} />)
+    const gridProps = getGridProps()
+
+    gridProps.onRowsChange([{ col_0: 'Ada', __rowIdx: 0 }], { indexes: [0] })
+
+    expect(onSyncCellValue).not.toHaveBeenCalled()
+  })
+
+  it('genuine row changes still reach the query sync path', () => {
+    const onSyncCellValue = vi.fn()
+    render(<ResultGridView {...props} onSyncCellValue={onSyncCellValue} />)
+    const gridProps = getGridProps()
+
+    gridProps.onRowsChange([{ col_0: 'Grace', __rowIdx: 0 }], { indexes: [0] })
+
     expect(onSyncCellValue).toHaveBeenCalledWith(0, 'Grace')
   })
 
@@ -192,6 +218,39 @@ describe('ResultGridView editing', () => {
     expect(onRowSelected).toHaveBeenCalledWith(0)
   })
 
+  it('keyboard navigation over editable cells selects without opening an editor or starting destination editing', async () => {
+    const onStartEditing = vi.fn()
+    const onRowSelected = vi.fn()
+
+    render(
+      <ResultGridView
+        {...props}
+        rows={[['Ada'], ['Bob']]}
+        editingRowIndex={0}
+        editState={editState}
+        onStartEditing={onStartEditing}
+        onRowSelected={onRowSelected}
+      />
+    )
+
+    const gridProps = getGridProps()
+    const result = await gridProps.onCellClickGuard({
+      rowIdx: 1,
+      columnKey: 'col_0',
+      rowData: gridProps.rows[1],
+      source: 'keyboard',
+    })
+
+    expect(result).toEqual({
+      proceed: true,
+      targetRowIdx: 1,
+      targetColIdx: 0,
+      enableEditor: false,
+    })
+    expect(onStartEditing).not.toHaveBeenCalled()
+    expect(onRowSelected).toHaveBeenCalledWith(1)
+  })
+
   it('selects but does not edit non-editable cells', async () => {
     render(<ResultGridView {...props} editableColumnMap={new Map([[0, false]])} />)
 
@@ -216,10 +275,7 @@ describe('ResultGridView editing', () => {
     render(
       <ResultGridView
         {...props}
-        rows={[
-          ['Ada'],
-          ['Bob'],
-        ]}
+        rows={[['Ada'], ['Bob']]}
         editState={{ ...editState, modifiedColumns: new Set(['name']) }}
         onAutoSave={onAutoSave}
       />
@@ -238,6 +294,36 @@ describe('ResultGridView editing', () => {
       targetRowIdx: 0,
       targetColIdx: 0,
       enableEditor: true,
+      restoreFocus: true,
+    })
+  })
+
+  it('restores focus without opening an editor when keyboard navigation auto-save fails', async () => {
+    const onAutoSave = vi.fn(async () => false)
+
+    render(
+      <ResultGridView
+        {...props}
+        rows={[['Ada'], ['Bob']]}
+        editState={{ ...editState, modifiedColumns: new Set(['name']) }}
+        onAutoSave={onAutoSave}
+      />
+    )
+
+    const gridProps = getGridProps()
+    const result = await gridProps.onCellClickGuard({
+      rowIdx: 1,
+      columnKey: 'col_0',
+      rowData: gridProps.rows[1],
+      source: 'keyboard',
+    })
+
+    expect(onAutoSave).toHaveBeenCalledTimes(1)
+    expect(result).toEqual({
+      proceed: false,
+      targetRowIdx: 0,
+      targetColIdx: 0,
+      enableEditor: false,
       restoreFocus: true,
     })
   })
@@ -349,10 +435,7 @@ describe('ResultGridView editing', () => {
     render(
       <ResultGridView
         {...props}
-        rows={[
-          ['Ada'],
-          ['Bob'],
-        ]}
+        rows={[['Ada'], ['Bob']]}
         editingRowIndex={0}
         editState={editState}
         onStartEditing={onStartEditing}
@@ -380,10 +463,7 @@ describe('ResultGridView editing', () => {
     render(
       <ResultGridView
         {...props}
-        rows={[
-          ['Ada'],
-          ['Bob'],
-        ]}
+        rows={[['Ada'], ['Bob']]}
         editingRowIndex={0}
         editState={{ ...editState, modifiedColumns: new Set(['name']) }}
         onAutoSave={onAutoSave}

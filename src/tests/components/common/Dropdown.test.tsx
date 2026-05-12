@@ -261,7 +261,13 @@ describe('Dropdown', () => {
     render(
       <>
         <span id="lb-ignore">Pick</span>
-        <Dropdown id="d-ignore" labelledBy="lb-ignore" options={options} value="" onChange={vi.fn()} />
+        <Dropdown
+          id="d-ignore"
+          labelledBy="lb-ignore"
+          options={options}
+          value=""
+          onChange={vi.fn()}
+        />
       </>
     )
 

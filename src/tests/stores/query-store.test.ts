@@ -531,8 +531,7 @@ describe('useQueryStore — setViewMode', () => {
       useToastStore
         .getState()
         .toasts.some(
-          (toast) =>
-            toast.variant === 'error' && toast.title === 'Cannot switch to text view'
+          (toast) => toast.variant === 'error' && toast.title === 'Cannot switch to text view'
         )
     ).toBe(true)
 
@@ -571,8 +570,7 @@ describe('useQueryStore — setViewMode', () => {
       useToastStore
         .getState()
         .toasts.some(
-          (toast) =>
-            toast.variant === 'error' && toast.title === 'Cannot switch to text view'
+          (toast) => toast.variant === 'error' && toast.title === 'Cannot switch to text view'
         )
     ).toBe(true)
 

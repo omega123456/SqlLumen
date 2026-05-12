@@ -327,9 +327,18 @@ describe('ConnectionTabBar', () => {
   })
 
   it('renders connection tabs using explicit connection order', () => {
-    const conn1 = makeActiveConnection({ id: 'sess-1', profile: makeSavedConnection({ name: 'One' }) })
-    const conn2 = makeActiveConnection({ id: 'sess-2', profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }) })
-    const conn3 = makeActiveConnection({ id: 'sess-3', profile: makeSavedConnection({ id: 'conn-3', name: 'Three' }) })
+    const conn1 = makeActiveConnection({
+      id: 'sess-1',
+      profile: makeSavedConnection({ name: 'One' }),
+    })
+    const conn2 = makeActiveConnection({
+      id: 'sess-2',
+      profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }),
+    })
+    const conn3 = makeActiveConnection({
+      id: 'sess-3',
+      profile: makeSavedConnection({ id: 'conn-3', name: 'Three' }),
+    })
 
     useConnectionStore.setState({
       activeConnections: { 'sess-1': conn1, 'sess-2': conn2, 'sess-3': conn3 },
@@ -461,8 +470,14 @@ describe('ConnectionTabBar', () => {
 
   it('opens context menu from right-click and supports move actions', async () => {
     const user = userEvent.setup()
-    const conn1 = makeActiveConnection({ id: 'sess-1', profile: makeSavedConnection({ name: 'One' }) })
-    const conn2 = makeActiveConnection({ id: 'sess-2', profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }) })
+    const conn1 = makeActiveConnection({
+      id: 'sess-1',
+      profile: makeSavedConnection({ name: 'One' }),
+    })
+    const conn2 = makeActiveConnection({
+      id: 'sess-2',
+      profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }),
+    })
 
     useConnectionStore.setState({
       activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },
@@ -540,8 +555,14 @@ describe('ConnectionTabBar', () => {
 
   it('restores focus to invoker tab after context-menu action, or active tab when invoker is missing', async () => {
     const user = userEvent.setup()
-    const conn1 = makeActiveConnection({ id: 'sess-1', profile: makeSavedConnection({ name: 'One' }) })
-    const conn2 = makeActiveConnection({ id: 'sess-2', profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }) })
+    const conn1 = makeActiveConnection({
+      id: 'sess-1',
+      profile: makeSavedConnection({ name: 'One' }),
+    })
+    const conn2 = makeActiveConnection({
+      id: 'sess-2',
+      profile: makeSavedConnection({ id: 'conn-2', name: 'Two' }),
+    })
 
     useConnectionStore.setState({
       activeConnections: { 'sess-1': conn1, 'sess-2': conn2 },

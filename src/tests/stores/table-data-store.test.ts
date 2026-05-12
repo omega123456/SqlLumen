@@ -173,29 +173,51 @@ describe('useTableDataStore — initTab', () => {
     expect(tab.pendingNavigationAction).toBeNull()
   })
 
-  it('should have scrollTop and scrollLeft fields in tab state', () => {
+  it('should have scrollRow and scrollCol fields in tab state', () => {
     useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
     const tab = useTableDataStore.getState().tabs['tab-1']
 
-    expect(tab.scrollTop).toBe(0)
-    expect(tab.scrollLeft).toBe(0)
+    expect(tab.scrollRow).toBe(0)
+    expect(tab.scrollCol).toBe(0)
   })
 })
 
-describe('useTableDataStore — setScrollPosition', () => {
-  it('should expose a setScrollPosition action to save scroll offsets', () => {
+describe('useTableDataStore — setScrollCell', () => {
+  it('should expose a setScrollCell action to save scroll cell coordinates', () => {
     const store = useTableDataStore.getState()
-    expect(typeof store.setScrollPosition).toBe('function')
+    expect(typeof store.setScrollCell).toBe('function')
   })
 
-  it('should retain scroll position values after being set', async () => {
+  it('should retain scroll cell coordinates after being set', async () => {
     await setupTabWithData()
 
-    useTableDataStore.getState().setScrollPosition('tab-1', 150, 30)
+    useTableDataStore.getState().setScrollCell('tab-1', 15, 3)
 
     const tab = useTableDataStore.getState().tabs['tab-1']
-    expect(tab.scrollTop).toBe(150)
-    expect(tab.scrollLeft).toBe(30)
+    expect(tab.scrollRow).toBe(15)
+    expect(tab.scrollCol).toBe(3)
+  })
+
+  it('resets scroll cell coordinates before dataset-shape changes restore', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().setScrollCell('tab-1', 15, 3)
+
+    await useTableDataStore.getState().sortByColumn('tab-1', 'name', 'asc')
+    expect(useTableDataStore.getState().tabs['tab-1']).toMatchObject({ scrollRow: 0, scrollCol: 0 })
+
+    useTableDataStore.getState().setScrollCell('tab-1', 15, 3)
+    await useTableDataStore
+      .getState()
+      .applyFilters('tab-1', [{ column: 'name', operator: '==' as const, value: 'Alice' }])
+    expect(useTableDataStore.getState().tabs['tab-1']).toMatchObject({ scrollRow: 0, scrollCol: 0 })
+
+    useTableDataStore.getState().setScrollCell('tab-1', 15, 3)
+    await useTableDataStore.getState().fetchPage('tab-1', 2)
+    expect(useTableDataStore.getState().tabs['tab-1']).toMatchObject({ scrollRow: 0, scrollCol: 0 })
+
+    useTableDataStore.getState().setScrollCell('tab-1', 15, 3)
+    await useTableDataStore.getState().refreshData('tab-1')
+    expect(useTableDataStore.getState().tabs['tab-1']).toMatchObject({ scrollRow: 0, scrollCol: 0 })
   })
 })
 

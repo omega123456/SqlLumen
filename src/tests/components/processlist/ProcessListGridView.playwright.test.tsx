@@ -13,23 +13,23 @@ vi.mock('../../../components/shared/glide/CanvasBaseGridView', async () => {
   const React = await import('react')
 
   return {
-    CanvasBaseGridView: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
-      mockCanvasBaseGridView(props)
+    CanvasBaseGridView: React.forwardRef(
+      (props: Record<string, unknown>, ref: React.Ref<unknown>) => {
+        mockCanvasBaseGridView(props)
 
-      const hostRef = React.useRef<HTMLDivElement>(null)
+        const hostRef = React.useRef<HTMLDivElement>(null)
 
-      React.useImperativeHandle(ref, () => ({
-        element: hostRef.current,
-      }))
+        React.useImperativeHandle(ref, () => ({
+          element: hostRef.current,
+        }))
 
-      React.useLayoutEffect(() => {
-        const host = hostRef.current
-        if (!host) return
+        React.useLayoutEffect(() => {
+          const host = hostRef.current
+          if (!host) return
 
-        host.dataset.glideColumnWidth = '[10,20,30,40,50,60,70,80]'
-        host.dataset.rowMarkerWidth = '32'
-        host.getBoundingClientRect =
-          () =>
+          host.dataset.glideColumnWidth = '[10,20,30,40,50,60,70,80]'
+          host.dataset.rowMarkerWidth = '32'
+          host.getBoundingClientRect = () =>
             ({
               x: 100,
               y: 200,
@@ -42,38 +42,37 @@ vi.mock('../../../components/shared/glide/CanvasBaseGridView', async () => {
               toJSON: () => ({}),
             }) as DOMRect
 
-        const scroller = host.querySelector('.dvn-scroller') as HTMLDivElement | null
-        if (!scroller) return
+          const scroller = host.querySelector('.dvn-scroller') as HTMLDivElement | null
+          if (!scroller) return
 
-        Object.defineProperty(scroller, 'scrollLeft', {
-          configurable: true,
-          value: 15,
-          writable: true,
+          Object.defineProperty(scroller, 'scrollLeft', {
+            configurable: true,
+            value: 15,
+            writable: true,
+          })
+          Object.defineProperty(scroller, 'scrollTop', {
+            configurable: true,
+            value: 5,
+            writable: true,
+          })
         })
-        Object.defineProperty(scroller, 'scrollTop', {
-          configurable: true,
-          value: 5,
-          writable: true,
-        })
-      })
 
-      return (
-        <div data-testid="mock-canvas-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} ref={hostRef}>
-          <div className="dvn-scroller" />
-        </div>
-      )
-    }),
+        return (
+          <div
+            data-testid="mock-canvas-grid"
+            data-row-count={(props.rows as unknown[])?.length ?? 0}
+            ref={hostRef}
+          >
+            <div className="dvn-scroller" />
+          </div>
+        )
+      }
+    ),
   }
 })
 
 vi.mock('../../../components/processlist/InfoCellPopover', () => ({
-  InfoCellPopover: ({
-    sql,
-    anchorRect,
-  }: {
-    sql: string | null
-    anchorRect?: DOMRect | null
-  }) =>
+  InfoCellPopover: ({ sql, anchorRect }: { sql: string | null; anchorRect?: DOMRect | null }) =>
     sql ? (
       <div
         data-testid="info-popover"
@@ -197,7 +196,9 @@ describe('ProcessListGridView Playwright helpers', () => {
   it('falls back to a default anchor rect and preserves existing Playwright API keys', async () => {
     const { ProcessListGridView, useProcessListStore } = await loadPlaywrightModules()
 
-    ;(window as typeof window & { __processListTestApi__?: ProcessListTestApi }).__processListTestApi__ = {
+    ;(
+      window as typeof window & { __processListTestApi__?: ProcessListTestApi }
+    ).__processListTestApi__ = {
       sentinel: 'keep-me',
     }
 

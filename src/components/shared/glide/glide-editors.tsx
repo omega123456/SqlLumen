@@ -2,6 +2,7 @@ import { useCallback, useRef, type ComponentType, type FunctionComponent } from 
 import {
   GridCellKind,
   type GridCell,
+  type Rectangle,
   type TextCell,
   type ProvideEditorCallbackResult,
 } from '@glideapps/glide-data-grid'
@@ -11,6 +12,7 @@ import { EnumCellEditor, NullableCellEditor, type CellEditorBaseProps } from '..
 import type { GridEditorType } from '../grid-column-editor-utils'
 
 export interface CustomEditorProps {
+  target: Rectangle
   value: GridCell
   onChange: (newValue: GridCell) => void
   onFinishedEditing: (newCell?: GridCell, movement?: readonly [-1 | 0 | 1, -1 | 0 | 1]) => void
@@ -36,10 +38,20 @@ function extractEditorData(cell: GridCell): GlideEditorCellData | null {
 
 type VendorNeutralEditorComponent = ComponentType<CellEditorBaseProps>
 
+function getEditorTargetWidth(target: Rectangle): number {
+  return Math.max(1, Math.floor(target.width))
+}
+
 export function wrapEditorAsGlideOverlay(
-  EditorComponent: VendorNeutralEditorComponent
+  EditorComponent: VendorNeutralEditorComponent,
+  testId?: string
 ): FunctionComponent<CustomEditorProps> {
-  return function GlideOverlayEditor({ value, onChange, onFinishedEditing }: CustomEditorProps) {
+  return function GlideOverlayEditor({
+    target,
+    value,
+    onChange,
+    onFinishedEditing,
+  }: CustomEditorProps) {
     const currentValueRef = useRef(value)
     const close = useCallback(
       (commitChanges?: boolean) => {
@@ -51,35 +63,54 @@ export function wrapEditorAsGlideOverlay(
     if (!editorData) return null
 
     const { row, columnKey, columnMeta, isNullable, foreignKey } = editorData
+    const targetWidth = getEditorTargetWidth(target)
+
     return (
-      <EditorComponent
-        row={row}
-        column={{ key: columnKey }}
-        isNullable={isNullable}
-        columnMeta={columnMeta}
-        foreignKey={foreignKey}
-        onRowChange={(nextRow) => {
-          const nextValue = nextRow[columnKey]
-          const text = nextValue == null ? '' : String(nextValue)
-          const nextCell = {
-            ...(value as TextCell),
-            data: text,
-            displayData: nextValue == null ? 'NULL' : text,
-            copyData: nextValue == null ? 'NULL' : text,
-          }
-          currentValueRef.current = nextCell
-          onChange(nextCell)
+      <div
+        data-testid={testId ?? 'glide-overlay-editor'}
+        data-sqllumen-glide-editor-root="true"
+        data-sqllumen-editor-width={String(targetWidth)}
+        style={{
+          display: 'flex',
+          alignItems: 'stretch',
+          width: `${targetWidth}px`,
+          maxWidth: `${targetWidth}px`,
+          minWidth: 0,
+          height: '100%',
+          overflow: 'hidden',
+          boxSizing: 'border-box',
         }}
-        onClose={close}
-      />
+      >
+        <EditorComponent
+          row={row}
+          column={{ key: columnKey }}
+          isNullable={isNullable}
+          columnMeta={columnMeta}
+          foreignKey={foreignKey}
+          onRowChange={(nextRow) => {
+            const nextValue = nextRow[columnKey]
+            const text = nextValue == null ? '' : String(nextValue)
+            const nextCell = {
+              ...(value as TextCell),
+              data: text,
+              displayData: nextValue == null ? 'NULL' : text,
+              copyData: nextValue == null ? 'NULL' : text,
+            }
+            currentValueRef.current = nextCell
+            onChange(nextCell)
+          }}
+          onClose={close}
+        />
+      </div>
     )
   }
 }
 
-const wrappedNullableEditor = wrapEditorAsGlideOverlay(NullableCellEditor)
-const wrappedEnumEditor = wrapEditorAsGlideOverlay(EnumCellEditor)
+const wrappedNullableEditor = wrapEditorAsGlideOverlay(NullableCellEditor, 'glide-text-editor')
+const wrappedEnumEditor = wrapEditorAsGlideOverlay(EnumCellEditor, 'glide-enum-editor')
 const wrappedDateTimeEditor = wrapEditorAsGlideOverlay(
-  DateTimeCellEditor as VendorNeutralEditorComponent
+  DateTimeCellEditor as VendorNeutralEditorComponent,
+  'glide-datetime-editor'
 )
 
 export function getGlideEditor(

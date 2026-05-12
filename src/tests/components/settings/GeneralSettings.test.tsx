@@ -65,12 +65,10 @@ describe('GeneralSettings', () => {
     const user = userEvent.setup()
     render(<GeneralSettings />)
 
-    const sessionRestore = screen.getByTestId('settings-session-restore').querySelector(
-      'input'
-    ) as HTMLInputElement
-    const connectionTimeout = screen.getByTestId(
-      'settings-connection-timeout'
-    ) as HTMLInputElement
+    const sessionRestore = screen
+      .getByTestId('settings-session-restore')
+      .querySelector('input') as HTMLInputElement
+    const connectionTimeout = screen.getByTestId('settings-connection-timeout') as HTMLInputElement
     const keepalive = screen.getByTestId('settings-keepalive') as HTMLInputElement
 
     await user.click(sessionRestore)

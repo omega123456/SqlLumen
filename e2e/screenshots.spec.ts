@@ -16,6 +16,7 @@ import {
   clickGlideCell,
   clickGlideFkEllipsis,
   clickGlideRowMarker,
+  dblClickGlideCell,
   getGlideGridGeometry,
 } from './glide-grid-helpers'
 
@@ -1233,6 +1234,8 @@ for (const theme of themes) {
       )
     })
 
+
+
     test('StatusBar — query info after execution', async ({ page }) => {
       await openQueryEditorWithResults(page)
       // The status bar should now show query rows/time info
@@ -1512,6 +1515,87 @@ for (const theme of themes) {
       })
     })
 
+    async function expectTableDataEditorOverlayScreenshot(
+      page: Page,
+      columnName: string,
+      rowIdx: number,
+      editorTestId: 'glide-text-editor' | 'glide-enum-editor' | 'glide-datetime-editor',
+      screenshotName: string
+    ) {
+      await openTableDataTab(page)
+      const grid = page.getByTestId('table-data-grid')
+      await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
+
+      const colIdx = await getColumnIndexByName(grid, columnName)
+      const geometry = await getGlideGridGeometry(page, 'table-data-grid')
+      await clickGlideCell(page, 'table-data-grid', colIdx, rowIdx, geometry)
+      await dblClickGlideCell(page, 'table-data-grid', colIdx, rowIdx, geometry)
+
+      await expect(page.getByTestId(editorTestId)).toBeVisible({ timeout: APP_READY_MS })
+      await page.locator('#portal').evaluate((portal) => {
+        const element = portal as HTMLElement
+        element.style.position = 'fixed'
+        element.style.inset = '0'
+        element.style.pointerEvents = 'none'
+        element.querySelectorAll<HTMLElement>('input, textarea, [contenteditable="true"]').forEach((input) => {
+          input.style.caretColor = 'transparent'
+        })
+      })
+      await page.waitForTimeout(200)
+      await expect(page.locator('#portal')).toHaveScreenshot(screenshotName, {
+        animations: 'disabled',
+      })
+    }
+
+    test('TableDataGrid — cell editor overlay: text field (name column, row 1)', async ({
+      page,
+    }) => {
+      await expectTableDataEditorOverlayScreenshot(
+        page,
+        'name',
+        0,
+        'glide-text-editor',
+        `table-data-overlay-text-${theme}.png`
+      )
+    })
+
+    test('TableDataGrid — cell editor overlay: nullable NULL cell (email column, row 2 — null value)', async ({
+      page,
+    }) => {
+      await expectTableDataEditorOverlayScreenshot(
+        page,
+        'email',
+        1,
+        'glide-text-editor',
+        `table-data-overlay-null-${theme}.png`
+      )
+    })
+
+    test('TableDataGrid — cell editor overlay: enum field (status column, row 1)', async ({
+      page,
+    }) => {
+      await expectTableDataEditorOverlayScreenshot(
+        page,
+        'status',
+        0,
+        'glide-enum-editor',
+        `table-data-overlay-enum-${theme}.png`
+      )
+    })
+
+    test('TableDataGrid — cell editor overlay: datetime field (created_at column, row 1)', async ({
+      page,
+    }) => {
+      await expectTableDataEditorOverlayScreenshot(
+        page,
+        'created_at',
+        0,
+        'glide-datetime-editor',
+        `table-data-overlay-datetime-${theme}.png`
+      )
+    })
+
     test('TableDataFormView — form view with record', async ({ page }) => {
       await openTableDataTab(page)
       // Switch to form view
@@ -1598,6 +1682,8 @@ for (const theme of themes) {
         `table-data-grid-enum-dropdown-open-${theme}.png`
       )
     })
+
+
 
     test('TableDataToolbar — page size dropdown open', async ({ page }) => {
       await openTableDataTab(page)

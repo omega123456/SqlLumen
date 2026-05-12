@@ -205,7 +205,9 @@ describe('Glide phase 7 coverage helpers', () => {
     expect(getGlideEditor({ key: 'x', name: 'X' }, 'none')).toBeNull()
     for (const editorType of ['enum', 'datetime', 'text'] as const) {
       const editorConfig = getGlideEditor({ key: 'x', name: 'X' }, editorType)
-      expect(editorConfig).toMatchObject({ editor: expect.any(Function) })
+      expect(editorConfig).toMatchObject({
+        editor: expect.any(Function),
+      })
       expect(editorConfig).not.toHaveProperty('disablePadding')
       expect(editorConfig).not.toHaveProperty('disableStyling')
     }

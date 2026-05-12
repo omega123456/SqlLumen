@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createRef } from 'react'
 import { render, screen } from '@testing-library/react'
-import { GridCellKind, type EditableGridCell, type GridCell, type Item } from '@glideapps/glide-data-grid'
+import {
+  GridCellKind,
+  type EditableGridCell,
+  type GridCell,
+  type Item,
+} from '@glideapps/glide-data-grid'
 import { DataGrid, type DataGridHandle } from '../../../components/shared/DataGrid'
 
 const mockGlideDataGrid = vi.fn()
@@ -69,12 +74,14 @@ describe('DataGrid', () => {
   })
 
   it('uses custom cell content and maps resize callbacks', () => {
-    const getCellContent = vi.fn((): GridCell => ({
-      kind: GridCellKind.Text,
-      data: 'custom',
-      displayData: 'custom',
-      allowOverlay: true,
-    }))
+    const getCellContent = vi.fn(
+      (): GridCell => ({
+        kind: GridCellKind.Text,
+        data: 'custom',
+        displayData: 'custom',
+        allowOverlay: true,
+      })
+    )
     const onColumnResize = vi.fn()
 
     render(

@@ -80,7 +80,10 @@ describe('ResultPanel', () => {
       useQueryStore.setState((state) => ({
         tabs: {
           ...state.tabs,
-          tab1: { ...state.tabs.tab1, results: [{ ...result, columns: [], rows: [], affectedRows: 0 }] },
+          tab1: {
+            ...state.tabs.tab1,
+            results: [{ ...result, columns: [], rows: [], affectedRows: 0 }],
+          },
         },
       }))
     })

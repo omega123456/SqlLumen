@@ -24,6 +24,8 @@ import { logFrontend } from '../lib/app-log-commands'
 // Helpers
 // ---------------------------------------------------------------------------
 
+const RESET_SCROLL_CELL = { scrollRow: 0 as const, scrollCol: 0 as const }
+
 /** Compare two row keys for equality using JSON-based comparison. */
 function isSameRowKey(
   a: Record<string, unknown> | null,
@@ -120,7 +122,8 @@ function normalizeTableDataRows(columns: TableDataColumnMeta[], rows: unknown[][
 
 function getRowKeyFromData(
   rowData: Record<string, unknown>,
-  pkColumns: string[]
+  pkColumns: string[],
+  options: { includeRowIndexFallback?: boolean } = {}
 ): Record<string, unknown> {
   if ('__tempId' in rowData) {
     return { __tempId: rowData.__tempId }
@@ -138,11 +141,18 @@ function getRowKeyFromData(
   for (const col of pkColumns) {
     key[col] = rowData[col]
   }
+  if (
+    options.includeRowIndexFallback === true &&
+    Object.keys(key).length === 0 &&
+    rowData.__rowIndex != null
+  ) {
+    key.__rowIndex = rowData.__rowIndex
+  }
   return key
 }
 
 // Exported for testing
-export { isSameRowKey, findRowIndexByKey, normalizeTableDataRows }
+export { isSameRowKey, findRowIndexByKey, normalizeTableDataRows, getRowKeyFromData }
 
 function buildCurrentValuesFromRow(
   columns: TableDataColumnMeta[],
@@ -357,8 +367,7 @@ function createDefaultTabState(
     error: null,
     saveError: null,
     isExportDialogOpen: false,
-    scrollTop: 0,
-    scrollLeft: 0,
+    ...RESET_SCROLL_CELL,
     pendingNavigationAction: null,
   }
 }
@@ -406,7 +415,7 @@ export interface TableDataStore {
   openExportDialog: (tabId: string) => void
   closeExportDialog: (tabId: string) => void
 
-  setScrollPosition: (tabId: string, scrollTop: number, scrollLeft: number) => void
+  setScrollCell: (tabId: string, scrollRow: number, scrollCol: number) => void
 
   requestNavigationAction: (tabId: string, action: () => void) => void
   confirmNavigationSave: (tabId: string) => Promise<void>
@@ -474,6 +483,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         saveError: null,
         error: null,
         foreignKeys: [],
+        ...RESET_SCROLL_CELL,
       })
 
       // Fire FK metadata fetch in parallel (fire-and-forget)
@@ -499,7 +509,12 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       const tab = get().tabs[tabId]
       if (!tab) return
 
-      patchTab(tabId, { isLoading: true, error: null })
+      const isDifferentPage = tab.currentPage !== page
+      patchTab(tabId, {
+        isLoading: true,
+        error: null,
+        ...(isDifferentPage ? RESET_SCROLL_CELL : {}),
+      })
 
       try {
         const result = await fetchTableDataCmd({
@@ -540,9 +555,9 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
     sortByColumn: async (tabId, column, direction) => {
       if (direction === null) {
-        patchTab(tabId, { sort: null })
+        patchTab(tabId, { sort: null, ...RESET_SCROLL_CELL })
       } else {
-        patchTab(tabId, { sort: { column, direction } })
+        patchTab(tabId, { sort: { column, direction }, ...RESET_SCROLL_CELL })
       }
       await get().fetchPage(tabId, 1)
     },
@@ -550,7 +565,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     // ------ applyFilters ------
 
     applyFilters: async (tabId, conditions) => {
-      patchTab(tabId, { filterModel: conditions })
+      patchTab(tabId, { filterModel: conditions, ...RESET_SCROLL_CELL })
       await get().fetchPage(tabId, 1)
     },
 
@@ -559,6 +574,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     refreshData: async (tabId) => {
       const tab = get().tabs[tabId]
       if (!tab) return
+      patchTab(tabId, RESET_SCROLL_CELL)
       await get().fetchPage(tabId, tab.currentPage)
     },
 
@@ -914,7 +930,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     // ------ setPageSize ------
 
     setPageSize: async (tabId, newPageSize) => {
-      patchTab(tabId, { pageSize: newPageSize })
+      patchTab(tabId, { pageSize: newPageSize, ...RESET_SCROLL_CELL })
       await get().fetchPage(tabId, 1)
     },
 
@@ -928,10 +944,10 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       patchTab(tabId, { isExportDialogOpen: false })
     },
 
-    // ------ setScrollPosition ------
+    // ------ setScrollCell ------
 
-    setScrollPosition: (tabId, scrollTop, scrollLeft) => {
-      patchTab(tabId, { scrollTop, scrollLeft })
+    setScrollCell: (tabId, scrollRow, scrollCol) => {
+      patchTab(tabId, { scrollRow, scrollCol })
     },
 
     // ------ requestNavigationAction ------

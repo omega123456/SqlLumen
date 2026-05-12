@@ -125,8 +125,8 @@ function setupStore() {
         saveError: null,
         isExportDialogOpen: false,
         pendingNavigationAction: null,
-        scrollTop: 0,
-        scrollLeft: 0,
+        scrollRow: 0,
+        scrollCol: 0,
       },
     },
   })

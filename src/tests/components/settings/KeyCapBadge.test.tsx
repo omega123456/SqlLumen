@@ -25,13 +25,10 @@ describe('KeyCapBadge', () => {
   })
 
   it('renders non-mac labels and fallbacks', async () => {
-    await renderBadgeForUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-      {
-        modifiers: ['ctrl', 'shift', 'alt', 'meta'],
-        key: 'Enter',
-      }
-    )
+    await renderBadgeForUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)', {
+      modifiers: ['ctrl', 'shift', 'alt', 'meta'],
+      key: 'Enter',
+    })
 
     expect(screen.getByText('Ctrl')).toBeInTheDocument()
     expect(screen.getByText('Shift')).toBeInTheDocument()

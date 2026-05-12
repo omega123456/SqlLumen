@@ -18,7 +18,12 @@ import {
 } from '../shared/editor-callbacks-context'
 import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
 import { FkLookupDialog } from './FkLookupDialog'
-import { useTableDataStore, isSameRowKey, findRowIndexByKey } from '../../stores/table-data-store'
+import {
+  useTableDataStore,
+  isSameRowKey,
+  findRowIndexByKey as findStoreRowIndexByKey,
+  getRowKeyFromData,
+} from '../../stores/table-data-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
@@ -43,23 +48,16 @@ type TableDataRow = Record<string, unknown>
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Build a row key from row data and PK columns. */
 function getRowKey(data: Record<string, unknown>, pkColumns: string[]): Record<string, unknown> {
-  if (data.__tempId != null) {
-    return { __tempId: data.__tempId }
-  }
-  if (data.__editingRowKey && typeof data.__editingRowKey === 'object') {
-    return data.__editingRowKey as Record<string, unknown>
-  }
-  const key: Record<string, unknown> = {}
-  for (const col of pkColumns) {
-    key[col] = data[col]
-  }
-  // No PK columns → use row index as unique identity so each row is distinguishable
-  if (Object.keys(key).length === 0 && data.__rowIndex != null) {
-    key.__rowIndex = data.__rowIndex
-  }
-  return key
+  return getRowKeyFromData(data, pkColumns, { includeRowIndexFallback: true })
+}
+
+function findRowIndexByKey(
+  rows: Record<string, unknown>[],
+  targetKey: Record<string, unknown>,
+  pkColumns: string[]
+): number {
+  return rows.findIndex((row) => isSameRowKey(getRowKey(row, pkColumns), targetKey))
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +85,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   const clearEditStateIfUnmodified = useTableDataStore((state) => state.clearEditStateIfUnmodified)
   const storeUpdateCellValue = useTableDataStore((state) => state.updateCellValue)
   const setSelectedCell = useTableDataStore((state) => state.setSelectedCell)
-  const setScrollPosition = useTableDataStore((state) => state.setScrollPosition)
+  const setScrollCell = useTableDataStore((state) => state.setScrollCell)
   const setColumnWidth = useTableDataStore((state) => state.setColumnWidth)
   const showError = useToastStore((state) => state.showError)
   const showSuccess = useToastStore((state) => state.showSuccess)
@@ -131,11 +129,11 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   // ---------------------------------------------------------------------------
   // Scroll position: save on scroll, restore on mount/tab-switch
   // ---------------------------------------------------------------------------
-  const handleScrollPositionChange = useCallback(
-    (top: number, left: number) => {
-      setScrollPosition(tabId, top, left)
+  const handleScrollCellChange = useCallback(
+    (scrollRow: number, scrollCol: number) => {
+      setScrollCell(tabId, scrollRow, scrollCol)
     },
-    [setScrollPosition, tabId]
+    [setScrollCell, tabId]
   )
 
   const handleColumnResize = useCallback(
@@ -416,7 +414,8 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
     async (
       targetRowKey: Record<string, unknown>,
       fallbackRowIdx: number,
-      targetColIdx: number
+      targetColIdx: number,
+      options: { enableEditorOnRestore: boolean }
     ): Promise<{ passed: boolean; result?: CellClickGuardResult }> => {
       const currentState = useTableDataStore.getState().tabs[tabId]
       const currentEditState = currentState?.editState ?? null
@@ -427,7 +426,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
           return Math.max(0, currentState.rows.length - 1)
         }
 
-        const matchedRowIdx = findRowIndexByKey(
+        const matchedRowIdx = findStoreRowIndexByKey(
           currentState.rows,
           currentState.columns,
           currentState.editState.rowKey
@@ -439,7 +438,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
         proceed: false,
         targetRowIdx: restoreRowIdx,
         targetColIdx,
-        enableEditor: true,
+        enableEditor: options.enableEditorOnRestore,
         restoreFocus: true,
       })
 
@@ -490,11 +489,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   /** Find the current row index for a given row key in the latest rowData snapshot. */
   const findCurrentRowIndex = useCallback(
     (targetRowKey: Record<string, unknown>): number => {
-      const currentRowData = rowDataRef.current
-      return currentRowData.findIndex((r) => {
-        const rk = getRowKey(r, pkColumns)
-        return isSameRowKey(rk, targetRowKey)
-      })
+      return findRowIndexByKey(rowDataRef.current, targetRowKey, pkColumns)
     },
     [pkColumns]
   )
@@ -503,6 +498,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
     async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
       const row = args.rowData
       const targetRowKey = getRowKey(row, pkColumns)
+      const isKeyboardSource = args.source === 'keyboard'
 
       // Resolve target column descriptor
       const target = resolveTargetColumn(args.columnKey)
@@ -515,7 +511,8 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       const guardResult = await validateAndCommitCurrentEdit(
         targetRowKey,
         args.rowIdx,
-        targetColIdx
+        targetColIdx,
+        { enableEditorOnRestore: !isKeyboardSource }
       )
       if (!guardResult.passed) {
         return guardResult.result!
@@ -526,7 +523,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       setSelectedCell(tabId, { columnKey: args.columnKey, value: args.rowData[args.columnKey] })
 
       // Non-editable columns: stop here (selection updated, no editing needed)
-      if (!editable) {
+      if (!editable || isKeyboardSource) {
         const rowIdx = findCurrentRowIndex(targetRowKey)
         return {
           proceed: true,
@@ -614,7 +611,8 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       const guardResult = await validateAndCommitCurrentEdit(
         targetRowKey,
         args.rowIdx,
-        target.targetColIdx
+        target.targetColIdx,
+        { enableEditorOnRestore: true }
       )
       if (!guardResult.passed) return
 
@@ -661,10 +659,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       const targetRowKey = getRowKey(args.rowData, pkColumns)
 
       // Find the row index in the latest rowData snapshot
-      const fallbackRowIdx = rowDataRef.current.findIndex((r) => {
-        const rk = getRowKey(r, pkColumns)
-        return isSameRowKey(rk, targetRowKey)
-      })
+      const fallbackRowIdx = findRowIndexByKey(rowDataRef.current, targetRowKey, pkColumns)
 
       // Find the column index in descriptorColumns
       const targetColIdx = descriptorColumns.findIndex((c) => c.key === args.columnKey)
@@ -673,7 +668,8 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       const guardResult = await validateAndCommitCurrentEdit(
         targetRowKey,
         fallbackRowIdx >= 0 ? fallbackRowIdx : 0,
-        targetColIdx >= 0 ? targetColIdx : 0
+        targetColIdx >= 0 ? targetColIdx : 0,
+        { enableEditorOnRestore: args.source !== 'keyboard' }
       )
 
       if (guardResult.passed) {
@@ -706,15 +702,15 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   )
 
   const editableColumnKeys = useMemo(() => {
-    return new Set(descriptorColumns.filter((column) => column.editable).map((column) => column.key))
+    return new Set(
+      descriptorColumns.filter((column) => column.editable).map((column) => column.key)
+    )
   }, [descriptorColumns])
 
   const selectedCellPosition = useMemo(() => {
     const selected = tabState?.selectedCell
     if (!selected) return null
-    const rowIdx = selectedRowKey
-      ? rowData.findIndex((row) => isSameRowKey(getRowKey(row, pkColumns), selectedRowKey))
-      : -1
+    const rowIdx = selectedRowKey ? findRowIndexByKey(rowData, selectedRowKey, pkColumns) : -1
     const idx = descriptorColumns.findIndex((column) => column.key === selected.columnKey)
     return rowIdx >= 0 && idx >= 0 ? { rowIdx, idx } : null
   }, [descriptorColumns, pkColumns, rowData, selectedRowKey, tabState?.selectedCell])
@@ -772,7 +768,14 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       // Close the dialog
       setFkLookupOpen(false)
     },
-    [fkLookupContext, tabId, pkColumns, ensureRowEditingStarted, storeUpdateCellValue, setSelectedRow]
+    [
+      fkLookupContext,
+      tabId,
+      pkColumns,
+      ensureRowEditingStarted,
+      storeUpdateCellValue,
+      setSelectedRow,
+    ]
   )
 
   // ---------------------------------------------------------------------------
@@ -808,8 +811,11 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
               setSelectedCell(tabId, { columnKey: column.key, value: row[column.key] })
           }}
           onColumnResize={handleColumnResize}
-          onScrollPositionChange={handleScrollPositionChange}
-          initialScrollPosition={{ top: tabState?.scrollTop ?? 0, left: tabState?.scrollLeft ?? 0 }}
+          onScrollCellChange={handleScrollCellChange}
+          initialScrollCell={{
+            scrollRow: tabState?.scrollRow ?? 0,
+            scrollCol: tabState?.scrollCol ?? 0,
+          }}
           scrollToRowIndex={editState?.isNewRow ? rows.length - 1 : null}
           onFkCellAction={handleFkCellAction}
           testId="table-data-grid"

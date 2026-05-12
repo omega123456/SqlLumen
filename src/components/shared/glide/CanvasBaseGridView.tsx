@@ -46,6 +46,17 @@ import { getGlideEditor } from './glide-editors'
 import { logFrontend } from '../../../lib/app-log-commands'
 type GridRow = Record<string, unknown>
 type GlideKeyDownEvent = GridKeyEventArgs
+type ScrollCell = { scrollRow: number; scrollCol: number }
+
+interface EditorSessionBaseline {
+  rowIndex: number
+  columnKey: string
+  value: unknown
+}
+
+function normalizeEditorValue(value: unknown): unknown {
+  return value == null ? null : String(value)
+}
 
 export interface CanvasBaseGridViewProps extends BaseGridViewProps {
   rowMarkers?: 'none' | 'checkbox' | 'number' | 'both'
@@ -91,6 +102,33 @@ function isInfoColumn(column: GridColumn<GridRow>): boolean {
   return column.key === 'info'
 }
 
+function clampScrollCell(scrollCell: ScrollCell, maxRow: number, maxCol: number): ScrollCell {
+  return {
+    scrollRow: Math.max(0, Math.min(maxRow, Math.floor(scrollCell.scrollRow))),
+    scrollCol: Math.max(0, Math.min(maxCol, Math.floor(scrollCell.scrollCol))),
+  }
+}
+
+function isSameScrollCell(a: ScrollCell | null, b: ScrollCell): boolean {
+  return a?.scrollRow === b.scrollRow && a.scrollCol === b.scrollCol
+}
+
+function resolveEditorBaselineValue(
+  row: GridRow,
+  columnKey: string,
+  editState: RowEditState | null
+): unknown {
+  if (Object.prototype.hasOwnProperty.call(editState?.currentValues ?? {}, columnKey)) {
+    return editState?.currentValues[columnKey]
+  }
+
+  if (Object.prototype.hasOwnProperty.call(editState?.originalValues ?? {}, columnKey)) {
+    return editState?.originalValues[columnKey]
+  }
+
+  return row[columnKey]
+}
+
 function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<GridHandle>) {
   const {
     rows,
@@ -121,9 +159,10 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     onRowChanging,
     onCellClipboardEdit,
     onCellClickGuard,
+    editState,
     onRowsChange,
-    onScrollPositionChange,
-    initialScrollPosition,
+    onScrollCellChange,
+    initialScrollCell,
     scrollToRowIndex,
     onFkCellAction,
     showInfoColumn = false,
@@ -135,10 +174,28 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   const [gridSelection, setGridSelection] = useState<GridSelection | undefined>(undefined)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const lastInteractedCellRef = useRef<{ rowIdx: number; idx: number } | null>(null)
-  const lastAppliedInitialScrollRef = useRef<{ top: number; left: number } | null>(null)
-  const lastReportedScrollPositionRef = useRef<{ top: number; left: number } | null>(null)
+  const lastAppliedInitialScrollRef = useRef<{ scrollRow: number; scrollCol: number } | null>(null)
+  const lastReportedScrollCellRef = useRef<ScrollCell | null>(null)
+  const pendingInitialScrollRestoreRef = useRef<ScrollCell | null>(null)
+  const suppressScrollPersistenceRef = useRef(false)
   const isEditingCellRef = useRef(false)
+  const editorSessionBaselineRef = useRef<EditorSessionBaseline | null>(null)
   const activeSelectedRowIndex = selectedRowIndex ?? internalSelectedRowIndex
+
+  const isRowSelected = useCallback(
+    (row: GridRow): boolean => {
+      return (
+        selectedRows?.has(row.id as string | number) === true ||
+        getRowClass?.(row)?.includes('selected') === true
+      )
+    },
+    [getRowClass, selectedRows]
+  )
+
+  const isRowEditing = useCallback(
+    (row: GridRow): boolean => getRowClass?.(row)?.includes('editing-row') === true,
+    [getRowClass]
+  )
 
   const gridColumns = useMemo<GridColumn<GridRow>[]>(() => {
     const dataColumns = columns.map((column) => toGridColumn(column, rows, props.autoSizeConfig))
@@ -157,8 +214,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   const selectedSelection = useMemo<GridSelection | undefined>(() => {
     let rowSelection = CompactSelection.empty()
     rows.forEach((row, index) => {
-      const rowId = row.id
-      if (selectedRows?.has(rowId as string | number) || getRowClass?.(row)?.includes('selected')) {
+      if (isRowSelected(row)) {
         rowSelection = rowSelection.add(index)
       }
     })
@@ -179,7 +235,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           }
         : undefined,
     }
-  }, [activeSelectedRowIndex, getRowClass, rows, selectedCellPosition, selectedRows])
+  }, [activeSelectedRowIndex, isRowSelected, rows, selectedCellPosition])
 
   useEffect(() => {
     setGridSelection(selectedSelection)
@@ -217,25 +273,47 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   }, [sortColumn, sortDirection])
 
   useLayoutEffect(() => {
-    if (!initialScrollPosition) return
-    const normalized = {
-      top: Math.max(0, Math.floor(initialScrollPosition.top)),
-      left: Math.max(0, Math.floor(initialScrollPosition.left)),
-    }
+    if (!initialScrollCell || rows.length === 0 || gridColumns.length === 0) return
+    const normalized = clampScrollCell(initialScrollCell, rows.length - 1, gridColumns.length - 1)
     const lastApplied = lastAppliedInitialScrollRef.current
-    if (lastApplied && lastApplied.top === normalized.top && lastApplied.left === normalized.left) {
+    if (isSameScrollCell(lastApplied, normalized)) {
       return
     }
-    const lastReported = lastReportedScrollPositionRef.current
-    if (lastReported && lastReported.top === normalized.top && lastReported.left === normalized.left) {
+
+    const lastReported = lastReportedScrollCellRef.current
+    if (isSameScrollCell(lastReported, normalized)) {
       lastAppliedInitialScrollRef.current = normalized
+      pendingInitialScrollRestoreRef.current = null
+      suppressScrollPersistenceRef.current = false
       return
     }
+
     lastAppliedInitialScrollRef.current = normalized
-    requestAnimationFrame(() => {
-      gridRef.current?.scrollToOffset?.({ left: normalized.left, top: normalized.top })
+    pendingInitialScrollRestoreRef.current = normalized
+    suppressScrollPersistenceRef.current = true
+
+    let releaseSuppressionFrameId = 0
+    const restoreFrameId = requestAnimationFrame(() => {
+      gridRef.current?.scrollToCell({ rowIdx: normalized.scrollRow, idx: normalized.scrollCol })
+      releaseSuppressionFrameId = requestAnimationFrame(() => {
+        if (isSameScrollCell(pendingInitialScrollRestoreRef.current, normalized)) {
+          pendingInitialScrollRestoreRef.current = null
+        }
+        suppressScrollPersistenceRef.current = false
+      })
     })
-  }, [initialScrollPosition])
+
+    return () => {
+      cancelAnimationFrame(restoreFrameId)
+      if (releaseSuppressionFrameId !== 0) {
+        cancelAnimationFrame(releaseSuppressionFrameId)
+      }
+      if (isSameScrollCell(pendingInitialScrollRestoreRef.current, normalized)) {
+        pendingInitialScrollRestoreRef.current = null
+      }
+      suppressScrollPersistenceRef.current = false
+    }
+  }, [gridColumns.length, initialScrollCell, rows.length])
 
   useEffect(() => {
     if (scrollToRowIndex == null || scrollToRowIndex < 0) return
@@ -254,19 +332,25 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         isReadOnly: isEditMode === true && editableColumnKeys?.has(column.key) !== true,
         isModified: isModifiedCell?.(row, column.key) ?? false,
         isFkCell: column.foreignKey != null,
-        isSelectedRow:
-          activeSelectedRowIndex === rowIndex ||
-          selectedRows?.has(row.id as string | number) === true ||
-          getRowClass?.(row)?.includes('selected') === true,
-        isEditingRow: getRowClass?.(row)?.includes('editing-row') === true,
+        isBlobColumn: column.isBinary === true,
+        isSelectedRow: activeSelectedRowIndex === rowIndex || isRowSelected(row),
+        isEditingRow: isRowEditing(row),
         highlightedColumnKey: highlightColumnKey,
       })
-      if (flags.isNull) return buildNullCell(flags.copyValue)
       if (flags.isBlob) return buildBlobCell(flags.displayValue, flags.copyValue)
-      const editable = isEditMode === true && editableColumnKeys?.has(column.key) === true
+      const editable =
+        isEditMode === true &&
+        column.editable === true &&
+        editableColumnKeys?.has(column.key) === true &&
+        column.isBinary !== true &&
+        column.editorType !== 'none'
+      if (flags.isNull && !editable) return buildNullCell(flags.copyValue)
       if (editable) {
+        const baseCell = flags.isNull
+          ? buildNullCell(flags.copyValue)
+          : buildTextCell(flags.displayValue, flags, flags.copyValue)
         return {
-          ...buildTextCell(flags.displayValue, flags, flags.copyValue),
+          ...baseCell,
           readonly: false,
           allowOverlay: true,
           data: rawValue == null ? '' : String(rawValue),
@@ -284,11 +368,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     [
       activeSelectedRowIndex,
       editableColumnKeys,
-      getRowClass,
       gridColumns,
       highlightColumnKey,
       isEditMode,
       isModifiedCell,
+      isRowEditing,
+      isRowSelected,
       rows,
       selectedRows,
     ]
@@ -414,10 +499,16 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       const column = gridColumns[colIndex]
       if (!column || newValue.kind !== GridCellKind.Text) return
       const next = newValue.data === '' && newValue.copyData === 'NULL' ? null : newValue.data
-      onCellValueChange?.(rowIndex, column.key, next)
-      const nextRows = rows.map((row, index) =>
-        index === rowIndex ? { ...row, [column.key]: next } : row
-      )
+      const baseline = editorSessionBaselineRef.current
+      const isActiveEditorSession =
+        baseline?.rowIndex === rowIndex && baseline.columnKey === column.key
+      const isNoOpCommit = isActiveEditorSession && Object.is(baseline.value, next)
+      if (!isNoOpCommit) {
+        onCellValueChange?.(rowIndex, column.key, next)
+      }
+      const nextRows = isNoOpCommit
+        ? rows
+        : rows.map((row, index) => (index === rowIndex ? { ...row, [column.key]: next } : row))
       onRowsChange?.(nextRows, { indexes: [rowIndex], column })
     },
     [gridColumns, onCellValueChange, onRowsChange, rows]
@@ -566,11 +657,13 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   )
 
   const handleVisibleRegionChanged = useCallback(
-    (_range: unknown, tx: number, ty: number) => {
+    (range: Rectangle) => {
       if (isEditingCellRef.current) {
         // Glide overlays are absolutely positioned and do not auto-close when commitOnOutsideClick
         // is disabled, so close the active editor before scroll leaves it floating over the wrong cell.
-        const canvas = gridRef.current?.element?.querySelector('canvas[data-testid="data-grid-canvas"]')
+        const canvas = gridRef.current?.element?.querySelector(
+          'canvas[data-testid="data-grid-canvas"]'
+        )
         canvas?.dispatchEvent(
           new KeyboardEvent('keydown', {
             key: 'Escape',
@@ -581,18 +674,50 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         )
         isEditingCellRef.current = false
       }
-      lastReportedScrollPositionRef.current = { top: ty, left: tx }
-      onScrollPositionChange?.(ty, tx)
+      const scrollCell = clampScrollCell(
+        { scrollRow: range.y, scrollCol: range.x },
+        Number.MAX_SAFE_INTEGER,
+        Number.MAX_SAFE_INTEGER
+      )
+
+      if (isSameScrollCell(pendingInitialScrollRestoreRef.current, scrollCell)) {
+        pendingInitialScrollRestoreRef.current = null
+        return
+      }
+
+      if (suppressScrollPersistenceRef.current) {
+        return
+      }
+
+      pendingInitialScrollRestoreRef.current = null
+      lastReportedScrollCellRef.current = scrollCell
+      onScrollCellChange?.(scrollCell.scrollRow, scrollCell.scrollCol)
     },
-    [onScrollPositionChange]
+    [onScrollCellChange]
   )
 
-  const handleCellActivatedForEditing = useCallback(() => {
-    isEditingCellRef.current = true
-  }, [])
+  const handleCellActivatedForEditing = useCallback(
+    (cell: Item) => {
+      const [colIndex, rowIndex] = cell
+      const column = gridColumns[colIndex]
+      const row = rows[rowIndex]
+      if (column && row) {
+        editorSessionBaselineRef.current = {
+          rowIndex,
+          columnKey: column.key,
+          value: normalizeEditorValue(resolveEditorBaselineValue(row, column.key, editState)),
+        }
+      } else {
+        editorSessionBaselineRef.current = null
+      }
+      isEditingCellRef.current = true
+    },
+    [editState?.currentValues, editState?.originalValues, gridColumns, rows]
+  )
 
   const handleFinishedEditing = useCallback(() => {
     isEditingCellRef.current = false
+    editorSessionBaselineRef.current = null
   }, [])
 
   const handleCellDoubleClicked = useCallback(
@@ -781,7 +906,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     const isInteractiveElement = (target: EventTarget | null): boolean => {
       if (!(target instanceof HTMLElement)) return false
       const tag = target.tagName.toLowerCase()
-      return ['button', 'input', 'select', 'textarea', 'a'].includes(tag) || target.isContentEditable
+      return (
+        ['button', 'input', 'select', 'textarea', 'a'].includes(tag) || target.isContentEditable
+      )
     }
 
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
@@ -852,7 +979,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         row != null &&
         (activeSelectedRowIndex === args.row ||
           selectedRows?.has(row.id as string | number) === true ||
-          getRowClass?.(row)?.includes('selected') === true)
+          isRowSelected(row))
       if (column?.key === highlightColumnKey) {
         drawHighlightedColumnBackground(args.ctx, args.rect, args.theme.bgSearchResult)
       }
@@ -860,7 +987,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         drawHighlightedColumnBackground(args.ctx, args.rect, args.theme.bgBubbleSelected)
         drawSelectedRowAccent(args.ctx, args.rect, args.theme.accentColor)
       }
-      if (row != null && getRowClass?.(row)?.includes('editing-row') === true) {
+      if (row != null && isRowEditing(row)) {
         drawHighlightedColumnBackground(args.ctx, args.rect, args.theme.bgHeaderHovered)
       }
       drawContent()
@@ -876,10 +1003,11 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     },
     [
       activeSelectedRowIndex,
-      getRowClass,
       gridColumns,
       highlightColumnKey,
       isModifiedCell,
+      isRowEditing,
+      isRowSelected,
       rows,
       selectedRows,
     ]

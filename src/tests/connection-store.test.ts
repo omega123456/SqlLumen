@@ -365,8 +365,18 @@ describe('useConnectionStore — active connection order normalization', () => {
   it('normalizes missing order values and renders every active session once', () => {
     useConnectionStore.setState({
       activeConnections: {
-        'sess-1': { id: 'sess-1', profile: mockSavedConnection, status: 'connected', serverVersion: '8.0.35' },
-        'sess-2': { id: 'sess-2', profile: mockSavedConnection2, status: 'connected', serverVersion: '8.0.35' },
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+        'sess-2': {
+          id: 'sess-2',
+          profile: mockSavedConnection2,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
       },
       activeConnectionOrder: [],
     })
@@ -379,8 +389,18 @@ describe('useConnectionStore — active connection order normalization', () => {
   it('drops stale and duplicate ids during normalization', () => {
     useConnectionStore.setState({
       activeConnections: {
-        'sess-1': { id: 'sess-1', profile: mockSavedConnection, status: 'connected', serverVersion: '8.0.35' },
-        'sess-2': { id: 'sess-2', profile: mockSavedConnection2, status: 'connected', serverVersion: '8.0.35' },
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+        'sess-2': {
+          id: 'sess-2',
+          profile: mockSavedConnection2,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
       },
       activeConnectionOrder: ['stale', 'sess-2', 'sess-2', 'sess-1'],
     })
@@ -393,8 +413,18 @@ describe('useConnectionStore — active connection order normalization', () => {
   it('reorders without changing active selection', () => {
     useConnectionStore.setState({
       activeConnections: {
-        'sess-1': { id: 'sess-1', profile: mockSavedConnection, status: 'connected', serverVersion: '8.0.35' },
-        'sess-2': { id: 'sess-2', profile: mockSavedConnection2, status: 'connected', serverVersion: '8.0.35' },
+        'sess-1': {
+          id: 'sess-1',
+          profile: mockSavedConnection,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
+        'sess-2': {
+          id: 'sess-2',
+          profile: mockSavedConnection2,
+          status: 'connected',
+          serverVersion: '8.0.35',
+        },
       },
       activeConnectionOrder: ['sess-1', 'sess-2'],
       activeTabId: 'sess-1',
@@ -822,8 +852,8 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
             isNewRow: false,
           },
           saveError: null,
-          scrollTop: 0,
-          scrollLeft: 0,
+          scrollRow: 0,
+          scrollCol: 0,
         },
       },
     })

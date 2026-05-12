@@ -4,9 +4,11 @@ import { ProcessListGridView } from '../../../components/processlist/ProcessList
 import { useProcessListStore } from '../../../stores/processlist-store'
 import type { ProcessRow } from '../../../lib/processlist-commands'
 
-const mockCanvasBaseGridView = vi.hoisted(() => vi.fn((props: Record<string, unknown>) => (
-  <div data-testid="mock-canvas-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
-)))
+const mockCanvasBaseGridView = vi.hoisted(() =>
+  vi.fn((props: Record<string, unknown>) => (
+    <div data-testid="mock-canvas-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
+  ))
+)
 
 vi.mock('../../../components/shared/glide/CanvasBaseGridView', () => ({
   CanvasBaseGridView: mockCanvasBaseGridView,
@@ -18,7 +20,16 @@ vi.mock('../../../components/processlist/InfoCellPopover', () => ({
 }))
 
 const rows: ProcessRow[] = [
-  { id: 2, user: 'bob', host: 'h2', db: 'app', command: 'Query', time: 4, state: 'run', info: 'SELECT 2' },
+  {
+    id: 2,
+    user: 'bob',
+    host: 'h2',
+    db: 'app',
+    command: 'Query',
+    time: 4,
+    state: 'run',
+    info: 'SELECT 2',
+  },
   { id: 1, user: 'ada', host: 'h1', db: null, command: 'Sleep', time: 9, state: null, info: '' },
 ]
 

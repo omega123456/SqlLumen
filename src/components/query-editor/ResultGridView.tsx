@@ -525,6 +525,19 @@ export function ResultGridView({
     [editMode, editColumnBindings]
   )
 
+  const autoSaveBeforeLeavingEditedRow = useCallback(
+    async (targetRowIndex: number): Promise<boolean> => {
+      const currentEditingRow = editingRowIndexRef.current
+      if (currentEditingRow === null || currentEditingRow === targetRowIndex) return true
+
+      const currentEditState = editStateRef.current
+      if (!currentEditState || currentEditState.modifiedColumns.size === 0) return true
+
+      return onAutoSave()
+    },
+    [onAutoSave]
+  )
+
   // ---------------------------------------------------------------------------
   // Cell click guard: handles row selection, auto-save, and edit initiation.
   // ---------------------------------------------------------------------------
@@ -533,6 +546,7 @@ export function ResultGridView({
 
     return async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
       const { rowIdx, columnKey } = args
+      const isKeyboardSource = args.source === 'keyboard'
 
       const colIndex = colIndexFromKey(columnKey)
       const isEditable = editableColumnMap.get(colIndex) ?? false
@@ -542,26 +556,21 @@ export function ResultGridView({
 
       // Run async guard (save, validate) if switching rows
       const currentEditingRow = editingRowIndexRef.current
-      const currentEditState = editStateRef.current
-      if (currentEditingRow !== null && currentEditingRow !== rowIdx) {
-        if (currentEditState && currentEditState.modifiedColumns.size > 0) {
-          const saveSucceeded = await onAutoSave()
-          if (!saveSucceeded) {
-            return {
-              proceed: false,
-              targetRowIdx: currentEditingRow,
-              targetColIdx,
-              enableEditor: true,
-              restoreFocus: true,
-            }
-          }
+      const saveSucceeded = await autoSaveBeforeLeavingEditedRow(rowIdx)
+      if (!saveSucceeded) {
+        return {
+          proceed: false,
+          targetRowIdx: currentEditingRow ?? rowIdx,
+          targetColIdx,
+          enableEditor: !isKeyboardSource,
+          restoreFocus: true,
         }
       }
 
       syncSelection(rowIdx, columnKey, args.rowData)
 
       // Only start editing and enter editor for editable columns
-      if (isEditable) {
+      if (isEditable && !isKeyboardSource) {
         if (currentEditingRow !== rowIdx) {
           onStartEditing(rowIdx)
         }
@@ -571,7 +580,7 @@ export function ResultGridView({
       // Non-editable column: select but don't edit
       return { proceed: true, targetRowIdx: rowIdx, targetColIdx, enableEditor: false }
     }
-  }, [editMode, editableColumnMap, onAutoSave, onStartEditing, syncSelection])
+  }, [autoSaveBeforeLeavingEditedRow, editMode, editableColumnMap, onStartEditing, syncSelection])
 
   // In read-only mode, we still need a simple cell click handler for row selection.
   // BaseGridView only calls onCellClickGuard when row-change validation is needed.
@@ -670,13 +679,8 @@ export function ResultGridView({
       if (!columns[colIndex] || !isEditable) return
 
       const currentEditingRow = editingRowIndexRef.current
-      const currentEditState = editStateRef.current
-      if (currentEditingRow !== null && currentEditingRow !== args.rowIdx) {
-        if (currentEditState && currentEditState.modifiedColumns.size > 0) {
-          const saveSucceeded = await onAutoSave()
-          if (!saveSucceeded) return
-        }
-      }
+      const saveSucceeded = await autoSaveBeforeLeavingEditedRow(args.rowIdx)
+      if (!saveSucceeded) return
 
       syncSelection(args.rowIdx, args.columnKey, args.rowData)
 
@@ -694,7 +698,7 @@ export function ResultGridView({
       editMode,
       columns,
       editableColumnMap,
-      onAutoSave,
+      autoSaveBeforeLeavingEditedRow,
       onStartEditing,
       onSyncCellValue,
       syncSelection,
@@ -753,9 +757,7 @@ export function ResultGridView({
           if (colIndex >= 0) onSyncCellValue(colIndex, newValue)
         }}
         onRowChanging={async (_from, _to) => {
-          const currentEditState = editStateRef.current
-          if (currentEditState && currentEditState.modifiedColumns.size > 0) return onAutoSave()
-          return true
+          return autoSaveBeforeLeavingEditedRow(_to)
         }}
         rowKeyGetter={rowKeyGetter}
         getRowClass={getRowClass}

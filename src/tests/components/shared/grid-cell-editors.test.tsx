@@ -102,6 +102,40 @@ describe('NullableCellEditor — store syncing', () => {
     expect(props.syncCellValue).toHaveBeenCalledWith('tab-1', expect.any(Object), 'col_1', null)
   })
 
+  it('starts in NULL mode and typing leaves NULL mode automatically', async () => {
+    const user = userEvent.setup()
+    const props = makeEditorProps({ row: { col_0: 1, col_1: null } })
+    render(<NullableCellEditor {...props} />)
+
+    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
+
+    expect(nullBtn).toHaveClass('td-null-active')
+    expect(input).toHaveValue('')
+
+    await user.type(input, 'Updated')
+
+    expect(nullBtn).not.toHaveClass('td-null-active')
+    expect(input).toHaveValue('Updated')
+    expect(props.onRowChange).toHaveBeenLastCalledWith({ col_0: 1, col_1: 'Updated' })
+  })
+
+  it('clears entered text when re-enabling NULL', async () => {
+    const user = userEvent.setup()
+    const props = makeEditorProps({ row: { col_0: 1, col_1: null } })
+    render(<NullableCellEditor {...props} />)
+
+    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    const nullBtn = document.querySelector('.td-null-toggle') as HTMLButtonElement
+
+    await user.type(input, 'Updated')
+    await user.click(nullBtn)
+
+    expect(nullBtn).toHaveClass('td-null-active')
+    expect(input).toHaveValue('')
+    expect(props.onRowChange).toHaveBeenLastCalledWith({ col_0: 1, col_1: null })
+  })
+
   it('calls onRowChange with null when toggling NULL on', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
