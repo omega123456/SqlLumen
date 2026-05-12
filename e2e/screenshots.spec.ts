@@ -14,6 +14,7 @@ import {
 } from './helpers'
 import {
   clickGlideCell,
+  clickGlideFkEllipsis,
   clickGlideRowMarker,
   getGlideGridGeometry,
 } from './glide-grid-helpers'
@@ -1222,6 +1223,9 @@ for (const theme of themes) {
       await openQueryEditorWithResults(page)
       await enableQueryResultEditMode(page)
       await clickResultGridCell(page, 1, 0)
+      await expect(page.locator('.td-cell-editor-input').first()).toBeVisible({
+        timeout: APP_READY_MS,
+      })
 
       await expect(page.getByTestId('result-grid')).toHaveScreenshot(
         `query-editor-result-grid-edit-mode-${theme}.png`,
@@ -1491,13 +1495,9 @@ for (const theme of themes) {
       await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
       // Wait for FK metadata to load (async fire-and-forget in store)
       await page.waitForTimeout(500)
-      const userIdCell = await getGridCellByColumnName(grid, 0, 'user_id')
-      await userIdCell.click()
-      await page.waitForTimeout(200) // Let CSS transition settle
-      // Click the FK lookup trigger button
-      const fkTrigger = page.getByTestId('fk-lookup-trigger').first()
-      await expect(fkTrigger).toBeVisible({ timeout: APP_READY_MS })
-      await fkTrigger.click()
+      const userIdColumn = await getColumnIndexByName(grid, 'user_id')
+      const geometry = await getGlideGridGeometry(page, 'table-data-grid')
+      await clickGlideFkEllipsis(page, 'table-data-grid', userIdColumn, 0, geometry)
       // Wait for the FK lookup dialog to appear and data to load
       await expect(page.getByTestId('fk-lookup-dialog')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('fk-lookup-grid')).toBeVisible({ timeout: APP_READY_MS })
@@ -3218,6 +3218,41 @@ test.describe('Date picker', () => {
         })
 
         // Close picker
+        await page.keyboard.press('Escape')
+      })
+
+      test('TableDataGrid — datetime editor active overlay', async ({ page }) => {
+        await openTableDataTab(page)
+
+        // Grid view is the default — wait for data rows
+        await expect(page.getByTestId('table-data-grid')).toBeVisible({ timeout: APP_READY_MS })
+        await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
+          timeout: APP_READY_MS,
+        })
+
+        // Dismiss any lingering toasts before interaction
+        await dismissAllToasts(page)
+
+        // Click the created_at cell in the first row to start editing and show Glide's overlay.
+        const grid = page.getByTestId('table-data-grid')
+        const createdAtCell = await getGridCellByColumnName(grid, 0, 'created_at')
+        await createdAtCell.click()
+
+        // Wait for the DateTimeCellEditor overlay to mount, but do not open the calendar popup.
+        await expect(
+          page.locator('[data-testid="datetime-cell-editor"], .td-cell-editor-input').first()
+        ).toBeVisible({ timeout: APP_READY_MS })
+        await expect(page.getByTestId('grid-calendar-btn')).toBeVisible({ timeout: APP_READY_MS })
+        await expect(page.getByTestId('date-time-picker-popup')).toHaveCount(0)
+
+        // Dismiss any new toasts and reset chrome scroll positions for stable screenshots.
+        await dismissAllToasts(page)
+        await resetChromeScrollPositions(page)
+
+        await expect(page).toHaveScreenshot(`datetime-editor-active-overlay-${theme}.png`, {
+          animations: 'disabled',
+        })
+
         await page.keyboard.press('Escape')
       })
     })

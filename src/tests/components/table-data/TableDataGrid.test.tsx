@@ -151,10 +151,64 @@ describe('TableDataGrid', () => {
         columnKey: string
         rowData: Record<string, unknown>
       }) => Promise<{ proceed: boolean; enableEditor: boolean }>
+      editableColumnKeys: Set<string>
     }
     const result = await props.onCellClickGuard({ rowIdx: 0, columnKey: 'name', rowData: { id: 1, name: 'Ada' } })
     expect(result).toMatchObject({ proceed: true, enableEditor: true })
     expect(useTableDataStore.getState().tabs.t1.selectedRowKey).toEqual({ id: 1 })
+  })
+
+  it('foreign-key columns remain inline-editable while retaining FK affordances', async () => {
+    act(() =>
+      useTableDataStore.setState({
+        tabs: {
+          t1: tab({
+            columns: [
+              columns[0],
+              { ...columns[1], name: 'user_id', dataType: 'int', isNullable: false },
+            ],
+            rows: [[1, 101]],
+            foreignKeys: [
+              {
+                columnName: 'user_id',
+                referencedDatabase: 'app',
+                referencedTable: 'users',
+                referencedColumn: 'id',
+                constraintName: 'fk_people_user_id_users',
+              },
+            ],
+          }),
+        },
+      })
+    )
+
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+      onCellClickGuard: (args: {
+        rowIdx: number
+        columnKey: string
+        rowData: Record<string, unknown>
+      }) => Promise<{ proceed: boolean; enableEditor: boolean }>
+      editableColumnKeys: Set<string>
+    }
+
+    const result = await props.onCellClickGuard({
+      rowIdx: 0,
+      columnKey: 'user_id',
+      rowData: { id: 1, user_id: 101 },
+    })
+
+    expect(result).toMatchObject({ proceed: true, enableEditor: true })
+    expect(props.editableColumnKeys).toContain('user_id')
+  })
+
+  it('enables guarded keyboard navigation for editable table data grids', () => {
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+      runCellClickGuardOnKeyboardSelection: boolean
+    }
+
+    expect(props.runCellClickGuardOnKeyboardSelection).toBe(true)
   })
 
   it('column resize saves width', () => {

@@ -96,21 +96,13 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
       }
     }
 
-    // Use setTimeout(0) so the portal DOM has been flushed by React
-    let portalEl: HTMLDivElement | null = null
+    const portalEl = pickerPopupRef.current
+    if (!portalEl) return
 
-    const timer = setTimeout(() => {
-      portalEl = pickerPopupRef.current
-      if (portalEl) {
-        portalEl.addEventListener('mousedown', handleMouseDown)
-      }
-    }, 0)
+    portalEl.addEventListener('mousedown', handleMouseDown)
 
     return () => {
-      clearTimeout(timer)
-      if (portalEl) {
-        portalEl.removeEventListener('mousedown', handleMouseDown)
-      }
+      portalEl.removeEventListener('mousedown', handleMouseDown)
     }
   }, [pickerOpen])
 
@@ -227,27 +219,25 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
       className={`${sharedStyles.cellEditorWrapper} ${styles.dateTimeEditorWrapper}`}
       data-testid="datetime-cell-editor"
     >
-      <div className="td-cell-editor-shell">
-        <TextInput
-          ref={inputRef}
-          variant="gridCell"
-          value={displayValue}
-          onChange={(e) => handleChange(e.target.value)}
-          onBlur={(e) => handleInputBlur(e.relatedTarget)}
-          onKeyDown={handleKeyDown}
-        />
-        {props.isNullable && (
-          <button
-            type="button"
-            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handleToggleNull}
-            tabIndex={-1}
-          >
-            NULL
-          </button>
-        )}
-      </div>
+      <TextInput
+        ref={inputRef}
+        variant="gridCell"
+        value={displayValue}
+        onChange={(e) => handleChange(e.target.value)}
+        onBlur={(e) => handleInputBlur(e.relatedTarget)}
+        onKeyDown={handleKeyDown}
+      />
+      {props.isNullable && (
+        <button
+          type="button"
+          className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={handleToggleNull}
+          tabIndex={-1}
+        >
+          NULL
+        </button>
+      )}
       <button
         type="button"
         className={styles.calendarBtn}

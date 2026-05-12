@@ -58,7 +58,13 @@ const props = {
 function getGridProps() {
   return mockCanvasBaseGridView.mock.calls[mockCanvasBaseGridView.mock.calls.length - 1]?.[0] as {
     rows: Array<Record<string, unknown>>
-    columns: Array<{ editable: boolean }>
+    columns: Array<{
+      editable: boolean
+      editorType?: string
+      tableColumnMeta?: TableDataColumnMeta
+      disablePadding?: unknown
+      disableStyling?: unknown
+    }>
     editState: { currentValues: Record<string, unknown>; originalValues: Record<string, unknown> } | null
     editableColumnKeys: Set<string>
     isModifiedCell: (row: Record<string, unknown>, columnKey: string) => boolean
@@ -115,6 +121,17 @@ describe('ResultGridView editing', () => {
     expect(gridProps.editState.currentValues).toEqual({ col_0: 'Ada' })
     expect(gridProps.editState.originalValues).toEqual({ col_0: 'Ada' })
     expect(gridProps.editableColumnKeys.has('col_0')).toBe(true)
+  })
+
+  it('wires editable result columns through the shared Glide editor contract', () => {
+    render(<ResultGridView {...props} />)
+
+    const editableColumn = getGridProps().columns[0]
+    expect(editableColumn.editable).toBe(true)
+    expect(editableColumn.editorType).toBe('text')
+    expect(editableColumn.tableColumnMeta).toEqual(tableColumns[0])
+    expect(editableColumn).not.toHaveProperty('disablePadding')
+    expect(editableColumn).not.toHaveProperty('disableStyling')
   })
 
   it('overlays current edit values onto the editing row data', () => {

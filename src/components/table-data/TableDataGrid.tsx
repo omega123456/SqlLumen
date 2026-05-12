@@ -239,6 +239,27 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
     [pkColumns]
   )
 
+  const buildCurrentValuesFromRow = useCallback(
+    (row: Record<string, unknown>) => {
+      const currentValues: Record<string, unknown> = {}
+      columns.forEach((column) => {
+        currentValues[column.name] = row[column.name]
+      })
+      return currentValues
+    },
+    [columns]
+  )
+
+  const ensureRowEditingStarted = useCallback(
+    (targetRowKey: Record<string, unknown>, row: Record<string, unknown>) => {
+      const currentEditRowKey = useTableDataStore.getState().tabs[tabId]?.editState?.rowKey ?? null
+      if (!isSameRowKey(targetRowKey, currentEditRowKey)) {
+        startEditing(tabId, targetRowKey, buildCurrentValuesFromRow(row))
+      }
+    },
+    [buildCurrentValuesFromRow, startEditing, tabId]
+  )
+
   // ---------------------------------------------------------------------------
   // Row class: editing row, new row styles, selected row highlight
   // Using standardised class names from Phase 1.
@@ -377,13 +398,13 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   /** Resolve the target column descriptor and its index in descriptorColumns. */
   const resolveTargetColumn = useCallback(
     (columnKey: string) => {
-      const col = columns.find((c) => c.name === columnKey)
-      if (!col) return null
-      const editable = !isReadOnly && hasPk && !col.isBinary
       const targetColIdx = descriptorColumns.findIndex((c) => c.key === columnKey)
+      if (targetColIdx < 0) return null
+      const descriptor = descriptorColumns[targetColIdx]
+      const editable = descriptor.editable === true
       return { editable, targetColIdx }
     },
-    [columns, isReadOnly, hasPk, descriptorColumns]
+    [descriptorColumns]
   )
 
   /**
@@ -516,14 +537,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       }
 
       // Start tracking the new row if switching rows
-      const currentEditRowKey = useTableDataStore.getState().tabs[tabId]?.editState?.rowKey ?? null
-      if (!isSameRowKey(targetRowKey, currentEditRowKey)) {
-        const currentValues: Record<string, unknown> = {}
-        columns.forEach((c) => {
-          currentValues[c.name] = row[c.name]
-        })
-        startEditing(tabId, targetRowKey, currentValues)
-      }
+      ensureRowEditingStarted(targetRowKey, row)
 
       // Find current rowIdx for captured row key and enter editor
       const finalRowIdx = findCurrentRowIndex(targetRowKey)
@@ -541,7 +555,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       resolveTargetColumn,
       validateAndCommitCurrentEdit,
       findCurrentRowIndex,
-      startEditing,
+      ensureRowEditingStarted,
       setSelectedRow,
       setSelectedCell,
     ]
@@ -606,14 +620,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
 
       setSelectedRow(tabId, targetRowKey)
 
-      const currentEditRowKey = useTableDataStore.getState().tabs[tabId]?.editState?.rowKey ?? null
-      if (!isSameRowKey(targetRowKey, currentEditRowKey)) {
-        const currentValues: Record<string, unknown> = {}
-        columns.forEach((c) => {
-          currentValues[c.name] = args.rowData[c.name]
-        })
-        startEditing(tabId, targetRowKey, currentValues)
-      }
+      ensureRowEditingStarted(targetRowKey, args.rowData)
 
       const nextValue = args.action === 'cut' ? null : (args.text ?? null)
       storeUpdateCellValue(tabId, args.columnKey, nextValue)
@@ -627,8 +634,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       validateAndCommitCurrentEdit,
       setSelectedRow,
       tabId,
-      columns,
-      startEditing,
+      ensureRowEditingStarted,
       storeUpdateCellValue,
     ]
   )
@@ -700,9 +706,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
   )
 
   const editableColumnKeys = useMemo(() => {
-    return new Set(
-      descriptorColumns.filter((column) => column.editable).map((column) => column.key)
-    )
+    return new Set(descriptorColumns.filter((column) => column.editable).map((column) => column.key))
   }, [descriptorColumns])
 
   const selectedCellPosition = useMemo(() => {
@@ -755,12 +759,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
 
       // Check if this row is already being edited; if not, start editing
       if (!currentEditState || !isSameRowKey(currentEditState.rowKey, rowKey)) {
-        // Start editing with current row values as base
-        const currentValues: Record<string, unknown> = {}
-        columns.forEach((c) => {
-          currentValues[c.name] = fkRowData[c.name]
-        })
-        startEditing(tabId, rowKey, currentValues)
+        ensureRowEditingStarted(rowKey, fkRowData)
       }
 
       // Update the FK cell with the selected value
@@ -773,7 +772,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
       // Close the dialog
       setFkLookupOpen(false)
     },
-    [fkLookupContext, tabId, pkColumns, columns, startEditing, storeUpdateCellValue, setSelectedRow]
+    [fkLookupContext, tabId, pkColumns, ensureRowEditingStarted, storeUpdateCellValue, setSelectedRow]
   )
 
   // ---------------------------------------------------------------------------
@@ -800,6 +799,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
           autoSizeConfig={autoSizeConfig}
           isEditMode={!isReadOnly && hasPk}
           editableColumnKeys={editableColumnKeys}
+          runCellClickGuardOnKeyboardSelection={!isReadOnly && hasPk}
           selectedCellPosition={selectedCellPosition}
           onSelectedCellChange={(pos) => {
             const column = descriptorColumns[pos.idx]

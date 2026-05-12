@@ -203,8 +203,11 @@ describe('Glide phase 7 coverage helpers', () => {
     screen.getByRole('button', { name: 'commit' }).click()
     expect(onFinishedEditing).toHaveBeenCalledWith(expect.objectContaining({ data: 'next' }))
     expect(getGlideEditor({ key: 'x', name: 'X' }, 'none')).toBeNull()
-    expect(getGlideEditor({ key: 'x', name: 'X' }, 'enum')).toBeTypeOf('function')
-    expect(getGlideEditor({ key: 'x', name: 'X' }, 'datetime')).toBeTypeOf('function')
-    expect(getGlideEditor({ key: 'x', name: 'X' }, 'text')).toBeTypeOf('function')
+    for (const editorType of ['enum', 'datetime', 'text'] as const) {
+      const editorConfig = getGlideEditor({ key: 'x', name: 'X' }, editorType)
+      expect(editorConfig).toMatchObject({ editor: expect.any(Function) })
+      expect(editorConfig).not.toHaveProperty('disablePadding')
+      expect(editorConfig).not.toHaveProperty('disableStyling')
+    }
   })
 })

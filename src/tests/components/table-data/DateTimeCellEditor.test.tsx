@@ -138,6 +138,18 @@ describe('DateTimeCellEditor', () => {
     expect(screen.getByTestId('grid-calendar-btn')).toBeInTheDocument()
   })
 
+  it('keeps the editor wrapper and calendar button styling hooks', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    const wrapper = screen.getByTestId('datetime-cell-editor')
+    const button = screen.getByTestId('grid-calendar-btn')
+
+    expect(wrapper.className).toContain('dateTimeEditorWrapper')
+    expect(button.className).toContain('calendarBtn')
+  })
+
   it('displays Clock icon for TIME columns', () => {
     setupStore()
     const props = makeMockProps({

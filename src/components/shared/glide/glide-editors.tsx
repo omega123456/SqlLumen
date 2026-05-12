@@ -41,16 +41,16 @@ export function wrapEditorAsGlideOverlay(
 ): FunctionComponent<CustomEditorProps> {
   return function GlideOverlayEditor({ value, onChange, onFinishedEditing }: CustomEditorProps) {
     const currentValueRef = useRef(value)
-    const editorData = extractEditorData(value)
-    if (!editorData) return null
-
-    const { row, columnKey, columnMeta, isNullable, foreignKey } = editorData
     const close = useCallback(
       (commitChanges?: boolean) => {
         onFinishedEditing(commitChanges === false ? undefined : currentValueRef.current)
       },
       [onFinishedEditing]
     )
+    const editorData = extractEditorData(value)
+    if (!editorData) return null
+
+    const { row, columnKey, columnMeta, isNullable, foreignKey } = editorData
     return (
       <EditorComponent
         row={row}
@@ -87,7 +87,17 @@ export function getGlideEditor(
   editorType: GridEditorType
 ): ProvideEditorCallbackResult<GridCell> | null {
   if (editorType === 'none') return null
-  if (editorType === 'enum') return wrappedEnumEditor
-  if (editorType === 'datetime') return wrappedDateTimeEditor
-  return wrappedNullableEditor
+
+  const editorByType: Partial<Record<GridEditorType, FunctionComponent<CustomEditorProps>>> = {
+    enum: wrappedEnumEditor,
+    datetime: wrappedDateTimeEditor,
+    text: wrappedNullableEditor,
+    fk: wrappedNullableEditor,
+  }
+
+  const editor = editorByType[editorType] ?? wrappedNullableEditor
+
+  return {
+    editor,
+  }
 }

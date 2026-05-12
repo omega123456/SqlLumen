@@ -10,9 +10,11 @@
   height: 100%;
   box-sizing: border-box;
   padding: 0;
+  gap: 4px;
+  overflow: visible;
 }
 
-/* FK trigger button inside the cell editor shell */
+/* FK trigger button inside Glide's native cell editor overlay */
 .fkTriggerButton {
   display: flex;
   align-self: center;
@@ -21,12 +23,12 @@
   width: 20px;
   height: 20px;
   min-width: 20px;
-  border-radius: 3px;
-  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gdg-border-color, transparent);
   background: transparent;
   cursor: pointer;
   padding: 0;
-  color: inherit;
+  color: var(--gdg-text-light, var(--on-surface-variant));
   flex-shrink: 0;
   transition:
     background-color 0.1s,
@@ -34,6 +36,7 @@
 }
 
 .fkTriggerButton:hover {
-  background: var(--fk-lookup-trigger-hover-bg);
-  border-color: var(--fk-lookup-trigger-hover-border-color);
+  background: rgba(var(--primary-rgb), 0.06);
+  border-color: var(--primary);
+  color: var(--primary);
 }

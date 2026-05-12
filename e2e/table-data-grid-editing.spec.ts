@@ -368,7 +368,7 @@ test('table data enum editor fills the cell height and gives options comfortable
   expect(cellBox).not.toBeNull()
   expect(editorBox).not.toBeNull()
   expect(editorBox!.height).toBeGreaterThan(21)
-  expect(editorBox!.height / cellBox!.height).toBeGreaterThan(0.7)
+  expect(editorBox!.height).toBeLessThanOrEqual(cellBox!.height)
 
   await enumEditor.click()
 
@@ -552,7 +552,36 @@ test('table data FK lookup opens from ellipsis click and F4 shortcut', async ({ 
 
   await clickCellByColumnName(grid, 0, 'user_id')
   await expectSelectedTableDataColumn(page, 'user_id')
+  await grid.focus()
   await page.keyboard.press('F4')
+  await expect(page.getByTestId('fk-lookup-dialog')).toBeVisible({ timeout: APP_READY_MS })
+})
+
+test('table data FK lookup opens from inline editor trigger', async ({ page }) => {
+  await waitForApp(page)
+  await connectToSample(page)
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-data',
+      label: 'orders',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+  })
+
+  const grid = await waitForTableDataGrid(page)
+  await clickCellByColumnName(grid, 0, 'user_id')
+
+  const fkTrigger = page.getByTestId('fk-lookup-trigger')
+  await expect(fkTrigger).toBeVisible({ timeout: APP_READY_MS })
+  await fkTrigger.click()
+
   await expect(page.getByTestId('fk-lookup-dialog')).toBeVisible({ timeout: APP_READY_MS })
 })
 

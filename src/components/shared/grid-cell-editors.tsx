@@ -146,73 +146,71 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
 
   return (
     <div ref={wrapperRef} className={styles.cellEditorWrapper}>
-      <div className="td-cell-editor-shell">
-        <TextInput
-          ref={inputRef}
-          variant="gridCell"
-          value={displayValue}
-          onChange={(e) => handleChange(e.target.value)}
-          onBlur={(e) => handleBlur(e.relatedTarget)}
-          onKeyDown={(e) => {
-            if (
-              e.key === 'F4' &&
-              !e.altKey &&
-              !e.ctrlKey &&
-              !e.metaKey &&
-              !e.shiftKey &&
-              foreignKey &&
-              fkLookup
-            ) {
-              e.preventDefault()
-              e.stopPropagation()
-              fkLookup.onFkLookup({
-                columnKey: fieldName,
-                currentValue: isNull ? null : value,
-                foreignKey: foreignKey,
-                rowData: row,
-                source: 'keyboard',
-              })
-              return
-            }
-            if (e.key === 'Tab' || e.key === 'Enter') {
-              // Commit and focus grid for navigation
-              onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
-              onClose(true, true)
-              e.preventDefault()
-              return
-            }
-            if (e.key === 'Escape') {
-              // Restore original value and sync to store
-              setIsNull(initialNull)
-              setValue(initialNull ? '' : String(initialValue ?? ''))
-              syncToStore(initialValue)
-              // Discard edit, don't refocus grid
-              onClose(false, false)
-              return
-            }
-          }}
+      <TextInput
+        ref={inputRef}
+        variant="gridCell"
+        value={displayValue}
+        onChange={(e) => handleChange(e.target.value)}
+        onBlur={(e) => handleBlur(e.relatedTarget)}
+        onKeyDown={(e) => {
+          if (
+            e.key === 'F4' &&
+            !e.altKey &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.shiftKey &&
+            foreignKey &&
+            fkLookup
+          ) {
+            e.preventDefault()
+            e.stopPropagation()
+            fkLookup.onFkLookup({
+              columnKey: fieldName,
+              currentValue: isNull ? null : value,
+              foreignKey: foreignKey,
+              rowData: row,
+              source: 'keyboard',
+            })
+            return
+          }
+          if (e.key === 'Tab' || e.key === 'Enter') {
+            // Commit and focus grid for navigation
+            onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
+            onClose(true, true)
+            e.preventDefault()
+            return
+          }
+          if (e.key === 'Escape') {
+            // Restore original value and sync to store
+            setIsNull(initialNull)
+            setValue(initialNull ? '' : String(initialValue ?? ''))
+            syncToStore(initialValue)
+            // Discard edit, don't refocus grid
+            onClose(false, false)
+            return
+          }
+        }}
+      />
+      {isNullable && (
+        <button
+          type="button"
+          className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={handleToggleNull}
+          tabIndex={-1}
+        >
+          NULL
+        </button>
+      )}
+      {foreignKey && fkLookup && (
+        <FkLookupTriggerButton
+          foreignKey={foreignKey}
+          columnKey={fieldName}
+          currentValue={row[fieldName]}
+          rowData={row}
+          className={styles.fkTriggerButton}
         />
-        {isNullable && (
-          <button
-            type="button"
-            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handleToggleNull}
-            tabIndex={-1}
-          >
-            NULL
-          </button>
-        )}
-        {foreignKey && fkLookup && (
-          <FkLookupTriggerButton
-            foreignKey={foreignKey}
-            columnKey={fieldName}
-            currentValue={row[fieldName]}
-            rowData={row}
-            className={styles.fkTriggerButton}
-          />
-        )}
-      </div>
+      )}
     </div>
   )
 }
@@ -360,71 +358,68 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
 
   return (
     <div ref={wrapperRef} className={styles.cellEditorWrapper}>
-      <div className="td-cell-editor-shell">
-        <Dropdown
-          ref={triggerRef}
-          id={`enum-cell-${fieldName}`}
-          ariaLabel={fieldName}
-          options={enumOptions}
-          value={isNull ? ENUM_NULL_SENTINEL : value}
-          onChange={(nextValue) => {
-            if (nextValue === ENUM_NULL_SENTINEL) {
-              setIsNull(true)
-              onRowChange({ ...row, [fieldName]: null })
-              syncToStore(null)
-              onClose(true, true)
-              return
-            }
-            handleChange(nextValue)
+      <Dropdown
+        ref={triggerRef}
+        id={`enum-cell-${fieldName}`}
+        ariaLabel={fieldName}
+        options={enumOptions}
+        value={isNull ? ENUM_NULL_SENTINEL : value}
+        onChange={(nextValue) => {
+          if (nextValue === ENUM_NULL_SENTINEL) {
+            setIsNull(true)
+            onRowChange({ ...row, [fieldName]: null })
+            syncToStore(null)
             onClose(true, true)
-          }}
-          onTriggerKeyDown={handleCommitKeys}
-          onListKeyDown={handleCommitKeys}
-          focusListOnOpen={false}
-          onTriggerBlur={(event) => {
-            const nextFocused = event.relatedTarget
+            return
+          }
+          handleChange(nextValue)
+          onClose(true, true)
+        }}
+        onTriggerKeyDown={handleCommitKeys}
+        onListKeyDown={handleCommitKeys}
+        focusListOnOpen={false}
+        onTriggerBlur={(event) => {
+          const nextFocused = event.relatedTarget
+          if (
+            nextFocused instanceof Node &&
+            (wrapperRef.current?.contains(nextFocused) || isDropdownPortalTarget(nextFocused))
+          ) {
+            return
+          }
+
+          queueMicrotask(() => {
+            const activeElement = document.activeElement
             if (
-              nextFocused instanceof Node &&
-              (wrapperRef.current?.contains(nextFocused) || isDropdownPortalTarget(nextFocused))
+              activeElement instanceof Node &&
+              (wrapperRef.current?.contains(activeElement) || isDropdownPortalTarget(activeElement))
             ) {
               return
             }
-
-            queueMicrotask(() => {
-              const activeElement = document.activeElement
-              if (
-                activeElement instanceof Node &&
-                (wrapperRef.current?.contains(activeElement) ||
-                  isDropdownPortalTarget(activeElement))
-              ) {
-                return
-              }
-              onClose(true, false)
-            })
-          }}
-          triggerClassName="td-cell-editor-select"
+            onClose(true, false)
+          })
+        }}
+        triggerClassName="td-cell-editor-select"
+      />
+      {isNullable && (
+        <button
+          type="button"
+          className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={handleToggleNull}
+          tabIndex={-1}
+        >
+          NULL
+        </button>
+      )}
+      {foreignKey && fkLookup && (
+        <FkLookupTriggerButton
+          foreignKey={foreignKey}
+          columnKey={fieldName}
+          currentValue={row[fieldName]}
+          rowData={row}
+          className={styles.fkTriggerButton}
         />
-        {isNullable && (
-          <button
-            type="button"
-            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handleToggleNull}
-            tabIndex={-1}
-          >
-            NULL
-          </button>
-        )}
-        {foreignKey && fkLookup && (
-          <FkLookupTriggerButton
-            foreignKey={foreignKey}
-            columnKey={fieldName}
-            currentValue={row[fieldName]}
-            rowData={row}
-            className={styles.fkTriggerButton}
-          />
-        )}
-      </div>
+      )}
     </div>
   )
 }

@@ -5,6 +5,9 @@ import { GridCellKind } from '@glideapps/glide-data-grid'
 import { CanvasBaseGridView } from '../../../../components/shared/glide/CanvasBaseGridView'
 
 const mockGlideDataGrid = vi.fn()
+const mockSelectCell = vi.fn()
+const mockScrollToCell = vi.fn()
+const mockScrollToOffset = vi.fn()
 
 vi.mock('../../../../components/shared/glide/GlideDataGrid', async () => {
   const React = await import('react')
@@ -12,8 +15,9 @@ vi.mock('../../../../components/shared/glide/GlideDataGrid', async () => {
     GlideDataGrid: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
       mockGlideDataGrid(props)
       React.useImperativeHandle(ref, () => ({
-        selectCell: vi.fn(),
-        scrollToCell: vi.fn(),
+        selectCell: mockSelectCell,
+        scrollToCell: mockScrollToCell,
+        scrollToOffset: mockScrollToOffset,
         element: null,
       }))
       return React.createElement('div', { 'data-testid': props['data-testid'] }, 'glide')
@@ -43,7 +47,12 @@ const foreignKey = {
   constraintName: 'fk_name_author',
 }
 
-beforeEach(() => mockGlideDataGrid.mockClear())
+beforeEach(() => {
+  mockGlideDataGrid.mockClear()
+  mockSelectCell.mockClear()
+  mockScrollToCell.mockClear()
+  mockScrollToOffset.mockClear()
+})
 
 function mockCanvasContext(): CanvasRenderingContext2D {
   return {
@@ -164,7 +173,7 @@ describe('CanvasBaseGridView', () => {
     expect(onSortChange).toHaveBeenLastCalledWith(null, null)
   })
 
-  it('row click triggers selection callback', () => {
+  it('row click triggers selection callback', async () => {
     const onCellSelectionChange = vi.fn()
     render(
       <CanvasBaseGridView
@@ -178,11 +187,14 @@ describe('CanvasBaseGridView', () => {
       onCellClicked: (cell: readonly [number, number], event: unknown) => void
     }
     act(() => props.onCellClicked([0, 0], {}))
-    expect(onCellSelectionChange).toHaveBeenCalledWith({
-      rowIdx: 0,
-      columnKey: 'name',
-      rowData: rows[0],
-    })
+    await waitFor(() =>
+      expect(onCellSelectionChange).toHaveBeenCalledWith({
+        rowIdx: 0,
+        columnKey: 'name',
+        rowData: rows[0],
+        source: 'grid-pointer',
+      })
+    )
   })
 
   it('context menu callback fires through context menu bridge', () => {
@@ -602,7 +614,10 @@ describe('CanvasBaseGridView', () => {
       provideEditor: (cell: unknown) => unknown
     }
     const cell = props.getCellContent([0, 0])
-    expect(props.provideEditor(cell)).toBeTypeOf('function')
+    const editorConfig = props.provideEditor(cell)
+    expect(editorConfig).toMatchObject({ editor: expect.any(Function) })
+    expect(editorConfig).not.toHaveProperty('disablePadding')
+    expect(editorConfig).not.toHaveProperty('disableStyling')
   })
 
   it('guards cell clicks and restores focus when navigation is denied', async () => {
@@ -648,14 +663,15 @@ describe('CanvasBaseGridView', () => {
       />
     )
     const props = mockGlideDataGrid.mock.lastCall?.[0] as {
-      onKeyDown: (event: { key: string; preventDefault: () => void }) => void
+      onKeyDown: (event: { key: string; preventDefault: () => void; cancel?: () => void }) => void
     }
     const preventDefault = vi.fn()
-    act(() => props.onKeyDown({ key: 'ArrowDown', preventDefault }))
+    const cancel = vi.fn()
+    act(() => props.onKeyDown({ key: 'ArrowDown', preventDefault, cancel }))
     expect(onSelectedRowChange).toHaveBeenCalledWith(rows[0], 0)
-    act(() => props.onKeyDown({ key: 'ArrowUp', preventDefault }))
+    act(() => props.onKeyDown({ key: 'ArrowUp', preventDefault, cancel }))
     expect(onSelectedRowChange).toHaveBeenCalledWith(rows[0], 0)
-    props.onKeyDown({ key: 'F4', preventDefault })
+    props.onKeyDown({ key: 'F4', preventDefault, cancel })
     await waitFor(() =>
       expect(onFkCellAction).toHaveBeenCalledWith({
         rowIdx: 0,
@@ -664,6 +680,127 @@ describe('CanvasBaseGridView', () => {
         source: 'keyboard',
       })
     )
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it('restores persisted scroll and does not replay the same offset after user scrolling', async () => {
+    vi.useFakeTimers()
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={columns}
+        editState={null}
+        initialScrollPosition={{ top: 7, left: 3 }}
+      />
+    )
+
+    await act(async () => {
+      vi.runAllTimers()
+      await Promise.resolve()
+    })
+
+    expect(mockScrollToOffset).toHaveBeenCalledTimes(1)
+    expect(mockScrollToOffset).toHaveBeenCalledWith({ left: 3, top: 7 })
+
+    const firstProps = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onVisibleRegionChanged: (range: unknown, tx: number, ty: number) => void
+    }
+
+    act(() => firstProps.onVisibleRegionChanged({}, 11, 22))
+
+    expect(mockScrollToOffset).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it('reapplies a new persisted scroll offset when tab state changes', async () => {
+    vi.useFakeTimers()
+    const { rerender } = render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={columns}
+        editState={null}
+        initialScrollPosition={{ top: 7, left: 3 }}
+      />
+    )
+
+    await act(async () => {
+      vi.runAllTimers()
+      await Promise.resolve()
+    })
+
+    const firstProps = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onVisibleRegionChanged: (range: unknown, tx: number, ty: number) => void
+    }
+    act(() => firstProps.onVisibleRegionChanged({}, 3, 7))
+
+    rerender(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={columns}
+        editState={null}
+        initialScrollPosition={{ top: 14, left: 9 }}
+      />
+    )
+
+    await act(async () => {
+      vi.runAllTimers()
+      await Promise.resolve()
+    })
+
+    expect(mockScrollToOffset).toHaveBeenCalledTimes(2)
+    expect(mockScrollToOffset).toHaveBeenLastCalledWith({ left: 9, top: 14 })
+    vi.useRealTimers()
+  })
+
+  it('uses the click guard during keyboard row navigation when requested', async () => {
+    const onCellClickGuard = vi.fn(async () => ({
+      proceed: true,
+      targetRowIdx: 0,
+      targetColIdx: 0,
+      enableEditor: true,
+    }))
+    const onCellSelectionChange = vi.fn()
+
+    render(
+      <CanvasBaseGridView
+        rows={[...rows, { id: 2, name: 'beta', info: 'SELECT 2' }]}
+        columns={[{ ...columns[0], editable: true }]}
+        editState={null}
+        selectedCellPosition={{ rowIdx: 0, idx: 0 }}
+        editableColumnKeys={new Set(['name'])}
+        runCellClickGuardOnKeyboardSelection={true}
+        onCellClickGuard={onCellClickGuard}
+        onCellSelectionChange={onCellSelectionChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onKeyDown: (event: { key: string; preventDefault: () => void; cancel?: () => void }) => void
+    }
+
+    const preventDefault = vi.fn()
+    const cancel = vi.fn()
+    act(() => props.onKeyDown({ key: 'ArrowDown', preventDefault, cancel }))
+
+    await waitFor(() =>
+      expect(onCellClickGuard).toHaveBeenCalledWith({
+        rowIdx: 1,
+        columnKey: 'name',
+        rowData: { id: 2, name: 'beta', info: 'SELECT 2' },
+        source: 'keyboard',
+      })
+    )
+    expect(onCellSelectionChange).toHaveBeenCalledWith({
+      rowIdx: 0,
+      columnKey: 'name',
+      rowData: rows[0],
+      source: 'keyboard',
+    })
+    expect(mockSelectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 0 },
+      { shouldFocusCell: true, enableEditor: true }
+    )
+    expect(cancel).toHaveBeenCalled()
   })
 
   it('uses the internal grid selection for F4 when the parent selected cell prop has not updated yet', async () => {

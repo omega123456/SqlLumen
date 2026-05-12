@@ -12,6 +12,7 @@ import {
   type Item,
   type Rectangle,
   type EditableGridCell,
+  type GridKeyEventArgs,
   type ProvideEditorCallback,
 } from '@glideapps/glide-data-grid'
 import { useElementSize } from '../../../hooks/use-element-size'
@@ -41,6 +42,8 @@ export type GlideDataGridProps<TRow> = {
   onCellContextMenu?: (cell: Item, event: CellClickedEventArgs) => void
   onCellClicked?: (cell: Item, event: CellClickedEventArgs) => void
   onCellDoubleClicked?: (cell: Item, event: CellClickedEventArgs) => void
+  onCellActivated?: (cell: Item) => void
+  onFinishedEditing?: (newValue: GridCell | undefined, movement: Item) => void
   selection?: GridSelection
   onSelectionChange?: (selection: GridSelection) => void
   onVisibleRegionChanged?: (range: Rectangle, tx: number, ty: number) => void
@@ -48,7 +51,7 @@ export type GlideDataGridProps<TRow> = {
   drawCell?: DrawCellCallback
   drawHeader?: DrawHeaderCallback
   className?: string
-  onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>
+  onKeyDown?: (event: GridKeyEventArgs) => void
   'aria-label'?: string
   'data-testid'?: string
 }
@@ -67,6 +70,8 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
     onCellContextMenu,
     onCellClicked,
     onCellDoubleClicked,
+    onCellActivated,
+    onFinishedEditing,
     selection,
     onSelectionChange,
     onVisibleRegionChanged,
@@ -113,11 +118,18 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
     ref,
     () => ({
       scrollToCell: (pos) => {
-        editorRef.current?.scrollTo(
-          { amount: pos.idx ?? 0, unit: 'px' },
-          { amount: pos.rowIdx ?? 0, unit: 'px' },
-          'both'
-        )
+        editorRef.current?.scrollTo(pos.idx ?? 0, pos.rowIdx ?? 0, 'both')
+      },
+      scrollToOffset: (offset) => {
+        const host = hostRef.current
+        const scroller = host?.querySelector<HTMLElement>('.dvn-scroller')
+        if (!scroller) return
+        if (typeof offset.left === 'number') {
+          scroller.scrollLeft = Math.max(0, offset.left)
+        }
+        if (typeof offset.top === 'number') {
+          scroller.scrollTop = Math.max(0, offset.top)
+        }
       },
       selectCell: (pos, options) => {
         const enableEditor = typeof options === 'object' ? options.enableEditor === true : false
@@ -153,12 +165,13 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
 
   const handleCellActivated = useCallback(
     (cell: Item) => {
+      onCellActivated?.(cell)
       const [col, row] = cell
       onCellDoubleClicked?.(cell, {
         bounds: editorRef.current?.getBounds(col, row),
       } as CellClickedEventArgs)
     },
-    [onCellDoubleClicked]
+    [onCellActivated, onCellDoubleClicked]
   )
 
   const hostClassName = className ? `glide-grid-host ${className}` : 'glide-grid-host'
@@ -176,11 +189,10 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
       data-testid={testId}
       data-glide-column-width={serializedColumnWidths}
       data-row-marker-width={String(rowMarkerWidth)}
-      role="grid"
-      aria-label={ariaLabel ?? testId ?? 'Data grid'}
-      tabIndex={0}
-      onKeyDown={onKeyDown}
-    >
+        role="grid"
+        aria-label={ariaLabel ?? testId ?? 'Data grid'}
+        tabIndex={0}
+      >
       {hasSize ? (
         <DataEditor
           ref={editorRef}
@@ -204,7 +216,9 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           onCellContextMenu={onCellContextMenu}
           onCellClicked={onCellClicked}
           onCellActivated={handleCellActivated}
+          onFinishedEditing={onFinishedEditing}
           onVisibleRegionChanged={onVisibleRegionChanged}
+          onKeyDown={onKeyDown}
           drawCell={drawCell}
           drawHeader={drawHeader}
           smoothScrollX={false}

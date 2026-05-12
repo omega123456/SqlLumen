@@ -101,6 +101,7 @@ describe('GlideDataGrid', () => {
     const onColumnResize = vi.fn()
     const onHeaderClicked = vi.fn()
     const onCellClicked = vi.fn()
+    const onKeyDown = vi.fn()
     render(
       <div style={{ width: 400, height: 300 }}>
         <GlideDataGrid
@@ -110,6 +111,7 @@ describe('GlideDataGrid', () => {
           onColumnResize={onColumnResize}
           onHeaderClicked={onHeaderClicked}
           onCellClicked={onCellClicked}
+          onKeyDown={onKeyDown}
         />
       </div>
     )
@@ -117,13 +119,16 @@ describe('GlideDataGrid', () => {
       onColumnResize: (column: unknown, width: number, index: number) => void
       onHeaderClicked: (index: number) => void
       onCellClicked: (cell: readonly [number, number], event: unknown) => void
+      onKeyDown: (event: { key: string }) => void
     }
     props.onColumnResize({}, 120, 0)
     props.onHeaderClicked(0)
     props.onCellClicked([0, 0], {})
+    props.onKeyDown({ key: 'ArrowDown' })
     expect(onColumnResize).toHaveBeenCalledWith(0, 120)
     expect(onHeaderClicked).toHaveBeenCalledWith(0)
     expect(onCellClicked).toHaveBeenCalledWith([0, 0], {})
+    expect(onKeyDown).toHaveBeenCalledWith({ key: 'ArrowDown' })
   })
 
   it('exposes scrolling, focus, and element through the grid handle', () => {
@@ -143,11 +148,18 @@ describe('GlideDataGrid', () => {
     )
 
     ref.current?.scrollToCell({ rowIdx: 4 })
-    expect(mockScrollTo).toHaveBeenCalledWith(
-      { amount: 0, unit: 'px' },
-      { amount: 4, unit: 'px' },
-      'both'
-    )
+    expect(mockScrollTo).toHaveBeenCalledWith(0, 4, 'both')
+
+    const host = screen.getByTestId('handle-grid')
+    const scroller = document.createElement('div')
+    scroller.className = 'dvn-scroller'
+    Object.defineProperty(scroller, 'scrollLeft', { configurable: true, value: 0, writable: true })
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: 0, writable: true })
+    host.appendChild(scroller)
+
+    ref.current?.scrollToOffset?.({ left: 15, top: 28 })
+    expect(scroller.scrollLeft).toBe(15)
+    expect(scroller.scrollTop).toBe(28)
 
     ref.current?.selectCell({ idx: 2, rowIdx: 3 })
     expect(mockScrollTo).toHaveBeenCalledWith(2, 3, 'both')
@@ -184,6 +196,25 @@ describe('GlideDataGrid', () => {
     expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ key: 'Enter' }))
     dispatchSpy.mockRestore()
     vi.useRealTimers()
+  })
+
+  it('passes custom editor callbacks through without Glide overlay chrome', () => {
+    const provideEditor = vi.fn()
+
+    render(
+      <GlideDataGrid
+        columns={[{ title: 'Id', width: 80 }]}
+        rows={[{ id: 1 }]}
+        getCellContent={vi.fn()}
+        provideEditor={provideEditor}
+      />
+    )
+
+    const props = mockDataEditor.mock.lastCall?.[0] as {
+      provideEditor: typeof provideEditor
+    }
+
+    expect(props.provideEditor).toBe(provideEditor)
   })
 
   it('maps cell activation to double-click with current bounds', () => {

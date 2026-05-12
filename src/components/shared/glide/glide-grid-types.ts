@@ -76,6 +76,7 @@ export interface GridCellPosition {
 /** Imperative handle exposed by SqlLumen grid components. */
 export interface GridHandle {
   scrollToCell: (pos: Partial<GridCellPosition>) => void
+  scrollToOffset?: (offset: { left?: number; top?: number }) => void
   selectCell: (
     pos: GridCellPosition,
     options?: boolean | { enableEditor?: boolean | null; shouldFocusCell?: boolean | null }
