@@ -82,6 +82,7 @@ export function BaseFormView({
   onDiscard,
   readOnly,
   testId = 'base-form-view',
+  workspaceTabId,
   ...rest
 }: BaseFormViewProps) {
   /** Whether the form has edit capability (onSave is the primary signal). */
@@ -278,6 +279,7 @@ export function BaseFormView({
               onInputChange={handleInputChange}
               onNullToggle={handleNullToggle}
               onCopy={handleCopy}
+              workspaceTabId={workspaceTabId}
             />
           ))}
         </div>
@@ -306,6 +308,7 @@ interface FormFieldProps {
   onInputChange: (colKey: string, value: unknown) => void
   onNullToggle: (col: GridColumnDescriptor, colIdx: number) => void
   onCopy: (value: unknown) => void
+  workspaceTabId?: string
 }
 
 function FormField({
@@ -324,6 +327,7 @@ function FormField({
   onInputChange,
   onNullToggle,
   onCopy,
+  workspaceTabId,
 }: FormFieldProps) {
   // Determine the value to display (edit state overlays raw row data)
   const rawValue =
@@ -522,6 +526,7 @@ function FormField({
             onSetOpenPickerState(null)
           }}
           onCancel={() => onSetOpenPickerState(null)}
+          workspaceTabId={workspaceTabId}
         />
       )}
 

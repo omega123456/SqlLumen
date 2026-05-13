@@ -2,7 +2,7 @@
  * Main query editor workspace tab — vertical split layout with
  * editor (top) and results panel (bottom).
  *
- * The AI assistant chat lives in `WorkspaceAiResizableRow` (resizable split
+ * The AI assistant chat lives in `WorkspaceBody` (resizable split
  * on the right of the workspace), not in this component.
  *
  * Does NOT call evict_results on unmount because tab switching
@@ -14,6 +14,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels'
 import type { QueryEditorTab as QueryEditorTabType } from '../../types/schema'
 import { useQueryStore } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
 import { MonacoEditorWrapper } from './MonacoEditorWrapper'
 import { EditorToolbar } from './EditorToolbar'
 import { ResultPanel } from './ResultPanel'
@@ -33,24 +34,36 @@ import styles from './QueryEditorTab.module.css'
 
 interface QueryEditorTabProps {
   tab: QueryEditorTabType
+  isActive?: boolean
 }
 
-export function QueryEditorTab({ tab }: QueryEditorTabProps) {
+export function QueryEditorTab({ tab, isActive = true }: QueryEditorTabProps) {
   const [diffOverlayState, setDiffOverlayState] = useState<DiffOverlayState>(DIFF_OVERLAY_INITIAL)
   const editorRef = useRef<MonacoType.editor.IStandaloneCodeEditor | null>(null)
+  const wasActiveRef = useRef(isActive)
 
   const status = useQueryStore((state) => state.tabs[tab.id]?.tabStatus ?? 'idle')
 
-  const handleEditorMount = useCallback((editor: MonacoType.editor.IStandaloneCodeEditor) => {
-    editorRef.current = editor
-    editor.focus()
-  }, [])
+  const setLastFocusedSurface = useWorkspaceStore((state) => state.setLastFocusedSurface)
+  const lastFocusedSurface = useWorkspaceStore((state) => state.lastFocusedSurfaceByTab[tab.id])
+
+  const handleEditorMount = useCallback(
+    (editor: MonacoType.editor.IStandaloneCodeEditor) => {
+      editorRef.current = editor
+      editor.onDidFocusEditorWidget?.(() => setLastFocusedSurface(tab.id, 'editor'))
+      if (isActive) {
+        editor.focus()
+      }
+    },
+    [isActive, setLastFocusedSurface, tab.id]
+  )
 
   /** Explicitly relayout the Monaco editor when the panel is resized so
    *  overlay widgets (suggest popup, parameter hints) know the new viewport. */
   const handleEditorPanelResize = useCallback(() => {
+    if (!isActive) return
     editorRef.current?.layout()
-  }, [])
+  }, [isActive])
 
   /** Open the diff overlay to compare original vs AI-proposed SQL. */
   const handleTriggerDiff = useCallback(
@@ -90,18 +103,38 @@ export function QueryEditorTab({ tab }: QueryEditorTabProps) {
   /** When the workspace AI chat opens/closes or the split is dragged, relayout Monaco. */
   const isPanelOpen = useAiStore((s) => s.tabs[tab.id]?.isPanelOpen ?? false)
   useEffect(() => {
+    if (!isActive) return
     editorRef.current?.layout()
-  }, [isPanelOpen])
+  }, [isActive, isPanelOpen])
+
+  useEffect(() => {
+    if (!isActive) {
+      wasActiveRef.current = false
+      return
+    }
+    if (wasActiveRef.current) return
+    wasActiveRef.current = true
+
+    if (lastFocusedSurface === 'ai-input') {
+      const host = document.querySelector<HTMLElement>(
+        `[data-testid="workspace-ai-panel-host"][data-tab-id="${tab.id}"]`
+      )
+      host?.querySelector<HTMLElement>('[data-testid="ai-chat-textarea"]')?.focus()
+      return
+    }
+    editorRef.current?.focus()
+  }, [isActive, lastFocusedSurface, tab.id])
 
   useEffect(() => {
     const onWorkspaceResize = () => {
+      if (!isActive) return
       editorRef.current?.layout()
     }
     window.addEventListener(WORKSPACE_LAYOUT_EVENT, onWorkspaceResize)
     return () => {
       window.removeEventListener(WORKSPACE_LAYOUT_EVENT, onWorkspaceResize)
     }
-  }, [])
+  }, [isActive])
 
   const editorContent = (
     <MonacoEditorWrapper
@@ -138,7 +171,7 @@ export function QueryEditorTab({ tab }: QueryEditorTabProps) {
             <div className={styles.resizePill} />
           </Separator>
           <Panel defaultSize="40%" minSize="15%" className={styles.resultPanel}>
-            <ResultPanel tabId={tab.id} connectionId={tab.connectionId} />
+            <ResultPanel tabId={tab.id} connectionId={tab.connectionId} isActive={isActive} />
           </Panel>
         </Group>
       </div>

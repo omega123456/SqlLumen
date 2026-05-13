@@ -1,7 +1,8 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Dropdown } from '../../../components/common/Dropdown'
+import { dispatchWorkspaceTabDeactivated } from '../../../lib/workspace-tab-activity-events'
 
 describe('Dropdown', () => {
   afterEach(() => {
@@ -535,5 +536,61 @@ describe('Dropdown', () => {
     await user.click(screen.getByRole('option', { name: 'Beta' }))
 
     expect(onChange).toHaveBeenCalledWith('b')
+  })
+
+  it('closes when its owning workspace tab deactivates', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <>
+        <span id="lb-workspace-close">Pick</span>
+        <Dropdown
+          id="d-workspace-close"
+          labelledBy="lb-workspace-close"
+          options={options}
+          value=""
+          onChange={vi.fn()}
+          workspaceTabId="workspace-tab-1"
+        />
+      </>
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Pick' }))
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+
+    act(() => {
+      dispatchWorkspaceTabDeactivated('workspace-tab-1', 'conn-1')
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    })
+  })
+
+  it('ignores workspace tab deactivation events for other tabs', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <>
+        <span id="lb-workspace-ignore">Pick</span>
+        <Dropdown
+          id="d-workspace-ignore"
+          labelledBy="lb-workspace-ignore"
+          options={options}
+          value=""
+          onChange={vi.fn()}
+          workspaceTabId="workspace-tab-1"
+        />
+      </>
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Pick' }))
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+
+    act(() => {
+      dispatchWorkspaceTabDeactivated('workspace-tab-2', 'conn-1')
+    })
+
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
   })
 })

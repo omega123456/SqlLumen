@@ -16,6 +16,8 @@ import { useTableDesignerStore } from './table-designer-store'
 import { useObjectEditorStore } from './object-editor-store'
 import { useAiStore } from './ai-store'
 
+export type WorkspaceFocusSurface = 'editor' | 'ai-input'
+
 // ---------------------------------------------------------------------------
 // Tab ID generation
 // ---------------------------------------------------------------------------
@@ -48,6 +50,9 @@ interface WorkspaceState {
   /** Active tab ID per connection. */
   activeTabByConnection: Record<string, string | null>
 
+  lastFocusedSurfaceByTab: Record<string, WorkspaceFocusSurface>
+  blockingNavigationByTab: Record<string, boolean>
+
   // Actions
   openTab: (tab: OpenableTab) => void
   openQueryTab: (connectionId: string, label?: string) => string
@@ -56,6 +61,9 @@ interface WorkspaceState {
   closeTab: (connectionId: string, tabId: string) => void
   forceCloseTab: (connectionId: string, tabId: string) => void
   setActiveTab: (connectionId: string, tabId: string) => void
+  requestActivateTab: (tabId: string) => void
+  setLastFocusedSurface: (tabId: string, surface: WorkspaceFocusSurface) => void
+  setBlockingNavigation: (tabId: string, blocking: boolean) => void
   renameQueryTab: (connectionId: string, tabId: string, nextLabel: string) => void
   reorderWorkspaceTab: (connectionId: string, tabId: string, insertIndex: number) => void
   closeTabsByDatabase: (connectionId: string, databaseName: string) => void
@@ -176,6 +184,8 @@ function isPinnedWorkspaceTab(tab: WorkspaceTab): boolean {
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   tabsByConnection: {},
   activeTabByConnection: {},
+  lastFocusedSurfaceByTab: {},
+  blockingNavigationByTab: {},
 
   // ------ openTab (with dedup for object-scoped tabs) ------
 
@@ -551,6 +561,45 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       activeTabByConnection: {
         ...state.activeTabByConnection,
         [connectionId]: tabId,
+      },
+    }))
+  },
+
+  requestActivateTab: (tabId: string) => {
+    const state = get()
+    const connectionEntry = Object.entries(state.tabsByConnection).find(([, tabs]) =>
+      tabs.some((tab) => tab.id === tabId)
+    )
+    if (!connectionEntry) return
+
+    const [connectionId] = connectionEntry
+    const currentActiveTabId = state.activeTabByConnection[connectionId] ?? null
+    if (currentActiveTabId && state.blockingNavigationByTab[currentActiveTabId]) {
+      return
+    }
+
+    set((s) => ({
+      activeTabByConnection: {
+        ...s.activeTabByConnection,
+        [connectionId]: tabId,
+      },
+    }))
+  },
+
+  setLastFocusedSurface: (tabId: string, surface: WorkspaceFocusSurface) => {
+    set((state) => ({
+      lastFocusedSurfaceByTab: {
+        ...state.lastFocusedSurfaceByTab,
+        [tabId]: surface,
+      },
+    }))
+  },
+
+  setBlockingNavigation: (tabId: string, blocking: boolean) => {
+    set((state) => ({
+      blockingNavigationByTab: {
+        ...state.blockingNavigationByTab,
+        [tabId]: blocking,
       },
     }))
   },

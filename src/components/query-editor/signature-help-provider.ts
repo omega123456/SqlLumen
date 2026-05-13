@@ -13,7 +13,7 @@ import type { editor, Position, CancellationToken } from 'monaco-editor'
 import { getBuiltinSignature } from './builtin-function-signatures'
 import { getRoutineParameters } from './routine-parameter-cache'
 import type { RoutineParameterCacheEntry } from './routine-parameter-cache'
-import { getCache, getPendingLoad, loadCache } from './schema-metadata-cache'
+import { getCache, getPendingLoad } from './schema-metadata-cache'
 import { getModelConnectionId, getSelectedDatabase } from './completion-service'
 import { splitStatements, findStatementAtCursor } from './sql-parser-utils'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -521,12 +521,7 @@ async function provideSignatureHelp(
   if (pending) await pending
   if (token.isCancellationRequested) return undefined
 
-  let cache = getCache(connectionId)
-  if (cache.status === 'empty') {
-    // Await the cache load so the first `(` keystroke can still return a result
-    await loadCache(connectionId)
-    cache = getCache(connectionId)
-  }
+  const cache = getCache(connectionId)
   if (token.isCancellationRequested) return undefined
 
   // Search databases in order: sessionDb → profileDb → schemaTreeDb

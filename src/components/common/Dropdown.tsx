@@ -15,6 +15,7 @@ import {
 } from 'react'
 import { CaretDown, Check } from '@phosphor-icons/react'
 import { createPortal } from 'react-dom'
+import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
 
 export interface DropdownOption {
   value: string
@@ -75,6 +76,7 @@ type CommonDropdownProps = DropdownLabelProps & {
   listAriaLabel?: string
   renderTriggerValue?: (selectedOptions: DropdownOption[]) => ReactNode
   renderOptionLabel?: (option: DropdownOption, context: DropdownRenderContext) => ReactNode
+  workspaceTabId?: string
 }
 
 type SingleSelectDropdownProps = CommonDropdownProps & {
@@ -206,6 +208,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
       closeOnSelect = !isMultiSelect(props),
       focusListOnOpen = true,
       listAriaLabel,
+      workspaceTabId,
     } = props
 
     const { onClick: triggerOnClick, ...triggerRest } = triggerProps ?? {}
@@ -343,6 +346,14 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
         resetTypeahead()
       }
     }, [resetTypeahead])
+
+    useEffect(() => {
+      if (!workspaceTabId) {
+        return
+      }
+
+      return subscribeToTabDeactivated(workspaceTabId, close)
+    }, [close, workspaceTabId])
 
     const isWithinDropdownTarget = (target: EventTarget | null): boolean =>
       target instanceof Node &&

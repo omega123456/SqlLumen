@@ -256,6 +256,8 @@ pub fn run() {
             commands::schema::drop_table,
             commands::schema::truncate_table,
             commands::schema::rename_table,
+            commands::schema_cache::load_schema_cache_snapshot,
+            commands::schema_cache::save_schema_cache_snapshot,
             commands::table_designer::load_table_for_designer,
             commands::table_designer::generate_table_ddl,
             commands::table_designer::apply_table_ddl,

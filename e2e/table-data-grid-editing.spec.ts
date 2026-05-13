@@ -12,6 +12,10 @@ import {
   waitForApp,
 } from './helpers'
 
+function activePanel(page: Page) {
+  return page.locator('[data-testid="workspace-panel"][data-active="true"]')
+}
+
 async function expectCellValue(
   page: Page,
   gridTestId: 'table-data-grid' | 'result-grid',
@@ -113,11 +117,11 @@ async function openTableDataTab(page: Page) {
     })
   })
 
-  await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
+  await expect(activePanel(page).getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('pagination-page-input')).toHaveValue('1', {
     timeout: APP_READY_MS,
   })
-  await expect(page.getByTestId('table-data-grid')).toBeVisible({
+  await expect(activePanel(page).getByTestId('table-data-grid')).toBeVisible({
     timeout: APP_READY_MS,
   })
 }
@@ -125,8 +129,8 @@ async function openTableDataTab(page: Page) {
 async function openQueryEditorWithResults(page: Page) {
   await connectToSample(page)
   await page.getByTestId('new-query-tab-button').click()
-  await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('editor-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('editor-toolbar')).toBeVisible({ timeout: APP_READY_MS })
 
   await page.evaluate(() => {
     const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
@@ -146,17 +150,17 @@ async function openQueryEditorWithResults(page: Page) {
     qStore.getState().setContent(queryTab.id, 'SELECT * FROM users;')
   })
 
-  await expect(page.getByTestId('toolbar-execute-all')).toBeEnabled({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('toolbar-execute-all')).toBeEnabled({ timeout: APP_READY_MS })
   await page.keyboard.press('F9')
-  await expect(page.getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
-  const editModeDropdown = page.getByTestId('edit-mode-dropdown')
+  await expect(activePanel(page).getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
+  const editModeDropdown = activePanel(page).getByTestId('edit-mode-dropdown')
   await expect(editModeDropdown).toBeVisible({ timeout: APP_READY_MS })
   await editModeDropdown.click()
   await expect(page.getByRole('option')).toHaveCount(2, { timeout: APP_READY_MS })
   await page.getByRole('option').nth(1).click()
   await expect(editModeDropdown).not.toHaveText('Read Only', { timeout: APP_READY_MS })
-  await expect(page.getByTestId('result-grid')).toBeVisible({
+  await expect(activePanel(page).getByTestId('result-grid')).toBeVisible({
     timeout: APP_READY_MS,
   })
 }

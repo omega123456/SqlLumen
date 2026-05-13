@@ -1,11 +1,15 @@
 import { test, expect, type Page } from '@playwright/test'
 import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
 
+function activePanel(page: Page) {
+  return page.locator('[data-testid="workspace-panel"][data-active="true"]')
+}
+
 async function openQueryEditorTab(page: Page) {
   await connectToSample(page)
   await page.getByTestId('new-query-tab-button').click()
-  await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.getByTestId('editor-toolbar')).toBeVisible()
+  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('editor-toolbar')).toBeVisible()
 }
 
 /** Set SQL content in the active query tab and wait for React to re-render. */

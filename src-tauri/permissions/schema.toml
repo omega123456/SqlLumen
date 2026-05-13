@@ -87,3 +87,15 @@ identifier = "allow-get-table-foreign-keys"
 description = "Enables the get_table_foreign_keys command without any pre-configured scope."
 commands.allow = ["get_table_foreign_keys"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-load-schema-cache-snapshot"
+description = "Enables the load_schema_cache_snapshot command without any pre-configured scope."
+commands.allow = ["load_schema_cache_snapshot"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-save-schema-cache-snapshot"
+description = "Enables the save_schema_cache_snapshot command without any pre-configured scope."
+commands.allow = ["save_schema_cache_snapshot"]
+commands.deny = []

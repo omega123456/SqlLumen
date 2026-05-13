@@ -79,6 +79,7 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
           connectionId={null}
           disabled
           placeholder="Embedding model required — configure in AI Settings"
+          workspaceTabId={tabId}
         />
       </div>
     )
@@ -109,6 +110,7 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
         connectionId={connectionId}
         suggestionText={suggestionText}
         onSuggestionConsumed={handleSuggestionConsumed}
+        workspaceTabId={tabId}
       />
     </div>
   )

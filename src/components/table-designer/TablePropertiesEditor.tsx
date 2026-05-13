@@ -249,6 +249,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
               value={properties.engine}
               data-testid="table-properties-engine"
               onChange={(v) => handlePropertyChange('engine', v)}
+              workspaceTabId={tabId}
               triggerClassName={styles.control}
             />
           </div>
@@ -266,6 +267,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
               disabled={isCharsetsLoading}
               data-testid="table-properties-charset"
               onChange={(v) => handlePropertyChange('charset', v)}
+              workspaceTabId={tabId}
               triggerClassName={styles.control}
             />
           </div>
@@ -285,6 +287,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
               disabled={isCollationsLoading || !selectedCharset}
               data-testid="table-properties-collation"
               onChange={(v) => handlePropertyChange('collation', v)}
+              workspaceTabId={tabId}
               triggerClassName={styles.control}
             />
           </div>
@@ -320,6 +323,7 @@ export function TablePropertiesEditor({ tabId, connectionId }: TablePropertiesEd
               value={properties.rowFormat}
               data-testid="table-properties-row-format"
               onChange={(v) => handlePropertyChange('rowFormat', v)}
+              workspaceTabId={tabId}
               triggerClassName={styles.control}
             />
           </div>

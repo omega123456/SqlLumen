@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { AiChatInput } from '../../../components/ai-panel/AiChatInput'
@@ -7,6 +7,7 @@ import { useAiStore } from '../../../stores/ai-store'
 import type { TabAiState } from '../../../stores/ai-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import * as slashCommandsModule from '../../../lib/slash-commands'
+import { dispatchWorkspaceTabDeactivated } from '../../../lib/workspace-tab-activity-events'
 
 function setupMockIPC() {
   mockIPC((cmd) => {
@@ -466,6 +467,43 @@ describe('AiChatInput', () => {
       expect(screen.queryByTestId('slash-command-dropdown')).not.toBeInTheDocument()
     })
     expect(textarea.value).toBe('/')
+  })
+
+  it('dismisses slash command dropdown when its workspace tab deactivates', async () => {
+    const user = userEvent.setup()
+    render(<AiChatInput tabId="tab-1" connectionId="conn-1" workspaceTabId="workspace-tab-1" />)
+
+    const textarea = screen.getByTestId('ai-chat-textarea') as HTMLTextAreaElement
+    await user.type(textarea, '/')
+    await waitFor(() => {
+      expect(screen.getByTestId('slash-command-dropdown')).toBeInTheDocument()
+    })
+
+    act(() => {
+      dispatchWorkspaceTabDeactivated('workspace-tab-1', 'conn-1')
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('slash-command-dropdown')).not.toBeInTheDocument()
+    })
+    expect(textarea.value).toBe('/')
+  })
+
+  it('keeps slash command dropdown open when another workspace tab deactivates', async () => {
+    const user = userEvent.setup()
+    render(<AiChatInput tabId="tab-1" connectionId="conn-1" workspaceTabId="workspace-tab-1" />)
+
+    const textarea = screen.getByTestId('ai-chat-textarea')
+    await user.type(textarea, '/')
+    await waitFor(() => {
+      expect(screen.getByTestId('slash-command-dropdown')).toBeInTheDocument()
+    })
+
+    act(() => {
+      dispatchWorkspaceTabDeactivated('workspace-tab-2', 'conn-1')
+    })
+
+    expect(screen.getByTestId('slash-command-dropdown')).toBeInTheDocument()
   })
 
   it('submitting "/remember some text" calls execute, not sendMessage', async () => {

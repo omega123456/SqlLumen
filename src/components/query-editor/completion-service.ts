@@ -21,7 +21,7 @@ import type { editor, Position } from 'monaco-editor'
 import type { CompletionService, ICompletionItem, CompletionSnippet } from 'monaco-sql-languages'
 import type { Suggestions, EntityContext } from 'monaco-sql-languages'
 import { EntityContextType } from 'monaco-sql-languages'
-import { getCache, getPendingLoad, loadCache } from './schema-metadata-cache'
+import { getCache, getPendingLoad } from './schema-metadata-cache'
 import { buildAliasMap, buildAliasMapFromText, stripQuotes } from './alias-resolver'
 import type { AliasMap } from './alias-resolver'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -668,13 +668,6 @@ export const completionService: CompletionService = async (
     const pendingLoad = getPendingLoad(connectionId)
     if (pendingLoad) {
       await pendingLoad
-    }
-    const earlyCache = getCache(connectionId)
-    // If the cache is still empty (useEffect hasn't fired loadCache yet),
-    // trigger a load now and await it. This prevents a race where the
-    // completionService fires before React's useEffect schedules the load.
-    if (earlyCache.status === 'empty') {
-      await loadCache(connectionId)
     }
   }
 

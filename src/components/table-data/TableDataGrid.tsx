@@ -67,9 +67,10 @@ function findRowIndexByKey(
 interface TableDataGridProps {
   tabId: string
   isReadOnly: boolean
+  isActive?: boolean
 }
 
-export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
+export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataGridProps) {
   const gridRef = useRef<GridHandle | null>(null)
 
   // ---------------------------------------------------------------------------
@@ -819,6 +820,7 @@ export function TableDataGrid({ tabId, isReadOnly }: TableDataGridProps) {
           scrollToRowIndex={editState?.isNewRow ? rows.length - 1 : null}
           onFkCellAction={handleFkCellAction}
           testId="table-data-grid"
+          isActive={isActive}
         />
         {fkLookupOpen && fkLookupContext && (
           <FkLookupDialog

@@ -25,6 +25,7 @@ import { showErrorToast, showSuccessToast } from './toast-store'
 import { invalidateCache } from '../components/query-editor/schema-metadata-cache'
 import { invalidateRoutineCache } from '../components/query-editor/routine-parameter-cache'
 import { hasTauriApis } from '../lib/tauri-env'
+import { bootstrapSchemaCache } from '../lib/schema-cache-bootstrap'
 
 import { logFrontend } from '../lib/app-log-commands'
 let listenersSetup = false
@@ -119,6 +120,14 @@ export const useConnectionStore = create<ConnectionState>()((set, get) => ({
       useWorkspaceStore.getState().openHistoryTab(result.sessionId, false)
       useWorkspaceStore.getState().openProcessListTab(result.sessionId)
       showSuccessToast('Connected', profile.name)
+
+      bootstrapSchemaCache(result.sessionId).catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        logFrontend(
+          'warn',
+          ['[connection-store] Schema cache bootstrap failed:', msg].map(String).join(' ')
+        )
+      })
 
       // Register session for schema index and trigger initial build (fire-and-forget)
       const schemaIndexStore = useSchemaIndexStore.getState()

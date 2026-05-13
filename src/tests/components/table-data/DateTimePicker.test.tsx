@@ -55,6 +55,7 @@ vi.mock('react-datepicker/dist/react-datepicker.css', () => ({}))
 
 import { DateTimePicker } from '../../../components/table-data/DateTimePicker'
 import type { TemporalColumnType } from '../../../lib/date-utils'
+import { dispatchWorkspaceTabDeactivated } from '../../../lib/workspace-tab-activity-events'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -86,6 +87,7 @@ function renderPicker(
     disabled: boolean
     onApply: (v: string) => void
     onCancel: () => void
+    workspaceTabId: string
   }> = {}
 ) {
   const props = {
@@ -263,6 +265,28 @@ describe('DateTimePicker', () => {
     // Click outside the popup
     fireEvent.mouseDown(document.body)
     expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls onCancel when its owning workspace tab deactivates', () => {
+    const onCancel = vi.fn()
+    renderPicker({ onCancel, workspaceTabId: 'workspace-tab-1' })
+
+    act(() => {
+      dispatchWorkspaceTabDeactivated('workspace-tab-1', 'conn-1')
+    })
+
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores workspace tab deactivation events for other tabs', () => {
+    const onCancel = vi.fn()
+    renderPicker({ onCancel, workspaceTabId: 'workspace-tab-1' })
+
+    act(() => {
+      dispatchWorkspaceTabDeactivated('workspace-tab-2', 'conn-1')
+    })
+
+    expect(onCancel).not.toHaveBeenCalled()
   })
 
   // ---- Time input ----

@@ -156,6 +156,7 @@ export interface BaseGridViewProps {
   scrollToRowIndex?: number | null
   onFkCellAction?: (args: CellClickGuardArgs) => void | Promise<void>
   showInfoColumn?: boolean
+  isActive?: boolean
 
   // Optional insert/delete capabilities (table-data exposes these, query-editor does not)
   onInsertRow?: () => void
@@ -211,6 +212,9 @@ interface BaseFormViewCommonProps {
   onDeleteRow?: (rowKey: string) => void
   canInsert?: boolean
   canDelete?: boolean
+
+  /** Passed to portal controls (DateTimePicker, Dropdown) so they auto-dismiss on tab deactivation. */
+  workspaceTabId?: string
 }
 
 export interface KnownTotalBaseFormViewProps extends BaseFormViewCommonProps {

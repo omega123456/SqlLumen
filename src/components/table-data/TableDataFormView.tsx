@@ -7,9 +7,10 @@
  * here (BaseFormView is store-free and toast-free).
  */
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTableDataStore, isSameRowKey } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useToastStore } from '../../stores/toast-store'
 import { getTemporalValidationResult } from '../../lib/table-data-save-utils'
 import { buildForeignKeyLookup } from '../../lib/foreign-key-utils'
@@ -85,9 +86,10 @@ function toGridColumns(columns: TableDataColumnMeta[]): GridColumnDescriptor[] {
 export interface TableDataFormViewProps {
   tabId: string
   isView?: boolean
+  isActive?: boolean
 }
 
-export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
+export function TableDataFormView({ tabId, isView, isActive = true }: TableDataFormViewProps) {
   const tabState = useTableDataStore((state) => state.tabs[tabId])
   const startEditing = useTableDataStore((state) => state.startEditing)
   const updateCellValue = useTableDataStore((state) => state.updateCellValue)
@@ -96,6 +98,7 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
   const requestNavigationAction = useTableDataStore((state) => state.requestNavigationAction)
   const fetchPage = useTableDataStore((state) => state.fetchPage)
   const setSelectedRow = useTableDataStore((state) => state.setSelectedRow)
+  const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
 
   // Connection read-only check
   const connectionId = tabState?.connectionId ?? ''
@@ -329,6 +332,7 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
 
   const onFkLookup = useCallback(
     async (args: FkLookupArgs) => {
+      if (!isActive) return
       if (!currentRowKey) return
 
       if (storeEditState && !isSameRowKey(storeEditState.rowKey, currentRowKey)) {
@@ -346,8 +350,23 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
       })
       setFkLookupOpen(true)
     },
-    [currentRowKey, storeEditState, saveCurrentRow, tabId, setSelectedRow]
+    [isActive, currentRowKey, storeEditState, saveCurrentRow, tabId, setSelectedRow]
   )
+
+  const closeFkLookup = useCallback(() => {
+    setFkLookupOpen(false)
+    setFkLookupContext(null)
+  }, [])
+
+  useEffect(() => {
+    setBlockingNavigation(tabId, fkLookupOpen)
+    return () => setBlockingNavigation(tabId, false)
+  }, [fkLookupOpen, setBlockingNavigation, tabId])
+
+  useEffect(() => {
+    if (isActive) return
+    queueMicrotask(closeFkLookup)
+  }, [closeFkLookup, isActive])
 
   const onFkApply = useCallback(
     (selectedValue: unknown) => {
@@ -360,7 +379,7 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
         selectedValue === fkLookupContext.currentValue &&
         (!alreadyEditing || currentEdit.modifiedColumns.size === 0)
       ) {
-        setFkLookupOpen(false)
+        closeFkLookup()
         return
       }
 
@@ -378,7 +397,7 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
           selectedValue,
           currentRowKey
         )
-      setFkLookupOpen(false)
+      closeFkLookup()
     },
     [
       fkLookupContext,
@@ -387,6 +406,7 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
       tabId,
       ensureEditingCurrentRow,
       updateCellValue,
+      closeFkLookup,
     ]
   )
 
@@ -410,11 +430,12 @@ export function TableDataFormView({ tabId, isView }: TableDataFormViewProps) {
         onDiscard={isEditable ? onDiscard : undefined}
         readOnly={!isEditable}
         testId="table-data-form-view"
+        workspaceTabId={tabId}
       />
       {fkLookupOpen && fkLookupContext && tabState && (
         <FkLookupDialog
           isOpen={fkLookupOpen}
-          onClose={() => setFkLookupOpen(false)}
+          onClose={closeFkLookup}
           onApply={onFkApply}
           connectionId={tabState.connectionId}
           database={fkLookupContext.foreignKey.referencedDatabase || tabState.database}

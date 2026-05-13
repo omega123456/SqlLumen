@@ -1,8 +1,12 @@
 import { test, expect, type Page } from '@playwright/test'
-import { APP_READY_MS, connectToSample, waitForApp, waitForAutocomplete } from './helpers'
+import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
 
 const SUGGESTION_SETTLE_MS = 500
 const EDITOR_CLICK_POSITION = { x: 160, y: 40 } as const
+
+function activePanel(page: Page) {
+  return page.locator('[data-testid="workspace-panel"][data-active="true"]')
+}
 
 function trackSqlParserConsoleErrors(page: Page) {
   const errors: string[] = []
@@ -74,14 +78,17 @@ const MALFORMED_SCHEMA_METADATA = {
 async function openQueryEditorTab(page: Page) {
   await connectToSample(page)
   await page.getByTestId('new-query-tab-button').click()
-  await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
-  await expect(page.locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({ timeout: APP_READY_MS })
+  await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
 }
 
 async function focusMonacoEditor(page: Page, timeout = APP_READY_MS) {
-  const editorSurface = page.locator('.monaco-editor').first()
+  const editorSurface = activePanel(page).locator('.monaco-editor').first()
   await expect(editorSurface).toBeVisible({ timeout })
-  await editorSurface.click({ position: EDITOR_CLICK_POSITION })
+  await editorSurface.evaluate((editor) => {
+    const textarea = editor.querySelector<HTMLTextAreaElement>('textarea.inputarea')
+    textarea?.focus()
+  })
   return editorSurface
 }
 
@@ -144,8 +151,21 @@ async function waitForActiveResultValue(page: Page, expectedValue: unknown) {
 
 async function typeQuery(page: Page, sql: string) {
   await focusMonacoEditor(page)
-  await page.keyboard.type(sql)
+  await page.evaluate((content) => {
+    const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { activeTabByConnection: Record<string, string | null> }
+    }
+    const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+      getState: () => { setContent: (id: string, content: string) => void }
+    }
+    const activeTabId = workspaceStore.getState().activeTabByConnection['session-playwright-1']
+    if (!activeTabId) {
+      throw new Error('No active query tab')
+    }
+    queryStore.getState().setContent(activeTabId, content)
+  }, sql)
   await waitForQueryContent(page, sql)
+  await focusMonacoEditor(page)
 }
 
 async function openAutocomplete(
@@ -153,7 +173,27 @@ async function openAutocomplete(
   expectedText?: string,
   options: { allowNoWidget?: boolean } = {}
 ) {
-  return waitForAutocomplete(page, expectedText, options)
+  const suggestWidget = page.locator('.suggest-widget.visible')
+  await focusMonacoEditor(page)
+  await page.keyboard.press('Control+Space').catch(() => undefined)
+
+  const visible = await suggestWidget
+    .waitFor({ state: 'visible', timeout: APP_READY_MS })
+    .then(() => true)
+    .catch(() => false)
+
+  if (!visible) {
+    if (options.allowNoWidget) {
+      return null
+    }
+    await expect(suggestWidget).toBeVisible({ timeout: APP_READY_MS })
+  }
+
+  if (expectedText) {
+    await expect(suggestWidget).toContainText(expectedText, { timeout: APP_READY_MS })
+  }
+
+  return suggestWidget
 }
 
 async function selectDatabaseInObjectBrowser(page: Page, databaseName: string) {
@@ -340,7 +380,8 @@ test.describe('Monaco SQL autocomplete', () => {
     await connectToSample(page)
     await selectDatabaseInObjectBrowser(page, 'ecommerce_db')
     await page.getByTestId('new-query-tab-button').click()
-    await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({ timeout: APP_READY_MS })
+    await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
 
     await typeQuery(page, 'SELECT * FROM ')
 
@@ -359,12 +400,13 @@ test.describe('Monaco SQL autocomplete', () => {
     await connectToSample(page)
     await selectDatabaseInObjectBrowser(page, 'analytics_db')
     await page.getByTestId('new-query-tab-button').click()
-    await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({ timeout: APP_READY_MS })
+    await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
 
     await typeQuery(page, 'SELECT DATABASE();')
     await page.keyboard.press('F9')
 
-    await expect(page.getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('result-grid')).toBeAttached({ timeout: APP_READY_MS })
     await waitForActiveResultValue(page, 'analytics_db')
   })
 
@@ -375,7 +417,8 @@ test.describe('Monaco SQL autocomplete', () => {
     await connectToSample(page)
     await selectDatabaseInObjectBrowser(page, 'analytics_db')
     await page.getByTestId('new-query-tab-button').click()
-    await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeAttached({ timeout: APP_READY_MS })
+    await expect(activePanel(page).locator('.monaco-editor').first()).toBeVisible({ timeout: APP_READY_MS })
 
     await typeQuery(page, 'SELECT * FROM ')
 

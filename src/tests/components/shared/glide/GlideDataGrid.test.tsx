@@ -239,7 +239,11 @@ describe('GlideDataGrid', () => {
     document.body.appendChild(portal)
 
     render(
-      <GlideDataGrid columns={[{ title: 'Id', width: 80 }]} rows={[{ id: 1 }]} getCellContent={vi.fn()} />
+      <GlideDataGrid
+        columns={[{ title: 'Id', width: 80 }]}
+        rows={[{ id: 1 }]}
+        getCellContent={vi.fn()}
+      />
     )
 
     await act(async () => {

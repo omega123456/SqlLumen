@@ -7,10 +7,16 @@ import styles from './ProcessListTab.module.css'
 export interface ProcessListTabProps {
   connectionId: string
   sessionId: string
-  isActive: boolean
+  workspaceTabId?: string
+  isActive?: boolean
 }
 
-export default function ProcessListTab({ connectionId, sessionId, isActive }: ProcessListTabProps) {
+export default function ProcessListTab({
+  connectionId,
+  sessionId,
+  workspaceTabId,
+  isActive = true,
+}: ProcessListTabProps) {
   const fetchProcessList = useProcessListStore((s) => s.fetchProcessList)
   const refreshIntervalMs = useProcessListStore(
     (s) => s.refreshIntervalMsByConnection[connectionId] ?? DEFAULT_REFRESH_INTERVAL_MS
@@ -60,9 +66,11 @@ export default function ProcessListTab({ connectionId, sessionId, isActive }: Pr
         connectionId={connectionId}
         sessionId={sessionId}
         onRefresh={handleManualRefresh}
+        isActive={isActive}
+        workspaceTabId={workspaceTabId ?? connectionId}
       />
       <div className={styles.gridWrapper} data-testid="processlist-grid">
-        <ProcessListGridView connectionId={connectionId} />
+        <ProcessListGridView connectionId={connectionId} isActive={isActive} />
       </div>
     </div>
   )

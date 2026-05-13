@@ -2,7 +2,9 @@ import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from 're
 import { PaperPlaneRight, Stop, X } from '@phosphor-icons/react'
 import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
 import { filterCommands, findCommand } from '../../lib/slash-commands'
+import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
 import { showErrorToast } from '../../stores/toast-store'
 import { Textarea } from '../common/Textarea'
 import { Button } from '../common/Button'
@@ -26,6 +28,8 @@ export interface AiChatInputProps {
   disabled?: boolean
   /** Override the default placeholder text. */
   placeholder?: string
+  /** Owning workspace tab, used for focus tracking and dropdown dismissal. */
+  workspaceTabId?: string
 }
 
 export function AiChatInput({
@@ -35,12 +39,14 @@ export function AiChatInput({
   onSuggestionConsumed,
   disabled: externalDisabled,
   placeholder: externalPlaceholder,
+  workspaceTabId,
 }: AiChatInputProps) {
   const [value, setValue] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
   const [filteredCmds, setFilteredCmds] = useState<SlashCommand[]>([])
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const setLastFocusedSurface = useWorkspaceStore((s) => s.setLastFocusedSurface)
   const isGenerating = useAiStore((s) => s.tabs[tabId]?.isGenerating ?? false)
   const attachedContext = useAiStore((s) => s.tabs[tabId]?.attachedContext ?? null)
 
@@ -96,6 +102,18 @@ export function AiChatInput({
     adjustHeight()
   }, [value, adjustHeight])
 
+  useEffect(() => {
+    if (!workspaceTabId) {
+      return
+    }
+
+    return subscribeToTabDeactivated(workspaceTabId, () => {
+      setShowDropdown(false)
+      setFilteredCmds([])
+      setHighlightedIndex(-1)
+    })
+  }, [workspaceTabId])
+
   const updateDropdown = useCallback((text: string) => {
     if (text.startsWith('/') && !text.includes(' ')) {
       const prefix = text.slice(1)
@@ -118,6 +136,12 @@ export function AiChatInput({
     },
     [updateDropdown]
   )
+
+  const handleFocus = useCallback(() => {
+    if (workspaceTabId) {
+      setLastFocusedSurface(workspaceTabId, 'ai-input')
+    }
+  }, [setLastFocusedSurface, workspaceTabId])
 
   const selectCommand = useCallback((cmd: SlashCommand) => {
     const newValue = `/${cmd.name} `
@@ -268,6 +292,7 @@ export function AiChatInput({
           className={styles.textarea}
           value={value}
           onChange={handleChange}
+          onFocus={handleFocus}
           onKeyDown={handleKeyDown}
           role={showDropdown ? 'combobox' : undefined}
           aria-expanded={showDropdown ? true : undefined}

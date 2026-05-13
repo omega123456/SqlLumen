@@ -14,6 +14,7 @@ pub mod processlist;
 pub mod query;
 pub mod query_history_bridge;
 pub mod schema;
+pub mod schema_cache;
 pub mod schema_index;
 pub mod session;
 pub mod settings;

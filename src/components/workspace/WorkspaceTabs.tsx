@@ -152,7 +152,7 @@ export function WorkspaceTabs({
   const activeTabId = useWorkspaceStore(
     (state) => state.activeTabByConnection[connectionId] ?? null
   )
-  const setActiveTab = useWorkspaceStore((state) => state.setActiveTab)
+  const requestActivateTab = useWorkspaceStore((state) => state.requestActivateTab)
   const closeTab = useWorkspaceStore((state) => state.closeTab)
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
   const renameQueryTab = useWorkspaceStore((state) => state.renameQueryTab)
@@ -401,7 +401,7 @@ export function WorkspaceTabs({
           if (suppressNextSelectRef.current) {
             return
           }
-          setActiveTab(connectionId, tab.id)
+          requestActivateTab(tab.id)
         }}
         onPointerDown={(event) => startPointerDrag(tab.id, isPinned, event)}
         onContextMenu={(e) => {

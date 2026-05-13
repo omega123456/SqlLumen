@@ -339,6 +339,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                         value={foreignKey.sourceColumn}
                         data-testid={`fk-source-column-${fkIndex}`}
                         onChange={(v) => updateForeignKey(tabId, fkIndex, 'sourceColumn', v)}
+                        workspaceTabId={tabId}
                         triggerClassName={`${styles.cellSelect} ${
                           isSelected ? styles.activeInput : styles.inactiveInput
                         }`}
@@ -357,6 +358,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                           updateForeignKey(tabId, fkIndex, 'referencedTable', v)
                           updateForeignKey(tabId, fkIndex, 'referencedColumn', '')
                         }}
+                        workspaceTabId={tabId}
                         triggerClassName={`${styles.cellSelect} ${
                           isSelected ? styles.activeInput : styles.inactiveInput
                         }`}
@@ -384,6 +386,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                           value={foreignKey.referencedColumn}
                           data-testid={`fk-referenced-column-${fkIndex}`}
                           onChange={(v) => updateForeignKey(tabId, fkIndex, 'referencedColumn', v)}
+                          workspaceTabId={tabId}
                           triggerClassName={`${styles.cellSelect} ${
                             isSelected ? styles.activeInput : styles.inactiveInput
                           }`}
@@ -413,6 +416,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                         value={foreignKey.onDelete}
                         data-testid={`fk-on-delete-${fkIndex}`}
                         onChange={(v) => updateForeignKey(tabId, fkIndex, 'onDelete', v)}
+                        workspaceTabId={tabId}
                         triggerClassName={`${styles.cellSelect} ${
                           isSelected ? styles.activeInput : styles.inactiveInput
                         }`}
@@ -428,6 +432,7 @@ export function ForeignKeyEditor({ tabId }: ForeignKeyEditorProps) {
                         value={foreignKey.onUpdate}
                         data-testid={`fk-on-update-${fkIndex}`}
                         onChange={(v) => updateForeignKey(tabId, fkIndex, 'onUpdate', v)}
+                        workspaceTabId={tabId}
                         triggerClassName={`${styles.cellSelect} ${
                           isSelected ? styles.activeInput : styles.inactiveInput
                         }`}

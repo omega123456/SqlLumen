@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
 import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
 
+function activePanel(page: Page) {
+  return page.locator('[data-testid="workspace-panel"][data-active="true"]')
+}
+
 async function openSecondConnectionSession(page: Page) {
   await page.evaluate(() => {
     const useConnectionStore = (window as unknown as Record<string, unknown>)
@@ -65,7 +69,7 @@ test.describe('Tab interactions', () => {
   test('renames a query tab via context menu action', async ({ page }) => {
     await connectToSample(page)
     await page.getByTestId('new-query-tab-button').click()
-    await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
 
     const tab = page.getByText('Query 1').first()
     await expect(tab).toBeVisible({ timeout: APP_READY_MS })
@@ -86,7 +90,7 @@ test.describe('Tab interactions', () => {
     await connectToSample(page)
     await page.getByTestId('new-query-tab-button').click()
     await page.getByTestId('new-query-tab-button').click()
-    await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
 
     const firstQueryTab = page.getByText('Query 1').first()
     const secondQueryTab = page.getByText('Query 2').first()

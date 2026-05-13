@@ -7,7 +7,7 @@ import { render, screen } from '@testing-library/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { QueryEditorTab } from '../../../components/query-editor/QueryEditorTab'
 import { AiDiffBridgeProvider } from '../../../components/query-editor/ai-diff-bridge-context'
-import { WorkspaceAiResizableRow } from '../../../components/layout/WorkspaceAiResizableRow'
+import { WorkspaceBody } from '../../../components/layout/WorkspaceBody'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
@@ -63,9 +63,12 @@ function renderQueryTabWithAiWorkspace() {
   return render(
     <AiDiffBridgeProvider>
       <div style={{ height: 400, minHeight: 0 }}>
-        <WorkspaceAiResizableRow tab={mockTab}>
-          <QueryEditorTab tab={mockTab} />
-        </WorkspaceAiResizableRow>
+        <WorkspaceBody
+          tabs={[mockTab]}
+          activeTabId={mockTab.id}
+          connectionId={mockTab.connectionId}
+          renderTabStack={() => <QueryEditorTab tab={mockTab} />}
+        />
       </div>
     </AiDiffBridgeProvider>
   )

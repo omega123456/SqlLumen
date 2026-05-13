@@ -1,6 +1,9 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { APP_READY_MS, connectToSample, waitForApp, waitForGlideGrid } from './helpers'
 import { clickGlideRowMarker, getGlideGridGeometry } from './glide-grid-helpers'
+
+const activePanel = (page: Page) =>
+  page.locator('[data-testid="workspace-panel"][data-active="true"]')
 
 test.describe('Process List tab', () => {
   test.beforeEach(async ({ page }) => {
@@ -28,6 +31,7 @@ test.describe('Process List tab', () => {
     const tabStrip = page.getByTestId('workspace-tabs')
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     await tabStrip.getByText('Process List').click()
+    await expect(activePanel(page).getByTestId('processlist-grid')).toBeVisible({ timeout: APP_READY_MS })
     await waitForGlideGrid(page, 'processlist-grid')
   })
 
@@ -36,7 +40,7 @@ test.describe('Process List tab', () => {
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     await tabStrip.getByText('Process List').click()
     await waitForGlideGrid(page, 'processlist-grid')
-    const refreshBtn = page.getByTestId('processlist-refresh-button')
+    const refreshBtn = activePanel(page).getByTestId('processlist-refresh-button')
     await expect(refreshBtn).toBeVisible()
     await refreshBtn.click()
     // After clicking refresh, grid should still be visible with data
@@ -48,7 +52,7 @@ test.describe('Process List tab', () => {
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     await tabStrip.getByText('Process List').click()
     await waitForGlideGrid(page, 'processlist-grid')
-    await expect(page.getByTestId('processlist-interval-dropdown')).toBeVisible()
+    await expect(activePanel(page).getByTestId('processlist-interval-dropdown')).toBeVisible()
   })
 
   test('filter dropdown defaults to exclude idle and can switch to show all', async ({ page }) => {
@@ -56,7 +60,7 @@ test.describe('Process List tab', () => {
     await expect(tabStrip).toBeVisible({ timeout: APP_READY_MS })
     await tabStrip.getByText('Process List').click()
 
-    const filterDropdown = page.getByTestId('processlist-filter-dropdown')
+    const filterDropdown = activePanel(page).getByTestId('processlist-filter-dropdown')
     await waitForGlideGrid(page, 'processlist-grid')
 
     await expect(filterDropdown).toHaveText('Exclude idle')
@@ -77,7 +81,7 @@ test.describe('Process List tab', () => {
     const geometry = await getGlideGridGeometry(page, 'processlist-grid')
     await clickGlideRowMarker(page, 'processlist-grid', 0, geometry)
 
-    await expect(page.getByTestId('processlist-grid').locator('canvas').first()).toBeVisible({
+    await expect(activePanel(page).getByTestId('processlist-grid').locator('canvas').first()).toBeVisible({
       timeout: APP_READY_MS,
     })
   })

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import type {
   SchemaInfoTab as SchemaInfoTabType,
   SchemaInfoResponse,
@@ -16,6 +16,7 @@ import styles from './SchemaInfoTab.module.css'
 
 export interface SchemaInfoTabProps {
   tab: SchemaInfoTabType
+  isActive?: boolean
 }
 
 type SubTab = NonNullable<SchemaInfoTabType['subTabId']>
@@ -42,10 +43,11 @@ function getDefaultSubTab(objectType: ObjectType): SubTab {
   return tabs.includes('columns') ? 'columns' : 'ddl'
 }
 
-export function SchemaInfoTab({ tab }: SchemaInfoTabProps) {
+export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
   const [data, setData] = useState<SchemaInfoResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const hasLoadedRef = useRef(false)
   const setSubTab = useWorkspaceStore((state) => state.setSubTab)
 
   const visibleSubTabs = SUB_TAB_VISIBILITY[tab.objectType]
@@ -53,6 +55,8 @@ export function SchemaInfoTab({ tab }: SchemaInfoTabProps) {
 
   useEffect(() => {
     let cancelled = false
+    if (!isActive || hasLoadedRef.current) return
+    hasLoadedRef.current = true
 
     // Clear stale state immediately before fetching new data
     queueMicrotask(() => {
@@ -82,7 +86,7 @@ export function SchemaInfoTab({ tab }: SchemaInfoTabProps) {
     return () => {
       cancelled = true
     }
-  }, [tab.connectionId, tab.databaseName, tab.objectName, tab.objectType])
+  }, [isActive, tab.connectionId, tab.databaseName, tab.objectName, tab.objectType])
 
   const handleSubTabClick = useCallback(
     (subTab: SubTab) => {

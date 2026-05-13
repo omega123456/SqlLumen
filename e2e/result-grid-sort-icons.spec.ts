@@ -7,12 +7,16 @@ import {
   waitForResultGrid,
 } from './helpers'
 
+function activePanel(page: Page) {
+  return page.locator('[data-testid="workspace-panel"][data-active="true"]')
+}
+
 async function openQueryEditorWithResults(page: Page) {
   await connectToSample(page)
   await page.getByTestId('new-query-tab-button').click()
-  await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
 
-  const editorSurface = page.locator('.monaco-editor').first()
+  const editorSurface = activePanel(page).locator('.monaco-editor').first()
   await expect(editorSurface).toBeVisible({ timeout: APP_READY_MS })
   await editorSurface.click({ position: { x: 160, y: 40 } })
   await page.keyboard.type('SELECT * FROM users;')

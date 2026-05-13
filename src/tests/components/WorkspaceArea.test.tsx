@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { WorkspaceArea } from '../../components/layout/WorkspaceArea'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -218,7 +218,107 @@ describe('WorkspaceArea', () => {
     // TableDataTab is rendered, which includes the toolbar
     await waitFor(() => {
       expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+      expect(screen.getByTestId('workspace-panel')).toHaveAttribute('data-active', 'true')
     })
+  })
+
+  it('keeps multiple active-connection tabs mounted in workspace panels', async () => {
+    const conn = makeActiveConnection()
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': conn },
+      activeTabId: 'conn-1',
+    })
+
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    render(<WorkspaceArea />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+      expect(screen.getByTestId('query-editor-tab')).toBeInTheDocument()
+    })
+    expect(screen.getAllByTestId('workspace-panel')).toHaveLength(2)
+  })
+
+  it('marks only the active workspace panel as active', async () => {
+    const conn = makeActiveConnection()
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': conn },
+      activeTabId: 'conn-1',
+    })
+
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    const tableTabId = useWorkspaceStore.getState().activeTabByConnection['conn-1']!
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+    useWorkspaceStore.getState().setActiveTab('conn-1', queryTabId)
+
+    render(<WorkspaceArea />)
+
+    await waitFor(() => expect(screen.getAllByTestId('workspace-panel')).toHaveLength(2))
+    const panels = screen.getAllByTestId('workspace-panel')
+    expect(panels.filter((panel) => panel.getAttribute('data-active') === 'true')).toHaveLength(1)
+    expect(
+      screen.getByTestId('workspace-area').querySelector(`[data-tab-id="${queryTabId}"]`)
+    ).toHaveAttribute('data-active', 'true')
+    expect(
+      screen.getByTestId('workspace-area').querySelector(`[data-tab-id="${tableTabId}"]`)
+    ).toHaveAttribute('data-active', 'false')
+  })
+
+  it('emits deactivation before activation when active tab changes', async () => {
+    const events: string[] = []
+    const onDeactivated = (event: Event) => {
+      events.push(`deactivated:${(event as CustomEvent<{ tabId: string }>).detail.tabId}`)
+    }
+    const onActivated = (event: Event) => {
+      events.push(`activated:${(event as CustomEvent<{ tabId: string }>).detail.tabId}`)
+    }
+    window.addEventListener('workspace-tab-deactivated', onDeactivated)
+    window.addEventListener('workspace-tab-activated', onActivated)
+
+    try {
+      const conn = makeActiveConnection()
+      useConnectionStore.setState({
+        activeConnections: { 'conn-1': conn },
+        activeTabId: 'conn-1',
+      })
+
+      const firstTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+      const secondTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+      useWorkspaceStore.getState().setActiveTab('conn-1', firstTabId)
+
+      render(<WorkspaceArea />)
+      await waitFor(() => expect(events).toEqual([`activated:${firstTabId}`]))
+
+      act(() => {
+        useWorkspaceStore.getState().setActiveTab('conn-1', secondTabId)
+      })
+      await waitFor(() =>
+        expect(events).toEqual([
+          `activated:${firstTabId}`,
+          `deactivated:${firstTabId}`,
+          `activated:${secondTabId}`,
+        ])
+      )
+    } finally {
+      window.removeEventListener('workspace-tab-deactivated', onDeactivated)
+      window.removeEventListener('workspace-tab-activated', onActivated)
+    }
   })
 
   it('renders SchemaInfoTab for schema-info tab type', async () => {
@@ -262,7 +362,7 @@ describe('WorkspaceArea', () => {
     expect(screen.getByTestId('result-panel')).toBeInTheDocument()
   })
 
-  it('shows the AI workspace rail when AI is enabled and a query tab is active', () => {
+  it('shows the workspace AI panel host when AI is enabled and a query tab is active', () => {
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -287,7 +387,7 @@ describe('WorkspaceArea', () => {
 
     render(<WorkspaceArea />)
 
-    expect(screen.getByTestId('ai-workspace-rail')).toBeInTheDocument()
+    expect(screen.getByTestId('workspace-ai-panel-host')).toBeInTheDocument()
   })
 
   it('renders TableDesignerTab for table-designer tab type', () => {

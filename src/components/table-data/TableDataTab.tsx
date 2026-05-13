@@ -8,6 +8,7 @@
 import { useEffect, useCallback } from 'react'
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useConnectionStore } from '../../stores/connection-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
 import { exportTableData } from '../../lib/table-data-commands'
 import { TableDataToolbar } from './TableDataToolbar'
 import { TableDataGrid } from './TableDataGrid'
@@ -19,9 +20,10 @@ import styles from './TableDataTab.module.css'
 
 interface TableDataTabProps {
   tab: WorkspaceTab
+  isActive?: boolean
 }
 
-export function TableDataTab({ tab }: TableDataTabProps) {
+export function TableDataTab({ tab, isActive = true }: TableDataTabProps) {
   const tdTab = tab as TableDataTabType
   const tabId = tdTab.id
   const connectionId = tdTab.connectionId
@@ -35,6 +37,7 @@ export function TableDataTab({ tab }: TableDataTabProps) {
   const confirmNavigationDiscard = useTableDataStore((state) => state.confirmNavigationDiscard)
   const cancelNavigation = useTableDataStore((state) => state.cancelNavigation)
   const closeExportDialog = useTableDataStore((state) => state.closeExportDialog)
+  const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
 
   // Look up the active connection to get the profile for readOnly info
   const activeConnection = useConnectionStore((state) => state.activeConnections[connectionId])
@@ -46,14 +49,14 @@ export function TableDataTab({ tab }: TableDataTabProps) {
     // Only init + load if we don't already have state for this tab
     // (prevents re-loading when switching back to the tab after it was unmounted)
     const existing = useTableDataStore.getState().tabs[tabId]
-    if (!existing) {
+    if (isActive && !existing) {
       initTab(tabId, connectionId, database, table)
       loadTableData(tabId)
     }
     // DO NOT call cleanupTab on unmount — workspace-store handles that
     // when the tab is actually closed (via closeTab / closeTabsByDatabase etc.)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabId, connectionId, database, table])
+  }, [tabId, connectionId, database, table, isActive])
 
   const handleRetry = useCallback(() => {
     loadTableData(tabId)
@@ -111,6 +114,16 @@ export function TableDataTab({ tab }: TableDataTabProps) {
   const showNoPkWarning =
     !isViewObject && primaryKey === null && !isLoading && !error && columns.length > 0
 
+  useEffect(() => {
+    setBlockingNavigation(tabId, pendingNavigationAction !== null)
+    return () => setBlockingNavigation(tabId, false)
+  }, [pendingNavigationAction, setBlockingNavigation, tabId])
+
+  useEffect(() => {
+    if (isActive) return
+    if (isExportDialogOpen) closeExportDialog(tabId)
+  }, [closeExportDialog, isActive, isExportDialogOpen, tabId])
+
   return (
     <div className={styles.container} data-testid="table-data-tab">
       <TableDataToolbar tabId={tabId} isView={isViewObject} />
@@ -155,9 +168,15 @@ export function TableDataTab({ tab }: TableDataTabProps) {
       {!error && columns.length > 0 && (
         <div className={styles.content}>
           {viewMode === 'grid' && (
-            <TableDataGrid tabId={tabId} isReadOnly={effectiveReadOnly || !primaryKey} />
+            <TableDataGrid
+              tabId={tabId}
+              isReadOnly={effectiveReadOnly || !primaryKey}
+              isActive={isActive}
+            />
           )}
-          {viewMode === 'form' && <TableDataFormView tabId={tabId} isView={isViewObject} />}
+          {viewMode === 'form' && (
+            <TableDataFormView tabId={tabId} isView={isViewObject} isActive={isActive} />
+          )}
         </div>
       )}
 

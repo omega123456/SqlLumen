@@ -272,6 +272,39 @@ export async function loadCache(connectionId: string): Promise<void> {
   }
 }
 
+export async function rebuildCache(connectionId: string): Promise<void> {
+  invalidateCache(connectionId)
+  await loadCache(connectionId)
+}
+
+export function hydrateFromSnapshot(snapshotJson: string, connectionId: string): void {
+  const parsed = JSON.parse(snapshotJson) as SchemaMetadataFull
+  const data = sanitizeSchemaMetadata(parsed)
+  cacheMap.set(connectionId, {
+    status: 'ready',
+    databases: data.databases,
+    tables: data.tables,
+    columns: data.columns,
+    routines: data.routines,
+    foreignKeys: data.foreignKeys,
+    indexes: data.indexes,
+    lastRefreshAt: Date.now(),
+  })
+}
+
+export function serializeCacheSnapshot(connectionId: string): string | null {
+  const cache = cacheMap.get(connectionId)
+  if (!cache || cache.status !== 'ready') return null
+  return JSON.stringify({
+    databases: cache.databases,
+    tables: cache.tables,
+    columns: cache.columns,
+    routines: cache.routines,
+    foreignKeys: cache.foreignKeys,
+    indexes: cache.indexes,
+  } satisfies SchemaMetadataFull)
+}
+
 /**
  * Remove cache entry for a connection (forces re-fetch on next loadCache call).
  * Also clears pending loads and increments generation to prevent stale repopulation.

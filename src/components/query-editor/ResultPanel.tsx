@@ -13,7 +13,7 @@
  * Supports multi-result tabs — renders ResultSubTabs when results.length > 1.
  */
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Play, CheckCircle } from '@phosphor-icons/react'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { useToastStore } from '../../stores/toast-store'
@@ -41,6 +41,7 @@ import styles from './ResultPanel.module.css'
 interface ResultPanelProps {
   tabId: string
   connectionId: string
+  isActive?: boolean
 }
 
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
@@ -53,7 +54,7 @@ const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
 const EMPTY_BINDINGS = new Map<number, string>()
 const EMPTY_BOUND_COLUMN_INDEX_MAP = new Map<string, number>()
 
-export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
+export function ResultPanel({ tabId, connectionId, isActive = true }: ResultPanelProps) {
   const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
   const tabStatus = useQueryStore((state) => state.tabs[tabId]?.tabStatus ?? 'idle')
   const results = useQueryStore((state) => state.tabs[tabId]?.results ?? EMPTY_RESULTS)
@@ -230,6 +231,16 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
     foreignKey: ForeignKeyColumnInfo
     rowData: Record<string, unknown>
   } | null>(null)
+
+  useEffect(() => {
+    if (isActive) return
+    queueMicrotask(() => {
+      if (exportDialogOpen) closeExportDialog(tabId)
+      setIsFilterDialogOpen(false)
+      setFkLookupOpen(false)
+      setFkLookupContext(null)
+    })
+  }, [closeExportDialog, exportDialogOpen, isActive, tabId])
 
   const resultForeignKeyLookup = useMemo(
     () => buildForeignKeyLookup(editForeignKeys),
@@ -427,6 +438,7 @@ export function ResultPanel({ tabId, connectionId }: ResultPanelProps) {
                     onUpdateCellValue={handleUpdateCellValue}
                     onSyncCellValue={handleSyncCellValue}
                     onAutoSave={handleAutoSave}
+                    isActive={isActive}
                   />
                 )}
                 {viewMode === 'form' && (

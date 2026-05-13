@@ -9,9 +9,10 @@ import styles from './ObjectEditorTab.module.css'
 
 interface ObjectEditorTabProps {
   tab: ObjectEditorTabType
+  isActive?: boolean
 }
 
-export function ObjectEditorTab({ tab }: ObjectEditorTabProps) {
+export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) {
   const { id: tabId, connectionId, databaseName, objectName, objectType, mode } = tab
 
   // Object editor store selectors
@@ -23,6 +24,7 @@ export function ObjectEditorTab({ tab }: ObjectEditorTabProps) {
 
   // Workspace store
   const updateObjectEditorTab = useWorkspaceStore((state) => state.updateObjectEditorTab)
+  const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
 
   // Derived state
   const content = tabState?.content ?? ''
@@ -96,6 +98,18 @@ export function ObjectEditorTab({ tab }: ObjectEditorTabProps) {
   const handleCancelNavigation = useCallback(() => {
     useObjectEditorStore.getState().cancelPendingAction(tabId)
   }, [tabId])
+
+  useEffect(() => {
+    setBlockingNavigation(tabId, pendingNavigationAction !== null)
+    return () => setBlockingNavigation(tabId, false)
+  }, [pendingNavigationAction, setBlockingNavigation, tabId])
+
+  useEffect(() => {
+    if (isActive) return
+    if (pendingNavigationAction !== null) {
+      useObjectEditorStore.getState().cancelPendingAction(tabId)
+    }
+  }, [isActive, pendingNavigationAction, tabId])
 
   // Loading state
   if (isLoading && !error) {

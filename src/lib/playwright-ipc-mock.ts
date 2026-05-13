@@ -262,6 +262,10 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       return null
     case 'get_connection_status':
       return 'connected'
+    case 'load_schema_cache_snapshot':
+      return null
+    case 'save_schema_cache_snapshot':
+      return null
 
     // --- Schema read commands ---
     case 'list_databases':
@@ -637,6 +641,25 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
           executionTimeMs: 7,
           affectedRows: 0,
           firstPage: [[activeMockDatabase]],
+          totalPages: 1,
+          autoLimitApplied: false,
+        }
+      } else if (/scroll_test/i.test(String(args?.sql ?? ''))) {
+        result = {
+          queryId: 'mock-query-scroll-test',
+          columns: [
+            { name: 'id', dataType: 'BIGINT' },
+            { name: 'name', dataType: 'VARCHAR' },
+            { name: 'status', dataType: 'VARCHAR' },
+          ],
+          totalRows: 120,
+          executionTimeMs: 42,
+          affectedRows: 0,
+          firstPage: Array.from({ length: 120 }, (_, index) => [
+            index + 1,
+            `Scroll user ${index + 1}`,
+            index % 2 === 0 ? 'active' : 'inactive',
+          ]),
           totalPages: 1,
           autoLimitApplied: false,
         }
@@ -1051,6 +1074,62 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     // --- Table data browser/editor ---
     case 'fetch_table_data': {
       const table = (args as Record<string, unknown>)?.table
+
+      if (table === 'scroll_test') {
+        return {
+          columns: [
+            {
+              name: 'id',
+              dataType: 'INT',
+              isBooleanAlias: false,
+              isNullable: false,
+              isPrimaryKey: true,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: true,
+            },
+            {
+              name: 'name',
+              dataType: 'VARCHAR',
+              isBooleanAlias: false,
+              isNullable: true,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+            {
+              name: 'status',
+              dataType: 'VARCHAR',
+              isBooleanAlias: false,
+              isNullable: false,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+          ],
+          rows: Array.from({ length: 120 }, (_, index) => [
+            index + 1,
+            `Scroll row ${index + 1}`,
+            index % 2 === 0 ? 'active' : 'inactive',
+          ]),
+          currentPage: 1,
+          pageSize: 1000,
+          primaryKey: {
+            keyColumns: ['id'],
+            hasAutoIncrement: true,
+            isUniqueKeyFallback: false,
+          },
+          executionTimeMs: 9,
+        }
+      }
 
       if (table === 'users') {
         return {

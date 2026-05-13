@@ -21,6 +21,8 @@ beforeEach(() => {
   useWorkspaceStore.setState({
     tabsByConnection: {},
     activeTabByConnection: {},
+    lastFocusedSurfaceByTab: {},
+    blockingNavigationByTab: {},
   })
   useTableDataStore.setState({ tabs: {} })
   useTableDesignerStore.setState({ tabs: {} })

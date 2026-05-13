@@ -23,7 +23,11 @@ import {
   type Rectangle,
 } from '@glideapps/glide-data-grid'
 import { getDefaultColumnWidth } from '../../../lib/grid-column-style'
-import type { BaseGridViewProps, GridColumnDescriptor } from '../../../types/shared-data-view'
+import type {
+  BaseGridViewProps,
+  GridColumnDescriptor,
+  RowEditState,
+} from '../../../types/shared-data-view'
 import {
   buildBlobCell,
   buildNullCell,
@@ -166,6 +170,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     scrollToRowIndex,
     onFkCellAction,
     showInfoColumn = false,
+    isActive = true,
     runCellClickGuardOnKeyboardSelection = false,
   } = props
   const gridRef = useRef<GridHandle | null>(null)
@@ -656,24 +661,30 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     [editableColumnKeys, gridColumns]
   )
 
+  const handleFinishedEditing = useCallback(() => {
+    isEditingCellRef.current = false
+    editorSessionBaselineRef.current = null
+  }, [])
+
+  const cancelActiveEditor = useCallback(() => {
+    if (!isEditingCellRef.current) return
+    // Glide overlays are absolutely positioned and do not auto-close when commitOnOutsideClick
+    // is disabled, so close the active editor before scroll leaves it floating over the wrong cell.
+    const canvas = gridRef.current?.element?.querySelector('canvas[data-testid="data-grid-canvas"]')
+    canvas?.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        keyCode: 27,
+        which: 27,
+        bubbles: true,
+      })
+    )
+    handleFinishedEditing()
+  }, [handleFinishedEditing])
+
   const handleVisibleRegionChanged = useCallback(
     (range: Rectangle) => {
-      if (isEditingCellRef.current) {
-        // Glide overlays are absolutely positioned and do not auto-close when commitOnOutsideClick
-        // is disabled, so close the active editor before scroll leaves it floating over the wrong cell.
-        const canvas = gridRef.current?.element?.querySelector(
-          'canvas[data-testid="data-grid-canvas"]'
-        )
-        canvas?.dispatchEvent(
-          new KeyboardEvent('keydown', {
-            key: 'Escape',
-            keyCode: 27,
-            which: 27,
-            bubbles: true,
-          })
-        )
-        isEditingCellRef.current = false
-      }
+      cancelActiveEditor()
       const scrollCell = clampScrollCell(
         { scrollRow: range.y, scrollCol: range.x },
         Number.MAX_SAFE_INTEGER,
@@ -693,7 +704,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       lastReportedScrollCellRef.current = scrollCell
       onScrollCellChange?.(scrollCell.scrollRow, scrollCell.scrollCol)
     },
-    [onScrollCellChange]
+    [cancelActiveEditor, onScrollCellChange]
   )
 
   const handleCellActivatedForEditing = useCallback(
@@ -714,11 +725,6 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     },
     [editState?.currentValues, editState?.originalValues, gridColumns, rows]
   )
-
-  const handleFinishedEditing = useCallback(() => {
-    isEditingCellRef.current = false
-    editorSessionBaselineRef.current = null
-  }, [])
 
   const handleCellDoubleClicked = useCallback(
     (cell: Item) => {
@@ -880,7 +886,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           onRowDoubleClicked?.(row)
         }
       }
-      if (event.key === 'F4') {
+      if (isActive && event.key === 'F4') {
         event.cancel?.()
         triggerFkLookupFromSelection(event)
       }
@@ -898,6 +904,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       selectRow,
       changeSelectedCell,
       gridSelection,
+      isActive,
       triggerFkLookupFromSelection,
     ]
   )
@@ -912,6 +919,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     }
 
     const handleDocumentKeyDown = (event: KeyboardEvent) => {
+      if (!isActive) return
       if (event.defaultPrevented || event.key !== 'F4' || isInteractiveElement(event.target)) {
         return
       }
@@ -923,7 +931,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     return () => {
       document.removeEventListener('keydown', handleDocumentKeyDown)
     }
-  }, [triggerFkLookupFromSelection])
+  }, [isActive, triggerFkLookupFromSelection])
 
   const handleSelectionChange = useCallback(
     (selection: GridSelection) => {
@@ -948,6 +956,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   }, [])
 
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
+
+  useEffect(() => {
+    if (isActive) return
+    closeContextMenu()
+    cancelActiveEditor()
+  }, [cancelActiveEditor, closeContextMenu, isActive])
 
   useEffect(() => {
     if (!contextMenu) return

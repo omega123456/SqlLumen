@@ -260,6 +260,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
           popupRef={pickerPopupRef}
           onApply={handlePickerApply}
           onCancel={handlePickerCancel}
+          workspaceTabId={props.tabId || undefined}
         />
       )}
     </div>

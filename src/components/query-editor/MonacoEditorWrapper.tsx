@@ -17,7 +17,6 @@ import {
 } from '../../lib/grid-performance-logger'
 import { registerMonacoThemes, getMonacoThemeName } from './monaco-theme'
 import { registerModelConnection, unregisterModelConnection } from './completion-service'
-import { loadCache } from './schema-metadata-cache'
 import type { ShortcutBinding, TabType } from '../../types/schema'
 import styles from './MonacoEditorWrapper.module.css'
 
@@ -233,13 +232,6 @@ export function MonacoEditorWrapper({
       }
     }
   }, [connectionId, tabId, tabType])
-
-  // Trigger schema cache load on mount / connection change
-  useEffect(() => {
-    if (connectionId) {
-      void loadCache(connectionId)
-    }
-  }, [connectionId])
 
   const currentThemeName = getMonacoThemeName(theme, resolvedTheme === 'dark')
   const monacoShortcutBindings: Record<MonacoShortcutActionId, ShortcutBinding> = {

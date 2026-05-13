@@ -23,6 +23,7 @@ import styles from './TableDesignerTab.module.css'
 import { logFrontend } from '../../lib/app-log-commands'
 interface TableDesignerTabProps {
   tab: TableDesignerTabType
+  isActive?: boolean
 }
 
 const SUB_TAB_LABELS: Record<DesignerSubTab, string> = {
@@ -52,7 +53,7 @@ function clearPendingNavigationAction(tabId: string) {
   })
 }
 
-export function TableDesignerTab({ tab }: TableDesignerTabProps) {
+export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps) {
   const { id: tabId, mode, connectionId, databaseName, objectName } = tab
 
   const tabState = useTableDesignerStore((state) => state.tabs[tabId])
@@ -66,6 +67,7 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
 
   const refreshCategory = useSchemaStore((state) => state.refreshCategory)
   const updateWorkspaceDesignerTab = useWorkspaceStore((state) => state.updateTableDesignerTab)
+  const setBlockingNavigation = useWorkspaceStore((state) => state.setBlockingNavigation)
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme)
 
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false)
@@ -194,6 +196,17 @@ export function TableDesignerTab({ tab }: TableDesignerTabProps) {
   const handleCancelNavigation = useCallback(() => {
     clearPendingNavigationAction(tabId)
   }, [tabId])
+
+  useEffect(() => {
+    setBlockingNavigation(tabId, pendingNavigationAction !== null || isApplyDialogOpen)
+    return () => setBlockingNavigation(tabId, false)
+  }, [isApplyDialogOpen, pendingNavigationAction, setBlockingNavigation, tabId])
+
+  useEffect(() => {
+    if (isActive) return
+    setIsApplyDialogOpen(false)
+    postApplyActionRef.current = null
+  }, [isActive])
 
   const renderContent = () => {
     switch (selectedSubTab) {

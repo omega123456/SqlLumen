@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useHistoryStore } from '../../stores/history-store'
@@ -16,6 +16,7 @@ const EMPTY_ENTRIES: HistoryEntry[] = []
 
 export interface HistoryTabProps {
   tab: HistoryTabType
+  isActive?: boolean
 }
 
 /** Time range durations in milliseconds. */
@@ -25,7 +26,8 @@ const RANGE_MS: Record<Exclude<TimeRange, 'all'>, number> = {
   '30d': 30 * 24 * 60 * 60 * 1000,
 }
 
-export function HistoryTab({ tab }: HistoryTabProps) {
+export function HistoryTab({ tab, isActive = true }: HistoryTabProps) {
+  const hasLoadedRef = useRef(false)
   const activeConnections = useConnectionStore((state) => state.activeConnections)
   const activeConnection = activeConnections[tab.connectionId]
   const connectionId = activeConnection ? tab.connectionId : null
@@ -52,10 +54,11 @@ export function HistoryTab({ tab }: HistoryTabProps) {
 
   // Load history on mount or when connectionId changes
   useEffect(() => {
-    if (connectionId) {
+    if (isActive && connectionId && !hasLoadedRef.current) {
+      hasLoadedRef.current = true
       loadHistory(connectionId)
     }
-  }, [connectionId, loadHistory])
+  }, [isActive, connectionId, loadHistory])
 
   // Derive filtered entries based on time range
   const filteredEntries = useMemo(() => {

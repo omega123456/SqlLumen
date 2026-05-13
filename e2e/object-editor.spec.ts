@@ -1,6 +1,10 @@
 import { test, expect, type Page } from '@playwright/test'
 import { APP_READY_MS, connectToSample, dismissAllToasts, waitForApp } from './helpers'
 
+function activePanel(page: Page) {
+  return page.locator('[data-testid="workspace-panel"][data-active="true"]')
+}
+
 /**
  * Expand the object browser tree: ecommerce_db → given category.
  * Categories: Tables, Views, Procedures, Functions, Triggers, Events
@@ -138,7 +142,7 @@ test.describe('Object Editor', () => {
     await page.getByTestId('ctx-execute').click()
 
     // Verify a query editor tab opens
-    await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
 
     // Verify the workspace tab label contains "Execute:"
     const workspaceTabs = page.getByTestId('workspace-tabs')
@@ -146,7 +150,7 @@ test.describe('Object Editor', () => {
 
     // Verify the query content contains CALL
     // We check via the Monaco editor wrapper which should contain the CALL template
-    const queryEditorTab = page.getByTestId('query-editor-tab')
+    const queryEditorTab = activePanel(page).getByTestId('query-editor-tab')
     await expect(queryEditorTab).toContainText('CALL', { timeout: APP_READY_MS })
   })
 
@@ -165,10 +169,10 @@ test.describe('Object Editor', () => {
     await page.getByTestId('ctx-execute').click()
 
     // Verify a query editor tab opens
-    await expect(page.getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
+    await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
 
     // Verify the query content contains SELECT
-    const queryEditorTab = page.getByTestId('query-editor-tab')
+    const queryEditorTab = activePanel(page).getByTestId('query-editor-tab')
     await expect(queryEditorTab).toContainText('SELECT', { timeout: APP_READY_MS })
   })
 

@@ -1,25 +1,16 @@
+import { useEffect, useRef } from 'react'
 import { Button } from '../common/Button'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { useSettingsStore } from '../../stores/settings-store'
+import {
+  dispatchWorkspaceTabActivated,
+  dispatchWorkspaceTabDeactivated,
+} from '../../lib/workspace-tab-activity-events'
 import { WorkspaceTabs } from '../workspace/WorkspaceTabs'
-import { TableDataTab } from '../table-data/TableDataTab'
-import { SchemaInfoTab } from '../schema-info/SchemaInfoTab'
-import { QueryEditorTab } from '../query-editor/QueryEditorTab'
 import { AiDiffBridgeProvider } from '../query-editor/ai-diff-bridge-context'
-import { WorkspaceAiResizableRow } from './WorkspaceAiResizableRow'
-import { TableDesignerTab as TableDesignerTabComponent } from '../table-designer/TableDesignerTab'
-import { ObjectEditorTab as ObjectEditorTabComponent } from '../object-editor/ObjectEditorTab'
-import { HistoryTab as HistoryTabComponent } from '../history/HistoryTab'
-import ProcessListTabComponent from '../processlist/ProcessListTab'
-import type {
-  WorkspaceTab,
-  SchemaInfoTab as SchemaInfoTabType,
-  QueryEditorTab as QueryEditorTabType,
-  TableDesignerTab as TableDesignerTabType,
-  ObjectEditorTab as ObjectEditorTabType,
-  HistoryTab as HistoryTabType,
-} from '../../types/schema'
+import type { WorkspaceTab } from '../../types/schema'
+import { WorkspaceBody } from './WorkspaceBody'
+import { WorkspaceTabPanel } from './WorkspaceTabPanel'
 import styles from './WorkspaceArea.module.css'
 
 const EMPTY_TABS: WorkspaceTab[] = []
@@ -39,56 +30,22 @@ export function WorkspaceArea() {
   )
 
   const activeTab = tabs.find((t) => t.id === activeWorkspaceTabId) ?? null
+  const previousActiveWorkspaceTabIdRef = useRef<string | null>(null)
 
-  const aiEnabled = useSettingsStore((s) => s.getSetting('ai.enabled') === 'true')
-  const queryEditorTab =
-    activeTab?.type === 'query-editor' ? (activeTab as QueryEditorTabType) : null
-  const useAiResizeLayout = Boolean(aiEnabled && queryEditorTab)
+  useEffect(() => {
+    const previousTabId = previousActiveWorkspaceTabIdRef.current
+    if (previousTabId === activeWorkspaceTabId) {
+      return
+    }
 
-  const tabContent = (
-    <>
-      {/* No tabs: connected placeholder */}
-      {activeConnection && tabs.length === 0 && (
-        <div className={styles.connectedPlaceholder}>
-          <p className={styles.connectedText}>
-            Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
-            {activeConnection.profile.port})
-          </p>
-        </div>
-      )}
-      {/* Active tab content */}
-      {activeTab?.type === 'table-data' && <TableDataTab key={activeTab.id} tab={activeTab} />}
-      {activeTab?.type === 'schema-info' && (
-        <SchemaInfoTab key={activeTab.id} tab={activeTab as SchemaInfoTabType} />
-      )}
-      {activeTab?.type === 'query-editor' && (
-        <QueryEditorTab key={activeTab.id} tab={activeTab as QueryEditorTabType} />
-      )}
-      {activeTab?.type === 'table-designer' && (
-        <TableDesignerTabComponent key={activeTab.id} tab={activeTab as TableDesignerTabType} />
-      )}
-      {activeTab?.type === 'object-editor' && (
-        <ObjectEditorTabComponent key={activeTab.id} tab={activeTab as ObjectEditorTabType} />
-      )}
-      {activeTab?.type === 'history' && (
-        <HistoryTabComponent key={activeTab.id} tab={activeTab as HistoryTabType} />
-      )}
-      {activeTab?.type === 'processlist' && (
-        <ProcessListTabComponent
-          key={activeTab.id}
-          connectionId={activeTab.connectionId}
-          sessionId={activeTab.connectionId}
-          isActive={true}
-        />
-      )}
-      {/* Tabs exist but none active */}
-      {tabs.length > 0 && !activeTab && (
-        <div className={styles.connectedPlaceholder}>
-          <p className={styles.connectedText}>Select a tab to view content</p>
-        </div>
-      )}
-    </>
-  )
+    if (previousTabId && activeTabId) {
+      dispatchWorkspaceTabDeactivated(previousTabId, activeTabId)
+    }
+    if (activeWorkspaceTabId && activeTabId) {
+      dispatchWorkspaceTabActivated(activeWorkspaceTabId, activeTabId)
+    }
+    previousActiveWorkspaceTabIdRef.current = activeWorkspaceTabId
+  }, [activeTabId, activeWorkspaceTabId])
 
   // No active connection → welcome screen
   if (!activeConnection) {
@@ -110,15 +67,43 @@ export function WorkspaceArea() {
     <div className={styles.workspaceTabbed} data-testid="workspace-area">
       <WorkspaceTabs connectionId={activeTabId!} />
       <AiDiffBridgeProvider>
-        {useAiResizeLayout ? (
-          <WorkspaceAiResizableRow tab={queryEditorTab!}>{tabContent}</WorkspaceAiResizableRow>
-        ) : (
-          <div className={styles.workspaceMain}>
-            <div className={styles.workspaceScroll}>
-              <div className={styles.tabContent}>{tabContent}</div>
+        <WorkspaceBody
+          tabs={tabs}
+          activeTabId={activeWorkspaceTabId}
+          connectionId={activeTabId!}
+          sessionId={activeTabId!}
+          renderTabStack={({
+            tabs: stackTabs,
+            activeTabId: stackActiveTabId,
+            connectionId,
+            sessionId,
+          }) => (
+            <div className={styles.panelStack}>
+              {activeConnection && stackTabs.length === 0 && (
+                <div className={styles.connectedPlaceholder}>
+                  <p className={styles.connectedText}>
+                    Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
+                    {activeConnection.profile.port})
+                  </p>
+                </div>
+              )}
+              {stackTabs.map((tab) => (
+                <WorkspaceTabPanel
+                  key={tab.id}
+                  tab={tab}
+                  isActive={tab.id === stackActiveTabId}
+                  connectionId={connectionId}
+                  sessionId={sessionId}
+                />
+              ))}
+              {stackTabs.length > 0 && !activeTab && (
+                <div className={styles.connectedPlaceholder}>
+                  <p className={styles.connectedText}>Select a tab to view content</p>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          )}
+        />
       </AiDiffBridgeProvider>
     </div>
   )

@@ -79,6 +79,7 @@ interface ResultGridViewProps {
   onSyncCellValue: (columnIndex: number, value: unknown) => void
   /** Auto-save the current editing row (called on row transition). */
   onAutoSave: () => Promise<boolean>
+  isActive?: boolean
 }
 
 const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
@@ -114,6 +115,7 @@ export function ResultGridView({
   onUpdateCellValue,
   onSyncCellValue,
   onAutoSave,
+  isActive = true,
 }: ResultGridViewProps) {
   const renderStartedAt = readPerformanceNow()
   const storeSetSelectedCell = useQueryStore((state) => state.setSelectedCell)
@@ -767,6 +769,7 @@ export function ResultGridView({
         autoSizeConfig={autoSizeConfig}
         showReadOnlyHeaders={!!editMode}
         performanceLogger={performanceLogger}
+        isActive={isActive}
         testId="result-grid"
       />
     </EditorCallbacksContext.Provider>

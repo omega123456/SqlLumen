@@ -46,12 +46,16 @@ export interface ProcessListToolbarProps {
   connectionId: string
   sessionId: string
   onRefresh: () => void
+  isActive?: boolean
+  workspaceTabId?: string
 }
 
 export function ProcessListToolbar({
   connectionId,
   sessionId,
   onRefresh,
+  isActive = true,
+  workspaceTabId,
 }: ProcessListToolbarProps) {
   const rows = useProcessListStore((s) => s.rowsByConnection[connectionId] ?? emptyRows)
   const selectedIds = useProcessListStore(
@@ -87,6 +91,14 @@ export function ProcessListToolbar({
   const [killResults, setKillResults] = useState<KillResult[] | null>(null)
   const [isKilling, setIsKilling] = useState(false)
   const isMountedRef = useRef(false)
+
+  useEffect(() => {
+    if (isActive) return
+    setConfirmDialogOpen(connectionId, false)
+    setSummaryDialogOpen(connectionId, false)
+    setKillResults(null)
+    setIsKilling(false)
+  }, [connectionId, isActive, setConfirmDialogOpen, setSummaryDialogOpen])
 
   useEffect(() => {
     isMountedRef.current = true
@@ -250,6 +262,7 @@ export function ProcessListToolbar({
           options={FILTER_OPTIONS}
           value={excludeIdleConnections ? EXCLUDE_IDLE_FILTER_VALUE : SHOW_ALL_FILTER_VALUE}
           onChange={handleFilterChange}
+          workspaceTabId={workspaceTabId}
           className={styles.autoWidthDropdown}
           triggerClassName={sharedToolbarStyles.pageSizeSelect}
         />
@@ -261,6 +274,7 @@ export function ProcessListToolbar({
           options={INTERVAL_OPTIONS}
           value={String(refreshIntervalMs)}
           onChange={handleIntervalChange}
+          workspaceTabId={workspaceTabId}
           className={styles.autoWidthDropdown}
           triggerClassName={sharedToolbarStyles.pageSizeSelect}
         />

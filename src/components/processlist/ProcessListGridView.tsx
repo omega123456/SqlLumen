@@ -10,7 +10,7 @@ import styles from './ProcessListGridView.module.css'
 
 type GridRow = ProcessRow & Record<string, unknown>
 type ProcessListPlaywrightApi = {
-  openInfoPopover: (connectionId: string, rowIndex: number) => boolean
+  openInfoPopover?: (connectionId: string, rowIndex: number) => boolean
 }
 
 const EMPTY_SET = new Set<number>()
@@ -92,9 +92,10 @@ const PROCESSLIST_COLUMNS: GridColumnDescriptor[] = [
 
 export interface ProcessListGridViewProps {
   connectionId: string
+  isActive?: boolean
 }
 
-export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) {
+export function ProcessListGridView({ connectionId, isActive = true }: ProcessListGridViewProps) {
   const gridRef = useRef<GridHandle | null>(null)
   const rows = useProcessListStore((s) => s.rowsByConnection[connectionId] ?? EMPTY_PROCESS_ROWS)
   const selectedIds = useProcessListStore(
@@ -149,6 +150,11 @@ export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) 
     setPopoverSql(null)
     setPopoverAnchorRect(null)
   }, [])
+
+  useEffect(() => {
+    if (isActive) return
+    queueMicrotask(handleClosePopover)
+  }, [handleClosePopover, isActive])
 
   const computeInfoAnchorRect = useCallback((rowIndex: number): DOMRect | null => {
     const host = gridRef.current?.element
@@ -259,6 +265,7 @@ export function ProcessListGridView({ connectionId }: ProcessListGridViewProps) 
         showInfoColumn={true}
         applyReadOnlyCellStyles={false}
         testId="processlist-grid-view"
+        isActive={isActive}
       />
       <InfoCellPopover
         sql={popoverSql}

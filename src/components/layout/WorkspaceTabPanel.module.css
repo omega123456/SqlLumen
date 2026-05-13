@@ -1,0 +1,11 @@
+.panel {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  visibility: visible;
+}
+
+.inactive {
+  visibility: hidden;
+  pointer-events: none;
+}

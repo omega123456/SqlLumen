@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom'
 import DatePicker from 'react-datepicker'
 import { CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { parseMysqlDate, formatMysqlDate, type TemporalColumnType } from '../../lib/date-utils'
+import { subscribeToTabDeactivated } from '../../lib/workspace-tab-activity-events'
 import { TextInput } from '../common/TextInput'
 import { useDismissOnOutsideClick } from '../connection-dialog/useDismissOnOutsideClick'
 import styles from './DateTimePicker.module.css'
@@ -40,6 +41,8 @@ export interface DateTimePickerProps {
   onApply: (value: string) => void
   /** Called when the user cancels (click outside, Escape, or Cancel button). */
   onCancel: () => void
+  /** Owning workspace tab, used to dismiss the portal when the tab deactivates. */
+  workspaceTabId?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -122,6 +125,7 @@ export function DateTimePicker({
   popupRef: externalPopupRef,
   onApply,
   onCancel,
+  workspaceTabId,
 }: DateTimePickerProps) {
   // Parse initial value
   const initialDate = parseMysqlDate(value, columnType)
@@ -199,6 +203,14 @@ export function DateTimePicker({
 
   // --- Click outside (delegated to shared hook) ---
   useDismissOnOutsideClick(internalPopupRef, !disabled, onCancel)
+
+  useEffect(() => {
+    if (!workspaceTabId) {
+      return
+    }
+
+    return subscribeToTabDeactivated(workspaceTabId, onCancel)
+  }, [onCancel, workspaceTabId])
 
   // --- Auto-focus: move focus into the picker so keyboard navigation works ---
   // react-datepicker natively handles arrow keys, Page Up/Down, Enter/Space
