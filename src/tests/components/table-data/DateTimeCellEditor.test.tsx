@@ -150,6 +150,17 @@ describe('DateTimeCellEditor', () => {
     expect(button.className).toContain('calendarBtn')
   })
 
+  it('keeps the input flexed so the calendar adornment remains visible', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    expect(screen.getByRole('textbox').className).toContain('editorInput')
+    expect(document.querySelector('[class*=editorFieldPrimary]')).toBeTruthy()
+    expect(document.querySelector('[class*=editorMarkerGroup]')).toBeTruthy()
+    expect(screen.getByTestId('grid-calendar-btn')).toBeInTheDocument()
+  })
+
   it('displays Clock icon for TIME columns', () => {
     setupStore()
     const props = makeMockProps({

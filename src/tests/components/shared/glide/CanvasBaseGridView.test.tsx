@@ -976,6 +976,7 @@ describe('CanvasBaseGridView', () => {
       targetRowIdx: 0,
       targetColIdx: 0,
       enableEditor: true,
+      initialInputValue: undefined,
     })
     const onSelectedCellChange = vi.fn()
     render(
@@ -1029,6 +1030,70 @@ describe('CanvasBaseGridView', () => {
         source: 'keyboard',
       })
     )
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it('typing into a selected editable cell seeds the first typed character before opening the editor', async () => {
+    const onCellClickGuard = vi.fn().mockResolvedValue({
+      proceed: true,
+      targetRowIdx: 0,
+      targetColIdx: 0,
+      enableEditor: true,
+      initialInputValue: undefined,
+    })
+    const onCellValueChange = vi.fn()
+
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[{ ...columns[0], editable: true }]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        selectedCellPosition={{ rowIdx: 0, idx: 0 }}
+        onCellClickGuard={onCellClickGuard}
+        onCellValueChange={onCellValueChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onKeyDown: (event: {
+        key: string
+        preventDefault: () => void
+        cancel?: () => void
+        altKey?: boolean
+        ctrlKey?: boolean
+        metaKey?: boolean
+      }) => void
+    }
+
+    const preventDefault = vi.fn()
+    const cancel = vi.fn()
+    act(() =>
+      props.onKeyDown({
+        key: 'x',
+        preventDefault,
+        cancel,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+      })
+    )
+
+    await waitFor(() =>
+      expect(onCellClickGuard).toHaveBeenCalledWith({
+        rowIdx: 0,
+        columnKey: 'name',
+        rowData: rows[0],
+        source: 'keyboard-typing',
+      })
+    )
+    expect(onCellValueChange).toHaveBeenCalledWith(0, 'name', 'x')
+    expect(mockSelectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 0 },
+      { shouldFocusCell: true, enableEditor: true }
+    )
+    expect(preventDefault).toHaveBeenCalled()
     expect(cancel).toHaveBeenCalled()
   })
 
@@ -1372,6 +1437,7 @@ describe('CanvasBaseGridView', () => {
       targetRowIdx: 0,
       targetColIdx: 0,
       enableEditor: true,
+      initialInputValue: undefined,
     }))
     const onCellSelectionChange = vi.fn()
 

@@ -32,7 +32,7 @@ export type GlideRowMarkerKind = 'none' | 'checkbox' | 'number' | 'both'
 
 const DEFAULT_ROW_MARKER_WIDTH = 32
 const DEFAULT_COLUMN_WIDTH = 120
-const GLIDE_OVERLAY_HORIZONTAL_PADDING = 16
+const GLIDE_OVERLAY_HORIZONTAL_PADDING = 20
 
 function getColumnWidth(column: GlideGridColumn): number {
   return 'width' in column && typeof column.width === 'number' ? column.width : DEFAULT_COLUMN_WIDTH
@@ -64,6 +64,9 @@ function constrainGlideEditorOverlay(element: HTMLElement): void {
 
   const constrainedWidth = `${Math.max(1, Math.floor(targetWidth + GLIDE_OVERLAY_HORIZONTAL_PADDING))}px`
 
+  if (element.style.getPropertyValue('--d19meir1-2') !== constrainedWidth) {
+    element.style.setProperty('--d19meir1-2', constrainedWidth)
+  }
   if (element.style.width !== constrainedWidth) element.style.width = constrainedWidth
   if (element.style.maxWidth !== constrainedWidth) element.style.maxWidth = constrainedWidth
   if (element.style.overflow !== 'hidden') element.style.overflow = 'hidden'
@@ -83,6 +86,7 @@ export type GlideDataGridProps<TRow> = {
   onCellClicked?: (cell: Item, event: CellClickedEventArgs) => void
   onCellDoubleClicked?: (cell: Item, event: CellClickedEventArgs) => void
   onCellActivated?: (cell: Item) => void
+  onCellActivationRequest?: (cell: Item, event: CellClickedEventArgs) => void
   onFinishedEditing?: (newValue: GridCell | undefined, movement: Item) => void
   selection?: GridSelection
   onSelectionChange?: (selection: GridSelection) => void
@@ -111,6 +115,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
     onCellClicked,
     onCellDoubleClicked,
     onCellActivated,
+    onCellActivationRequest,
     onFinishedEditing,
     selection,
     onSelectionChange,
@@ -227,11 +232,13 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
     (cell: Item) => {
       onCellActivated?.(cell)
       const [col, row] = cell
-      onCellDoubleClicked?.(cell, {
+      const activationEvent = {
         bounds: editorRef.current?.getBounds(col, row),
-      } as CellClickedEventArgs)
+      } as CellClickedEventArgs
+      onCellActivationRequest?.(cell, activationEvent)
+      onCellDoubleClicked?.(cell, activationEvent)
     },
-    [onCellActivated, onCellDoubleClicked]
+    [onCellActivated, onCellActivationRequest, onCellDoubleClicked]
   )
 
   const hostClassName = className ? `glide-grid-host ${className}` : 'glide-grid-host'
@@ -284,6 +291,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           smoothScrollX={false}
           smoothScrollY={false}
           verticalBorder={true}
+          cellActivationBehavior="double-click"
           rangeSelect="cell"
           rowSelect={rowMarkers === 'none' ? 'none' : 'multi'}
           columnSelect="none"

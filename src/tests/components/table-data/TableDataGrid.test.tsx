@@ -243,7 +243,7 @@ describe('TableDataGrid', () => {
         columnKey: string
         rowData: Record<string, unknown>
         source?: 'grid-pointer' | 'keyboard'
-      }) => Promise<{ proceed: boolean; enableEditor: boolean }>
+      }) => Promise<{ proceed: boolean; enableEditor: boolean; initialInputValue?: unknown }>
       editableColumnKeys: Set<string>
     }
     const result = await props.onCellClickGuard({
@@ -251,7 +251,7 @@ describe('TableDataGrid', () => {
       columnKey: 'name',
       rowData: { id: 1, name: 'Ada' },
     })
-    expect(result).toMatchObject({ proceed: true, enableEditor: true })
+    expect(result).toMatchObject({ proceed: true, enableEditor: false, initialInputValue: undefined })
     expect(useTableDataStore.getState().tabs.t1.selectedRowKey).toEqual({ id: 1 })
   })
 
@@ -278,7 +278,7 @@ describe('TableDataGrid', () => {
         columnKey: string
         rowData: Record<string, unknown>
         source?: 'grid-pointer' | 'keyboard'
-      }) => Promise<{ proceed: boolean; enableEditor: boolean }>
+      }) => Promise<{ proceed: boolean; enableEditor: boolean; initialInputValue?: unknown }>
     }
 
     let result: Awaited<ReturnType<typeof props.onCellClickGuard>> | undefined
@@ -291,10 +291,10 @@ describe('TableDataGrid', () => {
       })
     })
 
-    expect(result).toMatchObject({ proceed: true, enableEditor: false })
+    expect(result).toMatchObject({ proceed: true, enableEditor: false, initialInputValue: undefined })
     expect(useTableDataStore.getState().tabs.t1.selectedRowKey).toEqual({ id: 2 })
-    expect(startEditing).not.toHaveBeenCalled()
-    expect(useTableDataStore.getState().tabs.t1.editState).toBeNull()
+    expect(startEditing).toHaveBeenCalledWith('t1', { id: 2 }, expect.objectContaining({ id: 2, name: 'Bob' }))
+    expect(useTableDataStore.getState().tabs.t1.editState).not.toBeNull()
   })
 
   it('keyboard row navigation still validates current edits and restores focus without opening an editor', async () => {
@@ -379,7 +379,7 @@ describe('TableDataGrid', () => {
         rowIdx: number
         columnKey: string
         rowData: Record<string, unknown>
-      }) => Promise<{ proceed: boolean; enableEditor: boolean }>
+      }) => Promise<{ proceed: boolean; enableEditor: boolean; initialInputValue?: unknown }>
       editableColumnKeys: Set<string>
     }
 
@@ -389,7 +389,7 @@ describe('TableDataGrid', () => {
       rowData: { id: 1, user_id: 101 },
     })
 
-    expect(result).toMatchObject({ proceed: true, enableEditor: true })
+    expect(result).toMatchObject({ proceed: true, enableEditor: false, initialInputValue: undefined })
     expect(props.editableColumnKeys).toContain('user_id')
   })
 

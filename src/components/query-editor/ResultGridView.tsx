@@ -119,6 +119,11 @@ export function ResultGridView({
 }: ResultGridViewProps) {
   const renderStartedAt = readPerformanceNow()
   const storeSetSelectedCell = useQueryStore((state) => state.setSelectedCell)
+  const selectedCell = useQueryStore((state) => {
+    const tab = state.tabs[tabId]
+    const activeResultIndex = tab?.activeResultIndex ?? 0
+    return tab?.results[activeResultIndex]?.selectedCell ?? null
+  })
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -423,9 +428,12 @@ export function ResultGridView({
   }, [editableColumnMap])
 
   const selectedCellPosition = useMemo<GridCellPosition | null>(() => {
-    if (selectedRowIndex == null) return null
-    return { rowIdx: selectedRowIndex, idx: 0 }
-  }, [selectedRowIndex])
+    if (selectedRowIndex == null || !selectedCell) {
+      return selectedRowIndex == null ? null : { rowIdx: selectedRowIndex, idx: 0 }
+    }
+    const idx = columns.findIndex((column) => column.name === selectedCell.columnKey)
+    return { rowIdx: selectedRowIndex, idx: idx >= 0 ? idx : 0 }
+  }, [columns, selectedCell, selectedRowIndex])
 
   const handleSelectedCellChange = useCallback(
     (pos: GridCellPosition) => {
@@ -548,7 +556,8 @@ export function ResultGridView({
 
     return async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
       const { rowIdx, columnKey } = args
-      const isKeyboardSource = args.source === 'keyboard'
+      const isKeyboardNavigation = args.source === 'keyboard'
+      const isKeyboardTyping = args.source === 'keyboard-typing'
 
       const colIndex = colIndexFromKey(columnKey)
       const isEditable = editableColumnMap.get(colIndex) ?? false
@@ -564,23 +573,36 @@ export function ResultGridView({
           proceed: false,
           targetRowIdx: currentEditingRow ?? rowIdx,
           targetColIdx,
-          enableEditor: !isKeyboardSource,
+          enableEditor: !isKeyboardNavigation,
           restoreFocus: true,
+          initialInputValue: undefined,
         }
       }
 
       syncSelection(rowIdx, columnKey, args.rowData)
 
-      // Only start editing and enter editor for editable columns
-      if (isEditable && !isKeyboardSource) {
+      // Editable cells should start row editing; pointer single-click still keeps the editor closed.
+      if (isEditable) {
         if (currentEditingRow !== rowIdx) {
           onStartEditing(rowIdx)
         }
-        return { proceed: true, targetRowIdx: rowIdx, targetColIdx, enableEditor: true }
+        return {
+          proceed: true,
+          targetRowIdx: rowIdx,
+          targetColIdx,
+          enableEditor: isKeyboardTyping,
+          initialInputValue: undefined,
+        }
       }
 
       // Non-editable column: select but don't edit
-      return { proceed: true, targetRowIdx: rowIdx, targetColIdx, enableEditor: false }
+      return {
+        proceed: true,
+        targetRowIdx: rowIdx,
+        targetColIdx,
+        enableEditor: false,
+        initialInputValue: undefined,
+      }
     }
   }, [autoSaveBeforeLeavingEditedRow, editMode, editableColumnMap, onStartEditing, syncSelection])
 
@@ -598,6 +620,7 @@ export function ResultGridView({
         targetRowIdx: args.rowIdx,
         targetColIdx: targetColIdx >= 0 ? targetColIdx : 0,
         enableEditor: false,
+        initialInputValue: undefined,
       }
     },
     [syncSelection]

@@ -24,6 +24,7 @@ interface GlideEditorCellData {
   columnMeta?: CellEditorBaseProps['columnMeta']
   isNullable: boolean
   foreignKey?: CellEditorBaseProps['foreignKey']
+  selectAllOnFocus?: boolean
 }
 
 export type GlideEditableTextCell = TextCell & {
@@ -40,6 +41,45 @@ type VendorNeutralEditorComponent = ComponentType<CellEditorBaseProps>
 
 function getEditorTargetWidth(target: Rectangle): number {
   return Math.max(1, Math.floor(target.width))
+}
+
+function getMarkerCount(
+  editorData: GlideEditorCellData,
+  columnMeta?: CellEditorBaseProps['columnMeta']
+): number {
+  let count = 0
+  if (editorData.isNullable) count += 1
+  if (editorData.foreignKey) count += 1
+  const normalizedType = columnMeta?.dataType?.toUpperCase() ?? ''
+  if (
+    normalizedType.includes('DATE') ||
+    normalizedType.includes('TIME') ||
+    normalizedType.includes('YEAR')
+  ) {
+    count += 1
+  }
+  return count
+}
+
+const MIN_FIELD_WIDTH = 120
+const MARKER_SLOT_WIDTH = 32
+const MARKER_GAP_WIDTH = 4
+
+function getExpandedEditorWidth(targetWidth: number, markerCount: number): number {
+  if (markerCount <= 0) {
+    return targetWidth
+  }
+
+  const markerWidth =
+    markerCount * MARKER_SLOT_WIDTH + Math.max(0, markerCount - 1) * MARKER_GAP_WIDTH
+  const ratioWidth = Math.ceil(markerWidth * 3)
+  const contentWidth = Math.max(targetWidth, ratioWidth, MIN_FIELD_WIDTH + markerWidth)
+
+  return contentWidth
+}
+
+export function computeRequestedEditorWidth(targetWidth: number, markerCount: number): number {
+  return getExpandedEditorWidth(targetWidth, markerCount)
 }
 
 export function wrapEditorAsGlideOverlay(
@@ -62,19 +102,20 @@ export function wrapEditorAsGlideOverlay(
     const editorData = extractEditorData(value)
     if (!editorData) return null
 
-    const { row, columnKey, columnMeta, isNullable, foreignKey } = editorData
+    const { row, columnKey, columnMeta, isNullable, foreignKey, selectAllOnFocus } = editorData
     const targetWidth = getEditorTargetWidth(target)
+    const expandedWidth = getExpandedEditorWidth(targetWidth, getMarkerCount(editorData, columnMeta))
 
     return (
       <div
         data-testid={testId ?? 'glide-overlay-editor'}
         data-sqllumen-glide-editor-root="true"
-        data-sqllumen-editor-width={String(targetWidth)}
+        data-sqllumen-editor-width={String(expandedWidth)}
         style={{
           display: 'flex',
           alignItems: 'stretch',
-          width: `${targetWidth}px`,
-          maxWidth: `${targetWidth}px`,
+          width: `${expandedWidth}px`,
+          maxWidth: `${expandedWidth}px`,
           minWidth: 0,
           height: '100%',
           overflow: 'hidden',
@@ -87,6 +128,7 @@ export function wrapEditorAsGlideOverlay(
           isNullable={isNullable}
           columnMeta={columnMeta}
           foreignKey={foreignKey}
+          selectAllOnFocus={selectAllOnFocus}
           onRowChange={(nextRow) => {
             const nextValue = nextRow[columnKey]
             const text = nextValue == null ? '' : String(nextValue)

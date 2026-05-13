@@ -38,6 +38,7 @@ export interface GridEditorProps {
 export interface CellEditorParams extends GridEditorProps {
   isNullable: boolean
   columnMeta: TableDataColumnMeta
+  selectAllOnFocus?: boolean
 }
 
 /** Callbacks that the hook needs — typically provided via closures in column defs. */
@@ -113,8 +114,13 @@ export function useCellEditor(
   // Auto-focus the text input on mount
   useEffect(() => {
     inputRef.current?.focus()
-    inputRef.current?.select()
-  }, [])
+    if (params.selectAllOnFocus ?? true) {
+      inputRef.current?.select()
+    } else {
+      const currentValue = inputRef.current?.value ?? ''
+      inputRef.current?.setSelectionRange(currentValue.length, currentValue.length)
+    }
+  }, [params.selectAllOnFocus])
 
   // -----------------------------------------------------------------------
   // Handlers

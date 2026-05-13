@@ -2,6 +2,7 @@ import { render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ResultGridView } from '../../../components/query-editor/ResultGridView'
 import type { ColumnMeta, RowEditState, TableDataColumnMeta } from '../../../types/schema'
+import { useQueryStore } from '../../../stores/query-store'
 
 const mockCanvasBaseGridView = vi.hoisted(() =>
   vi.fn((props: Record<string, unknown>) => (
@@ -84,6 +85,7 @@ function getGridProps() {
       targetColIdx: number
       enableEditor: boolean
       restoreFocus?: boolean
+      initialInputValue?: unknown
     }>
     onCellClipboardEdit: (args: {
       rowIdx: number
@@ -212,7 +214,8 @@ describe('ResultGridView editing', () => {
       proceed: true,
       targetRowIdx: 0,
       targetColIdx: 0,
-      enableEditor: true,
+      enableEditor: false,
+      initialInputValue: undefined,
     })
     expect(onStartEditing).toHaveBeenCalledWith(0)
     expect(onRowSelected).toHaveBeenCalledWith(0)
@@ -246,9 +249,40 @@ describe('ResultGridView editing', () => {
       targetRowIdx: 1,
       targetColIdx: 0,
       enableEditor: false,
+      initialInputValue: undefined,
     })
-    expect(onStartEditing).not.toHaveBeenCalled()
+    expect(onStartEditing).toHaveBeenCalledWith(1)
     expect(onRowSelected).toHaveBeenCalledWith(1)
+  })
+
+  it('tracks the actual selected column for keyboard typing activation', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          content: '',
+          selectedText: '',
+          filePath: null,
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
+          cursorPosition: null,
+          connectionId: 'c1',
+          results: [],
+          activeResultIndex: 0,
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+          selectedCell: { columnKey: 'name', value: 'Ada' },
+        },
+      },
+    })
+
+    render(<ResultGridView {...props} selectedRowIndex={0} />)
+
+    const gridProps = getGridProps() as unknown as {
+      selectedCellPosition: { rowIdx: number; idx: number } | null
+    }
+    expect(gridProps.selectedCellPosition).toEqual({ rowIdx: 0, idx: 0 })
   })
 
   it('selects but does not edit non-editable cells', async () => {

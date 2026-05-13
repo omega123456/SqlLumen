@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { WorkspaceBody } from '../../../components/layout/WorkspaceBody'
 import { WORKSPACE_LAYOUT_EVENT } from '../../../lib/workspace-layout-events'
 import { useAiStore, type TabAiState } from '../../../stores/ai-store'
+import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import type { WorkspaceTab } from '../../../types/schema'
 
 const panelRenders: Array<Record<string, unknown>> = []
@@ -45,6 +46,12 @@ vi.mock('react-resizable-panels', async () => {
 vi.mock('../../../components/ai-panel/AiPanel', () => ({
   AiPanel: ({ tabId }: { tabId: string }) => (
     <div data-testid="mock-ai-panel" data-tab-id={tabId} />
+  ),
+}))
+
+vi.mock('../../../components/ai-panel/QueryWorkspaceAiRail', () => ({
+  QueryWorkspaceAiRail: ({ tab }: { tab: { id: string } }) => (
+    <div data-testid="mock-ai-rail" data-tab-id={tab.id} />
   ),
 }))
 
@@ -125,6 +132,15 @@ beforeEach(() => {
       'query-2': emptyAiTabState({ isPanelOpen: false }),
     },
   })
+  useSettingsStore.setState({
+    settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
+    pendingChanges: {},
+    isDirty: false,
+    isLoading: false,
+    activeSection: 'general',
+    isDialogOpen: false,
+    dialogSection: undefined,
+  })
 })
 
 describe('WorkspaceBody', () => {
@@ -138,6 +154,16 @@ describe('WorkspaceBody', () => {
     const panels = screen.getAllByTestId('mock-ai-panel')
     expect(panels).toHaveLength(2)
     expect(panels.map((panel) => panel.dataset.tabId)).toEqual(['query-1', 'query-2'])
+  })
+
+  it('renders the query AI rail only for the active query tab when AI is enabled', () => {
+    renderWorkspaceBody('query-1')
+    expect(screen.getByTestId('mock-ai-rail')).toHaveAttribute('data-tab-id', 'query-1')
+  })
+
+  it('does not render the query AI rail for non-query tabs', () => {
+    renderWorkspaceBody('table-1')
+    expect(screen.queryByTestId('mock-ai-rail')).not.toBeInTheDocument()
   })
 
   it('only leaves the active query tab AiPanel visible', () => {

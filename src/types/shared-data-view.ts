@@ -83,7 +83,7 @@ export interface CellClickGuardArgs {
   rowIdx: number
   columnKey: string
   rowData: Record<string, unknown>
-  source?: 'grid-pointer' | 'keyboard'
+  source?: 'grid-pointer' | 'keyboard' | 'keyboard-typing'
 }
 
 export interface CellClickGuardResult {
@@ -92,6 +92,7 @@ export interface CellClickGuardResult {
   targetColIdx: number
   enableEditor: boolean
   restoreFocus?: boolean
+  initialInputValue?: unknown
 }
 
 export interface CellClipboardEditArgs {

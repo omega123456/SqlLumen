@@ -13,6 +13,7 @@ import userEvent from '@testing-library/user-event'
 import { NullableCellEditor, EnumCellEditor } from '../../../components/shared/grid-cell-editors'
 import type { CellEditorBaseProps } from '../../../components/shared/grid-cell-editors'
 import { getCellEditorForColumn } from '../../../components/shared/grid-column-editor-utils'
+import { FkLookupProvider } from '../../../components/shared/fk-lookup-context'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -229,6 +230,28 @@ describe('NullableCellEditor — store syncing', () => {
 
     expect(props.onClose).toHaveBeenCalledWith(true, false)
   })
+
+  it('keeps the text input flexed when NULL/FK adornments are present', () => {
+    const props = makeEditorProps({
+      foreignKey: {
+        columnName: 'col_1',
+        referencedDatabase: 'app',
+        referencedTable: 'people',
+        referencedColumn: 'id',
+        constraintName: 'fk_people',
+      },
+    })
+    render(
+      <FkLookupProvider onFkLookup={vi.fn()}>
+        <NullableCellEditor {...props} />
+      </FkLookupProvider>
+    )
+
+    expect(document.querySelector('.td-cell-editor-input')?.className).toContain('editorInput')
+    expect(document.querySelector('[class*=editorFieldPrimary]')).toBeTruthy()
+    expect(document.querySelector('[class*=editorMarkerGroup]')).toBeTruthy()
+    expect(screen.getByTestId('fk-lookup-trigger')).toBeInTheDocument()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -266,6 +289,29 @@ describe('EnumCellEditor — store syncing', () => {
       ...overrides,
     }
   }
+
+  it('keeps the enum trigger flexed so adornments stay visible', () => {
+    const props = makeEnumProps({
+      foreignKey: {
+        columnName: 'col_2',
+        referencedDatabase: 'app',
+        referencedTable: 'status_lookup',
+        referencedColumn: 'id',
+        constraintName: 'fk_status',
+      },
+    })
+    render(
+      <FkLookupProvider onFkLookup={vi.fn()}>
+        <EnumCellEditor {...props} />
+      </FkLookupProvider>
+    )
+
+    const trigger = document.querySelector('.td-cell-editor-select')
+    expect(trigger?.className).toContain('editorSelect')
+    expect(document.querySelector('[class*=editorFieldPrimary]')).toBeTruthy()
+    expect(document.querySelector('[class*=editorMarkerGroup]')).toBeTruthy()
+    expect(screen.getByTestId('fk-lookup-trigger')).toBeInTheDocument()
+  })
 
   it('calls syncCellValue when selecting a new enum value', async () => {
     const user = userEvent.setup()

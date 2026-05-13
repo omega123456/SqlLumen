@@ -499,12 +499,19 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
     async (args: CellClickGuardArgs): Promise<CellClickGuardResult> => {
       const row = args.rowData
       const targetRowKey = getRowKey(row, pkColumns)
-      const isKeyboardSource = args.source === 'keyboard'
+      const isKeyboardNavigation = args.source === 'keyboard'
+      const isKeyboardTyping = args.source === 'keyboard-typing'
 
       // Resolve target column descriptor
       const target = resolveTargetColumn(args.columnKey)
       if (!target) {
-        return { proceed: false, targetRowIdx: args.rowIdx, targetColIdx: 0, enableEditor: false }
+        return {
+          proceed: false,
+          targetRowIdx: args.rowIdx,
+          targetColIdx: 0,
+          enableEditor: false,
+          initialInputValue: undefined,
+        }
       }
       const { editable, targetColIdx } = target
 
@@ -513,7 +520,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
         targetRowKey,
         args.rowIdx,
         targetColIdx,
-        { enableEditorOnRestore: !isKeyboardSource }
+        { enableEditorOnRestore: !isKeyboardNavigation }
       )
       if (!guardResult.passed) {
         return guardResult.result!
@@ -523,28 +530,40 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
       setSelectedRow(tabId, targetRowKey)
       setSelectedCell(tabId, { columnKey: args.columnKey, value: args.rowData[args.columnKey] })
 
-      // Non-editable columns: stop here (selection updated, no editing needed)
-      if (!editable || isKeyboardSource) {
+      if (!editable) {
         const rowIdx = findCurrentRowIndex(targetRowKey)
         return {
           proceed: true,
           targetRowIdx: rowIdx >= 0 ? rowIdx : args.rowIdx,
           targetColIdx,
           enableEditor: false,
+          initialInputValue: undefined,
         }
       }
 
-      // Start tracking the new row if switching rows
+      // Start tracking the new row for editable cells, including keyboard typing activation.
       ensureRowEditingStarted(targetRowKey, row)
 
-      // Find current rowIdx for captured row key and enter editor
+      // Find current rowIdx for captured row key and keep pointer single-click selection-only.
       const finalRowIdx = findCurrentRowIndex(targetRowKey)
 
       if (finalRowIdx >= 0) {
-        return { proceed: true, targetRowIdx: finalRowIdx, targetColIdx, enableEditor: true }
+        return {
+          proceed: true,
+          targetRowIdx: finalRowIdx,
+          targetColIdx,
+          enableEditor: isKeyboardTyping,
+          initialInputValue: undefined,
+        }
       }
 
-      return { proceed: false, targetRowIdx: args.rowIdx, targetColIdx, enableEditor: false }
+      return {
+        proceed: false,
+        targetRowIdx: args.rowIdx,
+        targetColIdx,
+        enableEditor: false,
+        initialInputValue: undefined,
+      }
     },
     [
       pkColumns,

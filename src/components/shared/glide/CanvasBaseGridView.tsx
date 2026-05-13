@@ -58,6 +58,18 @@ interface EditorSessionBaseline {
   value: unknown
 }
 
+interface PendingTypingActivation {
+  rowIndex: number
+  columnKey: string
+  value: string
+}
+
+function isTypingActivationKey(event: GlideKeyDownEvent): boolean {
+  if (event.altKey || event.ctrlKey || event.metaKey) return false
+  if (event.key.length !== 1) return false
+  return event.key !== '\r' && event.key !== '\n'
+}
+
 function normalizeEditorValue(value: unknown): unknown {
   return value == null ? null : String(value)
 }
@@ -185,6 +197,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   const suppressScrollPersistenceRef = useRef(false)
   const isEditingCellRef = useRef(false)
   const editorSessionBaselineRef = useRef<EditorSessionBaseline | null>(null)
+  const pendingTypingActivationRef = useRef<PendingTypingActivation | null>(null)
   const activeSelectedRowIndex = selectedRowIndex ?? internalSelectedRowIndex
 
   const isRowSelected = useCallback(
@@ -365,6 +378,11 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
             columnMeta: column.tableColumnMeta,
             isNullable: column.isNullable === true,
             foreignKey: column.foreignKey,
+            selectAllOnFocus:
+              pendingTypingActivationRef.current?.rowIndex === rowIndex &&
+              pendingTypingActivationRef.current?.columnKey === column.key
+                ? false
+                : true,
           },
         } as TextCell & { glideEditorData: unknown }
       }
@@ -504,10 +522,19 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       const column = gridColumns[colIndex]
       if (!column || newValue.kind !== GridCellKind.Text) return
       const next = newValue.data === '' && newValue.copyData === 'NULL' ? null : newValue.data
+      const pendingTypingActivation = pendingTypingActivationRef.current
+      const isPendingTypingActivation =
+        pendingTypingActivation?.rowIndex === rowIndex &&
+        pendingTypingActivation.columnKey === column.key &&
+        pendingTypingActivation.value === next
+      if (isPendingTypingActivation) {
+        pendingTypingActivationRef.current = null
+      }
       const baseline = editorSessionBaselineRef.current
       const isActiveEditorSession =
         baseline?.rowIndex === rowIndex && baseline.columnKey === column.key
-      const isNoOpCommit = isActiveEditorSession && Object.is(baseline.value, next)
+      const isNoOpCommit =
+        !isPendingTypingActivation && isActiveEditorSession && Object.is(baseline.value, next)
       if (!isNoOpCommit) {
         onCellValueChange?.(rowIndex, column.key, next)
       }
@@ -664,6 +691,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   const handleFinishedEditing = useCallback(() => {
     isEditingCellRef.current = false
     editorSessionBaselineRef.current = null
+    pendingTypingActivationRef.current = null
   }, [])
 
   const cancelActiveEditor = useCallback(() => {
@@ -726,18 +754,75 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     [editState?.currentValues, editState?.originalValues, gridColumns, rows]
   )
 
+  const activateCell = useCallback(
+    async (cell: Item) => {
+      const [colIndex, rowIndex] = cell
+      const row = rows[rowIndex]
+      const column = gridColumns[colIndex]
+      if (!row || !column) return
+
+       const guard = onCellClickGuard
+         ? await onCellClickGuard({
+             rowIdx: rowIndex,
+             columnKey: column.key,
+             rowData: row,
+             source: 'grid-pointer',
+           })
+         : { proceed: true, targetRowIdx: rowIndex, targetColIdx: colIndex, enableEditor: true }
+
+      if (!guard.proceed) {
+        if (guard.restoreFocus) {
+          gridRef.current?.selectCell(
+            { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
+            { shouldFocusCell: true, enableEditor: guard.enableEditor }
+          )
+        }
+        return
+      }
+
+      const targetRow = rows[guard.targetRowIdx]
+      const targetColumn = gridColumns[guard.targetColIdx]
+      if (!targetRow || !targetColumn) return
+
+      const ok = await changeSelectedCell(guard.targetRowIdx, guard.targetColIdx)
+      if (!ok) return
+
+      selectRow(guard.targetRowIdx)
+      onRowClick?.(targetRow, targetColumn.key)
+      onCellSelectionChange?.({
+        rowIdx: guard.targetRowIdx,
+        columnKey: targetColumn.key,
+        rowData: targetRow,
+        source: 'grid-pointer',
+      })
+      if (guard.enableEditor) {
+        gridRef.current?.selectCell(
+          { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
+          { shouldFocusCell: true, enableEditor: true }
+        )
+      }
+    },
+    [changeSelectedCell, gridColumns, onCellClickGuard, onCellSelectionChange, onRowClick, rows, selectRow]
+  )
+
+  const handleCellActivationRequest = useCallback(
+    async (cell: Item) => {
+      await activateCell(cell)
+    },
+    [activateCell]
+  )
+
   const handleCellDoubleClicked = useCallback(
     (cell: Item) => {
       const [colIndex, rowIndex] = cell
       const row = rows[rowIndex]
       const column = gridColumns[colIndex]
-      if (row && column) {
-        selectRow(rowIndex)
-        onCellDoubleClick?.(row, column.key)
-        onRowDoubleClicked?.(row)
-      }
+      if (!row || !column) return
+      void activateCell(cell)
+      onCellDoubleClick?.(row, column.key)
+      onRowDoubleClicked?.(row)
     },
-    [gridColumns, onCellDoubleClick, onRowDoubleClicked, rows, selectRow]
+    [activateCell, gridColumns, onCellDoubleClick, onRowDoubleClicked, rows]
   )
 
   const triggerFkLookupFromSelection = useCallback(
@@ -778,14 +863,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         return
       }
 
-      const currentCell =
-        selectedCellPosition ??
-        (gridSelection?.current
-          ? {
-              idx: gridSelection.current.cell[0],
-              rowIdx: gridSelection.current.cell[1],
-            }
-          : null)
+      const currentCell = gridSelection?.current
+        ? {
+            idx: gridSelection.current.cell[0],
+            rowIdx: gridSelection.current.cell[1],
+          }
+        : selectedCellPosition
 
       const moveSelection = (delta: -1 | 1) => {
         const currentRow = currentCell?.rowIdx ?? activeSelectedRowIndex ?? 0
@@ -879,6 +962,65 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         moveSelection(-1)
         return
       }
+      if (isTypingActivationKey(event) && currentCell) {
+        const currentRow = rows[currentCell.rowIdx]
+        const currentColumn = gridColumns[currentCell.idx]
+        if (!currentRow || !currentColumn) return
+        const typedValue = event.key
+
+        const startEditor = async () => {
+          const guard = onCellClickGuard
+            ? await onCellClickGuard({
+                rowIdx: currentCell.rowIdx,
+                columnKey: currentColumn.key,
+                rowData: currentRow,
+                source: 'keyboard-typing',
+              })
+            : {
+                proceed: true,
+                targetRowIdx: currentCell.rowIdx,
+                targetColIdx: currentCell.idx,
+                enableEditor: true,
+                initialInputValue: typedValue,
+              }
+
+          if (!guard.proceed) {
+            if (guard.restoreFocus) {
+              gridRef.current?.selectCell(
+                { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
+                { shouldFocusCell: true, enableEditor: guard.enableEditor }
+              )
+            }
+            return
+          }
+
+          const ok = await changeSelectedCell(guard.targetRowIdx, guard.targetColIdx)
+          if (!ok) return
+          selectRow(guard.targetRowIdx)
+          const targetColumn = gridColumns[guard.targetColIdx]
+          if (guard.enableEditor && targetColumn && editableColumnKeys?.has(targetColumn.key) === true) {
+            pendingTypingActivationRef.current = {
+              rowIndex: guard.targetRowIdx,
+              columnKey: targetColumn.key,
+              value: String(guard.initialInputValue ?? typedValue),
+            }
+            onCellValueChange?.(
+              guard.targetRowIdx,
+              targetColumn.key,
+              guard.initialInputValue ?? typedValue
+            )
+          }
+          gridRef.current?.selectCell(
+            { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
+            { shouldFocusCell: true, enableEditor: guard.enableEditor }
+          )
+        }
+
+        event.preventDefault()
+        event.cancel?.()
+        void startEditor()
+        return
+      }
       if (event.key === 'Enter' && activeSelectedRowIndex != null) {
         const row = rows[activeSelectedRowIndex]
         if (row) {
@@ -898,6 +1040,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       onRowDoubleClicked,
       onCellClickGuard,
       onCellSelectionChange,
+      onCellValueChange,
       rows,
       runCellClickGuardOnKeyboardSelection,
       selectedCellPosition,
@@ -1068,6 +1211,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         onPaste={handlePaste}
         onCellDoubleClicked={handleCellDoubleClicked}
         onCellActivated={handleCellActivatedForEditing}
+        onCellActivationRequest={handleCellActivationRequest}
         onFinishedEditing={handleFinishedEditing}
         onCellContextMenu={handleCellClicked}
         onVisibleRegionChanged={handleVisibleRegionChanged}

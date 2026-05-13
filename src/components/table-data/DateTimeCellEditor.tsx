@@ -53,6 +53,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
     onClose: props.onClose,
     isNullable: props.isNullable,
     columnMeta: props.columnMeta,
+    selectAllOnFocus: props.selectAllOnFocus,
   }
   const callbacks: CellEditorCallbacks = {
     tabId: props.tabId,
@@ -219,37 +220,42 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
       className={`${sharedStyles.cellEditorWrapper} ${styles.dateTimeEditorWrapper}`}
       data-testid="datetime-cell-editor"
     >
-      <TextInput
-        ref={inputRef}
-        variant="gridCell"
-        value={displayValue}
-        onChange={(e) => handleChange(e.target.value)}
-        onBlur={(e) => handleInputBlur(e.relatedTarget)}
-        onKeyDown={handleKeyDown}
-      />
-      {props.isNullable && (
+      <div className={sharedStyles.editorFieldPrimary}>
+        <TextInput
+          ref={inputRef}
+          variant="gridCell"
+          className={sharedStyles.editorInput}
+          value={displayValue}
+          onChange={(e) => handleChange(e.target.value)}
+          onBlur={(e) => handleInputBlur(e.relatedTarget)}
+          onKeyDown={handleKeyDown}
+        />
+      </div>
+      <div className={sharedStyles.editorMarkerGroup}>
+        {props.isNullable && (
+          <button
+            type="button"
+            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleToggleNull}
+            tabIndex={-1}
+          >
+            NULL
+          </button>
+        )}
         <button
           type="button"
-          className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+          className={styles.calendarBtn}
           onMouseDown={(e) => e.preventDefault()}
-          onClick={handleToggleNull}
+          onClick={handleCalendarClick}
+          disabled={isNull}
           tabIndex={-1}
+          data-testid="grid-calendar-btn"
+          aria-label="Open date picker"
         >
-          NULL
+          <IconComponent size={14} />
         </button>
-      )}
-      <button
-        type="button"
-        className={styles.calendarBtn}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={handleCalendarClick}
-        disabled={isNull}
-        tabIndex={-1}
-        data-testid="grid-calendar-btn"
-        aria-label="Open date picker"
-      >
-        <IconComponent size={14} />
-      </button>
+      </div>
 
       {pickerOpen && (
         <DateTimePicker

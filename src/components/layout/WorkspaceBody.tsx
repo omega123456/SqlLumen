@@ -3,9 +3,11 @@ import type { ReactNode } from 'react'
 import { Group, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 import { dispatchWorkspaceLayoutResize } from '../../lib/workspace-layout-events'
 import { useAiStore } from '../../stores/ai-store'
+import { useSettingsStore } from '../../stores/settings-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { QueryEditorTab, WorkspaceTab } from '../../types/schema'
 import { AiPanel } from '../ai-panel/AiPanel'
+import { QueryWorkspaceAiRail } from '../ai-panel/QueryWorkspaceAiRail'
 import { useAiDiffTrigger } from '../query-editor/ai-diff-bridge-context'
 import styles from './WorkspaceBody.module.css'
 
@@ -42,6 +44,10 @@ export function WorkspaceBody({
   const aiChatPanelRef = usePanelRef()
   const triggerDiff = useAiDiffTrigger()
   const setLastFocusedSurface = useWorkspaceStore((state) => state.setLastFocusedSurface)
+  const aiEnabled = useSettingsStore(
+    (state) =>
+      (state.pendingChanges['ai.enabled'] ?? state.settings['ai.enabled'] ?? 'false') === 'true'
+  )
 
   useEffect(() => {
     if (activeQueryTab && isActiveQueryPanelOpen) {
@@ -79,6 +85,7 @@ export function WorkspaceBody({
         >
           {renderTabStack({ tabs, activeTabId, connectionId, sessionId })}
         </Panel>
+        {aiEnabled && activeQueryTab ? <QueryWorkspaceAiRail tab={activeQueryTab} /> : null}
         <Separator className={styles.separator} />
         <Panel
           panelRef={aiChatPanelRef}

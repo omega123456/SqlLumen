@@ -14,6 +14,42 @@
   overflow: hidden;
 }
 
+.editorInput {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 0;
+  max-width: 100%;
+}
+
+.editorField {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 0;
+  max-width: 100%;
+}
+
+.editorFieldPrimary {
+  flex: 2 1 0;
+  min-width: 0;
+  width: 0;
+  max-width: 100%;
+}
+
+.editorSelect {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.editorMarkerGroup {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 0 0;
+  min-width: max-content;
+  gap: 4px;
+  margin-right: 1px;
+}
 /* FK trigger button inside Glide's native cell editor overlay */
 .fkTriggerButton {
   display: flex;

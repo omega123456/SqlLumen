@@ -86,6 +86,7 @@ describe('GlideDataGrid', () => {
     expect(props.columns).toEqual([{ title: 'Id', width: 80 }])
     expect(props.rows).toBe(2)
     expect(props.getCellContent).toBe(getCellContent)
+    expect(props.cellActivationBehavior).toBe('double-click')
   })
 
   it('renders a placeholder when host size is zero', () => {
@@ -251,22 +252,25 @@ describe('GlideDataGrid', () => {
       await Promise.resolve()
     })
 
-    expect(overlay.style.width).toBe('54px')
-    expect(overlay.style.maxWidth).toBe('54px')
+    expect(overlay.style.width).toBe('58px')
+    expect(overlay.style.maxWidth).toBe('58px')
+    expect(overlay.style.getPropertyValue('--d19meir1-2')).toBe('58px')
     expect(overlay.style.overflow).toBe('hidden')
 
     portal.remove()
     vi.useRealTimers()
   })
 
-  it('maps cell activation to double-click with current bounds', () => {
+  it('maps cell activation to activation request and double-click with current bounds', () => {
     const onCellDoubleClicked = vi.fn()
+    const onCellActivationRequest = vi.fn()
     render(
       <GlideDataGrid
         columns={[{ title: 'Id', width: 80 }]}
         rows={[{ id: 1 }]}
         getCellContent={vi.fn()}
         onCellDoubleClicked={onCellDoubleClicked}
+        onCellActivationRequest={onCellActivationRequest}
       />
     )
     const props = mockDataEditor.mock.lastCall?.[0] as {
@@ -274,8 +278,39 @@ describe('GlideDataGrid', () => {
     }
     props.onCellActivated([2, 3])
     expect(mockGetBounds).toHaveBeenCalledWith(2, 3)
+    expect(onCellActivationRequest).toHaveBeenCalledWith([2, 3], {
+      bounds: { x: 1, y: 2, width: 3, height: 4 },
+    })
     expect(onCellDoubleClicked).toHaveBeenCalledWith([2, 3], {
       bounds: { x: 1, y: 2, width: 3, height: 4 },
     })
+  })
+
+  it('applies requested editor width plus overlay padding', async () => {
+    vi.useFakeTimers()
+    const portal = document.createElement('div')
+    portal.id = 'portal'
+    const overlay = document.createElement('div')
+    overlay.className = 'gdg-d19meir1'
+    const editorRoot = document.createElement('div')
+    editorRoot.setAttribute('data-sqllumen-glide-editor-root', 'true')
+    editorRoot.setAttribute('data-sqllumen-editor-width', '180')
+    overlay.appendChild(editorRoot)
+    portal.appendChild(overlay)
+    document.body.appendChild(portal)
+
+    render(<GlideDataGrid columns={[{ title: 'Id', width: 80 }]} rows={[{ id: 1 }]} getCellContent={vi.fn()} />)
+
+    await act(async () => {
+      vi.runAllTimers()
+      await Promise.resolve()
+    })
+
+    expect(overlay.style.width).toBe('200px')
+    expect(overlay.style.maxWidth).toBe('200px')
+    expect(overlay.style.getPropertyValue('--d19meir1-2')).toBe('200px')
+
+    portal.remove()
+    vi.useRealTimers()
   })
 })

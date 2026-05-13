@@ -89,8 +89,8 @@
 .glide-grid-host .td-cell-editor-select,
 #portal .td-cell-editor-input,
 #portal .td-cell-editor-select {
-  flex: 1 1 auto;
-  width: auto;
+  flex: 1 1 0;
+  width: 100%;
   max-width: 100%;
   min-width: 0;
   height: 100%;
