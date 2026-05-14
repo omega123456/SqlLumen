@@ -127,12 +127,19 @@
   box-shadow: var(--ui-input-rest-shadow);
 }
 
-.glide-grid-host .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay']:hover:not(:disabled):not([aria-expanded='true']),
-#portal .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay']:hover:not(:disabled):not([aria-expanded='true']) {
+.glide-grid-host
+  .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay']:hover:not(:disabled):not(
+    [aria-expanded='true']
+  ),
+#portal
+  .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay']:hover:not(:disabled):not(
+    [aria-expanded='true']
+  ) {
   border-color: var(--ui-dropdown-trigger-hover-border-color);
 }
 
-.glide-grid-host .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'],
+.glide-grid-host
+  .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'],
 #portal .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'] {
   border: var(--ui-dropdown-trigger-open-border);
   box-shadow:
@@ -142,13 +149,17 @@
   font-weight: 600;
 }
 
-.glide-grid-host .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='bottom'],
-#portal .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='bottom'] {
+.glide-grid-host
+  .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='bottom'],
+#portal
+  .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='bottom'] {
   border-bottom: none;
 }
 
-.glide-grid-host .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='top'],
-#portal .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='top'] {
+.glide-grid-host
+  .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='top'],
+#portal
+  .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='top'] {
   border-top: none;
 }
 
@@ -216,6 +227,22 @@
 
 #portal > * {
   pointer-events: auto;
+}
+
+/* Allow Glide DropdownCell menu to expand to fit content.
+   PortalWrap uses the stable Linaria class .gdg-p13nj8j0.
+   React Select only uses className (not classNamePrefix) so BEM sub-classes like
+   __menu are NOT generated — we target structural descendants of PortalWrap instead.
+   PortalWrap > div  = the Menu container
+   PortalWrap > div > div:first-child = the MenuList container */
+#portal .gdg-p13nj8j0 > div {
+  min-width: max-content !important;
+  width: max-content !important;
+}
+
+#portal .gdg-p13nj8j0 > div > div {
+  overflow-x: hidden !important;
+  white-space: nowrap;
 }
 
 /* Constrain Glide's editor overlay to the active cell instead of its 400px default.

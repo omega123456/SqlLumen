@@ -11,6 +11,7 @@ import {
   CompactSelection,
   DataEditor,
   type CellClickedEventArgs,
+  type CustomRenderer,
   type DataEditorRef,
   type DrawCellCallback,
   type DrawHeaderCallback,
@@ -59,7 +60,7 @@ function constrainGlideEditorOverlay(element: HTMLElement): void {
 
   const targetWidth = getTargetEditorWidth(editorRoot)
 
-  if (!Number.isFinite(targetWidth) || targetWidth <= 0) return
+  if (targetWidth === null || !Number.isFinite(targetWidth) || targetWidth <= 0) return
 
   const constrainedWidth = `${Math.max(1, Math.floor(targetWidth))}px`
 
@@ -79,6 +80,7 @@ export type GlideDataGridProps<TRow> = {
   onDelete?: (selection: GridSelection) => boolean | GridSelection
   provideEditor?: ProvideEditorCallback<GridCell>
   onPaste?: ((target: Item, values: readonly (readonly string[])[]) => boolean) | boolean
+  customRenderers?: CustomRenderer<any>[]
   onColumnResize?: (columnIndex: number, newWidth: number) => void
   onHeaderClicked?: (columnIndex: number) => void
   onCellContextMenu?: (cell: Item, event: CellClickedEventArgs) => void
@@ -107,6 +109,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
     onDelete,
     provideEditor,
     onPaste,
+    customRenderers,
     onColumnResize,
     onHeaderClicked,
     onCellContextMenu,
@@ -271,6 +274,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           onDelete={onDelete}
           provideEditor={provideEditor}
           onPaste={onPaste}
+          customRenderers={customRenderers}
           width={size.width}
           height={size.height}
           theme={theme}
@@ -292,7 +296,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           smoothScrollX={false}
           smoothScrollY={false}
           verticalBorder={true}
-          cellActivationBehavior="double-click"
+          cellActivationBehavior="second-click"
           rangeSelect="cell"
           rowSelect={rowMarkers === 'none' ? 'none' : 'multi'}
           columnSelect="none"

@@ -10,6 +10,7 @@ import { useSystemTheme } from './hooks/use-system-theme'
 
 // Glide Data Grid base styles + Precision Studio custom theme
 import '@glideapps/glide-data-grid/dist/index.css'
+import '@glideapps/glide-data-grid-cells/dist/index.css'
 import './styles/data-grid-precision.css'
 
 function App() {

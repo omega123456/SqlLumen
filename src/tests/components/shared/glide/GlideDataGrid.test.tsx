@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRef } from 'react'
 import { act, render, screen } from '@testing-library/react'
-import { GridCellKind, type GridCell } from '@glideapps/glide-data-grid'
+import {
+  GridCellKind,
+  type CustomCell,
+  type CustomRenderer,
+  type GridCell,
+} from '@glideapps/glide-data-grid'
 import { GlideDataGrid } from '../../../../components/shared/glide/GlideDataGrid'
 import type { GridHandle } from '../../../../components/shared/glide/glide-grid-types'
 
@@ -86,7 +91,7 @@ describe('GlideDataGrid', () => {
     expect(props.columns).toEqual([{ title: 'Id', width: 80 }])
     expect(props.rows).toBe(2)
     expect(props.getCellContent).toBe(getCellContent)
-    expect(props.cellActivationBehavior).toBe('double-click')
+    expect(props.cellActivationBehavior).toBe('second-click')
   })
 
   it('renders a placeholder when host size is zero', () => {
@@ -224,6 +229,31 @@ describe('GlideDataGrid', () => {
     }
 
     expect(props.provideEditor).toBe(provideEditor)
+  })
+
+  it('forwards custom renderers to DataEditor', () => {
+    const customRenderers = [
+      {
+        kind: GridCellKind.Custom,
+        isMatch: (_cell: CustomCell): _cell is CustomCell<any> => false,
+        draw: vi.fn(() => true),
+      },
+    ] satisfies CustomRenderer<any>[]
+
+    render(
+      <GlideDataGrid
+        columns={[{ title: 'Id', width: 80 }]}
+        rows={[{ id: 1 }]}
+        getCellContent={vi.fn()}
+        customRenderers={customRenderers}
+      />
+    )
+
+    const props = mockDataEditor.mock.lastCall?.[0] as {
+      customRenderers: typeof customRenderers
+    }
+
+    expect(props.customRenderers).toBe(customRenderers)
   })
 
   it('constrains Glide overlay width from the requested editor width', async () => {

@@ -790,7 +790,7 @@ describe('CanvasBaseGridView', () => {
     expect(onCellValueChange).toHaveBeenCalledWith(0, 'name', '')
   })
 
-  it('provides editors from the cell editor metadata rather than selected state', () => {
+  it('produces enum cells as official dropdown custom cells', () => {
     const editableColumns = [
       { ...columns[0], editable: true, editorType: 'enum' as const, enumValues: ['alpha', 'beta'] },
     ]
@@ -806,18 +806,112 @@ describe('CanvasBaseGridView', () => {
     )
     const props = mockGlideDataGrid.mock.lastCall?.[0] as {
       getCellContent: (cell: readonly [number, number]) => unknown
+      customRenderers: unknown[]
       provideEditor: (cell: unknown) => unknown
     }
     const cell = props.getCellContent([0, 0])
-    const editorConfig = props.provideEditor(cell)
-    expect(editorConfig).toMatchObject({
-      editor: expect.any(Function),
-      disablePadding: true,
-      disableStyling: true,
+    expect(props.customRenderers).toHaveLength(1)
+    expect(cell).toMatchObject({
+      kind: GridCellKind.Custom,
+      readonly: false,
+      copyData: 'alpha',
+      data: { kind: 'dropdown-cell', value: 'alpha', allowedValues: ['alpha', 'beta'] },
     })
+    expect(props.provideEditor(cell)).toBeUndefined()
   })
 
-  it('keeps enum editors with foreign key markers on the styled overlay path', () => {
+  it('does not set enum dropdown activation override for read-only enum cells', () => {
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[
+          {
+            ...columns[0],
+            editable: false,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set<string>()}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      getCellContent: (cell: readonly [number, number]) => { activationBehaviorOverride?: unknown }
+    }
+    const cell = props.getCellContent([0, 0])
+    expect(cell.activationBehaviorOverride).toBeUndefined()
+  })
+
+  it('uses a labeled NULL option for nullable enum dropdown cells', () => {
+    const nullableRows = [{ id: 1, name: null, info: 'SELECT 1' }]
+    render(
+      <CanvasBaseGridView
+        rows={nullableRows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            isNullable: true,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      getCellContent: (cell: readonly [number, number]) => {
+        copyData?: string
+        data?: {
+          value?: string | null
+          allowedValues?: Array<string | { value: string; label: string }>
+        }
+      }
+    }
+    const cell = props.getCellContent([0, 0])
+    const nullOption = cell.data?.allowedValues?.[0]
+    expect(nullOption).toEqual({ value: expect.any(String), label: 'NULL' })
+    expect(cell.data?.value).toBe(typeof nullOption === 'object' ? nullOption.value : undefined)
+    expect(cell.copyData).toBe('NULL')
+  })
+
+  it('derives a nullable enum sentinel that does not collide with enum values', () => {
+    const enumValues = Array.from({ length: 32 }, (_, index) => String.fromCharCode(index))
+    render(
+      <CanvasBaseGridView
+        rows={[{ id: 1, name: null, info: 'SELECT 1' }]}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            isNullable: true,
+            editorType: 'enum' as const,
+            enumValues,
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      getCellContent: (cell: readonly [number, number]) => {
+        data?: { allowedValues?: Array<string | { value: string; label: string }> }
+      }
+    }
+    const cell = props.getCellContent([0, 0])
+    const nullOption = cell.data?.allowedValues?.[0]
+    expect(nullOption).toEqual({ value: '\0NULL0', label: 'NULL' })
+  })
+
+  it('suppresses FK editor behavior for enum cells even when FK metadata exists', () => {
     const editableColumns = [
       {
         ...columns[0],
@@ -848,11 +942,137 @@ describe('CanvasBaseGridView', () => {
       provideEditor: (cell: unknown) => unknown
     }
     const cell = props.getCellContent([0, 0])
-    const editorConfig = props.provideEditor(cell)
+    expect(cell).toMatchObject({ kind: GridCellKind.Custom, data: { kind: 'dropdown-cell' } })
+    expect(props.provideEditor(cell)).toBeUndefined()
+  })
 
-    expect(editorConfig).toMatchObject({ editor: expect.any(Function) })
-    expect(editorConfig).not.toHaveProperty('disablePadding')
-    expect(editorConfig).not.toHaveProperty('disableStyling')
+  it('suppresses FK draw, right-edge click, and F4 behavior for enum columns with FK metadata', async () => {
+    const onFkCellAction = vi.fn()
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+            foreignKey,
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        selectedCellPosition={{ rowIdx: 0, idx: 0 }}
+        onFkCellAction={onFkCellAction}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      drawCell: (
+        args: {
+          row: number
+          col: number
+          ctx: CanvasRenderingContext2D
+          rect: { x: number; y: number; width: number; height: number }
+          theme: { linkColor: string; bgBubbleSelected: string; accentColor: string }
+        },
+        drawContent: () => void
+      ) => void
+      onCellClicked: (
+        cell: readonly [number, number],
+        event: {
+          bounds?: { x: number; y: number; width: number; height: number }
+          localEventX?: number
+        }
+      ) => void
+      onKeyDown: (event: { key: string; preventDefault: () => void; cancel?: () => void }) => void
+    }
+    const ctx = mockCanvasContext()
+    props.drawCell(
+      {
+        row: 0,
+        col: 0,
+        ctx,
+        rect: { x: 0, y: 0, width: 100, height: 24 },
+        theme: { linkColor: 'link', bgBubbleSelected: 'selected', accentColor: 'accent' },
+      },
+      vi.fn()
+    )
+    expect(ctx.arc).not.toHaveBeenCalled()
+
+    act(() =>
+      props.onCellClicked([0, 0], {
+        bounds: { x: 0, y: 0, width: 100, height: 24 },
+        localEventX: 95,
+      })
+    )
+    props.onKeyDown({ key: 'F4', preventDefault: vi.fn(), cancel: vi.fn() })
+
+    await Promise.resolve()
+    expect(onFkCellAction).not.toHaveBeenCalled()
+  })
+
+  it('lets Glide open an editable enum dropdown when Glide activates the enum cell', async () => {
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        selectedCellPosition={{ rowIdx: 0, idx: 0 }}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellActivated: (cell: readonly [number, number]) => void
+    }
+    act(() => props.onCellActivated([0, 0]))
+
+    await Promise.resolve()
+    expect(mockSelectCell).not.toHaveBeenCalled()
+  })
+
+  it('opens an editable enum dropdown when Enter is pressed on the selected enum cell', () => {
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        selectedCellPosition={{ rowIdx: 0, idx: 0 }}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onKeyDown: (event: { key: string; preventDefault: () => void; cancel?: () => void }) => void
+    }
+    const preventDefault = vi.fn()
+    const cancel = vi.fn()
+    props.onKeyDown({ key: 'Enter', preventDefault, cancel })
+
+    expect(preventDefault).toHaveBeenCalled()
+    expect(cancel).toHaveBeenCalled()
+    expect(mockSelectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 0 },
+      { shouldFocusCell: true, enableEditor: true }
+    )
   })
 
   it('keeps editable NULL cells in the editable path while preserving NULL styling', () => {
@@ -935,6 +1155,183 @@ describe('CanvasBaseGridView', () => {
     expect(cell).toMatchObject({ displayData: 'NULL', readonly: true, allowOverlay: false })
     expect(cell.glideEditorData).toBeUndefined()
     expect(props.provideEditor(cell)).toBeUndefined()
+  })
+
+  it('commits dropdown enum edits through value and row change callbacks', () => {
+    const onCellValueChange = vi.fn()
+    const onRowsChange = vi.fn()
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+      />
+    )
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellEdited: (cell: readonly [number, number], value: unknown) => void
+    }
+    props.onCellEdited([0, 0], {
+      kind: GridCellKind.Custom,
+      data: { kind: 'dropdown-cell', value: 'beta', allowedValues: ['alpha', 'beta'] },
+      copyData: 'beta',
+      allowOverlay: true,
+      readonly: false,
+    })
+    expect(onCellValueChange).toHaveBeenCalledWith(0, 'name', 'beta')
+    expect(onRowsChange).toHaveBeenCalledWith([{ ...rows[0], name: 'beta' }], {
+      indexes: [0],
+      column: expect.objectContaining({ key: 'name' }),
+    })
+  })
+
+  it('commits nullable enum NULL dropdown selections as null', () => {
+    const onCellValueChange = vi.fn()
+    const onRowsChange = vi.fn()
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            isNullable: true,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+      />
+    )
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      getCellContent: (cell: readonly [number, number]) => {
+        data?: { allowedValues?: Array<{ value: string; label: string } | string> }
+      }
+      onCellEdited: (cell: readonly [number, number], value: unknown) => void
+    }
+    const renderedCell = props.getCellContent([0, 0])
+    const nullOption = renderedCell.data?.allowedValues?.[0]
+    const nullSentinel = typeof nullOption === 'object' ? nullOption.value : ''
+
+    props.onCellEdited([0, 0], {
+      kind: GridCellKind.Custom,
+      data: {
+        kind: 'dropdown-cell',
+        value: nullSentinel,
+        allowedValues: renderedCell.data?.allowedValues,
+      },
+      copyData: 'NULL',
+      allowOverlay: true,
+      readonly: false,
+    })
+
+    expect(onCellValueChange).toHaveBeenCalledWith(0, 'name', null)
+    expect(onRowsChange).toHaveBeenCalledWith([{ ...rows[0], name: null }], {
+      indexes: [0],
+      column: expect.objectContaining({ key: 'name' }),
+    })
+  })
+
+  it('uses enum delete fallbacks for nullable and non-nullable enum columns', () => {
+    const onCellValueChange = vi.fn()
+    const { rerender } = render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            isNullable: true,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        onCellValueChange={onCellValueChange}
+      />
+    )
+    let props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onDelete: (selection: {
+        current: { range: { x: number; y: number; width: number; height: number }; rangeStack: [] }
+        rows: []
+        columns: []
+      }) => boolean
+    }
+    props.onDelete({
+      current: { range: { x: 0, y: 0, width: 1, height: 1 }, rangeStack: [] },
+      rows: [],
+      columns: [],
+    })
+    expect(onCellValueChange).toHaveBeenLastCalledWith(0, 'name', null)
+
+    rerender(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            isNullable: false,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        onCellValueChange={onCellValueChange}
+      />
+    )
+    props = mockGlideDataGrid.mock.lastCall?.[0] as typeof props
+    props.onDelete({
+      current: { range: { x: 0, y: 0, width: 1, height: 1 }, rangeStack: [] },
+      rows: [],
+      columns: [],
+    })
+    expect(onCellValueChange).toHaveBeenLastCalledWith(0, 'name', 'alpha')
+  })
+
+  it('suppresses paste edits for enum cells', () => {
+    const onCellClipboardEdit = vi.fn()
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellClipboardEdit={onCellClipboardEdit}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onPaste: (
+        target: readonly [number, number],
+        values: readonly (readonly string[])[]
+      ) => boolean
+    }
+
+    expect(props.onPaste([0, 0], [['beta']])).toBe(false)
+    expect(onCellClipboardEdit).not.toHaveBeenCalled()
   })
 
   it('keeps unchanged NULL edits out of the dirty path while preserving cleanup', () => {
@@ -1131,6 +1528,93 @@ describe('CanvasBaseGridView', () => {
     )
     expect(preventDefault).toHaveBeenCalled()
     expect(cancel).toHaveBeenCalled()
+  })
+
+  it('cancels typing activation on a selected enum cell without opening the editor', () => {
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        selectedCellPosition={{ rowIdx: 0, idx: 0 }}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onKeyDown: (event: {
+        key: string
+        preventDefault: () => void
+        cancel?: () => void
+        altKey?: boolean
+        ctrlKey?: boolean
+        metaKey?: boolean
+      }) => void
+    }
+    const preventDefault = vi.fn()
+    const cancel = vi.fn()
+
+    act(() =>
+      props.onKeyDown({
+        key: 'x',
+        preventDefault,
+        cancel,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+      })
+    )
+
+    expect(preventDefault).toHaveBeenCalled()
+    expect(cancel).toHaveBeenCalled()
+    expect(mockSelectCell).not.toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 0 },
+      expect.objectContaining({ enableEditor: true })
+    )
+  })
+
+  it('does not open the dropdown editor for read-only enum cells on double-click', async () => {
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={[
+          {
+            ...columns[0],
+            editable: false,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellDoubleClicked: (cell: readonly [number, number]) => void
+    }
+
+    act(() => props.onCellDoubleClicked([0, 0]))
+
+    await waitFor(() =>
+      expect(mockSelectCell).toHaveBeenCalledWith(
+        { rowIdx: 0, idx: 0 },
+        { shouldFocusCell: true, enableEditor: false }
+      )
+    )
+    expect(mockSelectCell).not.toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 0 },
+      expect.objectContaining({ enableEditor: true })
+    )
   })
 
   it('restores persisted scroll cell and does not replay the same cell after user scrolling', async () => {

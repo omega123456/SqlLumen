@@ -8,7 +8,7 @@ import {
 } from '@glideapps/glide-data-grid'
 import type { GridColumn } from './glide-grid-types'
 import DateTimeCellEditor from '../../table-data/DateTimeCellEditor'
-import { EnumCellEditor, NullableCellEditor, type CellEditorBaseProps } from '../grid-cell-editors'
+import { NullableCellEditor, type CellEditorBaseProps } from '../grid-cell-editors'
 import type { GridEditorType } from '../grid-column-editor-utils'
 
 export interface CustomEditorProps {
@@ -192,14 +192,6 @@ export function wrapEditorAsGlideOverlay(
 const wrappedNullableEditor = wrapEditorAsGlideOverlay(NullableCellEditor, {
   testId: 'glide-text-editor',
 })
-const wrappedEnumEditor = wrapEditorAsGlideOverlay((props) => <EnumCellEditor {...props} fullOverlay />, {
-  testId: 'glide-enum-editor',
-  reserveMarkerWidth: false,
-  overlayExtraWidth: 0,
-})
-const wrappedEnumEditorWithMarkers = wrapEditorAsGlideOverlay(EnumCellEditor, {
-  testId: 'glide-enum-editor-with-markers',
-})
 const wrappedDateTimeEditor = wrapEditorAsGlideOverlay(
   DateTimeCellEditor as VendorNeutralEditorComponent,
   {
@@ -208,24 +200,11 @@ const wrappedDateTimeEditor = wrapEditorAsGlideOverlay(
 )
 
 export function getGlideEditor(
-  column: GridColumn<unknown>,
+  _column: GridColumn<unknown>,
   editorType: GridEditorType
 ): ProvideEditorCallbackResult<GridCell> | null {
   if (editorType === 'none') return null
-
-  if (editorType === 'enum') {
-    const hasForeignKey = column.foreignKey != null
-
-    return hasForeignKey
-      ? {
-          editor: wrappedEnumEditorWithMarkers,
-        }
-      : {
-          editor: wrappedEnumEditor,
-          disablePadding: true,
-          disableStyling: true,
-        }
-  }
+  if (editorType === 'enum') return null
 
   const editorByType: Partial<Record<GridEditorType, FunctionComponent<CustomEditorProps>>> = {
     datetime: wrappedDateTimeEditor,

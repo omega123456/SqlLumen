@@ -68,6 +68,10 @@ async function getUnionClip(page: Page, locators: Locator[], padding = 8) {
   }
 }
 
+function glideDropdownEditor(page: Page) {
+  return page.locator('.glide-select').first()
+}
+
 /** Stacked toasts aligned with `.agent/design/toast_notifications_*` copy — for visual regression only. */
 async function showDesignReferenceToasts(page: Page) {
   await page.evaluate(() => {
@@ -1235,8 +1239,6 @@ for (const theme of themes) {
       )
     })
 
-
-
     test('StatusBar — query info after execution', async ({ page }) => {
       await openQueryEditorWithResults(page)
       // The status bar should now show query rows/time info
@@ -1520,7 +1522,7 @@ for (const theme of themes) {
       page: Page,
       columnName: string,
       rowIdx: number,
-      editorTestId: 'glide-text-editor' | 'glide-enum-editor' | 'glide-datetime-editor',
+      editorTestId: 'glide-text-editor' | 'glide-datetime-editor' | 'glide-dropdown-cell',
       screenshotName: string
     ) {
       await openTableDataTab(page)
@@ -1533,15 +1535,21 @@ for (const theme of themes) {
       await clickGlideCell(page, 'table-data-grid', colIdx, rowIdx, geometry)
       await dblClickGlideCell(page, 'table-data-grid', colIdx, rowIdx, geometry)
 
-      await expect(page.getByTestId(editorTestId)).toBeVisible({ timeout: APP_READY_MS })
+      const editorLocator =
+        editorTestId === 'glide-dropdown-cell'
+          ? glideDropdownEditor(page)
+          : page.getByTestId(editorTestId)
+      await expect(editorLocator).toBeVisible({ timeout: APP_READY_MS })
       await page.locator('#portal').evaluate((portal) => {
         const element = portal as HTMLElement
         element.style.position = 'fixed'
         element.style.inset = '0'
         element.style.pointerEvents = 'none'
-        element.querySelectorAll<HTMLElement>('input, textarea, [contenteditable="true"]').forEach((input) => {
-          input.style.caretColor = 'transparent'
-        })
+        element
+          .querySelectorAll<HTMLElement>('input, textarea, [contenteditable="true"]')
+          .forEach((input) => {
+            input.style.caretColor = 'transparent'
+          })
       })
       await page.waitForTimeout(200)
       await expect(page.locator('#portal')).toHaveScreenshot(screenshotName, {
@@ -1580,8 +1588,57 @@ for (const theme of themes) {
         page,
         'status',
         0,
-        'glide-enum-editor',
+        'glide-dropdown-cell',
         `table-data-overlay-enum-${theme}.png`
+      )
+    })
+
+    test('TableDataGrid — enum cell selected no dropdown', async ({ page }) => {
+      await openTableDataTab(page)
+
+      const grid = page.getByTestId('table-data-grid')
+      await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
+
+      const statusColIdx = await getColumnIndexByName(grid, 'status')
+      expect(statusColIdx).toBeGreaterThanOrEqual(0)
+
+      const geometry = await getGlideGridGeometry(page, 'table-data-grid')
+      await clickGlideCell(page, 'table-data-grid', statusColIdx, 0, geometry)
+      await page.waitForTimeout(200)
+
+      await expect(glideDropdownEditor(page)).not.toBeVisible()
+      await expect(page.locator('.glide-select__menu')).not.toBeVisible()
+
+      await expect(grid).toHaveScreenshot(`table-data-grid-enum-cell-selected-${theme}.png`, {
+        animations: 'disabled',
+      })
+    })
+
+    test('TableDataGrid — enum cell second-click opens dropdown', async ({ page }) => {
+      await openTableDataTab(page)
+
+      const grid = page.getByTestId('table-data-grid')
+      await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
+
+      const statusColIdx = await getColumnIndexByName(grid, 'status')
+      expect(statusColIdx).toBeGreaterThanOrEqual(0)
+
+      const geometry = await getGlideGridGeometry(page, 'table-data-grid')
+      await clickGlideCell(page, 'table-data-grid', statusColIdx, 0, geometry)
+      await page.waitForTimeout(200)
+      await clickGlideCell(page, 'table-data-grid', statusColIdx, 0, geometry)
+
+      const enumEditor = glideDropdownEditor(page)
+      const enumMenu = page.locator('#portal [class*="menu"]').first()
+      await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
+      await expect(enumMenu).toBeVisible({ timeout: APP_READY_MS })
+
+      const statusCell = await getGridCellByColumnName(grid, 0, 'status')
+      const clip = await getUnionClip(page, [statusCell, enumEditor, enumMenu])
+      await expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
+        `table-data-grid-enum-cell-second-click-open-${theme}.png`
       )
     })
 
@@ -1671,14 +1728,10 @@ for (const theme of themes) {
       const statusCell = await getGridCellByColumnName(grid, 0, 'status')
       await statusCell.dblClick()
 
-      const enumEditor = page.locator('.td-cell-editor-select').first()
+      const enumEditor = glideDropdownEditor(page)
       await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
-      await enumEditor.click()
 
-      const listbox = page.locator('[role="listbox"]').first()
-      await expect(listbox).toBeVisible({ timeout: APP_READY_MS })
-
-      const clip = await getUnionClip(page, [statusCell, listbox])
+      const clip = await getUnionClip(page, [statusCell, enumEditor])
       await expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
         `table-data-grid-enum-dropdown-open-${theme}.png`
       )
@@ -1697,7 +1750,9 @@ for (const theme of themes) {
       await clickGlideCell(page, 'result-grid', statusColIdx, 0, geometry)
       await dblClickGlideCell(page, 'result-grid', statusColIdx, 0, geometry)
 
-      await expect(page.getByTestId('glide-enum-editor')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(glideDropdownEditor(page)).toBeVisible({
+        timeout: APP_READY_MS,
+      })
       await page.locator('#portal').evaluate((portal) => {
         const element = portal as HTMLElement
         element.style.position = 'fixed'
@@ -1705,9 +1760,12 @@ for (const theme of themes) {
         element.style.pointerEvents = 'none'
       })
       await page.waitForTimeout(200)
-      await expect(page.locator('#portal')).toHaveScreenshot(`result-grid-overlay-enum-${theme}.png`, {
-        animations: 'disabled',
-      })
+      await expect(page.locator('#portal')).toHaveScreenshot(
+        `result-grid-overlay-enum-${theme}.png`,
+        {
+          animations: 'disabled',
+        }
+      )
     })
 
     test('ResultGridView — enum dropdown open', async ({ page }) => {
@@ -1724,20 +1782,14 @@ for (const theme of themes) {
       await clickGlideCell(page, 'result-grid', statusColIdx, 0, geometry)
       await dblClickGlideCell(page, 'result-grid', statusColIdx, 0, geometry)
 
-      const enumEditor = page.locator('.td-cell-editor-select').first()
+      const enumEditor = glideDropdownEditor(page)
       await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
-      await enumEditor.click()
 
-      const listbox = page.locator('[role="listbox"]').first()
-      await expect(listbox).toBeVisible({ timeout: APP_READY_MS })
-
-      const clip = await getUnionClip(page, [statusCell, listbox])
+      const clip = await getUnionClip(page, [statusCell, enumEditor])
       await expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
         `result-grid-enum-dropdown-open-${theme}.png`
       )
     })
-
-
 
     test('TableDataToolbar — page size dropdown open', async ({ page }) => {
       await openTableDataTab(page)
@@ -3249,9 +3301,13 @@ for (const theme of themes) {
     test('ProcessListTab — info cell popover', async ({ page }) => {
       await openProcessListTab(page)
       await page.evaluate(() => {
-        const api = (window as typeof window & {
-          __processListTestApi__?: { openInfoPopover?: (connectionId: string, rowIndex: number) => boolean }
-        }).__processListTestApi__
+        const api = (
+          window as typeof window & {
+            __processListTestApi__?: {
+              openInfoPopover?: (connectionId: string, rowIndex: number) => boolean
+            }
+          }
+        ).__processListTestApi__
         if (!api?.openInfoPopover?.('session-playwright-1', 0)) {
           throw new Error('Failed to open Process List info popover via Playwright test API')
         }
