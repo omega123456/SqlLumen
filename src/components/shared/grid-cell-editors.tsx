@@ -60,6 +60,10 @@ export interface CellEditorBaseProps {
   selectAllOnFocus?: boolean
 }
 
+interface EnumCellEditorProps extends CellEditorBaseProps {
+  fullOverlay?: boolean
+}
+
 // ---------------------------------------------------------------------------
 // NullableCellEditor — text input + NULL toggle
 // ---------------------------------------------------------------------------
@@ -235,13 +239,14 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
 // EnumCellEditor — select + NULL toggle
 // ---------------------------------------------------------------------------
 
-export function EnumCellEditor(props: CellEditorBaseProps) {
+export function EnumCellEditor(props: EnumCellEditorProps) {
   const { row, column, onRowChange, onClose } = props
   const enumValues = props.columnMeta?.enumValues ?? []
   const isNullable = props.isNullable ?? false
   const fieldName = column.key
   const foreignKey = props.foreignKey
   const fkLookup = useFkLookup()
+  const fullOverlay = props.fullOverlay ?? false
 
   const rawValue = row[fieldName]
   const initialNull = isNullish(rawValue)
@@ -372,9 +377,42 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
     ]
   )
 
+  const wrapperClassName = fullOverlay ? styles.dropdownOnlyWrapper : styles.cellEditorWrapper
+  const fieldWrapperClassName = fullOverlay ? styles.editorDropdownRoot : styles.editorFieldPrimary
+  const dropdownRootClassName = fullOverlay ? styles.editorDropdownRoot : styles.editorField
+  const dropdownTriggerClassName = fullOverlay
+    ? `td-cell-editor-select ${styles.editorDropdownTrigger}`
+    : `td-cell-editor-select ${styles.editorSelect}`
+  const dropdownTriggerProps = fullOverlay
+    ? { 'data-sqllumen-grid-editor': 'enum-overlay' }
+    : undefined
+  const handleTriggerBlur = useCallback(
+    (event: React.FocusEvent<HTMLButtonElement>) => {
+      const nextFocused = event.relatedTarget
+      if (
+        nextFocused instanceof Node &&
+        (wrapperRef.current?.contains(nextFocused) || isDropdownPortalTarget(nextFocused))
+      ) {
+        return
+      }
+
+      queueMicrotask(() => {
+        const activeElement = document.activeElement
+        if (
+          activeElement instanceof Node &&
+          (wrapperRef.current?.contains(activeElement) || isDropdownPortalTarget(activeElement))
+        ) {
+          return
+        }
+        onClose(true, false)
+      })
+    },
+    [isDropdownPortalTarget, onClose]
+  )
+
   return (
-    <div ref={wrapperRef} className={styles.cellEditorWrapper}>
-      <div className={styles.editorFieldPrimary}>
+    <div ref={wrapperRef} className={wrapperClassName}>
+      <div className={fieldWrapperClassName}>
         <Dropdown
           ref={triggerRef}
           id={`enum-cell-${fieldName}`}
@@ -394,53 +432,37 @@ export function EnumCellEditor(props: CellEditorBaseProps) {
           }}
           onTriggerKeyDown={handleCommitKeys}
           onListKeyDown={handleCommitKeys}
-          focusListOnOpen={false}
-          onTriggerBlur={(event) => {
-            const nextFocused = event.relatedTarget
-            if (
-              nextFocused instanceof Node &&
-              (wrapperRef.current?.contains(nextFocused) || isDropdownPortalTarget(nextFocused))
-            ) {
-              return
-            }
-
-            queueMicrotask(() => {
-              const activeElement = document.activeElement
-              if (
-                activeElement instanceof Node &&
-                (wrapperRef.current?.contains(activeElement) || isDropdownPortalTarget(activeElement))
-              ) {
-                return
-              }
-              onClose(true, false)
-            })
-          }}
-          className={styles.editorField}
-          triggerClassName={`td-cell-editor-select ${styles.editorSelect}`}
+          focusListOnOpen={fullOverlay}
+          onTriggerBlur={fullOverlay ? undefined : handleTriggerBlur}
+          className={dropdownRootClassName}
+          triggerClassName={dropdownTriggerClassName}
+          triggerProps={dropdownTriggerProps}
         />
       </div>
-      <div className={styles.editorMarkerGroup}>
-        {isNullable && (
-          <button
-            type="button"
-            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={handleToggleNull}
-            tabIndex={-1}
-          >
-            NULL
-          </button>
-        )}
-        {foreignKey && fkLookup && (
-          <FkLookupTriggerButton
-            foreignKey={foreignKey}
-            columnKey={fieldName}
-            currentValue={row[fieldName]}
-            rowData={row}
-            className={styles.fkTriggerButton}
-          />
-        )}
-      </div>
+      {!fullOverlay && (
+        <div className={styles.editorMarkerGroup}>
+          {isNullable && (
+            <button
+              type="button"
+              className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleToggleNull}
+              tabIndex={-1}
+            >
+              NULL
+            </button>
+          )}
+          {foreignKey && fkLookup && (
+            <FkLookupTriggerButton
+              foreignKey={foreignKey}
+              columnKey={fieldName}
+              currentValue={row[fieldName]}
+              rowData={row}
+              className={styles.fkTriggerButton}
+            />
+          )}
+        </div>
+      )}
     </div>
   )
 }

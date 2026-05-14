@@ -812,7 +812,45 @@ describe('CanvasBaseGridView', () => {
     const editorConfig = props.provideEditor(cell)
     expect(editorConfig).toMatchObject({
       editor: expect.any(Function),
+      disablePadding: true,
+      disableStyling: true,
     })
+  })
+
+  it('keeps enum editors with foreign key markers on the styled overlay path', () => {
+    const editableColumns = [
+      {
+        ...columns[0],
+        editable: true,
+        editorType: 'enum' as const,
+        enumValues: ['alpha', 'beta'],
+        foreignKey: {
+          columnName: 'name',
+          referencedDatabase: 'app',
+          referencedTable: 'items',
+          referencedColumn: 'id',
+          constraintName: 'fk_items_name',
+        },
+      },
+    ]
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={editableColumns}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      getCellContent: (cell: readonly [number, number]) => unknown
+      provideEditor: (cell: unknown) => unknown
+    }
+    const cell = props.getCellContent([0, 0])
+    const editorConfig = props.provideEditor(cell)
+
+    expect(editorConfig).toMatchObject({ editor: expect.any(Function) })
     expect(editorConfig).not.toHaveProperty('disablePadding')
     expect(editorConfig).not.toHaveProperty('disableStyling')
   })

@@ -16,6 +16,7 @@ describe('data-grid-precision.css', () => {
     const legacyShellSelector = `.td-cell-editor-${'shell'}`
     expect(css).not.toContain(legacyShellSelector)
     expect(css).toMatch(/#portal\s+\.td-cell-editor-input/)
+    expect(css).toMatch(/#portal\s+\.td-cell-editor-select/)
     expect(css).toMatch(/background:\s*transparent/)
     expect(css).toMatch(/#portal\s+\.td-null-toggle/)
   })

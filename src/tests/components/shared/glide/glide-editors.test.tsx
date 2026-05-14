@@ -24,7 +24,7 @@ describe('computeRequestedEditorWidth', () => {
 describe('wrapEditorAsGlideOverlay', () => {
   it('seeds the first typed character into Glide immediately when initialInputValue is provided', () => {
     const onChange = vi.fn()
-    const Editor = wrapEditorAsGlideOverlay(() => null, 'test-editor')
+    const Editor = wrapEditorAsGlideOverlay(() => null, { testId: 'test-editor' })
 
     const value: TextCell & {
       glideEditorData: {
@@ -67,5 +67,44 @@ describe('wrapEditorAsGlideOverlay', () => {
         copyData: 'x',
       })
     )
+  })
+
+  it('writes overlay padding metadata when configured', () => {
+    const Editor = wrapEditorAsGlideOverlay(() => null, {
+      testId: 'test-editor',
+      overlayExtraWidth: 0,
+      reserveMarkerWidth: false,
+    })
+
+    const value: TextCell & {
+      glideEditorData: {
+        row: Record<string, unknown>
+        columnKey: string
+        isNullable: boolean
+      }
+    } = {
+      kind: GridCellKind.Text,
+      data: 'alpha',
+      displayData: 'alpha',
+      copyData: 'alpha',
+      allowOverlay: true,
+      readonly: false,
+      glideEditorData: {
+        row: { name: 'alpha' },
+        columnKey: 'name',
+        isNullable: true,
+      },
+    }
+
+    const { getByTestId } = render(
+      <Editor
+        target={{ x: 0, y: 0, width: 80, height: 32 }}
+        value={value}
+        onChange={vi.fn()}
+        onFinishedEditing={vi.fn()}
+      />
+    )
+
+    expect(getByTestId('test-editor')).toHaveAttribute('data-sqllumen-editor-width', '80')
   })
 })

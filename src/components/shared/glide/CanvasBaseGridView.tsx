@@ -375,6 +375,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           glideEditorData: {
             row,
             columnKey: column.key,
+            columnLabel: column.displayName,
             columnMeta: column.tableColumnMeta,
             isNullable: column.isNullable === true,
             foreignKey: column.foreignKey,

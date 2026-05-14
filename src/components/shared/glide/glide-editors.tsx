@@ -21,6 +21,7 @@ export interface CustomEditorProps {
 interface GlideEditorCellData {
   row: Record<string, unknown>
   columnKey: string
+  columnLabel?: string
   columnMeta?: CellEditorBaseProps['columnMeta']
   isNullable: boolean
   foreignKey?: CellEditorBaseProps['foreignKey']
@@ -39,6 +40,12 @@ function extractEditorData(cell: GridCell): GlideEditorCellData | null {
 }
 
 type VendorNeutralEditorComponent = ComponentType<CellEditorBaseProps>
+
+interface GlideOverlayConfig {
+  testId?: string
+  reserveMarkerWidth?: boolean
+  overlayExtraWidth?: number
+}
 
 function getEditorTargetWidth(target: Rectangle): number {
   return Math.max(1, Math.floor(target.width))
@@ -85,7 +92,7 @@ export function computeRequestedEditorWidth(targetWidth: number, markerCount: nu
 
 export function wrapEditorAsGlideOverlay(
   EditorComponent: VendorNeutralEditorComponent,
-  testId?: string
+  config: GlideOverlayConfig = {}
 ): FunctionComponent<CustomEditorProps> {
   return function GlideOverlayEditor({
     target,
@@ -93,6 +100,11 @@ export function wrapEditorAsGlideOverlay(
     onChange,
     onFinishedEditing,
   }: CustomEditorProps) {
+    const {
+      testId,
+      reserveMarkerWidth = true,
+      overlayExtraWidth = 20,
+    } = config
     const currentValueRef = useRef(value)
     const close = useCallback(
       (commitChanges?: boolean) => {
@@ -103,9 +115,20 @@ export function wrapEditorAsGlideOverlay(
     const editorData = extractEditorData(value)
     if (!editorData) return null
 
-    const { row, columnKey, columnMeta, isNullable, foreignKey, initialInputValue, selectAllOnFocus } = editorData
+    const {
+      row,
+      columnKey,
+      columnLabel,
+      columnMeta,
+      isNullable,
+      foreignKey,
+      initialInputValue,
+      selectAllOnFocus,
+    } = editorData
     const targetWidth = getEditorTargetWidth(target)
-    const expandedWidth = getExpandedEditorWidth(targetWidth, getMarkerCount(editorData, columnMeta))
+    const markerCount = reserveMarkerWidth ? getMarkerCount(editorData, columnMeta) : 0
+    const expandedWidth = getExpandedEditorWidth(targetWidth, markerCount)
+    const requestedOverlayWidth = expandedWidth + overlayExtraWidth
 
     useEffect(() => {
       if (initialInputValue == null) {
@@ -127,7 +150,7 @@ export function wrapEditorAsGlideOverlay(
       <div
         data-testid={testId ?? 'glide-overlay-editor'}
         data-sqllumen-glide-editor-root="true"
-        data-sqllumen-editor-width={String(expandedWidth)}
+        data-sqllumen-editor-width={String(requestedOverlayWidth)}
         style={{
           display: 'flex',
           alignItems: 'stretch',
@@ -141,7 +164,7 @@ export function wrapEditorAsGlideOverlay(
       >
         <EditorComponent
           row={row}
-          column={{ key: columnKey }}
+          column={{ key: columnLabel ?? columnKey }}
           isNullable={isNullable}
           columnMeta={columnMeta}
           foreignKey={foreignKey}
@@ -166,21 +189,45 @@ export function wrapEditorAsGlideOverlay(
   }
 }
 
-const wrappedNullableEditor = wrapEditorAsGlideOverlay(NullableCellEditor, 'glide-text-editor')
-const wrappedEnumEditor = wrapEditorAsGlideOverlay(EnumCellEditor, 'glide-enum-editor')
+const wrappedNullableEditor = wrapEditorAsGlideOverlay(NullableCellEditor, {
+  testId: 'glide-text-editor',
+})
+const wrappedEnumEditor = wrapEditorAsGlideOverlay((props) => <EnumCellEditor {...props} fullOverlay />, {
+  testId: 'glide-enum-editor',
+  reserveMarkerWidth: false,
+  overlayExtraWidth: 0,
+})
+const wrappedEnumEditorWithMarkers = wrapEditorAsGlideOverlay(EnumCellEditor, {
+  testId: 'glide-enum-editor-with-markers',
+})
 const wrappedDateTimeEditor = wrapEditorAsGlideOverlay(
   DateTimeCellEditor as VendorNeutralEditorComponent,
-  'glide-datetime-editor'
+  {
+    testId: 'glide-datetime-editor',
+  }
 )
 
 export function getGlideEditor(
-  _column: GridColumn<unknown>,
+  column: GridColumn<unknown>,
   editorType: GridEditorType
 ): ProvideEditorCallbackResult<GridCell> | null {
   if (editorType === 'none') return null
 
+  if (editorType === 'enum') {
+    const hasForeignKey = column.foreignKey != null
+
+    return hasForeignKey
+      ? {
+          editor: wrappedEnumEditorWithMarkers,
+        }
+      : {
+          editor: wrappedEnumEditor,
+          disablePadding: true,
+          disableStyling: true,
+        }
+  }
+
   const editorByType: Partial<Record<GridEditorType, FunctionComponent<CustomEditorProps>>> = {
-    enum: wrappedEnumEditor,
     datetime: wrappedDateTimeEditor,
     text: wrappedNullableEditor,
     fk: wrappedNullableEditor,

@@ -206,7 +206,7 @@ describe('Glide phase 7 coverage helpers', () => {
     screen.getByRole('button', { name: 'commit' }).click()
     expect(onFinishedEditing).toHaveBeenCalledWith(expect.objectContaining({ data: 'next' }))
     expect(getGlideEditor({ key: 'x', name: 'X' }, 'none')).toBeNull()
-    for (const editorType of ['enum', 'datetime', 'text'] as const) {
+    for (const editorType of ['datetime', 'text'] as const) {
       const editorConfig = getGlideEditor({ key: 'x', name: 'X' }, editorType)
       expect(editorConfig).toMatchObject({
         editor: expect.any(Function),
@@ -214,5 +214,27 @@ describe('Glide phase 7 coverage helpers', () => {
       expect(editorConfig).not.toHaveProperty('disablePadding')
       expect(editorConfig).not.toHaveProperty('disableStyling')
     }
+
+    expect(getGlideEditor({ key: 'x', name: 'X' }, 'enum')).toMatchObject({
+      editor: expect.any(Function),
+      disablePadding: true,
+      disableStyling: true,
+    })
+    expect(
+      getGlideEditor(
+        {
+          key: 'x',
+          name: 'X',
+          foreignKey: {
+            columnName: 'x',
+            referencedDatabase: 'app',
+            referencedTable: 'lookup',
+            referencedColumn: 'id',
+            constraintName: 'fk_lookup_x',
+          },
+        },
+        'enum'
+      )
+    ).toMatchObject({ editor: expect.any(Function) })
   })
 })

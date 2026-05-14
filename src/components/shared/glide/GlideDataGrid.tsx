@@ -32,7 +32,6 @@ export type GlideRowMarkerKind = 'none' | 'checkbox' | 'number' | 'both'
 
 const DEFAULT_ROW_MARKER_WIDTH = 32
 const DEFAULT_COLUMN_WIDTH = 120
-const GLIDE_OVERLAY_HORIZONTAL_PADDING = 20
 
 function getColumnWidth(column: GlideGridColumn): number {
   return 'width' in column && typeof column.width === 'number' ? column.width : DEFAULT_COLUMN_WIDTH
@@ -62,7 +61,7 @@ function constrainGlideEditorOverlay(element: HTMLElement): void {
 
   if (!Number.isFinite(targetWidth) || targetWidth <= 0) return
 
-  const constrainedWidth = `${Math.max(1, Math.floor(targetWidth + GLIDE_OVERLAY_HORIZONTAL_PADDING))}px`
+  const constrainedWidth = `${Math.max(1, Math.floor(targetWidth))}px`
 
   if (element.style.getPropertyValue('--d19meir1-2') !== constrainedWidth) {
     element.style.setProperty('--d19meir1-2', constrainedWidth)

@@ -226,7 +226,7 @@ describe('GlideDataGrid', () => {
     expect(props.provideEditor).toBe(provideEditor)
   })
 
-  it('constrains Glide overlay width from the editor target width', async () => {
+  it('constrains Glide overlay width from the requested editor width', async () => {
     vi.useFakeTimers()
     const portal = document.createElement('div')
     portal.id = 'portal'
@@ -234,7 +234,7 @@ describe('GlideDataGrid', () => {
     overlay.className = 'gdg-d19meir1'
     const editorRoot = document.createElement('div')
     editorRoot.setAttribute('data-sqllumen-glide-editor-root', 'true')
-    editorRoot.setAttribute('data-sqllumen-editor-width', '38')
+    editorRoot.setAttribute('data-sqllumen-editor-width', '58')
     overlay.appendChild(editorRoot)
     portal.appendChild(overlay)
     document.body.appendChild(portal)
@@ -312,7 +312,35 @@ describe('GlideDataGrid', () => {
     expect(onCellActivated).not.toHaveBeenCalled()
   })
 
-  it('applies requested editor width plus overlay padding', async () => {
+  it('uses the exact requested overlay width for wider editors', async () => {
+    vi.useFakeTimers()
+    const portal = document.createElement('div')
+    portal.id = 'portal'
+    const overlay = document.createElement('div')
+    overlay.className = 'gdg-d19meir1'
+    const editorRoot = document.createElement('div')
+    editorRoot.setAttribute('data-sqllumen-glide-editor-root', 'true')
+    editorRoot.setAttribute('data-sqllumen-editor-width', '200')
+    overlay.appendChild(editorRoot)
+    portal.appendChild(overlay)
+    document.body.appendChild(portal)
+
+    render(<GlideDataGrid columns={[{ title: 'Id', width: 80 }]} rows={[{ id: 1 }]} getCellContent={vi.fn()} />)
+
+    await act(async () => {
+      vi.runAllTimers()
+      await Promise.resolve()
+    })
+
+    expect(overlay.style.width).toBe('200px')
+    expect(overlay.style.maxWidth).toBe('200px')
+    expect(overlay.style.getPropertyValue('--d19meir1-2')).toBe('200px')
+
+    portal.remove()
+    vi.useRealTimers()
+  })
+
+  it('supports zero-extra-width editors by honoring their exact requested width', async () => {
     vi.useFakeTimers()
     const portal = document.createElement('div')
     portal.id = 'portal'
@@ -332,9 +360,9 @@ describe('GlideDataGrid', () => {
       await Promise.resolve()
     })
 
-    expect(overlay.style.width).toBe('200px')
-    expect(overlay.style.maxWidth).toBe('200px')
-    expect(overlay.style.getPropertyValue('--d19meir1-2')).toBe('200px')
+    expect(overlay.style.width).toBe('180px')
+    expect(overlay.style.maxWidth).toBe('180px')
+    expect(overlay.style.getPropertyValue('--d19meir1-2')).toBe('180px')
 
     portal.remove()
     vi.useRealTimers()

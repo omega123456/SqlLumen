@@ -111,6 +111,47 @@
   align-items: center;
 }
 
+.glide-grid-host .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'],
+#portal .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'] {
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--ui-dropdown-trigger-padding-y) var(--ui-dropdown-trigger-padding-x);
+  border: var(--ui-dropdown-trigger-border);
+  border-radius: 0;
+  background: var(--ui-dropdown-trigger-bg);
+  color: var(--on-surface);
+  font-family: var(--font-body);
+  font-size: var(--ui-dropdown-trigger-font-size);
+  font-weight: var(--ui-dropdown-trigger-font-weight);
+  line-height: var(--ui-input-line-height);
+  box-shadow: var(--ui-input-rest-shadow);
+}
+
+.glide-grid-host .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay']:hover:not(:disabled):not([aria-expanded='true']),
+#portal .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay']:hover:not(:disabled):not([aria-expanded='true']) {
+  border-color: var(--ui-dropdown-trigger-hover-border-color);
+}
+
+.glide-grid-host .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'],
+#portal .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'] {
+  border: var(--ui-dropdown-trigger-open-border);
+  box-shadow:
+    var(--ui-dropdown-trigger-open-shadow), var(--ui-input-focus-shadow),
+    var(--ui-input-rest-shadow);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.glide-grid-host .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='bottom'],
+#portal .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='bottom'] {
+  border-bottom: none;
+}
+
+.glide-grid-host .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='top'],
+#portal .td-cell-editor-select[data-sqllumen-grid-editor='enum-overlay'][aria-expanded='true'][data-panel-placement='top'] {
+  border-top: none;
+}
+
 .glide-grid-host .td-cell-editor-select:focus,
 .glide-grid-host .td-cell-editor-input:focus,
 #portal .td-cell-editor-select:focus,

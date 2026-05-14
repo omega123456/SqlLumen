@@ -1675,12 +1675,65 @@ for (const theme of themes) {
       await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
       await enumEditor.click()
 
-      const listbox = page.getByRole('listbox', { name: 'status' })
+      const listbox = page.locator('[role="listbox"]').first()
       await expect(listbox).toBeVisible({ timeout: APP_READY_MS })
 
       const clip = await getUnionClip(page, [statusCell, listbox])
       await expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
         `table-data-grid-enum-dropdown-open-${theme}.png`
+      )
+    })
+
+    test('ResultGridView — enum cell editor overlay: status field', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+      await enableQueryResultEditMode(page)
+
+      const grid = page.getByTestId('result-grid')
+      await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
+
+      const statusColIdx = await getColumnIndexByName(grid, 'status')
+      const geometry = await getGlideGridGeometry(page, 'result-grid')
+      await clickGlideCell(page, 'result-grid', statusColIdx, 0, geometry)
+      await dblClickGlideCell(page, 'result-grid', statusColIdx, 0, geometry)
+
+      await expect(page.getByTestId('glide-enum-editor')).toBeVisible({ timeout: APP_READY_MS })
+      await page.locator('#portal').evaluate((portal) => {
+        const element = portal as HTMLElement
+        element.style.position = 'fixed'
+        element.style.inset = '0'
+        element.style.pointerEvents = 'none'
+      })
+      await page.waitForTimeout(200)
+      await expect(page.locator('#portal')).toHaveScreenshot(`result-grid-overlay-enum-${theme}.png`, {
+        animations: 'disabled',
+      })
+    })
+
+    test('ResultGridView — enum dropdown open', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+      await enableQueryResultEditMode(page)
+
+      const grid = page.getByTestId('result-grid')
+      await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
+
+      const statusColIdx = await getColumnIndexByName(grid, 'status')
+      const statusCell = await getGridCellByColumnName(grid, 0, 'status')
+      const geometry = await getGlideGridGeometry(page, 'result-grid')
+      await clickGlideCell(page, 'result-grid', statusColIdx, 0, geometry)
+      await dblClickGlideCell(page, 'result-grid', statusColIdx, 0, geometry)
+
+      const enumEditor = page.locator('.td-cell-editor-select').first()
+      await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
+      await enumEditor.click()
+
+      const listbox = page.locator('[role="listbox"]').first()
+      await expect(listbox).toBeVisible({ timeout: APP_READY_MS })
+
+      const clip = await getUnionClip(page, [statusCell, listbox])
+      await expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
+        `result-grid-enum-dropdown-open-${theme}.png`
       )
     })
 

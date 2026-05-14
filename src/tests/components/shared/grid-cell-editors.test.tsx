@@ -313,6 +313,41 @@ describe('EnumCellEditor — store syncing', () => {
     expect(screen.getByTestId('fk-lookup-trigger')).toBeInTheDocument()
   })
 
+  it('uses the dropdown as the full overlay editor when requested', () => {
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} fullOverlay />)
+
+    const trigger = document.querySelector('[class*=editorDropdownTrigger]')
+    expect(trigger).toBeTruthy()
+    expect(document.querySelector('[class*=dropdownOnlyWrapper]')).toBeTruthy()
+    expect(document.querySelector('[class*=editorMarkerGroup]')).toBeFalsy()
+    expect(document.querySelector('.td-null-toggle')).toBeFalsy()
+  })
+
+  it('opens the full-overlay enum dropdown from the trigger', async () => {
+    const user = userEvent.setup()
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} fullOverlay />)
+
+    const trigger = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    await user.click(trigger)
+
+    expect(screen.getByRole('listbox', { name: 'col_2' })).toBeInTheDocument()
+  })
+
+  it('keeps the full-overlay enum editor open while focus moves into the dropdown listbox', async () => {
+    const user = userEvent.setup()
+    const props = makeEnumProps()
+    render(<EnumCellEditor {...props} fullOverlay />)
+
+    const trigger = document.querySelector('.td-cell-editor-select') as HTMLButtonElement
+    await user.click(trigger)
+
+    const listbox = screen.getByRole('listbox', { name: 'col_2' })
+    expect(listbox).toHaveFocus()
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
   it('calls syncCellValue when selecting a new enum value', async () => {
     const user = userEvent.setup()
     const props = makeEnumProps()

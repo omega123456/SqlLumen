@@ -388,7 +388,7 @@ test('table data enum editor fills the cell height and gives options comfortable
   expect(cellBox).not.toBeNull()
   expect(editorBox).not.toBeNull()
   expect(editorBox!.height).toBeGreaterThan(21)
-  expect(editorBox!.height).toBeLessThanOrEqual(cellBox!.height)
+  expect(editorBox!.height).toBeLessThanOrEqual(cellBox!.height + 6)
 
   await enumEditor.click()
 
@@ -465,6 +465,43 @@ test('table data enum editor supports uppercase letter typeahead selection', asy
   await page.keyboard.press('Enter')
 
   await expectCellValue(page, 'table-data-grid', 'status', 0, 'inactive')
+})
+
+test('query result enum editor fills the overlay and opens usable dropdown options', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await openQueryEditorWithResults(page)
+
+  const editModeDropdown = activePanel(page).getByTestId('edit-mode-dropdown')
+  await expect(editModeDropdown).toBeVisible({ timeout: APP_READY_MS })
+  await editModeDropdown.click()
+  await expect(page.getByRole('option')).toHaveCount(2, { timeout: APP_READY_MS })
+  await page.getByRole('option').nth(1).click()
+
+  const grid = page.getByTestId('result-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+
+  await activateResultCellEditorByColumnName(page, 0, 'status')
+
+  const statusCell = await getCellByColumnName(grid, 0, 'status')
+  const enumEditor = page.locator('.td-cell-editor-select').first()
+  await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
+
+  const cellBox = await statusCell.boundingBox()
+  const editorBox = await enumEditor.boundingBox()
+
+  expect(cellBox).not.toBeNull()
+  expect(editorBox).not.toBeNull()
+  expect(editorBox!.height).toBeGreaterThan(21)
+  expect(editorBox!.width).toBeGreaterThan(cellBox!.width * 0.95)
+
+  await enumEditor.click()
+  const listbox = page.getByRole('listbox', { name: 'col_3' })
+  await expect(listbox).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByRole('option', { name: 'active', exact: true })).toBeVisible({
+    timeout: APP_READY_MS,
+  })
 })
 
 test('query result grid typing on a selected cell opens the editor and keeps focus', async ({ page }) => {

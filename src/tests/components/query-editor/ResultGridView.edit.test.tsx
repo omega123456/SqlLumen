@@ -161,6 +161,44 @@ describe('ResultGridView editing', () => {
     expect(editableColumn).not.toHaveProperty('disableStyling')
   })
 
+  it('marks editable enum result columns for full-overlay dropdown editors', () => {
+    const enumColumns: ColumnMeta[] = [{ name: 'status', dataType: 'ENUM' }]
+    const enumTableColumns: TableDataColumnMeta[] = [
+      {
+        name: 'status',
+        dataType: 'enum',
+        enumValues: ['active', 'inactive'],
+        isBooleanAlias: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+    ]
+
+    render(
+      <ResultGridView
+        {...props}
+        columns={enumColumns}
+        rows={[['active']]}
+        editState={{
+          rowKey: { status: 'active' },
+          originalValues: { status: 'active' },
+          currentValues: { status: 'active' },
+          modifiedColumns: new Set(),
+          isNewRow: false,
+        }}
+        editTableColumns={enumTableColumns}
+        editColumnBindings={new Map([[0, 'status']])}
+      />
+    )
+
+    expect(getGridProps().columns[0].editorType).toBe('enum')
+  })
+
   it('overlays current edit values onto the editing row data', () => {
     const editedState: RowEditState = {
       ...editState,
