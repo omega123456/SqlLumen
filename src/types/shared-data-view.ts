@@ -92,7 +92,6 @@ export interface CellClickGuardResult {
   targetColIdx: number
   enableEditor: boolean
   restoreFocus?: boolean
-  initialInputValue?: unknown
 }
 
 export interface CellClipboardEditArgs {

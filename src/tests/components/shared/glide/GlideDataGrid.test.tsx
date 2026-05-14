@@ -261,29 +261,55 @@ describe('GlideDataGrid', () => {
     vi.useRealTimers()
   })
 
-  it('maps cell activation to activation request and double-click with current bounds', () => {
+  it('maps cell activation only to onCellActivated', () => {
     const onCellDoubleClicked = vi.fn()
-    const onCellActivationRequest = vi.fn()
+    const onCellActivated = vi.fn()
     render(
       <GlideDataGrid
         columns={[{ title: 'Id', width: 80 }]}
         rows={[{ id: 1 }]}
         getCellContent={vi.fn()}
         onCellDoubleClicked={onCellDoubleClicked}
-        onCellActivationRequest={onCellActivationRequest}
+        onCellActivated={onCellActivated}
       />
     )
     const props = mockDataEditor.mock.lastCall?.[0] as {
       onCellActivated: (cell: readonly [number, number]) => void
     }
     props.onCellActivated([2, 3])
-    expect(mockGetBounds).toHaveBeenCalledWith(2, 3)
-    expect(onCellActivationRequest).toHaveBeenCalledWith([2, 3], {
-      bounds: { x: 1, y: 2, width: 3, height: 4 },
-    })
-    expect(onCellDoubleClicked).toHaveBeenCalledWith([2, 3], {
-      bounds: { x: 1, y: 2, width: 3, height: 4 },
-    })
+    expect(onCellActivated).toHaveBeenCalledWith([2, 3])
+    expect(mockGetBounds).not.toHaveBeenCalled()
+    expect(onCellDoubleClicked).not.toHaveBeenCalled()
+  })
+
+  it('forwards double-click click events to onCellDoubleClicked without affecting activation', () => {
+    const onCellClicked = vi.fn()
+    const onCellDoubleClicked = vi.fn()
+    const onCellActivated = vi.fn()
+    render(
+      <GlideDataGrid
+        columns={[{ title: 'Id', width: 80 }]}
+        rows={[{ id: 1 }]}
+        getCellContent={vi.fn()}
+        onCellClicked={onCellClicked}
+        onCellDoubleClicked={onCellDoubleClicked}
+        onCellActivated={onCellActivated}
+      />
+    )
+
+    const props = mockDataEditor.mock.lastCall?.[0] as {
+      onCellClicked: (
+        cell: readonly [number, number],
+        event: { isDoubleClick?: boolean; preventDefault?: () => void }
+      ) => void
+    }
+
+    const event = { isDoubleClick: true, preventDefault: vi.fn() }
+    props.onCellClicked([2, 3], event)
+
+    expect(onCellClicked).toHaveBeenCalledWith([2, 3], event)
+    expect(onCellDoubleClicked).toHaveBeenCalledWith([2, 3], event)
+    expect(onCellActivated).not.toHaveBeenCalled()
   })
 
   it('applies requested editor width plus overlay padding', async () => {

@@ -145,6 +145,7 @@ describe('Glide phase 7 coverage helpers', () => {
     cleanup()
     render(
       <Overlay
+        target={{ x: 0, y: 0, width: 120, height: 24 }}
         value={
           {
             kind: GridCellKind.Text,
@@ -171,6 +172,7 @@ describe('Glide phase 7 coverage helpers', () => {
     cleanup()
     render(
       <Overlay
+        target={{ x: 0, y: 0, width: 120, height: 24 }}
         value={
           { kind: GridCellKind.Boolean, data: true, allowOverlay: false } as Parameters<
             typeof Overlay
@@ -184,6 +186,7 @@ describe('Glide phase 7 coverage helpers', () => {
 
     render(
       <Overlay
+        target={{ x: 0, y: 0, width: 120, height: 24 }}
         value={
           {
             kind: GridCellKind.Text,

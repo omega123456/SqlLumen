@@ -38,6 +38,7 @@ export interface GridEditorProps {
 export interface CellEditorParams extends GridEditorProps {
   isNullable: boolean
   columnMeta: TableDataColumnMeta
+  initialInputValue?: string
   selectAllOnFocus?: boolean
 }
 
@@ -93,9 +94,12 @@ export function useCellEditor(
 
   const initialNull = rawValue === null || rawValue === undefined
   const initialValue = initialNull ? null : rawValue
+  const initialInputValue = params.initialInputValue
 
-  const [isNull, setIsNull] = useState(initialNull)
-  const [value, setValue] = useState<string | null>(initialNull ? null : String(rawValue ?? ''))
+  const [isNull, setIsNull] = useState(initialInputValue != null ? false : initialNull)
+  const [value, setValue] = useState<string | null>(
+    initialInputValue != null ? initialInputValue : initialNull ? null : String(rawValue ?? '')
+  )
 
   const inputRef = useRef<HTMLInputElement>(null)
 

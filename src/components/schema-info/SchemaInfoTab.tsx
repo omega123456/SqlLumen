@@ -47,16 +47,19 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
   const [data, setData] = useState<SchemaInfoResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const hasLoadedRef = useRef(false)
+  const loadedKeyRef = useRef<string | null>(null)
   const setSubTab = useWorkspaceStore((state) => state.setSubTab)
 
   const visibleSubTabs = SUB_TAB_VISIBILITY[tab.objectType]
   const activeSubTab = tab.subTabId ?? getDefaultSubTab(tab.objectType)
+  const requestKey = `${tab.connectionId}::${tab.databaseName}::${tab.objectName}::${tab.objectType}`
 
   useEffect(() => {
     let cancelled = false
-    if (!isActive || hasLoadedRef.current) return
-    hasLoadedRef.current = true
+    const alreadyLoadedCurrentObject =
+      loadedKeyRef.current === requestKey && (data !== null || error !== null)
+
+    if (!isActive || alreadyLoadedCurrentObject) return
 
     // Clear stale state immediately before fetching new data
     queueMicrotask(() => {
@@ -72,12 +75,14 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
     getSchemaInfo(tab.connectionId, tab.databaseName, tab.objectName, tab.objectType)
       .then((result) => {
         if (!cancelled) {
+          loadedKeyRef.current = requestKey
           setData(result)
           setLoading(false)
         }
       })
       .catch((err: unknown) => {
         if (!cancelled) {
+          loadedKeyRef.current = requestKey
           setError(err instanceof Error ? err.message : String(err))
           setLoading(false)
         }
@@ -86,7 +91,7 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
     return () => {
       cancelled = true
     }
-  }, [isActive, tab.connectionId, tab.databaseName, tab.objectName, tab.objectType])
+  }, [data, error, isActive, requestKey, tab.connectionId, tab.databaseName, tab.objectName, tab.objectType])
 
   const handleSubTabClick = useCallback(
     (subTab: SubTab) => {

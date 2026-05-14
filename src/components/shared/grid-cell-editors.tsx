@@ -56,6 +56,7 @@ export interface CellEditorBaseProps {
     columnName: string,
     value: unknown
   ) => void
+  initialInputValue?: string
   selectAllOnFocus?: boolean
 }
 
@@ -73,9 +74,12 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
   const rawValue = row[fieldName]
   const initialNull = isNullish(rawValue)
   const initialValue = initialNull ? null : rawValue
+  const initialInputValue = props.initialInputValue
 
-  const [isNull, setIsNull] = useState(initialNull)
-  const [value, setValue] = useState(initialNull ? '' : String(rawValue ?? ''))
+  const [isNull, setIsNull] = useState(initialInputValue != null ? false : initialNull)
+  const [value, setValue] = useState(
+    initialInputValue != null ? initialInputValue : initialNull ? '' : String(rawValue ?? '')
+  )
   const inputRef = useRef<HTMLInputElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
 

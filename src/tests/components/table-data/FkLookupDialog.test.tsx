@@ -96,6 +96,22 @@ describe('FkLookupDialog', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('double-clicking a row applies immediately', async () => {
+    const onApply = vi.fn()
+    const onClose = vi.fn()
+    render(<FkLookupDialog {...props} onApply={onApply} onClose={onClose} />)
+    await waitFor(() => expect(mockCanvasBaseGridView).toHaveBeenCalled())
+    const gridProps = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+      rows: Record<string, unknown>[]
+      onRowDoubleClicked: (row: Record<string, unknown>) => void
+    }
+
+    gridProps.onRowDoubleClicked(gridProps.rows[0])
+
+    expect(onApply).toHaveBeenCalledWith(1)
+    expect(onClose).toHaveBeenCalled()
+  })
+
   it('closing fires cancel callback', async () => {
     const onClose = vi.fn()
     const user = userEvent.setup()

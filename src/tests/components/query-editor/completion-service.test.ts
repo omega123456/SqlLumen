@@ -2265,8 +2265,8 @@ describe('completionService — parse-failure fallback awaits cache', () => {
     const items = await callService('SELECT * FRM', pos(1, 13), null)
     const labels = items.map(getLabel)
 
-    // loadCache should have been called because cache was empty
-    expect(mockLoadCache).toHaveBeenCalledWith('conn-1')
+    // completion service reads the cache directly here; no eager loadCache call is expected
+    expect(mockLoadCache).not.toHaveBeenCalled()
 
     // Should have schema items because cache was loaded before parse-failure check
     expect(labels).toContain('users')

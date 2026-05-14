@@ -575,7 +575,6 @@ export function ResultGridView({
           targetColIdx,
           enableEditor: !isKeyboardNavigation,
           restoreFocus: true,
-          initialInputValue: undefined,
         }
       }
 
@@ -591,7 +590,6 @@ export function ResultGridView({
           targetRowIdx: rowIdx,
           targetColIdx,
           enableEditor: isKeyboardTyping,
-          initialInputValue: undefined,
         }
       }
 
@@ -601,7 +599,6 @@ export function ResultGridView({
         targetRowIdx: rowIdx,
         targetColIdx,
         enableEditor: false,
-        initialInputValue: undefined,
       }
     }
   }, [autoSaveBeforeLeavingEditedRow, editMode, editableColumnMap, onStartEditing, syncSelection])
@@ -620,7 +617,6 @@ export function ResultGridView({
         targetRowIdx: args.rowIdx,
         targetColIdx: targetColIdx >= 0 ? targetColIdx : 0,
         enableEditor: false,
-        initialInputValue: undefined,
       }
     },
     [syncSelection]

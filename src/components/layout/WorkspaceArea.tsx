@@ -31,6 +31,21 @@ export function WorkspaceArea() {
 
   const activeTab = tabs.find((t) => t.id === activeWorkspaceTabId) ?? null
   const previousActiveWorkspaceTabIdRef = useRef<string | null>(null)
+  const panelOrderRef = useRef<string[]>([])
+
+  const nextPanelOrder = panelOrderRef.current.filter((tabId) => tabs.some((tab) => tab.id === tabId))
+  const seenPanelIds = new Set(nextPanelOrder)
+  for (const tab of tabs) {
+    if (!seenPanelIds.has(tab.id)) {
+      nextPanelOrder.push(tab.id)
+      seenPanelIds.add(tab.id)
+    }
+  }
+  panelOrderRef.current = nextPanelOrder
+
+  const panelTabs = nextPanelOrder
+    .map((tabId) => tabs.find((tab) => tab.id === tabId) ?? null)
+    .filter((tab): tab is WorkspaceTab => tab != null)
 
   useEffect(() => {
     const previousTabId = previousActiveWorkspaceTabIdRef.current
@@ -79,7 +94,7 @@ export function WorkspaceArea() {
             sessionId,
           }) => (
             <div className={styles.panelStack}>
-              {activeConnection && stackTabs.length === 0 && (
+              {stackTabs.length === 0 && (
                 <div className={styles.connectedPlaceholder}>
                   <p className={styles.connectedText}>
                     Connected to {activeConnection.profile.name} ({activeConnection.profile.host}:
@@ -87,7 +102,7 @@ export function WorkspaceArea() {
                   </p>
                 </div>
               )}
-              {stackTabs.map((tab) => (
+              {panelTabs.map((tab) => (
                 <WorkspaceTabPanel
                   key={tab.id}
                   tab={tab}

@@ -164,6 +164,7 @@ describe('WorkspaceBody', () => {
   it('does not render the query AI rail for non-query tabs', () => {
     renderWorkspaceBody('table-1')
     expect(screen.queryByTestId('mock-ai-rail')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('rsp-separator')).not.toBeInTheDocument()
   })
 
   it('only leaves the active query tab AiPanel visible', () => {

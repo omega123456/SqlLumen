@@ -280,6 +280,41 @@ describe('WorkspaceArea', () => {
     ).toHaveAttribute('data-active', 'false')
   })
 
+  it('keeps mounted workspace panel DOM order stable when query tabs reorder', async () => {
+    const conn = makeActiveConnection()
+    useConnectionStore.setState({
+      activeConnections: { 'conn-1': conn },
+      activeTabId: 'conn-1',
+    })
+
+    const firstQueryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+    const secondQueryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    render(<WorkspaceArea />)
+
+    await waitFor(() => expect(screen.getAllByTestId('workspace-panel')).toHaveLength(2))
+    const initialOrder = screen
+      .getAllByTestId('workspace-panel')
+      .map((panel) => panel.getAttribute('data-tab-id'))
+    expect(initialOrder).toEqual([firstQueryTabId, secondQueryTabId])
+
+    act(() => {
+      useWorkspaceStore.getState().reorderWorkspaceTab('conn-1', firstQueryTabId, 2)
+    })
+
+    expect(
+      useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1'].filter((tab) => tab.type === 'query-editor')
+        .map((tab) => tab.id)
+    ).toEqual([secondQueryTabId, firstQueryTabId])
+
+    const reorderedPanelOrder = screen
+      .getAllByTestId('workspace-panel')
+      .map((panel) => panel.getAttribute('data-tab-id'))
+    expect(reorderedPanelOrder).toEqual([firstQueryTabId, secondQueryTabId])
+  })
+
   it('emits deactivation before activation when active tab changes', async () => {
     const events: string[] = []
     const onDeactivated = (event: Event) => {
@@ -288,8 +323,8 @@ describe('WorkspaceArea', () => {
     const onActivated = (event: Event) => {
       events.push(`activated:${(event as CustomEvent<{ tabId: string }>).detail.tabId}`)
     }
-    window.addEventListener('workspace-tab-deactivated', onDeactivated)
-    window.addEventListener('workspace-tab-activated', onActivated)
+    document.addEventListener('workspace-tab-deactivated', onDeactivated)
+    document.addEventListener('workspace-tab-activated', onActivated)
 
     try {
       const conn = makeActiveConnection()
@@ -316,8 +351,8 @@ describe('WorkspaceArea', () => {
         ])
       )
     } finally {
-      window.removeEventListener('workspace-tab-deactivated', onDeactivated)
-      window.removeEventListener('workspace-tab-activated', onActivated)
+      document.removeEventListener('workspace-tab-deactivated', onDeactivated)
+      document.removeEventListener('workspace-tab-activated', onActivated)
     }
   })
 

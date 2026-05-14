@@ -182,6 +182,15 @@ describe('DateTimeCellEditor', () => {
     expect(input.value).toBe('2023-11-24')
   })
 
+  it('prefers initialInputValue when typing activation opens the editor', () => {
+    setupStore()
+    const props = makeMockProps({ initialInputValue: '2', selectAllOnFocus: false })
+    render(<DateTimeCellEditor {...props} />)
+
+    const input = screen.getByRole('textbox') as HTMLInputElement
+    expect(input.value).toBe('2')
+  })
+
   it('clicking calendar button shows picker (renders mock DateTimePicker)', () => {
     setupStore()
     const props = makeMockProps()

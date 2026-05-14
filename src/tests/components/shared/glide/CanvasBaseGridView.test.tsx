@@ -976,7 +976,6 @@ describe('CanvasBaseGridView', () => {
       targetRowIdx: 0,
       targetColIdx: 0,
       enableEditor: true,
-      initialInputValue: undefined,
     })
     const onSelectedCellChange = vi.fn()
     render(
@@ -1039,7 +1038,6 @@ describe('CanvasBaseGridView', () => {
       targetRowIdx: 0,
       targetColIdx: 0,
       enableEditor: true,
-      initialInputValue: undefined,
     })
     const onCellValueChange = vi.fn()
 
@@ -1088,7 +1086,7 @@ describe('CanvasBaseGridView', () => {
         source: 'keyboard-typing',
       })
     )
-    expect(onCellValueChange).toHaveBeenCalledWith(0, 'name', 'x')
+    expect(onCellValueChange).not.toHaveBeenCalled()
     expect(mockSelectCell).toHaveBeenCalledWith(
       { rowIdx: 0, idx: 0 },
       { shouldFocusCell: true, enableEditor: true }
@@ -1437,7 +1435,6 @@ describe('CanvasBaseGridView', () => {
       targetRowIdx: 0,
       targetColIdx: 0,
       enableEditor: true,
-      initialInputValue: undefined,
     }))
     const onCellSelectionChange = vi.fn()
 

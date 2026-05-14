@@ -85,7 +85,6 @@ function getGridProps() {
       targetColIdx: number
       enableEditor: boolean
       restoreFocus?: boolean
-      initialInputValue?: unknown
     }>
     onCellClipboardEdit: (args: {
       rowIdx: number
@@ -215,7 +214,6 @@ describe('ResultGridView editing', () => {
       targetRowIdx: 0,
       targetColIdx: 0,
       enableEditor: false,
-      initialInputValue: undefined,
     })
     expect(onStartEditing).toHaveBeenCalledWith(0)
     expect(onRowSelected).toHaveBeenCalledWith(0)
@@ -249,7 +247,6 @@ describe('ResultGridView editing', () => {
       targetRowIdx: 1,
       targetColIdx: 0,
       enableEditor: false,
-      initialInputValue: undefined,
     })
     expect(onStartEditing).toHaveBeenCalledWith(1)
     expect(onRowSelected).toHaveBeenCalledWith(1)

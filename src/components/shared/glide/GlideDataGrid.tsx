@@ -86,7 +86,6 @@ export type GlideDataGridProps<TRow> = {
   onCellClicked?: (cell: Item, event: CellClickedEventArgs) => void
   onCellDoubleClicked?: (cell: Item, event: CellClickedEventArgs) => void
   onCellActivated?: (cell: Item) => void
-  onCellActivationRequest?: (cell: Item, event: CellClickedEventArgs) => void
   onFinishedEditing?: (newValue: GridCell | undefined, movement: Item) => void
   selection?: GridSelection
   onSelectionChange?: (selection: GridSelection) => void
@@ -115,7 +114,6 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
     onCellClicked,
     onCellDoubleClicked,
     onCellActivated,
-    onCellActivationRequest,
     onFinishedEditing,
     selection,
     onSelectionChange,
@@ -231,14 +229,18 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
   const handleCellActivated = useCallback(
     (cell: Item) => {
       onCellActivated?.(cell)
-      const [col, row] = cell
-      const activationEvent = {
-        bounds: editorRef.current?.getBounds(col, row),
-      } as CellClickedEventArgs
-      onCellActivationRequest?.(cell, activationEvent)
-      onCellDoubleClicked?.(cell, activationEvent)
     },
-    [onCellActivated, onCellActivationRequest, onCellDoubleClicked]
+    [onCellActivated]
+  )
+
+  const handleCellClickedWithDoubleClick = useCallback(
+    (cell: Item, event: CellClickedEventArgs) => {
+      onCellClicked?.(cell, event)
+      if (event.isDoubleClick === true) {
+        onCellDoubleClicked?.(cell, event)
+      }
+    },
+    [onCellClicked, onCellDoubleClicked]
   )
 
   const hostClassName = className ? `glide-grid-host ${className}` : 'glide-grid-host'
@@ -281,7 +283,7 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
           onColumnResize={handleColumnResize}
           onHeaderClicked={(columnIndex) => onHeaderClicked?.(columnIndex)}
           onCellContextMenu={onCellContextMenu}
-          onCellClicked={onCellClicked}
+          onCellClicked={handleCellClickedWithDoubleClick}
           onCellActivated={handleCellActivated}
           onFinishedEditing={onFinishedEditing}
           onVisibleRegionChanged={onVisibleRegionChanged}

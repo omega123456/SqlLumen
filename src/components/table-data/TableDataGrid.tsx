@@ -510,7 +510,6 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           targetRowIdx: args.rowIdx,
           targetColIdx: 0,
           enableEditor: false,
-          initialInputValue: undefined,
         }
       }
       const { editable, targetColIdx } = target
@@ -537,7 +536,6 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           targetRowIdx: rowIdx >= 0 ? rowIdx : args.rowIdx,
           targetColIdx,
           enableEditor: false,
-          initialInputValue: undefined,
         }
       }
 
@@ -553,7 +551,6 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
           targetRowIdx: finalRowIdx,
           targetColIdx,
           enableEditor: isKeyboardTyping,
-          initialInputValue: undefined,
         }
       }
 
@@ -562,7 +559,6 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
         targetRowIdx: args.rowIdx,
         targetColIdx,
         enableEditor: false,
-        initialInputValue: undefined,
       }
     },
     [

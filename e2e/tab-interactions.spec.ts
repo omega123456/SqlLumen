@@ -1,8 +1,60 @@
 import { expect, test, type Page } from '@playwright/test'
 import { APP_READY_MS, connectToSample, waitForApp } from './helpers'
 
+const SAMPLE_SESSION_ID = 'session-playwright-1'
+
 function activePanel(page: Page) {
   return page.locator('[data-testid="workspace-panel"][data-active="true"]')
+}
+
+async function openQueryTab(page: Page) {
+  await page.getByTestId('new-query-tab-button').click()
+
+  return page.evaluate((sessionId) => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => {
+        activeTabByConnection: Record<string, string | null>
+      }
+    }
+
+    return store.getState().activeTabByConnection[sessionId]
+  }, SAMPLE_SESSION_ID)
+}
+
+async function workspaceQueryTabOrder(page: Page) {
+  return page.evaluate((sessionId) => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => {
+        tabsByConnection: Record<string, Array<{ id: string; type: string; label: string }>>
+      }
+    }
+
+    return (store.getState().tabsByConnection[sessionId] ?? [])
+      .filter((tab) => tab.type === 'query-editor')
+      .map((tab) => tab.label)
+  }, SAMPLE_SESSION_ID)
+}
+
+async function renderedWorkspaceQueryTabOrder(page: Page) {
+  return page.evaluate(() => {
+    const root = document.querySelector('[data-testid="workspace-tabs"]')
+    if (!root) {
+      return []
+    }
+
+    const rail = root.querySelector(':scope > div > div')
+    if (!rail) {
+      return []
+    }
+
+    return Array.from(rail.children)
+      .map((element) => ({
+        testId: element.getAttribute('data-testid') ?? '',
+        label: element.querySelector('[role="button"]')?.textContent?.trim() ?? '',
+      }))
+      .filter((tab) => tab.testId.startsWith('workspace-tab-') && tab.label.length > 0)
+      .map((tab) => tab.label)
+  })
 }
 
 async function openSecondConnectionSession(page: Page) {
@@ -88,45 +140,32 @@ test.describe('Tab interactions', () => {
 
   test('moves workspace query tabs with context menu actions', async ({ page }) => {
     await connectToSample(page)
-    await page.getByTestId('new-query-tab-button').click()
-    await page.getByTestId('new-query-tab-button').click()
+    const firstQueryTabId = await openQueryTab(page)
+    const secondQueryTabId = await openQueryTab(page)
     await expect(activePanel(page).getByTestId('query-editor-tab')).toBeVisible({ timeout: APP_READY_MS })
 
-    const firstQueryTab = page.getByText('Query 1').first()
-    const secondQueryTab = page.getByText('Query 2').first()
-    await expect(firstQueryTab).toBeVisible({ timeout: APP_READY_MS })
-    await expect(secondQueryTab).toBeVisible({ timeout: APP_READY_MS })
-
-    await firstQueryTab.click({ button: 'right' })
+    await page.getByTestId(`workspace-tab-${firstQueryTabId}`).click({ button: 'right' })
     await expect(page.getByTestId('tab-context-menu')).toBeVisible({ timeout: APP_READY_MS })
     await page.getByTestId('tab-context-menu-item-move-right').click()
 
-    const orderedLabels = await page
-      .locator('[data-testid="workspace-tabs"] [data-testid^="workspace-tab-"]')
-      .allTextContents()
-    const filtered = orderedLabels.filter((label) => label.startsWith('Query ')).slice(0, 2)
+    const filtered = await workspaceQueryTabOrder(page)
     expect(filtered[0]).toContain('Query 2')
     expect(filtered[1]).toContain('Query 1')
+    await expect.poll(() => renderedWorkspaceQueryTabOrder(page)).toEqual(['Query 2', 'Query 1'])
 
-    await secondQueryTab.click({ button: 'right' })
+    await page.getByTestId(`workspace-tab-${secondQueryTabId}`).click({ button: 'right' })
     await page.getByTestId('tab-context-menu-item-move-end').click()
-    const movedEndLabels = await page
-      .locator('[data-testid="workspace-tabs"] [data-testid^="workspace-tab-"]')
-      .allTextContents()
-    const movedEndQueries = movedEndLabels.filter((label) => label.startsWith('Query ')).slice(0, 2)
+    const movedEndQueries = await workspaceQueryTabOrder(page)
     expect(movedEndQueries[0]).toContain('Query 1')
     expect(movedEndQueries[1]).toContain('Query 2')
+    await expect.poll(() => renderedWorkspaceQueryTabOrder(page)).toEqual(['Query 1', 'Query 2'])
 
-    await secondQueryTab.click({ button: 'right' })
+    await page.getByTestId(`workspace-tab-${secondQueryTabId}`).click({ button: 'right' })
     await page.getByTestId('tab-context-menu-item-move-start').click()
-    const movedStartLabels = await page
-      .locator('[data-testid="workspace-tabs"] [data-testid^="workspace-tab-"]')
-      .allTextContents()
-    const movedStartQueries = movedStartLabels
-      .filter((label) => label.startsWith('Query '))
-      .slice(0, 2)
+    const movedStartQueries = await workspaceQueryTabOrder(page)
     expect(movedStartQueries[0]).toContain('Query 2')
     expect(movedStartQueries[1]).toContain('Query 1')
+    await expect.poll(() => renderedWorkspaceQueryTabOrder(page)).toEqual(['Query 2', 'Query 1'])
   })
 
   test('reorders connection tabs from context menu actions', async ({ page }) => {

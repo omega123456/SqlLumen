@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
 import {
   APP_READY_MS,
+  activateResultGridCell,
   connectToSample,
   clickResultGridCell,
   dismissAllToasts,
@@ -1223,7 +1224,7 @@ for (const theme of themes) {
     }) => {
       await openQueryEditorWithResults(page)
       await enableQueryResultEditMode(page)
-      await clickResultGridCell(page, 1, 0)
+      await activateResultGridCell(page, 1, 0)
       await expect(page.locator('.td-cell-editor-input').first()).toBeVisible({
         timeout: APP_READY_MS,
       })
@@ -1668,7 +1669,7 @@ for (const theme of themes) {
       expect(statusColIdx).toBeGreaterThanOrEqual(0)
 
       const statusCell = await getGridCellByColumnName(grid, 0, 'status')
-      await statusCell.click()
+      await statusCell.dblClick()
 
       const enumEditor = page.locator('.td-cell-editor-select').first()
       await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
@@ -3274,10 +3275,10 @@ test.describe('Date picker', () => {
         // Dismiss any lingering toasts before interaction
         await dismissAllToasts(page)
 
-        // Click the created_at cell in the first row to start editing.
+        // Double-click the created_at cell in the first row to start editing.
         const grid = page.getByTestId('table-data-grid')
         const createdAtCell = await getGridCellByColumnName(grid, 0, 'created_at')
-        await createdAtCell.click()
+        await createdAtCell.dblClick()
 
         // Wait for the DateTimeCellEditor to mount with the calendar button
         const gridCalendarBtn = page.getByTestId('grid-calendar-btn')
@@ -3319,10 +3320,10 @@ test.describe('Date picker', () => {
         // Dismiss any lingering toasts before interaction
         await dismissAllToasts(page)
 
-        // Click the created_at cell in the first row to start editing and show Glide's overlay.
+        // Double-click the created_at cell in the first row to start editing and show Glide's overlay.
         const grid = page.getByTestId('table-data-grid')
         const createdAtCell = await getGridCellByColumnName(grid, 0, 'created_at')
-        await createdAtCell.click()
+        await createdAtCell.dblClick()
 
         // Wait for the DateTimeCellEditor overlay to mount, but do not open the calendar popup.
         await expect(

@@ -53,6 +53,7 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
     onClose: props.onClose,
     isNullable: props.isNullable,
     columnMeta: props.columnMeta,
+    initialInputValue: props.initialInputValue,
     selectAllOnFocus: props.selectAllOnFocus,
   }
   const callbacks: CellEditorCallbacks = {

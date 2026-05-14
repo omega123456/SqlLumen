@@ -378,6 +378,11 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
             columnMeta: column.tableColumnMeta,
             isNullable: column.isNullable === true,
             foreignKey: column.foreignKey,
+            initialInputValue:
+              pendingTypingActivationRef.current?.rowIndex === rowIndex &&
+              pendingTypingActivationRef.current?.columnKey === column.key
+                ? pendingTypingActivationRef.current.value
+                : undefined,
             selectAllOnFocus:
               pendingTypingActivationRef.current?.rowIndex === rowIndex &&
               pendingTypingActivationRef.current?.columnKey === column.key
@@ -805,13 +810,6 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     [changeSelectedCell, gridColumns, onCellClickGuard, onCellSelectionChange, onRowClick, rows, selectRow]
   )
 
-  const handleCellActivationRequest = useCallback(
-    async (cell: Item) => {
-      await activateCell(cell)
-    },
-    [activateCell]
-  )
-
   const handleCellDoubleClicked = useCallback(
     (cell: Item) => {
       const [colIndex, rowIndex] = cell
@@ -981,7 +979,6 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
                 targetRowIdx: currentCell.rowIdx,
                 targetColIdx: currentCell.idx,
                 enableEditor: true,
-                initialInputValue: typedValue,
               }
 
           if (!guard.proceed) {
@@ -1002,13 +999,8 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
             pendingTypingActivationRef.current = {
               rowIndex: guard.targetRowIdx,
               columnKey: targetColumn.key,
-              value: String(guard.initialInputValue ?? typedValue),
+              value: typedValue,
             }
-            onCellValueChange?.(
-              guard.targetRowIdx,
-              targetColumn.key,
-              guard.initialInputValue ?? typedValue
-            )
           }
           gridRef.current?.selectCell(
             { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
@@ -1211,8 +1203,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         onPaste={handlePaste}
         onCellDoubleClicked={handleCellDoubleClicked}
         onCellActivated={handleCellActivatedForEditing}
-        onCellActivationRequest={handleCellActivationRequest}
-        onFinishedEditing={handleFinishedEditing}
+      onFinishedEditing={handleFinishedEditing}
         onCellContextMenu={handleCellClicked}
         onVisibleRegionChanged={handleVisibleRegionChanged}
         selection={gridSelection}

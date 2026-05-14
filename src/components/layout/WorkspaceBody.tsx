@@ -48,6 +48,8 @@ export function WorkspaceBody({
     (state) =>
       (state.pendingChanges['ai.enabled'] ?? state.settings['ai.enabled'] ?? 'false') === 'true'
   )
+  const hasQueryTabs = queryTabs.length > 0
+  const showAiResizeLayout = aiEnabled && activeQueryTab != null
 
   useEffect(() => {
     if (activeQueryTab && isActiveQueryPanelOpen) {
@@ -85,41 +87,43 @@ export function WorkspaceBody({
         >
           {renderTabStack({ tabs, activeTabId, connectionId, sessionId })}
         </Panel>
-        {aiEnabled && activeQueryTab ? <QueryWorkspaceAiRail tab={activeQueryTab} /> : null}
-        <Separator className={styles.separator} />
-        <Panel
-          panelRef={aiChatPanelRef}
-          defaultSize="25%"
-          minSize="15%"
-          maxSize="48%"
-          collapsible={true}
-          collapsedSize="0%"
-          className={styles.aiSide}
-          onResize={handleAiChatResize}
-        >
-          {queryTabs.map((tab) => {
-            const isActive = tab.id === activeQueryTabId
-            return (
-              <div
-                key={tab.id}
-                className={styles.aiPanelHost}
-                style={isActive ? undefined : { visibility: 'hidden', pointerEvents: 'none' }}
-                aria-hidden={!isActive}
-                data-testid="workspace-ai-panel-host"
-                data-tab-id={tab.id}
-                onFocusCapture={() => setLastFocusedSurface(tab.id, 'ai-input')}
-              >
-                <AiPanel
-                  tabId={tab.id}
-                  connectionId={tab.connectionId}
-                  onTriggerDiff={(sql, range) => {
-                    triggerDiff(tab.id, sql, range)
-                  }}
-                />
-              </div>
-            )
-          })}
-        </Panel>
+        {showAiResizeLayout ? <QueryWorkspaceAiRail tab={activeQueryTab} /> : null}
+        {showAiResizeLayout ? <Separator className={styles.separator} /> : null}
+        {aiEnabled && hasQueryTabs ? (
+          <Panel
+            panelRef={aiChatPanelRef}
+            defaultSize="25%"
+            minSize="15%"
+            maxSize="48%"
+            collapsible={true}
+            collapsedSize="0%"
+            className={styles.aiSide}
+            onResize={handleAiChatResize}
+          >
+            {queryTabs.map((tab) => {
+              const isActive = tab.id === activeQueryTabId
+              return (
+                <div
+                  key={tab.id}
+                  className={styles.aiPanelHost}
+                  style={isActive ? undefined : { visibility: 'hidden', pointerEvents: 'none' }}
+                  aria-hidden={!isActive}
+                  data-testid="workspace-ai-panel-host"
+                  data-tab-id={tab.id}
+                  onFocusCapture={() => setLastFocusedSurface(tab.id, 'ai-input')}
+                >
+                  <AiPanel
+                    tabId={tab.id}
+                    connectionId={tab.connectionId}
+                    onTriggerDiff={(sql, range) => {
+                      triggerDiff(tab.id, sql, range)
+                    }}
+                  />
+                </div>
+              )
+            })}
+          </Panel>
+        ) : null}
       </Group>
     </div>
   )

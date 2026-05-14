@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest'
-import { computeRequestedEditorWidth } from '../../../../components/shared/glide/glide-editors'
+import { describe, expect, it, vi } from 'vitest'
+import { render } from '@testing-library/react'
+import { GridCellKind, type TextCell } from '@glideapps/glide-data-grid'
+import {
+  computeRequestedEditorWidth,
+  wrapEditorAsGlideOverlay,
+} from '../../../../components/shared/glide/glide-editors'
 
 describe('computeRequestedEditorWidth', () => {
   it('keeps the cell width when no markers are present', () => {
@@ -13,5 +18,54 @@ describe('computeRequestedEditorWidth', () => {
 
   it('does not shrink already-wide cells', () => {
     expect(computeRequestedEditorWidth(240, 1)).toBe(240)
+  })
+})
+
+describe('wrapEditorAsGlideOverlay', () => {
+  it('seeds the first typed character into Glide immediately when initialInputValue is provided', () => {
+    const onChange = vi.fn()
+    const Editor = wrapEditorAsGlideOverlay(() => null, 'test-editor')
+
+    const value: TextCell & {
+      glideEditorData: {
+        row: Record<string, unknown>
+        columnKey: string
+        isNullable: boolean
+        initialInputValue: string
+        selectAllOnFocus: boolean
+      }
+    } = {
+      kind: GridCellKind.Text,
+      data: 'alpha',
+      displayData: 'alpha',
+      copyData: 'alpha',
+      allowOverlay: true,
+      readonly: false,
+      glideEditorData: {
+        row: { name: 'alpha' },
+        columnKey: 'name',
+        isNullable: true,
+        initialInputValue: 'x',
+        selectAllOnFocus: false,
+      },
+    }
+
+    render(
+      <Editor
+        target={{ x: 0, y: 0, width: 80, height: 32 }}
+        value={value}
+        onChange={onChange}
+        onFinishedEditing={vi.fn()}
+      />
+    )
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: GridCellKind.Text,
+        data: 'x',
+        displayData: 'x',
+        copyData: 'x',
+      })
+    )
   })
 })

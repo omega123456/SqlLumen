@@ -799,21 +799,12 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
     mockConnectionState.activeConnections = {
       'conn-1': { sessionDatabase: 'testdb', profile: { defaultDatabase: '' } },
     }
-    // Start with empty cache, then transition to ready after loadCache resolves
-    let loadCallCount = 0
-    mockGetCache.mockImplementation(() => {
-      if (loadCallCount === 0) {
-        return { status: 'empty', routines: {} }
-      }
-      return {
-        status: 'ready',
-        routines: {
-          testdb: [{ name: 'my_func', routineType: 'FUNCTION' }],
-        },
-      }
-    })
-    mockLoadCache.mockImplementation(async () => {
-      loadCallCount++
+    mockGetPendingLoad.mockReturnValue(Promise.resolve())
+    mockGetCache.mockReturnValue({
+      status: 'ready',
+      routines: {
+        testdb: [{ name: 'my_func', routineType: 'FUNCTION' }],
+      },
     })
     mockGetRoutineParameters.mockResolvedValue({
       parameters: [{ name: 'x', dataType: 'INT', mode: 'IN' }],
@@ -831,7 +822,7 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
       value: { signatures: Array<{ label: string }> }
     } | null
 
-    expect(mockLoadCache).toHaveBeenCalledWith('conn-1')
+    expect(mockLoadCache).not.toHaveBeenCalled()
     expect(result).not.toBeNull()
     expect(result!.value.signatures[0].label).toContain('my_func')
   })

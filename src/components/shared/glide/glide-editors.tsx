@@ -1,4 +1,4 @@
-import { useCallback, useRef, type ComponentType, type FunctionComponent } from 'react'
+import { useCallback, useEffect, useRef, type ComponentType, type FunctionComponent } from 'react'
 import {
   GridCellKind,
   type GridCell,
@@ -24,6 +24,7 @@ interface GlideEditorCellData {
   columnMeta?: CellEditorBaseProps['columnMeta']
   isNullable: boolean
   foreignKey?: CellEditorBaseProps['foreignKey']
+  initialInputValue?: string
   selectAllOnFocus?: boolean
 }
 
@@ -102,9 +103,25 @@ export function wrapEditorAsGlideOverlay(
     const editorData = extractEditorData(value)
     if (!editorData) return null
 
-    const { row, columnKey, columnMeta, isNullable, foreignKey, selectAllOnFocus } = editorData
+    const { row, columnKey, columnMeta, isNullable, foreignKey, initialInputValue, selectAllOnFocus } = editorData
     const targetWidth = getEditorTargetWidth(target)
     const expandedWidth = getExpandedEditorWidth(targetWidth, getMarkerCount(editorData, columnMeta))
+
+    useEffect(() => {
+      if (initialInputValue == null) {
+        currentValueRef.current = value
+        return
+      }
+
+      const seededCell = {
+        ...(value as TextCell),
+        data: initialInputValue,
+        displayData: initialInputValue,
+        copyData: initialInputValue,
+      }
+      currentValueRef.current = seededCell
+      onChange(seededCell)
+    }, [initialInputValue, onChange, value])
 
     return (
       <div
@@ -128,6 +145,7 @@ export function wrapEditorAsGlideOverlay(
           isNullable={isNullable}
           columnMeta={columnMeta}
           foreignKey={foreignKey}
+          initialInputValue={initialInputValue}
           selectAllOnFocus={selectAllOnFocus}
           onRowChange={(nextRow) => {
             const nextValue = nextRow[columnKey]

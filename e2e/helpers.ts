@@ -12,6 +12,7 @@ export const APP_READY_MS = 5_000
 
 interface GridPointHandle {
   click: () => Promise<void>
+  dblClick: () => Promise<void>
   boundingBox: () => Promise<{ x: number; y: number; width: number; height: number }>
   locator: (selector: string) => Locator
   getByTestId: (testId: string) => Locator
@@ -133,6 +134,7 @@ export async function getGridCellByColumnName(
 
   return {
     click: () => grid.click({ position: { x, y }, force: true }),
+    dblClick: () => grid.click({ position: { x, y }, force: true, clickCount: 2 }),
     boundingBox: async () => {
       const box = await grid.boundingBox()
       if (!box) throw new Error('Glide grid is not visible')
@@ -162,6 +164,7 @@ export async function getGridHeaderCellByColumnName(
 
   return {
     click: () => grid.click({ position: { x, y }, force: true }),
+    dblClick: () => grid.click({ position: { x, y }, force: true, clickCount: 2 }),
     boundingBox: async () => {
       const box = await grid.boundingBox()
       if (!box) throw new Error('Glide grid is not visible')
@@ -240,6 +243,11 @@ export async function clickResultGridHeader(page: Page, columnIndex: number) {
 export async function clickResultGridCell(page: Page, columnIndex: number, rowIndex: number) {
   const geometry = await getGlideGridGeometry(page, 'result-grid')
   await clickGlideCell(page, 'result-grid', columnIndex, rowIndex, geometry)
+}
+
+export async function activateResultGridCell(page: Page, columnIndex: number, rowIndex: number) {
+  const geometry = await getGlideGridGeometry(page, 'result-grid')
+  await dblClickGlideCell(page, 'result-grid', columnIndex, rowIndex, geometry)
 }
 
 export async function waitForTableDataGrid(page: Page) {
