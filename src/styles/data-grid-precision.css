@@ -230,11 +230,20 @@
 }
 
 /* Allow Glide DropdownCell menu to expand to fit content.
-   PortalWrap uses the stable Linaria class .gdg-p13nj8j0.
-   React Select only uses className (not classNamePrefix) so BEM sub-classes like
-   __menu are NOT generated — we target structural descendants of PortalWrap instead.
-   PortalWrap > div  = the Menu container
-   PortalWrap > div > div:first-child = the MenuList container */
+   React Select's menuPortal container gets inline width = cell width (rect.width).
+   The Menu div inside gets width: 100% of that container, which causes a horizontal
+   scrollbar when option text is wider than the cell.
+   PortalWrap (.gdg-p13nj8j0) wraps the Menu inside the portal container — we make
+   the portal container itself overflow-visible so PortalWrap can expand beyond cell width,
+   and give PortalWrap min-width: max-content so the menu grows to fit its options. */
+#portal > div {
+  overflow: visible !important;
+}
+
+#portal .gdg-p13nj8j0 {
+  min-width: max-content;
+}
+
 #portal .gdg-p13nj8j0 > div {
   min-width: max-content !important;
   width: max-content !important;
