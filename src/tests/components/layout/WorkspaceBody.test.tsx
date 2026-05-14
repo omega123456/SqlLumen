@@ -120,6 +120,21 @@ function renderWorkspaceBody(activeTabId: string | null) {
   )
 }
 
+function expectAllAiHostsHidden() {
+  for (const host of screen.getAllByTestId('workspace-ai-panel-host')) {
+    expect(host).toHaveStyle({ visibility: 'hidden' })
+    expect(host).toHaveAttribute('aria-hidden', 'true')
+  }
+}
+
+function getAiPanelRender(): Record<string, unknown> {
+  const aiPanel = panelRenders.find(
+    (props) => props.collapsible === true && props.collapsedSize === '0%'
+  )
+  expect(aiPanel).toBeDefined()
+  return aiPanel as Record<string, unknown>
+}
+
 beforeEach(() => {
   panelRenders.length = 0
   panelState.collapsed = false
@@ -165,6 +180,8 @@ describe('WorkspaceBody', () => {
     renderWorkspaceBody('table-1')
     expect(screen.queryByTestId('mock-ai-rail')).not.toBeInTheDocument()
     expect(screen.queryByTestId('rsp-separator')).not.toBeInTheDocument()
+    expect(screen.getAllByTestId('mock-ai-panel')).toHaveLength(2)
+    expectAllAiHostsHidden()
   })
 
   it('only leaves the active query tab AiPanel visible', () => {
@@ -190,16 +207,20 @@ describe('WorkspaceBody', () => {
     )
 
     expect(screen.getAllByTestId('mock-ai-panel')).toHaveLength(2)
-    for (const host of screen.getAllByTestId('workspace-ai-panel-host')) {
-      expect(host).toHaveStyle({ visibility: 'hidden' })
-      expect(host).toHaveAttribute('aria-hidden', 'true')
-    }
+    expectAllAiHostsHidden()
   })
 
   it('collapses on a non-query tab without mutating stored AiPanel preference', () => {
     renderWorkspaceBody('table-1')
     expect(panelRef.current.collapse).toHaveBeenCalled()
     expect(useAiStore.getState().tabs['query-1']?.isPanelOpen).toBe(true)
+  })
+
+  it('starts the AI side panel collapsed when no query tab is active', () => {
+    renderWorkspaceBody('table-1')
+    const aiPanelProps = getAiPanelRender()
+    expect(aiPanelProps.defaultSize).toBe('0%')
+    expect(aiPanelProps.collapsedSize).toBe('0%')
   })
 
   it('dispatches a workspace layout resize event on panel resize', () => {

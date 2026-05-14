@@ -49,15 +49,18 @@ export function WorkspaceBody({
       (state.pendingChanges['ai.enabled'] ?? state.settings['ai.enabled'] ?? 'false') === 'true'
   )
   const hasQueryTabs = queryTabs.length > 0
-  const showAiResizeLayout = aiEnabled && activeQueryTab != null
+  const showActiveQueryAiLayout = aiEnabled && activeQueryTab != null
+  const shouldRenderAiPanelStack = aiEnabled && hasQueryTabs
+  const shouldExpandAiPanel = activeQueryTabId != null && isActiveQueryPanelOpen
+  const aiPanelDefaultSize = shouldExpandAiPanel ? '25%' : '0%'
 
   useEffect(() => {
-    if (activeQueryTab && isActiveQueryPanelOpen) {
+    if (shouldExpandAiPanel) {
       aiChatPanelRef.current?.expand()
     } else {
       aiChatPanelRef.current?.collapse()
     }
-  }, [activeQueryTab, isActiveQueryPanelOpen, aiChatPanelRef])
+  }, [aiChatPanelRef, shouldExpandAiPanel])
 
   function handleAiChatResize(): void {
     if (activeQueryTabId) {
@@ -87,12 +90,12 @@ export function WorkspaceBody({
         >
           {renderTabStack({ tabs, activeTabId, connectionId, sessionId })}
         </Panel>
-        {showAiResizeLayout ? <QueryWorkspaceAiRail tab={activeQueryTab} /> : null}
-        {showAiResizeLayout ? <Separator className={styles.separator} /> : null}
-        {aiEnabled && hasQueryTabs ? (
+        {showActiveQueryAiLayout ? <QueryWorkspaceAiRail tab={activeQueryTab} /> : null}
+        {showActiveQueryAiLayout ? <Separator className={styles.separator} /> : null}
+        {shouldRenderAiPanelStack ? (
           <Panel
             panelRef={aiChatPanelRef}
-            defaultSize="25%"
+            defaultSize={aiPanelDefaultSize}
             minSize="15%"
             maxSize="48%"
             collapsible={true}
