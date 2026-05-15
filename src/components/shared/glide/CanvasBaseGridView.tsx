@@ -34,6 +34,7 @@ import {
   buildNullCell,
   buildTextCell,
   classifyCellValue,
+  NULL_CELL_THEME_OVERRIDE,
 } from './glide-cell-content'
 import { buildGlideColumns } from './glide-column-adapter'
 import { drawCustomHeader } from './glide-header-rendering'
@@ -64,6 +65,7 @@ interface PendingTypingActivation {
   rowIndex: number
   columnKey: string
   value: string
+  cancelRestoreValue: unknown
 }
 
 function isTypingActivationKey(event: GlideKeyDownEvent): boolean {
@@ -445,6 +447,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           allowOverlay: editable,
           readonly: !editable,
           copyData: enumValue ?? 'NULL',
+          ...(enumValue == null ? { themeOverride: NULL_CELL_THEME_OVERRIDE } : {}),
           data: {
             kind: 'dropdown-cell',
             value: enumValue ?? nullSentinel,
@@ -456,6 +459,11 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         const baseCell = flags.isNull
           ? buildNullCell(flags.copyValue)
           : buildTextCell(flags.displayValue, flags, flags.copyValue)
+        const pendingTypingActivation =
+          pendingTypingActivationRef.current?.rowIndex === rowIndex &&
+          pendingTypingActivationRef.current?.columnKey === column.key
+            ? pendingTypingActivationRef.current
+            : null
         return {
           ...baseCell,
           readonly: false,
@@ -468,16 +476,11 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
             columnMeta: column.tableColumnMeta,
             isNullable: column.isNullable === true,
             foreignKey: column.foreignKey,
-            initialInputValue:
-              pendingTypingActivationRef.current?.rowIndex === rowIndex &&
-              pendingTypingActivationRef.current?.columnKey === column.key
-                ? pendingTypingActivationRef.current.value
-                : undefined,
-            selectAllOnFocus:
-              pendingTypingActivationRef.current?.rowIndex === rowIndex &&
-              pendingTypingActivationRef.current?.columnKey === column.key
-                ? false
-                : true,
+            initialInputValue: pendingTypingActivation?.value,
+            ...(pendingTypingActivation
+              ? { cancelRestoreValue: pendingTypingActivation.cancelRestoreValue }
+              : {}),
+            selectAllOnFocus: pendingTypingActivation ? false : true,
           },
         } as TextCell & { glideEditorData: unknown }
       }
@@ -1118,6 +1121,11 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           return
         }
         const typedValue = event.key
+        const cancelRestoreValue = resolveEditorBaselineValue(
+          currentRow,
+          currentColumn.key,
+          editState
+        )
 
         const startEditor = async () => {
           const guard = onCellClickGuard
@@ -1157,6 +1165,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
               rowIndex: guard.targetRowIdx,
               columnKey: targetColumn.key,
               value: typedValue,
+              cancelRestoreValue,
             }
           }
           gridRef.current?.selectCell(

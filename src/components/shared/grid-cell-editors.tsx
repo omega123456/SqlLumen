@@ -57,6 +57,7 @@ export interface CellEditorBaseProps {
     value: unknown
   ) => void
   initialInputValue?: string
+  cancelRestoreValue?: unknown
   selectAllOnFocus?: boolean
 }
 
@@ -76,8 +77,11 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
   const fkLookup = useFkLookup()
 
   const rawValue = row[fieldName]
-  const initialNull = isNullish(rawValue)
-  const initialValue = initialNull ? null : rawValue
+  const restoreValue = Object.prototype.hasOwnProperty.call(props, 'cancelRestoreValue')
+    ? props.cancelRestoreValue
+    : rawValue
+  const initialNull = isNullish(restoreValue)
+  const initialValue = initialNull ? null : restoreValue
   const initialInputValue = props.initialInputValue
 
   const [isNull, setIsNull] = useState(initialInputValue != null ? false : initialNull)
@@ -86,6 +90,7 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
   )
   const inputRef = useRef<HTMLInputElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const isCancellingRef = useRef(false)
 
   // Resolve callbacks: prefer props when tabId is set, fallback to context
   const contextCallbacks = useEditorCallbacks()
@@ -150,6 +155,9 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
 
   const handleBlur = useCallback(
     (relatedTarget: EventTarget | null) => {
+      if (isCancellingRef.current) {
+        return
+      }
       if (relatedTarget instanceof Node && wrapperRef.current?.contains(relatedTarget)) {
         return
       }
@@ -199,8 +207,10 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
             }
             if (e.key === 'Escape') {
               // Restore original value and sync to store
+              isCancellingRef.current = true
               setIsNull(initialNull)
               setValue(initialNull ? '' : String(initialValue ?? ''))
+              onRowChange({ ...row, [fieldName]: initialValue }, false)
               syncToStore(initialValue)
               // Discard edit, don't refocus grid
               onClose(false, false)

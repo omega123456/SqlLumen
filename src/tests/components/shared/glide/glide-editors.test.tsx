@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { GridCellKind, type TextCell } from '@glideapps/glide-data-grid'
 import {
   computeRequestedEditorWidth,
@@ -22,9 +22,14 @@ describe('computeRequestedEditorWidth', () => {
 })
 
 describe('wrapEditorAsGlideOverlay', () => {
-  it('seeds the first typed character into Glide immediately when initialInputValue is provided', () => {
+  it('passes the first typed character to the editor without publishing a Glide value change', () => {
     const onChange = vi.fn()
-    const Editor = wrapEditorAsGlideOverlay(() => null, { testId: 'test-editor' })
+    const Editor = wrapEditorAsGlideOverlay(
+      ({ initialInputValue }) => (
+        <input aria-label="wrapped editor" readOnly value={initialInputValue ?? ''} />
+      ),
+      { testId: 'test-editor' }
+    )
 
     const value: TextCell & {
       glideEditorData: {
@@ -59,14 +64,8 @@ describe('wrapEditorAsGlideOverlay', () => {
       />
     )
 
-    expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: GridCellKind.Text,
-        data: 'x',
-        displayData: 'x',
-        copyData: 'x',
-      })
-    )
+    expect(screen.getByLabelText('wrapped editor')).toHaveValue('x')
+    expect(onChange).not.toHaveBeenCalled()
   })
 
   it('writes overlay padding metadata when configured', () => {

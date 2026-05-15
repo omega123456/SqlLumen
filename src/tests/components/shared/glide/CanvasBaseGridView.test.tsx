@@ -881,6 +881,47 @@ describe('CanvasBaseGridView', () => {
     expect(cell.copyData).toBe('NULL')
   })
 
+  it('styles editable nullable enum NULL cells like standard editable NULL cells', () => {
+    const nullableRows = [{ id: 1, name: null, info: 'SELECT 1' }]
+    const { rerender } = render(
+      <CanvasBaseGridView
+        rows={nullableRows}
+        columns={[{ ...columns[0], editable: true, isNullable: true }]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+      />
+    )
+
+    let props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      getCellContent: (cell: readonly [number, number]) => {
+        themeOverride?: unknown
+      }
+    }
+    const standardNullTheme = props.getCellContent([0, 0]).themeOverride
+
+    rerender(
+      <CanvasBaseGridView
+        rows={nullableRows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            isNullable: true,
+            editorType: 'enum' as const,
+            enumValues: ['alpha', 'beta'],
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+      />
+    )
+
+    props = mockGlideDataGrid.mock.lastCall?.[0] as typeof props
+    expect(props.getCellContent([0, 0]).themeOverride).toEqual(standardNullTheme)
+  })
+
   it('derives a nullable enum sentinel that does not collide with enum values', () => {
     const enumValues = Array.from({ length: 32 }, (_, index) => String.fromCharCode(index))
     render(

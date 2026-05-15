@@ -377,6 +377,63 @@ test('table data grid typing on a selected cell opens the editor and keeps focus
   await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
 })
 
+test('table data grid Escape after typing activation restores the original cell value', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await setCellValueForTest(page, 'table-data-grid', 'name', 0, 'Original Value')
+  await expectCellValue(page, 'table-data-grid', 'name', 0, 'Original Value')
+
+  await clickCellByColumnName(grid, 0, 'name')
+  await page.keyboard.type('N')
+
+  const editor = page.locator('.td-cell-editor-input').first()
+  await expect(editor).toBeVisible({ timeout: APP_READY_MS })
+  await expect(editor).toBeFocused()
+  await expect(editor).toHaveValue('N')
+
+  await page.keyboard.type('ew Value')
+  await expect(editor).toHaveValue('New Value')
+  await page.keyboard.press('Escape')
+
+  await expect(editor).not.toBeVisible({ timeout: APP_READY_MS })
+  await expectCellValue(page, 'table-data-grid', 'name', 0, 'Original Value')
+})
+
+test('table data grid typing into a NULL text cell uses the normal editor text color', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+
+  await clickCellByColumnName(grid, 0, 'name')
+  await page.keyboard.type('B')
+
+  const normalEditor = page.locator('.td-cell-editor-input').first()
+  await expect(normalEditor).toBeVisible({ timeout: APP_READY_MS })
+  const normalEditorColor = await normalEditor.evaluate((element) => getComputedStyle(element).color)
+  await page.keyboard.press('Escape')
+  await expect(normalEditor).not.toBeVisible({ timeout: APP_READY_MS })
+
+  await clickCellByColumnName(grid, 1, 'email')
+  await page.keyboard.type('j')
+
+  const nullEditor = page.locator('.td-cell-editor-input').first()
+  await expect(nullEditor).toBeVisible({ timeout: APP_READY_MS })
+  await expect(nullEditor).toBeFocused()
+  await expect(nullEditor).toHaveValue('j')
+
+  const nullEditorColor = await nullEditor.evaluate((element) => getComputedStyle(element).color)
+  expect(nullEditorColor).toBe(normalEditorColor)
+})
+
 test('table data grid auto-sizes columns from visible data by default', async ({ page }) => {
   await waitForApp(page)
   await openTableDataTab(page)

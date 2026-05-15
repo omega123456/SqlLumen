@@ -178,6 +178,39 @@ describe('NullableCellEditor — store syncing', () => {
     )
   })
 
+  it('uses the typing-activation restore value when Escape cancels a seeded edit', () => {
+    const props = makeEditorProps({
+      row: { col_0: 1, col_1: 'N' },
+      initialInputValue: 'N',
+      cancelRestoreValue: 'Original Value',
+      selectAllOnFocus: false,
+    })
+    render(<NullableCellEditor {...props} />)
+
+    const input = document.querySelector('.td-cell-editor-input') as HTMLInputElement
+    expect(input).toHaveValue('N')
+    fireEvent.change(input, { target: { value: 'New Value' } })
+    vi.clearAllMocks()
+
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(props.syncCellValue).toHaveBeenCalledWith(
+      'tab-1',
+      expect.any(Object),
+      'col_1',
+      'Original Value'
+    )
+    expect(props.onRowChange).toHaveBeenCalledWith(
+      { col_0: 1, col_1: 'Original Value' },
+      false
+    )
+    expect(props.onClose).toHaveBeenCalledWith(false, false)
+
+    fireEvent.blur(input)
+
+    expect(props.onClose).not.toHaveBeenCalledWith(true, false)
+  })
+
   it('calls onClose(false, false) on Escape', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)

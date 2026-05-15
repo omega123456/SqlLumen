@@ -97,12 +97,21 @@
   min-height: 22px;
   border: none;
   background: transparent;
-  color: var(--gdg-text-dark, var(--on-surface));
   font-family: var(--font-mono);
   font-size: var(--type-size-md);
   outline: none;
   padding: 2px 4px;
   line-height: 1.25;
+}
+
+.glide-grid-host .td-cell-editor-input,
+#portal .td-cell-editor-input {
+  color: var(--on-surface);
+}
+
+.glide-grid-host .td-cell-editor-select,
+#portal .td-cell-editor-select {
+  color: var(--gdg-text-dark, var(--on-surface));
 }
 
 .glide-grid-host .td-cell-editor-select,

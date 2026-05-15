@@ -26,6 +26,7 @@ interface GlideEditorCellData {
   isNullable: boolean
   foreignKey?: CellEditorBaseProps['foreignKey']
   initialInputValue?: string
+  cancelRestoreValue?: unknown
   selectAllOnFocus?: boolean
 }
 
@@ -123,6 +124,7 @@ export function wrapEditorAsGlideOverlay(
       isNullable,
       foreignKey,
       initialInputValue,
+      cancelRestoreValue,
       selectAllOnFocus,
     } = editorData
     const targetWidth = getEditorTargetWidth(target)
@@ -143,8 +145,7 @@ export function wrapEditorAsGlideOverlay(
         copyData: initialInputValue,
       }
       currentValueRef.current = seededCell
-      onChange(seededCell)
-    }, [initialInputValue, onChange, value])
+    }, [initialInputValue, value])
 
     return (
       <div
@@ -169,6 +170,9 @@ export function wrapEditorAsGlideOverlay(
           columnMeta={columnMeta}
           foreignKey={foreignKey}
           initialInputValue={initialInputValue}
+          {...(Object.prototype.hasOwnProperty.call(editorData, 'cancelRestoreValue')
+            ? { cancelRestoreValue }
+            : {})}
           selectAllOnFocus={selectAllOnFocus}
           onRowChange={(nextRow) => {
             const nextValue = nextRow[columnKey]

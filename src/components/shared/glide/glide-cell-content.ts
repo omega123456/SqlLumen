@@ -25,6 +25,11 @@ export interface ClassifyCellValueOptions {
 
 export type ClassifiedCellValue = CellStateFlags & { displayValue: string; copyValue: string }
 
+export const NULL_CELL_THEME_OVERRIDE = {
+  baseFontStyle: 'italic 13px',
+  textDark: 'rgba(128, 128, 128, 0.75)',
+} as const
+
 export function formatBlobDisplayValue(rawValue: unknown): string {
   if (typeof rawValue === 'string' && rawValue.startsWith('[BLOB')) return rawValue
   if (rawValue instanceof Uint8Array) return `[BLOB ${rawValue.byteLength} B]`
@@ -89,7 +94,7 @@ export function buildNullCell(copyValue = 'NULL'): GridCell {
     copyData: copyValue,
     allowOverlay: false,
     readonly: true,
-    themeOverride: { baseFontStyle: 'italic 13px', textDark: 'rgba(128, 128, 128, 0.75)' },
+    themeOverride: NULL_CELL_THEME_OVERRIDE,
   } satisfies TextCell
 }
 
