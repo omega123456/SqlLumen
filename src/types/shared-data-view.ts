@@ -15,7 +15,6 @@ import type {
   GridColumn,
   GridRowsChangeData,
 } from '../components/shared/glide/glide-grid-types'
-import type { GridPerformanceLogger } from '../lib/grid-performance-logger'
 import type { ForeignKeyColumnInfo, TableDataColumnMeta } from './schema'
 
 // ---------------------------------------------------------------------------
@@ -145,7 +144,6 @@ export interface BaseGridViewProps {
   applyReadOnlyCellStyles?: boolean
   autoSizeConfig?: AutoSizeConfig
   showReadOnlyHeaders?: boolean
-  performanceLogger?: GridPerformanceLogger
   testId?: string
   isEditMode?: boolean
   editableColumnKeys?: ReadonlySet<string>
