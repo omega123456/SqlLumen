@@ -418,7 +418,9 @@ test('table data grid typing into a NULL text cell uses the normal editor text c
 
   const normalEditor = page.locator('.td-cell-editor-input').first()
   await expect(normalEditor).toBeVisible({ timeout: APP_READY_MS })
-  const normalEditorColor = await normalEditor.evaluate((element) => getComputedStyle(element).color)
+  const normalEditorColor = await normalEditor.evaluate(
+    (element) => getComputedStyle(element).color
+  )
   await page.keyboard.press('Escape')
   await expect(normalEditor).not.toBeVisible({ timeout: APP_READY_MS })
 
@@ -533,6 +535,32 @@ test('table data datetime editor gives the input enough width for the full field
   expect(inputBox).not.toBeNull()
   expect(inputBox!.width).toBeGreaterThan(120)
   expect(inputBox!.width / cellBox!.width).toBeGreaterThan(0.55)
+})
+
+test('table data datetime editor applies a clicked calendar date', async ({ page }) => {
+  await waitForApp(page)
+  await openTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+
+  const createdAtCell = await getCellByColumnName(grid, 0, 'created_at')
+  await createdAtCell.dblClick()
+
+  const calendarButton = page.getByTestId('grid-calendar-btn')
+  await expect(calendarButton).toBeVisible({ timeout: APP_READY_MS })
+  await calendarButton.click()
+
+  const popup = page.getByTestId('date-time-picker-popup')
+  await expect(popup).toBeVisible({ timeout: APP_READY_MS })
+  await popup
+    .locator('.react-datepicker__day:not(.react-datepicker__day--outside-month)')
+    .filter({ hasText: /^15$/ })
+    .first()
+    .click()
+
+  await expect(popup).toBeHidden({ timeout: APP_READY_MS })
+  await expectCellValue(page, 'table-data-grid', 'created_at', 0, '2023-11-15 14:30:00')
 })
 
 test('table data enum editor fills the cell height and gives options comfortable sizing', async ({

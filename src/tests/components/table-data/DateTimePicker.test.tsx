@@ -125,6 +125,11 @@ describe('DateTimePicker', () => {
     expect(popup.className).not.toContain('ag-custom-component-popup')
   })
 
+  it('marks the portal as click-outside-ignore so grid outside-click handling keeps it open', () => {
+    renderPicker()
+    expect(screen.getByTestId('date-time-picker-popup')).toHaveClass('click-outside-ignore')
+  })
+
   it('renders calendar section in DATE mode', () => {
     renderPicker({ value: '2023-11-24', columnType: 'DATE' })
     expect(screen.getByTestId('calendar-section')).toBeInTheDocument()
@@ -182,6 +187,15 @@ describe('DateTimePicker', () => {
 
     expect(onApply).toHaveBeenCalledTimes(1)
     expect(onApply.mock.calls[0][0]).toMatch(/^\d{2}:\d{2}:\d{2}$/)
+  })
+
+  it('selecting a calendar day applies the date immediately', () => {
+    const onApply = vi.fn()
+    renderPicker({ onApply, columnType: 'DATETIME', value: '2023-11-24 14:30:00' })
+
+    fireEvent.click(screen.getByTestId('mock-datepicker-select-day'))
+
+    expect(onApply).toHaveBeenCalledWith('2023-11-15 14:30:00')
   })
 
   // ---- Cancel button ----

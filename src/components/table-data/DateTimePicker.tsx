@@ -37,7 +37,7 @@ export interface DateTimePickerProps {
   anchorEl: HTMLElement | null
   /** Optional ref that will be set to the popup's outermost portal element. */
   popupRef?: React.RefObject<HTMLDivElement | null>
-  /** Called with the formatted MySQL string when the user clicks Apply. */
+  /** Called with the formatted MySQL string when the user applies or selects a date. */
   onApply: (value: string) => void
   /** Called when the user cancels (click outside, Escape, or Cancel button). */
   onCancel: () => void
@@ -259,20 +259,26 @@ export function DateTimePicker({
         return
       }
 
+      const nextDate = new Date(date)
+
       // Preserve time from current localDate if we have one
       if (showTime && localDate) {
-        date.setHours(localDate.getHours(), localDate.getMinutes(), localDate.getSeconds())
+        nextDate.setHours(localDate.getHours(), localDate.getMinutes(), localDate.getSeconds())
       } else if (showTime) {
         // Apply time from timeInput
         const parsed = parseTimeInput(timeInput)
         if (parsed) {
-          date.setHours(parsed.hours, parsed.minutes, parsed.seconds)
+          nextDate.setHours(parsed.hours, parsed.minutes, parsed.seconds)
         }
       }
 
-      setLocalDate(date)
+      setLocalDate(nextDate)
+      const formatted = formatMysqlDate(nextDate, columnType)
+      if (formatted !== null) {
+        onApply(formatted)
+      }
     },
-    [showTime, localDate, timeInput]
+    [showTime, localDate, timeInput, columnType, onApply]
   )
 
   const handleTimeInputChange = useCallback(
@@ -321,7 +327,7 @@ export function DateTimePicker({
   const popup = (
     <div
       ref={mergedPopupRef}
-      className={`${styles.pickerPortal} ${disabled ? styles.disabled : ''}`}
+      className={`${styles.pickerPortal} click-outside-ignore ${disabled ? styles.disabled : ''}`}
       style={{ top: position.top, left: position.left }}
       data-testid="date-time-picker-popup"
     >

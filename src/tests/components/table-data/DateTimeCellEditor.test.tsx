@@ -235,6 +235,17 @@ describe('DateTimeCellEditor', () => {
     expect(state?.editState?.currentValues.created_at).toBe('2023-11-24 14:30:00')
   })
 
+  it('picker onApply commits the active grid editor so the grid persists the selected date', () => {
+    setupStore()
+    const props = makeMockProps()
+    render(<DateTimeCellEditor {...props} />)
+
+    fireEvent.click(screen.getByTestId('grid-calendar-btn'))
+    fireEvent.click(screen.getByTestId('mock-apply'))
+
+    expect(props.onClose).toHaveBeenCalledWith(true, false)
+  })
+
   it('picker onCancel closes picker without updating value', () => {
     setupStore()
     const props = makeMockProps()

@@ -173,8 +173,9 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
     (val: string) => {
       handleChange(val)
       setPickerOpen(false)
+      props.onClose(true, false)
     },
-    [handleChange]
+    [handleChange, props.onClose]
   )
 
   const handlePickerCancel = useCallback(() => {
