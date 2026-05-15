@@ -286,6 +286,7 @@ describe('GlideDataGrid', () => {
     expect(overlay.style.maxWidth).toBe('58px')
     expect(overlay.style.getPropertyValue('--d19meir1-2')).toBe('58px')
     expect(overlay.style.overflow).toBe('hidden')
+    expect(overlay).toHaveClass('sqllumen-glide-editor-overlay')
 
     portal.remove()
     vi.useRealTimers()

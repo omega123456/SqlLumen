@@ -58,6 +58,8 @@ function constrainGlideEditorOverlay(element: HTMLElement): void {
   const editorRoot = element.querySelector<HTMLElement>('[data-sqllumen-glide-editor-root="true"]')
   if (!editorRoot) return
 
+  element.classList.add('sqllumen-glide-editor-overlay')
+
   const targetWidth = getTargetEditorWidth(editorRoot)
 
   if (targetWidth === null || !Number.isFinite(targetWidth) || targetWidth <= 0) return

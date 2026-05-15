@@ -26,6 +26,11 @@ describe('data-grid-precision.css', () => {
     expect(css).toMatch(/#portal\s+\.td-null-toggle/)
     expect(css).toContain('#portal .gdg-d19meir1')
     expect(css).toContain('max-width: var(--d19meir1-2, 400px)')
+    expect(css).toContain('#portal .gdg-d19meir1.sqllumen-glide-editor-overlay.gdg-pad')
+    expect(css).toContain('--sqllumen-grid-editor-control-height: 22px')
+    expect(css).toContain('var(--d19meir1-3, var(--grid-row-height, 32px))')
+    expect(css).toContain('var(--sqllumen-grid-editor-control-height)')
+    expect(css).not.toMatch(/padding:\s*0\s*!important/)
     expect(css).not.toContain(":has([data-testid='fk-lookup-trigger'])")
   })
 

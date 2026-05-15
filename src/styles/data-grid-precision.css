@@ -269,3 +269,22 @@
   width: var(--d19meir1-2, 400px) !important;
   max-width: var(--d19meir1-2, 400px) !important;
 }
+
+/* Glide's native editor padding uses a computed top value plus a fixed bottom
+   value. SqlLumen's grid editors use 22px input/button controls, so center the
+   editor content inside the active cell instead of relying on Glide's textarea
+   estimate. */
+#portal .gdg-d19meir1.sqllumen-glide-editor-overlay.gdg-pad {
+  --sqllumen-grid-editor-control-height: 22px;
+  padding:
+    max(
+      0px,
+      calc(
+        (
+            var(--d19meir1-3, var(--grid-row-height, 32px)) -
+              var(--sqllumen-grid-editor-control-height)
+          ) / 2
+      )
+    )
+    8.5px !important;
+}
