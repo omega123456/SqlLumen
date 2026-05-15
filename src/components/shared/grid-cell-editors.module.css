@@ -29,9 +29,9 @@
 }
 
 .multilineEditorField {
-  flex: 2 1 0;
+  flex: 1 1 auto;
   min-width: 0;
-  width: 0;
+  width: auto;
   max-width: 100%;
   height: 100%;
 }
@@ -66,7 +66,7 @@
   padding: 8px 10px;
   border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: transparent;
   color: var(--on-surface);
   resize: none;
   box-sizing: border-box;
@@ -88,7 +88,7 @@
 }
 
 .editorFieldPrimary {
-  flex: 2 1 0;
+  flex: 1 1 0;
   min-width: 0;
   width: 0;
   max-width: 100%;
@@ -133,10 +133,11 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex: 1 0 0;
+  flex: 0 0 auto;
   min-width: max-content;
   gap: 4px;
   margin-right: 1px;
+  margin-left: auto;
 }
 /* FK trigger button inside Glide's native cell editor overlay */
 .fkTriggerButton {

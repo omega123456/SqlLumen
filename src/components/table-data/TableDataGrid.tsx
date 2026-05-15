@@ -332,21 +332,25 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
   const autoSizeConfig: AutoSizeConfig | undefined = useMemo(() => {
     // Precompute: name → column meta lookup
     const colMetaByName = new Map<string, TableDataColumnMeta>()
+    const colIndexByName = new Map<string, number>()
     for (let i = 0; i < columns.length; i++) {
       colMetaByName.set(columns[i].name, columns[i])
+      colIndexByName.set(columns[i].name, i)
     }
 
     return {
       enabled: true,
-      computeWidth: (col: GridColumnDescriptor, gridRows: Record<string, unknown>[]) => {
+      computeWidth: (col: GridColumnDescriptor) => {
         const meta = colMetaByName.get(col.key)
+        const columnIndex = colIndexByName.get(col.key)
         if (!meta) return 150
+        if (columnIndex == null) return 150
         // Build a lightweight proxy array that extracts only the target column
-        // from each row, avoiding the full row-to-array transformation that
-        // would create N×M temporary entries per column sizing call.
-        const columnRows: unknown[][] = new Array(gridRows.length)
-        for (let i = 0; i < gridRows.length; i++) {
-          columnRows[i] = [gridRows[i][col.key]]
+        // from the committed table rows, so in-progress edit-state overlays do
+        // not cause the visible column to resize under the floating editor.
+        const columnRows: unknown[][] = new Array(rows.length)
+        for (let i = 0; i < rows.length; i++) {
+          columnRows[i] = [rows[i][columnIndex]]
         }
         // FK icon (Link, 10px) or read-only lock icon (Lock, 10px) + 4px gap
         const headerIconWidthPx = col.foreignKey || !col.editable ? 14 : 0
@@ -359,7 +363,7 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
         )
       },
     }
-  }, [columns])
+  }, [columns, rows])
 
   // ---------------------------------------------------------------------------
   // Sort handler — wraps requestNavigationAction + sortByColumn

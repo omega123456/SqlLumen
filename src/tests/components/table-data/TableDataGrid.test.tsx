@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TableDataGrid } from '../../../components/table-data/TableDataGrid'
+import { getAutoSizedColumnWidth } from '../../../lib/grid-column-style'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import type { TableDataTabState } from '../../../types/schema'
 
@@ -111,6 +112,36 @@ describe('TableDataGrid', () => {
     }
     expect(props.columns.map((column) => column.key)).toEqual(['id', 'name'])
     expect(props.rows[0]).toMatchObject({ id: 1, name: 'Ada' })
+  })
+
+  it('auto-size ignores in-progress edit text when computing widths', () => {
+    act(() => {
+      useTableDataStore.setState({
+        tabs: {
+          t1: tab({
+            editState: {
+              rowKey: { id: 1 },
+              originalValues: { id: 1, name: 'Ada' },
+              currentValues: { id: 1, name: 'this is a much much much longer in-progress value' },
+              modifiedColumns: new Set(['name']),
+              isNewRow: false,
+            },
+          }),
+        },
+      })
+    })
+
+    render(<TableDataGrid tabId="t1" isReadOnly={false} />)
+
+    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+      columns: Array<{ key: string; editable: boolean; foreignKey?: unknown }>
+      autoSizeConfig: {
+        computeWidth: (col: { key: string; editable: boolean; foreignKey?: unknown }) => number
+      }
+    }
+
+    const expectedWidth = getAutoSizedColumnWidth(columns[1], 0, [['Ada']], 'name', 0)
+    expect(props.autoSizeConfig.computeWidth(props.columns[1])).toBe(expectedWidth)
   })
 
   it('cell editing triggers save synchronization', () => {
