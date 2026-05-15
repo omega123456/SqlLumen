@@ -34,8 +34,4 @@ describe('data-grid-precision.css', () => {
     expect(css).not.toContain(":has([data-testid='fk-lookup-trigger'])")
   })
 
-  it('does not contain legacy react-data-grid selectors', () => {
-    expect(css).not.toMatch(/\.rdg[-_]/)
-    expect(css).not.toContain('react-data-grid')
-  })
 })

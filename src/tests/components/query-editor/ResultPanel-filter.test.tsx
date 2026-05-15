@@ -5,25 +5,9 @@ import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store'
 import type { SingleResultState, TabQueryState } from '../../../stores/query-store'
 
-// Mock react-data-grid
-vi.mock('react-data-grid', async () => {
-  const React = await import('react')
-  return {
-    DataGrid: React.forwardRef(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      (props: Record<string, unknown>, _ref: unknown) => {
-        return React.createElement(
-          'div',
-          {
-            'data-testid': (props['data-testid'] as string) ?? 'rdg-inner',
-            className: props.className as string,
-          },
-          'Grid Mock'
-        )
-      }
-    ),
-  }
-})
+vi.mock('../../../components/query-editor/ResultGridView', () => ({
+  ResultGridView: () => <div data-testid="grid-view">Grid Mock</div>,
+}))
 
 // Mock clipboard utility
 vi.mock('../../../lib/context-menu-utils', () => ({

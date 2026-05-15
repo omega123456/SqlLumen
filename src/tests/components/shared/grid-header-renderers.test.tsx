@@ -1,5 +1,5 @@
 /**
- * Tests for react-data-grid header renderers.
+ * Tests for shared grid header renderers.
  *
  * Verifies sort direction icons and read-only column header lock icon.
  */

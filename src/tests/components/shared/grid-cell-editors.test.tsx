@@ -3,7 +3,7 @@
  *
  * Verifies that both editors call updateCellValue AND syncCellValue
  * via their explicit callback props when the user edits a value,
- * and that they follow the react-data-grid editor protocol
+ * and that they follow the shared grid editor protocol
  * (onRowChange, onClose).
  */
 
@@ -83,7 +83,7 @@ describe('NullableCellEditor — store syncing', () => {
     )
   })
 
-  it('calls onRowChange when the user types (react-data-grid preview)', () => {
+  it('calls onRowChange when the user types (shared grid preview)', () => {
     const props = makeEditorProps()
     render(<NullableCellEditor {...props} />)
 

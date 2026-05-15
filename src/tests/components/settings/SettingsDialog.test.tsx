@@ -221,4 +221,54 @@ describe('SettingsDialog', () => {
     // Verify store state matches
     expect(useSettingsStore.getState().pendingChanges['editor.wordWrap']).toBe('false')
   })
+
+  it('opens to the requested dialog section when launched programmatically', async () => {
+    render(<SettingsDialog isOpen={true} onClose={vi.fn()} />)
+
+    act(() => {
+      useSettingsStore.setState({ dialogSection: 'updates' })
+    })
+
+    await waitForSettingsHydrated()
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-updates')).toBeInTheDocument()
+    })
+    expect(useSettingsStore.getState().activeSection).toBe('updates')
+  })
+
+  it('saves changes, reloads shortcuts, and restarts periodic checks for interval updates', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const loadShortcutsSpy = vi.spyOn(useShortcutStore.getState(), 'loadShortcuts')
+    const restartPeriodicCheck = vi.fn().mockResolvedValue(undefined)
+
+    useUpdateStore.setState({
+      status: 'idle',
+      availableVersion: null,
+      downloadProgress: 0,
+      errorMessage: null,
+      restartPeriodicCheck,
+    })
+
+    render(<SettingsDialog isOpen={true} onClose={onClose} />)
+    await waitForSettingsHydrated()
+
+    act(() => {
+      useSettingsStore.setState({
+        isDirty: true,
+        pendingChanges: {
+          'updates.checkInterval': 'hourly',
+          shortcuts: '{"run":"Ctrl+Enter"}',
+        },
+      })
+    })
+
+    await user.click(screen.getByTestId('settings-save'))
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+    expect(restartPeriodicCheck).toHaveBeenCalledTimes(1)
+    expect(loadShortcutsSpy).toHaveBeenCalledWith('{"run":"Ctrl+Enter"}')
+  })
 })

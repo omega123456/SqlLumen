@@ -17,7 +17,7 @@ describe('TextInput', () => {
     expect(el.className).toContain(styles.mono)
   })
 
-  it('gridCell variant exposes td-cell-editor-input for RDG styles', () => {
+  it('gridCell variant exposes td-cell-editor-input for grid editor styles', () => {
     render(<TextInput variant="gridCell" defaultValue="x" aria-label="Cell" />)
     expect(screen.getByRole('textbox', { name: 'Cell' })).toHaveClass('td-cell-editor-input')
   })

@@ -1,5 +1,5 @@
 /**
- * Tests for react-data-grid cell renderers.
+ * Tests for shared grid cell renderers.
  *
  * Verifies NULL display (muted styling), BLOB display, and regular value display.
  */
