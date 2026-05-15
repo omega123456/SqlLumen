@@ -235,10 +235,10 @@ describe('GlideDataGrid', () => {
     const customRenderers = [
       {
         kind: GridCellKind.Custom,
-        isMatch: (_cell: CustomCell): _cell is CustomCell<any> => false,
+        isMatch: (_cell: CustomCell): _cell is CustomCell => false,
         draw: vi.fn(() => true),
       },
-    ] satisfies CustomRenderer<any>[]
+    ] satisfies CustomRenderer[]
 
     render(
       <GlideDataGrid
@@ -313,7 +313,7 @@ describe('GlideDataGrid', () => {
     expect(onCellDoubleClicked).not.toHaveBeenCalled()
   })
 
-  it('forwards double-click click events to onCellDoubleClicked without affecting activation', () => {
+  it('routes double-click events only to onCellDoubleClicked without treating them as clicks', () => {
     const onCellClicked = vi.fn()
     const onCellDoubleClicked = vi.fn()
     const onCellActivated = vi.fn()
@@ -338,7 +338,7 @@ describe('GlideDataGrid', () => {
     const event = { isDoubleClick: true, preventDefault: vi.fn() }
     props.onCellClicked([2, 3], event)
 
-    expect(onCellClicked).toHaveBeenCalledWith([2, 3], event)
+    expect(onCellClicked).not.toHaveBeenCalled()
     expect(onCellDoubleClicked).toHaveBeenCalledWith([2, 3], event)
     expect(onCellActivated).not.toHaveBeenCalled()
   })

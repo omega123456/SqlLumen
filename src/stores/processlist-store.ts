@@ -1,25 +1,17 @@
 import { create } from 'zustand'
 import type { ProcessRow, KillResult } from '../lib/processlist-commands'
 import { getProcesslist, killQueries } from '../lib/processlist-commands'
-import { filterProcessListRows } from '../lib/processlist-filter'
 import { getProcessListRefreshTimestamp } from '../lib/processlist-time'
 import { showErrorToast } from './toast-store'
 
 import { logFrontend } from '../lib/app-log-commands'
-const DEFAULT_REFRESH_INTERVAL_MS = 5000
+const DEFAULT_REFRESH_INTERVAL_MS = 1000
 const DEFAULT_EXCLUDE_IDLE_CONNECTIONS = true
 const ERROR_TOAST_COOLDOWN_MS = 30_000
 
-function reconcileVisibleSelectedIds(
-  rows: ProcessRow[],
-  selectedIds: Set<number>,
-  excludeIdleConnections: boolean
-): Set<number> {
-  const visibleRowIds = new Set(
-    filterProcessListRows(rows, excludeIdleConnections).map((row) => row.id)
-  )
-
-  return new Set([...selectedIds].filter((id) => visibleRowIds.has(id)))
+function reconcileExistingSelectedIds(rows: ProcessRow[], selectedIds: Set<number>): Set<number> {
+  const existingRowIds = new Set(rows.map((row) => row.id))
+  return new Set([...selectedIds].filter((id) => existingRowIds.has(id)))
 }
 
 interface ProcessListState {
@@ -90,14 +82,8 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
       // Stale guard: if generation changed (e.g. resetConnection was called), discard results
       if (get().fetchGenerationByConnection[connectionId] !== generation) return
 
-      const excludeIdleConnections =
-        get().excludeIdleConnectionsByConnection[connectionId] ?? DEFAULT_EXCLUDE_IDLE_CONNECTIONS
       const currentSelected = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
-      const reconciledSelected = reconcileVisibleSelectedIds(
-        rows,
-        currentSelected,
-        excludeIdleConnections
-      )
+      const reconciledSelected = reconcileExistingSelectedIds(rows, currentSelected)
 
       set({
         rowsByConnection: { ...get().rowsByConnection, [connectionId]: rows },
@@ -194,11 +180,7 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
   setExcludeIdleConnections: (connectionId: string, excludeIdleConnections: boolean) => {
     const rows = get().rowsByConnection[connectionId] ?? []
     const currentSelected = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
-    const reconciledSelected = reconcileVisibleSelectedIds(
-      rows,
-      currentSelected,
-      excludeIdleConnections
-    )
+    const reconciledSelected = reconcileExistingSelectedIds(rows, currentSelected)
 
     set({
       excludeIdleConnectionsByConnection: {

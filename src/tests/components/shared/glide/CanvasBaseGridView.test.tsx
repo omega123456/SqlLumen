@@ -8,6 +8,12 @@ import { CanvasBaseGridView } from '../../../../components/shared/glide/CanvasBa
 const mockGlideDataGrid = vi.fn()
 const mockSelectCell = vi.fn()
 const mockScrollToCell = vi.fn()
+type TestEditorProps = {
+  target: { x: number; y: number; width: number; height: number }
+  value: unknown
+  onChange: (value: unknown) => void
+  onFinishedEditing: () => void
+}
 
 vi.mock('../../../../components/shared/glide/GlideDataGrid', async () => {
   const React = await import('react')
@@ -61,6 +67,8 @@ function mockCanvasContext(): CanvasRenderingContext2D {
     fillText: vi.fn(),
     fillRect: vi.fn(),
     beginPath: vi.fn(),
+    rect: vi.fn(),
+    clip: vi.fn(),
     arc: vi.fn(),
     fill: vi.fn(),
     stroke: vi.fn(),
@@ -151,13 +159,14 @@ describe('CanvasBaseGridView', () => {
 
     const props = mockGlideDataGrid.mock.lastCall?.[0] as {
       getCellContent: (cell: readonly [number, number]) => unknown
-      provideEditor: (cell: unknown) => { editor?: ComponentType } | undefined
+      provideEditor: (cell: unknown) => { editor?: ComponentType<TestEditorProps> } | undefined
     }
 
     const editorConfig = props.provideEditor(props.getCellContent([0, 0]))
     const Editor = editorConfig?.editor
 
     expect(Editor).toBeDefined()
+    if (!Editor) throw new Error('Expected textarea editor')
 
     render(
       <Editor
@@ -272,12 +281,138 @@ describe('CanvasBaseGridView', () => {
     expect(onInfoCellClick).toHaveBeenCalledWith(rows[0], expect.any(DOMRect))
   })
 
+  it('clicking the info affordance opens the popover without selecting the row', () => {
+    const onInfoCellClick = vi.fn()
+    const onRowClick = vi.fn()
+    const onCellSelectionChange = vi.fn()
+    const onSelectedRowChange = vi.fn()
+
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={columns}
+        editState={null}
+        onInfoCellClick={onInfoCellClick}
+        onRowClick={onRowClick}
+        onCellSelectionChange={onCellSelectionChange}
+        onSelectedRowChange={onSelectedRowChange}
+        showInfoColumn={true}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellClicked: (
+        cell: readonly [number, number],
+        event: {
+          bounds: { x: number; y: number; width: number; height: number }
+          localEventX?: number
+        }
+      ) => void
+    }
+
+    act(() =>
+      props.onCellClicked([1, 0], {
+        bounds: { x: 1, y: 2, width: 120, height: 32 },
+        localEventX: 110,
+      })
+    )
+
+    expect(onInfoCellClick).toHaveBeenCalledWith(rows[0], expect.any(DOMRect))
+    expect(onRowClick).not.toHaveBeenCalled()
+    expect(onCellSelectionChange).not.toHaveBeenCalled()
+    expect(onSelectedRowChange).not.toHaveBeenCalled()
+  })
+
   it('passes row marker configuration', () => {
     render(
       <CanvasBaseGridView rows={rows} columns={columns} editState={null} rowMarkers="checkbox" />
     )
     const props = mockGlideDataGrid.mock.lastCall?.[0] as { rowMarkers: string }
     expect(props.rowMarkers).toBe('checkbox')
+  })
+
+  it('renders prefix checkbox columns as boolean cells and reports edits', () => {
+    const onCellValueChange = vi.fn()
+    render(
+      <CanvasBaseGridView
+        rows={[{ ...rows[0], __selected: true }]}
+        columns={columns}
+        editState={null}
+        onCellValueChange={onCellValueChange}
+        prefixColumns={[
+          {
+            key: '__selected',
+            name: '',
+            width: 34,
+            resizable: false,
+            sortable: false,
+            cellKind: 'checkbox',
+          },
+        ]}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      getCellContent: (cell: readonly [number, number]) => unknown
+      onCellEdited: (cell: readonly [number, number], value: unknown) => void
+    }
+
+    expect(props.getCellContent([0, 0])).toEqual(
+      expect.objectContaining({
+        kind: GridCellKind.Boolean,
+        data: true,
+        allowOverlay: false,
+        readonly: false,
+      })
+    )
+
+    act(() =>
+      props.onCellEdited([0, 0], {
+        kind: GridCellKind.Boolean,
+        data: false,
+        allowOverlay: false,
+        readonly: false,
+      })
+    )
+
+    expect(onCellValueChange).toHaveBeenCalledWith(0, '__selected', false)
+  })
+
+  it('clips info-cell text before drawing the info affordance', () => {
+    render(
+      <CanvasBaseGridView rows={rows} columns={columns} editState={null} showInfoColumn={true} />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      drawCell: (
+        args: {
+          row: number
+          col: number
+          ctx: CanvasRenderingContext2D
+          rect: { x: number; y: number; width: number; height: number }
+          theme: { linkColor: string; bgBubbleSelected: string; accentColor: string }
+        },
+        drawContent: () => void
+      ) => void
+    }
+    const ctx = mockCanvasContext()
+    const drawContent = vi.fn()
+
+    props.drawCell(
+      {
+        row: 0,
+        col: 1,
+        ctx,
+        rect: { x: 10, y: 20, width: 100, height: 24 },
+        theme: { linkColor: 'link', bgBubbleSelected: 'selected', accentColor: 'accent' },
+      },
+      drawContent
+    )
+
+    expect(ctx.save).toHaveBeenCalled()
+    expect(ctx.rect).toHaveBeenCalledWith(10, 20, 72, 24)
+    expect(ctx.clip).toHaveBeenCalled()
+    expect(drawContent).toHaveBeenCalled()
   })
 
   it('row click selects row and notifies selection callback', async () => {
@@ -300,12 +435,18 @@ describe('CanvasBaseGridView', () => {
 
   it('double-click triggers row double-click callback', () => {
     const onRowDoubleClicked = vi.fn()
+    const onRowClick = vi.fn()
+    const onCellSelectionChange = vi.fn()
+    const onSelectedRowChange = vi.fn()
     render(
       <CanvasBaseGridView
         rows={rows}
         columns={columns}
         editState={null}
         onRowDoubleClicked={onRowDoubleClicked}
+        onRowClick={onRowClick}
+        onCellSelectionChange={onCellSelectionChange}
+        onSelectedRowChange={onSelectedRowChange}
       />
     )
     const props = mockGlideDataGrid.mock.lastCall?.[0] as {
@@ -313,6 +454,9 @@ describe('CanvasBaseGridView', () => {
     }
     act(() => props.onCellDoubleClicked([0, 0]))
     expect(onRowDoubleClicked).toHaveBeenCalledWith(rows[0])
+    expect(onRowClick).not.toHaveBeenCalled()
+    expect(onCellSelectionChange).not.toHaveBeenCalled()
+    expect(onSelectedRowChange).not.toHaveBeenCalled()
   })
 
   it('passes highlighted column through cell content building', () => {
@@ -560,6 +704,35 @@ describe('CanvasBaseGridView', () => {
 
     props.onSelectionChange({ rows: [0] })
     expect(onRowMarkersChange).toHaveBeenCalledWith(rows)
+  })
+
+  it('does not mirror active row clicks into row-marker selection', async () => {
+    const onSelectedRowChange = vi.fn()
+    const onRowMarkersChange = vi.fn()
+
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={columns}
+        editState={null}
+        rowMarkers="checkbox"
+        onSelectedRowChange={onSelectedRowChange}
+        onRowMarkersChange={onRowMarkersChange}
+      />
+    )
+
+    let props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellClicked: (cell: readonly [number, number], event: unknown) => void
+      selection?: { rows: { length: number } }
+    }
+
+    act(() => props.onCellClicked([0, 0], {}))
+
+    await waitFor(() => expect(onSelectedRowChange).toHaveBeenCalledWith(rows[0], 0))
+
+    props = mockGlideDataGrid.mock.lastCall?.[0] as typeof props
+    expect(props.selection?.rows.length ?? 0).toBe(0)
+    expect(onRowMarkersChange).not.toHaveBeenCalled()
   })
 
   it('persists visible scroll cells from range coordinates instead of pixel transforms', () => {
@@ -1667,7 +1840,7 @@ describe('CanvasBaseGridView', () => {
     )
   })
 
-  it('does not open the dropdown editor for read-only enum cells on double-click', async () => {
+  it('does not select or open read-only enum cells on double-click', () => {
     render(
       <CanvasBaseGridView
         rows={rows}
@@ -1691,16 +1864,7 @@ describe('CanvasBaseGridView', () => {
 
     act(() => props.onCellDoubleClicked([0, 0]))
 
-    await waitFor(() =>
-      expect(mockSelectCell).toHaveBeenCalledWith(
-        { rowIdx: 0, idx: 0 },
-        { shouldFocusCell: true, enableEditor: false }
-      )
-    )
-    expect(mockSelectCell).not.toHaveBeenCalledWith(
-      { rowIdx: 0, idx: 0 },
-      expect.objectContaining({ enableEditor: true })
-    )
+    expect(mockSelectCell).not.toHaveBeenCalled()
   })
 
   it('restores persisted scroll cell and does not replay the same cell after user scrolling', async () => {

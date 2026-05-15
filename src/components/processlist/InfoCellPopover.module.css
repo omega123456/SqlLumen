@@ -6,4 +6,10 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  background: var(--ui-popover-bg);
+  border: var(--ui-popover-border);
+  border-radius: var(--ui-popover-radius);
+  box-shadow: var(--ui-popover-shadow);
+  -webkit-backdrop-filter: var(--ui-popover-backdrop-filter);
+  backdrop-filter: var(--ui-popover-backdrop-filter);
 }

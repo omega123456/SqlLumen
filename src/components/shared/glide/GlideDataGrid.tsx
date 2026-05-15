@@ -82,7 +82,7 @@ export type GlideDataGridProps<TRow> = {
   onDelete?: (selection: GridSelection) => boolean | GridSelection
   provideEditor?: ProvideEditorCallback<GridCell>
   onPaste?: ((target: Item, values: readonly (readonly string[])[]) => boolean) | boolean
-  customRenderers?: CustomRenderer<any>[]
+  customRenderers?: CustomRenderer[]
   onColumnResize?: (columnIndex: number, newWidth: number) => void
   onHeaderClicked?: (columnIndex: number) => void
   onCellContextMenu?: (cell: Item, event: CellClickedEventArgs) => void
@@ -239,10 +239,11 @@ function GlideDataGridInner<TRow>(props: GlideDataGridProps<TRow>, ref: React.Re
 
   const handleCellClickedWithDoubleClick = useCallback(
     (cell: Item, event: CellClickedEventArgs) => {
-      onCellClicked?.(cell, event)
       if (event.isDoubleClick === true) {
         onCellDoubleClicked?.(cell, event)
+        return
       }
+      onCellClicked?.(cell, event)
     },
     [onCellClicked, onCellDoubleClicked]
   )

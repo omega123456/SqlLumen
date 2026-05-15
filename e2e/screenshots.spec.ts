@@ -3284,10 +3284,10 @@ for (const theme of themes) {
 
     test('ProcessListTab — kill confirmation dialog', async ({ page }) => {
       await openProcessListTab(page)
-      // Select first two rows by clicking checkboxes
+      // Select first two rows by clicking the checkbox prefix column (column 0, width 34px)
       const geometry = await getGlideGridGeometry(page, 'processlist-grid-view')
-      await clickGlideRowMarker(page, 'processlist-grid-view', 0, geometry)
-      await clickGlideRowMarker(page, 'processlist-grid-view', 1, geometry)
+      await clickGlideCell(page, 'processlist-grid-view', 0, 0, geometry)
+      await clickGlideCell(page, 'processlist-grid-view', 0, 1, geometry)
       // Click the Kill button to open confirm dialog
       await page.getByTestId('processlist-kill-button').click()
       await expect(page.getByTestId('confirm-dialog')).toBeVisible({ timeout: APP_READY_MS })

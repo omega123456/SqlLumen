@@ -1,5 +1,3 @@
-# AGENTS.md
-
 Agent guidance for the **SqlLumen** repo — a cross-platform desktop MySQL/MariaDB client built with **Tauri v2** (Rust backend) + **React 19 / TypeScript** (frontend). They communicate exclusively via Tauri IPC (`invoke`).
 
 ## Product Surface Note

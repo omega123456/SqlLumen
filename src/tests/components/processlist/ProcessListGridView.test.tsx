@@ -50,7 +50,17 @@ describe('ProcessListGridView', () => {
     render(<ProcessListGridView connectionId="c1" />)
     expect(screen.getByTestId('mock-canvas-grid')).toHaveAttribute('data-row-count', '2')
     expect(mockCanvasBaseGridView.mock.lastCall?.[0]).toEqual(
-      expect.objectContaining({ showInfoColumn: true, testId: 'processlist-grid-view' })
+      expect.objectContaining({
+        showInfoColumn: true,
+        testId: 'processlist-grid-view',
+        rowMarkers: 'none',
+      })
+    )
+    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+      prefixColumns: { key: string; name: string; cellKind: string }[]
+    }
+    expect(props.prefixColumns[0]).toEqual(
+      expect.objectContaining({ key: '__processlistSelected', name: '', cellKind: 'checkbox' })
     )
   })
 
@@ -74,19 +84,53 @@ describe('ProcessListGridView', () => {
 
   it('updates sort and selected process ids through grid callbacks', () => {
     render(<ProcessListGridView connectionId="c1" />)
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    let props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
       onSortChange: (column: string | null, direction: 'ASC' | 'DESC' | null) => void
-      onRowMarkersChange: (selectedRows: Record<string, unknown>[]) => void
       onInfoCellClick: (row: Record<string, unknown>, rect: DOMRect) => void
+      onCellValueChange: (rowIdx: number, columnKey: string, value: unknown) => void
     }
     act(() => props.onSortChange('user', 'ASC'))
     expect(useProcessListStore.getState().sortColumnByConnection.c1).toEqual({
       columnKey: 'user',
       direction: 'ASC',
     })
-    act(() => props.onRowMarkersChange([{ id: 2 }]))
+    act(() => props.onCellValueChange(0, '__processlistSelected', true))
     expect([...useProcessListStore.getState().selectedIdsByConnection.c1]).toEqual([2])
+    props = mockCanvasBaseGridView.mock.lastCall?.[0] as typeof props
     act(() => props.onInfoCellClick({ info: 'SELECT 1' }, new DOMRect()))
     expect(screen.getByTestId('info-popover')).toHaveTextContent('SELECT 1')
+  })
+
+  it('derives checkbox state from stored selected process ids after rows refresh', () => {
+    act(() => {
+      useProcessListStore.setState({
+        selectedIdsByConnection: { c1: new Set([2]) },
+      })
+    })
+
+    const { rerender } = render(<ProcessListGridView connectionId="c1" />)
+    let props = mockCanvasBaseGridView.mock.lastCall?.[0] as { rows: Record<string, unknown>[] }
+    expect(props.rows.map((row) => [row.id, row.__processlistSelected])).toEqual([
+      [2, true],
+      [1, false],
+    ])
+
+    act(() => {
+      useProcessListStore.setState({
+        rowsByConnection: {
+          c1: [
+            { ...rows[1], time: 10 },
+            { ...rows[0], time: 5 },
+          ],
+        },
+      })
+    })
+    rerender(<ProcessListGridView connectionId="c1" />)
+
+    props = mockCanvasBaseGridView.mock.lastCall?.[0] as { rows: Record<string, unknown>[] }
+    expect(props.rows.map((row) => [row.id, row.__processlistSelected])).toEqual([
+      [1, false],
+      [2, true],
+    ])
   })
 })

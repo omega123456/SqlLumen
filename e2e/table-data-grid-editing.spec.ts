@@ -713,9 +713,10 @@ test('query result grid typing on a selected cell opens the editor and keeps foc
 
   const grid = page.getByTestId('result-grid')
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
-  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
   await clickCellByColumnName(grid, 0, 'name')
+  const canvas = grid.locator('canvas').first()
+  await expect(canvas).toBeFocused({ timeout: APP_READY_MS })
   await expectEditorKeepsFocusAcrossTyping(page, 'Bob')
 })
 
@@ -751,6 +752,9 @@ test('query result grid supports keyboard navigation, copy, edit cancel, and tab
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+C' : 'Control+C')
   const copied = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''))
   expect(copied.length).toBeGreaterThan(0)
+
+  await clickResultGridCell(page, 0, 0)
+  await expect(grid.locator('canvas').first()).toBeFocused({ timeout: APP_READY_MS })
 
   await activateResultCellEditorByColumnName(page, 0, 'name')
   const editor = page.locator('.td-cell-editor-input').first()

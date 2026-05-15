@@ -5,7 +5,7 @@ import { CanvasBaseGridView } from '../shared/glide/CanvasBaseGridView'
 import { InfoCellPopover } from './InfoCellPopover'
 import type { ProcessRow } from '../../lib/processlist-commands'
 import type { GridColumnDescriptor } from '../../types/shared-data-view'
-import type { GridHandle } from '../shared/glide/glide-grid-types'
+import type { GridColumn, GridHandle } from '../shared/glide/glide-grid-types'
 import styles from './ProcessListGridView.module.css'
 
 type GridRow = ProcessRow & Record<string, unknown>
@@ -16,6 +16,16 @@ type ProcessListPlaywrightApi = {
 const EMPTY_SET = new Set<number>()
 const EMPTY_PROCESS_ROWS: ProcessRow[] = []
 const IS_PLAYWRIGHT = import.meta.env.VITE_PLAYWRIGHT === 'true'
+const PROCESSLIST_SELECTED_COLUMN_KEY = '__processlistSelected'
+
+const PROCESSLIST_SELECTION_COLUMN: GridColumn<Record<string, unknown>> = {
+  key: PROCESSLIST_SELECTED_COLUMN_KEY,
+  name: '',
+  width: 34,
+  resizable: false,
+  sortable: false,
+  cellKind: 'checkbox',
+}
 
 const PROCESSLIST_COLUMNS: GridColumnDescriptor[] = [
   {
@@ -118,22 +128,27 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
 
   // Sort rows directly without intermediate mapping — ProcessRow already matches grid shape
   const gridRows: GridRow[] = useMemo(() => {
-    if (!sortColumn) return visibleRows as GridRow[]
-
-    const { columnKey, direction } = sortColumn
-    return ([...visibleRows] as GridRow[]).sort((a, b) => {
-      const aVal = a[columnKey as keyof ProcessRow]
-      const bVal = b[columnKey as keyof ProcessRow]
-      if (aVal == null && bVal == null) return 0
-      if (aVal == null) return direction === 'ASC' ? -1 : 1
-      if (bVal == null) return direction === 'ASC' ? 1 : -1
-      if (typeof aVal === 'number' && typeof bVal === 'number') {
-        return direction === 'ASC' ? aVal - bVal : bVal - aVal
-      }
-      const cmp = String(aVal).localeCompare(String(bVal))
-      return direction === 'ASC' ? cmp : -cmp
-    })
-  }, [visibleRows, sortColumn])
+    const sortedRows = [...visibleRows] as GridRow[]
+    if (sortColumn) {
+      const { columnKey, direction } = sortColumn
+      sortedRows.sort((a, b) => {
+        const aVal = a[columnKey as keyof ProcessRow]
+        const bVal = b[columnKey as keyof ProcessRow]
+        if (aVal == null && bVal == null) return 0
+        if (aVal == null) return direction === 'ASC' ? -1 : 1
+        if (bVal == null) return direction === 'ASC' ? 1 : -1
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return direction === 'ASC' ? aVal - bVal : bVal - aVal
+        }
+        const cmp = String(aVal).localeCompare(String(bVal))
+        return direction === 'ASC' ? cmp : -cmp
+      })
+    }
+    return sortedRows.map((row) => ({
+      ...row,
+      [PROCESSLIST_SELECTED_COLUMN_KEY]: selectedIds.has(row.id),
+    }))
+  }, [visibleRows, sortColumn, selectedIds])
 
   const handleSortChange = useCallback(
     (column: string | null, direction: 'ASC' | 'DESC' | null) => {
@@ -234,18 +249,20 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
     }
   }, [connectionId, openInfoPopoverForRow])
 
-  const handleRowMarkersChange = useCallback(
-    (selectedRows: Record<string, unknown>[]) => {
-      setSelectedIds(connectionId, new Set(selectedRows.map((row) => Number(row.id))))
+  const handleCellValueChange = useCallback(
+    (rowIdx: number, columnKey: string, value: unknown) => {
+      if (columnKey !== PROCESSLIST_SELECTED_COLUMN_KEY) return
+      const row = gridRows[rowIdx]
+      if (!row) return
+      const nextSelectedIds = new Set(selectedIds)
+      if (value === true) {
+        nextSelectedIds.add(row.id)
+      } else {
+        nextSelectedIds.delete(row.id)
+      }
+      setSelectedIds(connectionId, nextSelectedIds)
     },
-    [connectionId, setSelectedIds]
-  )
-
-  const getRowClass = useCallback(
-    (row: Record<string, unknown>) => {
-      return selectedIds.has(row.id as number) ? 'grid-row-precision-selected' : undefined
-    },
-    [selectedIds]
+    [connectionId, gridRows, selectedIds, setSelectedIds]
   )
 
   return (
@@ -258,9 +275,9 @@ export function ProcessListGridView({ connectionId, isActive = true }: ProcessLi
         sortColumn={sortColumn?.columnKey ?? null}
         sortDirection={sortColumn?.direction ?? null}
         onSortChange={handleSortChange}
-        getRowClass={getRowClass}
-        rowMarkers="checkbox"
-        onRowMarkersChange={handleRowMarkersChange}
+        rowMarkers="none"
+        prefixColumns={[PROCESSLIST_SELECTION_COLUMN]}
+        onCellValueChange={handleCellValueChange}
         onInfoCellClick={handleInfoCellClick}
         showInfoColumn={true}
         applyReadOnlyCellStyles={false}

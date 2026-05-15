@@ -14,11 +14,13 @@ import {
   type DrawCellCallback,
   type DrawHeaderCallback,
   type GridCell,
+  type CustomRenderer,
   type GridSelection,
   type EditableGridCell,
   GridCellKind,
   type GridKeyEventArgs,
   type TextCell,
+  type BooleanCell,
   type Item,
   type Rectangle,
 } from '@glideapps/glide-data-grid'
@@ -112,7 +114,6 @@ function isDropdownNullSelection(
 export interface CanvasBaseGridViewProps extends BaseGridViewProps {
   rowMarkers?: 'none' | 'checkbox' | 'number' | 'both'
   onRowMarkersChange?: (selectedRows: GridRow[]) => void
-  selectedRows?: ReadonlySet<string | number>
   onInfoCellClick?: (row: GridRow, anchorRect: DOMRect) => void
   onSelectedRowChange?: (row: GridRow | null, rowIndex: number | null) => void
   onRowDoubleClicked?: (row: GridRow) => void
@@ -199,6 +200,9 @@ function isSameScrollCell(a: ScrollCell | null, b: ScrollCell): boolean {
   return a?.scrollRow === b.scrollRow && a.scrollCol === b.scrollCol
 }
 
+const INFO_AFFORDANCE_GUTTER_PX = 28
+const CUSTOM_RENDERERS: CustomRenderer[] = [DropdownCell as unknown as CustomRenderer]
+
 function resolveEditorBaselineValue(
   row: GridRow,
   columnKey: string,
@@ -228,7 +232,6 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     onRowClick,
     highlightColumnKey,
     selectedRowIndex,
-    selectedRows,
     onRowMarkersChange,
     getRowClass,
     isModifiedCell,
@@ -283,12 +286,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
 
   const isRowSelected = useCallback(
     (row: GridRow): boolean => {
-      return (
-        selectedRows?.has(row.id as string | number) === true ||
-        getRowClass?.(row)?.includes('selected') === true
-      )
+      return getRowClass?.(row)?.includes('selected') === true
     },
-    [getRowClass, selectedRows]
+    [getRowClass]
   )
 
   const isRowEditing = useCallback(
@@ -298,47 +298,46 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
 
   const gridColumns = useMemo<GridColumn<GridRow>[]>(() => {
     const dataColumns = columns.map((column) => toGridColumn(column, rows, props.autoSizeConfig))
-    if (!showInfoColumn) return dataColumns
+    const infoColumns: GridColumn<GridRow>[] = showInfoColumn
+      ? [{ key: 'info', name: 'Info', width: 260, resizable: true, sortable: true }]
+      : []
     return [
+      ...(props.prefixColumns ?? []),
       ...dataColumns,
-      { key: 'info', name: 'Info', width: 260, resizable: true, sortable: true },
+      ...infoColumns,
+      ...(props.suffixColumns ?? []),
     ]
-  }, [columns, props.autoSizeConfig, rows, showInfoColumn])
+  }, [
+    columns,
+    props.autoSizeConfig,
+    props.prefixColumns,
+    props.suffixColumns,
+    rows,
+    showInfoColumn,
+  ])
 
   const glideColumns = useMemo(
     () => buildGlideColumns(gridColumns, { hasRowMarker: rowMarkers !== 'none' }),
     [gridColumns, rowMarkers]
   )
 
-  const selectedSelection = useMemo<GridSelection | undefined>(() => {
-    let rowSelection = CompactSelection.empty()
-    rows.forEach((row, index) => {
-      if (isRowSelected(row)) {
-        rowSelection = rowSelection.add(index)
-      }
-    })
-    if (activeSelectedRowIndex != null) rowSelection = rowSelection.add(activeSelectedRowIndex)
+  const activeGridSelection = useMemo<GridSelection | undefined>(() => {
+    if (!selectedCellPosition) return gridSelection
     return {
-      columns: CompactSelection.empty(),
-      rows: rowSelection,
-      current: selectedCellPosition
-        ? {
-            cell: [selectedCellPosition.idx, selectedCellPosition.rowIdx],
-            range: {
-              x: selectedCellPosition.idx,
-              y: selectedCellPosition.rowIdx,
-              width: 1,
-              height: 1,
-            },
-            rangeStack: [],
-          }
-        : undefined,
+      columns: gridSelection?.columns ?? CompactSelection.empty(),
+      rows: gridSelection?.rows ?? CompactSelection.empty(),
+      current: {
+        cell: [selectedCellPosition.idx, selectedCellPosition.rowIdx] as [number, number],
+        range: {
+          x: selectedCellPosition.idx,
+          y: selectedCellPosition.rowIdx,
+          width: 1,
+          height: 1,
+        },
+        rangeStack: [],
+      },
     }
-  }, [activeSelectedRowIndex, isRowSelected, rows, selectedCellPosition])
-
-  useEffect(() => {
-    setGridSelection(selectedSelection)
-  }, [selectedSelection])
+  }, [gridSelection, selectedCellPosition])
 
   const changeSelectedCell = useCallback(
     async (rowIndex: number, colIndex: number): Promise<boolean> => {
@@ -427,6 +426,14 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       const row = rows[rowIndex]
       if (!column || !row) return buildTextCell('', classifyCellValue('', ''))
       const rawValue = row[column.key]
+      if (column.cellKind === 'checkbox') {
+        return {
+          kind: GridCellKind.Boolean,
+          data: rawValue === true,
+          allowOverlay: false,
+          readonly: false,
+        } satisfies BooleanCell
+      }
       const flags = classifyCellValue(rawValue, column.key, {
         isReadOnly: isEditMode === true && editableColumnKeys?.has(column.key) !== true,
         isModified: isModifiedCell?.(row, column.key) ?? false,
@@ -497,7 +504,6 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       isRowEditing,
       isRowSelected,
       rows,
-      selectedRows,
     ]
   )
 
@@ -505,6 +511,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     (columnIndex: number) => {
       const column = gridColumns[columnIndex]
       if (!column || !onSortChange) return
+      if (column.sortable === false) return
       if (sortColumn !== column.key) {
         onSortChange(column.key, 'ASC')
         return
@@ -531,6 +538,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         column.foreignKey != null &&
         event.bounds != null &&
         (event.localEventX ?? 0) >= event.bounds.width - 28
+      const isInfoAffordanceClick =
+        isInfoColumn(column) &&
+        typeof row.info === 'string' &&
+        row.info.length > 0 &&
+        event.bounds != null &&
+        (event.localEventX ?? 0) >= event.bounds.width - INFO_AFFORDANCE_GUTTER_PX
 
       if (isFkAffordanceClick) {
         const runFkLookup = async () => {
@@ -549,6 +562,17 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         void runFkLookup()
         onCellSelectionChange?.({ rowIdx: rowIndex, columnKey: column.key, rowData: row })
         onRowClick?.(row, column.key)
+        return
+      }
+
+      if (isInfoAffordanceClick) {
+        const rect = new DOMRect(
+          event.bounds.x,
+          event.bounds.y,
+          event.bounds.width,
+          event.bounds.height
+        )
+        onInfoCellClick?.(row, rect)
         return
       }
 
@@ -623,11 +647,13 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         ? isEnumColumn(column) && isDropdownNullSelection(column, newValue.data.value)
           ? null
           : (newValue.data.value ?? null)
-        : newValue.kind === GridCellKind.Text
-          ? newValue.data === '' && newValue.copyData === 'NULL'
-            ? null
-            : newValue.data
-          : undefined
+        : newValue.kind === GridCellKind.Boolean
+          ? newValue.data === true
+          : newValue.kind === GridCellKind.Text
+            ? newValue.data === '' && newValue.copyData === 'NULL'
+              ? null
+              : newValue.data
+            : undefined
       if (next === undefined) return
       const pendingTypingActivation = pendingTypingActivationRef.current
       const isPendingTypingActivation =
@@ -747,7 +773,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   )
 
   const selectedRanges = useCallback((): Rectangle[] => {
-    const selection = gridSelection
+    const selection = activeGridSelection
     const ranges: Rectangle[] = []
     if (selection?.current) ranges.push(selection.current.range, ...selection.current.rangeStack)
     if (selection) {
@@ -757,7 +783,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         ranges.push({ x: colIndex, y: 0, width: 1, height: rows.length })
     }
     return ranges
-  }, [gridColumns.length, gridSelection, rows.length])
+  }, [activeGridSelection, gridColumns.length, rows.length])
 
   const copySelectionToClipboard = useCallback(async (): Promise<void> => {
     const text = selectedRanges()
@@ -778,8 +804,10 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     }
   }, [getCellContent, selectedRanges])
 
+  const activeSelectionCell = activeGridSelection?.current?.cell
+
   const pasteClipboardAtSelection = useCallback(async (): Promise<void> => {
-    const target = gridSelection?.current?.cell
+    const target = activeSelectionCell
     if (!target) return
     try {
       const text = await navigator.clipboard.readText()
@@ -790,12 +818,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     } catch (error) {
       logFrontend('warn', `Failed to read grid clipboard text: ${String(error)}`)
     }
-  }, [handlePaste, gridSelection])
+  }, [activeSelectionCell, handlePaste])
 
   const cutSelectionToClipboard = useCallback(async (): Promise<void> => {
     await copySelectionToClipboard()
-    if (gridSelection) clearSelection(gridSelection)
-  }, [clearSelection, copySelectionToClipboard, gridSelection])
+    if (activeGridSelection) clearSelection(activeGridSelection)
+  }, [activeGridSelection, clearSelection, copySelectionToClipboard])
 
   const provideEditor = useCallback(
     (cell: GridCell) => {
@@ -881,85 +909,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       }
       isEditingCellRef.current = true
     },
-    [
-      editState?.currentValues,
-      editState?.originalValues,
-      editableColumnKeys,
-      gridColumns,
-      isEditMode,
-      rows,
-    ]
-  )
-
-  const activateCell = useCallback(
-    async (cell: Item) => {
-      const [colIndex, rowIndex] = cell
-      const row = rows[rowIndex]
-      const column = gridColumns[colIndex]
-      if (!row || !column) return
-
-      const guard = onCellClickGuard
-        ? await onCellClickGuard({
-            rowIdx: rowIndex,
-            columnKey: column.key,
-            rowData: row,
-            source: 'grid-pointer',
-          })
-        : { proceed: true, targetRowIdx: rowIndex, targetColIdx: colIndex, enableEditor: true }
-
-      if (!guard.proceed) {
-        if (guard.restoreFocus) {
-          gridRef.current?.selectCell(
-            { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
-            { shouldFocusCell: true, enableEditor: guard.enableEditor }
-          )
-        }
-        return
-      }
-
-      const targetRow = rows[guard.targetRowIdx]
-      const targetColumn = gridColumns[guard.targetColIdx]
-      if (!targetRow || !targetColumn) return
-
-      const ok = await changeSelectedCell(guard.targetRowIdx, guard.targetColIdx)
-      if (!ok) return
-
-      selectRow(guard.targetRowIdx)
-      onRowClick?.(targetRow, targetColumn.key)
-      onCellSelectionChange?.({
-        rowIdx: guard.targetRowIdx,
-        columnKey: targetColumn.key,
-        rowData: targetRow,
-        source: 'grid-pointer',
-      })
-      if (guard.enableEditor) {
-        if (
-          isEnumColumn(targetColumn) &&
-          !isEditableColumn(targetColumn, isEditMode, editableColumnKeys)
-        ) {
-          gridRef.current?.selectCell(
-            { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
-            { shouldFocusCell: true, enableEditor: false }
-          )
-          return
-        }
-        gridRef.current?.selectCell(
-          { rowIdx: guard.targetRowIdx, idx: guard.targetColIdx },
-          { shouldFocusCell: true, enableEditor: true }
-        )
-      }
-    },
-    [
-      changeSelectedCell,
-      gridColumns,
-      onCellClickGuard,
-      onCellSelectionChange,
-      onRowClick,
-      editableColumnKeys,
-      isEditMode,
-      rows,
-      selectRow,
-    ]
+    [editState, gridColumns, rows]
   )
 
   const handleCellDoubleClicked = useCallback(
@@ -968,22 +918,22 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       const row = rows[rowIndex]
       const column = gridColumns[colIndex]
       if (!row || !column) return
-      void activateCell(cell)
       onCellDoubleClick?.(row, column.key)
       onRowDoubleClicked?.(row)
     },
-    [activateCell, gridColumns, onCellDoubleClick, onRowDoubleClicked, rows]
+    [gridColumns, onCellDoubleClick, onRowDoubleClicked, rows]
   )
+
+  const gridSelectionCell = gridSelection?.current?.cell
 
   const triggerFkLookupFromSelection = useCallback(
     (event: { preventDefault: () => void }) => {
-      const currentSelection = gridSelection?.current?.cell
       const pos =
         selectedCellPosition ??
-        (currentSelection
+        (gridSelectionCell
           ? {
-              idx: currentSelection[0],
-              rowIdx: currentSelection[1],
+              idx: gridSelectionCell[0],
+              rowIdx: gridSelectionCell[1],
             }
           : lastInteractedCellRef.current)
       if (!pos) return false
@@ -999,7 +949,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       })
       return true
     },
-    [gridColumns, gridSelection, onFkCellAction, rows, selectedCellPosition]
+    [gridColumns, gridSelectionCell, onFkCellAction, rows, selectedCellPosition]
   )
 
   const handleKeyDown = useCallback<(event: GlideKeyDownEvent) => void>(
@@ -1013,10 +963,10 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         return
       }
 
-      const currentCell = gridSelection?.current
+      const currentCell = gridSelectionCell
         ? {
-            idx: gridSelection.current.cell[0],
-            rowIdx: gridSelection.current.cell[1],
+            idx: gridSelectionCell[0],
+            rowIdx: gridSelectionCell[1],
           }
         : selectedCellPosition
 
@@ -1213,13 +1163,13 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       onRowDoubleClicked,
       onCellClickGuard,
       onCellSelectionChange,
-      onCellValueChange,
       rows,
       runCellClickGuardOnKeyboardSelection,
       selectedCellPosition,
       selectRow,
       changeSelectedCell,
-      gridSelection,
+      editState,
+      gridSelectionCell,
       isActive,
       triggerFkLookupFromSelection,
       openEnumEditor,
@@ -1306,7 +1256,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
 
   useEffect(() => {
     if (isActive) return
-    closeContextMenu()
+    queueMicrotask(closeContextMenu)
     cancelActiveEditor()
   }, [cancelActiveEditor, closeContextMenu, isActive])
 
@@ -1336,11 +1286,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     (args, drawContent) => {
       const row = rows[args.row]
       const column = gridColumns[args.col]
-      const isSelected =
-        row != null &&
-        (activeSelectedRowIndex === args.row ||
-          selectedRows?.has(row.id as string | number) === true ||
-          isRowSelected(row))
+      const hasInfoAffordance =
+        column != null &&
+        isInfoColumn(column) &&
+        typeof row?.info === 'string' &&
+        row.info.length > 0
+      const isSelected = row != null && (activeSelectedRowIndex === args.row || isRowSelected(row))
       if (column?.key === highlightColumnKey) {
         drawHighlightedColumnBackground(args.ctx, args.rect, args.theme.bgSearchResult)
       }
@@ -1351,11 +1302,25 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       if (row != null && isRowEditing(row)) {
         drawHighlightedColumnBackground(args.ctx, args.rect, args.theme.bgHeaderHovered)
       }
-      drawContent()
+      if (hasInfoAffordance) {
+        args.ctx.save()
+        args.ctx.beginPath()
+        args.ctx.rect(
+          args.rect.x,
+          args.rect.y,
+          Math.max(0, args.rect.width - INFO_AFFORDANCE_GUTTER_PX),
+          args.rect.height
+        )
+        args.ctx.clip()
+        drawContent()
+        args.ctx.restore()
+      } else {
+        drawContent()
+      }
       if (column && row && isModifiedCell?.(row, column.key)) {
         drawModifiedCellIndicator(args.ctx, args.rect, args.theme.accentColor, false)
       }
-      if (column && isInfoColumn(column) && row?.info) {
+      if (hasInfoAffordance) {
         drawInfoAffordance(args.ctx, args.rect, args.theme.linkColor)
       }
       if (column?.foreignKey && row && !isEnumColumn(column)) {
@@ -1370,7 +1335,6 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       isRowEditing,
       isRowSelected,
       rows,
-      selectedRows,
     ]
   )
 
@@ -1406,7 +1370,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         columns={glideColumns}
         rows={rows}
         getCellContent={getCellContent}
-        customRenderers={[DropdownCell]}
+        customRenderers={CUSTOM_RENDERERS}
         onColumnResize={handleColumnResize}
         onHeaderClicked={handleHeaderClicked}
         onCellClicked={handleCellClicked}
@@ -1419,7 +1383,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         onFinishedEditing={handleFinishedEditing}
         onCellContextMenu={handleCellClicked}
         onVisibleRegionChanged={handleVisibleRegionChanged}
-        selection={gridSelection}
+        selection={activeGridSelection}
         onSelectionChange={handleSelectionChange}
         rowMarkers={rowMarkers}
         drawCell={drawCell}

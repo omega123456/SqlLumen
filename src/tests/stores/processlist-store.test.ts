@@ -92,7 +92,7 @@ describe('processlist-store', () => {
       expect(selected).toEqual(new Set([1, 2])) // 5 removed
     })
 
-    it('drops selected rows that become hidden by the default idle filter', async () => {
+    it('preserves selected IDs that still exist in refreshed raw rows even when hidden by filters', async () => {
       useProcessListStore.setState({
         selectedIdsByConnection: { [CONN]: new Set([1, 2]) },
       })
@@ -127,7 +127,7 @@ describe('processlist-store', () => {
 
       await useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
 
-      expect(useProcessListStore.getState().selectedIdsByConnection[CONN]).toEqual(new Set([1]))
+      expect(useProcessListStore.getState().selectedIdsByConnection[CONN]).toEqual(new Set([1, 2]))
     })
 
     it('shows error toast on manual fetch failure', async () => {
@@ -247,7 +247,7 @@ describe('processlist-store', () => {
       expect(useProcessListStore.getState().refreshIntervalMsByConnection[CONN]).toBe(10000)
     })
 
-    it('setExcludeIdleConnections hides idle rows from selection by default', () => {
+    it('setExcludeIdleConnections preserves selection for rows that are hidden but still present', () => {
       const rows: ProcessRow[] = [
         {
           id: 1,
@@ -282,7 +282,7 @@ describe('processlist-store', () => {
 
       const state = useProcessListStore.getState()
       expect(state.excludeIdleConnectionsByConnection[CONN]).toBe(true)
-      expect(state.selectedIdsByConnection[CONN]).toEqual(new Set([1]))
+      expect(state.selectedIdsByConnection[CONN]).toEqual(new Set([1, 2]))
     })
 
     it('setExcludeIdleConnections can show idle rows again', () => {

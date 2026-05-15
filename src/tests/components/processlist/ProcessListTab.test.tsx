@@ -190,4 +190,31 @@ describe('ProcessListTab', () => {
       vi.useRealTimers()
     }
   })
+
+  it('uses a 1 second default auto-refresh interval when no override is set', () => {
+    vi.useFakeTimers()
+    try {
+      useProcessListStore.setState({
+        rowsByConnection: { 'conn-1': MOCK_ROWS },
+        lastRefreshedAtByConnection: { 'conn-1': Date.now() },
+        hasFetchedByConnection: { 'conn-1': false },
+      })
+
+      const fetchSpy = vi.fn()
+      useProcessListStore.setState({ fetchProcessList: fetchSpy })
+
+      render(<ProcessListTab connectionId="conn-1" sessionId="conn-1" isActive={true} />)
+
+      expect(fetchSpy).toHaveBeenCalledWith('conn-1', 'conn-1', false)
+      fetchSpy.mockClear()
+
+      act(() => {
+        vi.advanceTimersByTime(1100)
+      })
+
+      expect(fetchSpy).toHaveBeenCalledWith('conn-1', 'conn-1', false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
