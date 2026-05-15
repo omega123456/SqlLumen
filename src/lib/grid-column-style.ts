@@ -21,6 +21,8 @@ const NUMERIC_TYPE_PREFIXES = [
   'REAL',
 ] as const
 
+const WRAPPABLE_TEXT_TYPE_PREFIXES = ['TEXT', 'TINYTEXT', 'MEDIUMTEXT', 'LONGTEXT'] as const
+
 export function isNumericSqlType(dataType: string): boolean {
   const upperType = dataType.toUpperCase()
   return NUMERIC_TYPE_PREFIXES.some((prefix) => upperType.startsWith(prefix))
@@ -33,16 +35,14 @@ function normalizedUpperType(dataType: string): string {
     .replace(/\(\d+\)/, '')
 }
 
+export function isWrappableTextSqlType(dataType: string): boolean {
+  const u = normalizedUpperType(dataType)
+  return WRAPPABLE_TEXT_TYPE_PREFIXES.some((prefix) => u.startsWith(prefix))
+}
+
 export function isStringishPrimarySqlType(dataType: string): boolean {
   const u = normalizedUpperType(dataType)
-  return (
-    u.startsWith('VARCHAR') ||
-    u.startsWith('CHAR') ||
-    u.startsWith('TEXT') ||
-    u.startsWith('TINYTEXT') ||
-    u.startsWith('MEDIUMTEXT') ||
-    u.startsWith('LONGTEXT')
-  )
+  return u.startsWith('VARCHAR') || u.startsWith('CHAR') || isWrappableTextSqlType(u)
 }
 
 /**

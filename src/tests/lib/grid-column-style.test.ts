@@ -8,6 +8,7 @@ import {
   getAutoSizedColumnWidth,
   isNumericSqlType,
   isStringishPrimarySqlType,
+  isWrappableTextSqlType,
 } from '../../lib/grid-column-style'
 import type { TableDataColumnMeta } from '../../types/schema'
 
@@ -150,6 +151,21 @@ describe('isStringishPrimarySqlType', () => {
     expect(isStringishPrimarySqlType('INT')).toBe(false)
     expect(isStringishPrimarySqlType('BLOB')).toBe(false)
     expect(isStringishPrimarySqlType('DATETIME')).toBe(false)
+  })
+})
+
+describe('isWrappableTextSqlType', () => {
+  it('returns true for MySQL TEXT-family types', () => {
+    expect(isWrappableTextSqlType('TEXT')).toBe(true)
+    expect(isWrappableTextSqlType('tinytext')).toBe(true)
+    expect(isWrappableTextSqlType('MEDIUMTEXT')).toBe(true)
+    expect(isWrappableTextSqlType('LONGTEXT')).toBe(true)
+  })
+
+  it('returns false for non-TEXT string columns', () => {
+    expect(isWrappableTextSqlType('VARCHAR(255)')).toBe(false)
+    expect(isWrappableTextSqlType('CHAR(10)')).toBe(false)
+    expect(isWrappableTextSqlType('JSON')).toBe(false)
   })
 })
 

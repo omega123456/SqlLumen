@@ -22,6 +22,7 @@ import { useEditorCallbacks } from './editor-callbacks-context'
 import { useFkLookup } from './fk-lookup-context'
 import { FkLookupTriggerButton } from './FkLookupTriggerButton'
 import { TextInput } from '../common/TextInput'
+import { Textarea } from '../common/Textarea'
 import styles from './grid-cell-editors.module.css'
 
 // ---------------------------------------------------------------------------
@@ -215,6 +216,175 @@ export function NullableCellEditor(props: CellEditorBaseProps) {
               // Discard edit, don't refocus grid
               onClose(false, false)
               return
+            }
+          }}
+        />
+      </div>
+      <div className={styles.editorMarkerGroup}>
+        {isNullable && (
+          <button
+            type="button"
+            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleToggleNull}
+            tabIndex={-1}
+          >
+            NULL
+          </button>
+        )}
+        {foreignKey && fkLookup && (
+          <FkLookupTriggerButton
+            foreignKey={foreignKey}
+            columnKey={fieldName}
+            currentValue={row[fieldName]}
+            rowData={row}
+            className={styles.fkTriggerButton}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function NullableMultilineCellEditor(props: CellEditorBaseProps) {
+  const { row, column, onRowChange, onClose } = props
+  const isNullable = props.isNullable ?? false
+  const fieldName = column.key
+  const foreignKey = props.foreignKey
+  const fkLookup = useFkLookup()
+
+  const rawValue = row[fieldName]
+  const restoreValue = Object.prototype.hasOwnProperty.call(props, 'cancelRestoreValue')
+    ? props.cancelRestoreValue
+    : rawValue
+  const initialNull = isNullish(restoreValue)
+  const initialValue = initialNull ? null : restoreValue
+  const initialInputValue = props.initialInputValue
+
+  const [isNull, setIsNull] = useState(initialInputValue != null ? false : initialNull)
+  const [value, setValue] = useState(
+    initialInputValue != null ? initialInputValue : initialNull ? '' : String(rawValue ?? '')
+  )
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const isCancellingRef = useRef(false)
+
+  const contextCallbacks = useEditorCallbacks()
+  const tabId = props.tabId || contextCallbacks?.tabId || ''
+  const updateCellValue = props.tabId
+    ? props.updateCellValue
+    : (contextCallbacks?.updateCellValue ?? props.updateCellValue)
+  const syncCellValue = props.tabId
+    ? props.syncCellValue
+    : (contextCallbacks?.syncCellValue ?? props.syncCellValue)
+  const selectAllOnFocus = props.selectAllOnFocus ?? true
+
+  useEffect(() => {
+    textareaRef.current?.focus()
+    if (selectAllOnFocus) {
+      textareaRef.current?.select()
+    } else {
+      const currentValue = textareaRef.current?.value ?? ''
+      textareaRef.current?.setSelectionRange(currentValue.length, currentValue.length)
+    }
+  }, [selectAllOnFocus])
+
+  const syncToStore = useCallback(
+    (nextValue: unknown) => {
+      if (tabId && fieldName && updateCellValue) {
+        updateCellValue(tabId, fieldName, nextValue)
+        syncCellValue?.(tabId, row, fieldName, nextValue)
+      }
+    },
+    [fieldName, tabId, updateCellValue, syncCellValue, row]
+  )
+
+  const handleToggleNull = useCallback(() => {
+    if (isNull) {
+      setIsNull(false)
+      onRowChange({ ...row, [fieldName]: '' })
+      syncToStore('')
+      setTimeout(() => textareaRef.current?.focus(), 0)
+    } else {
+      setIsNull(true)
+      setValue('')
+      onRowChange({ ...row, [fieldName]: null })
+      syncToStore(null)
+    }
+  }, [fieldName, isNull, onRowChange, row, syncToStore])
+
+  const handleChange = useCallback(
+    (nextValue: string) => {
+      if (isNull) {
+        setIsNull(false)
+      }
+      setValue(nextValue)
+      onRowChange({ ...row, [fieldName]: nextValue })
+      syncToStore(nextValue)
+    },
+    [fieldName, isNull, onRowChange, row, syncToStore]
+  )
+
+  const displayValue = isNull ? '' : value
+
+  const handleBlur = useCallback(
+    (relatedTarget: EventTarget | null) => {
+      if (isCancellingRef.current) {
+        return
+      }
+      if (relatedTarget instanceof Node && wrapperRef.current?.contains(relatedTarget)) {
+        return
+      }
+      onClose(true, false)
+    },
+    [onClose]
+  )
+
+  return (
+    <div ref={wrapperRef} className={styles.multilineEditorWrapper}>
+      <div className={styles.multilineEditorField}>
+        <Textarea
+          ref={textareaRef}
+          variant="bare"
+          className={styles.editorTextarea}
+          rows={6}
+          value={displayValue}
+          onChange={(e) => handleChange(e.target.value)}
+          onBlur={(e) => handleBlur(e.relatedTarget)}
+          onKeyDown={(e) => {
+            if (
+              e.key === 'F4' &&
+              !e.altKey &&
+              !e.ctrlKey &&
+              !e.metaKey &&
+              !e.shiftKey &&
+              foreignKey &&
+              fkLookup
+            ) {
+              e.preventDefault()
+              e.stopPropagation()
+              fkLookup.onFkLookup({
+                columnKey: fieldName,
+                currentValue: isNull ? null : value,
+                foreignKey,
+                rowData: row,
+                source: 'keyboard',
+              })
+              return
+            }
+            if (e.key === 'Enter' && !e.shiftKey) {
+              onRowChange({ ...row, [fieldName]: isNull ? null : value }, true)
+              onClose(true, true)
+              e.preventDefault()
+              return
+            }
+            if (e.key === 'Escape') {
+              isCancellingRef.current = true
+              setIsNull(initialNull)
+              setValue(initialNull ? '' : String(initialValue ?? ''))
+              onRowChange({ ...row, [fieldName]: initialValue }, false)
+              syncToStore(initialValue)
+              onClose(false, false)
             }
           }}
         />

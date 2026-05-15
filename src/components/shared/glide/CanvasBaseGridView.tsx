@@ -132,6 +132,7 @@ function toGridColumn(
   return {
     key: column.key,
     name: column.displayName,
+    dataType: column.dataType,
     width:
       computedWidth ??
       (column.editable

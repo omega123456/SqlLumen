@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { GridCellKind, type TextCell } from '@glideapps/glide-data-grid'
 import {
   computeRequestedEditorWidth,
+  getGlideEditor,
   wrapEditorAsGlideOverlay,
 } from '../../../../components/shared/glide/glide-editors'
 
@@ -105,5 +106,121 @@ describe('wrapEditorAsGlideOverlay', () => {
     )
 
     expect(getByTestId('test-editor')).toHaveAttribute('data-sqllumen-editor-width', '80')
+  })
+
+  it('uses a taller textarea overlay for MySQL long-text columns', () => {
+    vi.stubGlobal('innerHeight', 900)
+    const editorConfig = getGlideEditor(
+      { key: 'notes', name: 'Notes', dataType: 'LONGTEXT' },
+      'text'
+    )
+
+    expect(editorConfig).toMatchObject({
+      editor: expect.any(Function),
+    })
+
+    const Editor = editorConfig?.editor
+    expect(Editor).toBeDefined()
+
+    render(
+      <Editor
+        target={{ x: 0, y: 0, width: 120, height: 32 }}
+        value={
+          {
+            kind: GridCellKind.Text,
+            data: 'alpha',
+            displayData: 'alpha',
+            copyData: 'alpha',
+            allowOverlay: true,
+            readonly: false,
+            glideEditorData: {
+              row: { notes: 'alpha' },
+              columnKey: 'notes',
+              isNullable: true,
+            },
+          } as TextCell & { glideEditorData: Record<string, unknown> }
+        }
+        onChange={vi.fn()}
+        onFinishedEditing={vi.fn()}
+      />
+    )
+
+    expect(screen.getByTestId('glide-textarea-editor')).toHaveStyle({ height: '450px' })
+    expect(screen.getByRole('textbox')).toHaveAttribute('rows', '6')
+  })
+
+  it('caps multiline overlay height at 500px', () => {
+    vi.stubGlobal('innerHeight', 1400)
+    const editorConfig = getGlideEditor(
+      { key: 'notes', name: 'Notes', dataType: 'LONGTEXT' },
+      'text'
+    )
+    const Editor = editorConfig?.editor
+
+    render(
+      <Editor
+        target={{ x: 0, y: 0, width: 120, height: 32 }}
+        value={
+          {
+            kind: GridCellKind.Text,
+            data: 'alpha',
+            displayData: 'alpha',
+            copyData: 'alpha',
+            allowOverlay: true,
+            readonly: false,
+            glideEditorData: {
+              row: { notes: 'alpha' },
+              columnKey: 'notes',
+              isNullable: true,
+            },
+          } as TextCell & { glideEditorData: Record<string, unknown> }
+        }
+        onChange={vi.fn()}
+        onFinishedEditing={vi.fn()}
+      />
+    )
+
+    expect(screen.getByTestId('glide-textarea-editor')).toHaveStyle({ height: '500px' })
+  })
+
+  it('commits multiline editors on Enter and keeps Shift+Enter for new lines', () => {
+    const editorConfig = getGlideEditor(
+      { key: 'notes', name: 'Notes', dataType: 'MEDIUMTEXT' },
+      'text'
+    )
+    const Editor = editorConfig?.editor
+    const onFinishedEditing = vi.fn()
+
+    render(
+      <Editor
+        target={{ x: 0, y: 0, width: 120, height: 32 }}
+        value={
+          {
+            kind: GridCellKind.Text,
+            data: 'alpha',
+            displayData: 'alpha',
+            copyData: 'alpha',
+            allowOverlay: true,
+            readonly: false,
+            glideEditorData: {
+              row: { notes: 'alpha' },
+              columnKey: 'notes',
+              isNullable: true,
+            },
+          } as TextCell & { glideEditorData: Record<string, unknown> }
+        }
+        onChange={vi.fn()}
+        onFinishedEditing={onFinishedEditing}
+      />
+    )
+
+    const textarea = screen.getByRole('textbox')
+    fireEvent.change(textarea, { target: { value: 'alpha\nbeta' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true })
+    expect(onFinishedEditing).not.toHaveBeenCalled()
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+    expect(onFinishedEditing).toHaveBeenCalledWith(
+      expect.objectContaining({ data: 'alpha\nbeta', displayData: 'alpha\nbeta' })
+    )
   })
 })

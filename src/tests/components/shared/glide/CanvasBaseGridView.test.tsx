@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ComponentType } from 'react'
 import { GridCellKind } from '@glideapps/glide-data-grid'
 import { CanvasBaseGridView } from '../../../../components/shared/glide/CanvasBaseGridView'
 
@@ -124,6 +125,50 @@ describe('CanvasBaseGridView', () => {
     }
     props.onColumnResize(0, 222)
     expect(onColumnResize).toHaveBeenCalledWith('name', 222)
+  })
+
+  it('provides the multiline Glide editor for editable long-text columns', () => {
+    render(
+      <CanvasBaseGridView
+        rows={[{ id: 1, notes: 'hello world' }]}
+        columns={[
+          {
+            key: 'notes',
+            displayName: 'Notes',
+            dataType: 'LONGTEXT',
+            editable: true,
+            isBinary: false,
+            isNullable: true,
+            isPrimaryKey: false,
+            isUniqueKey: false,
+          },
+        ]}
+        editState={null}
+        isEditMode={true}
+        editableColumnKeys={new Set(['notes'])}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      getCellContent: (cell: readonly [number, number]) => unknown
+      provideEditor: (cell: unknown) => { editor?: ComponentType } | undefined
+    }
+
+    const editorConfig = props.provideEditor(props.getCellContent([0, 0]))
+    const Editor = editorConfig?.editor
+
+    expect(Editor).toBeDefined()
+
+    render(
+      <Editor
+        target={{ x: 0, y: 0, width: 120, height: 32 }}
+        value={props.getCellContent([0, 0])}
+        onChange={vi.fn()}
+        onFinishedEditing={vi.fn()}
+      />
+    )
+
+    expect(screen.getByTestId('glide-textarea-editor')).toBeInTheDocument()
   })
 
   it('uses auto-size config to compute initial column width', () => {

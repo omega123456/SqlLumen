@@ -6,9 +6,14 @@ import {
   type TextCell,
   type ProvideEditorCallbackResult,
 } from '@glideapps/glide-data-grid'
+import { isWrappableTextSqlType } from '../../../lib/grid-column-style'
 import type { GridColumn } from './glide-grid-types'
 import DateTimeCellEditor from '../../table-data/DateTimeCellEditor'
-import { NullableCellEditor, type CellEditorBaseProps } from '../grid-cell-editors'
+import {
+  NullableCellEditor,
+  NullableMultilineCellEditor,
+  type CellEditorBaseProps,
+} from '../grid-cell-editors'
 import type { GridEditorType } from '../grid-column-editor-utils'
 
 export interface CustomEditorProps {
@@ -46,6 +51,7 @@ interface GlideOverlayConfig {
   testId?: string
   reserveMarkerWidth?: boolean
   overlayExtraWidth?: number
+  overlayHeight?: number | ((target: Rectangle) => number)
 }
 
 function getEditorTargetWidth(target: Rectangle): number {
@@ -91,6 +97,16 @@ export function computeRequestedEditorWidth(targetWidth: number, markerCount: nu
   return getExpandedEditorWidth(targetWidth, markerCount)
 }
 
+function getViewportHeight(): number {
+  if (typeof window === 'undefined') return 800
+  return window.innerHeight > 0 ? window.innerHeight : 800
+}
+
+function getPreferredMultilineOverlayHeight(_target: Rectangle): number {
+  const viewportHeight = getViewportHeight()
+  return Math.max(132, Math.min(500, Math.floor(viewportHeight * 0.5)))
+}
+
 export function wrapEditorAsGlideOverlay(
   EditorComponent: VendorNeutralEditorComponent,
   config: GlideOverlayConfig = {}
@@ -101,11 +117,7 @@ export function wrapEditorAsGlideOverlay(
     onChange,
     onFinishedEditing,
   }: CustomEditorProps) {
-    const {
-      testId,
-      reserveMarkerWidth = true,
-      overlayExtraWidth = 20,
-    } = config
+    const { testId, reserveMarkerWidth = true, overlayExtraWidth = 20, overlayHeight } = config
     const currentValueRef = useRef(value)
     const close = useCallback(
       (commitChanges?: boolean) => {
@@ -131,6 +143,8 @@ export function wrapEditorAsGlideOverlay(
     const markerCount = reserveMarkerWidth ? getMarkerCount(editorData, columnMeta) : 0
     const expandedWidth = getExpandedEditorWidth(targetWidth, markerCount)
     const requestedOverlayWidth = expandedWidth + overlayExtraWidth
+    const resolvedOverlayHeight =
+      typeof overlayHeight === 'function' ? overlayHeight(target) : overlayHeight
 
     useEffect(() => {
       if (initialInputValue == null) {
@@ -158,7 +172,8 @@ export function wrapEditorAsGlideOverlay(
           width: `${expandedWidth}px`,
           maxWidth: `${expandedWidth}px`,
           minWidth: 0,
-          height: '100%',
+          minHeight: resolvedOverlayHeight == null ? undefined : `${resolvedOverlayHeight}px`,
+          height: resolvedOverlayHeight == null ? '100%' : `${resolvedOverlayHeight}px`,
           overflow: 'hidden',
           boxSizing: 'border-box',
         }}
@@ -196,6 +211,10 @@ export function wrapEditorAsGlideOverlay(
 const wrappedNullableEditor = wrapEditorAsGlideOverlay(NullableCellEditor, {
   testId: 'glide-text-editor',
 })
+const wrappedNullableMultilineEditor = wrapEditorAsGlideOverlay(NullableMultilineCellEditor, {
+  testId: 'glide-textarea-editor',
+  overlayHeight: getPreferredMultilineOverlayHeight,
+})
 const wrappedDateTimeEditor = wrapEditorAsGlideOverlay(
   DateTimeCellEditor as VendorNeutralEditorComponent,
   {
@@ -203,12 +222,27 @@ const wrappedDateTimeEditor = wrapEditorAsGlideOverlay(
   }
 )
 
+function shouldUseMultilineTextEditor(
+  column: GridColumn<unknown>,
+  editorType: GridEditorType
+): boolean {
+  if (editorType !== 'text' && editorType !== 'fk') return false
+  const dataType = typeof column.dataType === 'string' ? column.dataType : ''
+  return isWrappableTextSqlType(dataType)
+}
+
 export function getGlideEditor(
-  _column: GridColumn<unknown>,
+  column: GridColumn<unknown>,
   editorType: GridEditorType
 ): ProvideEditorCallbackResult<GridCell> | null {
   if (editorType === 'none') return null
   if (editorType === 'enum') return null
+
+  if (shouldUseMultilineTextEditor(column, editorType)) {
+    return {
+      editor: wrappedNullableMultilineEditor,
+    }
+  }
 
   const editorByType: Partial<Record<GridEditorType, FunctionComponent<CustomEditorProps>>> = {
     datetime: wrappedDateTimeEditor,
