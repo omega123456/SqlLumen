@@ -181,7 +181,7 @@
   text-transform: uppercase;
   font-weight: 700;
   letter-spacing: 0.04em;
-  min-width: 0;
+  min-width: 90px;
   overflow: hidden;
 }
 
