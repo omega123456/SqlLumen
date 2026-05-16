@@ -6,7 +6,7 @@ import { getProcessListRefreshTimestamp } from '../lib/processlist-time'
 import { showErrorToast } from './toast-store'
 
 import { logFrontend } from '../lib/app-log-commands'
-const DEFAULT_REFRESH_INTERVAL_MS = 1000
+const DEFAULT_REFRESH_INTERVAL_MS = 2000
 const DEFAULT_EXCLUDE_IDLE_CONNECTIONS = true
 const ERROR_TOAST_COOLDOWN_MS = 30_000
 

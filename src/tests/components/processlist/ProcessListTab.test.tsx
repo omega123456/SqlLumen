@@ -191,7 +191,7 @@ describe('ProcessListTab', () => {
     }
   })
 
-  it('uses a 1 second default auto-refresh interval when no override is set', () => {
+  it('uses a 2 second default auto-refresh interval when no override is set', () => {
     vi.useFakeTimers()
     try {
       useProcessListStore.setState({
@@ -209,7 +209,7 @@ describe('ProcessListTab', () => {
       fetchSpy.mockClear()
 
       act(() => {
-        vi.advanceTimersByTime(1100)
+        vi.advanceTimersByTime(2100)
       })
 
       expect(fetchSpy).toHaveBeenCalledWith('conn-1', 'conn-1', false)
