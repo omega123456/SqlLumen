@@ -841,6 +841,8 @@ mod command_wrapper_coverage {
         filter_model: Option<Vec<sqllumen_lib::mysql::table_data::FilterCondition>>,
         sort_column: Option<String>,
         sort_direction: Option<String>,
+        page: Option<u32>,
+        page_size: Option<u32>,
     ) -> Result<(), String> {
         table_data_commands::export_table_data(
             state,
@@ -854,6 +856,8 @@ mod command_wrapper_coverage {
             filter_model,
             sort_column,
             sort_direction,
+            page,
+            page_size,
         )
         .await
     }
@@ -2098,6 +2102,8 @@ fn export_table_options_serializes() {
         table_name_for_sql: "users".to_string(),
         filter_model: vec![],
         sort: None,
+        page: None,
+        page_size: None,
     };
     let json = serde_json::to_string(&opts).expect("serialize");
     assert!(!json.contains("connectionId"));
@@ -2240,6 +2246,8 @@ mod coverage_stubs {
             table_name_for_sql: "users".to_string(),
             filter_model: vec![],
             sort: None,
+            page: None,
+            page_size: None,
         };
 
         let result = export_table_data_impl(&pool, &options).await;

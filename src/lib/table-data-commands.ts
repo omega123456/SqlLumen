@@ -104,6 +104,8 @@ export async function exportTableData(params: {
   filterModel?: FilterCondition[]
   sortColumn?: string
   sortDirection?: string
+  page?: number
+  pageSize?: number
 }): Promise<void> {
   // Map 'sql-insert' -> 'sql' for the Rust backend which uses 'sql' as the format key
   const backendFormat = params.format === 'sql-insert' ? 'sql' : params.format
@@ -119,5 +121,7 @@ export async function exportTableData(params: {
     filterModel: params.filterModel ? mapFilterConditions(params.filterModel) : null,
     sortColumn: params.sortColumn ?? null,
     sortDirection: params.sortDirection ?? null,
+    page: params.page ?? null,
+    pageSize: params.pageSize ?? null,
   })
 }

@@ -14,17 +14,22 @@ export interface ExportResult {
  *
  * @param resultIndex — optional index into the `Vec<StoredResult>` for multi-result tabs.
  *                      If omitted, the backend defaults to index 0.
+ * @param rowIndices — optional array of row indices to export. When provided,
+ *                     only these rows from the stored results are exported
+ *                     (used to export only the currently visible/filtered rows).
  */
 export async function exportResults(
   connectionId: string,
   tabId: string,
   options: ExportOptions,
-  resultIndex?: number
+  resultIndex?: number,
+  rowIndices?: number[]
 ): Promise<ExportResult> {
   return invoke<ExportResult>('export_results', {
     connectionId,
     tabId,
     options,
     ...(resultIndex !== undefined ? { resultIndex } : {}),
+    ...(rowIndices !== undefined ? { rowIndices } : {}),
   })
 }

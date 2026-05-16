@@ -111,7 +111,23 @@ export function ResultPanel({ tabId, connectionId, isActive = true }: ResultPane
   // Filter state
   const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false)
   const filterModel: FilterCondition[] = activeResult.filterModel ?? EMPTY_FILTER_MODEL
+  const unfilteredRows = activeResult.unfilteredRows as unknown[][] | null
   const filterColumns = useMemo(() => columns.map((c) => c.name), [columns])
+
+  // Compute visible row indices for export when a filter is active.
+  // When unfilteredRows is non-null, the displayed `rows` are a reference-preserving
+  // subset of unfilteredRows. We find the original indices via reference equality.
+  const visibleRowIndices = useMemo(() => {
+    if (!unfilteredRows) return undefined
+    const rowSet = new Set(rows)
+    const indices: number[] = []
+    for (let i = 0; i < unfilteredRows.length; i++) {
+      if (rowSet.has(unfilteredRows[i])) {
+        indices.push(i)
+      }
+    }
+    return indices
+  }, [unfilteredRows, rows])
   const selectedCell = activeResult?.selectedCell ?? null
 
   const showSuccess = useToastStore((s) => s.showSuccess)
@@ -512,6 +528,7 @@ export function ResultPanel({ tabId, connectionId, isActive = true }: ResultPane
           tabId={tabId}
           resultIndex={activeResultIndex}
           onClose={() => closeExportDialog(tabId)}
+          rowIndices={visibleRowIndices}
         />
       )}
 

@@ -26,6 +26,11 @@ interface ExportDialogProps {
   defaultTableName?: string
   /** When true, hides the SQL INSERT format option (views cannot be inserted into). */
   isView?: boolean
+  /**
+   * When provided, only these row indices from the stored results are exported.
+   * Used to export only the currently visible/filtered rows.
+   */
+  rowIndices?: number[]
 }
 
 const EXPORT_FORMAT_CONFIG: Record<
@@ -79,6 +84,7 @@ export default function ExportDialog({
   onExport,
   defaultTableName,
   isView,
+  rowIndices,
 }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>('csv')
   const [filePath, setFilePath] = useState('')
@@ -140,7 +146,8 @@ export default function ExportDialog({
             includeHeaders,
             tableName: format === 'sql-insert' ? tableName : undefined,
           },
-          resultIndex
+          resultIndex,
+          rowIndices
         )
       }
       onClose()
@@ -159,6 +166,7 @@ export default function ExportDialog({
     onClose,
     onExport,
     resultIndex,
+    rowIndices,
   ])
 
   return (

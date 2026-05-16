@@ -7,12 +7,16 @@ pub use crate::export::export_with_data;
 /// Core export logic — testable without the Tauri runtime.
 /// Looks up stored results by (connection_id, tab_id), clones the data
 /// under a brief read lock, then delegates to format-specific writers.
+///
+/// When `row_indices` is provided, only those rows (by position) are exported.
+/// This supports exporting only the visible/filtered rows from the frontend.
 pub fn export_results_impl(
     state: &AppState,
     connection_id: &str,
     tab_id: &str,
     options: ExportOptions,
     result_index: Option<usize>,
+    row_indices: Option<&[usize]>,
 ) -> Result<ExportResult, String> {
     let (columns, rows) = {
         let results = state.results.read().map_err(|e| e.to_string())?;
@@ -27,7 +31,13 @@ pub fn export_results_impl(
             )
         })?;
         let cols: Vec<String> = stored.columns.iter().map(|c| c.name.clone()).collect();
-        let rows = stored.rows.clone();
+        let rows = match row_indices {
+            Some(indices) => indices
+                .iter()
+                .filter_map(|&i| stored.rows.get(i).cloned())
+                .collect(),
+            None => stored.rows.clone(),
+        };
         (cols, rows)
     };
 
@@ -41,6 +51,7 @@ pub async fn export_results(
     tab_id: String,
     options: ExportOptions,
     result_index: Option<usize>,
+    row_indices: Option<Vec<usize>>,
 ) -> Result<ExportResult, String> {
     // Clone data under brief lock, then release the lock before writing
     let (columns, rows) = {
@@ -56,7 +67,13 @@ pub async fn export_results(
             )
         })?;
         let cols: Vec<String> = stored.columns.iter().map(|c| c.name.clone()).collect();
-        let rows = stored.rows.clone();
+        let rows = match &row_indices {
+            Some(indices) => indices
+                .iter()
+                .filter_map(|&i| stored.rows.get(i).cloned())
+                .collect(),
+            None => stored.rows.clone(),
+        };
         (cols, rows)
     };
 

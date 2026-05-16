@@ -414,25 +414,104 @@ describe('AppLayout', () => {
   })
 
   describe('format-query action', () => {
-    it('formats the SQL content of the active query-editor tab', () => {
-      useConnectionStore.setState({ activeTabId: 'conn-1' })
-      useWorkspaceStore.setState({
-        tabsByConnection: {
-          'conn-1': [{ id: 'tab-1', type: 'query-editor', connectionId: 'conn-1', label: 'Q1' }],
-        },
-        activeTabByConnection: { 'conn-1': 'tab-1' },
+    it('formats only the statement at cursor when no selection', () => {
+      setActiveQueryEditorTab({
+        content: 'select 1;\nselect 2;',
+        selectedText: '',
+        cursorPosition: { lineNumber: 1, column: 1 },
       })
       const setContentMock = vi.fn()
-      useQueryStore.setState({
-        tabs: {
-          'tab-1': {
-            content: 'select 1',
-            status: 'idle',
-            results: [],
-          },
-        },
-        setContent: setContentMock,
-      } as never)
+      useQueryStore.setState({ setContent: setContentMock } as never)
+
+      render(<AppLayout />)
+
+      act(() => {
+        useShortcutStore.getState().dispatchAction('format-query')
+      })
+
+      expect(setContentMock).toHaveBeenCalledTimes(1)
+      const resultContent = setContentMock.mock.calls[0][1] as string
+      // The first statement should be formatted but the second statement should remain unchanged
+      expect(resultContent).toContain('select 2;')
+      // The formatted first statement should end with a semicolon
+      expect(resultContent.split('select 2;')[0].trimEnd()).toMatch(/;$/)
+    })
+
+    it('formats only the second statement when cursor is on line 2', () => {
+      setActiveQueryEditorTab({
+        content: 'select 1;\nselect 2;',
+        selectedText: '',
+        cursorPosition: { lineNumber: 2, column: 1 },
+      })
+      const setContentMock = vi.fn()
+      useQueryStore.setState({ setContent: setContentMock } as never)
+
+      render(<AppLayout />)
+
+      act(() => {
+        useShortcutStore.getState().dispatchAction('format-query')
+      })
+
+      expect(setContentMock).toHaveBeenCalledTimes(1)
+      const resultContent = setContentMock.mock.calls[0][1] as string
+      // The first statement should remain unchanged
+      expect(resultContent).toMatch(/^select 1;\n/)
+    })
+
+    it('formats only the selected text when selection is present (forward selection)', () => {
+      // "select 1" is at offset 0-8; cursor at end means forward selection
+      setActiveQueryEditorTab({
+        content: 'select 1;\nselect 2;',
+        selectedText: 'select 1',
+        cursorPosition: { lineNumber: 1, column: 9 }, // end of "select 1"
+      })
+      const setContentMock = vi.fn()
+      useQueryStore.setState({ setContent: setContentMock } as never)
+
+      render(<AppLayout />)
+
+      act(() => {
+        useShortcutStore.getState().dispatchAction('format-query')
+      })
+
+      expect(setContentMock).toHaveBeenCalledTimes(1)
+      const resultContent = setContentMock.mock.calls[0][1] as string
+      // The second statement should remain unchanged
+      expect(resultContent).toContain('select 2;')
+      // The formatted selected text should be different from the raw "select 1"
+      expect(resultContent).not.toBe('select 1;\nselect 2;')
+    })
+
+    it('formats only the selected text when selection is present (backward selection)', () => {
+      // "select 2" is at offset 10-18; cursor at start means backward selection
+      setActiveQueryEditorTab({
+        content: 'select 1;\nselect 2;',
+        selectedText: 'select 2',
+        cursorPosition: { lineNumber: 2, column: 1 }, // start of "select 2"
+      })
+      const setContentMock = vi.fn()
+      useQueryStore.setState({ setContent: setContentMock } as never)
+
+      render(<AppLayout />)
+
+      act(() => {
+        useShortcutStore.getState().dispatchAction('format-query')
+      })
+
+      expect(setContentMock).toHaveBeenCalledTimes(1)
+      const resultContent = setContentMock.mock.calls[0][1] as string
+      // The first statement should remain unchanged
+      expect(resultContent).toMatch(/^select 1;\n/)
+    })
+
+    it('formats the entire content when only a single statement exists', () => {
+      setActiveQueryEditorTab({
+        content: 'select 1',
+        selectedText: '',
+        cursorPosition: { lineNumber: 1, column: 1 },
+      })
+      const setContentMock = vi.fn()
+      useQueryStore.setState({ setContent: setContentMock } as never)
 
       render(<AppLayout />)
 

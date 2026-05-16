@@ -362,6 +362,8 @@ pub async fn export_table_data(
     filter_model: Option<Vec<table_data::FilterCondition>>,
     sort_column: Option<String>,
     sort_direction: Option<String>,
+    page: Option<u32>,
+    page_size: Option<u32>,
 ) -> Result<(), String> {
     let pool = state
         .registry
@@ -375,11 +377,19 @@ pub async fn export_table_data(
 
     let filter = filter_model.unwrap_or_default();
 
-    // Build descriptive SQL for history (export = SELECT without LIMIT)
+    // Build descriptive SQL for history — includes LIMIT if page/page_size are provided
+    let limit_for_sql = match (page, page_size) {
+        (Some(p), Some(ps)) => {
+            let offset = (p.saturating_sub(1)) as u64 * ps as u64;
+            Some((ps, offset))
+        }
+        _ => None,
+    };
     let filter_clause = table_data::translate_filter_model(&filter);
-    let raw_sql = build_select_sql(&database, &table, &filter, &sort, None).unwrap_or_else(|| {
-        format!("SELECT * FROM `{database}`.`{table}` /* export to {format} */")
-    });
+    let raw_sql =
+        build_select_sql(&database, &table, &filter, &sort, limit_for_sql).unwrap_or_else(|| {
+            format!("SELECT * FROM `{database}`.`{table}` /* export to {format} */")
+        });
     let sql_text = interpolate_sql_params(&raw_sql, &filter_clause.params);
 
     let options = table_data::ExportTableOptions {
@@ -391,6 +401,8 @@ pub async fn export_table_data(
         table_name_for_sql,
         filter_model: filter,
         sort,
+        page,
+        page_size,
     };
 
     let start = std::time::Instant::now();

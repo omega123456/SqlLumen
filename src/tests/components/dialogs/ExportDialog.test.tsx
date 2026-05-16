@@ -147,6 +147,7 @@ describe('ExportDialog', () => {
             includeHeaders: true,
             tableName: undefined,
           },
+          undefined,
           undefined
         )
       },
@@ -183,6 +184,7 @@ describe('ExportDialog', () => {
             format: 'sql-insert',
             tableName: 'exported_results',
           }),
+          undefined,
           undefined
         )
       },
@@ -298,6 +300,7 @@ describe('ExportDialog', () => {
           expect.objectContaining({
             includeHeaders: false,
           }),
+          undefined,
           undefined
         )
       },
@@ -440,6 +443,7 @@ describe('ExportDialog', () => {
             format: 'sql-insert',
             tableName: 'my_table',
           }),
+          undefined,
           undefined
         )
       },
@@ -506,4 +510,51 @@ describe('ExportDialog', () => {
       expect(combo).toHaveTextContent('CSV')
     })
   })
+
+  it('passes rowIndices to exportResults when provided', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const rowIndices = [0, 2, 5]
+    render(<ExportDialog {...defaultProps} onClose={onClose} rowIndices={rowIndices} />)
+
+    setExportDestinationPath('/tmp/filtered-export.csv')
+    await user.click(screen.getByTestId('export-submit-button'))
+
+    await waitFor(
+      () => {
+        expect(mockExportResults).toHaveBeenCalledWith(
+          'conn-1',
+          'tab-1',
+          expect.objectContaining({
+            format: 'csv',
+            filePath: '/tmp/filtered-export.csv',
+          }),
+          undefined,
+          [0, 2, 5]
+        )
+      },
+      { timeout: 5000 }
+    )
+  }, 15000)
+
+  it('does not pass rowIndices to exportResults when not provided', async () => {
+    const user = userEvent.setup()
+    render(<ExportDialog {...defaultProps} />)
+
+    setExportDestinationPath('/tmp/export.csv')
+    await user.click(screen.getByTestId('export-submit-button'))
+
+    await waitFor(
+      () => {
+        expect(mockExportResults).toHaveBeenCalledWith(
+          'conn-1',
+          'tab-1',
+          expect.objectContaining({ format: 'csv' }),
+          undefined,
+          undefined
+        )
+      },
+      { timeout: 5000 }
+    )
+  }, 15000)
 })

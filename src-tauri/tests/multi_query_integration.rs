@@ -196,7 +196,7 @@ fn export_with_result_index_one_exports_second_result() {
         table_name: None,
     };
 
-    let result = export_results_impl(&state, "c1", "t1", options, Some(1))
+    let result = export_results_impl(&state, "c1", "t1", options, Some(1), None)
         .expect("export at index 1 should succeed");
     assert_eq!(result.rows_exported, 2); // second result has 2 rows
 
@@ -220,7 +220,7 @@ fn export_with_result_index_out_of_range_errors() {
         table_name: None,
     };
 
-    let err = export_results_impl(&state, "c1", "t1", options, Some(5))
+    let err = export_results_impl(&state, "c1", "t1", options, Some(5), None)
         .expect_err("out-of-range result_index should error");
     assert!(err.contains("Result index 5 out of range"));
 }
@@ -244,7 +244,7 @@ fn export_with_none_defaults_to_first_result() {
         table_name: None,
     };
 
-    let result = export_results_impl(&state, "c1", "t1", options, None)
+    let result = export_results_impl(&state, "c1", "t1", options, None, None)
         .expect("export with None should default to index 0");
     assert_eq!(result.rows_exported, 3); // first result has 3 rows
 

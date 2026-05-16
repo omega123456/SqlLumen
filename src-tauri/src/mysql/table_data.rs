@@ -105,6 +105,9 @@ pub struct ExportTableOptions {
     pub table_name_for_sql: String,
     pub filter_model: Vec<FilterCondition>,
     pub sort: Option<SortInfo>,
+    /// When set, limits the export to a single page of results (current visible rows).
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
 }
 
 // ── Pure functions (always available) ──────────────────────────────────────────
@@ -1383,7 +1386,7 @@ pub async fn export_table_data_impl(
     let safe_table = safe_identifier(&options.table)?;
     let (_, columns) = fetch_table_pk_impl(pool, &options.database, &options.table).await?;
 
-    // Build WHERE and ORDER BY (same as data fetch, but no LIMIT/OFFSET)
+    // Build WHERE, ORDER BY, and optional LIMIT/OFFSET (to export only the current page)
     let filter_clause = translate_filter_model_with_columns(&options.filter_model, &columns);
     let where_sql = if filter_clause.sql.is_empty() {
         String::new()
@@ -1400,7 +1403,15 @@ pub async fn export_table_data_impl(
         None => String::new(),
     };
 
-    let sql = format!("SELECT * FROM {safe_db}.{safe_table}{where_sql}{order_sql}");
+    let limit_sql = match (options.page, options.page_size) {
+        (Some(page), Some(page_size)) => {
+            let offset = (page.saturating_sub(1)) as u64 * page_size as u64;
+            format!(" LIMIT {page_size} OFFSET {offset}")
+        }
+        _ => String::new(),
+    };
+
+    let sql = format!("SELECT * FROM {safe_db}.{safe_table}{where_sql}{order_sql}{limit_sql}");
     log_table_data_sql(&sql, &filter_clause.params);
     let format = crate::export::ExportFormat::from_format_str(&options.format)?;
 

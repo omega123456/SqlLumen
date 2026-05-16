@@ -204,9 +204,79 @@ export function AppLayout() {
 
         const content = tabState.content ?? ''
         if (!content.trim()) return
+
+        const selectedText = tabState.selectedText ?? ''
+        const cursorPosition = tabState.cursorPosition
+
         try {
-          const formatted = formatSQL(content, { language: 'mysql', tabWidth: 2 })
-          queryState.setContent(tabId, formatted)
+          if (selectedText.length > 0) {
+            // Format only the selected text and replace it in-place
+            const formatted = formatSQL(selectedText, { language: 'mysql', tabWidth: 2 })
+            const cursor = cursorPosition ?? { lineNumber: 1, column: 1 }
+            const cursorOffset = cursorToOffset(content, cursor.lineNumber, cursor.column)
+
+            // The cursor is at one end of the selection — find which end
+            let selectionStart: number
+            if (
+              cursorOffset >= selectedText.length &&
+              content.substring(cursorOffset - selectedText.length, cursorOffset) === selectedText
+            ) {
+              // Cursor is at the end of the selection (forward selection)
+              selectionStart = cursorOffset - selectedText.length
+            } else if (
+              content.substring(cursorOffset, cursorOffset + selectedText.length) === selectedText
+            ) {
+              // Cursor is at the start of the selection (backward selection)
+              selectionStart = cursorOffset
+            } else {
+              // Fallback: search for the selected text nearest to cursor
+              const idx = content.indexOf(selectedText)
+              if (idx === -1) return
+              selectionStart = idx
+            }
+
+            const newContent =
+              content.substring(0, selectionStart) +
+              formatted +
+              content.substring(selectionStart + selectedText.length)
+            queryState.setContent(tabId, newContent)
+          } else {
+            // No selection — format only the statement at cursor
+            const cursor = cursorPosition ?? { lineNumber: 1, column: 1 }
+            const offset = cursorToOffset(content, cursor.lineNumber, cursor.column)
+            const statements = splitStatements(content)
+            const statementAtCursor = findStatementAtCursor(statements, offset)
+
+            if (statementAtCursor) {
+              const formatted = formatSQL(statementAtCursor.sql, { language: 'mysql', tabWidth: 2 })
+              // Replace the statement range in the original content, preserving surrounding text
+              const before = content.substring(0, statementAtCursor.start)
+              // The end offset includes the delimiter; we want to replace only the statement text
+              // but keep any trailing delimiter. The `end` includes the delimiter character(s).
+              // We replace from start to just the statement text length (start + sql original span).
+              // Actually, statementAtCursor.end includes the delimiter, and statementAtCursor.sql
+              // is the trimmed text. We need to replace the full range [start, end) which includes
+              // the delimiter, but re-append a semicolon after the formatted text.
+              const after = content.substring(statementAtCursor.end)
+              // Determine if there was a trailing delimiter (semicolon) in the original range
+              const rangeText = content.substring(statementAtCursor.start, statementAtCursor.end)
+              const hadTrailingDelimiter = rangeText.trimEnd().endsWith(';')
+              const formattedTrimmed = formatted.trimEnd()
+              // sql-formatter may add its own trailing semicolons or not — normalize
+              const formattedWithoutTrailingSemicolon = formattedTrimmed.endsWith(';')
+                ? formattedTrimmed.slice(0, -1).trimEnd()
+                : formattedTrimmed
+              const finalFormatted = hadTrailingDelimiter
+                ? formattedWithoutTrailingSemicolon + ';'
+                : formattedWithoutTrailingSemicolon
+              const newContent = before + finalFormatted + after
+              queryState.setContent(tabId, newContent)
+            } else {
+              // Fallback: format entire content
+              const formatted = formatSQL(content, { language: 'mysql', tabWidth: 2 })
+              queryState.setContent(tabId, formatted)
+            }
+          }
         } catch {
           // format failed — ignore
         }

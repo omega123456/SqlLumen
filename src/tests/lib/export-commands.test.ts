@@ -97,4 +97,50 @@ describe('exportResults', () => {
     expect(capturedArgs).toBeDefined()
     expect(capturedArgs!.resultIndex).toBe(2)
   })
+
+  it('does not include rowIndices when omitted', async () => {
+    let capturedArgs: Record<string, unknown> | undefined
+    mockIPC((cmd, args) => {
+      if (cmd === 'export_results') {
+        capturedArgs = args as Record<string, unknown>
+        return { bytesWritten: 100, rowsExported: 1 }
+      }
+      return null
+    })
+
+    await exportResults('conn-1', 'tab-1', {
+      format: 'csv',
+      filePath: '/tmp/export.csv',
+      includeHeaders: true,
+    })
+
+    expect(capturedArgs).toBeDefined()
+    expect('rowIndices' in capturedArgs!).toBe(false)
+  })
+
+  it('includes rowIndices when provided', async () => {
+    let capturedArgs: Record<string, unknown> | undefined
+    mockIPC((cmd, args) => {
+      if (cmd === 'export_results') {
+        capturedArgs = args as Record<string, unknown>
+        return { bytesWritten: 100, rowsExported: 3 }
+      }
+      return null
+    })
+
+    await exportResults(
+      'conn-1',
+      'tab-1',
+      {
+        format: 'csv',
+        filePath: '/tmp/export.csv',
+        includeHeaders: true,
+      },
+      0,
+      [1, 3, 5]
+    )
+
+    expect(capturedArgs).toBeDefined()
+    expect(capturedArgs!.rowIndices).toEqual([1, 3, 5])
+  })
 })

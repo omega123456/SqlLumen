@@ -459,6 +459,72 @@ describe('TableDataTab', () => {
     })
   })
 
+  it('handleExport passes page and pageSize to exportTableData', async () => {
+    setupConnection()
+    render(<TableDataTab tab={makeTab()} />)
+
+    await waitForTableDataLoaded()
+
+    // Set specific page/pageSize state
+    await act(async () => {
+      useTableDataStore.setState((state) => ({
+        tabs: {
+          ...state.tabs,
+          'tab-1': {
+            ...state.tabs['tab-1'],
+            currentPage: 3,
+            pageSize: 50,
+          },
+        },
+      }))
+    })
+
+    // Open export dialog
+    await act(async () => {
+      useTableDataStore.getState().openExportDialog('tab-1')
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
+    })
+
+    // Verify onExport is passed with correct page/pageSize by invoking it
+    const lastCall = exportDialogSpy.mock.calls[exportDialogSpy.mock.calls.length - 1][0]
+    const onExport = lastCall.onExport as (options: {
+      format: string
+      filePath: string
+      includeHeaders: boolean
+      tableName: string
+    }) => Promise<void>
+
+    const { exportTableData } = await import('../../../lib/table-data-commands')
+    const mockExportTableData = vi.mocked(exportTableData)
+    mockExportTableData.mockClear()
+
+    await act(async () => {
+      await onExport({
+        format: 'csv',
+        filePath: '/tmp/test.csv',
+        includeHeaders: true,
+        tableName: 'users',
+      })
+    })
+
+    expect(mockExportTableData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionId: 'conn-1',
+        database: 'mydb',
+        table: 'users',
+        format: 'csv',
+        filePath: '/tmp/test.csv',
+        includeHeaders: true,
+        tableNameForSql: 'users',
+        page: 3,
+        pageSize: 50,
+      })
+    )
+  })
+
   it('handleDiscardNavigation closes unsaved dialog', async () => {
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)

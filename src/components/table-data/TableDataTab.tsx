@@ -95,10 +95,22 @@ export function TableDataTab({ tab, isActive = true }: TableDataTabProps) {
             : undefined,
         sortColumn: tabState?.sort?.column,
         sortDirection: tabState?.sort?.direction,
+        page: tabState?.currentPage,
+        pageSize: tabState?.pageSize,
       })
       closeExportDialog(tabId)
     },
-    [connectionId, database, table, tabState?.filterModel, tabState?.sort, closeExportDialog, tabId]
+    [
+      connectionId,
+      database,
+      table,
+      tabState?.filterModel,
+      tabState?.sort,
+      tabState?.currentPage,
+      tabState?.pageSize,
+      closeExportDialog,
+      tabId,
+    ]
   )
 
   const isLoading = tabState?.isLoading ?? true
