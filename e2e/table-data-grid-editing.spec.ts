@@ -338,9 +338,12 @@ test('editing a cell then selecting the next cell requires re-activation to edit
   // Wait for grid data to render (at least one row)
   await expect(grid).toBeVisible({ timeout: APP_READY_MS })
 
+  const canvas = grid.locator('canvas[data-testid="data-grid-canvas"]').first()
+
   for (let index = 0; index < 3; index += 1) {
     // Select the name cell, then type to enter edit mode.
     await clickCellByColumnName(grid, 0, 'name')
+    await expect(canvas).toBeFocused({ timeout: APP_READY_MS })
     await page.keyboard.type('J')
 
     const nameEditor = page.locator('.td-cell-editor-input').first()
@@ -353,6 +356,7 @@ test('editing a cell then selecting the next cell requires re-activation to edit
     await expect(nameEditor).not.toBeVisible({ timeout: APP_READY_MS })
 
     // Re-activate editing explicitly on the selected email cell via typing.
+    await expect(canvas).toBeFocused({ timeout: APP_READY_MS })
     await page.keyboard.type('j')
 
     const emailEditor = page.locator('.td-cell-editor-input').first()
@@ -753,17 +757,22 @@ test('query result grid supports keyboard navigation, copy, edit cancel, and tab
   const copied = await page.evaluate(() => navigator.clipboard.readText().catch(() => ''))
   expect(copied.length).toBeGreaterThan(0)
 
-  await clickResultGridCell(page, 0, 0)
-  await expect(grid.locator('canvas').first()).toBeFocused({ timeout: APP_READY_MS })
+  // After keyboard navigation, click the name cell and type to open the editor.
+  await clickCellByColumnName(grid, 0, 'name')
+  const canvas = grid.locator('canvas').first()
+  await expect(canvas).toBeFocused({ timeout: APP_READY_MS })
+  await page.keyboard.type('C')
 
-  await activateResultCellEditorByColumnName(page, 0, 'name')
   const editor = page.locator('.td-cell-editor-input').first()
   await expect(editor).toBeVisible({ timeout: APP_READY_MS })
   await editor.fill('Cancelled Value')
   await page.keyboard.press('Escape')
   await expect(editor).not.toBeVisible({ timeout: APP_READY_MS })
 
-  await activateResultCellEditorByColumnName(page, 0, 'name')
+  // After Escape the name cell stays selected. Clicking it again triggers
+  // cellActivationBehavior="second-click", opening the editor directly.
+  await clickCellByColumnName(grid, 0, 'name')
+
   const commitEditor = page.locator('.td-cell-editor-input').first()
   await expect(commitEditor).toBeVisible({ timeout: APP_READY_MS })
   await commitEditor.fill('Committed Value')
