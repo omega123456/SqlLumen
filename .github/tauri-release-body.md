@@ -1,1 +1,1 @@
-Moved to glide from react-data-grid
+See release assets for platform installers.
