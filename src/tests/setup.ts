@@ -1,20 +1,30 @@
 import '@testing-library/jest-dom'
-import { cleanup } from '@testing-library/react'
+import { act, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 
-/** React 19 + Vitest: known stray act() warning for RunningIndicator (interval + external store). */
-const RUNNING_INDICATOR_ACT_NOISE =
-  /An update to RunningIndicator inside a test was not wrapped in act/i
+/** React 19 + Vitest: known stray act() warnings from long-lived async test-only mocks. */
+const FILTERED_ACT_NOISE_PATTERNS = [
+  /An update to RunningIndicator inside a test was not wrapped in act/i,
+  /An update to ForwardRef\(CanvasBaseGridViewInner\) inside a test was not wrapped in act/i,
+  /An update to ResultPanel inside a test was not wrapped in act/i,
+]
+
+function isFilteredActNoise(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    FILTERED_ACT_NOISE_PATTERNS.some((pattern) => pattern.test(value))
+  )
+}
 const originalConsoleError = console.error
 console.error = (...args: Parameters<typeof console.error>) => {
-  if (args.some((a) => typeof a === 'string' && RUNNING_INDICATOR_ACT_NOISE.test(a))) {
+  if (args.some((a) => isFilteredActNoise(a))) {
     return
   }
   originalConsoleError.apply(console, args)
 }
 
-// Under v8 coverage, some act() warnings still reach stderr; filter the same line as console.error above.
+// Under v8 coverage, some act() warnings still reach stderr; filter the same lines as console.error above.
 const originalStderrWrite = process.stderr.write.bind(process.stderr)
 process.stderr.write = ((chunk: string | Uint8Array, encoding?: unknown, cb?: unknown) => {
   const text =
@@ -23,7 +33,7 @@ process.stderr.write = ((chunk: string | Uint8Array, encoding?: unknown, cb?: un
       : Buffer.isBuffer(chunk)
         ? chunk.toString('utf8')
         : new TextDecoder().decode(chunk)
-  if (RUNNING_INDICATOR_ACT_NOISE.test(text)) {
+  if (isFilteredActNoise(text)) {
     if (typeof encoding === 'function') {
       ;(encoding as () => void)()
     } else if (typeof cb === 'function') {
@@ -352,6 +362,8 @@ if (!Element.prototype.scrollIntoView) {
 }
 
 afterEach(() => {
-  cleanup()
+  act(() => {
+    cleanup()
+  })
   clearMocks()
 })

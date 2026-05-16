@@ -2,10 +2,12 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import * as monaco from 'monaco-editor'
 import { loader } from '@monaco-editor/react'
+import { mockIPC } from '@tauri-apps/api/mocks'
 
 import './lib/monaco-worker-setup'
 import './styles/global.css'
 import App from './App'
+import { playwrightIpcMockHandler } from './lib/playwright-ipc-mock'
 import { useSettingsStore } from './stores/settings-store'
 import { useConnectionStore } from './stores/connection-store'
 import { initAiMemoryStore } from './stores/ai-memory-store'
@@ -52,8 +54,6 @@ monaco.editor.createWebWorker = function patchedCreateWebWorker<T extends object
 async function init() {
   // Install Playwright mocks FIRST (before any invoke calls)
   if (import.meta.env.VITE_PLAYWRIGHT === 'true') {
-    const { mockIPC } = await import('@tauri-apps/api/mocks')
-    const { playwrightIpcMockHandler } = await import('./lib/playwright-ipc-mock')
     mockIPC((cmd, args) => playwrightIpcMockHandler(cmd, args as Record<string, unknown>))
 
     // Expose stores for E2E tests to programmatically open tabs / toasts

@@ -146,10 +146,12 @@ describe('GlideDataGrid', () => {
       onCellClicked: (cell: readonly [number, number], event: unknown) => void
       onKeyDown: (event: { key: string }) => void
     }
-    props.onColumnResize({}, 120, 0)
-    props.onHeaderClicked(0)
-    props.onCellClicked([0, 0], {})
-    props.onKeyDown({ key: 'ArrowDown' })
+    act(() => {
+      props.onColumnResize({}, 120, 0)
+      props.onHeaderClicked(0)
+      props.onCellClicked([0, 0], {})
+      props.onKeyDown({ key: 'ArrowDown' })
+    })
     expect(onColumnResize).toHaveBeenCalledWith(0, 120)
     expect(onHeaderClicked).toHaveBeenCalledWith(0)
     expect(onCellClicked).toHaveBeenCalledWith([0, 0], {})
@@ -172,10 +174,14 @@ describe('GlideDataGrid', () => {
       />
     )
 
-    ref.current?.scrollToCell({ rowIdx: 4 })
+    act(() => {
+      ref.current?.scrollToCell({ rowIdx: 4 })
+    })
     expect(mockScrollTo).toHaveBeenCalledWith(0, 4, 'both')
 
-    ref.current?.selectCell({ idx: 2, rowIdx: 3 })
+    act(() => {
+      ref.current?.selectCell({ idx: 2, rowIdx: 3 })
+    })
     expect(mockScrollTo).toHaveBeenCalledWith(2, 3, 'both')
     expect(mockFocus).toHaveBeenCalled()
     expect(ref.current?.element).toBe(screen.getByTestId('handle-grid'))
@@ -307,7 +313,9 @@ describe('GlideDataGrid', () => {
     const props = mockDataEditor.mock.lastCall?.[0] as {
       onCellActivated: (cell: readonly [number, number]) => void
     }
-    props.onCellActivated([2, 3])
+    act(() => {
+      props.onCellActivated([2, 3])
+    })
     expect(onCellActivated).toHaveBeenCalledWith([2, 3])
     expect(mockGetBounds).not.toHaveBeenCalled()
     expect(onCellDoubleClicked).not.toHaveBeenCalled()
@@ -336,7 +344,9 @@ describe('GlideDataGrid', () => {
     }
 
     const event = { isDoubleClick: true, preventDefault: vi.fn() }
-    props.onCellClicked([2, 3], event)
+    act(() => {
+      props.onCellClicked([2, 3], event)
+    })
 
     expect(onCellClicked).not.toHaveBeenCalled()
     expect(onCellDoubleClicked).toHaveBeenCalledWith([2, 3], event)

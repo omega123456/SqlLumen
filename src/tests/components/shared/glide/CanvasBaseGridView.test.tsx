@@ -248,7 +248,7 @@ describe('CanvasBaseGridView', () => {
     )
   })
 
-  it('context menu callback fires through context menu bridge', () => {
+  it('context menu callback fires through context menu bridge', async () => {
     const onRowClick = vi.fn()
     render(
       <CanvasBaseGridView rows={rows} columns={columns} editState={null} onRowClick={onRowClick} />
@@ -257,7 +257,9 @@ describe('CanvasBaseGridView', () => {
       onCellContextMenu: (cell: readonly [number, number], event: unknown) => void
     }
     act(() => props.onCellContextMenu([0, 0], {}))
-    expect(onRowClick).toHaveBeenCalledWith(rows[0], 'name')
+    await waitFor(() => {
+      expect(onRowClick).toHaveBeenCalledWith(rows[0], 'name')
+    })
   })
 
   it('info-cell click triggers virtual popover callback', () => {
@@ -658,23 +660,31 @@ describe('CanvasBaseGridView', () => {
       onSelectionChange: (selection: { rows: Iterable<number> }) => void
     }
 
-    props.onCellEdited([0, 0], { kind: GridCellKind.Text, data: '', copyData: 'NULL' })
+    act(() => {
+      props.onCellEdited([0, 0], { kind: GridCellKind.Text, data: '', copyData: 'NULL' })
+    })
     expect(onCellValueChange).toHaveBeenCalledWith(0, 'name', null)
     expect(onRowsChange).toHaveBeenCalledWith([{ ...rows[0], name: null }], {
       indexes: [0],
       column: expect.objectContaining({ key: 'name' }),
     })
 
-    expect(
-      props.onDelete({
+    let deleteResult = false
+    act(() => {
+      deleteResult = props.onDelete({
         current: { range: { x: 0, y: 0, width: 1, height: 1 }, rangeStack: [] },
         rows: [],
         columns: [],
       })
-    ).toBe(false)
+    })
+    expect(deleteResult).toBe(false)
     expect(onCellValueChange).toHaveBeenLastCalledWith(0, 'name', '')
 
-    expect(props.onPaste([0, 0], [['pasted']])).toBe(true)
+    let pasteAccepted = false
+    act(() => {
+      pasteAccepted = props.onPaste([0, 0], [['pasted']])
+    })
+    expect(pasteAccepted).toBe(true)
     expect(onCellClipboardEdit).toHaveBeenCalledWith({
       rowIdx: 0,
       rowData: rows[0],
@@ -682,9 +692,15 @@ describe('CanvasBaseGridView', () => {
       action: 'paste',
       text: 'pasted',
     })
-    expect(props.onPaste([5, 0], [['ignored']])).toBe(false)
+    let pasteIgnored = true
+    act(() => {
+      pasteIgnored = props.onPaste([5, 0], [['ignored']])
+    })
+    expect(pasteIgnored).toBe(false)
 
-    props.onVisibleRegionChanged({ x: 3, y: 4, width: 10, height: 5 }, 11, 22)
+    act(() => {
+      props.onVisibleRegionChanged({ x: 3, y: 4, width: 10, height: 5 }, 11, 22)
+    })
     expect(onScrollCellChange).toHaveBeenCalledWith(4, 3)
 
     act(() =>
@@ -702,7 +718,9 @@ describe('CanvasBaseGridView', () => {
       })
     )
 
-    props.onSelectionChange({ rows: [0] })
+    act(() => {
+      props.onSelectionChange({ rows: [0] })
+    })
     expect(onRowMarkersChange).toHaveBeenCalledWith(rows)
   })
 
@@ -2440,7 +2458,9 @@ describe('CanvasBaseGridView', () => {
     )
 
     const event = new KeyboardEvent('keydown', { key: 'F4', bubbles: true, cancelable: true })
-    document.dispatchEvent(event)
+    act(() => {
+      document.dispatchEvent(event)
+    })
 
     await waitFor(() =>
       expect(onFkCellAction).toHaveBeenCalledWith({
@@ -2476,10 +2496,12 @@ describe('CanvasBaseGridView', () => {
       onCellClicked: (cell: readonly [number, number], event: unknown) => void
     }
 
-    act(() => props.onCellClicked([0, 0], {}))
-    document.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'F4', bubbles: true, cancelable: true })
-    )
+    act(() => {
+      props.onCellClicked([0, 0], {})
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'F4', bubbles: true, cancelable: true })
+      )
+    })
 
     await waitFor(() =>
       expect(onFkCellAction).toHaveBeenCalledWith({

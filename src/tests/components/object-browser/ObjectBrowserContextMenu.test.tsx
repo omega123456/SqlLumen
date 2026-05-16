@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ObjectBrowserContextMenu } from '../../../components/object-browser/ObjectBrowserContextMenu'
 import { useSchemaStore, makeNodeId } from '../../../stores/schema-store'
@@ -39,18 +39,20 @@ function setNodes(
     })
   }
 
-  useSchemaStore.setState({
-    connectionStates: {
-      [CONN_ID]: {
-        nodes,
-        childIdsByParentId,
-        expandedNodes: opts?.expanded ?? new Set(),
-        loadingNodes: opts?.loading ?? new Set(),
-        selectedNodeId: null,
-        filterText: '',
-        loadGeneration: 0,
+  act(() => {
+    useSchemaStore.setState({
+      connectionStates: {
+        [CONN_ID]: {
+          nodes,
+          childIdsByParentId,
+          expandedNodes: opts?.expanded ?? new Set(),
+          loadingNodes: opts?.loading ?? new Set(),
+          selectedNodeId: null,
+          filterText: '',
+          loadGeneration: 0,
+        },
       },
-    },
+    })
   })
 }
 
@@ -154,14 +156,16 @@ function makeNodes() {
 beforeEach(() => {
   vi.clearAllMocks()
   _resetTabIdCounter()
-  useSchemaStore.setState({
-    connectionStates: {},
-    refreshDatabase: vi.fn().mockResolvedValue(undefined),
-    refreshAll: vi.fn().mockResolvedValue(undefined),
-  })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
+  act(() => {
+    useSchemaStore.setState({
+      connectionStates: {},
+      refreshDatabase: vi.fn().mockResolvedValue(undefined),
+      refreshAll: vi.fn().mockResolvedValue(undefined),
+    })
+    useWorkspaceStore.setState({
+      tabsByConnection: {},
+      activeTabByConnection: {},
+    })
   })
 })
 

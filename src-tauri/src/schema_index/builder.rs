@@ -23,12 +23,12 @@ use super::embeddings;
 #[cfg(not(coverage))]
 use super::storage;
 use super::types::{
-    ChunkType, FkEdge, FkInput, TableDdlInput,
+    FkEdge, FkInput, TableDdlInput,
 };
 #[cfg(not(coverage))]
 use super::types::{
-    BuildConfig, BuildPhase, BuildProgress, BuildResult, ChunkInsert, IndexMeta, IndexStatus,
-    ProgressCallback,
+    BuildConfig, BuildPhase, BuildProgress, BuildResult, ChunkInsert, ChunkType, IndexMeta,
+    IndexStatus, ProgressCallback,
 };
 
 /// Maximum number of texts per embedding batch.

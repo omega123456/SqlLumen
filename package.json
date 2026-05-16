@@ -15,7 +15,7 @@
     "test:rust": "cargo sqllumen-test-integration",
     "test:rust:coverage": "node scripts/run-rust-coverage.mjs",
     "test:all": "pnpm test:coverage && pnpm test:rust:coverage && pnpm test:e2e",
-    "test:e2e": "node scripts/ensure-playwright-port.mjs && pnpm exec playwright test --reporter=line",
+    "test:e2e": "node scripts/ensure-playwright-port.mjs && node scripts/run-playwright-e2e.mjs",
     "test:screenshots": "node scripts/playwright-screenshots.mjs",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",

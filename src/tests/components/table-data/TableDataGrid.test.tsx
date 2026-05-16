@@ -168,9 +168,11 @@ describe('TableDataGrid', () => {
         data: { indexes: number[]; column: { key: string } }
       ) => void
     }
-    props.onRowsChange([{ __rowIndex: 0, id: 1, name: 'Grace' }], {
-      indexes: [0],
-      column: { key: 'name' },
+    act(() => {
+      props.onRowsChange([{ __rowIndex: 0, id: 1, name: 'Grace' }], {
+        indexes: [0],
+        column: { key: 'name' },
+      })
     })
     expect(syncCellValue).toHaveBeenCalledWith(
       't1',
@@ -277,10 +279,13 @@ describe('TableDataGrid', () => {
       }) => Promise<{ proceed: boolean; enableEditor: boolean }>
       editableColumnKeys: Set<string>
     }
-    const result = await props.onCellClickGuard({
-      rowIdx: 0,
-      columnKey: 'name',
-      rowData: { id: 1, name: 'Ada' },
+    let result: Awaited<ReturnType<typeof props.onCellClickGuard>> | undefined
+    await act(async () => {
+      result = await props.onCellClickGuard({
+        rowIdx: 0,
+        columnKey: 'name',
+        rowData: { id: 1, name: 'Ada' },
+      })
     })
     expect(result).toMatchObject({ proceed: true, enableEditor: false })
     expect(useTableDataStore.getState().tabs.t1.selectedRowKey).toEqual({ id: 1 })
@@ -414,10 +419,13 @@ describe('TableDataGrid', () => {
       editableColumnKeys: Set<string>
     }
 
-    const result = await props.onCellClickGuard({
-      rowIdx: 0,
-      columnKey: 'user_id',
-      rowData: { id: 1, user_id: 101 },
+    let result: Awaited<ReturnType<typeof props.onCellClickGuard>> | undefined
+    await act(async () => {
+      result = await props.onCellClickGuard({
+        rowIdx: 0,
+        columnKey: 'user_id',
+        rowData: { id: 1, user_id: 101 },
+      })
     })
 
     expect(result).toMatchObject({ proceed: true, enableEditor: false })

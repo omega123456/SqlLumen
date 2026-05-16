@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ResultGridView } from '../../../components/query-editor/ResultGridView'
 import type { ColumnMeta, RowEditState, TableDataColumnMeta } from '../../../types/schema'
@@ -107,8 +107,10 @@ describe('ResultGridView editing', () => {
     const onSyncCellValue = vi.fn()
     render(<ResultGridView {...props} onSyncCellValue={onSyncCellValue} />)
     const gridProps = getGridProps()
-    gridProps.onCellValueChange(0, 'col_0', 'Grace')
-    gridProps.onRowsChange([{ col_0: 'Grace', __rowIdx: 0 }], { indexes: [0] })
+    act(() => {
+      gridProps.onCellValueChange(0, 'col_0', 'Grace')
+      gridProps.onRowsChange([{ col_0: 'Grace', __rowIdx: 0 }], { indexes: [0] })
+    })
     expect(onSyncCellValue).toHaveBeenCalledWith(0, 'Grace')
   })
 
@@ -117,7 +119,9 @@ describe('ResultGridView editing', () => {
     render(<ResultGridView {...props} onSyncCellValue={onSyncCellValue} />)
     const gridProps = getGridProps()
 
-    gridProps.onRowsChange([{ col_0: 'Ada', __rowIdx: 0 }], { indexes: [0] })
+    act(() => {
+      gridProps.onRowsChange([{ col_0: 'Ada', __rowIdx: 0 }], { indexes: [0] })
+    })
 
     expect(onSyncCellValue).not.toHaveBeenCalled()
   })
@@ -127,7 +131,9 @@ describe('ResultGridView editing', () => {
     render(<ResultGridView {...props} onSyncCellValue={onSyncCellValue} />)
     const gridProps = getGridProps()
 
-    gridProps.onRowsChange([{ col_0: 'Grace', __rowIdx: 0 }], { indexes: [0] })
+    act(() => {
+      gridProps.onRowsChange([{ col_0: 'Grace', __rowIdx: 0 }], { indexes: [0] })
+    })
 
     expect(onSyncCellValue).toHaveBeenCalledWith(0, 'Grace')
   })
@@ -241,10 +247,13 @@ describe('ResultGridView editing', () => {
     )
 
     const gridProps = getGridProps()
-    const result = await gridProps.onCellClickGuard({
-      rowIdx: 0,
-      columnKey: 'col_0',
-      rowData: gridProps.rows[0],
+    let result: Awaited<ReturnType<typeof gridProps.onCellClickGuard>> | undefined
+    await act(async () => {
+      result = await gridProps.onCellClickGuard({
+        rowIdx: 0,
+        columnKey: 'col_0',
+        rowData: gridProps.rows[0],
+      })
     })
 
     expect(result).toEqual({
@@ -273,11 +282,14 @@ describe('ResultGridView editing', () => {
     )
 
     const gridProps = getGridProps()
-    const result = await gridProps.onCellClickGuard({
-      rowIdx: 1,
-      columnKey: 'col_0',
-      rowData: gridProps.rows[1],
-      source: 'keyboard',
+    let result: Awaited<ReturnType<typeof gridProps.onCellClickGuard>> | undefined
+    await act(async () => {
+      result = await gridProps.onCellClickGuard({
+        rowIdx: 1,
+        columnKey: 'col_0',
+        rowData: gridProps.rows[1],
+        source: 'keyboard',
+      })
     })
 
     expect(result).toEqual({
@@ -291,24 +303,28 @@ describe('ResultGridView editing', () => {
   })
 
   it('tracks the actual selected column for keyboard typing activation', () => {
-    useQueryStore.setState({
-      tabs: {
-        'tab-1': {
-          content: '',
-          selectedText: '',
-          filePath: null,
-          tabStatus: 'success',
-          prevTabStatus: 'idle',
-          cursorPosition: null,
-          connectionId: 'c1',
-          results: [{ ...DEFAULT_RESULT_STATE, selectedCell: { columnKey: 'name', value: 'Ada' } }],
-          activeResultIndex: 0,
-          pendingNavigationAction: null,
-          executionStartedAt: null,
-          isCancelling: false,
-          wasCancelled: false,
+    act(() => {
+      useQueryStore.setState({
+        tabs: {
+          'tab-1': {
+            content: '',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'success',
+            prevTabStatus: 'idle',
+            cursorPosition: null,
+            connectionId: 'c1',
+            results: [
+              { ...DEFAULT_RESULT_STATE, selectedCell: { columnKey: 'name', value: 'Ada' } },
+            ],
+            activeResultIndex: 0,
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+          },
         },
-      },
+      })
     })
 
     render(<ResultGridView {...props} selectedRowIndex={0} />)
@@ -323,10 +339,13 @@ describe('ResultGridView editing', () => {
     render(<ResultGridView {...props} editableColumnMap={new Map([[0, false]])} />)
 
     const gridProps = getGridProps()
-    const result = await gridProps.onCellClickGuard({
-      rowIdx: 0,
-      columnKey: 'col_0',
-      rowData: gridProps.rows[0],
+    let result: Awaited<ReturnType<typeof gridProps.onCellClickGuard>> | undefined
+    await act(async () => {
+      result = await gridProps.onCellClickGuard({
+        rowIdx: 0,
+        columnKey: 'col_0',
+        rowData: gridProps.rows[0],
+      })
     })
 
     expect(result).toEqual({
@@ -350,10 +369,13 @@ describe('ResultGridView editing', () => {
     )
 
     const gridProps = getGridProps()
-    const result = await gridProps.onCellClickGuard({
-      rowIdx: 1,
-      columnKey: 'col_0',
-      rowData: gridProps.rows[1],
+    let result: Awaited<ReturnType<typeof gridProps.onCellClickGuard>> | undefined
+    await act(async () => {
+      result = await gridProps.onCellClickGuard({
+        rowIdx: 1,
+        columnKey: 'col_0',
+        rowData: gridProps.rows[1],
+      })
     })
 
     expect(onAutoSave).toHaveBeenCalledTimes(1)
@@ -379,11 +401,14 @@ describe('ResultGridView editing', () => {
     )
 
     const gridProps = getGridProps()
-    const result = await gridProps.onCellClickGuard({
-      rowIdx: 1,
-      columnKey: 'col_0',
-      rowData: gridProps.rows[1],
-      source: 'keyboard',
+    let result: Awaited<ReturnType<typeof gridProps.onCellClickGuard>> | undefined
+    await act(async () => {
+      result = await gridProps.onCellClickGuard({
+        rowIdx: 1,
+        columnKey: 'col_0',
+        rowData: gridProps.rows[1],
+        source: 'keyboard',
+      })
     })
 
     expect(onAutoSave).toHaveBeenCalledTimes(1)
@@ -450,7 +475,9 @@ describe('ResultGridView editing', () => {
     )
 
     const gridProps = getGridProps()
-    gridProps.onRowsChange([{ col_0: 1, col_1: 'Grace', __rowIdx: 0 }], { indexes: [0] })
+    act(() => {
+      gridProps.onRowsChange([{ col_0: 1, col_1: 'Grace', __rowIdx: 0 }], { indexes: [0] })
+    })
 
     expect(onSyncCellValue).toHaveBeenCalledTimes(1)
     expect(onSyncCellValue).toHaveBeenCalledWith(1, 'Grace')
@@ -468,12 +495,14 @@ describe('ResultGridView editing', () => {
     )
 
     const gridProps = getGridProps()
-    await gridProps.onCellClipboardEdit({
-      rowIdx: 0,
-      columnKey: 'col_0',
-      rowData: gridProps.rows[0],
-      action: 'paste',
-      text: 'Ignored',
+    await act(async () => {
+      await gridProps.onCellClipboardEdit({
+        rowIdx: 0,
+        columnKey: 'col_0',
+        rowData: gridProps.rows[0],
+        action: 'paste',
+        text: 'Ignored',
+      })
     })
 
     expect(onSyncCellValue).not.toHaveBeenCalled()
@@ -485,12 +514,14 @@ describe('ResultGridView editing', () => {
     render(<ResultGridView {...props} onSyncCellValue={onSyncCellValue} />)
 
     const gridProps = getGridProps()
-    await gridProps.onCellClipboardEdit({
-      rowIdx: 0,
-      columnKey: 'col_0',
-      rowData: gridProps.rows[0],
-      action: 'cut',
-      text: 'Ignored',
+    await act(async () => {
+      await gridProps.onCellClipboardEdit({
+        rowIdx: 0,
+        columnKey: 'col_0',
+        rowData: gridProps.rows[0],
+        action: 'cut',
+        text: 'Ignored',
+      })
     })
 
     expect(onSyncCellValue).toHaveBeenCalledWith(0, null)
@@ -512,12 +543,14 @@ describe('ResultGridView editing', () => {
     )
 
     const gridProps = getGridProps()
-    await gridProps.onCellClipboardEdit({
-      rowIdx: 1,
-      columnKey: 'col_0',
-      rowData: gridProps.rows[1],
-      action: 'paste',
-      text: 'Charlie',
+    await act(async () => {
+      await gridProps.onCellClipboardEdit({
+        rowIdx: 1,
+        columnKey: 'col_0',
+        rowData: gridProps.rows[1],
+        action: 'paste',
+        text: 'Charlie',
+      })
     })
 
     expect(onStartEditing).toHaveBeenCalledWith(1)
@@ -540,12 +573,14 @@ describe('ResultGridView editing', () => {
     )
 
     const gridProps = getGridProps()
-    await gridProps.onCellClipboardEdit({
-      rowIdx: 1,
-      columnKey: 'col_0',
-      rowData: gridProps.rows[1],
-      action: 'paste',
-      text: 'Blocked',
+    await act(async () => {
+      await gridProps.onCellClipboardEdit({
+        rowIdx: 1,
+        columnKey: 'col_0',
+        rowData: gridProps.rows[1],
+        action: 'paste',
+        text: 'Blocked',
+      })
     })
 
     expect(onAutoSave).toHaveBeenCalledTimes(1)
@@ -564,12 +599,16 @@ describe('ResultGridView editing', () => {
       />
     )
 
-    await expect(getGridProps().onRowChanging(0, 1)).resolves.toBe(true)
+    await act(async () => {
+      await expect(getGridProps().onRowChanging(0, 1)).resolves.toBe(true)
+    })
     expect(dirtySave).toHaveBeenCalledTimes(1)
 
     render(<ResultGridView {...props} onAutoSave={cleanSave} />)
 
-    await expect(getGridProps().onRowChanging(0, 1)).resolves.toBe(true)
+    await act(async () => {
+      await expect(getGridProps().onRowChanging(0, 1)).resolves.toBe(true)
+    })
     expect(cleanSave).not.toHaveBeenCalled()
   })
 

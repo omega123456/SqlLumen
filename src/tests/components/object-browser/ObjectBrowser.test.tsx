@@ -109,11 +109,31 @@ function buildChildIndex(nodes: Record<string, TreeNodeType>): Record<string, st
 }
 
 function setupConnectedState(overrides: Partial<SavedConnection> = {}) {
-  useConnectionStore.setState({
-    activeConnections: {
-      [CONN_ID]: makeActiveConnection({ profile: makeSavedConnection(overrides) }),
-    },
-    activeTabId: CONN_ID,
+  act(() => {
+    useConnectionStore.setState({
+      activeConnections: {
+        [CONN_ID]: makeActiveConnection({ profile: makeSavedConnection(overrides) }),
+      },
+      activeTabId: CONN_ID,
+    })
+  })
+}
+
+function setConnectionState(update: Parameters<typeof useConnectionStore.setState>[0]) {
+  act(() => {
+    useConnectionStore.setState(update)
+  })
+}
+
+function setSchemaState(update: Parameters<typeof useSchemaStore.setState>[0]) {
+  act(() => {
+    useSchemaStore.setState(update)
+  })
+}
+
+function setWorkspaceState(update: Parameters<typeof useWorkspaceStore.setState>[0]) {
+  act(() => {
+    useWorkspaceStore.setState(update)
   })
 }
 
@@ -170,18 +190,20 @@ function setupDatabaseNodes() {
     },
   }
 
-  useSchemaStore.setState({
-    connectionStates: {
-      [CONN_ID]: {
-        nodes,
-        childIdsByParentId: buildChildIndex(nodes),
-        expandedNodes: new Set(),
-        loadingNodes: new Set(),
-        selectedNodeId: null,
-        filterText: '',
-        loadGeneration: 0,
+  act(() => {
+    useSchemaStore.setState({
+      connectionStates: {
+        [CONN_ID]: {
+          nodes,
+          childIdsByParentId: buildChildIndex(nodes),
+          expandedNodes: new Set(),
+          loadingNodes: new Set(),
+          selectedNodeId: null,
+          filterText: '',
+          loadGeneration: 0,
+        },
       },
-    },
+    })
   })
 }
 
@@ -248,18 +270,20 @@ function setupFilteredTableNodes() {
     },
   }
 
-  useSchemaStore.setState({
-    connectionStates: {
-      [CONN_ID]: {
-        nodes,
-        childIdsByParentId: buildChildIndex(nodes),
-        expandedNodes: new Set([dbId, tablesId]),
-        loadingNodes: new Set(),
-        selectedNodeId: tablesId,
-        filterText: 'user',
-        loadGeneration: 0,
+  act(() => {
+    useSchemaStore.setState({
+      connectionStates: {
+        [CONN_ID]: {
+          nodes,
+          childIdsByParentId: buildChildIndex(nodes),
+          expandedNodes: new Set([dbId, tablesId]),
+          loadingNodes: new Set(),
+          selectedNodeId: tablesId,
+          filterText: 'user',
+          loadGeneration: 0,
+        },
       },
-    },
+    })
   })
 
   return { dbId, tablesId, usersId, ordersId, userIdColumnId }
@@ -269,13 +293,15 @@ function setupFilteredTableNodes() {
 function expandToTable() {
   const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
   const catId = makeNodeId('category', 'ecommerce_db', 'table')
-  useSchemaStore.setState({
-    connectionStates: {
-      [CONN_ID]: {
-        ...useSchemaStore.getState().connectionStates[CONN_ID],
-        expandedNodes: new Set([db1Id, catId]),
+  act(() => {
+    useSchemaStore.setState({
+      connectionStates: {
+        [CONN_ID]: {
+          ...useSchemaStore.getState().connectionStates[CONN_ID],
+          expandedNodes: new Set([db1Id, catId]),
+        },
       },
-    },
+    })
   })
 }
 
@@ -283,30 +309,30 @@ function expandToTable() {
 async function openContextMenu(user: ReturnType<typeof userEvent.setup>, nodeText: string) {
   const node = screen.getByText(nodeText)
   await user.pointer({ target: node, keys: '[MouseRight]' })
-  await act(async () => {
-    await new Promise((r) => setTimeout(r, 20))
-  })
+  await screen.findByTestId('object-browser-context-menu')
 }
 
 beforeEach(() => {
   _resetTabIdCounter()
   vi.clearAllMocks()
-  useConnectionStore.setState({
-    activeConnections: {},
-    activeTabId: null,
-    dialogOpen: false,
-    error: null,
-  })
-  // Mock loadDatabases to prevent real IPC calls in tests
-  useSchemaStore.setState({
-    connectionStates: {},
-    loadDatabases: vi.fn().mockResolvedValue(undefined),
-    refreshDatabase: vi.fn().mockResolvedValue(undefined),
-    refreshAll: vi.fn().mockResolvedValue(undefined),
-  })
-  useWorkspaceStore.setState({
-    tabsByConnection: {},
-    activeTabByConnection: {},
+  act(() => {
+    useConnectionStore.setState({
+      activeConnections: {},
+      activeTabId: null,
+      dialogOpen: false,
+      error: null,
+    })
+    // Mock loadDatabases to prevent real IPC calls in tests
+    useSchemaStore.setState({
+      connectionStates: {},
+      loadDatabases: vi.fn().mockResolvedValue(undefined),
+      refreshDatabase: vi.fn().mockResolvedValue(undefined),
+      refreshAll: vi.fn().mockResolvedValue(undefined),
+    })
+    useWorkspaceStore.setState({
+      tabsByConnection: {},
+      activeTabByConnection: {},
+    })
   })
 })
 
@@ -389,7 +415,7 @@ describe('ObjectBrowser', () => {
     setupDatabaseNodes()
     const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
 
-    useSchemaStore.setState({
+    setSchemaState({
       connectionStates: {
         [CONN_ID]: {
           ...useSchemaStore.getState().connectionStates[CONN_ID],
@@ -581,7 +607,7 @@ describe('ObjectBrowser', () => {
     setupConnectedState()
     const { tablesId } = setupFilteredTableNodes()
 
-    useSchemaStore.setState({
+    setSchemaState({
       connectionStates: {
         [CONN_ID]: {
           ...useSchemaStore.getState().connectionStates[CONN_ID],
@@ -605,7 +631,7 @@ describe('ObjectBrowser', () => {
     setupConnectedState()
     const { usersId, userIdColumnId } = setupFilteredTableNodes()
 
-    useSchemaStore.setState({
+    setSchemaState({
       connectionStates: {
         [CONN_ID]: {
           ...useSchemaStore.getState().connectionStates[CONN_ID],
@@ -687,7 +713,7 @@ describe('ObjectBrowser', () => {
   })
 
   it('shows "Not connected" when connection is disconnected', () => {
-    useConnectionStore.setState({
+    setConnectionState({
       activeConnections: {
         [CONN_ID]: makeActiveConnection({ status: 'disconnected' }),
       },
@@ -718,11 +744,7 @@ describe('ObjectBrowser', () => {
 
     const dbNode = screen.getByText('ecommerce_db')
     await user.pointer({ target: dbNode, keys: '[MouseRight]' })
-
-    // Wait for requestAnimationFrame via act
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 20))
-    })
+    await screen.findByTestId('object-browser-context-menu')
 
     expect(screen.getByTestId('object-browser-context-menu')).toBeInTheDocument()
   })
@@ -754,7 +776,7 @@ describe('ObjectBrowser', () => {
     setupConnectedState()
     setupFilteredTableNodes()
 
-    useSchemaStore.setState({
+    setSchemaState({
       connectionStates: {
         [CONN_ID]: {
           ...useSchemaStore.getState().connectionStates[CONN_ID],
@@ -926,7 +948,7 @@ describe('ObjectBrowser', () => {
       },
     }
 
-    useSchemaStore.setState({
+    setSchemaState({
       connectionStates: {
         [CONN_ID]: {
           nodes,
@@ -1000,7 +1022,7 @@ describe('ObjectBrowser', () => {
         },
       }
 
-      useSchemaStore.setState({
+      setSchemaState({
         connectionStates: {
           [CONN_ID]: {
             nodes,
@@ -1042,7 +1064,7 @@ describe('ObjectBrowser', () => {
     setupConnectedState()
     setupDatabaseNodes()
     const setActiveDatabase = vi.fn().mockResolvedValue(undefined)
-    useConnectionStore.setState({ setActiveDatabase })
+    setConnectionState({ setActiveDatabase })
 
     render(
       <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
@@ -1061,7 +1083,7 @@ describe('ObjectBrowser', () => {
     setupDatabaseNodes()
     expandToTable()
     const setActiveDatabase = vi.fn().mockResolvedValue(undefined)
-    useConnectionStore.setState({ setActiveDatabase })
+    setConnectionState({ setActiveDatabase })
 
     render(
       <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
@@ -1105,7 +1127,7 @@ describe('ObjectBrowser', () => {
       setupConnectedState()
       setupDatabaseNodes()
       const refreshAll = vi.fn().mockResolvedValue(undefined)
-      useSchemaStore.setState({ refreshAll })
+      setSchemaState({ refreshAll })
 
       render(
         <ObjectBrowser
@@ -1179,7 +1201,7 @@ describe('ObjectBrowser', () => {
       setupDatabaseNodes()
       expandToTable()
       const refreshCategory = vi.fn().mockResolvedValue(undefined)
-      useSchemaStore.setState({ refreshCategory })
+      setSchemaState({ refreshCategory })
 
       render(
         <ObjectBrowser
@@ -1272,7 +1294,7 @@ describe('ObjectBrowser', () => {
       setupDatabaseNodes()
       expandToTable()
       const refreshCategory = vi.fn().mockResolvedValue(undefined)
-      useSchemaStore.setState({ refreshCategory })
+      setSchemaState({ refreshCategory })
 
       render(
         <ObjectBrowser
@@ -1429,7 +1451,7 @@ describe('ObjectBrowser', () => {
       setupConnectedState()
       setupDatabaseNodes()
       const refreshAll = vi.fn().mockResolvedValue(undefined)
-      useSchemaStore.setState({ refreshAll })
+      setSchemaState({ refreshAll })
 
       render(
         <ObjectBrowser
@@ -1460,7 +1482,7 @@ describe('ObjectBrowser', () => {
       setupConnectedState()
 
       // Simulate an open view table-data tab
-      useWorkspaceStore.setState({
+      setWorkspaceState({
         tabsByConnection: {
           [CONN_ID]: [
             {
@@ -1490,7 +1512,7 @@ describe('ObjectBrowser', () => {
       setupConnectedState()
 
       // Simulate an open TABLE tab with the same name as the view being dropped
-      useWorkspaceStore.setState({
+      setWorkspaceState({
         tabsByConnection: {
           [CONN_ID]: [
             {
@@ -1528,7 +1550,7 @@ describe('ObjectBrowser', () => {
     setupDatabaseNodes()
     const db1Id = makeNodeId('database', 'ecommerce_db', 'ecommerce_db')
     const refreshDatabase = vi.fn().mockResolvedValue(undefined)
-    useSchemaStore.setState({
+    setSchemaState({
       refreshDatabase,
       connectionStates: {
         [CONN_ID]: {
@@ -1659,6 +1681,6 @@ describe('ObjectBrowser', () => {
     fireEvent.keyDown(treeContainer, { key: 'F5' })
 
     expect(refreshMock).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db')
-    useSchemaStore.setState({ refreshDatabase: origRefresh })
+    setSchemaState({ refreshDatabase: origRefresh })
   })
 })

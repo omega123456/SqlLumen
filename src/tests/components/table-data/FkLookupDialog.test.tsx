@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FkLookupDialog } from '../../../components/table-data/FkLookupDialog'
@@ -90,7 +90,9 @@ describe('FkLookupDialog', () => {
       rows: Record<string, unknown>[]
       onRowClick: (row: Record<string, unknown>) => void
     }
-    gridProps.onRowClick(gridProps.rows[0])
+    act(() => {
+      gridProps.onRowClick(gridProps.rows[0])
+    })
     await user.click(screen.getByTestId('fk-lookup-apply'))
     expect(onApply).toHaveBeenCalledWith(1)
     expect(onClose).toHaveBeenCalled()
@@ -106,7 +108,9 @@ describe('FkLookupDialog', () => {
       onRowDoubleClicked: (row: Record<string, unknown>) => void
     }
 
-    gridProps.onRowDoubleClicked(gridProps.rows[0])
+    act(() => {
+      gridProps.onRowDoubleClicked(gridProps.rows[0])
+    })
 
     expect(onApply).toHaveBeenCalledWith(1)
     expect(onClose).toHaveBeenCalled()

@@ -57,7 +57,6 @@ const child = spawn('cargo', ['sqllumen-llvm-cov'], {
   cwd: process.cwd(),
   env,
   stdio: 'inherit',
-  shell: true,
 })
 
 child.on('exit', (code, signal) => {

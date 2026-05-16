@@ -99,6 +99,7 @@ vi.mock('@monaco-editor/react', async () => {
         return React.createElement('textarea', {
           'data-testid': 'monaco-editor',
           value: (props.value as string) ?? '',
+          readOnly: true,
         })
       }
       return React.createElement(MockEditor)
