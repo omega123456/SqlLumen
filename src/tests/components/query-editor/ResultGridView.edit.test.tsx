@@ -2,7 +2,7 @@ import { render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ResultGridView } from '../../../components/query-editor/ResultGridView'
 import type { ColumnMeta, RowEditState, TableDataColumnMeta } from '../../../types/schema'
-import { useQueryStore } from '../../../stores/query-store'
+import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
 
 const mockCanvasBaseGridView = vi.hoisted(() =>
   vi.fn((props: Record<string, unknown>) => (
@@ -145,8 +145,8 @@ describe('ResultGridView editing', () => {
   it('passes the current edit value to the grid edit state', () => {
     render(<ResultGridView {...props} />)
     const gridProps = getGridProps()
-    expect(gridProps.editState.currentValues).toEqual({ col_0: 'Ada' })
-    expect(gridProps.editState.originalValues).toEqual({ col_0: 'Ada' })
+    expect(gridProps.editState!.currentValues).toEqual({ col_0: 'Ada' })
+    expect(gridProps.editState!.originalValues).toEqual({ col_0: 'Ada' })
     expect(gridProps.editableColumnKeys.has('col_0')).toBe(true)
   })
 
@@ -301,13 +301,12 @@ describe('ResultGridView editing', () => {
           prevTabStatus: 'idle',
           cursorPosition: null,
           connectionId: 'c1',
-          results: [],
+          results: [{ ...DEFAULT_RESULT_STATE, selectedCell: { columnKey: 'name', value: 'Ada' } }],
           activeResultIndex: 0,
           pendingNavigationAction: null,
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
-          selectedCell: { columnKey: 'name', value: 'Ada' },
         },
       },
     })

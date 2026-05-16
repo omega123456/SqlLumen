@@ -9,9 +9,6 @@ import { makeTabState } from '../../helpers/query-test-utils'
 
 let capturedGridProps: Record<string, unknown> = {}
 let capturedFormProps: Record<string, unknown> = {}
-let capturedToolbarProps: Record<string, unknown> = {}
-let capturedFilterDialogProps: Record<string, unknown> = {}
-let capturedFkLookupDialogProps: Record<string, unknown> = {}
 let capturedExportDialogProps: Record<string, unknown> = {}
 
 vi.mock('../../../components/query-editor/ResultSubTabs', () => ({
@@ -20,7 +17,6 @@ vi.mock('../../../components/query-editor/ResultSubTabs', () => ({
 
 vi.mock('../../../components/query-editor/ResultToolbar', () => ({
   ResultToolbar: (props: Record<string, unknown>) => {
-    capturedToolbarProps = props
     return (
       <div data-testid="result-toolbar">
         <button data-testid="toolbar-open-filter" onClick={props.onFilterClick as () => void}>
@@ -113,7 +109,6 @@ vi.mock('../../../components/dialogs/ExportDialog', () => ({
 
 vi.mock('../../../components/dialogs/FilterDialog', () => ({
   FilterDialog: (props: Record<string, unknown>) => {
-    capturedFilterDialogProps = props
     if (!props.isOpen) return null
 
     const applyConditions: FilterCondition[] = [{ column: 'name', operator: '==', value: 'Alice' }]
@@ -138,7 +133,6 @@ vi.mock('../../../components/dialogs/FilterDialog', () => ({
 
 vi.mock('../../../components/table-data/FkLookupDialog', () => ({
   FkLookupDialog: (props: Record<string, unknown>) => {
-    capturedFkLookupDialogProps = props
     if (!props.isOpen) return null
 
     return (
@@ -147,11 +141,11 @@ vi.mock('../../../components/table-data/FkLookupDialog', () => ({
         <div data-testid="fk-lookup-source-column">{String(props.sourceColumn)}</div>
         <button
           data-testid="fk-lookup-apply-same"
-          onClick={() => props.onApply?.(props.currentValue)}
+          onClick={() => (props.onApply as ((v: unknown) => void) | undefined)?.(props.currentValue)}
         >
           Apply Same
         </button>
-        <button data-testid="fk-lookup-apply-new" onClick={() => props.onApply?.(9)}>
+        <button data-testid="fk-lookup-apply-new" onClick={() => (props.onApply as ((v: unknown) => void) | undefined)?.(9)}>
           Apply New
         </button>
         <button data-testid="fk-lookup-close" onClick={props.onClose as () => void}>
@@ -231,9 +225,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   capturedGridProps = {}
   capturedFormProps = {}
-  capturedToolbarProps = {}
-  capturedFilterDialogProps = {}
-  capturedFkLookupDialogProps = {}
   capturedExportDialogProps = {}
   useQueryStore.setState({ tabs: {} })
   mockIPC(() => null)

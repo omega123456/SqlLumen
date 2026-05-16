@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
+import type { ComponentType } from 'react'
 import { GridCellKind, type TextCell } from '@glideapps/glide-data-grid'
 import {
   computeRequestedEditorWidth,
   getGlideEditor,
   wrapEditorAsGlideOverlay,
 } from '../../../../components/shared/glide/glide-editors'
+
+type EditorConfig = { editor: ComponentType<Record<string, unknown>> } | null
 
 describe('computeRequestedEditorWidth', () => {
   it('keeps the cell width when no markers are present', () => {
@@ -119,7 +122,7 @@ describe('wrapEditorAsGlideOverlay', () => {
       editor: expect.any(Function),
     })
 
-    const Editor = editorConfig?.editor
+    const Editor = (editorConfig as EditorConfig)!.editor!
     expect(Editor).toBeDefined()
 
     render(
@@ -155,7 +158,7 @@ describe('wrapEditorAsGlideOverlay', () => {
       { key: 'notes', name: 'Notes', dataType: 'LONGTEXT' },
       'text'
     )
-    const Editor = editorConfig?.editor
+    const Editor = (editorConfig as EditorConfig)!.editor!
 
     render(
       <Editor
@@ -188,7 +191,7 @@ describe('wrapEditorAsGlideOverlay', () => {
       { key: 'notes', name: 'Notes', dataType: 'MEDIUMTEXT' },
       'text'
     )
-    const Editor = editorConfig?.editor
+    const Editor = (editorConfig as EditorConfig)!.editor!
     const onFinishedEditing = vi.fn()
 
     render(
