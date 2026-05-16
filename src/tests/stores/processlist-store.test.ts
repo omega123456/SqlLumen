@@ -92,9 +92,10 @@ describe('processlist-store', () => {
       expect(selected).toEqual(new Set([1, 2])) // 5 removed
     })
 
-    it('preserves selected IDs that still exist in refreshed raw rows even when hidden by filters', async () => {
+    it('removes selected IDs for rows hidden by the exclude-idle filter after refresh', async () => {
       useProcessListStore.setState({
         selectedIdsByConnection: { [CONN]: new Set([1, 2]) },
+        excludeIdleConnectionsByConnection: { [CONN]: true },
       })
 
       const rows: ProcessRow[] = [
@@ -116,7 +117,7 @@ describe('processlist-store', () => {
           command: 'Sleep',
           time: 5,
           state: 'idle',
-          info: 'SELECT SLEEP(5)',
+          info: null,
         },
       ]
 
@@ -127,6 +128,47 @@ describe('processlist-store', () => {
 
       await useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
 
+      // ID 2 is idle and excluded by the filter, so it should be removed from selection
+      expect(useProcessListStore.getState().selectedIdsByConnection[CONN]).toEqual(new Set([1]))
+    })
+
+    it('preserves all selected IDs when exclude-idle filter is off', async () => {
+      useProcessListStore.setState({
+        selectedIdsByConnection: { [CONN]: new Set([1, 2]) },
+        excludeIdleConnectionsByConnection: { [CONN]: false },
+      })
+
+      const rows: ProcessRow[] = [
+        {
+          id: 1,
+          user: 'root',
+          host: 'localhost',
+          db: 'mydb',
+          command: 'Query',
+          time: 0,
+          state: 'executing',
+          info: 'SELECT 1',
+        },
+        {
+          id: 2,
+          user: 'root',
+          host: 'localhost',
+          db: 'mydb',
+          command: 'Sleep',
+          time: 5,
+          state: 'idle',
+          info: null,
+        },
+      ]
+
+      mockIPC((cmd) => {
+        if (cmd === 'get_processlist') return rows
+        return null
+      })
+
+      await useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
+
+      // Filter is off, so both IDs survive reconciliation
       expect(useProcessListStore.getState().selectedIdsByConnection[CONN]).toEqual(new Set([1, 2]))
     })
 
@@ -247,7 +289,7 @@ describe('processlist-store', () => {
       expect(useProcessListStore.getState().refreshIntervalMsByConnection[CONN]).toBe(10000)
     })
 
-    it('setExcludeIdleConnections preserves selection for rows that are hidden but still present', () => {
+    it('setExcludeIdleConnections removes idle selections when enabling exclude-idle filter', () => {
       const rows: ProcessRow[] = [
         {
           id: 1,
@@ -267,7 +309,7 @@ describe('processlist-store', () => {
           command: 'Sleep',
           time: 5,
           state: 'idle',
-          info: 'SELECT SLEEP(5)',
+          info: null,
         },
       ]
 
@@ -282,6 +324,44 @@ describe('processlist-store', () => {
 
       const state = useProcessListStore.getState()
       expect(state.excludeIdleConnectionsByConnection[CONN]).toBe(true)
+      // ID 2 is idle and now filtered out, so it should be removed from selection
+      expect(state.selectedIdsByConnection[CONN]).toEqual(new Set([1]))
+    })
+
+    it('setExcludeIdleConnections preserves all selections when disabling exclude-idle filter', () => {
+      const rows: ProcessRow[] = [
+        {
+          id: 1,
+          user: 'root',
+          host: 'localhost',
+          db: 'mydb',
+          command: 'Query',
+          time: 0,
+          state: 'executing',
+          info: 'SELECT 1',
+        },
+        {
+          id: 2,
+          user: 'root',
+          host: 'localhost',
+          db: 'mydb',
+          command: 'Sleep',
+          time: 5,
+          state: 'idle',
+          info: null,
+        },
+      ]
+
+      useProcessListStore.setState({
+        rowsByConnection: { [CONN]: rows },
+        selectedIdsByConnection: { [CONN]: new Set([1, 2]) },
+      })
+
+      useProcessListStore.getState().setExcludeIdleConnections(CONN, false)
+
+      const state = useProcessListStore.getState()
+      expect(state.excludeIdleConnectionsByConnection[CONN]).toBe(false)
+      // Filter is off, so all rows are visible and all selections are preserved
       expect(state.selectedIdsByConnection[CONN]).toEqual(new Set([1, 2]))
     })
 

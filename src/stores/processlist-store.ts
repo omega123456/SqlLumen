@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { ProcessRow, KillResult } from '../lib/processlist-commands'
 import { getProcesslist, killQueries } from '../lib/processlist-commands'
+import { filterProcessListRows } from '../lib/processlist-filter'
 import { getProcessListRefreshTimestamp } from '../lib/processlist-time'
 import { showErrorToast } from './toast-store'
 
@@ -83,7 +84,10 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
       if (get().fetchGenerationByConnection[connectionId] !== generation) return
 
       const currentSelected = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
-      const reconciledSelected = reconcileExistingSelectedIds(rows, currentSelected)
+      const excludeIdle =
+        get().excludeIdleConnectionsByConnection[connectionId] ?? DEFAULT_EXCLUDE_IDLE_CONNECTIONS
+      const visibleRows = filterProcessListRows(rows, excludeIdle)
+      const reconciledSelected = reconcileExistingSelectedIds(visibleRows, currentSelected)
 
       set({
         rowsByConnection: { ...get().rowsByConnection, [connectionId]: rows },
@@ -179,8 +183,9 @@ export const useProcessListStore = create<ProcessListState>()((set, get) => ({
 
   setExcludeIdleConnections: (connectionId: string, excludeIdleConnections: boolean) => {
     const rows = get().rowsByConnection[connectionId] ?? []
+    const visibleRows = filterProcessListRows(rows, excludeIdleConnections)
     const currentSelected = get().selectedIdsByConnection[connectionId] ?? new Set<number>()
-    const reconciledSelected = reconcileExistingSelectedIds(rows, currentSelected)
+    const reconciledSelected = reconcileExistingSelectedIds(visibleRows, currentSelected)
 
     set({
       excludeIdleConnectionsByConnection: {
