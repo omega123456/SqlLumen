@@ -1390,7 +1390,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   return (
     <div
       onContextMenu={handleContextMenu}
-      style={{ position: 'relative', width: '100%', height: '100%' }}
+      style={{ position: 'relative', width: '100%', height: '100%', flex: 1, minHeight: 0 }}
     >
       <GlideDataGrid
         ref={gridRef}
