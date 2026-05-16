@@ -1,4 +1,4 @@
-import { test, expect, type Locator, type Page } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import {
   APP_READY_MS,
   activateResultGridCell,
@@ -35,9 +35,12 @@ async function ensureTheme(page: Page, theme: 'light' | 'dark') {
   throw new Error(`Could not apply theme "${theme}"`)
 }
 
-async function getUnionClip(page: Page, locators: Locator[], padding = 8) {
+type BoundingBoxable = { boundingBox: () => Promise<{ x: number; y: number; width: number; height: number } | null> }
+
+async function getUnionClip(page: Page, locators: BoundingBoxable[], padding = 8) {
   const boxes = (await Promise.all(locators.map((locator) => locator.boundingBox()))).filter(
-    (box): box is NonNullable<Awaited<ReturnType<Locator['boundingBox']>>> => box !== null
+    (box): box is NonNullable<{ x: number; y: number; width: number; height: number }> =>
+      box !== null
   )
 
   if (boxes.length === 0) {
@@ -1637,7 +1640,7 @@ for (const theme of themes) {
 
       const statusCell = await getGridCellByColumnName(grid, 0, 'status')
       const clip = await getUnionClip(page, [statusCell, enumEditor, enumMenu])
-      await expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
+      expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
         `table-data-grid-enum-cell-second-click-open-${theme}.png`
       )
     })
@@ -1732,7 +1735,7 @@ for (const theme of themes) {
       await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
 
       const clip = await getUnionClip(page, [statusCell, enumEditor])
-      await expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
+      expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
         `table-data-grid-enum-dropdown-open-${theme}.png`
       )
     })
@@ -1786,7 +1789,7 @@ for (const theme of themes) {
       await expect(enumEditor).toBeVisible({ timeout: APP_READY_MS })
 
       const clip = await getUnionClip(page, [statusCell, enumEditor])
-      await expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
+      expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
         `result-grid-enum-dropdown-open-${theme}.png`
       )
     })
@@ -1799,7 +1802,7 @@ for (const theme of themes) {
         timeout: APP_READY_MS,
       })
       const clip = await getUnionClip(page, [page.getByTestId('table-data-toolbar'), listbox])
-      await expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
+      expect(await page.screenshot({ animations: 'disabled', clip })).toMatchSnapshot(
         `table-data-toolbar-page-size-open-${theme}.png`
       )
     })
@@ -2381,6 +2384,61 @@ for (const theme of themes) {
       })
       await expect(page.getByTestId('settings-dialog')).toHaveScreenshot(
         `settings-dialog-results-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('WorkspaceArea — bottom table tabs rail (table-data tabs in bottom panel)', async ({
+      page,
+    }) => {
+      // Enable the bottom panel setting via the settings store before navigating
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__settingsStore__ as {
+          setState: (
+            updater: (state: {
+              settings: Record<string, string>
+              pendingChanges: Record<string, string>
+            }) => Record<string, unknown>
+          ) => void
+        }
+        store.setState((state) => ({
+          settings: {
+            ...state.settings,
+            'results.tableTabsInBottomPanel': 'true',
+          },
+          pendingChanges: {},
+        }))
+      })
+
+      // Connect and open a table-data tab so the bottom rail has a visible tab
+      await connectToSample(page)
+      await page.evaluate(() => {
+        const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => { openTab: (tab: Record<string, unknown>) => void }
+        }
+        store.getState().openTab({
+          type: 'table-data',
+          label: 'users',
+          connectionId: 'session-playwright-1',
+          databaseName: 'ecommerce_db',
+          objectName: 'users',
+          objectType: 'table',
+        })
+      })
+
+      // Wait for the table data tab to mount and data to load
+      await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+
+      // Verify the bottom rail is rendered
+      await expect(page.getByTestId('bottom-table-tabs')).toBeVisible({ timeout: APP_READY_MS })
+
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('workspace-area')).toHaveScreenshot(
+        `workspace-area-bottom-table-tabs-${theme}.png`,
         { animations: 'disabled' }
       )
     })

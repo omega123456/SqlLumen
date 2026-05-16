@@ -782,6 +782,35 @@ describe('WorkspaceTabs', () => {
     ).toEqual([q1, q2])
   })
 
+  it('with hideTableDataTabs=true, table-data tabs are excluded from the top rail but query tabs are visible', () => {
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'orders',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'orders',
+      objectType: 'table',
+    })
+
+    render(<WorkspaceTabs connectionId="conn-1" hideTableDataTabs={true} />)
+
+    // Non-table-data tabs must appear in the top rail
+    expect(screen.getByText('Query A')).toBeInTheDocument()
+
+    // Table-data tabs must NOT appear in the top rail
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
+    expect(screen.queryByText('orders')).not.toBeInTheDocument()
+  })
+
   it('does not start pointer reorder for pinned tabs', () => {
     useWorkspaceStore.getState().openHistoryTab('conn-1')
     useWorkspaceStore.getState().openProcessListTab('conn-1')
@@ -801,5 +830,225 @@ describe('WorkspaceTabs', () => {
     fireEvent.pointerDown(processTab, { button: 0, clientX: 180, clientY: 15 })
     fireEvent.pointerMove(window, { clientX: 188, clientY: 15 })
     expect(processTab?.className ?? '').not.toContain('dragging')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WorkspaceTabRail — filtered visible group and safe subset reorder tests
+// ---------------------------------------------------------------------------
+
+import { WorkspaceTabRail } from '../../../components/workspace/WorkspaceTabRail'
+
+describe('WorkspaceTabRail — filtered visible group rendering', () => {
+  it('renders only the tabs passed in the visible group', () => {
+    const q1 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Q2')
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'conn-1',
+      databaseName: 'mydb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+    const allTabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    // Only pass the first tab (Q1) as the visible group
+    const visibleGroup = allTabs.filter((t) => t.id === q1)
+    const allMovableTabIds = allTabs.map((t) => t.id)
+
+    render(
+      <WorkspaceTabRail
+        connectionId="conn-1"
+        tabs={visibleGroup}
+        allMovableTabIds={allMovableTabIds}
+        activeTabId={null}
+      />
+    )
+
+    expect(screen.getByText('Q1')).toBeInTheDocument()
+    expect(screen.queryByText('Q2')).not.toBeInTheDocument()
+    expect(screen.queryByText('users')).not.toBeInTheDocument()
+  })
+
+  it('activates a tab in a filtered visible group', async () => {
+    const user = userEvent.setup()
+    const q1 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    const q2 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q2')
+    const allTabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const allMovableTabIds = allTabs.map((t) => t.id)
+
+    render(
+      <WorkspaceTabRail
+        connectionId="conn-1"
+        tabs={allTabs}
+        allMovableTabIds={allMovableTabIds}
+        activeTabId={q2}
+      />
+    )
+
+    await user.click(screen.getByText('Q1'))
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(q1)
+  })
+
+  it('closing a tab in a visible group removes it from the store', async () => {
+    const user = userEvent.setup()
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    const allTabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const allMovableTabIds = allTabs.map((t) => t.id)
+
+    render(
+      <WorkspaceTabRail
+        connectionId="conn-1"
+        tabs={allTabs}
+        allMovableTabIds={allMovableTabIds}
+        activeTabId={null}
+      />
+    )
+
+    await user.click(screen.getByLabelText('Close Q1'))
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(0)
+  })
+})
+
+describe('WorkspaceTabRail — safe subset reorder', () => {
+  /**
+   * Full list: [pinned-history, pinned-processlist, A, B, C, D]
+   * Visible group (subset): [A, C]   (B and D are intentionally excluded)
+   * allMovableTabIds: [A, B, C, D]
+   *
+   * Reordering C before A (subsetInsertIndex=0) should translate to full list
+   * insertIndex=0 (before A in the movable list), giving result [C, A, B, D].
+   */
+  it('reordering in a filtered subset does not disturb tabs outside the visible group', () => {
+    const a = useWorkspaceStore.getState().openQueryTab('conn-1', 'A')
+    const b = useWorkspaceStore.getState().openQueryTab('conn-1', 'B')
+    const c = useWorkspaceStore.getState().openQueryTab('conn-1', 'C')
+    const d = useWorkspaceStore.getState().openQueryTab('conn-1', 'D')
+    const allTabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const allMovableTabIds = [a, b, c, d]
+    // Visible group contains only A and C
+    const visibleGroup = allTabs.filter((t) => t.id === a || t.id === c)
+
+    render(
+      <WorkspaceTabRail
+        connectionId="conn-1"
+        tabs={visibleGroup}
+        allMovableTabIds={allMovableTabIds}
+        activeTabId={null}
+      />
+    )
+
+    const draggingTab = screen.getByTestId(`workspace-tab-${c}`)
+    const targetTab = screen.getByTestId(`workspace-tab-${a}`)
+
+    vi.spyOn(targetTab, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      top: 0,
+      right: 200,
+      bottom: 30,
+      width: 100,
+      height: 30,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    // Drag C over the left half of A → drop before A → subsetInsertIndex=0 → fullInsertIndex=0
+    fireEvent.pointerDown(draggingTab, { button: 0, clientX: 260, clientY: 15 })
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 15 })
+    fireEvent.pointerUp(window, { clientX: 130, clientY: 15 })
+
+    const ordered = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    // C moved before A; B and D should remain in their original relative positions
+    const movableOrder = ordered.filter((t) => [a, b, c, d].includes(t.id)).map((t) => t.id)
+    expect(movableOrder).toEqual([c, a, b, d])
+  })
+
+  it('reordering to end of visible subset inserts after last visible tab in full list', () => {
+    const a = useWorkspaceStore.getState().openQueryTab('conn-1', 'A')
+    const b = useWorkspaceStore.getState().openQueryTab('conn-1', 'B')
+    const c = useWorkspaceStore.getState().openQueryTab('conn-1', 'C')
+    const allTabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const allMovableTabIds = [a, b, c]
+    // Visible group contains only A and B; C is outside the visible group
+    const visibleGroup = allTabs.filter((t) => t.id === a || t.id === b)
+
+    render(
+      <WorkspaceTabRail
+        connectionId="conn-1"
+        tabs={visibleGroup}
+        allMovableTabIds={allMovableTabIds}
+        activeTabId={null}
+      />
+    )
+
+    const draggingTab = screen.getByTestId(`workspace-tab-${a}`)
+    const targetTab = screen.getByTestId(`workspace-tab-${b}`)
+
+    vi.spyOn(targetTab, 'getBoundingClientRect').mockReturnValue({
+      left: 200,
+      top: 0,
+      right: 300,
+      bottom: 30,
+      width: 100,
+      height: 30,
+      x: 200,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    // Drag A over right half of B → drop after B → subsetInsertIndex=2 → fullInsertIndex=2
+    // (after B, before C — C must stay after B in the full list)
+    fireEvent.pointerDown(draggingTab, { button: 0, clientX: 120, clientY: 15 })
+    fireEvent.pointerMove(window, { clientX: 270, clientY: 15 })
+    fireEvent.pointerUp(window, { clientX: 270, clientY: 15 })
+
+    const ordered = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const movableOrder = ordered.filter((t) => [a, b, c].includes(t.id)).map((t) => t.id)
+    // A moved after B; C stays after B
+    expect(movableOrder).toEqual([b, a, c])
+  })
+
+  it('calls onRequestReorderTab with full-list insert index when reordering in subset', () => {
+    const onRequestReorderTab = vi.fn()
+    const a = useWorkspaceStore.getState().openQueryTab('conn-1', 'A')
+    const b = useWorkspaceStore.getState().openQueryTab('conn-1', 'B')
+    const c = useWorkspaceStore.getState().openQueryTab('conn-1', 'C')
+    const allTabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    // Visible group: A and C; B is outside the group
+    const visibleGroup = allTabs.filter((t) => t.id === a || t.id === c)
+    const allMovableTabIds = [a, b, c]
+
+    render(
+      <WorkspaceTabRail
+        connectionId="conn-1"
+        tabs={visibleGroup}
+        allMovableTabIds={allMovableTabIds}
+        activeTabId={null}
+        onRequestReorderTab={onRequestReorderTab}
+      />
+    )
+
+    const draggingTab = screen.getByTestId(`workspace-tab-${c}`)
+    const targetTab = screen.getByTestId(`workspace-tab-${a}`)
+
+    vi.spyOn(targetTab, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      top: 0,
+      right: 200,
+      bottom: 30,
+      width: 100,
+      height: 30,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    // Drag C before A → subsetInsertIndex=0 → should translate to fullInsertIndex=0
+    fireEvent.pointerDown(draggingTab, { button: 0, clientX: 260, clientY: 15 })
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 15 })
+    fireEvent.pointerUp(window, { clientX: 130, clientY: 15 })
+
+    expect(onRequestReorderTab).toHaveBeenCalledWith(c, 0)
   })
 })

@@ -91,7 +91,16 @@ export function SchemaInfoTab({ tab, isActive = true }: SchemaInfoTabProps) {
     return () => {
       cancelled = true
     }
-  }, [data, error, isActive, requestKey, tab.connectionId, tab.databaseName, tab.objectName, tab.objectType])
+  }, [
+    data,
+    error,
+    isActive,
+    requestKey,
+    tab.connectionId,
+    tab.databaseName,
+    tab.objectName,
+    tab.objectType,
+  ])
 
   const handleSubTabClick = useCallback(
     (subTab: SubTab) => {

@@ -53,4 +53,76 @@ describe('ResultsSettings', () => {
     expect(useSettingsStore.getState().pendingChanges['results.pageSize']).toBe('750')
     expect(useSettingsStore.getState().pendingChanges['results.nullDisplay']).toBe('(null)')
   })
+
+  describe('tableTabsInBottomPanel toggle', () => {
+    it('renders as unchecked by default when no persisted value', () => {
+      useSettingsStore.setState({
+        settings: {},
+        pendingChanges: {},
+        isDirty: false,
+      })
+
+      render(<ResultsSettings />)
+
+      const toggle = screen.getByTestId('settings-table-tabs-bottom')
+      const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
+      expect(checkbox).not.toBeChecked()
+    })
+
+    it('renders as checked when pending value is "true"', () => {
+      useSettingsStore.setState({
+        pendingChanges: {
+          'results.tableTabsInBottomPanel': 'true',
+        },
+        isDirty: true,
+      })
+
+      render(<ResultsSettings />)
+
+      const toggle = screen.getByTestId('settings-table-tabs-bottom')
+      const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
+      expect(checkbox).toBeChecked()
+    })
+
+    it('toggling it updates pending settings change', async () => {
+      const user = userEvent.setup()
+      useSettingsStore.setState({
+        settings: {},
+        pendingChanges: {},
+        isDirty: false,
+      })
+
+      render(<ResultsSettings />)
+
+      const toggle = screen.getByTestId('settings-table-tabs-bottom')
+      const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
+
+      await user.click(checkbox)
+
+      expect(useSettingsStore.getState().pendingChanges['results.tableTabsInBottomPanel']).toBe(
+        'true'
+      )
+      expect(useSettingsStore.getState().isDirty).toBe(true)
+    })
+
+    it('toggling off sets pending value to "false"', async () => {
+      const user = userEvent.setup()
+      useSettingsStore.setState({
+        settings: { 'results.tableTabsInBottomPanel': 'true' },
+        pendingChanges: {},
+        isDirty: false,
+      })
+
+      render(<ResultsSettings />)
+
+      const toggle = screen.getByTestId('settings-table-tabs-bottom')
+      const checkbox = toggle.querySelector('input[type="checkbox"]') as HTMLInputElement
+
+      await user.click(checkbox)
+
+      expect(useSettingsStore.getState().pendingChanges['results.tableTabsInBottomPanel']).toBe(
+        'false'
+      )
+    })
+  })
 })

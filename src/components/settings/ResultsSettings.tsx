@@ -1,5 +1,6 @@
 import { TextInput } from '../common/TextInput'
 import { SettingsSection } from './SettingsSection'
+import { SettingsToggle } from './SettingsToggle'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
 
 export function ResultsSettings() {
@@ -7,6 +8,7 @@ export function ResultsSettings() {
 
   const pageSize = useSettingValue('results.pageSize')
   const nullDisplay = useSettingValue('results.nullDisplay')
+  const tableTabsInBottomPanel = useSettingValue('results.tableTabsInBottomPanel')
 
   return (
     <div data-testid="settings-results">
@@ -44,6 +46,20 @@ export function ResultsSettings() {
             style={{ width: 200 }}
           />
         </div>
+      </SettingsSection>
+      <SettingsSection
+        title="Workspace Layout"
+        description="Configure where table browsing tabs appear."
+      >
+        <SettingsToggle
+          label="Show table data tabs in bottom panel"
+          description="Move table-data workspace tabs near the data/results area for faster switching while browsing tables."
+          checked={tableTabsInBottomPanel === 'true'}
+          onChange={(checked) =>
+            setPendingChange('results.tableTabsInBottomPanel', checked ? 'true' : 'false')
+          }
+          data-testid="settings-table-tabs-bottom"
+        />
       </SettingsSection>
     </div>
   )

@@ -459,4 +459,233 @@ describe('WorkspaceArea', () => {
     expect(screen.getByTestId('workspace-tabs')).toBeInTheDocument()
     expect(screen.getByTestId('new-query-tab-button')).toBeInTheDocument()
   })
+
+  // ---------------------------------------------------------------------------
+  // Bottom table-tabs rail placement tests
+  // ---------------------------------------------------------------------------
+
+  describe('table-data tab placement', () => {
+    function enableBottomTableTabs() {
+      useSettingsStore.setState({
+        settings: {
+          ...SETTINGS_DEFAULTS,
+          'results.tableTabsInBottomPanel': 'true',
+        },
+        pendingChanges: {},
+        isDirty: false,
+        isLoading: false,
+        activeSection: 'general',
+        isDialogOpen: false,
+        dialogSection: undefined,
+      })
+    }
+
+    function disableBottomTableTabs() {
+      useSettingsStore.setState({
+        settings: {
+          ...SETTINGS_DEFAULTS,
+          'results.tableTabsInBottomPanel': 'false',
+        },
+        pendingChanges: {},
+        isDirty: false,
+        isLoading: false,
+        activeSection: 'general',
+        isDialogOpen: false,
+        dialogSection: undefined,
+      })
+    }
+
+    it('with setting off (default): table-data tabs appear in top rail, no bottom rail', async () => {
+      disableBottomTableTabs()
+
+      const conn = makeActiveConnection()
+      useConnectionStore.setState({
+        activeConnections: { 'conn-1': conn },
+        activeTabId: 'conn-1',
+      })
+
+      useWorkspaceStore.getState().openTab({
+        type: 'table-data',
+        label: 'users',
+        connectionId: 'conn-1',
+        databaseName: 'mydb',
+        objectName: 'users',
+        objectType: 'table',
+      })
+
+      render(<WorkspaceArea />)
+
+      // Top rail shows the table-data tab
+      const topRail = screen.getByTestId('workspace-tabs')
+      expect(topRail).toBeInTheDocument()
+      expect(screen.getByText('users')).toBeInTheDocument()
+
+      // No bottom table-tabs rail
+      expect(screen.queryByTestId('bottom-table-tabs')).not.toBeInTheDocument()
+    })
+
+    it('with setting on: table-data tabs appear in bottom rail and NOT in top rail', async () => {
+      enableBottomTableTabs()
+
+      const conn = makeActiveConnection()
+      useConnectionStore.setState({
+        activeConnections: { 'conn-1': conn },
+        activeTabId: 'conn-1',
+      })
+
+      useWorkspaceStore.getState().openTab({
+        type: 'table-data',
+        label: 'users',
+        connectionId: 'conn-1',
+        databaseName: 'mydb',
+        objectName: 'users',
+        objectType: 'table',
+      })
+
+      render(<WorkspaceArea />)
+
+      // Bottom rail should be visible with the table-data tab
+      const bottomRail = screen.getByTestId('bottom-table-tabs')
+      expect(bottomRail).toBeInTheDocument()
+      expect(bottomRail).toHaveTextContent('users')
+
+      // Top rail should not contain the table-data tab label
+      const topRail = screen.getByTestId('workspace-tabs')
+      expect(topRail).not.toHaveTextContent('users')
+    })
+
+    it('with setting on: query tabs still render normally in top rail', async () => {
+      enableBottomTableTabs()
+
+      const conn = makeActiveConnection()
+      useConnectionStore.setState({
+        activeConnections: { 'conn-1': conn },
+        activeTabId: 'conn-1',
+      })
+
+      useWorkspaceStore.getState().openTab({
+        type: 'table-data',
+        label: 'users',
+        connectionId: 'conn-1',
+        databaseName: 'mydb',
+        objectName: 'users',
+        objectType: 'table',
+      })
+      useWorkspaceStore.getState().openQueryTab('conn-1')
+
+      render(<WorkspaceArea />)
+
+      // Query tab should be in the top rail
+      const topRail = screen.getByTestId('workspace-tabs')
+      expect(topRail).toHaveTextContent('Query 1')
+
+      // Table-data tab should be only in bottom rail
+      const bottomRail = screen.getByTestId('bottom-table-tabs')
+      expect(bottomRail).toHaveTextContent('users')
+      expect(topRail).not.toHaveTextContent('users')
+    })
+
+    it('saving the setting updates placement immediately without reloading', () => {
+      // Start with setting off
+      disableBottomTableTabs()
+
+      const conn = makeActiveConnection()
+      useConnectionStore.setState({
+        activeConnections: { 'conn-1': conn },
+        activeTabId: 'conn-1',
+      })
+
+      useWorkspaceStore.getState().openTab({
+        type: 'table-data',
+        label: 'users',
+        connectionId: 'conn-1',
+        databaseName: 'mydb',
+        objectName: 'users',
+        objectType: 'table',
+      })
+
+      render(<WorkspaceArea />)
+
+      // Initially no bottom rail
+      expect(screen.queryByTestId('bottom-table-tabs')).not.toBeInTheDocument()
+
+      // Simulate saving the setting (committed to settings, not just pending)
+      act(() => {
+        enableBottomTableTabs()
+      })
+
+      // Bottom rail should now appear
+      expect(screen.getByTestId('bottom-table-tabs')).toBeInTheDocument()
+
+      // Simulate turning it back off
+      act(() => {
+        disableBottomTableTabs()
+      })
+
+      // Bottom rail should disappear again
+      expect(screen.queryByTestId('bottom-table-tabs')).not.toBeInTheDocument()
+    })
+
+    it('with setting on and AI enabled: AI panel host still appears for active query tab', () => {
+      enableBottomTableTabs()
+
+      useSettingsStore.setState({
+        settings: {
+          ...SETTINGS_DEFAULTS,
+          'results.tableTabsInBottomPanel': 'true',
+          'ai.enabled': 'true',
+          'ai.embeddingModel': 'nomic-embed-text',
+        },
+        pendingChanges: {},
+        isDirty: false,
+        isLoading: false,
+        activeSection: 'ai',
+        isDialogOpen: false,
+        dialogSection: undefined,
+      })
+
+      const conn = makeActiveConnection()
+      useConnectionStore.setState({
+        activeConnections: { 'conn-1': conn },
+        activeTabId: 'conn-1',
+      })
+
+      // Add a table-data tab (goes to bottom rail) and a query tab (stays in top)
+      useWorkspaceStore.getState().openTab({
+        type: 'table-data',
+        label: 'users',
+        connectionId: 'conn-1',
+        databaseName: 'mydb',
+        objectName: 'users',
+        objectType: 'table',
+      })
+      useWorkspaceStore.getState().openQueryTab('conn-1')
+
+      render(<WorkspaceArea />)
+
+      // AI panel host should be present for the active query tab
+      expect(screen.getByTestId('workspace-ai-panel-host')).toBeInTheDocument()
+
+      // Bottom rail still shows the table-data tab
+      expect(screen.getByTestId('bottom-table-tabs')).toBeInTheDocument()
+    })
+
+    it('with setting on: no bottom rail rendered when there are no table-data tabs', () => {
+      enableBottomTableTabs()
+
+      const conn = makeActiveConnection()
+      useConnectionStore.setState({
+        activeConnections: { 'conn-1': conn },
+        activeTabId: 'conn-1',
+      })
+
+      // Only query tab — no table-data
+      useWorkspaceStore.getState().openQueryTab('conn-1')
+
+      render(<WorkspaceArea />)
+
+      // Bottom rail should not render (WorkspaceTableTabsRail returns null when empty)
+      expect(screen.queryByTestId('bottom-table-tabs')).not.toBeInTheDocument()
+    })
+  })
 })

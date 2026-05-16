@@ -2,11 +2,13 @@ import { useEffect, useRef } from 'react'
 import { Button } from '../common/Button'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import {
   dispatchWorkspaceTabActivated,
   dispatchWorkspaceTabDeactivated,
 } from '../../lib/workspace-tab-activity-events'
 import { WorkspaceTabs } from '../workspace/WorkspaceTabs'
+import { WorkspaceTableTabsRail } from '../workspace/WorkspaceTableTabsRail'
 import { AiDiffBridgeProvider } from '../query-editor/ai-diff-bridge-context'
 import type { WorkspaceTab } from '../../types/schema'
 import { WorkspaceBody } from './WorkspaceBody'
@@ -19,6 +21,15 @@ export function WorkspaceArea() {
   const activeConnections = useConnectionStore((state) => state.activeConnections)
   const activeTabId = useConnectionStore((state) => state.activeTabId)
   const openDialog = useConnectionStore((state) => state.openDialog)
+
+  // Read the committed "tableTabsInBottomPanel" setting reactively.
+  // Using state.settings directly (not getSetting function reference) so that
+  // the component re-renders when settings are saved.
+  const bottomTableTabsEnabled = useSettingsStore(
+    (state) =>
+      (state.settings['results.tableTabsInBottomPanel'] ??
+        SETTINGS_DEFAULTS['results.tableTabsInBottomPanel']) === 'true'
+  )
 
   const activeConnection = activeTabId ? activeConnections[activeTabId] : null
 
@@ -33,7 +44,9 @@ export function WorkspaceArea() {
   const previousActiveWorkspaceTabIdRef = useRef<string | null>(null)
   const panelOrderRef = useRef<string[]>([])
 
-  const nextPanelOrder = panelOrderRef.current.filter((tabId) => tabs.some((tab) => tab.id === tabId))
+  const nextPanelOrder = panelOrderRef.current.filter((tabId) =>
+    tabs.some((tab) => tab.id === tabId)
+  )
   const seenPanelIds = new Set(nextPanelOrder)
   for (const tab of tabs) {
     if (!seenPanelIds.has(tab.id)) {
@@ -80,7 +93,7 @@ export function WorkspaceArea() {
   // Active connection — always show tab bar (even with 0 tabs)
   return (
     <div className={styles.workspaceTabbed} data-testid="workspace-area">
-      <WorkspaceTabs connectionId={activeTabId!} />
+      <WorkspaceTabs connectionId={activeTabId!} hideTableDataTabs={bottomTableTabsEnabled} />
       <AiDiffBridgeProvider>
         <WorkspaceBody
           tabs={tabs}
@@ -120,6 +133,7 @@ export function WorkspaceArea() {
           )}
         />
       </AiDiffBridgeProvider>
+      {bottomTableTabsEnabled && <WorkspaceTableTabsRail connectionId={activeTabId!} />}
     </div>
   )
 }

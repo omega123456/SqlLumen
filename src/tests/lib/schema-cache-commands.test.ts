@@ -6,10 +6,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
 }))
 
-import {
-  loadSchemaCacheSnapshot,
-  saveSchemaCacheSnapshot,
-} from '../../lib/schema-cache-commands'
+import { loadSchemaCacheSnapshot, saveSchemaCacheSnapshot } from '../../lib/schema-cache-commands'
 
 describe('schema-cache-commands', () => {
   beforeEach(() => {

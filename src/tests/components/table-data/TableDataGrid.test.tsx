@@ -329,7 +329,11 @@ describe('TableDataGrid', () => {
 
     expect(result).toMatchObject({ proceed: true, enableEditor: false })
     expect(useTableDataStore.getState().tabs.t1.selectedRowKey).toEqual({ id: 2 })
-    expect(startEditing).toHaveBeenCalledWith('t1', { id: 2 }, expect.objectContaining({ id: 2, name: 'Bob' }))
+    expect(startEditing).toHaveBeenCalledWith(
+      't1',
+      { id: 2 },
+      expect.objectContaining({ id: 2, name: 'Bob' })
+    )
     expect(useTableDataStore.getState().tabs.t1.editState).not.toBeNull()
   })
 

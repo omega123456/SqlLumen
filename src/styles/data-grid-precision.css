@@ -276,14 +276,14 @@
    estimate. */
 #portal .gdg-d19meir1.sqllumen-glide-editor-overlay.gdg-pad {
   --sqllumen-grid-editor-control-height: 22px;
-  padding:
-    max(
+  padding: max(
       0px,
       calc(
         (
             var(--d19meir1-3, var(--grid-row-height, 32px)) -
               var(--sqllumen-grid-editor-control-height)
-          ) / 2
+          ) /
+          2
       )
     )
     8.5px !important;

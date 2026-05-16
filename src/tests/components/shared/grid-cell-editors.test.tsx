@@ -200,10 +200,7 @@ describe('NullableCellEditor — store syncing', () => {
       'col_1',
       'Original Value'
     )
-    expect(props.onRowChange).toHaveBeenCalledWith(
-      { col_0: 1, col_1: 'Original Value' },
-      false
-    )
+    expect(props.onRowChange).toHaveBeenCalledWith({ col_0: 1, col_1: 'Original Value' }, false)
     expect(props.onClose).toHaveBeenCalledWith(false, false)
 
     fireEvent.blur(input)

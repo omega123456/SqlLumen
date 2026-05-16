@@ -141,11 +141,16 @@ vi.mock('../../../components/table-data/FkLookupDialog', () => ({
         <div data-testid="fk-lookup-source-column">{String(props.sourceColumn)}</div>
         <button
           data-testid="fk-lookup-apply-same"
-          onClick={() => (props.onApply as ((v: unknown) => void) | undefined)?.(props.currentValue)}
+          onClick={() =>
+            (props.onApply as ((v: unknown) => void) | undefined)?.(props.currentValue)
+          }
         >
           Apply Same
         </button>
-        <button data-testid="fk-lookup-apply-new" onClick={() => (props.onApply as ((v: unknown) => void) | undefined)?.(9)}>
+        <button
+          data-testid="fk-lookup-apply-new"
+          onClick={() => (props.onApply as ((v: unknown) => void) | undefined)?.(9)}
+        >
           Apply New
         </button>
         <button data-testid="fk-lookup-close" onClick={props.onClose as () => void}>

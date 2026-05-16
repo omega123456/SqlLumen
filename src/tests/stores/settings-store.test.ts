@@ -352,6 +352,31 @@ describe('useSettingsStore', () => {
     })
   })
 
+  describe('results.tableTabsInBottomPanel', () => {
+    it('has a default value of "false"', () => {
+      expect(SETTINGS_DEFAULTS['results.tableTabsInBottomPanel']).toBe('false')
+    })
+
+    it('getSetting returns "false" when not set', () => {
+      const { getSetting } = useSettingsStore.getState()
+      expect(getSetting('results.tableTabsInBottomPanel')).toBe('false')
+    })
+
+    it('resetSection for results includes tableTabsInBottomPanel set to default', () => {
+      useSettingsStore.setState({
+        settings: { 'results.tableTabsInBottomPanel': 'true' },
+        pendingChanges: {},
+        isDirty: false,
+      })
+
+      useSettingsStore.getState().resetSection('results')
+
+      const state = useSettingsStore.getState()
+      expect(state.isDirty).toBe(true)
+      expect(state.pendingChanges['results.tableTabsInBottomPanel']).toBe('false')
+    })
+  })
+
   describe('ai.retrieval defaults', () => {
     it('has default values for all ai.retrieval.* keys', () => {
       expect(SETTINGS_DEFAULTS['ai.retrieval.topKPerQuery']).toBe('20')

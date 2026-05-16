@@ -21,6 +21,7 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'editor.autocompleteBackticks': 'false',
   'results.pageSize': '500',
   'results.nullDisplay': 'NULL',
+  'results.tableTabsInBottomPanel': 'false',
   'connection.defaultTimeout': '10',
   'connection.defaultKeepalive': '60',
   'updates.checkInterval': DEFAULT_UPDATE_INTERVAL,

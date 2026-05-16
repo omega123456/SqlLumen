@@ -202,6 +202,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         'editor.autocompleteBackticks': 'false',
         'results.pageSize': '500',
         'results.nullDisplay': 'NULL',
+        'results.tableTabsInBottomPanel': 'false',
         'connection.defaultTimeout': '10',
         'connection.defaultKeepalive': '60',
         shortcuts: '{}',

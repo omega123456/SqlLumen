@@ -98,9 +98,6 @@ describe('slash-commands', () => {
       'error',
       '[slash-commands] /remember failed: backend unavailable'
     )
-    expect(mockShowErrorToast).toHaveBeenCalledWith(
-      'Failed to save memory',
-      'backend unavailable'
-    )
+    expect(mockShowErrorToast).toHaveBeenCalledWith('Failed to save memory', 'backend unavailable')
   })
 })

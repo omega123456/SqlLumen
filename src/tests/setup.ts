@@ -12,8 +12,7 @@ const FILTERED_ACT_NOISE_PATTERNS = [
 
 function isFilteredActNoise(value: unknown): value is string {
   return (
-    typeof value === 'string' &&
-    FILTERED_ACT_NOISE_PATTERNS.some((pattern) => pattern.test(value))
+    typeof value === 'string' && FILTERED_ACT_NOISE_PATTERNS.some((pattern) => pattern.test(value))
   )
 }
 const originalConsoleError = console.error

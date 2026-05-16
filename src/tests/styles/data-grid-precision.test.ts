@@ -33,5 +33,4 @@ describe('data-grid-precision.css', () => {
     expect(css).not.toMatch(/padding:\s*0\s*!important/)
     expect(css).not.toContain(":has([data-testid='fk-lookup-trigger'])")
   })
-
 })
