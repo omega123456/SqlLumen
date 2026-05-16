@@ -1050,6 +1050,21 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         void applySelection()
       }
 
+      const moveSelectionHorizontal = (delta: -1 | 1) => {
+        const currentRow = currentCell?.rowIdx ?? activeSelectedRowIndex ?? 0
+        const currentCol = currentCell?.idx ?? 0
+        const nextCol = Math.max(0, Math.min(gridColumns.length - 1, currentCol + delta))
+
+        if (nextCol !== currentCol) {
+          void changeSelectedCell(currentRow, nextCol)
+        }
+
+        gridRef.current?.selectCell(
+          { rowIdx: currentRow, idx: nextCol },
+          { shouldFocusCell: true, enableEditor: false }
+        )
+      }
+
       if (event.key === 'ArrowDown') {
         event.preventDefault()
         event.cancel?.()
@@ -1060,6 +1075,18 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         event.preventDefault()
         event.cancel?.()
         moveSelection(-1)
+        return
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        event.cancel?.()
+        moveSelectionHorizontal(1)
+        return
+      }
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        event.cancel?.()
+        moveSelectionHorizontal(-1)
         return
       }
       if (isTypingActivationKey(event) && currentCell) {

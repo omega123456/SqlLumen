@@ -1726,6 +1726,112 @@ describe('CanvasBaseGridView', () => {
     expect(cancel).toHaveBeenCalled()
   })
 
+  it('ArrowLeft and ArrowRight move selection between columns', () => {
+    const onSelectedCellChange = vi.fn()
+    const multiColumns = [
+      {
+        key: 'id',
+        displayName: 'ID',
+        dataType: 'INT',
+        editable: false,
+        isBinary: false,
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+      },
+      {
+        key: 'name',
+        displayName: 'Name',
+        dataType: 'VARCHAR',
+        editable: false,
+        isBinary: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+      },
+      {
+        key: 'email',
+        displayName: 'Email',
+        dataType: 'VARCHAR',
+        editable: false,
+        isBinary: false,
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+      },
+    ]
+    const multiRows = [{ id: 1, name: 'alpha', email: 'a@b.com' }]
+
+    render(
+      <CanvasBaseGridView
+        rows={multiRows}
+        columns={multiColumns}
+        editState={null}
+        selectedCellPosition={{ rowIdx: 0, idx: 1 }}
+        onSelectedCellChange={onSelectedCellChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onKeyDown: (event: { key: string; preventDefault: () => void; cancel?: () => void }) => void
+    }
+    const preventDefault = vi.fn()
+    const cancel = vi.fn()
+
+    // ArrowRight from column 1 should move to column 2
+    act(() => props.onKeyDown({ key: 'ArrowRight', preventDefault, cancel }))
+    expect(onSelectedCellChange).toHaveBeenCalledWith({ rowIdx: 0, idx: 2 })
+    expect(preventDefault).toHaveBeenCalled()
+    expect(cancel).toHaveBeenCalled()
+
+    onSelectedCellChange.mockClear()
+    preventDefault.mockClear()
+    cancel.mockClear()
+
+    // ArrowLeft from column 1 should move to column 0
+    act(() => props.onKeyDown({ key: 'ArrowLeft', preventDefault, cancel }))
+    expect(onSelectedCellChange).toHaveBeenCalledWith({ rowIdx: 0, idx: 0 })
+    expect(preventDefault).toHaveBeenCalled()
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it('ArrowLeft at first column and ArrowRight at last column clamp to boundaries', () => {
+    const onSelectedCellChange = vi.fn()
+
+    // Start at column 0, pressing ArrowLeft should stay at column 0
+    render(
+      <CanvasBaseGridView
+        rows={rows}
+        columns={columns}
+        editState={null}
+        selectedCellPosition={{ rowIdx: 0, idx: 0 }}
+        onSelectedCellChange={onSelectedCellChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onKeyDown: (event: { key: string; preventDefault: () => void; cancel?: () => void }) => void
+    }
+    const preventDefault = vi.fn()
+    const cancel = vi.fn()
+
+    // With only one column, ArrowRight at column 0 should clamp to column 0
+    act(() => props.onKeyDown({ key: 'ArrowRight', preventDefault, cancel }))
+    expect(mockSelectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 0 },
+      { shouldFocusCell: true, enableEditor: false }
+    )
+
+    mockSelectCell.mockClear()
+
+    // ArrowLeft at column 0 should clamp to column 0
+    act(() => props.onKeyDown({ key: 'ArrowLeft', preventDefault, cancel }))
+    expect(mockSelectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 0 },
+      { shouldFocusCell: true, enableEditor: false }
+    )
+  })
+
   it('typing into a selected editable cell seeds the first typed character before opening the editor', async () => {
     const onCellClickGuard = vi.fn().mockResolvedValue({
       proceed: true,
