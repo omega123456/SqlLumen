@@ -9,6 +9,7 @@ import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
+import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import type {
   TableDataTab,
@@ -28,9 +29,28 @@ beforeEach(() => {
   useTableDesignerStore.setState({ tabs: {} })
   useObjectEditorStore.setState({ tabs: {} })
   useAiStore.setState({ tabs: {} })
+  useSettingsStore.setState({
+    settings: { ...SETTINGS_DEFAULTS, 'results.tableTabsInBottomPanel': 'false' },
+    pendingChanges: {},
+    isLoading: false,
+    isDirty: false,
+    activeSection: 'general',
+    isDialogOpen: false,
+    dialogSection: undefined,
+  })
   _resetTabIdCounter()
   _resetQueryTabCounter()
 })
+
+function setBottomPanelEnabled(enabled: boolean) {
+  useSettingsStore.setState((state) => ({
+    ...state,
+    settings: {
+      ...state.settings,
+      'results.tableTabsInBottomPanel': enabled ? 'true' : 'false',
+    },
+  }))
+}
 
 function makeTab(overrides: Partial<Omit<TableDataTab, 'id'>> = {}): Omit<TableDataTab, 'id'> {
   return {
@@ -128,6 +148,100 @@ describe('useWorkspaceStore — openTab', () => {
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(1)
     expect(state.activeTabByConnection['conn-1']).toBe(firstId)
+  })
+
+  it('scopes table-data tabs to the active query tab when the setting is enabled', () => {
+    setBottomPanelEnabled(true)
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+
+    useWorkspaceStore.getState().openTab(makeTab())
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const tableTab = tabs.find((tab) => tab.type === 'table-data')
+    expect(tableTab).toMatchObject({ type: 'table-data', parentQueryTabId: queryTabId })
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTabId)
+    expect(useQueryStore.getState().getTabState(queryTabId).activeBottomPanelItem).toEqual({
+      type: 'table-data',
+      tabId: tableTab?.id,
+    })
+  })
+
+  it('auto-creates a query tab when opening scoped table data without an active query tab', () => {
+    setBottomPanelEnabled(true)
+
+    useWorkspaceStore.getState().openTab(makeTab())
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const queryTab = tabs.find((tab) => tab.type === 'query-editor')
+    const tableTab = tabs.find((tab) => tab.type === 'table-data')
+    expect(queryTab).toBeDefined()
+    expect(tableTab).toMatchObject({ type: 'table-data', parentQueryTabId: queryTab?.id })
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTab?.id)
+  })
+
+  it('allows the same table in different query scopes', () => {
+    setBottomPanelEnabled(true)
+    const queryTabOne = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    useWorkspaceStore.getState().openTab(makeTab())
+
+    const queryTabTwo = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 2')
+    useWorkspaceStore.getState().openTab(makeTab())
+
+    const tableTabs = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1']
+      .filter((tab): tab is TableDataTab => tab.type === 'table-data')
+
+    expect(tableTabs).toHaveLength(2)
+    expect(tableTabs.map((tab) => tab.parentQueryTabId)).toEqual([queryTabOne, queryTabTwo])
+  })
+
+  it('normalizes existing scoped table-data tabs back to standalone when the setting is disabled', () => {
+    setBottomPanelEnabled(true)
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+    useWorkspaceStore.getState().openTab(makeTab())
+
+    setBottomPanelEnabled(false)
+    useWorkspaceStore
+      .getState()
+      .openTab(makeSchemaTab({ objectName: 'orders', label: 'orders', type: 'schema-info' }))
+
+    const tableTab = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1']
+      .find((tab): tab is TableDataTab => tab.type === 'table-data')
+    expect(queryTabId).toBeTruthy()
+    expect(tableTab?.parentQueryTabId).toBeUndefined()
+  })
+
+  it('deduplicates identical standalone table-data tabs while normalizing scoped tabs', () => {
+    useWorkspaceStore.getState().openTab(makeTab())
+    const standaloneTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+
+    setBottomPanelEnabled(true)
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+    useWorkspaceStore.getState().openTab(makeTab())
+    useQueryStore
+      .getState()
+      .setActiveBottomPanelItem(queryTabId, {
+        type: 'table-data',
+        tabId: useWorkspaceStore
+          .getState()
+          .tabsByConnection['conn-1']
+          .find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === queryTabId)!.id,
+      })
+
+    useWorkspaceStore.getState().normalizeTableDataTabScopes()
+
+    const tableTabs = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1']
+      .filter((tab): tab is TableDataTab => tab.type === 'table-data')
+
+    expect(tableTabs).toHaveLength(1)
+    expect(tableTabs[0].id).toBe(standaloneTabId)
+    expect(tableTabs[0].parentQueryTabId).toBeUndefined()
+    expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(standaloneTabId)
   })
 })
 
@@ -316,6 +430,29 @@ describe('useWorkspaceStore — reorderWorkspaceTab', () => {
     expect(useAiStore.getState().tabs[q1]?.isPanelOpen).toBe(true)
     expect(useAiStore.getState().tabs[q2]).toBeUndefined()
   })
+
+  it('keeps scoped table-data children grouped with their parent query tab in bottom-panel mode', () => {
+    setBottomPanelEnabled(true)
+    const q1 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q1')
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
+    const q2 = useWorkspaceStore.getState().openQueryTab('conn-1', 'Q2')
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'orders', label: 'orders' }))
+
+    useWorkspaceStore.getState().reorderWorkspaceTab('conn-1', q2, 0)
+
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1'].map((tab) => tab.id)).toEqual([
+      q2,
+      useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1']
+        .find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === q2)!.id,
+      q1,
+      useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1']
+        .find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === q1)!.id,
+    ])
+  })
 })
 
 describe('useWorkspaceStore — closeTab', () => {
@@ -428,6 +565,91 @@ describe('useWorkspaceStore — closeTab', () => {
 
     expect(cleanupSpy).toHaveBeenCalledWith(tabId)
     expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(0)
+  })
+
+  it('cascade-closes clean scoped table-data tabs when closing a query tab', () => {
+    setBottomPanelEnabled(true)
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+    useWorkspaceStore.getState().openTab(makeTab())
+    const cleanupSpy = vi.spyOn(useTableDataStore.getState(), 'cleanupTab')
+
+    useWorkspaceStore.getState().closeTab('conn-1', queryTabId)
+
+    expect(useWorkspaceStore.getState().pendingCascadeClose).toBeNull()
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toEqual([])
+    expect(cleanupSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens a single discard-only cascade dialog for dirty query/table scoped tabs', () => {
+    setBottomPanelEnabled(true)
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+    useWorkspaceStore.getState().openTab(makeTab())
+    const tableTabId = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1']
+      .find((tab) => tab.type === 'table-data')?.id
+
+    if (!tableTabId) {
+      throw new Error('Expected table-data tab')
+    }
+
+    useQueryStore.setState({
+      tabs: {
+        [queryTabId]: {
+          ...useQueryStore.getState().getTabState(queryTabId),
+          connectionId: 'conn-1',
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              editState: { modifiedColumns: new Set(['name']) } as never,
+            },
+          ],
+        },
+      },
+    })
+    useTableDataStore.setState({
+      tabs: {
+        [tableTabId]: {
+          editState: { modifiedColumns: new Set(['name']) },
+        } as never,
+      },
+    })
+
+    useWorkspaceStore.getState().closeTab('conn-1', queryTabId)
+
+    const pending = useWorkspaceStore.getState().pendingCascadeClose
+    expect(pending).not.toBeNull()
+    expect(pending?.queryResultItems).toEqual(['Result 1'])
+    expect(pending?.tableDataItems).toEqual(['users'])
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(2)
+  })
+
+  it('keeps tabs open when the cascade close is cancelled', () => {
+    setBottomPanelEnabled(true)
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+    useWorkspaceStore.getState().openTab(makeTab())
+    const tableTabId = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1']
+      .find((tab) => tab.type === 'table-data')?.id
+
+    if (!tableTabId) {
+      throw new Error('Expected table-data tab')
+    }
+
+    useTableDataStore.setState({
+      tabs: {
+        [tableTabId]: {
+          editState: { modifiedColumns: new Set(['name']) },
+        } as never,
+      },
+    })
+
+    useWorkspaceStore.getState().closeTab('conn-1', queryTabId)
+    useWorkspaceStore.getState().pendingCascadeClose?.onCancel()
+
+    expect(useWorkspaceStore.getState().pendingCascadeClose).toBeNull()
+    expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(2)
   })
 })
 

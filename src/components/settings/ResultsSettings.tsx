@@ -53,7 +53,7 @@ export function ResultsSettings() {
       >
         <SettingsToggle
           label="Show table data tabs in bottom panel"
-          description="Move table-data workspace tabs near the data/results area for faster switching while browsing tables."
+          description="Show table data tabs inside the active query editor's result panel for faster switching between query results and table browsing."
           checked={tableTabsInBottomPanel === 'true'}
           onChange={(checked) =>
             setPendingChange('results.tableTabsInBottomPanel', checked ? 'true' : 'false')

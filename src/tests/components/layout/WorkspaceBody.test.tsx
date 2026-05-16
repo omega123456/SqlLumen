@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { WorkspaceBody } from '../../../components/layout/WorkspaceBody'
 import { WORKSPACE_LAYOUT_EVENT } from '../../../lib/workspace-layout-events'
 import { useAiStore, type TabAiState } from '../../../stores/ai-store'
+import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import type { WorkspaceTab } from '../../../types/schema'
 
@@ -83,6 +84,12 @@ const tableTab: WorkspaceTab = {
   objectType: 'table',
 }
 
+const scopedTableTab: WorkspaceTab = {
+  ...tableTab,
+  id: 'table-scoped-1',
+  parentQueryTabId: 'query-1',
+}
+
 function emptyAiTabState(overrides: Partial<TabAiState> = {}): TabAiState {
   return {
     messages: [],
@@ -120,6 +127,17 @@ function renderWorkspaceBody(activeTabId: string | null) {
   )
 }
 
+function renderWorkspaceBodyWithTabs(tabs: WorkspaceTab[], activeTabId: string | null) {
+  return render(
+    <WorkspaceBody
+      tabs={tabs}
+      activeTabId={activeTabId}
+      connectionId="conn-1"
+      renderTabStack={() => <div data-testid="tab-stack-slot">tab stack</div>}
+    />
+  )
+}
+
 function expectAllAiHostsHidden() {
   for (const host of screen.getAllByTestId('workspace-ai-panel-host')) {
     expect(host).toHaveStyle({ visibility: 'hidden' })
@@ -147,6 +165,7 @@ beforeEach(() => {
       'query-2': emptyAiTabState({ isPanelOpen: false }),
     },
   })
+  useQueryStore.setState({ tabs: {} })
   useSettingsStore.setState({
     settings: { ...SETTINGS_DEFAULTS, 'ai.enabled': 'true' },
     pendingChanges: {},
@@ -236,5 +255,68 @@ describe('WorkspaceBody', () => {
     } finally {
       window.removeEventListener(WORKSPACE_LAYOUT_EVENT, listener)
     }
+  })
+
+  it('keeps the AI rail and active query AI panel visible when a scoped table tab is active', () => {
+    useQueryStore.setState({
+      tabs: {
+        'query-1': {
+          ...useQueryStore.getState().getTabState('query-1'),
+          connectionId: 'conn-1',
+          activeBottomPanelItem: { type: 'table-data', tabId: 'table-scoped-1' },
+        },
+      },
+    })
+
+    renderWorkspaceBodyWithTabs([queryTabOne, queryTabTwo, scopedTableTab], 'query-1')
+
+    expect(screen.getByTestId('mock-ai-rail')).toHaveAttribute('data-tab-id', 'query-1')
+    const hosts = screen.getAllByTestId('workspace-ai-panel-host')
+    expect(hosts[0]).toHaveAttribute('aria-hidden', 'false')
+    expect(hosts[1]).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getAllByTestId('mock-ai-panel')).toHaveLength(2)
+  })
+
+  it('does not unmount the active query AI panel when switching between query results and scoped table data', () => {
+    useQueryStore.setState({
+      tabs: {
+        'query-1': {
+          ...useQueryStore.getState().getTabState('query-1'),
+          connectionId: 'conn-1',
+          activeBottomPanelItem: { type: 'table-data', tabId: 'table-scoped-1' },
+        },
+      },
+    })
+
+    const tabs = [queryTabOne, queryTabTwo, scopedTableTab]
+    const { rerender } = renderWorkspaceBodyWithTabs(tabs, 'query-1')
+
+    expect(screen.getAllByTestId('mock-ai-panel')).toHaveLength(2)
+    expect(screen.getByTestId('mock-ai-rail')).toHaveAttribute('data-tab-id', 'query-1')
+
+    useQueryStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        'query-1': {
+          ...state.tabs['query-1'],
+          activeBottomPanelItem: { type: 'result' },
+        },
+      },
+    }))
+
+    rerender(
+      <WorkspaceBody
+        tabs={tabs}
+        activeTabId="query-1"
+        connectionId="conn-1"
+        renderTabStack={() => <div data-testid="tab-stack-slot">tab stack</div>}
+      />
+    )
+
+    expect(screen.getAllByTestId('mock-ai-panel')).toHaveLength(2)
+    const hosts = screen.getAllByTestId('workspace-ai-panel-host')
+    expect(hosts[0]).toHaveAttribute('aria-hidden', 'false')
+    expect(hosts[1]).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByTestId('mock-ai-rail')).toHaveAttribute('data-tab-id', 'query-1')
   })
 })

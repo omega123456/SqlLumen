@@ -61,6 +61,7 @@ interface TabOverrides {
   executionStartedAt?: number | null
   isCancelling?: boolean
   wasCancelled?: boolean
+  activeBottomPanelItem?: TabQueryState['activeBottomPanelItem']
 }
 
 // All keys that belong to SingleResultState
@@ -151,6 +152,7 @@ export function makeTabState(
     connectionId: '',
     results: [singleResult],
     activeResultIndex: 0,
+    activeBottomPanelItem: { type: 'result' },
     pendingNavigationAction: null,
     executionStartedAt: null,
     isCancelling: false,

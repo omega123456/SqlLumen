@@ -1,0 +1,95 @@
+.strip {
+  --underline-tab-row-height: 32px;
+  background: var(--surface-container);
+  scrollbar-width: none;
+}
+
+.item {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
+}
+
+.separator {
+  width: 1px;
+  margin: 7px 2px;
+  background: rgba(var(--outline-variant-rgb), 0.45);
+  flex-shrink: 0;
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  background: transparent;
+  color: var(--on-surface-variant);
+  font-family: var(--font-body);
+  font-size: var(--type-nav-tab);
+  font-weight: var(--type-nav-weight);
+  flex-shrink: 0;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--on-surface);
+  background-color: rgba(var(--on-surface-rgb), 0.03);
+}
+
+.tabActive {
+  color: var(--primary);
+  font-weight: var(--type-nav-weight-active);
+  background-color: var(--underline-tab-active-bg);
+}
+
+.tabActive:hover {
+  background-color: var(--underline-tab-active-bg);
+}
+
+.tabActive::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--underline-tab-indicator, var(--primary));
+  border-radius: 1px 1px 0 0;
+}
+
+.tabButton {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  padding: 8px 12px 8px 16px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tabButton:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.errorIcon {
+  color: var(--error);
+}
+
+.closeButton {
+  align-self: center;
+  margin-left: 4px;
+  margin-right: 10px;
+}

@@ -23,9 +23,8 @@ const EMPTY_TABS: WorkspaceTab[] = []
 export interface WorkspaceTabsProps {
   connectionId: string
   /**
-   * When true, table-data tabs are excluded from the top rail.
-   * Used when the bottom table-tabs rail is enabled so those tabs
-   * appear only in the bottom rail.
+   * When true, scoped table-data tabs are excluded from the top rail.
+   * Standalone table-data tabs remain visible.
    */
   hideTableDataTabs?: boolean
   onRequestRenameTab?: (tabId: string) => void
@@ -46,14 +45,12 @@ export function WorkspaceTabs({
   )
   const openQueryTab = useWorkspaceStore((state) => state.openQueryTab)
 
-  // Split into pinned (fixed suffix) and scrollable (delegated to rail)
-  // When hideTableDataTabs is true, exclude table-data tabs from the top rail
-  // (they will appear in the bottom WorkspaceTableTabsRail instead).
+  // Split into pinned (fixed suffix) and scrollable (delegated to rail).
   const scrollableTabs = tabs.filter(
     (t) =>
       t.type !== 'history' &&
       t.type !== 'processlist' &&
-      !(hideTableDataTabs && t.type === 'table-data')
+      !(hideTableDataTabs && t.type === 'table-data' && t.parentQueryTabId !== undefined)
   )
   const pinnedTabs = tabs.filter((t) => t.type === 'history' || t.type === 'processlist')
 

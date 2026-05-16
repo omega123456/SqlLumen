@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { dispatchAuxClick } from '../../helpers/dispatch-aux-click'
 import userEvent from '@testing-library/user-event'
 import { WorkspaceTabs } from '../../../components/workspace/WorkspaceTabs'
@@ -8,6 +8,7 @@ import {
   _resetTabIdCounter,
   _resetQueryTabCounter,
 } from '../../../stores/workspace-store'
+import { useSettingsStore } from '../../../stores/settings-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../../stores/object-editor-store'
 
@@ -16,6 +17,15 @@ beforeEach(() => {
     tabsByConnection: {},
     activeTabByConnection: {},
   })
+  useSettingsStore.setState((state) => ({
+    settings: {
+      ...state.settings,
+      results: {
+        ...state.settings.results,
+        tableTabsInBottomPanel: 'false',
+      },
+    },
+  }))
   useTableDesignerStore.setState({ tabs: {} })
   useObjectEditorStore.setState({ tabs: {} })
   _resetTabIdCounter()
@@ -782,33 +792,62 @@ describe('WorkspaceTabs', () => {
     ).toEqual([q1, q2])
   })
 
-  it('with hideTableDataTabs=true, table-data tabs are excluded from the top rail but query tabs are visible', () => {
-    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query A')
-    useWorkspaceStore.getState().openTab({
-      type: 'table-data',
-      label: 'users',
-      connectionId: 'conn-1',
-      databaseName: 'mydb',
-      objectName: 'users',
-      objectType: 'table',
-    })
-    useWorkspaceStore.getState().openTab({
-      type: 'table-data',
-      label: 'orders',
-      connectionId: 'conn-1',
-      databaseName: 'mydb',
-      objectName: 'orders',
-      objectType: 'table',
-    })
+  it('with hideTableDataTabs=true, only scoped table-data tabs are excluded from the top rail', () => {
+    useWorkspaceStore.setState((state) => ({
+      ...state,
+      activeTabByConnection: {
+        ...state.activeTabByConnection,
+        'conn-1': 'query-a',
+      },
+      tabsByConnection: {
+        ...state.tabsByConnection,
+        'conn-1': [
+          {
+            id: 'query-a',
+            type: 'query-editor',
+            label: 'Query A',
+            connectionId: 'conn-1',
+          },
+          {
+            id: 'scoped-users',
+            type: 'table-data',
+            label: 'users',
+            connectionId: 'conn-1',
+            databaseName: 'mydb',
+            objectName: 'users',
+            objectType: 'table',
+            parentQueryTabId: 'query-a',
+          },
+          {
+            id: 'scoped-orders',
+            type: 'table-data',
+            label: 'orders',
+            connectionId: 'conn-1',
+            databaseName: 'mydb',
+            objectName: 'orders',
+            objectType: 'table',
+            parentQueryTabId: 'query-a',
+          },
+          {
+            id: 'table-data-products-standalone',
+            type: 'table-data',
+            label: 'products',
+            connectionId: 'conn-1',
+            databaseName: 'mydb',
+            objectName: 'products',
+            objectType: 'table',
+          },
+        ],
+      },
+    }))
 
     render(<WorkspaceTabs connectionId="conn-1" hideTableDataTabs={true} />)
+    const tabsRail = screen.getByTestId('workspace-tabs')
 
-    // Non-table-data tabs must appear in the top rail
-    expect(screen.getByText('Query A')).toBeInTheDocument()
-
-    // Table-data tabs must NOT appear in the top rail
-    expect(screen.queryByText('users')).not.toBeInTheDocument()
-    expect(screen.queryByText('orders')).not.toBeInTheDocument()
+    expect(within(tabsRail).getByText('Query A')).toBeInTheDocument()
+    expect(within(tabsRail).queryByText('users')).not.toBeInTheDocument()
+    expect(within(tabsRail).queryByText('orders')).not.toBeInTheDocument()
+    expect(within(tabsRail).getByText('products')).toBeInTheDocument()
   })
 
   it('does not start pointer reorder for pinned tabs', () => {

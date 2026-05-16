@@ -42,6 +42,7 @@ interface ResultPanelProps {
   tabId: string
   connectionId: string
   isActive?: boolean
+  hideSubTabs?: boolean
 }
 
 const EMPTY_TABLE_COLUMNS: TableDataColumnMeta[] = []
@@ -54,7 +55,12 @@ const EMPTY_EDITABLE_MAP = new Map<number, boolean>()
 const EMPTY_BINDINGS = new Map<number, string>()
 const EMPTY_BOUND_COLUMN_INDEX_MAP = new Map<string, number>()
 
-export function ResultPanel({ tabId, connectionId, isActive = true }: ResultPanelProps) {
+export function ResultPanel({
+  tabId,
+  connectionId,
+  isActive = true,
+  hideSubTabs = false,
+}: ResultPanelProps) {
   const activeResult = useQueryStore((state) => getActiveResult(state.tabs[tabId]))
   const tabStatus = useQueryStore((state) => state.tabs[tabId]?.tabStatus ?? 'idle')
   const results = useQueryStore((state) => state.tabs[tabId]?.results ?? EMPTY_RESULTS)
@@ -393,6 +399,111 @@ export function ResultPanel({ tabId, connectionId, isActive = true }: ResultPane
     viewMode === 'grid' && columns.length > 0
       ? `${styles.tabPanel} ${styles.gridTabPanel}`
       : styles.tabPanel
+  const resultPanelId = `result-tabpanel-${tabId}-${activeResultIndex}`
+  const resultPanelLabelledBy =
+    !hideSubTabs && results.length > 1 ? `result-tab-${tabId}-${activeResultIndex}` : undefined
+
+  const renderResultBody = (className: string) => (
+    <div
+      role={hideSubTabs ? undefined : 'tabpanel'}
+      id={hideSubTabs ? undefined : resultPanelId}
+      aria-labelledby={hideSubTabs ? undefined : resultPanelLabelledBy}
+      className={className}
+    >
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={filterModel}
+        onFilterClick={() => setIsFilterDialogOpen(true)}
+        onClearFilterClick={handleClearFilter}
+        isEditingActive={isEditingActive}
+        isCloneVisible={cloneVisible}
+        isCloneDisabled={cloneDisabled}
+      />
+      {columns.length > 0 ? (
+        <FkLookupProvider onFkLookup={handleFkLookup}>
+          {viewMode === 'grid' && (
+            <ResultGridView
+              columns={columns}
+              rows={rows}
+              sortColumn={sortColumn}
+              sortDirection={sortDirection}
+              onSortChanged={handleSortChanged}
+              onRowSelected={handleRowSelected}
+              selectedRowIndex={selectedRowIndex}
+              tabId={tabId}
+              editMode={editMode}
+              editableColumnMap={editableColumnMap}
+              editColumnBindings={editColumnBindings}
+              editState={editState}
+              editingRowIndex={editingRowIndex}
+              editTableColumns={editTableColumns}
+              editForeignKeys={editForeignKeys}
+              onStartEditing={handleStartEditing}
+              onUpdateCellValue={handleUpdateCellValue}
+              onSyncCellValue={handleSyncCellValue}
+              onAutoSave={handleAutoSave}
+              isActive={isActive}
+            />
+          )}
+          {viewMode === 'form' && (
+            <ResultFormView
+              columns={columns}
+              rows={rows}
+              selectedRowIndex={selectedRowIndex}
+              totalRows={totalRows}
+              onNavigate={handleFormNavigate}
+              tabId={tabId}
+              editMode={editMode}
+              editableColumnMap={editableColumnMap}
+              editColumnBindings={editColumnBindings}
+              editState={editState}
+              editingRowIndex={editingRowIndex}
+              editTableColumns={editTableColumns}
+              editForeignKeys={editForeignKeys}
+              onStartEdit={handleStartEditing}
+              onUpdateCell={handleUpdateCellValue}
+              onSaveRow={handleFormSave}
+              onDiscardRow={handleFormDiscard}
+            />
+          )}
+          {viewMode === 'text' && <ResultTextView columns={columns} rows={rows} />}
+        </FkLookupProvider>
+      ) : (
+        <div className={styles.emptyState} data-testid="dml-success">
+          <CheckCircle size={32} weight="duotone" className={styles.successIcon} />
+          <span>
+            {affectedRows > 0
+              ? `Query executed: ${affectedRows} rows affected`
+              : 'Query executed successfully'}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+
+  const renderErrorBody = () => (
+    <div
+      role={hideSubTabs ? undefined : 'tabpanel'}
+      id={hideSubTabs ? undefined : resultPanelId}
+      aria-labelledby={hideSubTabs ? undefined : resultPanelLabelledBy}
+      className={styles.tabPanel}
+    >
+      <ResultToolbar
+        tabId={tabId}
+        connectionId={connectionId}
+        filterModel={filterModel}
+        onFilterClick={() => setIsFilterDialogOpen(true)}
+        onClearFilterClick={handleClearFilter}
+        isEditingActive={isEditingActive}
+        isCloneVisible={cloneVisible}
+        isCloneDisabled={true}
+      />
+      <div className={styles.errorBody}>
+        <span className={styles.errorMessage}>{activeResult.errorMessage}</span>
+      </div>
+    </div>
+  )
 
   return (
     <div className={styles.container} data-testid="result-panel">
@@ -412,113 +523,15 @@ export function ResultPanel({ tabId, connectionId, isActive = true }: ResultPane
 
       {displayStatus === 'success' && (
         <>
-          {results.length > 1 && <ResultSubTabs tabId={tabId} />}
-          <div
-            role="tabpanel"
-            id={`result-tabpanel-${tabId}-${activeResultIndex}`}
-            aria-labelledby={
-              results.length > 1 ? `result-tab-${tabId}-${activeResultIndex}` : undefined
-            }
-            className={gridTabPanelClassName}
-          >
-            <ResultToolbar
-              tabId={tabId}
-              connectionId={connectionId}
-              filterModel={filterModel}
-              onFilterClick={() => setIsFilterDialogOpen(true)}
-              onClearFilterClick={handleClearFilter}
-              isEditingActive={isEditingActive}
-              isCloneVisible={cloneVisible}
-              isCloneDisabled={cloneDisabled}
-            />
-            {columns.length > 0 ? (
-              <FkLookupProvider onFkLookup={handleFkLookup}>
-                {viewMode === 'grid' && (
-                  <ResultGridView
-                    columns={columns}
-                    rows={rows}
-                    sortColumn={sortColumn}
-                    sortDirection={sortDirection}
-                    onSortChanged={handleSortChanged}
-                    onRowSelected={handleRowSelected}
-                    selectedRowIndex={selectedRowIndex}
-                    tabId={tabId}
-                    editMode={editMode}
-                    editableColumnMap={editableColumnMap}
-                    editColumnBindings={editColumnBindings}
-                    editState={editState}
-                    editingRowIndex={editingRowIndex}
-                    editTableColumns={editTableColumns}
-                    editForeignKeys={editForeignKeys}
-                    onStartEditing={handleStartEditing}
-                    onUpdateCellValue={handleUpdateCellValue}
-                    onSyncCellValue={handleSyncCellValue}
-                    onAutoSave={handleAutoSave}
-                    isActive={isActive}
-                  />
-                )}
-                {viewMode === 'form' && (
-                  <ResultFormView
-                    columns={columns}
-                    rows={rows}
-                    selectedRowIndex={selectedRowIndex}
-                    totalRows={totalRows}
-                    onNavigate={handleFormNavigate}
-                    tabId={tabId}
-                    editMode={editMode}
-                    editableColumnMap={editableColumnMap}
-                    editColumnBindings={editColumnBindings}
-                    editState={editState}
-                    editingRowIndex={editingRowIndex}
-                    editTableColumns={editTableColumns}
-                    editForeignKeys={editForeignKeys}
-                    onStartEdit={handleStartEditing}
-                    onUpdateCell={handleUpdateCellValue}
-                    onSaveRow={handleFormSave}
-                    onDiscardRow={handleFormDiscard}
-                  />
-                )}
-                {viewMode === 'text' && <ResultTextView columns={columns} rows={rows} />}
-              </FkLookupProvider>
-            ) : (
-              <div className={styles.emptyState} data-testid="dml-success">
-                <CheckCircle size={32} weight="duotone" className={styles.successIcon} />
-                <span>
-                  {affectedRows > 0
-                    ? `Query executed: ${affectedRows} rows affected`
-                    : 'Query executed successfully'}
-                </span>
-              </div>
-            )}
-          </div>
+          {!hideSubTabs && results.length > 1 && <ResultSubTabs tabId={tabId} />}
+          {renderResultBody(gridTabPanelClassName)}
         </>
       )}
 
       {displayStatus === 'error' && (
         <>
-          {results.length > 1 && <ResultSubTabs tabId={tabId} />}
-          <div
-            role="tabpanel"
-            id={`result-tabpanel-${tabId}-${activeResultIndex}`}
-            aria-labelledby={
-              results.length > 1 ? `result-tab-${tabId}-${activeResultIndex}` : undefined
-            }
-            className={styles.tabPanel}
-          >
-            <ResultToolbar
-              tabId={tabId}
-              connectionId={connectionId}
-              filterModel={filterModel}
-              onFilterClick={() => setIsFilterDialogOpen(true)}
-              onClearFilterClick={handleClearFilter}
-              isEditingActive={isEditingActive}
-              isCloneVisible={cloneVisible}
-              isCloneDisabled={true}
-            />
-            <div className={styles.errorBody}>
-              <span className={styles.errorMessage}>{activeResult.errorMessage}</span>
-            </div>
-          </div>
+          {!hideSubTabs && results.length > 1 && <ResultSubTabs tabId={tabId} />}
+          {renderErrorBody()}
         </>
       )}
 

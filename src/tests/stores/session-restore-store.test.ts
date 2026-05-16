@@ -17,7 +17,7 @@ import {
   _resetQueryTabCounter,
 } from '../../stores/workspace-store'
 import { useQueryStore } from '../../stores/query-store'
-import { useSettingsStore } from '../../stores/settings-store'
+import { SETTINGS_DEFAULTS, useSettingsStore } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 
 function setupDefaultIpc() {
@@ -98,12 +98,12 @@ beforeEach(() => {
   })
   useQueryStore.setState({ tabs: {} })
   useTableDataStore.setState({ tabs: {} })
-  useSettingsStore.setState({
-    settings: { 'session.restore': 'true' },
-    pendingChanges: {},
-    isLoading: false,
-    isDirty: false,
-    activeSection: 'general',
+    useSettingsStore.setState({
+      settings: { 'session.restore': 'true' },
+      pendingChanges: {},
+      isLoading: false,
+      isDirty: false,
+      activeSection: 'general',
   })
   _resetTabIdCounter()
   _resetQueryTabCounter()
@@ -211,6 +211,80 @@ describe('useSessionRestoreStore — saveSession', () => {
     expect(parsed.connections[0].tabs[0].cursorLine).toBe(1)
     expect(parsed.connections[0].tabs[0].cursorColumn).toBe(10)
     expect(parsed.connections[0].tabs[0].label).toBe('My Query')
+  })
+
+  it('serializes the active scoped bottom-panel table tab on query tabs', async () => {
+    let savedValue: string | null = null
+
+    mockIPC((cmd, args) => {
+      const a = args as Record<string, unknown> | undefined
+      if (cmd === 'set_setting' && a?.key === 'session.state') {
+        savedValue = a.value as string
+        return null
+      }
+      if (cmd === 'log_frontend') return undefined
+      return null
+    })
+
+    useConnectionStore.setState({
+      activeConnections: {
+        'session-1': {
+          id: 'session-1',
+          profile: {
+            id: 'profile-1',
+            name: 'Test MySQL',
+            host: '127.0.0.1',
+            port: 3306,
+            username: 'root',
+            hasPassword: true,
+            defaultDatabase: 'testdb',
+            sslEnabled: false,
+            sslCaPath: null,
+            sslCertPath: null,
+            sslKeyPath: null,
+            color: null,
+            groupId: null,
+            readOnly: false,
+            sortOrder: 0,
+            connectTimeoutSecs: 10,
+            keepaliveIntervalSecs: 60,
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+          },
+          sessionDatabase: 'testdb',
+          status: 'connected',
+          serverVersion: '8.0.0',
+        },
+      },
+    })
+    useSettingsStore.setState((state) => ({
+      ...state,
+      settings: {
+        ...state.settings,
+        'results.tableTabsInBottomPanel': 'true',
+      },
+    }))
+
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('session-1', 'My Query')
+    useWorkspaceStore.getState().openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'session-1',
+      databaseName: 'testdb',
+      objectName: 'users',
+      objectType: 'table',
+    })
+
+    await useSessionRestoreStore.getState().saveSession()
+
+    const parsed = JSON.parse(savedValue!)
+    expect(parsed.connections[0].tabs[0]).toMatchObject({
+      type: 'query-editor',
+      tabId: queryTabId,
+    })
+    expect(parsed.connections[0].tabs[0].activeBottomPanelTableTabId).toBe(
+      parsed.connections[0].tabs[1].tabId
+    )
   })
 
   it('skips table-designer and object-editor tabs', async () => {
@@ -348,7 +422,8 @@ describe('useSessionRestoreStore — saveSession', () => {
       connectionId: 'session-1',
       databaseName: 'testdb',
       objectName: 'users',
-      objectType: 'table',
+      objectType: 'view',
+      parentQueryTabId: 'query-tab-1',
     })
 
     await useSessionRestoreStore.getState().saveSession()
@@ -358,6 +433,8 @@ describe('useSessionRestoreStore — saveSession', () => {
     expect(parsed.connections[0].tabs[0].type).toBe('table-data')
     expect(parsed.connections[0].tabs[0].databaseName).toBe('testdb')
     expect(parsed.connections[0].tabs[0].tableName).toBe('users')
+    expect(parsed.connections[0].tabs[0].parentQueryTabId).toBe('query-tab-1')
+    expect(parsed.connections[0].tabs[0].objectType).toBe('view')
   })
 
   it('serializes history tabs', async () => {
@@ -1062,6 +1139,298 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
     expect(tableDataTab).toBeDefined()
     expect(tableDataTab!.databaseName).toBe('testdb')
     expect(tableDataTab!.objectName).toBe('users')
+    expect(tableDataTab!.objectType).toBe('table')
+  })
+
+  it('restores scoped table-data tabs under their restored parent query tab', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'results.tableTabsInBottomPanel': 'true',
+      },
+      pendingChanges: {},
+      isLoading: false,
+      isDirty: false,
+      activeSection: 'general',
+      isDialogOpen: false,
+      dialogSection: undefined,
+    })
+
+    restoreIpc({
+      version: 1,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 0,
+          tabs: [
+            {
+              type: 'query-editor',
+              tabId: 'old-query-1',
+              sql: 'SELECT 1',
+              label: 'Query 1',
+              activeBottomPanelTableTabId: 'old-table-1',
+            },
+            {
+              type: 'table-data',
+              tabId: 'old-table-1',
+              databaseName: 'testdb',
+              tableName: 'users',
+              parentQueryTabId: 'old-query-1',
+              objectType: 'view',
+            },
+          ],
+        },
+      ],
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
+    const queryTab = tabs.find((tab) => tab.type === 'query-editor')
+    const tableTab = tabs.find((tab) => tab.type === 'table-data')
+
+    expect(queryTab).toBeDefined()
+    expect(tableTab).toMatchObject({
+      type: 'table-data',
+      parentQueryTabId: queryTab?.id,
+      objectType: 'view',
+    })
+    expect(useWorkspaceStore.getState().activeTabByConnection['session-profile-1']).toBe(queryTab?.id)
+    expect(useQueryStore.getState().getTabState(queryTab!.id).activeBottomPanelItem).toEqual({
+      type: 'table-data',
+      tabId: tableTab?.id,
+    })
+  })
+
+  it('restores same-table scoped tabs independently under different query tabs', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'results.tableTabsInBottomPanel': 'true',
+      },
+      pendingChanges: {},
+      isLoading: false,
+      isDirty: false,
+      activeSection: 'general',
+      isDialogOpen: false,
+      dialogSection: undefined,
+    })
+
+    restoreIpc({
+      version: 1,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 0,
+          tabs: [
+            {
+              type: 'query-editor',
+              tabId: 'old-query-1',
+              sql: 'SELECT * FROM users LIMIT 10',
+              label: 'Query 1',
+              activeBottomPanelTableTabId: 'old-table-1',
+            },
+            {
+              type: 'table-data',
+              tabId: 'old-table-1',
+              databaseName: 'testdb',
+              tableName: 'users',
+              parentQueryTabId: 'old-query-1',
+            },
+            {
+              type: 'query-editor',
+              tabId: 'old-query-2',
+              sql: 'SELECT * FROM users ORDER BY id DESC',
+              label: 'Query 2',
+              activeBottomPanelTableTabId: 'old-table-2',
+            },
+            {
+              type: 'table-data',
+              tabId: 'old-table-2',
+              databaseName: 'testdb',
+              tableName: 'users',
+              parentQueryTabId: 'old-query-2',
+            },
+          ],
+        },
+      ],
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
+    const queryTabs = tabs.filter((tab) => tab.type === 'query-editor')
+    const tableTabs = tabs.filter((tab) => tab.type === 'table-data')
+
+    expect(queryTabs).toHaveLength(2)
+    expect(tableTabs).toHaveLength(2)
+    expect(new Set(tableTabs.map((tab) => tab.parentQueryTabId))).toEqual(
+      new Set(queryTabs.map((tab) => tab.id))
+    )
+
+    for (const queryTab of queryTabs) {
+      const scopedChild = tableTabs.find((tab) => tab.parentQueryTabId === queryTab.id)
+      expect(scopedChild).toBeDefined()
+      expect(scopedChild).toMatchObject({
+        type: 'table-data',
+        databaseName: 'testdb',
+        objectName: 'users',
+      })
+      expect(useQueryStore.getState().getTabState(queryTab.id).activeBottomPanelItem).toEqual({
+        type: 'table-data',
+        tabId: scopedChild?.id,
+      })
+    }
+  })
+
+  it('restores scoped table-data tabs as standalone when bottom-panel tabs are disabled', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'results.tableTabsInBottomPanel': 'false',
+      },
+      pendingChanges: {},
+      isLoading: false,
+      isDirty: false,
+      activeSection: 'general',
+      isDialogOpen: false,
+      dialogSection: undefined,
+    })
+
+    restoreIpc({
+      version: 1,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 1,
+          tabs: [
+            {
+              type: 'query-editor',
+              tabId: 'old-query-1',
+              sql: 'SELECT 1',
+              label: 'Query 1',
+              activeBottomPanelTableTabId: 'old-table-1',
+            },
+            {
+              type: 'table-data',
+              tabId: 'old-table-1',
+              databaseName: 'testdb',
+              tableName: 'users',
+              parentQueryTabId: 'old-query-1',
+            },
+          ],
+        },
+      ],
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
+    const queryTab = tabs.find((tab) => tab.type === 'query-editor')
+    const tableTab = tabs.find((tab) => tab.type === 'table-data')
+
+    expect(queryTab).toBeDefined()
+    expect(tableTab).toMatchObject({
+      type: 'table-data',
+      parentQueryTabId: undefined,
+    })
+    expect(useWorkspaceStore.getState().activeTabByConnection['session-profile-1']).toBe(tableTab?.id)
+    expect(useQueryStore.getState().getTabState(queryTab!.id).activeBottomPanelItem).toEqual({
+      type: 'result',
+    })
+  })
+
+  it('deduplicates restored standalone and flattened scoped table-data tabs when bottom-panel tabs are disabled', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        'results.tableTabsInBottomPanel': 'false',
+      },
+      pendingChanges: {},
+      isLoading: false,
+      isDirty: false,
+      activeSection: 'general',
+      isDialogOpen: false,
+      dialogSection: undefined,
+    })
+
+    restoreIpc({
+      version: 1,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 2,
+          tabs: [
+            {
+              type: 'query-editor',
+              tabId: 'old-query-1',
+              sql: 'SELECT 1',
+              label: 'Query 1',
+              activeBottomPanelTableTabId: 'old-table-scoped',
+            },
+            {
+              type: 'table-data',
+              tabId: 'old-table-standalone',
+              databaseName: 'testdb',
+              tableName: 'users',
+            },
+            {
+              type: 'table-data',
+              tabId: 'old-table-scoped',
+              databaseName: 'testdb',
+              tableName: 'users',
+              parentQueryTabId: 'old-query-1',
+            },
+          ],
+        },
+      ],
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['session-profile-1'] ?? []
+    const tableTabs = tabs.filter((tab) => tab.type === 'table-data')
+
+    expect(tableTabs).toHaveLength(1)
+    expect(tableTabs[0]).toMatchObject({
+      type: 'table-data',
+      parentQueryTabId: undefined,
+      databaseName: 'testdb',
+      objectName: 'users',
+    })
+    expect(useWorkspaceStore.getState().activeTabByConnection['session-profile-1']).toBe(
+      tableTabs[0].id
+    )
+  })
+
+  it('restores scoped table-data tabs as standalone when the parent query tab is missing', async () => {
+    restoreIpc({
+      version: 1,
+      connections: [
+        {
+          profileId: 'profile-1',
+          activeTabIndex: 0,
+          tabs: [
+            {
+              type: 'table-data',
+              tabId: 'old-table-1',
+              databaseName: 'testdb',
+              tableName: 'users',
+              parentQueryTabId: 'missing-query',
+            },
+          ],
+        },
+      ],
+    })
+
+    await useSessionRestoreStore.getState().restoreSession()
+
+    const tableTab = useWorkspaceStore
+      .getState()
+      .tabsByConnection['session-profile-1']
+      ?.find((tab) => tab.type === 'table-data')
+    expect(tableTab?.type).toBe('table-data')
+    expect(tableTab?.parentQueryTabId).toBeUndefined()
   })
 
   it('restores schema-info tabs', async () => {
@@ -1166,7 +1535,7 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
     expect(schemaInfoTabs).toHaveLength(1)
     expect(historyTabs).toHaveLength(1)
 
-    // Active tab should be the table-data tab (index 1 in the restored list)
+    // Active tab should still be the restored standalone table-data tab.
     const activeTabId =
       useWorkspaceStore.getState().activeTabByConnection['session-profile-1'] ?? null
     expect(activeTabId).toBe(tableDataTabs[0].id)

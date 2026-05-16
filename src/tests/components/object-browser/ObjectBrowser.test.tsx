@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { ObjectBrowser } from '../../../components/object-browser/ObjectBrowser'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useSchemaStore, makeNodeId } from '../../../stores/schema-store'
+import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import { useWorkspaceStore, _resetTabIdCounter } from '../../../stores/workspace-store'
 import type { ActiveConnection, SavedConnection } from '../../../types/connection'
 import type { TreeNode as TreeNodeType, WorkspaceTab } from '../../../types/schema'
@@ -134,6 +135,20 @@ function setSchemaState(update: Parameters<typeof useSchemaStore.setState>[0]) {
 function setWorkspaceState(update: Parameters<typeof useWorkspaceStore.setState>[0]) {
   act(() => {
     useWorkspaceStore.setState(update)
+  })
+}
+
+function setBottomPanelSetting(enabled: boolean) {
+  act(() => {
+    useSettingsStore.setState((state) => ({
+      ...state,
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        ...state.settings,
+        'results.tableTabsInBottomPanel': enabled ? 'true' : 'false',
+      },
+      pendingChanges: {},
+    }))
   })
 }
 
@@ -332,6 +347,15 @@ beforeEach(() => {
     useWorkspaceStore.setState({
       tabsByConnection: {},
       activeTabByConnection: {},
+    })
+    useSettingsStore.setState({
+      settings: { ...SETTINGS_DEFAULTS },
+      pendingChanges: {},
+      isDirty: false,
+      isLoading: false,
+      activeSection: 'general',
+      isDialogOpen: false,
+      dialogSection: undefined,
     })
   })
 })
@@ -769,6 +793,136 @@ describe('ObjectBrowser', () => {
       label: 'users',
       objectType: 'table',
     })
+  })
+
+  it('scopes a double-clicked table tab to the active query tab when the setting is enabled', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandToTable()
+    setBottomPanelSetting(true)
+
+    act(() => {
+      useWorkspaceStore.getState().openQueryTab(CONN_ID, 'Query 1')
+    })
+
+    const activeQueryTabId = useWorkspaceStore.getState().activeTabByConnection[CONN_ID]
+    expect(activeQueryTabId).toBeTruthy()
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    await user.dblClick(screen.getByText('users'))
+
+    const state = useWorkspaceStore.getState()
+    const tabs = state.tabsByConnection[CONN_ID]
+    const tableTabs = tabs.filter((tab) => tab.type === 'table-data')
+    expect(tableTabs).toHaveLength(1)
+    expect(tableTabs[0]).toMatchObject({
+      type: 'table-data',
+      objectName: 'users',
+      objectType: 'table',
+      parentQueryTabId: activeQueryTabId,
+    })
+    expect(state.activeTabByConnection[CONN_ID]).toBe(activeQueryTabId)
+  })
+
+  it('auto-creates a parent query tab for a double-clicked table when the setting is enabled', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandToTable()
+    setBottomPanelSetting(true)
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    await user.dblClick(screen.getByText('users'))
+
+    const state = useWorkspaceStore.getState()
+    const tabs = state.tabsByConnection[CONN_ID]
+    const queryTabs = tabs.filter((tab) => tab.type === 'query-editor')
+    const tableTabs = tabs.filter((tab) => tab.type === 'table-data')
+
+    expect(queryTabs).toHaveLength(1)
+    expect(tableTabs).toHaveLength(1)
+    expect(tableTabs[0]).toMatchObject({
+      parentQueryTabId: queryTabs[0].id,
+      objectName: 'users',
+    })
+    expect(state.activeTabByConnection[CONN_ID]).toBe(queryTabs[0].id)
+  })
+
+  it('keeps table tabs standalone when the setting is disabled', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandToTable()
+    setBottomPanelSetting(false)
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    await user.dblClick(screen.getByText('users'))
+
+    const state = useWorkspaceStore.getState()
+    const tabs = state.tabsByConnection[CONN_ID]
+    expect(tabs).toHaveLength(1)
+    expect(tabs[0]).toMatchObject({
+      type: 'table-data',
+      objectName: 'users',
+    })
+    expect(tabs[0]).not.toHaveProperty('parentQueryTabId')
+    expect(state.activeTabByConnection[CONN_ID]).toBe(tabs[0].id)
+  })
+
+  it('deduplicates table opens within a query context but allows the same table in a different query tab', async () => {
+    const user = userEvent.setup()
+    setupConnectedState()
+    setupDatabaseNodes()
+    expandToTable()
+    setBottomPanelSetting(true)
+
+    act(() => {
+      useWorkspaceStore.getState().openQueryTab(CONN_ID, 'Query 1')
+    })
+
+    render(
+      <ObjectBrowser connectionId={CONN_ID} favouritesOpen={false} onToggleFavourites={() => {}} />
+    )
+
+    await user.dblClick(screen.getByText('users'))
+    await user.dblClick(screen.getByText('users'))
+
+    let state = useWorkspaceStore.getState()
+    let tabs = state.tabsByConnection[CONN_ID]
+    let queryTabs = tabs.filter((tab) => tab.type === 'query-editor')
+    let tableTabs = tabs.filter((tab) => tab.type === 'table-data')
+
+    expect(queryTabs).toHaveLength(1)
+    expect(tableTabs).toHaveLength(1)
+    expect(state.activeTabByConnection[CONN_ID]).toBe(queryTabs[0].id)
+
+    act(() => {
+      useWorkspaceStore.getState().openQueryTab(CONN_ID, 'Query 2')
+    })
+
+    const secondQueryTabId = useWorkspaceStore.getState().activeTabByConnection[CONN_ID]
+
+    await user.dblClick(screen.getByText('users'))
+
+    state = useWorkspaceStore.getState()
+    tabs = state.tabsByConnection[CONN_ID]
+    queryTabs = tabs.filter((tab) => tab.type === 'query-editor')
+    tableTabs = tabs.filter((tab) => tab.type === 'table-data')
+
+    expect(queryTabs).toHaveLength(2)
+    expect(tableTabs).toHaveLength(2)
+    expect(tableTabs.map((tab) => tab.parentQueryTabId)).toEqual([queryTabs[0].id, secondQueryTabId])
+    expect(state.activeTabByConnection[CONN_ID]).toBe(secondQueryTabId)
   })
 
   it('double-clicking a table row does not expand its columns', async () => {

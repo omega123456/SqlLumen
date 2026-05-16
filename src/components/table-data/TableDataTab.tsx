@@ -21,9 +21,14 @@ import styles from './TableDataTab.module.css'
 interface TableDataTabProps {
   tab: WorkspaceTab
   isActive?: boolean
+  renderMode?: 'standalone' | 'bottom-panel'
 }
 
-export function TableDataTab({ tab, isActive = true }: TableDataTabProps) {
+export function TableDataTab({
+  tab,
+  isActive = true,
+  renderMode = 'standalone',
+}: TableDataTabProps) {
   const tdTab = tab as TableDataTabType
   const tabId = tdTab.id
   const connectionId = tdTab.connectionId
@@ -137,7 +142,13 @@ export function TableDataTab({ tab, isActive = true }: TableDataTabProps) {
   }, [closeExportDialog, isActive, isExportDialogOpen, tabId])
 
   return (
-    <div className={styles.container} data-testid="table-data-tab">
+    <div
+      className={`${styles.container} ${
+        renderMode === 'bottom-panel' ? styles.bottomPanelContainer : ''
+      }`}
+      data-testid="table-data-tab"
+      data-render-mode={renderMode}
+    >
       <TableDataToolbar tabId={tabId} isView={isViewObject} />
 
       {/* No-PK Warning Banner */}
@@ -165,12 +176,7 @@ export function TableDataTab({ tab, isActive = true }: TableDataTabProps) {
       {error && (
         <div className={styles.errorState} data-testid="table-data-error">
           <span className={styles.errorMessage}>{error}</span>
-          <button
-            type="button"
-            className={styles.retryButton}
-            onClick={handleRetry}
-            data-testid="btn-retry"
-          >
+          <button type="button" className={styles.retryButton} onClick={handleRetry} data-testid="btn-retry">
             Retry
           </button>
         </div>

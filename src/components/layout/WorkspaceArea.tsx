@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Button } from '../common/Button'
+import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
@@ -8,7 +9,6 @@ import {
   dispatchWorkspaceTabDeactivated,
 } from '../../lib/workspace-tab-activity-events'
 import { WorkspaceTabs } from '../workspace/WorkspaceTabs'
-import { WorkspaceTableTabsRail } from '../workspace/WorkspaceTableTabsRail'
 import { AiDiffBridgeProvider } from '../query-editor/ai-diff-bridge-context'
 import type { WorkspaceTab } from '../../types/schema'
 import { WorkspaceBody } from './WorkspaceBody'
@@ -39,6 +39,7 @@ export function WorkspaceArea() {
   const activeWorkspaceTabId = useWorkspaceStore((state) =>
     activeTabId ? (state.activeTabByConnection[activeTabId] ?? null) : null
   )
+  const pendingCascadeClose = useWorkspaceStore((state) => state.pendingCascadeClose)
 
   const activeTab = tabs.find((t) => t.id === activeWorkspaceTabId) ?? null
   const previousActiveWorkspaceTabIdRef = useRef<string | null>(null)
@@ -59,6 +60,14 @@ export function WorkspaceArea() {
   const panelTabs = nextPanelOrder
     .map((tabId) => tabs.find((tab) => tab.id === tabId) ?? null)
     .filter((tab): tab is WorkspaceTab => tab != null)
+    .filter(
+      (tab) =>
+        !(
+          bottomTableTabsEnabled &&
+          tab.type === 'table-data' &&
+          tab.parentQueryTabId !== undefined
+        )
+    )
 
   useEffect(() => {
     const previousTabId = previousActiveWorkspaceTabIdRef.current
@@ -133,7 +142,41 @@ export function WorkspaceArea() {
           )}
         />
       </AiDiffBridgeProvider>
-      {bottomTableTabsEnabled && <WorkspaceTableTabsRail connectionId={activeTabId!} />}
+      <ConfirmDialog
+        isOpen={pendingCascadeClose != null}
+        title="Discard unsaved changes?"
+        message={
+          pendingCascadeClose ? (
+            <div>
+              <p>Closing this tab will discard changes in:</p>
+              {pendingCascadeClose.queryResultItems.length > 0 && (
+                <div>
+                  <strong>Query results</strong>
+                  <ul>
+                    {pendingCascadeClose.queryResultItems.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {pendingCascadeClose.tableDataItems.length > 0 && (
+                <div>
+                  <strong>Table data tabs</strong>
+                  <ul>
+                    {pendingCascadeClose.tableDataItems.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : null
+        }
+        confirmLabel="Discard and Close"
+        isDestructive
+        onConfirm={() => pendingCascadeClose?.onConfirm()}
+        onCancel={() => pendingCascadeClose?.onCancel()}
+      />
     </div>
   )
 }

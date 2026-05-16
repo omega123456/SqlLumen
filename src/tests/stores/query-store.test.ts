@@ -66,6 +66,7 @@ describe('useQueryStore — getTabState', () => {
     const state = useQueryStore.getState().getTabState('unknown')
     expect(state.tabStatus).toBe('idle')
     expect(state.content).toBe('')
+    expect(state.activeBottomPanelItem).toEqual({ type: 'result' })
     expect(flat('unknown').columns).toHaveLength(0)
   })
 
@@ -77,6 +78,20 @@ describe('useQueryStore — getTabState', () => {
     expect(f.selectedRowIndex).toBeNull()
     expect(f.exportDialogOpen).toBe(false)
     expect(f.lastExecutedSql).toBeNull()
+  })
+})
+
+describe('useQueryStore — activeBottomPanelItem', () => {
+  it('sets the active bottom panel item for a tab', () => {
+    useQueryStore.getState().setContent('tab-bottom-panel', 'SELECT 1')
+
+    useQueryStore
+      .getState()
+      .setActiveBottomPanelItem('tab-bottom-panel', { type: 'table-data', tabId: 'table-tab-1' })
+
+    expect(useQueryStore.getState().getTabState('tab-bottom-panel').activeBottomPanelItem).toEqual(
+      { type: 'table-data', tabId: 'table-tab-1' }
+    )
   })
 })
 
@@ -98,9 +113,14 @@ describe('useQueryStore — setFilePath', () => {
 
 describe('useQueryStore — executeQuery', () => {
   it('sets running status then success', async () => {
+    useQueryStore
+      .getState()
+      .setActiveBottomPanelItem('tab-1', { type: 'table-data', tabId: 'table-tab-1' })
+
     await useQueryStore.getState().executeQuery('conn-1', 'tab-1', 'SELECT 1')
     const state = useQueryStore.getState().getTabState('tab-1')
     expect(state.tabStatus).toBe('success')
+    expect(state.activeBottomPanelItem).toEqual({ type: 'result' })
     const f = flat('tab-1')
     expect(f.queryId).toBe('q-mock')
     expect(f.totalRows).toBe(3)
@@ -275,6 +295,59 @@ describe('useQueryStore — executeQuery', () => {
     expect(executeCallCount).toBe(0)
     // Status should still be running
     expect(useQueryStore.getState().getTabState('tab-guard').tabStatus).toBe('running')
+  })
+})
+
+describe('useQueryStore — multi-result execution', () => {
+  it('switches back to result after executeMultiQuery completes', async () => {
+    mockIPC((cmd) => {
+      if (cmd === 'execute_multi_query') {
+        return {
+          results: [
+            {
+              columns: [{ name: 'id', dataType: 'INT' }],
+              firstPage: [[1]],
+              totalRows: 1,
+              executionTimeMs: 5,
+              affectedRows: 0,
+              queryId: 'multi-1',
+              totalPages: 1,
+              autoLimitApplied: false,
+              error: null,
+              sourceSql: 'SELECT 1',
+              reExecutable: true,
+            },
+            {
+              columns: [{ name: 'name', dataType: 'VARCHAR' }],
+              firstPage: [['alice']],
+              totalRows: 1,
+              executionTimeMs: 5,
+              affectedRows: 0,
+              queryId: 'multi-2',
+              totalPages: 1,
+              autoLimitApplied: false,
+              error: null,
+              sourceSql: 'SELECT 2',
+              reExecutable: true,
+            },
+          ],
+        }
+      }
+      if (cmd === 'evict_results') return null
+      return null
+    })
+
+    useQueryStore.getState().setContent('tab-multi', 'SELECT 1; SELECT 2;')
+    useQueryStore
+      .getState()
+      .setActiveBottomPanelItem('tab-multi', { type: 'table-data', tabId: 'table-tab-1' })
+
+    await useQueryStore.getState().executeMultiQuery('conn-1', 'tab-multi', ['SELECT 1', 'SELECT 2'])
+
+    const state = useQueryStore.getState().getTabState('tab-multi')
+    expect(state.tabStatus).toBe('success')
+    expect(state.activeBottomPanelItem).toEqual({ type: 'result' })
+    expect(state.results).toHaveLength(2)
   })
 })
 

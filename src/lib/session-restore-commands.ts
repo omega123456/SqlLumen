@@ -33,12 +33,15 @@ export type SessionTabState =
       cursorLine?: number
       cursorColumn?: number
       label?: string
+      activeBottomPanelTableTabId?: string
     }
   | {
       type: 'table-data'
       tabId: string
       databaseName: string
       tableName: string
+      parentQueryTabId?: string
+      objectType?: 'table' | 'view'
     }
   | {
       type: 'schema-info'

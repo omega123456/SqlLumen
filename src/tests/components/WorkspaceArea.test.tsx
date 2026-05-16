@@ -461,7 +461,7 @@ describe('WorkspaceArea', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Bottom table-tabs rail placement tests
+  // Scoped table-data placement and cascade-close dialog tests
   // ---------------------------------------------------------------------------
 
   describe('table-data tab placement', () => {
@@ -495,7 +495,7 @@ describe('WorkspaceArea', () => {
       })
     }
 
-    it('with setting off (default): table-data tabs appear in top rail, no bottom rail', async () => {
+    it('with setting off (default): table-data tabs appear in the workspace stack and top rail', async () => {
       disableBottomTableTabs()
 
       const conn = makeActiveConnection()
@@ -520,11 +520,10 @@ describe('WorkspaceArea', () => {
       expect(topRail).toBeInTheDocument()
       expect(screen.getByText('users')).toBeInTheDocument()
 
-      // No bottom table-tabs rail
-      expect(screen.queryByTestId('bottom-table-tabs')).not.toBeInTheDocument()
+      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
     })
 
-    it('with setting on: table-data tabs appear in bottom rail and NOT in top rail', async () => {
+    it('with setting on: scoped table-data tabs are excluded from the top rail and live in the query panel', async () => {
       enableBottomTableTabs()
 
       const conn = makeActiveConnection()
@@ -544,14 +543,10 @@ describe('WorkspaceArea', () => {
 
       render(<WorkspaceArea />)
 
-      // Bottom rail should be visible with the table-data tab
-      const bottomRail = screen.getByTestId('bottom-table-tabs')
-      expect(bottomRail).toBeInTheDocument()
-      expect(bottomRail).toHaveTextContent('users')
-
-      // Top rail should not contain the table-data tab label
+      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
       const topRail = screen.getByTestId('workspace-tabs')
       expect(topRail).not.toHaveTextContent('users')
+      expect(screen.getAllByTestId('workspace-panel')).toHaveLength(1)
     })
 
     it('with setting on: query tabs still render normally in top rail', async () => {
@@ -578,10 +573,6 @@ describe('WorkspaceArea', () => {
       // Query tab should be in the top rail
       const topRail = screen.getByTestId('workspace-tabs')
       expect(topRail).toHaveTextContent('Query 1')
-
-      // Table-data tab should be only in bottom rail
-      const bottomRail = screen.getByTestId('bottom-table-tabs')
-      expect(bottomRail).toHaveTextContent('users')
       expect(topRail).not.toHaveTextContent('users')
     })
 
@@ -606,24 +597,21 @@ describe('WorkspaceArea', () => {
 
       render(<WorkspaceArea />)
 
-      // Initially no bottom rail
-      expect(screen.queryByTestId('bottom-table-tabs')).not.toBeInTheDocument()
+      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
 
       // Simulate saving the setting (committed to settings, not just pending)
       act(() => {
         enableBottomTableTabs()
       })
 
-      // Bottom rail should now appear
-      expect(screen.getByTestId('bottom-table-tabs')).toBeInTheDocument()
+      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
 
       // Simulate turning it back off
       act(() => {
         disableBottomTableTabs()
       })
 
-      // Bottom rail should disappear again
-      expect(screen.queryByTestId('bottom-table-tabs')).not.toBeInTheDocument()
+      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
     })
 
     it('with setting on and AI enabled: AI panel host still appears for active query tab', () => {
@@ -650,7 +638,7 @@ describe('WorkspaceArea', () => {
         activeTabId: 'conn-1',
       })
 
-      // Add a table-data tab (goes to bottom rail) and a query tab (stays in top)
+      // Add a scoped table-data tab and a query tab.
       useWorkspaceStore.getState().openTab({
         type: 'table-data',
         label: 'users',
@@ -664,13 +652,10 @@ describe('WorkspaceArea', () => {
       render(<WorkspaceArea />)
 
       // AI panel host should be present for the active query tab
-      expect(screen.getByTestId('workspace-ai-panel-host')).toBeInTheDocument()
-
-      // Bottom rail still shows the table-data tab
-      expect(screen.getByTestId('bottom-table-tabs')).toBeInTheDocument()
+      expect(screen.getAllByTestId('workspace-ai-panel-host').length).toBeGreaterThan(0)
     })
 
-    it('with setting on: no bottom rail rendered when there are no table-data tabs', () => {
+    it('keeps scoped table-data content inside the query workspace panel when setting is on', async () => {
       enableBottomTableTabs()
 
       const conn = makeActiveConnection()
@@ -679,13 +664,56 @@ describe('WorkspaceArea', () => {
         activeTabId: 'conn-1',
       })
 
-      // Only query tab — no table-data
-      useWorkspaceStore.getState().openQueryTab('conn-1')
+      const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+      useWorkspaceStore.getState().openTab({
+        type: 'table-data',
+        label: 'users',
+        connectionId: 'conn-1',
+        databaseName: 'mydb',
+        objectName: 'users',
+        objectType: 'table',
+      })
 
       render(<WorkspaceArea />)
 
-      // Bottom rail should not render (WorkspaceTableTabsRail returns null when empty)
+      await waitFor(() => {
+        expect(screen.getByTestId('query-editor-tab')).toBeInTheDocument()
+      })
+
       expect(screen.queryByTestId('bottom-table-tabs')).not.toBeInTheDocument()
+      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+      expect(screen.getAllByTestId('workspace-panel')).toHaveLength(1)
+      expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTabId)
+    })
+
+    it('renders the cascade close confirm dialog when pendingCascadeClose is set', async () => {
+      enableBottomTableTabs()
+
+      const conn = makeActiveConnection()
+      useConnectionStore.setState({
+        activeConnections: { 'conn-1': conn },
+        activeTabId: 'conn-1',
+      })
+
+      useWorkspaceStore.setState({
+        pendingCascadeClose: {
+          queryTabId: 'query-1',
+          queryResultItems: ['Result 2'],
+          tableDataItems: ['users', 'orders'],
+          onConfirm: vi.fn(),
+          onCancel: vi.fn(),
+        },
+      })
+
+      render(<WorkspaceArea />)
+
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument()
+      expect(screen.getByText('Discard unsaved changes?')).toBeInTheDocument()
+      expect(screen.getByText('Query results')).toBeInTheDocument()
+      expect(screen.getByText('Table data tabs')).toBeInTheDocument()
+      expect(screen.getByText('Result 2')).toBeInTheDocument()
+      expect(screen.getByText('users')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Discard and Close' })).toBeInTheDocument()
     })
   })
 })

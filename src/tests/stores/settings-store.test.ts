@@ -2,6 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mockIPC } from '@tauri-apps/api/mocks'
 import { renderHook, act } from '@testing-library/react'
 import { useSettingsStore, SETTINGS_DEFAULTS, useSettingValue } from '../../stores/settings-store'
+import {
+  useWorkspaceStore,
+  _resetQueryTabCounter,
+  _resetTabIdCounter,
+} from '../../stores/workspace-store'
+import { useQueryStore } from '../../stores/query-store'
 
 // Mock IPC for settings
 const mockGetAllSettings = vi.fn<() => Record<string, string>>(() => ({}))
@@ -18,6 +24,15 @@ beforeEach(() => {
     isDialogOpen: false,
     dialogSection: undefined,
   })
+  useWorkspaceStore.setState({
+    tabsByConnection: {},
+    activeTabByConnection: {},
+    lastFocusedSurfaceByTab: {},
+    blockingNavigationByTab: {},
+    pendingCascadeClose: null,
+  })
+  _resetTabIdCounter()
+  _resetQueryTabCounter()
 
   mockGetAllSettings.mockClear()
   mockSetSetting.mockClear()
@@ -206,6 +221,46 @@ describe('useSettingsStore', () => {
       expect(state.isDirty).toBe(true)
       expect(state.settings['editor.fontSize']).toBe('18')
       consoleSpy.mockRestore()
+    })
+
+    it('normalizes scoped table-data tabs when the bottom-panel setting is committed off', async () => {
+      useSettingsStore.setState({
+        settings: { 'results.tableTabsInBottomPanel': 'true' },
+        pendingChanges: { 'results.tableTabsInBottomPanel': 'false' },
+        isDirty: true,
+      })
+
+      const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+      useWorkspaceStore.getState().openTab({
+        type: 'table-data',
+        label: 'users',
+        connectionId: 'conn-1',
+        databaseName: 'testdb',
+        objectName: 'users',
+        objectType: 'table',
+      })
+
+      const scopedTabBeforeSave = useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1']
+        ?.find((tab) => tab.type === 'table-data')
+      expect(scopedTabBeforeSave?.parentQueryTabId).toBe(queryTabId)
+
+      await useSettingsStore.getState().save()
+
+      const normalizedTableTab = useWorkspaceStore
+        .getState()
+        .tabsByConnection['conn-1']
+        ?.find((tab) => tab.type === 'table-data')
+      expect(normalizedTableTab?.parentQueryTabId).toBeUndefined()
+      expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(
+        normalizedTableTab?.id
+      )
+      expect(useQueryStore.getState().getTabState(queryTabId).activeBottomPanelItem).toEqual({
+        type: 'table-data',
+        tabId: normalizedTableTab?.id,
+      })
+      expect(useSettingsStore.getState().settings['results.tableTabsInBottomPanel']).toBe('false')
     })
   })
 

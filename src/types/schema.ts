@@ -87,6 +87,7 @@ export interface TableDataTab extends WorkspaceTabBase {
   databaseName: string
   objectName: string
   objectType: ObjectType
+  parentQueryTabId?: string
 }
 
 /** A query editor tab (Monaco editor + results). */

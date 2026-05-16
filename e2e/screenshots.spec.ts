@@ -251,6 +251,42 @@ async function openQueryEditorWithMultiResults(page: Page) {
   await expect(page.getByTestId('result-tab-2')).toBeVisible({ timeout: APP_READY_MS })
 }
 
+async function openQueryEditorWithMultiResultsInBottomPanel(page: Page) {
+  await openQueryEditorTab(page)
+
+  await page.evaluate(() => {
+    const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => {
+        tabsByConnection: Record<string, { id: string; type: string }[]>
+      }
+    }
+    const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+    const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+    if (queryTab) {
+      const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+        getState: () => { setContent: (id: string, c: string) => void }
+      }
+      qStore
+        .getState()
+        .setContent(
+          queryTab.id,
+          "SELECT id, name FROM users;\nSELECT product_id, price FROM products;\nUPDATE users SET status = 'active' WHERE id = 1;"
+        )
+    }
+  })
+
+  await page.waitForTimeout(300)
+  await page.getByTestId('toolbar-execute-all').click()
+
+  await expect(page.getByTestId('bottom-panel-tabs')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('bottom-panel-result-tab-0')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+  await expect(page.getByTestId('bottom-panel-result-tab-2')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+}
+
 /** Open a query editor tab, set a CALL statement, execute, and wait for stored proc results. */
 async function openQueryEditorWithCallResults(page: Page) {
   await openQueryEditorTab(page)
@@ -337,6 +373,215 @@ async function enableQueryResultEditMode(page: Page) {
   await expect(page.getByTestId('result-grid').locator('canvas').first()).toBeVisible({
     timeout: APP_READY_MS,
   })
+}
+
+async function enableTableTabsInBottomPanel(page: Page) {
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__settingsStore__ as {
+      setState: (
+        updater: (state: {
+          settings: Record<string, string>
+          pendingChanges: Record<string, string>
+        }) => Record<string, unknown>
+      ) => void
+    }
+    store.setState((state) => ({
+      settings: {
+        ...state.settings,
+        'results.tableTabsInBottomPanel': 'true',
+      },
+      pendingChanges: {},
+    }))
+  })
+}
+
+async function openScopedTableDataBottomPanel(page: Page) {
+  await enableTableTabsInBottomPanel(page)
+  await openQueryEditorWithMultiResultsInBottomPanel(page)
+
+  await page.evaluate(() => {
+    const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => {
+        activeTabByConnection: Record<string, string | null>
+        openTab: (tab: Record<string, unknown>) => void
+      }
+    }
+
+    const state = workspaceStore.getState()
+    if (!state.activeTabByConnection['session-playwright-1']) {
+      throw new Error('No active query tab found for scoped table-data screenshot setup')
+    }
+
+    state.openTab({
+      type: 'table-data',
+      label: 'users',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'users',
+      objectType: 'table',
+    })
+  })
+
+  await expect(page.getByTestId('bottom-panel-tabs')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(
+    page.getByTestId('bottom-panel-tabs').locator('[data-testid^="bottom-panel-table-tab-"]').first()
+  ).toBeVisible({ timeout: APP_READY_MS })
+  await page.waitForFunction(() => {
+    const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+      getState: () => {
+        tabs: Record<
+          string,
+          { activeBottomPanelItem?: { type: 'result' } | { type: 'table-data'; tabId: string } }
+        >
+      }
+    }
+    const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => {
+        activeTabByConnection: Record<string, string | null>
+      }
+    }
+    const tableDataStore = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
+      getState: () => {
+        tabs: Record<string, { isLoading: boolean; columns: Array<unknown> }>
+      }
+    }
+
+    const queryTabId = workspaceStore.getState().activeTabByConnection['session-playwright-1']
+    if (!queryTabId) return false
+
+    const activeBottomPanelItem = queryStore.getState().tabs[queryTabId]?.activeBottomPanelItem
+    if (!activeBottomPanelItem || activeBottomPanelItem.type !== 'table-data') return false
+
+    const tableTabState = tableDataStore.getState().tabs[activeBottomPanelItem.tabId]
+    return Boolean(tableTabState && !tableTabState.isLoading && tableTabState.columns.length > 0)
+  }, null, {
+    timeout: APP_READY_MS,
+  })
+  const activeTableTabId = await page.evaluate(() => {
+    const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+      getState: () => {
+        tabs: Record<
+          string,
+          { activeBottomPanelItem?: { type: 'result' } | { type: 'table-data'; tabId: string } }
+        >
+      }
+    }
+    const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => {
+        activeTabByConnection: Record<string, string | null>
+      }
+    }
+
+    const queryTabId = workspaceStore.getState().activeTabByConnection['session-playwright-1']
+    if (!queryTabId) return null
+
+    const activeBottomPanelItem = queryStore.getState().tabs[queryTabId]?.activeBottomPanelItem
+    return activeBottomPanelItem?.type === 'table-data' ? activeBottomPanelItem.tabId : null
+  })
+  if (!activeTableTabId) {
+    throw new Error('No active scoped table-data tab found after bottom-panel setup')
+  }
+
+  const activeBottomPanelTable = page.locator(
+    `[data-testid="query-bottom-panel-table-${activeTableTabId}"]`
+  )
+  await expect(activeBottomPanelTable.locator('[data-testid="table-data-tab"]')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+}
+
+async function expectGridRegionToBeExpanded(
+  page: Page,
+  gridTestId: 'result-grid' | 'table-data-grid',
+  minimumHeight = 120
+) {
+  const grid = page.getByTestId(gridTestId)
+  const canvas = grid.locator('canvas').first()
+
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+  await expect(canvas).toBeVisible({ timeout: APP_READY_MS })
+
+  await expect
+    .poll(
+      async () =>
+        grid.evaluate((node, minHeight) => {
+          const element = node as HTMLElement
+          const rect = element.getBoundingClientRect()
+          const canvas = element.querySelector('canvas')
+          const canvasRect = canvas?.getBoundingClientRect()
+
+          return {
+            clientHeight: element.clientHeight,
+            offsetHeight: element.offsetHeight,
+            rectHeight: rect.height,
+            canvasHeight: canvasRect?.height ?? 0,
+            hasCanvas: canvas !== null,
+            meetsMinimumHeight: rect.height >= minHeight,
+          }
+        }, minimumHeight),
+      { timeout: APP_READY_MS }
+    )
+    .toEqual(
+      expect.objectContaining({
+        hasCanvas: true,
+        meetsMinimumHeight: true,
+      })
+    )
+}
+
+async function expectOnlyActiveBottomPanelContentVisible(
+  page: Page,
+  activeContent: 'result' | 'table-data'
+) {
+  const resultPanel = page.getByTestId('query-bottom-panel-results')
+  const tablePanels = page.locator('[data-testid^="query-bottom-panel-table-"]')
+
+  const visibilityState = await expect
+    .poll(
+      async () => {
+        const tablePanelStates = await tablePanels.evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const element = node as HTMLElement
+            const rect = element.getBoundingClientRect()
+
+            return {
+              hidden: element.hasAttribute('hidden'),
+              visible:
+                !element.hasAttribute('hidden') &&
+                getComputedStyle(element).display !== 'none' &&
+                getComputedStyle(element).visibility !== 'hidden' &&
+                rect.height > 0,
+            }
+          })
+        )
+
+        return {
+          resultHidden: await resultPanel.evaluate((node) => node.hasAttribute('hidden')),
+          resultVisible: await resultPanel.isVisible(),
+          visibleTablePanels: tablePanelStates.filter((panel) => panel.visible).length,
+          hiddenTablePanels: tablePanelStates.filter((panel) => panel.hidden).length,
+          tablePanelCount: tablePanelStates.length,
+        }
+      },
+      { timeout: APP_READY_MS }
+    )
+    .toEqual(
+      expect.objectContaining(
+        activeContent === 'result'
+          ? {
+              resultHidden: false,
+              resultVisible: true,
+              visibleTablePanels: 0,
+            }
+          : {
+              resultHidden: true,
+              resultVisible: false,
+              visibleTablePanels: 1,
+            }
+      )
+    )
+
+  return visibilityState
 }
 
 /** Open a table data tab for `sample_table` and wait for data to load. */
@@ -2388,57 +2633,35 @@ for (const theme of themes) {
       )
     })
 
-    test('WorkspaceArea — bottom table tabs rail (table-data tabs in bottom panel)', async ({
+    test('QueryEditorTab — combined bottom panel with results and scoped table-data tabs', async ({
       page,
     }) => {
-      // Enable the bottom panel setting via the settings store before navigating
-      await page.evaluate(() => {
-        const store = (window as unknown as Record<string, unknown>).__settingsStore__ as {
-          setState: (
-            updater: (state: {
-              settings: Record<string, string>
-              pendingChanges: Record<string, string>
-            }) => Record<string, unknown>
-          ) => void
-        }
-        store.setState((state) => ({
-          settings: {
-            ...state.settings,
-            'results.tableTabsInBottomPanel': 'true',
-          },
-          pendingChanges: {},
-        }))
+      await openScopedTableDataBottomPanel(page)
+      const activeResultTab = page.getByTestId('bottom-panel-tabs').getByRole('tab', {
+        name: /result 1/i,
       })
-
-      // Connect and open a table-data tab so the bottom rail has a visible tab
-      await connectToSample(page)
-      await page.evaluate(() => {
-        const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
-          getState: () => { openTab: (tab: Record<string, unknown>) => void }
-        }
-        store.getState().openTab({
-          type: 'table-data',
-          label: 'users',
-          connectionId: 'session-playwright-1',
-          databaseName: 'ecommerce_db',
-          objectName: 'users',
-          objectType: 'table',
-        })
-      })
-
-      // Wait for the table data tab to mount and data to load
-      await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
-        timeout: APP_READY_MS,
-      })
-
-      // Verify the bottom rail is rendered
-      await expect(page.getByTestId('bottom-table-tabs')).toBeVisible({ timeout: APP_READY_MS })
+      await activeResultTab.click()
+      await expect(activeResultTab).toHaveAttribute('aria-selected', 'true')
+      await expectOnlyActiveBottomPanelContentVisible(page, 'result')
+      await expectGridRegionToBeExpanded(page, 'result-grid')
 
       await resetChromeScrollPositions(page)
-      await expect(page.getByTestId('workspace-area')).toHaveScreenshot(
-        `workspace-area-bottom-table-tabs-${theme}.png`,
+      await expect(page.getByTestId('query-editor-tab')).toHaveScreenshot(
+        `query-editor-bottom-panel-combined-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('QueryEditorTab — scoped table-data tab active in query result area', async ({ page }) => {
+      await openScopedTableDataBottomPanel(page)
+      await expectOnlyActiveBottomPanelContentVisible(page, 'table-data')
+      await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
+      await expectGridRegionToBeExpanded(page, 'table-data-grid')
+
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('query-editor-tab')).toHaveScreenshot(
+        `query-editor-bottom-panel-table-data-active-${theme}.png`,
         { animations: 'disabled' }
       )
     })

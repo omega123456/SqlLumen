@@ -3,6 +3,7 @@ import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ObjectBrowserContextMenu } from '../../../components/object-browser/ObjectBrowserContextMenu'
 import { useSchemaStore, makeNodeId } from '../../../stores/schema-store'
+import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import { useWorkspaceStore, _resetTabIdCounter } from '../../../stores/workspace-store'
 import type { TreeNode as TreeNodeType } from '../../../types/schema'
 
@@ -153,6 +154,20 @@ function makeNodes() {
   return { dbId, catId, tableId, viewId, procId, funcId, triggerId, eventId, colId, nodes }
 }
 
+function setBottomPanelSetting(enabled: boolean) {
+  act(() => {
+    useSettingsStore.setState((state) => ({
+      ...state,
+      settings: {
+        ...SETTINGS_DEFAULTS,
+        ...state.settings,
+        'results.tableTabsInBottomPanel': enabled ? 'true' : 'false',
+      },
+      pendingChanges: {},
+    }))
+  })
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   _resetTabIdCounter()
@@ -165,6 +180,15 @@ beforeEach(() => {
     useWorkspaceStore.setState({
       tabsByConnection: {},
       activeTabByConnection: {},
+    })
+    useSettingsStore.setState({
+      settings: { ...SETTINGS_DEFAULTS },
+      pendingChanges: {},
+      isDirty: false,
+      isLoading: false,
+      activeSection: 'general',
+      isDialogOpen: false,
+      dialogSection: undefined,
     })
   })
 })
@@ -1196,6 +1220,46 @@ describe('ObjectBrowserContextMenu', () => {
       objectName: 'user_stats',
       objectType: 'view',
     })
+  })
+
+  it('scopes "View Data" opens to the active query tab when the setting is enabled', async () => {
+    const user = userEvent.setup()
+    const { nodes, viewId } = makeNodes()
+    setNodes(nodes)
+    setBottomPanelSetting(true)
+
+    act(() => {
+      useWorkspaceStore.getState().openQueryTab(CONN_ID, 'Query 1')
+    })
+
+    const activeQueryTabId = useWorkspaceStore.getState().activeTabByConnection[CONN_ID]
+    expect(activeQueryTabId).toBeTruthy()
+
+    render(
+      <ObjectBrowserContextMenu
+        visible
+        x={100}
+        y={100}
+        nodeId={viewId}
+        connectionId={CONN_ID}
+        isReadOnly={false}
+        onClose={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByTestId('ctx-view-data'))
+
+    const state = useWorkspaceStore.getState()
+    const tabs = state.tabsByConnection[CONN_ID]
+    const tableTabs = tabs.filter((tab) => tab.type === 'table-data')
+
+    expect(tableTabs).toHaveLength(1)
+    expect(tableTabs[0]).toMatchObject({
+      objectName: 'user_stats',
+      objectType: 'view',
+      parentQueryTabId: activeQueryTabId,
+    })
+    expect(state.activeTabByConnection[CONN_ID]).toBe(activeQueryTabId)
   })
 
   // ---------------------------------------------------------------------------

@@ -15,8 +15,11 @@ import type { QueryEditorTab as QueryEditorTabType } from '../../types/schema'
 import { useQueryStore } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
+import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { MonacoEditorWrapper } from './MonacoEditorWrapper'
 import { EditorToolbar } from './EditorToolbar'
+import { BottomPanelTabs } from './BottomPanelTabs'
+import { QueryBottomPanel } from './QueryBottomPanel'
 import { ResultPanel } from './ResultPanel'
 import { QueryExecutionOverlay } from './QueryExecutionOverlay'
 import { DiffOverlay } from './DiffOverlay'
@@ -43,6 +46,11 @@ export function QueryEditorTab({ tab, isActive = true }: QueryEditorTabProps) {
   const wasActiveRef = useRef(isActive)
 
   const status = useQueryStore((state) => state.tabs[tab.id]?.tabStatus ?? 'idle')
+  const bottomTableTabsEnabled = useSettingsStore(
+    (state) =>
+      (state.settings['results.tableTabsInBottomPanel'] ??
+        SETTINGS_DEFAULTS['results.tableTabsInBottomPanel']) === 'true'
+  )
 
   const setLastFocusedSurface = useWorkspaceStore((state) => state.setLastFocusedSurface)
   const lastFocusedSurface = useWorkspaceStore((state) => state.lastFocusedSurfaceByTab[tab.id])
@@ -171,7 +179,18 @@ export function QueryEditorTab({ tab, isActive = true }: QueryEditorTabProps) {
             <div className={styles.resizePill} />
           </Separator>
           <Panel defaultSize="40%" minSize="15%" className={styles.resultPanel}>
-            <ResultPanel tabId={tab.id} connectionId={tab.connectionId} isActive={isActive} />
+            {bottomTableTabsEnabled ? (
+              <>
+                <BottomPanelTabs queryTabId={tab.id} connectionId={tab.connectionId} />
+                <QueryBottomPanel
+                  queryTabId={tab.id}
+                  connectionId={tab.connectionId}
+                  isActive={isActive}
+                />
+              </>
+            ) : (
+              <ResultPanel tabId={tab.id} connectionId={tab.connectionId} isActive={isActive} />
+            )}
           </Panel>
         </Group>
       </div>

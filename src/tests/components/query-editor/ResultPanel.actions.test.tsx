@@ -305,6 +305,37 @@ describe('ResultPanel actions and states', () => {
     expect(screen.getByText('Broken query')).toBeInTheDocument()
   })
 
+  it('suppresses result sub-tabs when hideSubTabs is true', () => {
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          ...makeTabState({ connectionId: 'conn-1' }),
+          tabStatus: 'success',
+          activeResultIndex: 1,
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              columns: [{ name: 'id', dataType: 'INT' }],
+              rows: [[1]],
+              totalRows: 1,
+            },
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'error',
+              errorMessage: 'Broken query',
+            },
+          ],
+        },
+      },
+    })
+
+    render(<ResultPanel tabId="tab-1" connectionId="conn-1" hideSubTabs />)
+
+    expect(screen.queryByTestId('result-subtabs')).not.toBeInTheDocument()
+    expect(screen.getByText('Broken query')).toBeInTheDocument()
+  })
+
   it('shows affected row count for DML success results', () => {
     renderPanel({ columns: [], rows: [], affectedRows: 3 })
 

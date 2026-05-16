@@ -107,6 +107,9 @@ export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
 
 /** Tab-level status extends ExecutionStatus with AI-specific states. */
 export type TabStatus = ExecutionStatus | 'ai-pending' | 'ai-reviewing'
+export type ActiveBottomPanelItem =
+  | { type: 'result' }
+  | { type: 'table-data'; tabId: string }
 
 // ---------------------------------------------------------------------------
 // SingleResultState — per-result fields
@@ -212,6 +215,8 @@ export interface TabQueryState {
   results: SingleResultState[]
   /** Index of the currently active result. */
   activeResultIndex: number
+  /** The currently visible item in the query tab's bottom panel. */
+  activeBottomPanelItem: ActiveBottomPanelItem
   /** Deferred action waiting on unsaved changes dialog. */
   pendingNavigationAction: (() => void) | null
   /** Date.now() when the query started executing, null when idle. */
@@ -272,6 +277,7 @@ const DEFAULT_TAB_STATE: TabQueryState = {
   connectionId: '',
   results: [],
   activeResultIndex: 0,
+  activeBottomPanelItem: { type: 'result' },
   pendingNavigationAction: null,
   executionStartedAt: null,
   isCancelling: false,
@@ -579,6 +585,9 @@ interface QueryState {
   /** Set the active result tab index. */
   setActiveResultIndex: (tabId: string, index: number) => void
 
+  /** Set the active bottom-panel item for a query tab. */
+  setActiveBottomPanelItem: (tabId: string, item: ActiveBottomPanelItem) => void
+
   /** Fetch a page of results for a tab. */
   fetchPage: (connectionId: string, tabId: string, page: number) => Promise<void>
 
@@ -832,6 +841,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         tabStatus: tabLevelStatus,
         results,
         activeResultIndex: 0,
+        activeBottomPanelItem: { type: 'result' },
         wasCancelled: false,
       })
       finalizeExecution(tabId)
@@ -875,6 +885,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         tabStatus: 'error',
         results: [errorResult],
         activeResultIndex: 0,
+        activeBottomPanelItem: { type: 'result' },
         wasCancelled: false,
       })
       finalizeExecution(tabId)
@@ -1154,6 +1165,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           tabStatus: 'success',
           results: [singleResult],
           activeResultIndex: 0,
+          activeBottomPanelItem: { type: 'result' },
           // Clear cancel flags on completion
           wasCancelled: false,
         })
@@ -1198,6 +1210,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           tabStatus: 'error',
           results: [errorResult],
           activeResultIndex: 0,
+          activeBottomPanelItem: { type: 'result' },
           // Clear cancel flags on completion
           wasCancelled: false,
         })
@@ -1305,6 +1318,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           })
         }
       }
+    },
+
+    setActiveBottomPanelItem: (tabId: string, item: ActiveBottomPanelItem) => {
+      patchTab(tabId, { activeBottomPanelItem: item })
     },
 
     fetchPage: async (connectionId: string, tabId: string, page: number) => {

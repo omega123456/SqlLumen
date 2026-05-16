@@ -85,7 +85,14 @@ describe('loadSessionState', () => {
           profileId: 'p1',
           activeTabIndex: 1,
           tabs: [
-            { type: 'table-data', tabId: 't1', databaseName: 'db1', tableName: 'users' },
+            {
+              type: 'table-data',
+              tabId: 't1',
+              databaseName: 'db1',
+              tableName: 'users',
+              parentQueryTabId: 'q1',
+              objectType: 'view',
+            },
             { type: 'query-editor', tabId: 't2', sql: 'SELECT 1' },
           ],
         },
@@ -98,6 +105,10 @@ describe('loadSessionState', () => {
     expect(result!.version).toBe(1)
     expect(result!.connections).toHaveLength(1)
     expect(result!.connections[0].tabs[0].type).toBe('table-data')
+    expect(result!.connections[0].tabs[0]).toMatchObject({
+      parentQueryTabId: 'q1',
+      objectType: 'view',
+    })
   })
 
   it('returns null for invalid JSON', async () => {

@@ -226,6 +226,14 @@ describe('TableDataTab', () => {
     await waitForTableDataLoaded()
   })
 
+  it('uses bottom-panel render mode when requested', async () => {
+    setupConnection()
+    render(<TableDataTab tab={makeTab()} renderMode="bottom-panel" />)
+
+    expect(screen.getByTestId('table-data-tab')).toHaveAttribute('data-render-mode', 'bottom-panel')
+    await waitForTableDataLoaded()
+  })
+
   it('renders loading state initially', async () => {
     setupConnection()
     // Don't pre-populate store — the component will init on mount

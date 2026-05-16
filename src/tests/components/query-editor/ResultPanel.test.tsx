@@ -63,6 +63,7 @@ describe('ResultPanel', () => {
     render(<ResultPanel tabId="tab1" connectionId="c1" />)
     expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
     expect(screen.getByTestId('grid-view')).toHaveTextContent('Grid rows: 2')
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('id', 'result-tabpanel-tab1-0')
   })
 
   it('switching view mode changes the rendered view', async () => {
@@ -95,5 +96,13 @@ describe('ResultPanel', () => {
     act(() => useQueryStore.setState({ tabs: {} }))
     render(<ResultPanel tabId="missing" connectionId="c1" />)
     expect(screen.getByText('Run a query to see results')).toBeInTheDocument()
+  })
+
+  it('does not create a result tabpanel when embedded under the combined strip', () => {
+    render(<ResultPanel tabId="tab1" connectionId="c1" hideSubTabs />)
+
+    expect(screen.queryByRole('tabpanel')).not.toBeInTheDocument()
+    expect(screen.getByTestId('result-toolbar')).toBeInTheDocument()
+    expect(screen.getByTestId('grid-view')).toHaveTextContent('Grid rows: 2')
   })
 })

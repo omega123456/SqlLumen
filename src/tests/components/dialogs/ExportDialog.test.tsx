@@ -45,7 +45,7 @@ async function pickExportFormat(
   formatKey: keyof typeof EXPORT_FORMAT_REGEX
 ) {
   const listbox = await openExportFormatListbox(user)
-  await user.click(within(listbox).getByRole('option', { name: EXPORT_FORMAT_REGEX[formatKey] }))
+  fireEvent.click(within(listbox).getByRole('option', { name: EXPORT_FORMAT_REGEX[formatKey] }))
 }
 
 async function openExportFormatListbox(user: ReturnType<typeof userEvent.setup>) {
@@ -356,11 +356,12 @@ describe('ExportDialog', () => {
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} defaultTableName="users" />)
 
-    // Switch to SQL INSERT to see the table name input
-    await pickExportFormat(user, 'sql-insert')
+    const listbox = await openExportFormatListbox(user)
+    fireEvent.click(within(listbox).getByRole('option', { name: EXPORT_FORMAT_LABELS['sql-insert'] }))
 
-    const tableNameInput = screen.getByTestId('export-table-name-input') as HTMLInputElement
-    expect(tableNameInput.value).toBe('users')
+    await waitFor(() => {
+      expect(screen.getByTestId('export-table-name-input')).toHaveValue('users')
+    })
   })
 
   it('renders without removed sizing props', () => {
