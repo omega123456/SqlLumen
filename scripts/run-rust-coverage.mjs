@@ -53,7 +53,15 @@ function ensureRustCoverageTools(env) {
 
 const env = ensureRustCoverageTools({ ...process.env })
 
-const child = spawn('cargo', ['sqllumen-llvm-cov'], {
+// Use `rustup run stable cargo` to ensure the rustup-managed rustc is used,
+// so cargo-llvm-cov resolves llvm-profdata via the correct sysroot regardless
+// of which `cargo` binary PATH resolves to (e.g. Homebrew vs rustup shim).
+const hasRustup = Boolean(tryReadCommand('rustup', ['--version']))
+const [command, commandArgs] = hasRustup
+  ? ['rustup', ['run', 'stable', 'cargo', 'sqllumen-llvm-cov']]
+  : ['cargo', ['sqllumen-llvm-cov']]
+
+const child = spawn(command, commandArgs, {
   cwd: process.cwd(),
   env,
   stdio: 'inherit',
