@@ -463,15 +463,20 @@ describe('completionService — parse-failure fallback', () => {
 })
 
 describe('completionService — loading cache', () => {
-  it('returns loading placeholder when cache status is loading', async () => {
+  it('returns parser keywords immediately when cache status is loading', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
     mockGetCache.mockReturnValue({ ...EMPTY_CACHE, status: 'loading' })
 
-    const items = await callService('', pos(1, 1), buildSuggestions({ keywords: ['SELECT'] }))
-    expect(items).toHaveLength(1)
-    expect(getLabel(items[0])).toBe('Loading schema...')
-    expect(items[0].kind).toBe(languages.CompletionItemKind.Text)
-    expect(items[0].insertText).toBe('')
+    const items = await callService(
+      '',
+      pos(1, 1),
+      buildSuggestions({ keywords: ['SELECT', 'UPDATE'] })
+    )
+    const labels = items.map(getLabel)
+
+    expect(labels).toContain('SELECT')
+    expect(labels).toContain('UPDATE')
+    expect(labels).not.toContain('Loading schema...')
   })
 })
 
@@ -2251,45 +2256,50 @@ describe('completionService — context-aware ranking', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Issue 1: Parse-failure fallback awaits cache loading
+// Issue 1: Parse-failure fallback does not block on cache loading
 // ---------------------------------------------------------------------------
 
-describe('completionService — parse-failure fallback awaits cache', () => {
-  it('loads cache before returning parse-failure fallback when cache is empty', async () => {
+describe('completionService — parse-failure fallback while cache is unavailable', () => {
+  it('returns fallback keywords immediately when cache is empty', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-
-    // First call: cache is empty (not yet loaded)
-    // After loadCache completes: cache is ready
-    mockGetCache.mockReturnValueOnce(EMPTY_CACHE).mockReturnValue(READY_CACHE)
+    mockGetCache.mockReturnValue(EMPTY_CACHE)
 
     const items = await callService('SELECT * FRM', pos(1, 13), null)
     const labels = items.map(getLabel)
 
-    // completion service reads the cache directly here; no eager loadCache call is expected
     expect(mockLoadCache).not.toHaveBeenCalled()
-
-    // Should have schema items because cache was loaded before parse-failure check
-    expect(labels).toContain('users')
-    expect(labels).toContain('app_db')
-    expect(labels).toContain('id')
+    expect(labels).toContain('SELECT')
+    expect(labels).toContain('UPDATE')
+    expect(labels).not.toContain('users')
+    expect(labels).not.toContain('app_db')
   })
 
-  it('awaits pending cache load before returning parse-failure fallback', async () => {
+  it('does not await pending cache load before returning parser keywords', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
+    mockGetCache.mockReturnValue({ ...EMPTY_CACHE, status: 'loading' })
 
-    // Simulate a pending load promise
-    mockGetPendingLoad.mockReturnValueOnce(Promise.resolve())
-    mockGetCache.mockReturnValue(READY_CACHE)
+    let pendingResolved = false
+    mockGetPendingLoad.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          pendingResolved = true
+          resolve()
+        }, 25)
+      })
+    )
 
-    const items = await callService('SELECT * FRM', pos(1, 13), null)
+    const items = await callService(
+      'SELECT ',
+      pos(1, 8),
+      buildSuggestions({ keywords: ['SELECT', 'UPDATE'], syntax: [] })
+    )
     const labels = items.map(getLabel)
 
-    // Should have awaited the pending load
-    expect(mockGetPendingLoad).toHaveBeenCalledWith('conn-1')
-
-    // Should have schema items
-    expect(labels).toContain('users')
-    expect(labels).toContain('app_db')
+    expect(mockGetPendingLoad).not.toHaveBeenCalled()
+    expect(pendingResolved).toBe(false)
+    expect(labels).toContain('SELECT')
+    expect(labels).toContain('UPDATE')
+    expect(labels).not.toContain('Loading schema...')
   })
 })
 

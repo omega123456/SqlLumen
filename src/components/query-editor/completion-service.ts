@@ -21,7 +21,7 @@ import type { editor, Position } from 'monaco-editor'
 import type { CompletionService, ICompletionItem, CompletionSnippet } from 'monaco-sql-languages'
 import type { Suggestions, EntityContext } from 'monaco-sql-languages'
 import { EntityContextType } from 'monaco-sql-languages'
-import { getCache, getPendingLoad } from './schema-metadata-cache'
+import { getCache } from './schema-metadata-cache'
 import { buildAliasMap, buildAliasMapFromText, stripQuotes } from './alias-resolver'
 import type { AliasMap } from './alias-resolver'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -660,19 +660,6 @@ export const completionService: CompletionService = async (
   const aliasMap = buildAliasMap(entities, resolutionDatabase)
 
   // -------------------------------------------------------------------
-  // Await pending cache loads (must happen BEFORE parse-failure check
-  // so buildParseFallback() can access schema items when the cache is
-  // still loading at the time the parser fails).
-  // -------------------------------------------------------------------
-  if (connectionId) {
-    const pendingLoad = getPendingLoad(connectionId)
-    if (pendingLoad) {
-      await pendingLoad
-    }
-  }
-
-  // -------------------------------------------------------------------
-  // -------------------------------------------------------------------
   // No connectionId → keywords + built-in functions (neutral ranking).
   // Fall back to SQL_KEYWORDS when parser provides empty keywords list.
   // -------------------------------------------------------------------
@@ -702,21 +689,12 @@ export const completionService: CompletionService = async (
   }
 
   // -------------------------------------------------------------------
-  // Look up cache — already loaded/awaited above, so this just reads
-  // the current state.
+  // Look up cache synchronously. Completion must never await schema loading:
+  // Monaco shows its own "loading..." state until this promise resolves, so
+  // keyword completions need to be returned even while schema cache startup
+  // or refresh work is still in flight.
   // -------------------------------------------------------------------
   const cache = getCache(connectionId)
-
-  if (cache.status === 'loading') {
-    return [
-      {
-        label: 'Loading schema...',
-        kind: languages.CompletionItemKind.Text,
-        insertText: '',
-        sortText: '0',
-      },
-    ]
-  }
 
   if (cache.status === 'error') {
     return [
@@ -757,8 +735,8 @@ export const completionService: CompletionService = async (
 
   // -------------------------------------------------------------------
   // Parse-failure fallback: suggestions is null when the parser fails.
-  // Cache is now ready (if available) so buildParseFallback can include
-  // schema items.
+  // buildParseFallback includes schema items only when a ready cache is
+  // available; otherwise it still returns SQL keywords/functions immediately.
   // -------------------------------------------------------------------
   if (suggestions === null) {
     return buildParseFallback(
@@ -1215,7 +1193,9 @@ function buildParseFallback(
 ): ICompletionItem[] {
   const items: ICompletionItem[] = []
 
-  // If we have a connection, dump all schema items
+  // If we have a ready connection cache, dump all schema items.
+  // Otherwise keep autocomplete useful with parser-independent SQL keywords
+  // while startup/background cache work is still in flight.
   if (connectionId) {
     const cache = getCache(connectionId)
     if (cache.status === 'ready') {
@@ -1325,6 +1305,8 @@ function buildParseFallback(
           }
         }
       }
+    } else {
+      pushFallbackKeywordsAndFunctions(items)
     }
   } else {
     // Basic keywords and built-in functions (neutral ranking in fallback — no context available)

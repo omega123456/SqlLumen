@@ -14,6 +14,7 @@ import { getBuiltinSignature } from './builtin-function-signatures'
 import { getRoutineParameters } from './routine-parameter-cache'
 import type { RoutineParameterCacheEntry } from './routine-parameter-cache'
 import { getCache, getPendingLoad } from './schema-metadata-cache'
+import { getPendingBootstrap } from '../../lib/schema-cache-bootstrap'
 import { getModelConnectionId, getSelectedDatabase } from './completion-service'
 import { splitStatements, findStatementAtCursor } from './sql-parser-utils'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -520,6 +521,14 @@ async function provideSignatureHelp(
   const pending = getPendingLoad(connectionId)
   if (pending) await pending
   if (token.isCancellationRequested) return undefined
+
+  // If cache is still empty, await the in-flight bootstrap (snapshot hydration)
+  const earlyCache = getCache(connectionId)
+  if (earlyCache.status === 'empty') {
+    const pendingBootstrap = getPendingBootstrap(connectionId)
+    if (pendingBootstrap) await pendingBootstrap
+    if (token.isCancellationRequested) return undefined
+  }
 
   const cache = getCache(connectionId)
   if (token.isCancellationRequested) return undefined

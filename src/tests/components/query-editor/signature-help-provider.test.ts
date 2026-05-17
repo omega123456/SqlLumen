@@ -19,6 +19,10 @@ vi.mock('../../../components/query-editor/schema-metadata-cache', () => ({
   loadCache: (...args: unknown[]) => mockLoadCache(...args),
 }))
 
+vi.mock('../../../lib/schema-cache-bootstrap', () => ({
+  getPendingBootstrap: vi.fn(() => null),
+}))
+
 const mockGetModelConnectionId = vi.fn().mockReturnValue(undefined)
 const mockGetSelectedDatabase = vi.fn().mockReturnValue(null)
 vi.mock('../../../components/query-editor/completion-service', () => ({

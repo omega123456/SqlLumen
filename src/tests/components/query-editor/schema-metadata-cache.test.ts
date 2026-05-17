@@ -11,10 +11,13 @@ import {
   getCache,
   loadCache,
   invalidateCache,
+  refreshCacheInBackground,
   filterDatabases,
   filterTables,
   filterColumns,
   filterRoutines,
+  getPendingLoad,
+  hydrateFromSnapshot,
   _clearAllCaches,
 } from '../../../components/query-editor/schema-metadata-cache'
 
@@ -510,5 +513,119 @@ describe('schema-metadata-cache', () => {
     expect(cache.indexes).toHaveProperty('mydb.orders')
     expect(cache.indexes['mydb.orders']).toHaveLength(1)
     expect(cache.indexes['mydb.orders'][0].name).toBe('idx_user_id')
+  })
+
+  describe('refreshCacheInBackground', () => {
+    it('updates cache with fresh data without invalidating existing data during fetch', async () => {
+      // Hydrate stale data first
+      hydrateFromSnapshot(
+        JSON.stringify(
+          mockMetadata({
+            databases: ['stale_db'],
+            tables: {
+              stale_db: [
+                {
+                  name: 'old_table',
+                  engine: 'InnoDB',
+                  charset: 'utf8mb4',
+                  rowCount: 10,
+                  dataSize: 100,
+                },
+              ],
+            },
+          })
+        ),
+        'conn-bg'
+      )
+
+      expect(getCache('conn-bg').status).toBe('ready')
+      expect(getCache('conn-bg').databases).toEqual(['stale_db'])
+
+      // Set up a delayed fetch for fresh data
+      let resolveRefresh: (() => void) | null = null
+      mockFetchSchema.mockReturnValue(
+        new Promise((resolve) => {
+          resolveRefresh = () =>
+            resolve(
+              mockMetadata({
+                databases: ['fresh_db'],
+                tables: {
+                  fresh_db: [
+                    {
+                      name: 'new_table',
+                      engine: 'InnoDB',
+                      charset: 'utf8mb4',
+                      rowCount: 50,
+                      dataSize: 500,
+                    },
+                  ],
+                },
+              })
+            )
+        })
+      )
+
+      const refreshPromise = refreshCacheInBackground('conn-bg')
+
+      // While fetch is in progress, stale data is still available
+      expect(getCache('conn-bg').status).toBe('ready')
+      expect(getCache('conn-bg').databases).toEqual(['stale_db'])
+
+      // Autocomplete should NOT block — getPendingLoad returns null
+      expect(getPendingLoad('conn-bg')).toBeNull()
+
+      resolveRefresh!()
+      await refreshPromise
+
+      // After refresh, fresh data replaces stale
+      expect(getCache('conn-bg').status).toBe('ready')
+      expect(getCache('conn-bg').databases).toEqual(['fresh_db'])
+      expect(getCache('conn-bg').tables['fresh_db']).toHaveLength(1)
+      expect(getCache('conn-bg').tables['fresh_db'][0].name).toBe('new_table')
+    })
+
+    it('preserves existing cache when fetch fails (throws to caller)', async () => {
+      hydrateFromSnapshot(
+        JSON.stringify(mockMetadata({ databases: ['existing_db'] })),
+        'conn-bg-err'
+      )
+
+      expect(getCache('conn-bg-err').status).toBe('ready')
+      expect(getCache('conn-bg-err').databases).toEqual(['existing_db'])
+
+      mockFetchSchema.mockRejectedValue(new Error('Network error'))
+
+      await expect(refreshCacheInBackground('conn-bg-err')).rejects.toThrow('Network error')
+
+      // Existing cache is preserved
+      expect(getCache('conn-bg-err').status).toBe('ready')
+      expect(getCache('conn-bg-err').databases).toEqual(['existing_db'])
+    })
+
+    it('discards result if cache was invalidated during fetch', async () => {
+      hydrateFromSnapshot(
+        JSON.stringify(mockMetadata({ databases: ['initial_db'] })),
+        'conn-bg-inv'
+      )
+
+      let resolveRefresh: (() => void) | null = null
+      mockFetchSchema.mockReturnValue(
+        new Promise((resolve) => {
+          resolveRefresh = () => resolve(mockMetadata({ databases: ['should_discard'] }))
+        })
+      )
+
+      const refreshPromise = refreshCacheInBackground('conn-bg-inv')
+
+      // Invalidate while fetch is in-flight
+      invalidateCache('conn-bg-inv')
+      expect(getCache('conn-bg-inv').status).toBe('empty')
+
+      resolveRefresh!()
+      await refreshPromise
+
+      // The stale refresh result should be discarded — cache stays empty
+      expect(getCache('conn-bg-inv').status).toBe('empty')
+    })
   })
 })

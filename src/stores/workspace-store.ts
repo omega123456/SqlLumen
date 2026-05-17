@@ -407,12 +407,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         },
       }))
       if (existing.type === 'table-data' && existing.parentQueryTabId) {
-        useQueryStore
-          .getState()
-          .setActiveBottomPanelItem(existing.parentQueryTabId, {
-            type: 'table-data',
-            tabId: existing.id,
-          })
+        useQueryStore.getState().setActiveBottomPanelItem(existing.parentQueryTabId, {
+          type: 'table-data',
+          tabId: existing.id,
+        })
       }
       return
     }

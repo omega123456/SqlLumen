@@ -277,6 +277,34 @@ export async function rebuildCache(connectionId: string): Promise<void> {
   await loadCache(connectionId)
 }
 
+/**
+ * Refresh the cache in the background without invalidating existing data.
+ * Does NOT register as a pending load, so autocomplete will not block on it.
+ * On success, atomically replaces the cached data.
+ * On failure, preserves the existing (stale) cache.
+ */
+export async function refreshCacheInBackground(connectionId: string): Promise<void> {
+  const capturedGeneration = getGeneration(connectionId)
+  const data = sanitizeSchemaMetadata(await fetchSchemaMetadataFull(connectionId))
+
+  // If the cache was invalidated during the fetch, discard the result
+  if (getGeneration(connectionId) !== capturedGeneration) {
+    return
+  }
+
+  const readyCache: SchemaCache = {
+    status: 'ready',
+    databases: data.databases,
+    tables: data.tables,
+    columns: data.columns,
+    routines: data.routines,
+    foreignKeys: data.foreignKeys,
+    indexes: data.indexes,
+    lastRefreshAt: Date.now(),
+  }
+  cacheMap.set(connectionId, readyCache)
+}
+
 export function hydrateFromSnapshot(snapshotJson: string, connectionId: string): void {
   const parsed = JSON.parse(snapshotJson) as SchemaMetadataFull
   const data = sanitizeSchemaMetadata(parsed)
