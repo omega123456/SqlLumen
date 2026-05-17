@@ -2,9 +2,7 @@
 
 A cross-platform **desktop MySQL / MariaDB client** built with [Tauri](https://tauri.app/) 2 and [React](https://react.dev/) 19 (TypeScript). The UI is a native shell—sidebar object browser, tabbed workspace, resizable panels, and status bar—with light/dark theming. **MySQL and MariaDB** access runs in the Rust backend; the frontend talks to the database only through Tauri IPC (`invoke`), with local **SQLite** for app settings, history, and other persisted data.
 
-
-
-https://github.com/user-attachments/assets/842a3c2b-faa6-4f8e-95b5-c7c5dd9de5ee
+https://github.com/user-attachments/assets/839eface-faa6-4731-aa75-db1fa03ae11c
 
 
 
