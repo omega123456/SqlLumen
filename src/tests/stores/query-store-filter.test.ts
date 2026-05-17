@@ -30,6 +30,7 @@ function setupTab(
         executionStartedAt: null,
         isCancelling: false,
         wasCancelled: false,
+        activeBottomPanelItem: { type: 'result' },
         ...tabOverrides,
       },
     },

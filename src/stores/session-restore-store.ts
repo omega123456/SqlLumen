@@ -376,7 +376,7 @@ async function restoreConnectionTabs(
   const savedToRuntimeTabId = new Map<string, string>()
   const queryBottomPanelSelections = new Map<string, string>()
   const savedActiveTabState =
-    connState.activeTabIndex >= 0 ? connState.tabs[connState.activeTabIndex] ?? null : null
+    connState.activeTabIndex >= 0 ? (connState.tabs[connState.activeTabIndex] ?? null) : null
 
   for (const tabState of connState.tabs) {
     if (tabState.type !== 'query-editor') {
@@ -495,8 +495,8 @@ async function restoreConnectionTabs(
         ...tab,
         parentQueryTabId:
           bottomPanelEnabled && savedTableTab?.parentQueryTabId
-          ? savedToRuntimeTabId.get(savedTableTab.parentQueryTabId)
-          : undefined,
+            ? savedToRuntimeTabId.get(savedTableTab.parentQueryTabId)
+            : undefined,
       }
     })
 
@@ -516,10 +516,12 @@ async function restoreConnectionTabs(
 
     const runtimeTableTab = useWorkspaceStore
       .getState()
-      .tabsByConnection[sessionId]
-      ?.find((tab) => tab.id === runtimeTableTabId)
+      .tabsByConnection[sessionId]?.find((tab) => tab.id === runtimeTableTabId)
 
-    if (runtimeTableTab?.type !== 'table-data' || runtimeTableTab.parentQueryTabId !== runtimeQueryTabId) {
+    if (
+      runtimeTableTab?.type !== 'table-data' ||
+      runtimeTableTab.parentQueryTabId !== runtimeQueryTabId
+    ) {
       continue
     }
 

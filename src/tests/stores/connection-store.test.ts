@@ -136,6 +136,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -194,6 +195,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -248,6 +250,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -316,6 +319,7 @@ describe('useConnectionStore — closeConnection guard for dirty non-active quer
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })

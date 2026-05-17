@@ -921,7 +921,10 @@ describe('ObjectBrowser', () => {
 
     expect(queryTabs).toHaveLength(2)
     expect(tableTabs).toHaveLength(2)
-    expect(tableTabs.map((tab) => tab.parentQueryTabId)).toEqual([queryTabs[0].id, secondQueryTabId])
+    expect(tableTabs.map((tab) => tab.parentQueryTabId)).toEqual([
+      queryTabs[0].id,
+      secondQueryTabId,
+    ])
     expect(state.activeTabByConnection[CONN_ID]).toBe(secondQueryTabId)
   })
 

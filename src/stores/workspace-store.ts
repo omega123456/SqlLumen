@@ -191,7 +191,9 @@ function isTableTabsInBottomPanelEnabled(): boolean {
   return useSettingsStore.getState().getSetting('results.tableTabsInBottomPanel') === 'true'
 }
 
-function getTableDataIdentityKey(tab: Pick<TableDataTab, 'connectionId' | 'databaseName' | 'objectName'>) {
+function getTableDataIdentityKey(
+  tab: Pick<TableDataTab, 'connectionId' | 'databaseName' | 'objectName'>
+) {
   return `${tab.connectionId}::${tab.databaseName}::${tab.objectName}`
 }
 
@@ -289,7 +291,9 @@ function getStandaloneTableActivationTarget(
     return null
   }
 
-  const activeBottomPanelItem = useQueryStore.getState().getTabState(activeTab.id).activeBottomPanelItem
+  const activeBottomPanelItem = useQueryStore
+    .getState()
+    .getTabState(activeTab.id).activeBottomPanelItem
   if (activeBottomPanelItem.type !== 'table-data') {
     return null
   }
@@ -334,7 +338,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     const bottomPanelEnabled = isTableTabsInBottomPanelEnabled()
     const currentTabs = get().tabsByConnection[connectionId] || []
     const normalizedCurrentTabs = bottomPanelEnabled
-      ? { tabs: currentTabs, removedTableTabIds: [], remappedTableTabIds: new Map<string, string>() }
+      ? {
+          tabs: currentTabs,
+          removedTableTabIds: [],
+          remappedTableTabIds: new Map<string, string>(),
+        }
       : normalizeScopedTableDataTabs(currentTabs)
     const tabs = normalizedCurrentTabs.tabs
     if (tabs !== currentTabs) {
@@ -401,7 +409,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       if (existing.type === 'table-data' && existing.parentQueryTabId) {
         useQueryStore
           .getState()
-          .setActiveBottomPanelItem(existing.parentQueryTabId, { type: 'table-data', tabId: existing.id })
+          .setActiveBottomPanelItem(existing.parentQueryTabId, {
+            type: 'table-data',
+            tabId: existing.id,
+          })
       }
       return
     }
@@ -419,7 +430,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       activeTabByConnection: {
         ...state.activeTabByConnection,
         [connectionId]:
-          newTab.type === 'table-data' && newTab.parentQueryTabId ? newTab.parentQueryTabId : newTab.id,
+          newTab.type === 'table-data' && newTab.parentQueryTabId
+            ? newTab.parentQueryTabId
+            : newTab.id,
       },
     }))
     if (newTab.type === 'table-data' && newTab.parentQueryTabId) {
@@ -695,7 +708,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         const dirtyQueryResultItems =
           queryTabState?.results
             ?.map((result, index) =>
-              result.editState && result.editState.modifiedColumns.size > 0 ? `Result ${index + 1}` : null
+              result.editState && result.editState.modifiedColumns.size > 0
+                ? `Result ${index + 1}`
+                : null
             )
             .filter((label): label is string => label != null) ?? []
         const dirtyTableDataItems = scopedTableTabs
@@ -987,12 +1002,15 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         const clampedInsertIndex = Math.max(0, Math.min(insertIndex, maxInsertIndex))
 
         if (isTableTabsInBottomPanelEnabled() && sourceTab.type === 'query-editor') {
-          const scopedChildrenByQueryId = movableTabs.reduce<Record<string, TableDataTab[]>>((acc, tab) => {
-            if (tab.type === 'table-data' && tab.parentQueryTabId) {
-              ;(acc[tab.parentQueryTabId] ??= []).push(tab)
-            }
-            return acc
-          }, {})
+          const scopedChildrenByQueryId = movableTabs.reduce<Record<string, TableDataTab[]>>(
+            (acc, tab) => {
+              if (tab.type === 'table-data' && tab.parentQueryTabId) {
+                ;(acc[tab.parentQueryTabId] ??= []).push(tab)
+              }
+              return acc
+            },
+            {}
+          )
 
           const groupedMovableTabs = movableTabs.flatMap((tab) => {
             if (tab.type === 'table-data' && tab.parentQueryTabId) {
@@ -1338,10 +1356,7 @@ let previousTableTabsInBottomPanelSetting = useSettingsStore
 
 useSettingsStore.subscribe((state) => {
   const nextSetting = state.getSetting('results.tableTabsInBottomPanel')
-  if (
-    previousTableTabsInBottomPanelSetting === 'true' &&
-    nextSetting === 'false'
-  ) {
+  if (previousTableTabsInBottomPanelSetting === 'true' && nextSetting === 'false') {
     useWorkspaceStore.getState().normalizeTableDataTabScopes()
   }
   previousTableTabsInBottomPanelSetting = nextSetting

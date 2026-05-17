@@ -106,6 +106,7 @@ function setupQueryTab(resultOverrides: Partial<SingleResultState> = {}) {
     executionStartedAt: null,
     isCancelling: false,
     wasCancelled: false,
+    activeBottomPanelItem: { type: 'result' },
   }
 
   useQueryStore.setState({ tabs: { 'tab-1': tab } })

@@ -414,6 +414,7 @@ describe('UpdatesSettings', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
         'query-2': {
           content: '',
@@ -473,6 +474,7 @@ describe('UpdatesSettings', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })

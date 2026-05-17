@@ -1,42 +1,31 @@
-/* ResultSubTabs — 28px compact tab strip for multi-result display */
+/* ResultSubTabs — uses UnderlineTabBar container for consistent bar height
+   and border. Tab button styles replicate the workspace tab metrics via shared
+   CSS tokens for full visual parity. */
 
 .strip {
-  display: flex;
-  align-items: stretch;
-  height: 28px;
-  min-height: 28px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  border-bottom: 1px solid var(--outline-variant);
-  background: var(--surface-container);
-  scrollbar-width: none;
+  /* Scrollbar styling is inherited from UnderlineTabBar's .barScrollable class */
 }
 
-.strip::-webkit-scrollbar {
-  display: none;
-}
-
+/* Individual tab — mirrors UnderlineTabs.module.css .simple */
 .tab {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 10px;
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--on-surface-variant);
-  font-family: var(--font-body);
-  font-size: var(--type-size-sm);
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    color 0.15s,
-    border-color 0.15s;
+  position: relative;
   flex-shrink: 0;
+  padding: 12px 20px;
+  font-family: var(--font-body);
+  font-size: var(--type-nav-tab);
+  font-weight: var(--type-nav-weight);
+  color: var(--on-surface-variant);
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .tab:hover {
   color: var(--on-surface);
+  background-color: rgba(var(--on-surface-rgb), 0.03);
 }
 
 .tab:focus-visible {
@@ -46,11 +35,30 @@
 
 .tabActive {
   color: var(--primary);
-  border-bottom-color: var(--primary);
+  font-weight: var(--type-nav-weight-active);
+  background-color: var(--underline-tab-active-bg);
+}
+
+.tabActive:hover {
+  background-color: var(--underline-tab-active-bg);
+}
+
+.tabActive::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--underline-tab-indicator, var(--primary));
+  border-radius: 1px 1px 0 0;
 }
 
 .tabLabel {
-  line-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  white-space: nowrap;
 }
 
 .selectIcon {

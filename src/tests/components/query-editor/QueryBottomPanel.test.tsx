@@ -69,7 +69,10 @@ describe('QueryBottomPanel', () => {
     const hiddenTablePanel = screen.getByTestId('query-bottom-panel-table-table-1')
     expect(hiddenTablePanel).toHaveAttribute('hidden')
     expect(hiddenTablePanel).not.toBeVisible()
-    expect(screen.getByTestId('table-data-tab-mock-table-1')).toHaveAttribute('data-active', 'false')
+    expect(screen.getByTestId('table-data-tab-mock-table-1')).toHaveAttribute(
+      'data-active',
+      'false'
+    )
   })
 
   it('shows bottom-panel table content and resets to results when scoped tab disappears', async () => {
@@ -193,7 +196,10 @@ describe('QueryBottomPanel', () => {
     expect(screen.getByTestId('query-bottom-panel-table-table-2')).toHaveAttribute('hidden')
     expect(screen.getByTestId('query-bottom-panel-table-table-2')).not.toBeVisible()
     expect(screen.getByTestId('table-data-tab-mock-table-1')).toHaveAttribute('data-active', 'true')
-    expect(screen.getByTestId('table-data-tab-mock-table-2')).toHaveAttribute('data-active', 'false')
+    expect(screen.getByTestId('table-data-tab-mock-table-2')).toHaveAttribute(
+      'data-active',
+      'false'
+    )
   })
 
   it('renders a real panel target for each result tab and only mounts the active result content', () => {
@@ -224,10 +230,7 @@ describe('QueryBottomPanel', () => {
     expect(inactiveResultPanel).toHaveAttribute('hidden')
     expect(inactiveResultPanel).not.toBeVisible()
     const activeResultPanel = screen.getByTestId('query-bottom-panel-results')
-    expect(activeResultPanel).toHaveAttribute(
-      'id',
-      'result-tabpanel-query-1-1'
-    )
+    expect(activeResultPanel).toHaveAttribute('id', 'result-tabpanel-query-1-1')
     expect(activeResultPanel).toBeVisible()
     expect(screen.getAllByTestId('result-panel-mock')).toHaveLength(1)
   })

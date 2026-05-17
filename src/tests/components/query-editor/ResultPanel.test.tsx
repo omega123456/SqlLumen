@@ -53,6 +53,7 @@ describe('ResultPanel', () => {
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
           },
         },
       })

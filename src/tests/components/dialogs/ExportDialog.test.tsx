@@ -357,7 +357,9 @@ describe('ExportDialog', () => {
     render(<ExportDialog {...defaultProps} defaultTableName="users" />)
 
     const listbox = await openExportFormatListbox(user)
-    fireEvent.click(within(listbox).getByRole('option', { name: EXPORT_FORMAT_LABELS['sql-insert'] }))
+    fireEvent.click(
+      within(listbox).getByRole('option', { name: EXPORT_FORMAT_LABELS['sql-insert'] })
+    )
 
     await waitFor(() => {
       expect(screen.getByTestId('export-table-name-input')).toHaveValue('users')

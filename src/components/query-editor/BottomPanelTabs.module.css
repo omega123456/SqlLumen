@@ -1,7 +1,5 @@
 .strip {
-  --underline-tab-row-height: 32px;
-  background: var(--surface-container);
-  scrollbar-width: none;
+  /* Scrollbar styling is inherited from UnderlineTabBar's .barScrollable class */
 }
 
 .item {
@@ -10,13 +8,9 @@
   flex-shrink: 0;
 }
 
-.strip::-webkit-scrollbar {
-  display: none;
-}
-
 .separator {
   width: 1px;
-  margin: 7px 2px;
+  margin: 10px 2px;
   background: rgba(var(--outline-variant-rgb), 0.45);
   flex-shrink: 0;
 }
@@ -68,7 +62,7 @@
   align-items: center;
   min-width: 0;
   flex: 1;
-  padding: 8px 12px 8px 16px;
+  padding: 12px 12px 12px 20px;
   border: none;
   background: transparent;
   color: inherit;
@@ -90,6 +84,6 @@
 
 .closeButton {
   align-self: center;
-  margin-left: 4px;
-  margin-right: 10px;
+  margin-left: var(--space-xs);
+  margin-right: 14px;
 }

@@ -185,9 +185,9 @@ describe('BottomPanelTabs', () => {
 
     render(<BottomPanelTabs queryTabId="query-1" connectionId="conn-1" />)
 
-    screen.getByTestId('bottom-panel-table-tab-table-1').dispatchEvent(
-      new MouseEvent('mousedown', { bubbles: true, button: 1 })
-    )
+    screen
+      .getByTestId('bottom-panel-table-tab-table-1')
+      .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 1 }))
     expect(closeTabSpy).toHaveBeenCalledWith('conn-1', 'table-1')
 
     await user.click(screen.getByTestId('bottom-panel-close-table-1'))

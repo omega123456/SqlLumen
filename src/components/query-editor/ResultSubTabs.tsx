@@ -1,8 +1,12 @@
 /**
- * ResultSubTabs — compact horizontal tab strip for switching between
+ * ResultSubTabs — horizontal tab strip for switching between
  * multiple query result sets within a single query editor tab.
  *
  * Only renders when results.length > 1.
+ *
+ * Uses the shared UnderlineTabBar container so its height, border, and
+ * scrollbar match the top-level workspace tabs. Individual tab styling
+ * replicates the workspace tab metrics via shared CSS tokens.
  *
  * Accessibility: role="tablist" with roving tabIndex and arrow-key navigation.
  */
@@ -11,6 +15,7 @@ import { useCallback, useRef, useEffect } from 'react'
 import { Table, CheckCircle, Warning } from '@phosphor-icons/react'
 import { useQueryStore } from '../../stores/query-store'
 import type { SingleResultState } from '../../stores/query-store'
+import { UnderlineTabBar } from '../common/UnderlineTabs'
 import styles from './ResultSubTabs.module.css'
 
 interface ResultSubTabsProps {
@@ -74,9 +79,6 @@ export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
 
       if (targetIndex !== null) {
         setActiveResultIndex(tabId, targetIndex)
-        // Focus is moved by the useEffect on activeResultIndex change.
-        // This ensures focus only lands on the tab if the switch actually committed
-        // (it may be deferred by the unsaved-edits guard).
       }
     },
     [activeResultIndex, results.length, setActiveResultIndex, tabId]
@@ -86,35 +88,38 @@ export function ResultSubTabs({ tabId }: ResultSubTabsProps) {
 
   return (
     <div
-      className={styles.strip}
       role="tablist"
       aria-label="Query result sets"
       onKeyDown={handleKeyDown}
       data-testid="result-sub-tabs"
     >
-      {results.map((result, index) => {
-        const isActive = index === activeResultIndex
-        return (
-          <button
-            key={index}
-            ref={(el) => {
-              tabRefs.current[index] = el
-            }}
-            type="button"
-            role="tab"
-            id={`result-tab-${tabId}-${index}`}
-            aria-selected={isActive}
-            aria-controls={`result-tabpanel-${tabId}-${index}`}
-            tabIndex={isActive ? 0 : -1}
-            className={`${styles.tab} ${isActive ? styles.tabActive : ''}`}
-            onClick={() => handleTabClick(index)}
-            data-testid={`result-tab-${index}`}
-          >
-            {getTabIcon(result)}
-            <span className={styles.tabLabel}>Result {index + 1}</span>
-          </button>
-        )
-      })}
+      <UnderlineTabBar className={styles.strip} scrollable>
+        {results.map((result, index) => {
+          const isActive = index === activeResultIndex
+          return (
+            <button
+              key={index}
+              ref={(el) => {
+                tabRefs.current[index] = el
+              }}
+              type="button"
+              role="tab"
+              id={`result-tab-${tabId}-${index}`}
+              aria-selected={isActive}
+              aria-controls={`result-tabpanel-${tabId}-${index}`}
+              tabIndex={isActive ? 0 : -1}
+              className={`${styles.tab} ${isActive ? styles.tabActive : ''}`}
+              onClick={() => handleTabClick(index)}
+              data-testid={`result-tab-${index}`}
+            >
+              <span className={styles.tabLabel}>
+                {getTabIcon(result)}
+                <span>Result {index + 1}</span>
+              </span>
+            </button>
+          )
+        })}
+      </UnderlineTabBar>
     </div>
   )
 }

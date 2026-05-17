@@ -89,9 +89,10 @@ describe('useQueryStore — activeBottomPanelItem', () => {
       .getState()
       .setActiveBottomPanelItem('tab-bottom-panel', { type: 'table-data', tabId: 'table-tab-1' })
 
-    expect(useQueryStore.getState().getTabState('tab-bottom-panel').activeBottomPanelItem).toEqual(
-      { type: 'table-data', tabId: 'table-tab-1' }
-    )
+    expect(useQueryStore.getState().getTabState('tab-bottom-panel').activeBottomPanelItem).toEqual({
+      type: 'table-data',
+      tabId: 'table-tab-1',
+    })
   })
 })
 
@@ -342,7 +343,9 @@ describe('useQueryStore — multi-result execution', () => {
       .getState()
       .setActiveBottomPanelItem('tab-multi', { type: 'table-data', tabId: 'table-tab-1' })
 
-    await useQueryStore.getState().executeMultiQuery('conn-1', 'tab-multi', ['SELECT 1', 'SELECT 2'])
+    await useQueryStore
+      .getState()
+      .executeMultiQuery('conn-1', 'tab-multi', ['SELECT 1', 'SELECT 2'])
 
     const state = useQueryStore.getState().getTabState('tab-multi')
     expect(state.tabStatus).toBe('success')

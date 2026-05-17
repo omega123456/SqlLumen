@@ -205,11 +205,7 @@ export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsPro
                     {item.kind === 'result' ? (
                       getResultTabIcon(item.result)
                     ) : (
-                      <Table
-                        size={12}
-                        weight="fill"
-                        className={workspaceTabStyles.tabTypeIcon}
-                      />
+                      <Table size={12} weight="fill" className={workspaceTabStyles.tabTypeIcon} />
                     )}
                     <span className={workspaceTabStyles.tabLabelText}>{item.label}</span>
                   </span>

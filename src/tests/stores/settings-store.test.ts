@@ -242,16 +242,14 @@ describe('useSettingsStore', () => {
 
       const scopedTabBeforeSave = useWorkspaceStore
         .getState()
-        .tabsByConnection['conn-1']
-        ?.find((tab) => tab.type === 'table-data')
+        .tabsByConnection['conn-1']?.find((tab) => tab.type === 'table-data')
       expect(scopedTabBeforeSave?.parentQueryTabId).toBe(queryTabId)
 
       await useSettingsStore.getState().save()
 
       const normalizedTableTab = useWorkspaceStore
         .getState()
-        .tabsByConnection['conn-1']
-        ?.find((tab) => tab.type === 'table-data')
+        .tabsByConnection['conn-1']?.find((tab) => tab.type === 'table-data')
       expect(normalizedTableTab?.parentQueryTabId).toBeUndefined()
       expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(
         normalizedTableTab?.id

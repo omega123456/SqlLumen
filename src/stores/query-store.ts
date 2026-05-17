@@ -107,9 +107,7 @@ export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
 
 /** Tab-level status extends ExecutionStatus with AI-specific states. */
 export type TabStatus = ExecutionStatus | 'ai-pending' | 'ai-reviewing'
-export type ActiveBottomPanelItem =
-  | { type: 'result' }
-  | { type: 'table-data'; tabId: string }
+export type ActiveBottomPanelItem = { type: 'result' } | { type: 'table-data'; tabId: string }
 
 // ---------------------------------------------------------------------------
 // SingleResultState — per-result fields

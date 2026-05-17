@@ -39,7 +39,7 @@ export function QueryBottomPanel({
   const activeTableTab = useMemo(
     () =>
       activeBottomPanelItem.type === 'table-data'
-        ? scopedTableTabs.find((tab) => tab.id === activeBottomPanelItem.tabId) ?? null
+        ? (scopedTableTabs.find((tab) => tab.id === activeBottomPanelItem.tabId) ?? null)
         : null,
     [activeBottomPanelItem, scopedTableTabs]
   )
@@ -54,9 +54,7 @@ export function QueryBottomPanel({
     <div className={styles.container} data-testid="query-bottom-panel">
       {results.map((_, resultIndex) => {
         const isResultActive =
-          isActive &&
-          activeBottomPanelItem.type === 'result' &&
-          activeResultIndex === resultIndex
+          isActive && activeBottomPanelItem.type === 'result' && activeResultIndex === resultIndex
 
         return (
           <div
@@ -85,7 +83,9 @@ export function QueryBottomPanel({
       })}
       {scopedTableTabs.map((tab) => {
         const isTableActive =
-          isActive && activeBottomPanelItem.type === 'table-data' && activeBottomPanelItem.tabId === tab.id
+          isActive &&
+          activeBottomPanelItem.type === 'table-data' &&
+          activeBottomPanelItem.tabId === tab.id
         return (
           <div
             key={tab.id}
@@ -96,7 +96,9 @@ export function QueryBottomPanel({
             className={styles.panel}
             data-testid={`query-bottom-panel-table-${tab.id}`}
           >
-            {isActive && <TableDataTab tab={tab} isActive={isTableActive} renderMode="bottom-panel" />}
+            {isActive && (
+              <TableDataTab tab={tab} isActive={isTableActive} renderMode="bottom-panel" />
+            )}
           </div>
         )
       })}

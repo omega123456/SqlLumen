@@ -176,7 +176,12 @@ export function TableDataTab({
       {error && (
         <div className={styles.errorState} data-testid="table-data-error">
           <span className={styles.errorMessage}>{error}</span>
-          <button type="button" className={styles.retryButton} onClick={handleRetry} data-testid="btn-retry">
+          <button
+            type="button"
+            className={styles.retryButton}
+            onClick={handleRetry}
+            data-testid="btn-retry"
+          >
             Retry
           </button>
         </div>

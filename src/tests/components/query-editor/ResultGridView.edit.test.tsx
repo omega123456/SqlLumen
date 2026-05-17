@@ -322,6 +322,7 @@ describe('ResultGridView editing', () => {
             executionStartedAt: null,
             isCancelling: false,
             wasCancelled: false,
+            activeBottomPanelItem: { type: 'result' },
           },
         },
       })

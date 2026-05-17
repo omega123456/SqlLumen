@@ -255,6 +255,7 @@ describe('useQueryStore — setActiveResultIndex', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -336,6 +337,7 @@ describe('useQueryStore — per-result isolation', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -386,6 +388,7 @@ describe('useQueryStore — per-result isolation', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -432,6 +435,7 @@ describe('useQueryStore — hasAnyUnsavedEdits', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -471,6 +475,7 @@ describe('useQueryStore — hasAnyUnsavedEdits', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -530,6 +535,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -630,6 +636,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -760,6 +767,7 @@ describe('useQueryStore — fetchPage', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -813,6 +821,7 @@ describe('useQueryStore — fetchPage', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -894,6 +903,7 @@ describe('useQueryStore — changePageSize', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -976,6 +986,7 @@ describe('useQueryStore — setViewMode edge cases', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -1021,6 +1032,7 @@ describe('useQueryStore — sortResults', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -1122,6 +1134,7 @@ describe('useQueryStore — sortResults stale re-execution discard', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -1221,6 +1234,7 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })

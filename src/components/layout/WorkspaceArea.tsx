@@ -62,11 +62,7 @@ export function WorkspaceArea() {
     .filter((tab): tab is WorkspaceTab => tab != null)
     .filter(
       (tab) =>
-        !(
-          bottomTableTabsEnabled &&
-          tab.type === 'table-data' &&
-          tab.parentQueryTabId !== undefined
-        )
+        !(bottomTableTabsEnabled && tab.type === 'table-data' && tab.parentQueryTabId !== undefined)
     )
 
   useEffect(() => {

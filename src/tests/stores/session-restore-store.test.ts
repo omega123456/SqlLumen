@@ -98,12 +98,12 @@ beforeEach(() => {
   })
   useQueryStore.setState({ tabs: {} })
   useTableDataStore.setState({ tabs: {} })
-    useSettingsStore.setState({
-      settings: { 'session.restore': 'true' },
-      pendingChanges: {},
-      isLoading: false,
-      isDirty: false,
-      activeSection: 'general',
+  useSettingsStore.setState({
+    settings: { 'session.restore': 'true' },
+    pendingChanges: {},
+    isLoading: false,
+    isDirty: false,
+    activeSection: 'general',
   })
   _resetTabIdCounter()
   _resetQueryTabCounter()
@@ -1195,7 +1195,9 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
       parentQueryTabId: queryTab?.id,
       objectType: 'view',
     })
-    expect(useWorkspaceStore.getState().activeTabByConnection['session-profile-1']).toBe(queryTab?.id)
+    expect(useWorkspaceStore.getState().activeTabByConnection['session-profile-1']).toBe(
+      queryTab?.id
+    )
     expect(useQueryStore.getState().getTabState(queryTab!.id).activeBottomPanelItem).toEqual({
       type: 'table-data',
       tabId: tableTab?.id,
@@ -1334,7 +1336,9 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
       type: 'table-data',
       parentQueryTabId: undefined,
     })
-    expect(useWorkspaceStore.getState().activeTabByConnection['session-profile-1']).toBe(tableTab?.id)
+    expect(useWorkspaceStore.getState().activeTabByConnection['session-profile-1']).toBe(
+      tableTab?.id
+    )
     expect(useQueryStore.getState().getTabState(queryTab!.id).activeBottomPanelItem).toEqual({
       type: 'result',
     })
@@ -1427,8 +1431,7 @@ describe('useSessionRestoreStore — restoreSession for non-query tab types', ()
 
     const tableTab = useWorkspaceStore
       .getState()
-      .tabsByConnection['session-profile-1']
-      ?.find((tab) => tab.type === 'table-data')
+      .tabsByConnection['session-profile-1']?.find((tab) => tab.type === 'table-data')
     expect(tableTab?.type).toBe('table-data')
     expect(tableTab?.parentQueryTabId).toBeUndefined()
   })

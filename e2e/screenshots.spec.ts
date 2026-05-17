@@ -2643,7 +2643,9 @@ for (const theme of themes) {
       await activeResultTab.click()
       await expect(activeResultTab).toHaveAttribute('aria-selected', 'true')
       await expectOnlyActiveBottomPanelContentVisible(page, 'result')
-      await expectGridRegionToBeExpanded(page, 'result-grid')
+      // The BottomPanelTabs strip (56px) + ResultToolbar (56px) consume ~112px of the result
+      // panel, leaving ~110px for the grid at 720px viewport — below the default 120px minimum.
+      await expectGridRegionToBeExpanded(page, 'result-grid', 100)
 
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('query-editor-tab')).toHaveScreenshot(
@@ -2657,7 +2659,8 @@ for (const theme of themes) {
       await expectOnlyActiveBottomPanelContentVisible(page, 'table-data')
       await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
-      await expectGridRegionToBeExpanded(page, 'table-data-grid')
+      // Same constraint as above: BottomPanelTabs strip leaves ~117px for the grid.
+      await expectGridRegionToBeExpanded(page, 'table-data-grid', 100)
 
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('query-editor-tab')).toHaveScreenshot(

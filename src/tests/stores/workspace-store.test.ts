@@ -189,8 +189,7 @@ describe('useWorkspaceStore — openTab', () => {
 
     const tableTabs = useWorkspaceStore
       .getState()
-      .tabsByConnection['conn-1']
-      .filter((tab): tab is TableDataTab => tab.type === 'table-data')
+      .tabsByConnection['conn-1'].filter((tab): tab is TableDataTab => tab.type === 'table-data')
 
     expect(tableTabs).toHaveLength(2)
     expect(tableTabs.map((tab) => tab.parentQueryTabId)).toEqual([queryTabOne, queryTabTwo])
@@ -208,8 +207,7 @@ describe('useWorkspaceStore — openTab', () => {
 
     const tableTab = useWorkspaceStore
       .getState()
-      .tabsByConnection['conn-1']
-      .find((tab): tab is TableDataTab => tab.type === 'table-data')
+      .tabsByConnection['conn-1'].find((tab): tab is TableDataTab => tab.type === 'table-data')
     expect(queryTabId).toBeTruthy()
     expect(tableTab?.parentQueryTabId).toBeUndefined()
   })
@@ -221,22 +219,20 @@ describe('useWorkspaceStore — openTab', () => {
     setBottomPanelEnabled(true)
     const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
     useWorkspaceStore.getState().openTab(makeTab())
-    useQueryStore
-      .getState()
-      .setActiveBottomPanelItem(queryTabId, {
-        type: 'table-data',
-        tabId: useWorkspaceStore
-          .getState()
-          .tabsByConnection['conn-1']
-          .find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === queryTabId)!.id,
-      })
+    useQueryStore.getState().setActiveBottomPanelItem(queryTabId, {
+      type: 'table-data',
+      tabId: useWorkspaceStore
+        .getState()
+        .tabsByConnection[
+          'conn-1'
+        ].find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === queryTabId)!.id,
+    })
 
     useWorkspaceStore.getState().normalizeTableDataTabScopes()
 
     const tableTabs = useWorkspaceStore
       .getState()
-      .tabsByConnection['conn-1']
-      .filter((tab): tab is TableDataTab => tab.type === 'table-data')
+      .tabsByConnection['conn-1'].filter((tab): tab is TableDataTab => tab.type === 'table-data')
 
     expect(tableTabs).toHaveLength(1)
     expect(tableTabs[0].id).toBe(standaloneTabId)
@@ -444,13 +440,15 @@ describe('useWorkspaceStore — reorderWorkspaceTab', () => {
       q2,
       useWorkspaceStore
         .getState()
-        .tabsByConnection['conn-1']
-        .find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === q2)!.id,
+        .tabsByConnection[
+          'conn-1'
+        ].find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === q2)!.id,
       q1,
       useWorkspaceStore
         .getState()
-        .tabsByConnection['conn-1']
-        .find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === q1)!.id,
+        .tabsByConnection[
+          'conn-1'
+        ].find((tab) => tab.type === 'table-data' && tab.parentQueryTabId === q1)!.id,
     ])
   })
 })
@@ -586,8 +584,7 @@ describe('useWorkspaceStore — closeTab', () => {
     useWorkspaceStore.getState().openTab(makeTab())
     const tableTabId = useWorkspaceStore
       .getState()
-      .tabsByConnection['conn-1']
-      .find((tab) => tab.type === 'table-data')?.id
+      .tabsByConnection['conn-1'].find((tab) => tab.type === 'table-data')?.id
 
     if (!tableTabId) {
       throw new Error('Expected table-data tab')
@@ -630,8 +627,7 @@ describe('useWorkspaceStore — closeTab', () => {
     useWorkspaceStore.getState().openTab(makeTab())
     const tableTabId = useWorkspaceStore
       .getState()
-      .tabsByConnection['conn-1']
-      .find((tab) => tab.type === 'table-data')?.id
+      .tabsByConnection['conn-1'].find((tab) => tab.type === 'table-data')?.id
 
     if (!tableTabId) {
       throw new Error('Expected table-data tab')
@@ -1014,6 +1010,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -1074,6 +1071,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -1142,6 +1140,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
@@ -1215,6 +1214,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
           executionStartedAt: null,
           isCancelling: false,
           wasCancelled: false,
+          activeBottomPanelItem: { type: 'result' },
         },
       },
     })
