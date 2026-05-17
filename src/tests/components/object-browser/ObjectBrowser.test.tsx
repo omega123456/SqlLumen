@@ -120,21 +120,24 @@ function setupConnectedState(overrides: Partial<SavedConnection> = {}) {
   })
 }
 
-function setConnectionState(update: Parameters<typeof useConnectionStore.setState>[0]) {
+function setConnectionState(update: Partial<ReturnType<typeof useConnectionStore.getState>>) {
   act(() => {
-    useConnectionStore.setState(update)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    useConnectionStore.setState(update as any)
   })
 }
 
-function setSchemaState(update: Parameters<typeof useSchemaStore.setState>[0]) {
+function setSchemaState(update: Partial<ReturnType<typeof useSchemaStore.getState>>) {
   act(() => {
-    useSchemaStore.setState(update)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    useSchemaStore.setState(update as any)
   })
 }
 
-function setWorkspaceState(update: Parameters<typeof useWorkspaceStore.setState>[0]) {
+function setWorkspaceState(update: Partial<ReturnType<typeof useWorkspaceStore.getState>>) {
   act(() => {
-    useWorkspaceStore.setState(update)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    useWorkspaceStore.setState(update as any)
   })
 }
 

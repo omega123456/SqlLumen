@@ -20,10 +20,7 @@ beforeEach(() => {
   useSettingsStore.setState((state) => ({
     settings: {
       ...state.settings,
-      results: {
-        ...state.settings.results,
-        tableTabsInBottomPanel: 'false',
-      },
+      'results.tableTabsInBottomPanel': 'false',
     },
   }))
   useTableDesignerStore.setState({ tabs: {} })

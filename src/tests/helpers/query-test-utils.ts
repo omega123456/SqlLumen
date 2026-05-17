@@ -62,6 +62,8 @@ interface TabOverrides {
   isCancelling?: boolean
   wasCancelled?: boolean
   activeBottomPanelItem?: TabQueryState['activeBottomPanelItem']
+  activeResultIndex?: number
+  results?: TabQueryState['results']
 }
 
 // All keys that belong to SingleResultState

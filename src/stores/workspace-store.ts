@@ -1012,7 +1012,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
             {}
           )
 
-          const groupedMovableTabs = movableTabs.flatMap((tab) => {
+          const groupedMovableTabs = movableTabs.flatMap<WorkspaceTab[]>((tab) => {
             if (tab.type === 'table-data' && tab.parentQueryTabId) {
               return []
             }
