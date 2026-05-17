@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ExportDialog from '../../../components/dialogs/ExportDialog'
 
@@ -49,21 +49,44 @@ async function pickExportFormat(
 }
 
 async function openExportFormatListbox(user: ReturnType<typeof userEvent.setup>) {
-  const trigger = screen.getByTestId('export-format-select')
+  // Get the trigger before clicking; check if already expanded to avoid toggle-close.
+  let trigger = screen.getByTestId('export-format-select')
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  if (trigger.getAttribute('aria-expanded') !== 'true') {
     await user.click(trigger)
-
-    try {
-      return await screen.findByRole('listbox', undefined, { timeout: 1_000 })
-    } catch (error) {
-      if (attempt === 1) {
-        throw error
-      }
-    }
   }
 
-  throw new Error('Export format listbox did not open')
+  // After user.click, React has processed the click handler synchronously (state: open=true).
+  // Wrap in act() to flush all pending state updates and layout effects, ensuring the portal
+  // <ul> is committed to document.body before we access it. This avoids the race where
+  // aria-expanded becomes 'true' but the portal hasn't been committed yet under CPU load.
+  await act(async () => {})
+
+  // Re-query after act() in case the component re-mounted
+  trigger = screen.getByTestId('export-format-select')
+
+  if (trigger.getAttribute('aria-expanded') !== 'true') {
+    // Retry once if the dropdown didn't open (very rare under extreme CPU pressure)
+    await user.click(trigger)
+    await act(async () => {})
+    trigger = screen.getByTestId('export-format-select')
+  }
+
+  // Use aria-controls to get the listbox ID and retrieve the element directly.
+  // getElementById is O(1) and avoids findByRole's setInterval polling which can race
+  // under parallel load.
+  const listboxId = trigger.getAttribute('aria-controls')
+  if (!listboxId) {
+    throw new Error('Export format trigger has no aria-controls attribute')
+  }
+
+  const listbox = document.getElementById(listboxId)
+  if (!listbox) {
+    // Fallback to findByRole in case of portal timing edge case
+    return await screen.findByRole('listbox', undefined, { timeout: 3_000 })
+  }
+
+  return listbox
 }
 
 /** jsdom + focus trap: keyboard typing into the destination field is unreliable; drive controlled input directly. */

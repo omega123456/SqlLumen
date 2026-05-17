@@ -165,10 +165,12 @@ describe('ConnectionTabBar', () => {
     const closeBtn = screen.getByLabelText('Close Test DB')
     await user.click(closeBtn)
 
-    // closeConnection is async and calls IPC — in test, the store action will error,
-    // but the click handler was invoked (which is what we're testing)
-    // The tab should still be present since the IPC mock will reject
-    expect(closeBtn).toBeInTheDocument()
+    // closeConnection is async and calls IPC. The global IPC fixture returns success for
+    // close_connection, so the connection is removed from the store after clicking.
+    // Assert the connection was removed (the tab disappears), confirming the handler fired.
+    await waitFor(() => {
+      expect(useConnectionStore.getState().activeConnections['sess-1']).toBeUndefined()
+    })
   })
 
   it('middle-click on a connection tab opens close confirmation', async () => {

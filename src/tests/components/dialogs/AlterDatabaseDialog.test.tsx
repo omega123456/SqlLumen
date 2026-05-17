@@ -239,7 +239,8 @@ describe('AlterDatabaseDialog', () => {
 
     await waitForAlterDatabaseDialogIdle()
     await user.click(screen.getByRole('combobox', { name: 'Character Set' }))
-    await user.click(screen.getByRole('option', { name: /^latin1$/ }))
+    // Use findByRole (async) to wait for the Dropdown portal option to appear in DOM
+    await user.click(await screen.findByRole('option', { name: /^latin1$/ }))
 
     expect(screen.getByText('latin1')).toBeInTheDocument()
 

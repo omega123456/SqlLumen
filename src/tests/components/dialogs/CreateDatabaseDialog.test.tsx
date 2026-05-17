@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CreateDatabaseDialog } from '../../../components/dialogs/CreateDatabaseDialog'
 
@@ -277,13 +277,26 @@ describe('CreateDatabaseDialog', () => {
   })
 
   it('resets charset and collation selections when reopened after cancel', async () => {
-    const user = userEvent.setup()
     const { rerender } = render(<CreateDatabaseDialog {...defaultProps} isOpen={true} />)
 
     await waitForCreateDatabaseEncodingIdle()
 
-    await user.click(screen.getByRole('combobox', { name: 'Character Set' }))
-    await user.click(screen.getByRole('option', { name: 'latin1' }))
+    const charsetCombobox = screen.getByRole('combobox', { name: 'Character Set' })
+    // Use fireEvent.click to open the dropdown: avoids userEvent's full pointer simulation
+    // which can trigger the focus-trap's requestAnimationFrame focus restoration causing
+    // the dropdown to close before the portal commits the <ul> to the DOM.
+    fireEvent.click(charsetCombobox)
+    // Flush pending React state updates (setOpen(true)) and layout effects so the portal
+    // <ul> is committed to document.body before we access it.
+    await act(async () => {})
+    // Retrieve the listbox via aria-controls (synchronous, no polling required after act)
+    const charsetListboxId = charsetCombobox.getAttribute('aria-controls')!
+    const charsetListbox = document.getElementById(charsetListboxId)!
+    // Use fireEvent.click on the option (not user.click) to avoid blur-before-click
+    // closing the Dropdown via its onBlur handler.
+    fireEvent.click(within(charsetListbox).getByRole('option', { name: 'latin1' }))
+    // Flush state updates from selectIndex (setCharsetState + setCollation)
+    await act(async () => {})
 
     expect(screen.getByRole('combobox', { name: 'Character Set' })).toHaveTextContent('latin1')
     expect(screen.getByRole('combobox', { name: 'Collation' })).toHaveTextContent(

@@ -5,24 +5,12 @@ import {
   parseNodeId,
   SCHEMA_CATEGORIES,
 } from '../../stores/schema-store'
-
-// Mock the schema-commands module
-vi.mock('../../lib/schema-commands', () => ({
-  listDatabases: vi.fn(),
-  listSchemaObjects: vi.fn(),
-  listColumns: vi.fn(),
-}))
-
-import { listDatabases, listSchemaObjects, listColumns } from '../../lib/schema-commands'
-const mockListDatabases = vi.mocked(listDatabases)
-const mockListSchemaObjects = vi.mocked(listSchemaObjects)
-const mockListColumns = vi.mocked(listColumns)
+import { ipc } from '../ipc-mock'
 
 beforeEach(() => {
   useSchemaStore.setState({
     connectionStates: {},
   })
-  vi.clearAllMocks()
 })
 
 // ---------------------------------------------------------------------------
@@ -71,7 +59,7 @@ describe('useSchemaStore — initial state', () => {
 
 describe('useSchemaStore — loadDatabases', () => {
   it('creates database nodes from backend response', async () => {
-    mockListDatabases.mockResolvedValue(['db1', 'db2', 'db3'])
+    ipc.override('list_databases', () => ['db1', 'db2', 'db3'])
 
     await useSchemaStore.getState().loadDatabases('conn-1')
 
@@ -89,13 +77,15 @@ describe('useSchemaStore — loadDatabases', () => {
   })
 
   it('calls listDatabases with the correct connectionId', async () => {
-    mockListDatabases.mockResolvedValue([])
+    ipc.override('list_databases', () => [])
     await useSchemaStore.getState().loadDatabases('conn-42')
-    expect(mockListDatabases).toHaveBeenCalledWith('conn-42')
+    expect(ipc.calls('list_databases')[0]).toEqual({ connectionId: 'conn-42' })
   })
 
   it('propagates errors from the backend', async () => {
-    mockListDatabases.mockRejectedValue(new Error('Connection lost'))
+    ipc.override('list_databases', () => {
+      throw new Error('Connection lost')
+    })
     await expect(useSchemaStore.getState().loadDatabases('conn-1')).rejects.toThrow(
       'Connection lost'
     )
@@ -108,14 +98,14 @@ describe('useSchemaStore — loadDatabases', () => {
 
 describe('useSchemaStore — toggleExpand on database', () => {
   it('creates category child nodes (no backend call)', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
+    ipc.override('list_databases', () => ['mydb'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     const dbNodeId = makeNodeId('database', 'mydb', 'mydb')
     useSchemaStore.getState().toggleExpand(dbNodeId, 'conn-1')
 
     // Should NOT call any backend function for categories
-    expect(mockListSchemaObjects).not.toHaveBeenCalled()
+    expect(ipc.calls('list_schema_objects')).toHaveLength(0)
 
     const connState = useSchemaStore.getState().connectionStates['conn-1']
     const children = Object.values(connState.nodes).filter((n) => n.parentId === dbNodeId)
@@ -141,7 +131,7 @@ describe('useSchemaStore — toggleExpand on database', () => {
   })
 
   it('adds node to expandedNodes set', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
+    ipc.override('list_databases', () => ['mydb'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     const dbNodeId = makeNodeId('database', 'mydb', 'mydb')
@@ -152,7 +142,7 @@ describe('useSchemaStore — toggleExpand on database', () => {
   })
 
   it('collapses when toggled again', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
+    ipc.override('list_databases', () => ['mydb'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     const dbNodeId = makeNodeId('database', 'mydb', 'mydb')
@@ -164,7 +154,7 @@ describe('useSchemaStore — toggleExpand on database', () => {
   })
 
   it('marks database node as loaded after expansion', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
+    ipc.override('list_databases', () => ['mydb'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     const dbNodeId = makeNodeId('database', 'mydb', 'mydb')
@@ -181,8 +171,8 @@ describe('useSchemaStore — toggleExpand on database', () => {
 
 describe('useSchemaStore — toggleExpand on category', () => {
   it('triggers backend fetch and creates object nodes', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
-    mockListSchemaObjects.mockResolvedValue(['users', 'orders'])
+    ipc.override('list_databases', () => ['mydb'])
+    ipc.override('list_schema_objects', () => ['users', 'orders'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     // Expand database first
@@ -199,7 +189,11 @@ describe('useSchemaStore — toggleExpand on category', () => {
       expect(connState.nodes[tablesCatId].isLoaded).toBe(true)
     })
 
-    expect(mockListSchemaObjects).toHaveBeenCalledWith('conn-1', 'mydb', 'table')
+    expect(ipc.calls('list_schema_objects')[0]).toEqual({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      objectType: 'table',
+    })
 
     const connState = useSchemaStore.getState().connectionStates['conn-1']
     const tableNodes = Object.values(connState.nodes).filter((n) => n.parentId === tablesCatId)
@@ -210,8 +204,8 @@ describe('useSchemaStore — toggleExpand on category', () => {
   })
 
   it('sets tables as having children, other types as leaf nodes', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
-    mockListSchemaObjects.mockResolvedValue(['my_proc'])
+    ipc.override('list_databases', () => ['mydb'])
+    ipc.override('list_schema_objects', () => ['my_proc'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     const dbNodeId = makeNodeId('database', 'mydb', 'mydb')
@@ -238,9 +232,9 @@ describe('useSchemaStore — toggleExpand on category', () => {
 
 describe('useSchemaStore — loadChildren for table node', () => {
   it('loads columns from backend', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
-    mockListSchemaObjects.mockResolvedValue(['users'])
-    mockListColumns.mockResolvedValue([
+    ipc.override('list_databases', () => ['mydb'])
+    ipc.override('list_schema_objects', () => ['users'])
+    ipc.override('list_columns', () => [
       {
         name: 'id',
         dataType: 'int',
@@ -284,7 +278,11 @@ describe('useSchemaStore — loadChildren for table node', () => {
       expect(cs.nodes[usersNodeId].isLoaded).toBe(true)
     })
 
-    expect(mockListColumns).toHaveBeenCalledWith('conn-1', 'mydb', 'users')
+    expect(ipc.calls('list_columns')[0]).toEqual({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      table: 'users',
+    })
 
     const connState = useSchemaStore.getState().connectionStates['conn-1']
     const colNodes = Object.values(connState.nodes).filter((n) => n.parentId === usersNodeId)
@@ -301,7 +299,7 @@ describe('useSchemaStore — loadChildren for table node', () => {
 
 describe('useSchemaStore — selectNode', () => {
   it('updates selectedNodeId in connection state', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     useSchemaStore.getState().selectNode('some-node-id', 'conn-1')
@@ -309,7 +307,7 @@ describe('useSchemaStore — selectNode', () => {
   })
 
   it('can change selection', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     useSchemaStore.getState().selectNode('node-1', 'conn-1')
@@ -324,7 +322,7 @@ describe('useSchemaStore — selectNode', () => {
 
 describe('useSchemaStore — setFilter', () => {
   it('updates filterText in connection state', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     useSchemaStore.getState().setFilter('users', 'conn-1')
@@ -332,7 +330,7 @@ describe('useSchemaStore — setFilter', () => {
   })
 
   it('can clear filter', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     useSchemaStore.getState().setFilter('search', 'conn-1')
@@ -347,7 +345,7 @@ describe('useSchemaStore — setFilter', () => {
 
 describe('useSchemaStore — clearConnectionState', () => {
   it('removes all state for the connection', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     // Verify state exists
@@ -359,7 +357,7 @@ describe('useSchemaStore — clearConnectionState', () => {
   })
 
   it('does not affect other connections', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().loadDatabases('conn-1')
     await useSchemaStore.getState().loadDatabases('conn-2')
 
@@ -376,10 +374,10 @@ describe('useSchemaStore — clearConnectionState', () => {
 
 describe('useSchemaStore — refreshAll', () => {
   it('resets and reloads database list', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
-    mockListDatabases.mockResolvedValue(['db1', 'db2'])
+    ipc.override('list_databases', () => ['db1', 'db2'])
     await useSchemaStore.getState().refreshAll('conn-1')
 
     const connState = useSchemaStore.getState().connectionStates['conn-1']
@@ -389,14 +387,14 @@ describe('useSchemaStore — refreshAll', () => {
   })
 
   it('preserves filterText and selectedNodeId on refresh', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     // Set filter and selection
     useSchemaStore.getState().setFilter('my-filter', 'conn-1')
     useSchemaStore.getState().selectNode('some-node', 'conn-1')
 
-    mockListDatabases.mockResolvedValue(['db1', 'db2'])
+    ipc.override('list_databases', () => ['db1', 'db2'])
     await useSchemaStore.getState().refreshAll('conn-1')
 
     const connState = useSchemaStore.getState().connectionStates['conn-1']
@@ -405,12 +403,12 @@ describe('useSchemaStore — refreshAll', () => {
   })
 
   it('increments loadGeneration on refresh', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     const genBefore = useSchemaStore.getState().connectionStates['conn-1'].loadGeneration
 
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().refreshAll('conn-1')
 
     const genAfter = useSchemaStore.getState().connectionStates['conn-1'].loadGeneration
@@ -424,7 +422,7 @@ describe('useSchemaStore — refreshAll', () => {
 
 describe('useSchemaStore — refreshDatabase', () => {
   it('resets a specific database subtree and re-fetches categories if expanded', async () => {
-    mockListDatabases.mockResolvedValue(['db1', 'db2'])
+    ipc.override('list_databases', () => ['db1', 'db2'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     // Expand db1
@@ -452,7 +450,7 @@ describe('useSchemaStore — refreshDatabase', () => {
   })
 
   it('does not re-fetch children if database was collapsed', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     // Do NOT expand db1
@@ -467,8 +465,8 @@ describe('useSchemaStore — refreshDatabase', () => {
   })
 
   it('clears selectedNodeId when the selected node is removed', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
-    mockListSchemaObjects.mockResolvedValue(['users'])
+    ipc.override('list_databases', () => ['db1'])
+    ipc.override('list_schema_objects', () => ['users'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     // Expand db1 and its Tables category
@@ -497,7 +495,7 @@ describe('useSchemaStore — refreshDatabase', () => {
   })
 
   it('preserves selectedNodeId when the selected node still exists', async () => {
-    mockListDatabases.mockResolvedValue(['db1', 'db2'])
+    ipc.override('list_databases', () => ['db1', 'db2'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     // Select db2 node (which is NOT under db1)
@@ -512,7 +510,7 @@ describe('useSchemaStore — refreshDatabase', () => {
   })
 
   it('increments loadGeneration on refreshDatabase', async () => {
-    mockListDatabases.mockResolvedValue(['db1'])
+    ipc.override('list_databases', () => ['db1'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     const genBefore = useSchemaStore.getState().connectionStates['conn-1'].loadGeneration
@@ -530,8 +528,8 @@ describe('useSchemaStore — refreshDatabase', () => {
 
 describe('useSchemaStore — refreshCategory', () => {
   it('resets only the specified category and re-fetches its children', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
-    mockListSchemaObjects.mockResolvedValue(['users', 'orders'])
+    ipc.override('list_databases', () => ['mydb'])
+    ipc.override('list_schema_objects', () => ['users', 'orders'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     // Expand database → categories
@@ -553,7 +551,7 @@ describe('useSchemaStore — refreshCategory', () => {
     expect(tableNodes).toHaveLength(2)
 
     // Now refresh with different data
-    mockListSchemaObjects.mockResolvedValue(['users', 'orders', 'products'])
+    ipc.override('list_schema_objects', () => ['users', 'orders', 'products'])
     await useSchemaStore.getState().refreshCategory('conn-1', 'mydb', 'table')
 
     connState = useSchemaStore.getState().connectionStates['conn-1']
@@ -563,8 +561,8 @@ describe('useSchemaStore — refreshCategory', () => {
   })
 
   it('does not affect other categories', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
-    mockListSchemaObjects.mockResolvedValue(['my_view'])
+    ipc.override('list_databases', () => ['mydb'])
+    ipc.override('list_schema_objects', () => ['my_view'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     // Expand database → categories
@@ -581,7 +579,7 @@ describe('useSchemaStore — refreshCategory', () => {
     })
 
     // Now refresh Tables category — Views should be untouched
-    mockListSchemaObjects.mockResolvedValue(['users'])
+    ipc.override('list_schema_objects', () => ['users'])
     await useSchemaStore.getState().refreshCategory('conn-1', 'mydb', 'table')
 
     const connState = useSchemaStore.getState().connectionStates['conn-1']
@@ -593,8 +591,8 @@ describe('useSchemaStore — refreshCategory', () => {
   })
 
   it('clears selectedNodeId when the selected node is removed by category refresh', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
-    mockListSchemaObjects.mockResolvedValue(['users'])
+    ipc.override('list_databases', () => ['mydb'])
+    ipc.override('list_schema_objects', () => ['users'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     const dbNodeId = makeNodeId('database', 'mydb', 'mydb')
@@ -614,7 +612,7 @@ describe('useSchemaStore — refreshCategory', () => {
 
     // Refresh category — table is removed and re-created, but selectedNodeId should clear
     // because the old node reference is removed before the re-fetch
-    mockListSchemaObjects.mockResolvedValue([])
+    ipc.override('list_schema_objects', () => [])
     await useSchemaStore.getState().refreshCategory('conn-1', 'mydb', 'table')
 
     const connState = useSchemaStore.getState().connectionStates['conn-1']
@@ -622,8 +620,8 @@ describe('useSchemaStore — refreshCategory', () => {
   })
 
   it('increments loadGeneration on refreshCategory', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
-    mockListSchemaObjects.mockResolvedValue(['users'])
+    ipc.override('list_databases', () => ['mydb'])
+    ipc.override('list_schema_objects', () => ['users'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     const dbNodeId = makeNodeId('database', 'mydb', 'mydb')
@@ -639,7 +637,7 @@ describe('useSchemaStore — refreshCategory', () => {
 
     const genBefore = useSchemaStore.getState().connectionStates['conn-1'].loadGeneration
 
-    mockListSchemaObjects.mockResolvedValue(['users'])
+    ipc.override('list_schema_objects', () => ['users'])
     await useSchemaStore.getState().refreshCategory('conn-1', 'mydb', 'table')
 
     const genAfter = useSchemaStore.getState().connectionStates['conn-1'].loadGeneration
@@ -647,14 +645,14 @@ describe('useSchemaStore — refreshCategory', () => {
   })
 
   it('does nothing if category node does not exist', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
+    ipc.override('list_databases', () => ['mydb'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     // Category node doesn't exist (database not expanded)
     await useSchemaStore.getState().refreshCategory('conn-1', 'mydb', 'table')
 
     // Should not throw and should not call backend
-    expect(mockListSchemaObjects).not.toHaveBeenCalled()
+    expect(ipc.calls('list_schema_objects')).toHaveLength(0)
   })
 })
 
@@ -665,12 +663,10 @@ describe('useSchemaStore — refreshCategory', () => {
 describe('useSchemaStore — loadGeneration stale guard', () => {
   it('discards loadDatabases results when generation changes during fetch', async () => {
     let resolveListDatabases!: (value: string[]) => void
-    mockListDatabases.mockImplementation(
-      () =>
-        new Promise<string[]>((resolve) => {
-          resolveListDatabases = resolve
-        })
-    )
+    const deferred = new Promise<string[]>((resolve) => {
+      resolveListDatabases = resolve
+    })
+    ipc.override('list_databases', () => deferred)
 
     // Start loading databases
     const loadPromise = useSchemaStore.getState().loadDatabases('conn-1')
@@ -688,29 +684,28 @@ describe('useSchemaStore — loadGeneration stale guard', () => {
   })
 
   it('discards fetchChildren results when generation changes during fetch', async () => {
-    mockListDatabases.mockResolvedValue(['mydb'])
+    ipc.override('list_databases', () => ['mydb'])
     await useSchemaStore.getState().loadDatabases('conn-1')
 
     // Expand database to get category nodes
     const dbNodeId = makeNodeId('database', 'mydb', 'mydb')
     useSchemaStore.getState().toggleExpand(dbNodeId, 'conn-1')
 
-    // Set up a deferred response for listSchemaObjects
+    // Set up a deferred response for list_schema_objects
     let resolveSchemaObjects!: (value: string[]) => void
-    mockListSchemaObjects.mockImplementation(
-      () =>
-        new Promise<string[]>((resolve) => {
-          resolveSchemaObjects = resolve
-        })
-    )
+    const deferredSchemaObjects = new Promise<string[]>((resolve) => {
+      resolveSchemaObjects = resolve
+    })
+    ipc.override('list_schema_objects', () => deferredSchemaObjects)
 
     // Start loading children for the Tables category
     const tablesCatId = makeNodeId('category', 'mydb', 'table')
     const loadPromise = useSchemaStore.getState().loadChildren('conn-1', tablesCatId)
 
     // While loading, refresh the database (increments generation)
-    mockListDatabases.mockResolvedValue(['mydb'])
-    mockListSchemaObjects.mockResolvedValue([]) // for the refresh's loadChildren
+    // First restore list_databases to a resolved value, then override list_schema_objects for the refresh
+    ipc.override('list_databases', () => ['mydb'])
+    ipc.override('list_schema_objects', () => []) // for the refresh's loadChildren
     await useSchemaStore.getState().refreshDatabase('conn-1', 'mydb')
 
     // Now resolve the original (stale) request
@@ -734,7 +729,7 @@ describe('useSchemaStore — loadDatabases preserves existing children', () => {
     const connId = 'conn-preserve'
 
     // 1. Load databases initially
-    mockListDatabases.mockResolvedValue(['mydb'])
+    ipc.override('list_databases', () => ['mydb'])
     await useSchemaStore.getState().loadDatabases(connId)
 
     // 2. Expand the database node to create category children
@@ -743,7 +738,7 @@ describe('useSchemaStore — loadDatabases preserves existing children', () => {
 
     // 3. Expand the "Tables" category to load table nodes
     const tablesCatId = makeNodeId('category', 'mydb', 'table')
-    mockListSchemaObjects.mockResolvedValue(['users', 'orders'])
+    ipc.override('list_schema_objects', () => ['users', 'orders'])
     await useSchemaStore.getState().loadChildren(connId, tablesCatId)
 
     // Mark nodes as expanded
@@ -759,7 +754,7 @@ describe('useSchemaStore — loadDatabases preserves existing children', () => {
     expect(stateBefore.nodes[tablesNodeId]).toBeDefined()
 
     // 4. Call loadDatabases again (simulates switching back to this connection)
-    mockListDatabases.mockResolvedValue(['mydb'])
+    ipc.override('list_databases', () => ['mydb'])
     await useSchemaStore.getState().loadDatabases(connId)
 
     // 5. Assert children are preserved

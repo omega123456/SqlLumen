@@ -219,6 +219,12 @@ describe('SqlImportDialog', () => {
 
     await user.click(screen.getByTestId('import-submit-button'))
 
+    // Wait for getImportProgress to be called — this only happens after startSqlImport
+    // has resolved and setJobId('job-1') committed to state, so at this point jobId is
+    // guaranteed to be set in the component's handleCancel closure.
+    await waitFor(() => {
+      expect(mockGetImportProgress).toHaveBeenCalled()
+    })
     await waitFor(() => {
       expect(screen.getByTestId('import-cancel-button')).toBeInTheDocument()
     })

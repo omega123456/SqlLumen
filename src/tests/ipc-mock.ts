@@ -16,15 +16,11 @@
  * Call `setupIpc()` at module scope in setup.ts — it registers beforeEach/afterEach hooks.
  */
 
-import { afterEach, beforeEach, expect, vi } from 'vitest'
+import { afterEach, beforeEach, expect } from 'vitest'
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
 import { emit } from '@tauri-apps/api/event'
 import type { InvokeArgs } from '@tauri-apps/api/core'
 
-import { _clearAllCaches } from '../components/query-editor/schema-metadata-cache'
-import { _clearAllRoutineCaches } from '../components/query-editor/routine-parameter-cache'
-import { _clearPendingBootstraps } from '../lib/schema-cache-bootstrap'
-import { useToastStore } from '../stores/toast-store'
 import { IPC_FIXTURES, type IpcHandler } from './fixtures'
 
 // ---------------------------------------------------------------------------
@@ -87,10 +83,18 @@ export const ipc = {
  * Assert that a toast with the given variant was shown and its title or message
  * contains the provided substring.
  *
+ * Uses a dynamic import of toast-store to avoid eagerly loading toast-store (and its
+ * transitive dependency app-log-commands) at module evaluation time, which would defeat
+ * vi.mock('../lib/app-log-commands') in test files that mock it.
+ *
  * @param type - The toast variant: 'success' | 'error' | 'warning'
  * @param messageSubstring - Substring to search for in the toast title or message
  */
-export function expectToast(type: 'success' | 'error' | 'warning', messageSubstring: string): void {
+export async function expectToast(
+  type: 'success' | 'error' | 'warning',
+  messageSubstring: string
+): Promise<void> {
+  const { useToastStore } = await import('../stores/toast-store')
   const toasts = useToastStore.getState().toasts
   const matched = toasts.some(
     (t) =>
@@ -153,19 +157,39 @@ export function setupIpc(): void {
     )
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     // Clear per-test state
     ipc.reset()
 
-    // Clear module-level caches so they don't leak between tests
-    _clearAllCaches()
-    _clearAllRoutineCaches()
-    _clearPendingBootstraps()
+    // Clear module-level caches using dynamic imports. Static imports would eagerly load
+    // these modules and defeat vi.mock() in test files that mock them. When a test file
+    // partially mocks one of these modules, the cleanup function may not exist on the mock;
+    // in that case the try/catch silently skips cleanup (the test controls the module itself).
+    const cacheModules = await Promise.allSettled([
+      import('../components/query-editor/schema-metadata-cache'),
+      import('../components/query-editor/routine-parameter-cache'),
+      import('../lib/schema-cache-bootstrap'),
+    ])
+    const [schemaMeta, routineCache, schemaBoot] = cacheModules.map((r) =>
+      r.status === 'fulfilled' ? r.value : null
+    )
+    try {
+      ;(schemaMeta as unknown as Record<string, () => void>)._clearAllCaches?.()
+    } catch {
+      // Module may be partially mocked — skip cleanup
+    }
+    try {
+      ;(routineCache as unknown as Record<string, () => void>)._clearAllRoutineCaches?.()
+    } catch {
+      // Module may be partially mocked — skip cleanup
+    }
+    try {
+      ;(schemaBoot as unknown as Record<string, () => void>)._clearPendingBootstraps?.()
+    } catch {
+      // Module may be partially mocked — skip cleanup
+    }
 
     // Clear Tauri IPC mock state (window.__TAURI_INTERNALS__ etc.)
     clearMocks()
-
-    // Reset all vi.fn() mocks
-    vi.clearAllMocks()
   })
 }
