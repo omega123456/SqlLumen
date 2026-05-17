@@ -12,6 +12,32 @@ function flat(tabId: string) {
   return getFlatTabState(useQueryStore.getState().getTabState(tabId))
 }
 
+function overrideCommands(overrides: Record<string, (...args: never[]) => unknown>) {
+  for (const [commandName, handler] of Object.entries(overrides)) {
+    ipc.override(commandName, handler)
+  }
+}
+
+function overrideNamedCommands(
+  commandNames: readonly string[],
+  handler: (cmd: string, args?: Record<string, unknown>) => unknown
+) {
+  for (const commandName of commandNames) {
+    ipc.override(commandName, (args) => handler(commandName, args))
+  }
+}
+
+const QUERY_STORE_MULTI_COMMANDS = [
+  'analyze_query_for_edit',
+  'cancel_query',
+  'evict_results',
+  'execute_call_query',
+  'execute_multi_query',
+  'fetch_result_page',
+  'reexecute_single_result',
+  'sort_results',
+] as const
+
 // Shared mock setup
 const multiQueryResult = {
   results: [
@@ -60,19 +86,11 @@ const multiQueryResult = {
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   _resetToastTimeoutsForTests()
-  ipc.override('*', (cmd) => {
-    switch (cmd) {
-      case 'execute_multi_query':
-        return multiQueryResult
-      case 'execute_call_query':
-        return multiQueryResult
-      case 'analyze_query_for_edit':
-        return []
-      case 'evict_results':
-        return null
-      default:
-        return null
-    }
+  overrideCommands({
+    execute_multi_query: () => multiQueryResult,
+    execute_call_query: () => multiQueryResult,
+    analyze_query_for_edit: () => [],
+    evict_results: () => null,
   })
 })
 
@@ -154,7 +172,7 @@ describe('useQueryStore — executeMultiQuery', () => {
   })
 
   it('sets tab status to error on IPC failure', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'execute_multi_query') throw new Error('Connection lost')
       return null
     })
@@ -181,7 +199,7 @@ describe('useQueryStore — executeMultiQuery', () => {
     }))
 
     const spy = vi.fn()
-    ipc.override('*', () => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, () => {
       spy()
       return multiQueryResult
     })
@@ -205,7 +223,7 @@ describe('useQueryStore — executeCallQuery', () => {
   })
 
   it('sets error on IPC failure', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'execute_call_query') throw new Error('Proc not found')
       return null
     })
@@ -544,7 +562,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
   it('triggers deferred analysis when switching to an unanalyzed SELECT result', async () => {
     setupMultiResultForAnalysis()
     const analyzeHandler = vi.fn().mockResolvedValue([])
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'analyze_query_for_edit') return analyzeHandler()
       return null
     })
@@ -562,7 +580,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
   it('ignores deferred analysis errors when the switched result was replaced before failure resolves', async () => {
     setupMultiResultForAnalysis()
 
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'analyze_query_for_edit') {
         useQueryStore.setState((prev) => {
           const tab = prev.tabs['tab-1']
@@ -656,7 +674,7 @@ describe('useQueryStore — setActiveResultIndex (deferred analysis & edit disca
 
 describe('useQueryStore — cancelQuery', () => {
   it('sets isCancelling and wasCancelled flags', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'cancel_query') return true
       return null
     })
@@ -679,7 +697,7 @@ describe('useQueryStore — cancelQuery', () => {
 
   it('does nothing when tab does not exist', async () => {
     const spy = vi.fn()
-    ipc.override('*', () => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, () => {
       spy()
       return true
     })
@@ -690,7 +708,7 @@ describe('useQueryStore — cancelQuery', () => {
 
   it('does nothing when already cancelling', async () => {
     const spy = vi.fn()
-    ipc.override('*', () => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, () => {
       spy()
       return true
     })
@@ -709,7 +727,7 @@ describe('useQueryStore — cancelQuery', () => {
 
   it('handles cancel failure gracefully', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'cancel_query') throw new Error('Cancel RPC failed')
       return null
     })
@@ -775,7 +793,7 @@ describe('useQueryStore — fetchPage', () => {
 
   it('updates rows and page after successful fetch', async () => {
     setupTabWithResult()
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'fetch_result_page')
         return {
           rows: [[4], [5], [6]],
@@ -795,7 +813,7 @@ describe('useQueryStore — fetchPage', () => {
 
   it('does nothing when tab does not exist', async () => {
     const spy = vi.fn()
-    ipc.override('*', () => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, () => {
       spy()
       return null
     })
@@ -827,7 +845,7 @@ describe('useQueryStore — fetchPage', () => {
     })
 
     const spy = vi.fn()
-    ipc.override('*', () => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, () => {
       spy()
       return null
     })
@@ -839,7 +857,7 @@ describe('useQueryStore — fetchPage', () => {
   it('handles invalid fetchPage payload gracefully', async () => {
     setupTabWithResult()
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'fetch_result_page') return { invalid: true }
       return null
     })
@@ -856,7 +874,7 @@ describe('useQueryStore — fetchPage', () => {
   it('handles fetchPage error gracefully', async () => {
     setupTabWithResult()
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'fetch_result_page') throw new Error('Fetch failed')
       return null
     })
@@ -922,7 +940,7 @@ describe('useQueryStore — changePageSize', () => {
 
 describe('useQueryStore — cleanupTab / cleanupConnection', () => {
   it('cleanupTab removes the tab', () => {
-    ipc.override('*', () => null)
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, () => null)
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     expect(useQueryStore.getState().tabs['tab-1']).toBeDefined()
 
@@ -931,7 +949,7 @@ describe('useQueryStore — cleanupTab / cleanupConnection', () => {
   })
 
   it('cleanupConnection removes multiple tabs', () => {
-    ipc.override('*', () => null)
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, () => null)
     useQueryStore.getState().setContent('tab-1', 'SELECT 1')
     useQueryStore.getState().setContent('tab-2', 'SELECT 2')
     useQueryStore.getState().setContent('tab-3', 'SELECT 3')
@@ -1056,7 +1074,7 @@ describe('useQueryStore — sortResults', () => {
 
   it('applies sort via IPC for reExecutable result', async () => {
     setupSortableTab({ reExecutable: true })
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'sort_results')
         return {
           rows: [[1], [2], [3]],
@@ -1077,7 +1095,7 @@ describe('useQueryStore — sortResults', () => {
   it('handles sort IPC error gracefully', async () => {
     setupSortableTab({ reExecutable: true })
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'sort_results') throw new Error('Sort failed')
       return null
     })
@@ -1144,7 +1162,7 @@ describe('useQueryStore — sortResults stale re-execution discard', () => {
     setupMultiResultForSort()
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'reexecute_single_result') {
         // Simulate a newer query replacing the results while re-exec is in flight
         useQueryStore.setState((prev) => {
@@ -1244,7 +1262,7 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
     setupMultiResultForPageSize()
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'reexecute_single_result') {
         // Simulate a newer query replacing the results while re-exec is in flight
         useQueryStore.setState((prev) => {
@@ -1293,7 +1311,7 @@ describe('useQueryStore — changePageSize stale re-execution discard', () => {
   it('applies changePageSize normally when queryId is unchanged', async () => {
     setupMultiResultForPageSize()
 
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_MULTI_COMMANDS, (cmd) => {
       if (cmd === 'reexecute_single_result') {
         return {
           queryId: 'new-q1',

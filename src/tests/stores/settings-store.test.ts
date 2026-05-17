@@ -37,21 +37,11 @@ beforeEach(() => {
   mockGetAllSettings.mockClear()
   mockSetSetting.mockClear()
 
-  ipc.override('*', (cmd, args) => {
-    switch (cmd) {
-      case 'get_all_settings':
-        return mockGetAllSettings()
-      case 'set_setting':
-        return mockSetSetting(
-          (args as Record<string, string>).key,
-          (args as Record<string, string>).value
-        )
-      case 'log_frontend':
-        return undefined
-      default:
-        return null
-    }
-  })
+  ipc.override('get_all_settings', () => mockGetAllSettings())
+  ipc.override('set_setting', (args) =>
+    mockSetSetting((args as Record<string, string>).key, (args as Record<string, string>).value)
+  )
+  ipc.override('log_frontend', () => undefined)
 })
 
 describe('useSettingsStore', () => {

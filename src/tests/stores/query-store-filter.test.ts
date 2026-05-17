@@ -55,7 +55,6 @@ const ROWS: unknown[][] = [
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
-  ipc.override('*', () => null)
 })
 
 describe('applyQueryFilters — apply and clear', () => {

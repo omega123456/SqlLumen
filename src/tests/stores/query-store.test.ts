@@ -29,29 +29,46 @@ function patchResult(tabId: string, resultOverrides: Record<string, unknown>) {
   })
 }
 
+function overrideCommands(overrides: Record<string, (...args: never[]) => unknown>) {
+  for (const [commandName, handler] of Object.entries(overrides)) {
+    ipc.override(commandName, handler)
+  }
+}
+
+function overrideNamedCommands(
+  commandNames: readonly string[],
+  handler: (cmd: string, args?: Record<string, unknown>) => unknown
+) {
+  for (const commandName of commandNames) {
+    ipc.override(commandName, (args) => handler(commandName, args))
+  }
+}
+
+const QUERY_STORE_COMMANDS = [
+  'analyze_query_for_edit',
+  'cancel_query',
+  'evict_results',
+  'execute_multi_query',
+  'execute_query',
+  'fetch_result_page',
+  'sort_results',
+] as const
+
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
-
-  ipc.override('*', (cmd) => {
-    switch (cmd) {
-      case 'execute_query':
-        return {
-          queryId: 'q-mock',
-          columns: [{ name: 'id', dataType: 'INT' }],
-          totalRows: 3,
-          executionTimeMs: 10,
-          affectedRows: 0,
-          firstPage: [[1], [2], [3]],
-          totalPages: 1,
-          autoLimitApplied: false,
-        }
-      case 'fetch_result_page':
-        return { rows: [[4], [5]], page: 2, totalPages: 2 }
-      case 'evict_results':
-        return null
-      default:
-        return null
-    }
+  overrideCommands({
+    execute_query: () => ({
+      queryId: 'q-mock',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      totalRows: 3,
+      executionTimeMs: 10,
+      affectedRows: 0,
+      firstPage: [[1], [2], [3]],
+      totalPages: 1,
+      autoLimitApplied: false,
+    }),
+    fetch_result_page: () => ({ rows: [[4], [5]], page: 2, totalPages: 2 }),
+    evict_results: () => null,
   })
 })
 
@@ -130,7 +147,7 @@ describe('useQueryStore — executeQuery', () => {
   })
 
   it('sets error status on failure', async () => {
-    ipc.override('*', () => {
+    ipc.override('execute_query', () => {
       throw new Error('Query failed: table not found')
     })
     await useQueryStore.getState().executeQuery('conn-1', 'tab-error', 'SELECT * FROM bad_table')
@@ -174,21 +191,18 @@ describe('useQueryStore — executeQuery', () => {
   })
 
   it('normalizes tinyint boolean aliases to integer rows on executeQuery', async () => {
-    ipc.override('*', (cmd) => {
-      if (cmd === 'execute_query') {
-        return {
-          queryId: 'q-bool',
-          columns: BOOLEAN_ALIAS_COLUMNS,
-          totalRows: 1,
-          executionTimeMs: 10,
-          affectedRows: 0,
-          firstPage: [[true, false, 'flagged']],
-          totalPages: 1,
-          autoLimitApplied: false,
-        }
-      }
-      if (cmd === 'evict_results') return null
-      return null
+    overrideCommands({
+      execute_query: () => ({
+        queryId: 'q-bool',
+        columns: BOOLEAN_ALIAS_COLUMNS,
+        totalRows: 1,
+        executionTimeMs: 10,
+        affectedRows: 0,
+        firstPage: [[true, false, 'flagged']],
+        totalPages: 1,
+        autoLimitApplied: false,
+      }),
+      evict_results: () => null,
     })
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-bool', 'SELECT is_active FROM flags')
@@ -197,21 +211,18 @@ describe('useQueryStore — executeQuery', () => {
   })
 
   it('normalizes tinyint single-byte control strings to integer rows on executeQuery', async () => {
-    ipc.override('*', (cmd) => {
-      if (cmd === 'execute_query') {
-        return {
-          queryId: 'q-tinyint-bytes',
-          columns: BOOLEAN_ALIAS_COLUMNS,
-          totalRows: 1,
-          executionTimeMs: 10,
-          affectedRows: 0,
-          firstPage: [['\u0001', '\u0000', 'flagged']],
-          totalPages: 1,
-          autoLimitApplied: false,
-        }
-      }
-      if (cmd === 'evict_results') return null
-      return null
+    overrideCommands({
+      execute_query: () => ({
+        queryId: 'q-tinyint-bytes',
+        columns: BOOLEAN_ALIAS_COLUMNS,
+        totalRows: 1,
+        executionTimeMs: 10,
+        affectedRows: 0,
+        firstPage: [['\u0001', '\u0000', 'flagged']],
+        totalPages: 1,
+        autoLimitApplied: false,
+      }),
+      evict_results: () => null,
     })
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-tinyint-bytes', 'SELECT flags')
@@ -221,26 +232,19 @@ describe('useQueryStore — executeQuery', () => {
 
   it('treats missing or non-array analyze_query_for_edit result as no edit tables', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    ipc.override('*', (cmd) => {
-      if (cmd === 'execute_query') {
-        return {
-          queryId: 'q-analyze-null',
-          columns: [{ name: 'id', dataType: 'INT' }],
-          totalRows: 1,
-          executionTimeMs: 1,
-          affectedRows: 0,
-          firstPage: [[1]],
-          totalPages: 1,
-          autoLimitApplied: false,
-        }
-      }
-      if (cmd === 'analyze_query_for_edit') {
-        return null
-      }
-      if (cmd === 'evict_results') {
-        return null
-      }
-      return null
+    overrideCommands({
+      execute_query: () => ({
+        queryId: 'q-analyze-null',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows: 1,
+        executionTimeMs: 1,
+        affectedRows: 0,
+        firstPage: [[1]],
+        totalPages: 1,
+        autoLimitApplied: false,
+      }),
+      analyze_query_for_edit: () => null,
+      evict_results: () => null,
     })
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-null-analyze', 'SELECT id FROM t')
@@ -259,8 +263,8 @@ describe('useQueryStore — executeQuery', () => {
 
   it('returns early without executing when tab is already running', async () => {
     let executeCallCount = 0
-    ipc.override('*', (cmd) => {
-      if (cmd === 'execute_query') {
+    overrideCommands({
+      execute_query: () => {
         executeCallCount++
         return {
           queryId: 'q-mock',
@@ -272,9 +276,8 @@ describe('useQueryStore — executeQuery', () => {
           totalPages: 1,
           autoLimitApplied: false,
         }
-      }
-      if (cmd === 'evict_results') return null
-      return null
+      },
+      evict_results: () => null,
     })
 
     // Set up a tab already in running state
@@ -301,10 +304,9 @@ describe('useQueryStore — executeQuery', () => {
 
 describe('useQueryStore — multi-result execution', () => {
   it('switches back to result after executeMultiQuery completes', async () => {
-    ipc.override('*', (cmd) => {
-      if (cmd === 'execute_multi_query') {
-        return {
-          results: [
+    overrideCommands({
+      execute_multi_query: () => ({
+        results: [
             {
               columns: [{ name: 'id', dataType: 'INT' }],
               firstPage: [[1]],
@@ -332,10 +334,8 @@ describe('useQueryStore — multi-result execution', () => {
               reExecutable: true,
             },
           ],
-        }
-      }
-      if (cmd === 'evict_results') return null
-      return null
+      }),
+      evict_results: () => null,
     })
 
     useQueryStore.getState().setContent('tab-multi', 'SELECT 1; SELECT 2;')
@@ -372,26 +372,19 @@ describe('useQueryStore — fetchPage', () => {
 
   it('handles null fetch_result_page without throwing', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    ipc.override('*', (cmd) => {
-      switch (cmd) {
-        case 'execute_query':
-          return {
-            queryId: 'q-null-fetch',
-            columns: [{ name: 'id', dataType: 'INT' }],
-            totalRows: 1,
-            executionTimeMs: 1,
-            affectedRows: 0,
-            firstPage: [[1]],
-            totalPages: 2,
-            autoLimitApplied: false,
-          }
-        case 'fetch_result_page':
-          return null
-        case 'evict_results':
-          return null
-        default:
-          return null
-      }
+    overrideCommands({
+      execute_query: () => ({
+        queryId: 'q-null-fetch',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows: 1,
+        executionTimeMs: 1,
+        affectedRows: 0,
+        firstPage: [[1]],
+        totalPages: 2,
+        autoLimitApplied: false,
+      }),
+      fetch_result_page: () => null,
+      evict_results: () => null,
     })
 
     await useQueryStore.getState().executeQuery('conn-1', 'tab-null-fetch', 'SELECT 1')
@@ -403,12 +396,9 @@ describe('useQueryStore — fetchPage', () => {
   })
 
   it('normalizes tinyint boolean aliases to integer rows on fetchPage', async () => {
-    ipc.override('*', (cmd) => {
-      if (cmd === 'fetch_result_page') {
-        return { rows: [[false, true, 'page-2']], page: 2, totalPages: 2 }
-      }
-      if (cmd === 'evict_results') return null
-      return null
+    overrideCommands({
+      fetch_result_page: () => ({ rows: [[false, true, 'page-2']], page: 2, totalPages: 2 }),
+      evict_results: () => null,
     })
 
     useQueryStore.getState().setContent('tab-bool-page', 'SELECT 1')
@@ -470,14 +460,12 @@ describe('useQueryStore — stale query guard', () => {
   it('skips state update if tab was cleaned up during executeQuery', async () => {
     // Use a controlled promise so we can cleanup the tab mid-flight
     let resolveQuery: ((value: unknown) => void) | null = null
-    ipc.override('*', (cmd) => {
-      if (cmd === 'execute_query') {
-        return new Promise((resolve) => {
+    overrideCommands({
+      execute_query: () =>
+        new Promise((resolve) => {
           resolveQuery = resolve
-        })
-      }
-      if (cmd === 'evict_results') return null
-      return null
+        }),
+      evict_results: () => null,
     })
 
     useQueryStore.getState().setContent('tab-stale', 'SELECT 1')
@@ -509,14 +497,12 @@ describe('useQueryStore — stale query guard', () => {
 
   it('skips state update on error if tab was cleaned up during executeQuery', async () => {
     let rejectQuery: ((reason: unknown) => void) | null = null
-    ipc.override('*', (cmd) => {
-      if (cmd === 'execute_query') {
-        return new Promise((_resolve, reject) => {
+    overrideCommands({
+      execute_query: () =>
+        new Promise((_resolve, reject) => {
           rejectQuery = reject
-        })
-      }
-      if (cmd === 'evict_results') return null
-      return null
+        }),
+      evict_results: () => null,
     })
 
     useQueryStore.getState().setContent('tab-stale2', 'SELECT bad')
@@ -691,7 +677,7 @@ describe('useQueryStore — export dialog', () => {
 describe('useQueryStore — sortResults', () => {
   it('calls sort_results IPC and updates store state', async () => {
     // Set up mock IPC with sort_results handler
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       switch (cmd) {
         case 'execute_query':
           return {
@@ -727,7 +713,7 @@ describe('useQueryStore — sortResults', () => {
 
   it('clears sort state when direction is null and re-executes query', async () => {
     // Set up mock IPC with execute_query handler (for re-execution)
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       switch (cmd) {
         case 'execute_query':
           return {
@@ -776,7 +762,7 @@ describe('useQueryStore — sortResults', () => {
   })
 
   it('normalizes tinyint boolean aliases when clearing sort re-executes the query', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       switch (cmd) {
         case 'execute_query':
           return {
@@ -838,7 +824,7 @@ describe('useQueryStore — sortResults', () => {
   })
 
   it('logs error on IPC failure', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'sort_results') throw new Error('Sort failed')
       return null
     })
@@ -852,7 +838,7 @@ describe('useQueryStore — sortResults', () => {
 
   it('handles null sort_results payload without throwing', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       switch (cmd) {
         case 'execute_query':
           return {
@@ -886,7 +872,7 @@ describe('useQueryStore — sortResults', () => {
 
   it('skips state update if tab was cleaned up during sort', async () => {
     let resolveSortPromise: ((value: unknown) => void) | null = null
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'sort_results') {
         return new Promise((resolve) => {
           resolveSortPromise = resolve
@@ -912,7 +898,7 @@ describe('useQueryStore — sortResults', () => {
   })
 
   it('normalizes tinyint boolean aliases to integer rows on sortResults', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'sort_results') {
         return { rows: [[false, true, 'sorted']], page: 1, totalPages: 1 }
       }
@@ -947,7 +933,7 @@ describe('useQueryStore — changePageSize', () => {
       autoLimitApplied: false,
     }))
 
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') return executeFn()
       if (cmd === 'evict_results') return null
       return null
@@ -985,7 +971,7 @@ describe('useQueryStore — changePageSize', () => {
   })
 
   it('normalizes tinyint boolean aliases when changePageSize re-executes the query', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-new-bool',
@@ -1033,7 +1019,7 @@ describe('useQueryStore — changePageSize', () => {
   })
 
   it('sets error status on IPC failure', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') throw new Error('Query failed')
       if (cmd === 'evict_results') return null
       return null
@@ -1062,7 +1048,7 @@ describe('useQueryStore — changePageSize', () => {
 
   it('skips state update if tab was cleaned up during changePageSize', async () => {
     let resolveQuery: ((value: unknown) => void) | null = null
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((resolve) => {
           resolveQuery = resolve
@@ -1112,7 +1098,7 @@ describe('useQueryStore — changePageSize', () => {
 
   it('skips error update if tab was cleaned up during failed changePageSize', async () => {
     let rejectQuery: ((reason: unknown) => void) | null = null
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((_resolve, reject) => {
           rejectQuery = reject
@@ -1151,7 +1137,7 @@ describe('useQueryStore — changePageSize', () => {
   })
 
   it('writes an error result when re-execution fails and the query id is unchanged', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') throw new Error('re-exec failed')
       if (cmd === 'evict_results') return null
       return null
@@ -1184,7 +1170,7 @@ describe('useQueryStore — changePageSize', () => {
 describe('useQueryStore — executeQuery execution timing', () => {
   it('sets executionStartedAt when entering running state', async () => {
     let resolveQuery: ((value: unknown) => void) | null = null
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((resolve) => {
           resolveQuery = resolve
@@ -1225,7 +1211,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
   })
 
   it('clears executionStartedAt on error', async () => {
-    ipc.override('*', () => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, () => {
       throw new Error('Query failed')
     })
 
@@ -1257,7 +1243,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
 
   it('shows friendly message when query was cancelled', async () => {
     let rejectQuery: ((reason: unknown) => void) | null = null
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((_resolve, reject) => {
           rejectQuery = reject
@@ -1299,7 +1285,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
 describe('useQueryStore — changePageSize execution timing', () => {
   it('sets executionStartedAt when entering running state', async () => {
     let resolveQuery: ((value: unknown) => void) | null = null
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((resolve) => {
           resolveQuery = resolve
@@ -1353,7 +1339,7 @@ describe('useQueryStore — changePageSize execution timing', () => {
   })
 
   it('clears executionStartedAt on error', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') throw new Error('Query failed')
       if (cmd === 'evict_results') return null
       return null
@@ -1389,7 +1375,7 @@ describe('useQueryStore — cancelQuery', () => {
   })
 
   it('sets flags correctly and shows success toast when kill was issued', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'cancel_query') return true
       if (cmd === 'execute_query') {
         return {
@@ -1432,7 +1418,7 @@ describe('useQueryStore — cancelQuery', () => {
   })
 
   it('resets flags on no-op (query already finished) with no toast', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'cancel_query') return false
       if (cmd === 'evict_results') return null
       return null
@@ -1461,7 +1447,7 @@ describe('useQueryStore — cancelQuery', () => {
   })
 
   it('resets flags and shows error toast on IPC error', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'cancel_query') throw new Error('Connection lost')
       if (cmd === 'evict_results') return null
       return null
@@ -1490,7 +1476,7 @@ describe('useQueryStore — cancelQuery', () => {
 
   it('prevents double-cancel when isCancelling is already true', async () => {
     let cancelCallCount = 0
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'cancel_query') {
         cancelCallCount++
         return true
@@ -1519,7 +1505,7 @@ describe('useQueryStore — cancelQuery', () => {
 
   it('does not create ghost tab state if tab was closed during cancel IPC', async () => {
     let resolveCancelPromise: ((value: unknown) => void) | null = null
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(QUERY_STORE_COMMANDS, (cmd) => {
       if (cmd === 'cancel_query') {
         return new Promise((resolve) => {
           resolveCancelPromise = resolve

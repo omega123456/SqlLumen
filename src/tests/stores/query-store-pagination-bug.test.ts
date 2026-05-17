@@ -12,6 +12,12 @@ function flat(tabId: string) {
   return getFlatTabState(useQueryStore.getState().getTabState(tabId))
 }
 
+function overrideCommands(overrides: Record<string, (...args: never[]) => unknown>) {
+  for (const [commandName, handler] of Object.entries(overrides)) {
+    ipc.override(commandName, handler)
+  }
+}
+
 describe('query result view should show all returned rows regardless of page size', () => {
   beforeEach(() => {
     useQueryStore.setState({ tabs: {} })
@@ -22,24 +28,18 @@ describe('query result view should show all returned rows regardless of page siz
     const allRows = Array.from({ length: 100 }, (_, i) => [i + 1])
     const totalRows = 100
 
-    ipc.override('*', (cmd) => {
-      switch (cmd) {
-        case 'execute_query':
-          return {
-            queryId: 'q-limit-bug',
-            columns: [{ name: 'id', dataType: 'INT' }],
-            totalRows,
-            executionTimeMs: 10,
-            affectedRows: 0,
-            firstPage: allRows,
-            totalPages: 1,
-            autoLimitApplied: false,
-          }
-        case 'evict_results':
-          return null
-        default:
-          return null
-      }
+    overrideCommands({
+      execute_query: () => ({
+        queryId: 'q-limit-bug',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows,
+        executionTimeMs: 10,
+        affectedRows: 0,
+        firstPage: allRows,
+        totalPages: 1,
+        autoLimitApplied: false,
+      }),
+      evict_results: () => null,
     })
 
     const store = useQueryStore.getState()

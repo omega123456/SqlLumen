@@ -20,8 +20,37 @@ import { useQueryStore } from '../../stores/query-store'
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 
+function overrideCommands(overrides: Record<string, (...args: never[]) => unknown>) {
+  for (const [commandName, handler] of Object.entries(overrides)) {
+    ipc.override(commandName, handler)
+  }
+}
+
+function overrideNamedCommands(
+  commandNames: readonly string[],
+  handler: (cmd: string, args?: Record<string, unknown>) => unknown
+) {
+  for (const commandName of commandNames) {
+    ipc.override(commandName, (args) => handler(commandName, args))
+  }
+}
+
+const SESSION_RESTORE_COMMANDS = [
+  'close_connection',
+  'evict_results',
+  'get_all_settings',
+  'get_setting',
+  'list_connection_groups',
+  'list_connections',
+  'log_frontend',
+  'open_connection',
+  'plugin:event|listen',
+  'plugin:event|unlisten',
+  'set_setting',
+] as const
+
 function setupDefaultIpc() {
-  ipc.override('*', (cmd, args) => {
+  overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
     const a = args as Record<string, unknown> | undefined
     switch (cmd) {
       case 'log_frontend':
@@ -151,7 +180,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('serializes active connections and their tabs', async () => {
     let savedValue: string | null = null
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -216,7 +245,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('serializes the active scoped bottom-panel table tab on query tabs', async () => {
     let savedValue: string | null = null
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -290,7 +319,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('skips table-designer and object-editor tabs', async () => {
     let savedValue: string | null = null
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -358,7 +387,7 @@ describe('useSessionRestoreStore — saveSession', () => {
     })
 
     let setCalled = false
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd) => {
       if (cmd === 'set_setting') {
         setCalled = true
         return null
@@ -374,7 +403,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('serializes table-data tabs', async () => {
     let savedValue: string | null = null
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -440,7 +469,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('serializes history tabs', async () => {
     let savedValue: string | null = null
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -494,7 +523,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('preserves renamed query labels and workspace order in saved session state', async () => {
     let savedValue: string | null = null
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -575,7 +604,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -653,7 +682,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -734,7 +763,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -819,7 +848,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
   })
 
   it('does nothing when no saved state exists', async () => {
-    ipc.override('*', (cmd) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd) => {
       if (cmd === 'log_frontend') return undefined
       if (cmd === 'get_setting') return null
       if (cmd === 'list_connections') return []
@@ -844,7 +873,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -880,7 +909,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -943,7 +972,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -1014,7 +1043,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -1070,7 +1099,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
 
 describe('useSessionRestoreStore — restoreSession for non-query tab types', () => {
   function restoreIpc(savedState: unknown) {
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -1596,7 +1625,7 @@ describe('useSessionRestoreStore — connectByProfileId edge cases', () => {
       ],
     }
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -1727,7 +1756,7 @@ describe('registerCloseHandler', () => {
 
     let saveCount = 0
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         saveCount++
@@ -1800,7 +1829,7 @@ describe('registerCloseHandler', () => {
       }),
     }))
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         saveCount++
@@ -1879,7 +1908,7 @@ describe('registerCloseHandler', () => {
       }),
     }))
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         throw new Error('Disk full')
@@ -1958,7 +1987,7 @@ describe('registerCloseHandler', () => {
       }),
     }))
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         saveCount++
@@ -2049,7 +2078,7 @@ describe('useSessionRestoreStore — saveSession with schema-info tabs', () => {
   it('serializes schema-info tabs correctly', async () => {
     let savedValue: string | null = null
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -2115,7 +2144,7 @@ describe('useSessionRestoreStore — active connection order persistence', () =>
   it('saves connections using normalized active connection order', async () => {
     let savedValue: string | null = null
 
-    ipc.override('*', (cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = String(a.value)

@@ -258,11 +258,10 @@ describe('useShortcutStore', () => {
 
     it('handles IPC errors gracefully and keeps defaults', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      ipc.override('*', (cmd) => {
-        if (cmd === 'get_setting') throw new Error('IPC failure')
-        if (cmd === 'log_frontend') return undefined
-        throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
+      ipc.override('get_setting', () => {
+        throw new Error('IPC failure')
       })
+      ipc.override('log_frontend', () => undefined)
 
       await useShortcutStore.getState().initializeFromBackend()
 

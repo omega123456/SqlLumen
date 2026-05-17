@@ -964,10 +964,7 @@ describe('useWorkspaceStore — clearConnectionTabs', () => {
 
 describe('useWorkspaceStore — closeTab query-editor with dirty non-active result', () => {
   beforeEach(() => {
-    ipc.override('*', (cmd) => {
-      if (cmd === 'evict_results') return null
-      return null
-    })
+    ipc.override('evict_results', () => null)
   })
 
   it('switches to dirty result and sets pendingNavigationAction when dirty result is non-active', () => {
@@ -1233,10 +1230,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
 
 describe('useWorkspaceStore — AI store cleanup', () => {
   beforeEach(() => {
-    ipc.override('*', (cmd) => {
-      if (cmd === 'evict_results') return null
-      return null
-    })
+    ipc.override('evict_results', () => null)
   })
 
   it('closeTab on query-editor tab cleans up AI store state', () => {
