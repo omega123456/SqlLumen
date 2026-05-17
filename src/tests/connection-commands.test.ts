@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { ipc } from './ipc-mock'
 import {
   saveConnection,
   getConnection,
@@ -15,17 +16,12 @@ import {
   getConnectionStatus,
 } from '../lib/connection-commands'
 import type { ConnectionFormData } from '../types/connection'
-
-// Mock the @tauri-apps/api/core module
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
-}))
-
-import { invoke } from '@tauri-apps/api/core'
-const mockInvoke = vi.mocked(invoke)
+const mockInvoke = vi.fn()
 
 beforeEach(() => {
+  ipc.reset()
   mockInvoke.mockReset()
+  ipc.override('*', (commandName, args) => mockInvoke(commandName, args))
 })
 
 const sampleFormData: ConnectionFormData = {
@@ -95,7 +91,7 @@ describe('listConnections', () => {
   it('calls invoke with correct command name', async () => {
     mockInvoke.mockResolvedValue([])
     const result = await listConnections()
-    expect(mockInvoke).toHaveBeenCalledWith('list_connections')
+    expect(mockInvoke).toHaveBeenCalledWith('list_connections', {})
     expect(result).toEqual([])
   })
 
@@ -182,7 +178,7 @@ describe('listConnectionGroups', () => {
   it('calls invoke with correct command name', async () => {
     mockInvoke.mockResolvedValue([])
     const result = await listConnectionGroups()
-    expect(mockInvoke).toHaveBeenCalledWith('list_connection_groups')
+    expect(mockInvoke).toHaveBeenCalledWith('list_connection_groups', {})
     expect(result).toEqual([])
   })
 

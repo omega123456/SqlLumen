@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import { useQueryStore, getFlatTabState, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 
@@ -32,7 +32,7 @@ function patchResult(tabId: string, resultOverrides: Record<string, unknown>) {
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
 
-  mockIPC((cmd) => {
+  ipc.override('*', (cmd) => {
     switch (cmd) {
       case 'execute_query':
         return {
@@ -130,7 +130,7 @@ describe('useQueryStore — executeQuery', () => {
   })
 
   it('sets error status on failure', async () => {
-    mockIPC(() => {
+    ipc.override('*', () => {
       throw new Error('Query failed: table not found')
     })
     await useQueryStore.getState().executeQuery('conn-1', 'tab-error', 'SELECT * FROM bad_table')
@@ -174,7 +174,7 @@ describe('useQueryStore — executeQuery', () => {
   })
 
   it('normalizes tinyint boolean aliases to integer rows on executeQuery', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-bool',
@@ -197,7 +197,7 @@ describe('useQueryStore — executeQuery', () => {
   })
 
   it('normalizes tinyint single-byte control strings to integer rows on executeQuery', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-tinyint-bytes',
@@ -221,7 +221,7 @@ describe('useQueryStore — executeQuery', () => {
 
   it('treats missing or non-array analyze_query_for_edit result as no edit tables', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-analyze-null',
@@ -259,7 +259,7 @@ describe('useQueryStore — executeQuery', () => {
 
   it('returns early without executing when tab is already running', async () => {
     let executeCallCount = 0
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         executeCallCount++
         return {
@@ -301,7 +301,7 @@ describe('useQueryStore — executeQuery', () => {
 
 describe('useQueryStore — multi-result execution', () => {
   it('switches back to result after executeMultiQuery completes', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_multi_query') {
         return {
           results: [
@@ -372,7 +372,7 @@ describe('useQueryStore — fetchPage', () => {
 
   it('handles null fetch_result_page without throwing', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       switch (cmd) {
         case 'execute_query':
           return {
@@ -403,7 +403,7 @@ describe('useQueryStore — fetchPage', () => {
   })
 
   it('normalizes tinyint boolean aliases to integer rows on fetchPage', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'fetch_result_page') {
         return { rows: [[false, true, 'page-2']], page: 2, totalPages: 2 }
       }
@@ -470,7 +470,7 @@ describe('useQueryStore — stale query guard', () => {
   it('skips state update if tab was cleaned up during executeQuery', async () => {
     // Use a controlled promise so we can cleanup the tab mid-flight
     let resolveQuery: ((value: unknown) => void) | null = null
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((resolve) => {
           resolveQuery = resolve
@@ -509,7 +509,7 @@ describe('useQueryStore — stale query guard', () => {
 
   it('skips state update on error if tab was cleaned up during executeQuery', async () => {
     let rejectQuery: ((reason: unknown) => void) | null = null
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((_resolve, reject) => {
           rejectQuery = reject
@@ -691,7 +691,7 @@ describe('useQueryStore — export dialog', () => {
 describe('useQueryStore — sortResults', () => {
   it('calls sort_results IPC and updates store state', async () => {
     // Set up mock IPC with sort_results handler
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       switch (cmd) {
         case 'execute_query':
           return {
@@ -727,7 +727,7 @@ describe('useQueryStore — sortResults', () => {
 
   it('clears sort state when direction is null and re-executes query', async () => {
     // Set up mock IPC with execute_query handler (for re-execution)
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       switch (cmd) {
         case 'execute_query':
           return {
@@ -776,7 +776,7 @@ describe('useQueryStore — sortResults', () => {
   })
 
   it('normalizes tinyint boolean aliases when clearing sort re-executes the query', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       switch (cmd) {
         case 'execute_query':
           return {
@@ -838,7 +838,7 @@ describe('useQueryStore — sortResults', () => {
   })
 
   it('logs error on IPC failure', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'sort_results') throw new Error('Sort failed')
       return null
     })
@@ -852,7 +852,7 @@ describe('useQueryStore — sortResults', () => {
 
   it('handles null sort_results payload without throwing', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       switch (cmd) {
         case 'execute_query':
           return {
@@ -886,7 +886,7 @@ describe('useQueryStore — sortResults', () => {
 
   it('skips state update if tab was cleaned up during sort', async () => {
     let resolveSortPromise: ((value: unknown) => void) | null = null
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'sort_results') {
         return new Promise((resolve) => {
           resolveSortPromise = resolve
@@ -912,7 +912,7 @@ describe('useQueryStore — sortResults', () => {
   })
 
   it('normalizes tinyint boolean aliases to integer rows on sortResults', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'sort_results') {
         return { rows: [[false, true, 'sorted']], page: 1, totalPages: 1 }
       }
@@ -947,7 +947,7 @@ describe('useQueryStore — changePageSize', () => {
       autoLimitApplied: false,
     }))
 
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') return executeFn()
       if (cmd === 'evict_results') return null
       return null
@@ -985,7 +985,7 @@ describe('useQueryStore — changePageSize', () => {
   })
 
   it('normalizes tinyint boolean aliases when changePageSize re-executes the query', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-new-bool',
@@ -1033,7 +1033,7 @@ describe('useQueryStore — changePageSize', () => {
   })
 
   it('sets error status on IPC failure', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') throw new Error('Query failed')
       if (cmd === 'evict_results') return null
       return null
@@ -1062,7 +1062,7 @@ describe('useQueryStore — changePageSize', () => {
 
   it('skips state update if tab was cleaned up during changePageSize', async () => {
     let resolveQuery: ((value: unknown) => void) | null = null
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((resolve) => {
           resolveQuery = resolve
@@ -1112,7 +1112,7 @@ describe('useQueryStore — changePageSize', () => {
 
   it('skips error update if tab was cleaned up during failed changePageSize', async () => {
     let rejectQuery: ((reason: unknown) => void) | null = null
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((_resolve, reject) => {
           rejectQuery = reject
@@ -1151,7 +1151,7 @@ describe('useQueryStore — changePageSize', () => {
   })
 
   it('writes an error result when re-execution fails and the query id is unchanged', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') throw new Error('re-exec failed')
       if (cmd === 'evict_results') return null
       return null
@@ -1184,7 +1184,7 @@ describe('useQueryStore — changePageSize', () => {
 describe('useQueryStore — executeQuery execution timing', () => {
   it('sets executionStartedAt when entering running state', async () => {
     let resolveQuery: ((value: unknown) => void) | null = null
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((resolve) => {
           resolveQuery = resolve
@@ -1225,7 +1225,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
   })
 
   it('clears executionStartedAt on error', async () => {
-    mockIPC(() => {
+    ipc.override('*', () => {
       throw new Error('Query failed')
     })
 
@@ -1257,7 +1257,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
 
   it('shows friendly message when query was cancelled', async () => {
     let rejectQuery: ((reason: unknown) => void) | null = null
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((_resolve, reject) => {
           rejectQuery = reject
@@ -1299,7 +1299,7 @@ describe('useQueryStore — executeQuery execution timing', () => {
 describe('useQueryStore — changePageSize execution timing', () => {
   it('sets executionStartedAt when entering running state', async () => {
     let resolveQuery: ((value: unknown) => void) | null = null
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') {
         return new Promise((resolve) => {
           resolveQuery = resolve
@@ -1353,7 +1353,7 @@ describe('useQueryStore — changePageSize execution timing', () => {
   })
 
   it('clears executionStartedAt on error', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'execute_query') throw new Error('Query failed')
       if (cmd === 'evict_results') return null
       return null
@@ -1389,7 +1389,7 @@ describe('useQueryStore — cancelQuery', () => {
   })
 
   it('sets flags correctly and shows success toast when kill was issued', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'cancel_query') return true
       if (cmd === 'execute_query') {
         return {
@@ -1432,7 +1432,7 @@ describe('useQueryStore — cancelQuery', () => {
   })
 
   it('resets flags on no-op (query already finished) with no toast', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'cancel_query') return false
       if (cmd === 'evict_results') return null
       return null
@@ -1461,7 +1461,7 @@ describe('useQueryStore — cancelQuery', () => {
   })
 
   it('resets flags and shows error toast on IPC error', async () => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'cancel_query') throw new Error('Connection lost')
       if (cmd === 'evict_results') return null
       return null
@@ -1490,7 +1490,7 @@ describe('useQueryStore — cancelQuery', () => {
 
   it('prevents double-cancel when isCancelling is already true', async () => {
     let cancelCallCount = 0
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'cancel_query') {
         cancelCallCount++
         return true
@@ -1519,7 +1519,7 @@ describe('useQueryStore — cancelQuery', () => {
 
   it('does not create ghost tab state if tab was closed during cancel IPC', async () => {
     let resolveCancelPromise: ((value: unknown) => void) | null = null
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'cancel_query') {
         return new Promise((resolve) => {
           resolveCancelPromise = resolve

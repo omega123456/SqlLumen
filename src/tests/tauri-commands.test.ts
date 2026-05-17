@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
+
+import { ipc } from './ipc-mock'
 import {
   getSetting,
   setSetting,
@@ -7,28 +9,20 @@ import {
   setThemeSetting,
 } from '../lib/tauri-commands'
 
-// Mock the @tauri-apps/api/core module
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
-}))
-
-import { invoke } from '@tauri-apps/api/core'
-const mockInvoke = vi.mocked(invoke)
-
 beforeEach(() => {
-  mockInvoke.mockReset()
+  ipc.reset()
 })
 
 describe('getSetting', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue('dark')
+    ipc.override('get_setting', () => 'dark')
     const result = await getSetting('theme')
-    expect(mockInvoke).toHaveBeenCalledWith('get_setting', { key: 'theme' })
+    expect(ipc.calls('get_setting')).toEqual([{ key: 'theme' }])
     expect(result).toBe('dark')
   })
 
   it('returns null when invoke returns null', async () => {
-    mockInvoke.mockResolvedValue(null)
+    ipc.override('get_setting', () => null)
     const result = await getSetting('nonexistent')
     expect(result).toBeNull()
   })
@@ -36,22 +30,21 @@ describe('getSetting', () => {
 
 describe('setSetting', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await setSetting('theme', 'dark')
-    expect(mockInvoke).toHaveBeenCalledWith('set_setting', { key: 'theme', value: 'dark' })
+    expect(ipc.calls('set_setting')).toEqual([{ key: 'theme', value: 'dark' }])
   })
 })
 
 describe('getAllSettings', () => {
   it('calls invoke with correct command name', async () => {
-    mockInvoke.mockResolvedValue({ theme: 'dark' })
+    ipc.override('get_all_settings', () => ({ theme: 'dark' }))
     const result = await getAllSettings()
-    expect(mockInvoke).toHaveBeenCalledWith('get_all_settings')
+    expect(ipc.calls('get_all_settings')).toEqual([{}])
     expect(result).toEqual({ theme: 'dark' })
   })
 
   it('returns empty object when no settings', async () => {
-    mockInvoke.mockResolvedValue({})
+    ipc.override('get_all_settings', () => ({}))
     const result = await getAllSettings()
     expect(result).toEqual({})
   })
@@ -59,35 +52,34 @@ describe('getAllSettings', () => {
 
 describe('getThemeSetting', () => {
   it('returns "light" when setting is "light"', async () => {
-    mockInvoke.mockResolvedValue('light')
+    ipc.override('get_setting', () => 'light')
     expect(await getThemeSetting()).toBe('light')
   })
 
   it('returns "dark" when setting is "dark"', async () => {
-    mockInvoke.mockResolvedValue('dark')
+    ipc.override('get_setting', () => 'dark')
     expect(await getThemeSetting()).toBe('dark')
   })
 
   it('returns "system" when setting is "system"', async () => {
-    mockInvoke.mockResolvedValue('system')
+    ipc.override('get_setting', () => 'system')
     expect(await getThemeSetting()).toBe('system')
   })
 
   it('returns null when no setting stored', async () => {
-    mockInvoke.mockResolvedValue(null)
+    ipc.override('get_setting', () => null)
     expect(await getThemeSetting()).toBeNull()
   })
 
   it('returns null for invalid/unknown values', async () => {
-    mockInvoke.mockResolvedValue('invalid_theme')
+    ipc.override('get_setting', () => 'invalid_theme')
     expect(await getThemeSetting()).toBeNull()
   })
 })
 
 describe('setThemeSetting', () => {
   it('calls setSetting with "theme" key', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await setThemeSetting('dark')
-    expect(mockInvoke).toHaveBeenCalledWith('set_setting', { key: 'theme', value: 'dark' })
+    expect(ipc.calls('set_setting')).toEqual([{ key: 'theme', value: 'dark' }])
   })
 })

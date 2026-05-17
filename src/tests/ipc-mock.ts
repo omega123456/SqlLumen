@@ -141,13 +141,18 @@ export function setupIpc(): void {
         // 1. Per-test override takes priority
         const override = _overrides.get(cmd)
         if (override) {
-          return override(args)
+          return override(args, cmd)
+        }
+
+        const wildcardOverride = _overrides.get('*')
+        if (wildcardOverride) {
+          return wildcardOverride(cmd as unknown as Record<string, unknown>, args as never)
         }
 
         // 2. Default fixture response
         const fixture = IPC_FIXTURES[cmd]
         if (fixture) {
-          return fixture(args)
+          return fixture(args, cmd)
         }
 
         // 3. Unknown command — fail loudly so tests never silently pass on missing mocks

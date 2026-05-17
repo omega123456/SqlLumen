@@ -10,7 +10,7 @@ import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import type {
   TableDataTab,
   SchemaInfoTab,
@@ -964,7 +964,7 @@ describe('useWorkspaceStore — clearConnectionTabs', () => {
 
 describe('useWorkspaceStore — closeTab query-editor with dirty non-active result', () => {
   beforeEach(() => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'evict_results') return null
       return null
     })
@@ -1233,7 +1233,7 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
 
 describe('useWorkspaceStore — AI store cleanup', () => {
   beforeEach(() => {
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       if (cmd === 'evict_results') return null
       return null
     })

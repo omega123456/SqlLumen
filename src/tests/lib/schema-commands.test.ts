@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { ipc } from '../ipc-mock'
 import {
   listDatabases,
   listSchemaObjects,
@@ -16,17 +17,12 @@ import {
   truncateTable,
   renameTable,
 } from '../../lib/schema-commands'
-
-// Mock the @tauri-apps/api/core module
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
-}))
-
-import { invoke } from '@tauri-apps/api/core'
-const mockInvoke = vi.mocked(invoke)
+const mockInvoke = vi.fn()
 
 beforeEach(() => {
+  ipc.reset()
   mockInvoke.mockReset()
+  ipc.override('*', (commandName, args) => mockInvoke(commandName, args))
 })
 
 // ---------------------------------------------------------------------------

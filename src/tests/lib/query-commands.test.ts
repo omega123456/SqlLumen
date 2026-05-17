@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import {
   executeQuery,
   fetchResultPage,
@@ -131,7 +131,7 @@ beforeEach(() => {
   mockReexecuteSingleResultFn.mockClear()
   lastIpcArgs = undefined
 
-  mockIPC((cmd, args) => {
+  ipc.override('*', (cmd, args) => {
     lastIpcArgs = args as Record<string, unknown>
     switch (cmd) {
       case 'execute_query':

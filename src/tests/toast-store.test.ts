@@ -1,13 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 
-const { logFrontendMock } = vi.hoisted(() => ({
-  logFrontendMock: vi.fn(),
-}))
-
-vi.mock('../lib/app-log-commands', () => ({
-  logFrontend: logFrontendMock,
-}))
-
+import { ipc } from './ipc-mock'
 import {
   useToastStore,
   _resetToastTimeoutsForTests,
@@ -17,7 +10,7 @@ import {
 
 describe('useToastStore', () => {
   beforeEach(() => {
-    logFrontendMock.mockClear()
+    ipc.reset()
     _resetToastTimeoutsForTests()
     useToastStore.setState({ toasts: [] })
   })
@@ -54,24 +47,28 @@ describe('useToastStore', () => {
     expect(toasts[0].durationMs).toBe(WARNING_ERROR_TOAST_DURATION_MS)
   })
 
-  it('showError logs to application logger at error level', () => {
+  it('showError logs to application logger at error level', async () => {
     useToastStore.getState().showError('Title', 'Body')
-    expect(logFrontendMock).toHaveBeenCalledWith('error', 'Title: Body')
+    await Promise.resolve()
+    expect(ipc.calls('log_frontend')).toContainEqual({ level: 'error', message: 'Title: Body' })
   })
 
-  it('showWarning logs to application logger at warn level', () => {
+  it('showWarning logs to application logger at warn level', async () => {
     useToastStore.getState().showWarning('Title', 'Body')
-    expect(logFrontendMock).toHaveBeenCalledWith('warn', 'Title: Body')
+    await Promise.resolve()
+    expect(ipc.calls('log_frontend')).toContainEqual({ level: 'warn', message: 'Title: Body' })
   })
 
-  it('showError log line uses title only when message is omitted', () => {
+  it('showError log line uses title only when message is omitted', async () => {
     useToastStore.getState().showError('Only')
-    expect(logFrontendMock).toHaveBeenCalledWith('error', 'Only')
+    await Promise.resolve()
+    expect(ipc.calls('log_frontend')).toContainEqual({ level: 'error', message: 'Only' })
   })
 
-  it('showWarning log line uses title only when message is omitted', () => {
+  it('showWarning log line uses title only when message is omitted', async () => {
     useToastStore.getState().showWarning('Only')
-    expect(logFrontendMock).toHaveBeenCalledWith('warn', 'Only')
+    await Promise.resolve()
+    expect(ipc.calls('log_frontend')).toContainEqual({ level: 'warn', message: 'Only' })
   })
 
   it('error and warning accept duration override', () => {

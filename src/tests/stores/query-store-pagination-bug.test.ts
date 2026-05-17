@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import { useQueryStore, getFlatTabState } from '../../stores/query-store'
 
 /**
@@ -22,7 +22,7 @@ describe('query result view should show all returned rows regardless of page siz
     const allRows = Array.from({ length: 100 }, (_, i) => [i + 1])
     const totalRows = 100
 
-    mockIPC((cmd) => {
+    ipc.override('*', (cmd) => {
       switch (cmd) {
         case 'execute_query':
           return {

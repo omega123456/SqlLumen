@@ -12,7 +12,7 @@
 // Handler type
 // ---------------------------------------------------------------------------
 
-export type IpcHandler = (args?: Record<string, unknown>) => unknown
+export type IpcHandler = (args?: Record<string, unknown>, commandName?: string) => unknown
 
 // ---------------------------------------------------------------------------
 // Default fixture map

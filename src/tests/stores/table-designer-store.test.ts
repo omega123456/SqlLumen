@@ -1,14 +1,9 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
-
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
-}))
-
-import { invoke } from '@tauri-apps/api/core'
+import { ipc } from '../ipc-mock'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import type { TableDesignerSchema } from '../../types/schema'
 
-const invokeMock = vi.mocked(invoke)
+const invokeMock = vi.fn()
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -132,8 +127,13 @@ beforeEach(() => {
 
   useTableDesignerStore.setState({ tabs: {} })
 
+  ipc.reset()
   invokeMock.mockReset()
   invokeMock.mockImplementation(async (command) => {
+    if (command === 'log_frontend') {
+      return undefined
+    }
+
     if (command === 'load_table_for_designer') {
       return clone(loadedSchema)
     }
@@ -144,6 +144,7 @@ beforeEach(() => {
 
     throw new Error(`Unexpected IPC command: ${String(command)}`)
   })
+  ipc.override('*', (command, args) => invokeMock(command, args))
 })
 
 afterEach(() => {
@@ -627,6 +628,10 @@ describe('useTableDesignerStore — loadSchema', () => {
     schemaWithoutIntegerLengths.columns[0]!.length = ''
     schemaWithoutIntegerLengths.columns[2]!.length = ''
     invokeMock.mockImplementation(async (command) => {
+      if (command === 'log_frontend') {
+        return undefined
+      }
+
       if (command === 'load_table_for_designer') {
         return schemaWithoutIntegerLengths
       }
