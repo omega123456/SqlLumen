@@ -16,12 +16,10 @@ import {
   getConnectionStatus,
 } from '../lib/connection-commands'
 import type { ConnectionFormData } from '../types/connection'
-const mockInvoke = vi.fn()
 
 beforeEach(() => {
   ipc.reset()
-  mockInvoke.mockReset()
-  ipc.override('*', (commandName, args) => mockInvoke(commandName, args))
+  vi.clearAllMocks()
 })
 
 const sampleFormData: ConnectionFormData = {
@@ -46,28 +44,30 @@ const sampleFormData: ConnectionFormData = {
 
 describe('saveConnection', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue('new-uuid-123')
+    ipc.override('save_connection', () => 'new-uuid-123')
     const result = await saveConnection(sampleFormData)
-    expect(mockInvoke).toHaveBeenCalledWith('save_connection', {
+    expect(ipc.calls('save_connection')).toEqual([{
       data: {
         ...sampleFormData,
         password: 'secret',
         sortOrder: 0,
       },
-    })
+    }])
     expect(result).toBe('new-uuid-123')
   })
 
   it('converts empty password to null', async () => {
-    mockInvoke.mockResolvedValue('new-uuid-456')
+    ipc.override('save_connection', () => 'new-uuid-456')
     await saveConnection({ ...sampleFormData, password: '' })
-    expect(mockInvoke).toHaveBeenCalledWith('save_connection', {
+    expect(ipc.calls('save_connection')).toEqual([{
       data: expect.objectContaining({ password: null }),
-    })
+    }])
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Save failed'))
+    ipc.override('save_connection', () => {
+      throw new Error('Save failed')
+    })
     await expect(saveConnection(sampleFormData)).rejects.toThrow('Save failed')
   })
 })
@@ -75,23 +75,24 @@ describe('saveConnection', () => {
 describe('getConnection', () => {
   it('calls invoke with correct command and args', async () => {
     const mockConnection = { id: 'abc', name: 'Test' }
-    mockInvoke.mockResolvedValue(mockConnection)
+    ipc.override('get_connection', () => mockConnection)
     const result = await getConnection('abc')
-    expect(mockInvoke).toHaveBeenCalledWith('get_connection', { id: 'abc' })
+    expect(ipc.calls('get_connection')).toEqual([{ id: 'abc' }])
     expect(result).toEqual(mockConnection)
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Not found'))
+    ipc.override('get_connection', () => {
+      throw new Error('Not found')
+    })
     await expect(getConnection('missing')).rejects.toThrow('Not found')
   })
 })
 
 describe('listConnections', () => {
   it('calls invoke with correct command name', async () => {
-    mockInvoke.mockResolvedValue([])
     const result = await listConnections()
-    expect(mockInvoke).toHaveBeenCalledWith('list_connections', {})
+    expect(ipc.calls('list_connections')).toEqual([{}])
     expect(result).toEqual([])
   })
 
@@ -100,7 +101,7 @@ describe('listConnections', () => {
       { id: '1', name: 'A' },
       { id: '2', name: 'B' },
     ]
-    mockInvoke.mockResolvedValue(mockList)
+    ipc.override('list_connections', () => mockList)
     const result = await listConnections()
     expect(result).toEqual(mockList)
   })
@@ -108,9 +109,8 @@ describe('listConnections', () => {
 
 describe('updateConnection', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await updateConnection('abc', sampleFormData)
-    expect(mockInvoke).toHaveBeenCalledWith('update_connection', {
+    expect(ipc.calls('update_connection')).toEqual([{
       id: 'abc',
       data: {
         ...sampleFormData,
@@ -118,42 +118,43 @@ describe('updateConnection', () => {
         clearPassword: false,
         sortOrder: 0,
       },
-    })
+    }])
   })
 
   it('converts empty password to null for update', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await updateConnection('abc', { ...sampleFormData, password: '' })
-    expect(mockInvoke).toHaveBeenCalledWith('update_connection', {
+    expect(ipc.calls('update_connection')).toEqual([{
       id: 'abc',
       data: expect.objectContaining({ password: null, clearPassword: false }),
-    })
+    }])
   })
 
   it('passes clearPassword when requested', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await updateConnection('abc', { ...sampleFormData, password: '' }, { clearPassword: true })
-    expect(mockInvoke).toHaveBeenCalledWith('update_connection', {
+    expect(ipc.calls('update_connection')).toEqual([{
       id: 'abc',
       data: expect.objectContaining({ password: null, clearPassword: true }),
-    })
+    }])
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Update failed'))
+    ipc.override('update_connection', () => {
+      throw new Error('Update failed')
+    })
     await expect(updateConnection('abc', sampleFormData)).rejects.toThrow('Update failed')
   })
 })
 
 describe('deleteConnection', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await deleteConnection('abc')
-    expect(mockInvoke).toHaveBeenCalledWith('delete_connection', { id: 'abc' })
+    expect(ipc.calls('delete_connection')).toEqual([{ id: 'abc' }])
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Delete failed'))
+    ipc.override('delete_connection', () => {
+      throw new Error('Delete failed')
+    })
     await expect(deleteConnection('abc')).rejects.toThrow('Delete failed')
   })
 })
@@ -162,29 +163,30 @@ describe('deleteConnection', () => {
 
 describe('createConnectionGroup', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue('group-uuid-123')
+    ipc.override('create_connection_group', () => 'group-uuid-123')
     const result = await createConnectionGroup('Production')
-    expect(mockInvoke).toHaveBeenCalledWith('create_connection_group', { name: 'Production' })
+    expect(ipc.calls('create_connection_group')).toEqual([{ name: 'Production' }])
     expect(result).toBe('group-uuid-123')
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Create group failed'))
+    ipc.override('create_connection_group', () => {
+      throw new Error('Create group failed')
+    })
     await expect(createConnectionGroup('Prod')).rejects.toThrow('Create group failed')
   })
 })
 
 describe('listConnectionGroups', () => {
   it('calls invoke with correct command name', async () => {
-    mockInvoke.mockResolvedValue([])
     const result = await listConnectionGroups()
-    expect(mockInvoke).toHaveBeenCalledWith('list_connection_groups', {})
+    expect(ipc.calls('list_connection_groups')).toEqual([{}])
     expect(result).toEqual([])
   })
 
   it('returns array of groups', async () => {
     const mockGroups = [{ id: '1', name: 'Prod' }]
-    mockInvoke.mockResolvedValue(mockGroups)
+    ipc.override('list_connection_groups', () => mockGroups)
     const result = await listConnectionGroups()
     expect(result).toEqual(mockGroups)
   })
@@ -192,29 +194,31 @@ describe('listConnectionGroups', () => {
 
 describe('updateConnectionGroup', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await updateConnectionGroup('grp-1', 'New Name')
-    expect(mockInvoke).toHaveBeenCalledWith('update_connection_group', {
+    expect(ipc.calls('update_connection_group')).toEqual([{
       id: 'grp-1',
       name: 'New Name',
-    })
+    }])
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Update group failed'))
+    ipc.override('update_connection_group', () => {
+      throw new Error('Update group failed')
+    })
     await expect(updateConnectionGroup('grp-1', 'Name')).rejects.toThrow('Update group failed')
   })
 })
 
 describe('deleteConnectionGroup', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await deleteConnectionGroup('grp-1')
-    expect(mockInvoke).toHaveBeenCalledWith('delete_connection_group', { id: 'grp-1' })
+    expect(ipc.calls('delete_connection_group')).toEqual([{ id: 'grp-1' }])
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Delete group failed'))
+    ipc.override('delete_connection_group', () => {
+      throw new Error('Delete group failed')
+    })
     await expect(deleteConnectionGroup('grp-1')).rejects.toThrow('Delete group failed')
   })
 })
@@ -231,10 +235,10 @@ describe('testConnection', () => {
       connectionTimeMs: 42,
       errorMessage: null,
     }
-    mockInvoke.mockResolvedValue(mockResult)
+    ipc.override('test_connection', () => mockResult)
     const result = await testConnection(sampleFormData)
 
-    expect(mockInvoke).toHaveBeenCalledWith('test_connection', {
+    expect(ipc.calls('test_connection')).toEqual([{
       input: {
         host: 'localhost',
         port: 3306,
@@ -247,15 +251,15 @@ describe('testConnection', () => {
         sslKeyPath: null,
         connectTimeoutSecs: 10,
       },
-    })
+    }])
     expect(result).toEqual(mockResult)
   })
 
   it('does not pass name, color, groupId, readOnly, or keepaliveIntervalSecs', async () => {
-    mockInvoke.mockResolvedValue({ success: true })
+    ipc.override('test_connection', () => ({ success: true }))
     await testConnection(sampleFormData)
 
-    const invokeArgs = mockInvoke.mock.calls[0][1] as { input: Record<string, unknown> }
+    const invokeArgs = ipc.calls('test_connection')[0] as { input: Record<string, unknown> }
     expect(invokeArgs.input).not.toHaveProperty('name')
     expect(invokeArgs.input).not.toHaveProperty('color')
     expect(invokeArgs.input).not.toHaveProperty('groupId')
@@ -264,54 +268,61 @@ describe('testConnection', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Connection refused'))
+    ipc.override('test_connection', () => {
+      throw new Error('Connection refused')
+    })
     await expect(testConnection(sampleFormData)).rejects.toThrow('Connection refused')
   })
 })
 
 describe('openConnection', () => {
   it('calls invoke with profileId and returns sessionId', async () => {
-    mockInvoke.mockResolvedValue({ sessionId: 'sess-1', serverVersion: '8.0.35' })
+    ipc.override('open_connection', () => ({ sessionId: 'sess-1', serverVersion: '8.0.35' }))
     const result = await openConnection('conn-1')
-    expect(mockInvoke).toHaveBeenCalledWith('open_connection', { payload: { profileId: 'conn-1' } })
+    expect(ipc.calls('open_connection')).toEqual([{ payload: { profileId: 'conn-1' } }])
     expect(result).toEqual({ sessionId: 'sess-1', serverVersion: '8.0.35' })
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Connection failed'))
+    ipc.override('open_connection', () => {
+      throw new Error('Connection failed')
+    })
     await expect(openConnection('conn-1')).rejects.toThrow('Connection failed')
   })
 })
 
 describe('closeConnection', () => {
   it('calls invoke with correct command and connectionId arg', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await closeConnection('conn-1')
-    expect(mockInvoke).toHaveBeenCalledWith('close_connection', { connectionId: 'conn-1' })
+    expect(ipc.calls('close_connection')).toEqual([{ connectionId: 'conn-1' }])
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Not open'))
+    ipc.override('close_connection', () => {
+      throw new Error('Not open')
+    })
     await expect(closeConnection('conn-1')).rejects.toThrow('Not open')
   })
 })
 
 describe('getConnectionStatus', () => {
   it('calls invoke with correct command and connectionId arg', async () => {
-    mockInvoke.mockResolvedValue('connected')
+    ipc.override('get_connection_status', () => 'connected')
     const result = await getConnectionStatus('conn-1')
-    expect(mockInvoke).toHaveBeenCalledWith('get_connection_status', { connectionId: 'conn-1' })
+    expect(ipc.calls('get_connection_status')).toEqual([{ connectionId: 'conn-1' }])
     expect(result).toBe('connected')
   })
 
   it('returns null when connection not found', async () => {
-    mockInvoke.mockResolvedValue(null)
+    ipc.override('get_connection_status', () => null)
     const result = await getConnectionStatus('unknown')
     expect(result).toBeNull()
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Status error'))
+    ipc.override('get_connection_status', () => {
+      throw new Error('Status error')
+    })
     await expect(getConnectionStatus('conn-1')).rejects.toThrow('Status error')
   })
 })

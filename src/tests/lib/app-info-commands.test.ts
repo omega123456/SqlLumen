@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import { getAppInfo } from '../../lib/app-info-commands'
 
 const mockGetAppInfoFn = vi.fn(() => ({
@@ -9,18 +9,9 @@ const mockGetAppInfoFn = vi.fn(() => ({
 }))
 
 beforeEach(() => {
+  ipc.reset()
   mockGetAppInfoFn.mockClear()
-
-  mockIPC((cmd) => {
-    switch (cmd) {
-      case 'get_app_info':
-        return mockGetAppInfoFn()
-      case 'log_frontend':
-        return undefined
-      default:
-        return null
-    }
-  })
+  ipc.override('get_app_info', () => mockGetAppInfoFn())
 })
 
 describe('getAppInfo', () => {
@@ -32,7 +23,7 @@ describe('getAppInfo', () => {
       logDirectory: '/app/logs',
       appVersion: '1.2.3',
     })
-    expect(mockGetAppInfoFn).toHaveBeenCalledTimes(1)
+    expect(ipc.calls('get_app_info')).toEqual([{}])
   })
 
   it('returns AppInfo with rustLogOverride true', async () => {

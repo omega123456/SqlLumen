@@ -10,17 +10,9 @@ import {
 } from '../../lib/ai-commands'
 import type { AiChatParams } from '../../lib/ai-commands'
 
-const mockInvoke = vi.fn()
-
 beforeEach(() => {
   ipc.reset()
-  mockInvoke.mockReset()
-  ipc.override('*', (commandName, args) => {
-    if (typeof commandName === 'string' && commandName.startsWith('plugin:event|')) {
-      return undefined
-    }
-    return mockInvoke(commandName, args)
-  })
+  vi.clearAllMocks()
 })
 
 describe('sendAiChat', () => {
@@ -41,7 +33,7 @@ describe('sendAiChat', () => {
 
     await sendAiChat(params)
 
-    expect(mockInvoke).toHaveBeenCalledWith('ai_chat', {
+    expect(ipc.calls('ai_chat')).toEqual([{
       request: {
         messages: params.messages,
         endpoint: params.endpoint,
@@ -53,11 +45,13 @@ describe('sendAiChat', () => {
         preferResponsesApi: true,
         enableReasoning: true,
       },
-    })
+    }])
   })
 
   it('propagates errors from the backend', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('AI service unavailable'))
+    ipc.override('ai_chat', () => {
+      throw new Error('AI service unavailable')
+    })
 
     await expect(
       sendAiChat({
@@ -81,23 +75,25 @@ describe('sendAiChat', () => {
       streamId: 'stream-defaults',
     })
 
-    expect(mockInvoke).toHaveBeenCalledWith('ai_chat', {
+    expect(ipc.calls('ai_chat')).toEqual([{
       request: expect.objectContaining({
         preferResponsesApi: false,
         enableReasoning: true,
       }),
-    })
+    }])
   })
 })
 
 describe('cancelAiStream', () => {
   it('invokes ai_cancel with the streamId', async () => {
     await cancelAiStream('stream-abc')
-    expect(mockInvoke).toHaveBeenCalledWith('ai_cancel', { streamId: 'stream-abc' })
+    expect(ipc.calls('ai_cancel')).toEqual([{ streamId: 'stream-abc' }])
   })
 
   it('propagates errors from the backend', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('Stream not found'))
+    ipc.override('ai_cancel', () => {
+      throw new Error('Stream not found')
+    })
     await expect(cancelAiStream('stream-missing')).rejects.toThrow('Stream not found')
   })
 })
@@ -143,18 +139,18 @@ describe('listenToAiStream', () => {
 
 describe('listAiModels', () => {
   it('returns models from the backend', async () => {
-    mockInvoke.mockResolvedValueOnce({
+    ipc.override('list_ai_models', () => ({
       models: [
         { id: 'codellama', name: null, category: 'chat' },
         { id: 'deepseek-coder', name: null, category: 'chat' },
       ],
-    })
+    }))
 
     const result = await listAiModels('http://localhost:11434/v1')
 
-    expect(mockInvoke).toHaveBeenCalledWith('list_ai_models', {
+    expect(ipc.calls('list_ai_models')).toEqual([{
       endpoint: 'http://localhost:11434/v1',
-    })
+    }])
     expect(result.models).toEqual([
       { id: 'codellama', name: null, category: 'chat' },
       { id: 'deepseek-coder', name: null, category: 'chat' },
@@ -163,7 +159,9 @@ describe('listAiModels', () => {
   })
 
   it('returns empty models array and logs an error on failure', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('Connection refused'))
+    ipc.override('list_ai_models', () => {
+      throw new Error('Connection refused')
+    })
 
     const result = await listAiModels('http://localhost:9999/v1')
 
@@ -178,7 +176,7 @@ describe('listAiModels', () => {
 
 describe('aiQueryExpand', () => {
   it('invokes ai_query_expand with correct parameter mapping', async () => {
-    mockInvoke.mockResolvedValueOnce({ text: 'SELECT * FROM users' })
+    ipc.override('ai_query_expand', () => ({ text: 'SELECT * FROM users' }))
 
     const req = {
       endpoint: 'http://localhost:11434/v1',
@@ -189,12 +187,14 @@ describe('aiQueryExpand', () => {
 
     const result = await aiQueryExpand(req)
 
-    expect(mockInvoke).toHaveBeenCalledWith('ai_query_expand', { req })
+    expect(ipc.calls('ai_query_expand')).toEqual([{ req }])
     expect(result.text).toBe('SELECT * FROM users')
   })
 
   it('propagates errors from the backend', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('Model not found'))
+    ipc.override('ai_query_expand', () => {
+      throw new Error('Model not found')
+    })
 
     await expect(
       aiQueryExpand({

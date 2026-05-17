@@ -1,26 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import { exportResults } from '../../lib/export-commands'
 
 beforeEach(() => {
+  ipc.reset()
   vi.clearAllMocks()
 })
 
 describe('exportResults', () => {
   it('calls invoke with correct command and parameters', async () => {
     const mockResponse = { bytesWritten: 2048, rowsExported: 10 }
-    mockIPC((cmd, args) => {
-      if (cmd === 'export_results') {
-        expect((args as Record<string, unknown>).connectionId).toBe('conn-1')
-        expect((args as Record<string, unknown>).tabId).toBe('tab-1')
-        const options = (args as Record<string, unknown>).options as Record<string, unknown>
-        expect(options.format).toBe('csv')
-        expect(options.filePath).toBe('/tmp/export.csv')
-        expect(options.includeHeaders).toBe(true)
-        return mockResponse
-      }
-      return null
-    })
+    ipc.override('export_results', () => mockResponse)
 
     const result = await exportResults('conn-1', 'tab-1', {
       format: 'csv',
@@ -28,19 +18,19 @@ describe('exportResults', () => {
       includeHeaders: true,
     })
 
+    const args = ipc.calls('export_results')[0] as Record<string, unknown>
+    expect(args.connectionId).toBe('conn-1')
+    expect(args.tabId).toBe('tab-1')
+    expect(args.options).toEqual({
+      format: 'csv',
+      filePath: '/tmp/export.csv',
+      includeHeaders: true,
+    })
     expect(result).toEqual(mockResponse)
   })
 
   it('passes tableName for sql-insert format', async () => {
-    mockIPC((cmd, args) => {
-      if (cmd === 'export_results') {
-        const options = (args as Record<string, unknown>).options as Record<string, unknown>
-        expect(options.format).toBe('sql-insert')
-        expect(options.tableName).toBe('my_table')
-        return { bytesWritten: 512, rowsExported: 5 }
-      }
-      return null
-    })
+    ipc.override('export_results', () => ({ bytesWritten: 512, rowsExported: 5 }))
 
     const result = await exportResults('conn-1', 'tab-1', {
       format: 'sql-insert',
@@ -49,19 +39,19 @@ describe('exportResults', () => {
       tableName: 'my_table',
     })
 
+    const args = ipc.calls('export_results')[0] as Record<string, unknown>
+    expect(args.options).toEqual({
+      format: 'sql-insert',
+      filePath: '/tmp/export.sql',
+      includeHeaders: true,
+      tableName: 'my_table',
+    })
     expect(result.bytesWritten).toBe(512)
     expect(result.rowsExported).toBe(5)
   })
 
   it('does not include resultIndex when omitted', async () => {
-    let capturedArgs: Record<string, unknown> | undefined
-    mockIPC((cmd, args) => {
-      if (cmd === 'export_results') {
-        capturedArgs = args as Record<string, unknown>
-        return { bytesWritten: 100, rowsExported: 1 }
-      }
-      return null
-    })
+    ipc.override('export_results', () => ({ bytesWritten: 100, rowsExported: 1 }))
 
     await exportResults('conn-1', 'tab-1', {
       format: 'csv',
@@ -69,19 +59,12 @@ describe('exportResults', () => {
       includeHeaders: true,
     })
 
-    expect(capturedArgs).toBeDefined()
-    expect('resultIndex' in capturedArgs!).toBe(false)
+    const args = ipc.calls('export_results')[0] as Record<string, unknown>
+    expect('resultIndex' in args).toBe(false)
   })
 
   it('includes resultIndex when provided', async () => {
-    let capturedArgs: Record<string, unknown> | undefined
-    mockIPC((cmd, args) => {
-      if (cmd === 'export_results') {
-        capturedArgs = args as Record<string, unknown>
-        return { bytesWritten: 100, rowsExported: 1 }
-      }
-      return null
-    })
+    ipc.override('export_results', () => ({ bytesWritten: 100, rowsExported: 1 }))
 
     await exportResults(
       'conn-1',
@@ -94,19 +77,11 @@ describe('exportResults', () => {
       2
     )
 
-    expect(capturedArgs).toBeDefined()
-    expect(capturedArgs!.resultIndex).toBe(2)
+    expect((ipc.calls('export_results')[0] as Record<string, unknown>).resultIndex).toBe(2)
   })
 
   it('does not include rowIndices when omitted', async () => {
-    let capturedArgs: Record<string, unknown> | undefined
-    mockIPC((cmd, args) => {
-      if (cmd === 'export_results') {
-        capturedArgs = args as Record<string, unknown>
-        return { bytesWritten: 100, rowsExported: 1 }
-      }
-      return null
-    })
+    ipc.override('export_results', () => ({ bytesWritten: 100, rowsExported: 1 }))
 
     await exportResults('conn-1', 'tab-1', {
       format: 'csv',
@@ -114,19 +89,12 @@ describe('exportResults', () => {
       includeHeaders: true,
     })
 
-    expect(capturedArgs).toBeDefined()
-    expect('rowIndices' in capturedArgs!).toBe(false)
+    const args = ipc.calls('export_results')[0] as Record<string, unknown>
+    expect('rowIndices' in args).toBe(false)
   })
 
   it('includes rowIndices when provided', async () => {
-    let capturedArgs: Record<string, unknown> | undefined
-    mockIPC((cmd, args) => {
-      if (cmd === 'export_results') {
-        capturedArgs = args as Record<string, unknown>
-        return { bytesWritten: 100, rowsExported: 3 }
-      }
-      return null
-    })
+    ipc.override('export_results', () => ({ bytesWritten: 100, rowsExported: 3 }))
 
     await exportResults(
       'conn-1',
@@ -140,7 +108,8 @@ describe('exportResults', () => {
       [1, 3, 5]
     )
 
-    expect(capturedArgs).toBeDefined()
-    expect(capturedArgs!.rowIndices).toEqual([1, 3, 5])
+    expect((ipc.calls('export_results')[0] as Record<string, unknown>).rowIndices).toEqual([
+      1, 3, 5,
+    ])
   })
 })

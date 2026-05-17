@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import {
   listExportableObjects,
   startSqlDump,
@@ -16,6 +16,7 @@ import type {
 } from '../../lib/sql-dump-commands'
 
 beforeEach(() => {
+  ipc.reset()
   vi.clearAllMocks()
 })
 
@@ -30,15 +31,10 @@ describe('listExportableObjects', () => {
         ],
       },
     ]
-    mockIPC((cmd, args) => {
-      if (cmd === 'list_exportable_objects') {
-        expect((args as Record<string, unknown>).connectionId).toBe('conn-1')
-        return mockResponse
-      }
-      return null
-    })
+    ipc.override('list_exportable_objects', () => mockResponse)
 
     const result = await listExportableObjects('conn-1')
+    expect(ipc.calls('list_exportable_objects')).toEqual([{ connectionId: 'conn-1' }])
     expect(result).toEqual(mockResponse)
     expect(result[0].tables).toHaveLength(2)
   })
@@ -58,15 +54,10 @@ describe('startSqlDump', () => {
         useTransaction: true,
       },
     }
-    mockIPC((cmd, args) => {
-      if (cmd === 'start_sql_dump') {
-        expect((args as Record<string, unknown>).input).toEqual(input)
-        return 'job-123'
-      }
-      return null
-    })
+    ipc.override('start_sql_dump', () => 'job-123')
 
     const jobId = await startSqlDump(input)
+    expect(ipc.calls('start_sql_dump')).toEqual([{ input }])
     expect(jobId).toBe('job-123')
   })
 })
@@ -82,15 +73,10 @@ describe('getDumpProgress', () => {
       bytesWritten: 1024,
       errorMessage: null,
     }
-    mockIPC((cmd, args) => {
-      if (cmd === 'get_dump_progress') {
-        expect((args as Record<string, unknown>).jobId).toBe('job-123')
-        return mockProgress
-      }
-      return null
-    })
+    ipc.override('get_dump_progress', () => mockProgress)
 
     const result = await getDumpProgress('job-123')
+    expect(ipc.calls('get_dump_progress')).toEqual([{ jobId: 'job-123' }])
     expect(result).toEqual(mockProgress)
     expect(result.status).toBe('running')
   })
@@ -98,18 +84,12 @@ describe('getDumpProgress', () => {
 
 describe('startSqlImport', () => {
   it('calls invoke with correct command and parameters', async () => {
-    mockIPC((cmd, args) => {
-      if (cmd === 'start_sql_import') {
-        const input = (args as Record<string, unknown>).input as Record<string, unknown>
-        expect(input.connectionId).toBe('conn-1')
-        expect(input.filePath).toBe('/tmp/import.sql')
-        expect(input.stopOnError).toBe(true)
-        return 'import-job-456'
-      }
-      return null
-    })
+    ipc.override('start_sql_import', () => 'import-job-456')
 
     const jobId = await startSqlImport('conn-1', '/tmp/import.sql', true)
+    expect(ipc.calls('start_sql_import')).toEqual([
+      { input: { connectionId: 'conn-1', filePath: '/tmp/import.sql', stopOnError: true } },
+    ])
     expect(jobId).toBe('import-job-456')
   })
 })
@@ -125,15 +105,10 @@ describe('getImportProgress', () => {
       stopOnError: false,
       cancelRequested: false,
     }
-    mockIPC((cmd, args) => {
-      if (cmd === 'get_import_progress') {
-        expect((args as Record<string, unknown>).jobId).toBe('import-job-456')
-        return mockProgress
-      }
-      return null
-    })
+    ipc.override('get_import_progress', () => mockProgress)
 
     const result = await getImportProgress('import-job-456')
+    expect(ipc.calls('get_import_progress')).toEqual([{ jobId: 'import-job-456' }])
     expect(result).toEqual(mockProgress)
     expect(result.status).toBe('completed')
   })
@@ -141,14 +116,9 @@ describe('getImportProgress', () => {
 
 describe('cancelImport', () => {
   it('calls invoke with correct command', async () => {
-    mockIPC((cmd, args) => {
-      if (cmd === 'cancel_import') {
-        expect((args as Record<string, unknown>).jobId).toBe('import-job-456')
-        return undefined
-      }
-      return null
-    })
+    ipc.override('cancel_import', () => undefined)
 
     await cancelImport('import-job-456')
+    expect(ipc.calls('cancel_import')).toEqual([{ jobId: 'import-job-456' }])
   })
 })
