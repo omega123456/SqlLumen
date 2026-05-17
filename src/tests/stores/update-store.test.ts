@@ -346,12 +346,14 @@ describe('useUpdateStore', () => {
     expect(mockRelaunch).not.toHaveBeenCalled()
   })
 
-  it('ignores checks while update is already available', async () => {
+  it('allows re-checks when update is already available to catch newer versions', async () => {
     useUpdateStore.setState({ status: 'available', availableVersion: '1.2.3' })
+    mockCheck.mockResolvedValueOnce({ version: '1.2.4' })
 
     await useUpdateStore.getState().checkForUpdate(false)
 
-    expect(mockCheck).not.toHaveBeenCalled()
+    expect(mockCheck).toHaveBeenCalled()
+    expect(useUpdateStore.getState().availableVersion).toBe('1.2.4')
   })
 
   it('does not create interval if periodic check was stopped during initial await', async () => {

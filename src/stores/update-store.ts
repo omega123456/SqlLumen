@@ -177,7 +177,6 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
     if (
       state.status === 'checking' ||
       state.status === 'installing' ||
-      state.status === 'available' ||
       state.status === 'ready-to-finish'
     ) {
       return

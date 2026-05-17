@@ -112,6 +112,10 @@ export function UpdatesSettings() {
         }
       })
 
+    if (status === 'available') {
+      void checkForUpdate(false)
+    }
+
     return () => {
       cancelled = true
     }
