@@ -1,1 +1,1 @@
- Added option to display table view under the query editor tabs
+See release assets for platform installers.
