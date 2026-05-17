@@ -182,21 +182,25 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
       return
     }
 
+    const wasAvailable = state.status === 'available'
+
     clearResetStatusTimer()
 
     if (!hasTauriApis()) {
-      resetUpdateState(set)
+      if (!wasAvailable) resetUpdateState(set)
       return
     }
 
-    set({
-      status: 'checking',
-      availableVersion: null,
-      downloadProgress: 0,
-      errorMessage: null,
-      updateObject: null,
-      ...getPlatformState(get().currentPlatform, null),
-    })
+    if (!wasAvailable) {
+      set({
+        status: 'checking',
+        availableVersion: null,
+        downloadProgress: 0,
+        errorMessage: null,
+        updateObject: null,
+        ...getPlatformState(get().currentPlatform, null),
+      })
+    }
 
     try {
       const update = (await check()) as Update | null
@@ -213,6 +217,10 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
         return
       }
 
+      if (wasAvailable) {
+        return
+      }
+
       if (manual) {
         scheduleUpToDateReset(set)
         return
@@ -225,6 +233,10 @@ export const useUpdateStore = create<UpdateState>()((set, get) => ({
         'error',
         `[update-store] ${manual ? 'Manual' : 'Automatic'} update check failed: ${message}`
       )
+
+      if (wasAvailable) {
+        return
+      }
 
       if (manual) {
         set({

@@ -356,6 +356,17 @@ describe('useUpdateStore', () => {
     expect(useUpdateStore.getState().availableVersion).toBe('1.2.4')
   })
 
+  it('keeps cached update when re-check from available returns null', async () => {
+    useUpdateStore.setState({ status: 'available', availableVersion: '1.2.3' })
+    mockCheck.mockResolvedValueOnce(null)
+
+    await useUpdateStore.getState().checkForUpdate(false)
+
+    expect(mockCheck).toHaveBeenCalled()
+    expect(useUpdateStore.getState().status).toBe('available')
+    expect(useUpdateStore.getState().availableVersion).toBe('1.2.3')
+  })
+
   it('does not create interval if periodic check was stopped during initial await', async () => {
     useSettingsStore.setState({ settings: { 'updates.checkInterval': '1h' } })
 
