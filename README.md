@@ -41,8 +41,6 @@ https://github.com/user-attachments/assets/839eface-faa6-4731-aa75-db1fa03ae11c
 - **AI Assistant** — in-app assistant workflows for SQL tasks and product guidance, with per-tab panel state preserved across workspace tab switches, longer local-model timeouts (~5+ minutes for generation), same-tab schema-context reuse, stable hidden schema/SQL context prefixes for better follow-up prompt-cache reuse on compatible local providers, and OpenAI-compatible Responses API chaining with automatic chat-completions fallback where supported. Use `/remember <text>` in the AI chat to save per-connection memories that persist across sessions and improve future AI responses. Manage saved memories in AI Settings.
 - **Native desktop app** — smaller footprint than typical Electron stacks; bundles via Tauri
 
-> **Upgrade note:** Upgrading to this version triggers a one-time v2 schema index rebuild. The first AI-assisted query after upgrading will take slightly longer while the index is rebuilt with enriched metadata (row counts, table/column comments, FK edge graph).
-
 ## Stack
 
 | Layer         | Technologies                                                                                                |
