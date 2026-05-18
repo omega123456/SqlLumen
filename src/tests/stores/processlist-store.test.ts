@@ -175,7 +175,7 @@ describe('processlist-store', () => {
           String((call as Record<string, unknown>)?.message ?? '').includes('Auto-refresh failed')
       )
       expect(hasAutoRefreshWarning).toBe(true)
-      expect(useToastStore.getState().toasts.some((t) => t.variant === 'error')).toBe(true)
+      await expectToast('error', 'Process list refresh failed')
 
       // Second call within cooldown should not show toast again
       const toastsBefore = useToastStore.getState().toasts.length

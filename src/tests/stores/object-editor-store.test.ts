@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
-import { ipc } from '../ipc-mock'
+import { ipc, expectToast } from '../ipc-mock'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useSchemaStore } from '../../stores/schema-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
@@ -195,9 +195,7 @@ describe('ObjectEditorStore', () => {
       const tab = useObjectEditorStore.getState().tabs['tab-1']
       expect(tab.originalContent).toBe('modified body')
       expect(tab.isSaving).toBe(false)
-      // Check success toast was shown
-      const toasts = useToastStore.getState().toasts
-      expect(toasts.some((t) => t.variant === 'success')).toBe(true)
+      await expectToast('success', 'saved successfully')
     })
 
     it('sets savedObjectName in create mode', async () => {
@@ -256,8 +254,7 @@ describe('ObjectEditorStore', () => {
       expect(tab.content).toBe('bad content')
       expect(tab.originalContent).toBe('')
       expect(tab.isSaving).toBe(false)
-      const toasts = useToastStore.getState().toasts
-      expect(toasts.some((t) => t.variant === 'error')).toBe(true)
+      await expectToast('error', 'Syntax error near BEGIN')
     })
 
     it('shows error toast on IPC error', async () => {
@@ -273,8 +270,7 @@ describe('ObjectEditorStore', () => {
 
       const tab = useObjectEditorStore.getState().tabs['tab-1']
       expect(tab.isSaving).toBe(false)
-      const toasts = useToastStore.getState().toasts
-      expect(toasts.some((t) => t.variant === 'error' && t.message === 'Network error')).toBe(true)
+      await expectToast('error', 'Network error')
     })
 
     it('refreshes schema category on success', async () => {
