@@ -1,28 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { AiSetupRequired } from '../../../components/ai-panel/AiSetupRequired'
 import { useSettingsStore } from '../../../stores/settings-store'
-
-function setupMockIPC() {
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    if (cmd === 'get_setting') return null
-    if (cmd === 'set_setting') return undefined
-    if (cmd === 'get_all_settings') return {}
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
-}
 
 let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.clearAllMocks()
-  setupMockIPC()
   useSettingsStore.setState({
     settings: {},
     pendingChanges: {},

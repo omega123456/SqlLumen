@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { HistoryFavoritesTab } from '../../../components/history-favorites/HistoryFavoritesTab'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useHistoryStore } from '../../../stores/history-store'
@@ -75,19 +74,6 @@ beforeEach(() => {
     error: null,
   })
   vi.clearAllMocks()
-
-  mockIPC((cmd) => {
-    switch (cmd) {
-      case 'list_history':
-        return { entries: [], total: 0, page: 1, pageSize: 50 }
-      case 'list_favorites':
-        return []
-      case 'log_frontend':
-        return undefined
-      default:
-        return null
-    }
-  })
 })
 
 describe('HistoryFavoritesTab', () => {

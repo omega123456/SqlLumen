@@ -1,22 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ExportDialog from '../../../components/dialogs/ExportDialog'
-
-// Mock the export-commands module
-const mockExportResults = vi.fn()
-vi.mock('../../../lib/export-commands', () => ({
-  exportResults: (...args: unknown[]) => mockExportResults(...args),
-}))
-
-// Mock @tauri-apps/plugin-dialog
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  save: vi.fn().mockResolvedValue('/mock/path/export.csv'),
-}))
+import { ipc } from '../../ipc-mock'
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  mockExportResults.mockResolvedValue({ bytesWritten: 1024, rowsExported: 5 })
+  // Default: export_results returns success; plugin:dialog|save returns a path
+  ipc.override('export_results', () => ({ bytesWritten: 1024, rowsExported: 5 }))
+  ipc.override('plugin:dialog|save', () => '/mock/path/export.csv')
 })
 
 const EXPORT_FORMAT_REGEX: Record<'csv' | 'json' | 'xlsx' | 'sql-insert', RegExp> = {
@@ -49,21 +40,44 @@ async function pickExportFormat(
 }
 
 async function openExportFormatListbox(user: ReturnType<typeof userEvent.setup>) {
-  const trigger = screen.getByTestId('export-format-select')
+  // Get the trigger before clicking; check if already expanded to avoid toggle-close.
+  let trigger = screen.getByTestId('export-format-select')
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  if (trigger.getAttribute('aria-expanded') !== 'true') {
     await user.click(trigger)
-
-    try {
-      return await screen.findByRole('listbox', undefined, { timeout: 1_000 })
-    } catch (error) {
-      if (attempt === 1) {
-        throw error
-      }
-    }
   }
 
-  throw new Error('Export format listbox did not open')
+  // After user.click, React has processed the click handler synchronously (state: open=true).
+  // Wrap in act() to flush all pending state updates and layout effects, ensuring the portal
+  // <ul> is committed to document.body before we access it. This avoids the race where
+  // aria-expanded becomes 'true' but the portal hasn't been committed yet under CPU load.
+  await act(async () => {})
+
+  // Re-query after act() in case the component re-mounted
+  trigger = screen.getByTestId('export-format-select')
+
+  if (trigger.getAttribute('aria-expanded') !== 'true') {
+    // Retry once if the dropdown didn't open (very rare under extreme CPU pressure)
+    await user.click(trigger)
+    await act(async () => {})
+    trigger = screen.getByTestId('export-format-select')
+  }
+
+  // Use aria-controls to get the listbox ID and retrieve the element directly.
+  // getElementById is O(1) and avoids findByRole's setInterval polling which can race
+  // under parallel load.
+  const listboxId = trigger.getAttribute('aria-controls')
+  if (!listboxId) {
+    throw new Error('Export format trigger has no aria-controls attribute')
+  }
+
+  const listbox = document.getElementById(listboxId)
+  if (!listbox) {
+    // Fallback to findByRole in case of portal timing edge case
+    return await screen.findByRole('listbox', undefined, { timeout: 3_000 })
+  }
+
+  return listbox
 }
 
 /** jsdom + focus trap: keyboard typing into the destination field is unreliable; drive controlled input directly. */
@@ -138,18 +152,18 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        expect(mockExportResults).toHaveBeenCalledWith(
-          'conn-1',
-          'tab-1',
-          {
+        const calls = ipc.calls('export_results')
+        expect(calls).toHaveLength(1)
+        const args = calls[0] as Record<string, unknown>
+        expect(args).toMatchObject({
+          connectionId: 'conn-1',
+          tabId: 'tab-1',
+          options: {
             format: 'csv',
             filePath: '/tmp/export.csv',
             includeHeaders: true,
-            tableName: undefined,
           },
-          undefined,
-          undefined
-        )
+        })
       },
       { timeout: 5000 }
     )
@@ -177,16 +191,14 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        expect(mockExportResults).toHaveBeenCalledWith(
-          'conn-1',
-          'tab-1',
-          expect.objectContaining({
-            format: 'sql-insert',
-            tableName: 'exported_results',
-          }),
-          undefined,
-          undefined
-        )
+        const calls = ipc.calls('export_results')
+        expect(calls).toHaveLength(1)
+        const args = calls[0] as Record<string, unknown>
+        const options = args.options as Record<string, unknown>
+        expect(options).toMatchObject({
+          format: 'sql-insert',
+          tableName: 'exported_results',
+        })
       },
       { timeout: 5000 }
     )
@@ -202,9 +214,9 @@ describe('ExportDialog', () => {
   })
 
   it('shows error display when export fails', async () => {
-    mockExportResults.mockImplementation(() =>
-      Promise.reject(new Error('Export failed: disk full'))
-    )
+    ipc.override('export_results', () => {
+      throw new Error('Export failed: disk full')
+    })
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
@@ -220,10 +232,8 @@ describe('ExportDialog', () => {
   }, 15000)
 
   it('export button is disabled during export (loading state)', async () => {
-    // Make exportResults hang indefinitely
-    mockExportResults.mockImplementation(
-      () => new Promise(() => {}) // never resolves
-    )
+    // Make export_results hang indefinitely
+    ipc.override('export_results', () => new Promise(() => {}))
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
@@ -294,15 +304,11 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        expect(mockExportResults).toHaveBeenCalledWith(
-          'conn-1',
-          'tab-1',
-          expect.objectContaining({
-            includeHeaders: false,
-          }),
-          undefined,
-          undefined
-        )
+        const calls = ipc.calls('export_results')
+        expect(calls).toHaveLength(1)
+        const args = calls[0] as Record<string, unknown>
+        const options = args.options as Record<string, unknown>
+        expect(options).toMatchObject({ includeHeaders: false })
       },
       { timeout: 5000 }
     )
@@ -342,7 +348,7 @@ describe('ExportDialog', () => {
       { timeout: 5000 }
     )
     // Built-in exportResults should NOT have been called
-    expect(mockExportResults).not.toHaveBeenCalled()
+    expect(ipc.calls('export_results')).toHaveLength(0)
     // Should close on success
     await waitFor(
       () => {
@@ -372,7 +378,9 @@ describe('ExportDialog', () => {
   })
 
   it('shows error message for non-Error thrown value', async () => {
-    mockExportResults.mockRejectedValue('string error')
+    ipc.override('export_results', () => {
+      throw 'string error'
+    })
     const user = userEvent.setup()
     render(<ExportDialog {...defaultProps} />)
 
@@ -396,7 +404,7 @@ describe('ExportDialog', () => {
     expect(exportBtn).toBeDisabled()
     await user.click(exportBtn)
 
-    expect(mockExportResults).not.toHaveBeenCalled()
+    expect(ipc.calls('export_results')).toHaveLength(0)
   })
 
   it('close X button calls onClose', async () => {
@@ -439,16 +447,13 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        expect(mockExportResults).toHaveBeenCalledWith(
-          'conn-1',
-          'tab-1',
-          expect.objectContaining({
-            format: 'sql-insert',
-            tableName: 'my_table',
-          }),
-          undefined,
-          undefined
-        )
+        const calls = ipc.calls('export_results')
+        expect(calls).toHaveLength(1)
+        const options = (calls[0] as Record<string, unknown>).options as Record<string, unknown>
+        expect(options).toMatchObject({
+          format: 'sql-insert',
+          tableName: 'my_table',
+        })
       },
       { timeout: 5000 }
     )
@@ -525,16 +530,16 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        expect(mockExportResults).toHaveBeenCalledWith(
-          'conn-1',
-          'tab-1',
-          expect.objectContaining({
+        const calls = ipc.calls('export_results')
+        expect(calls).toHaveLength(1)
+        const args = calls[0] as Record<string, unknown>
+        expect(args).toMatchObject({
+          options: {
             format: 'csv',
             filePath: '/tmp/filtered-export.csv',
-          }),
-          undefined,
-          [0, 2, 5]
-        )
+          },
+          rowIndices: [0, 2, 5],
+        })
       },
       { timeout: 5000 }
     )
@@ -549,13 +554,10 @@ describe('ExportDialog', () => {
 
     await waitFor(
       () => {
-        expect(mockExportResults).toHaveBeenCalledWith(
-          'conn-1',
-          'tab-1',
-          expect.objectContaining({ format: 'csv' }),
-          undefined,
-          undefined
-        )
+        const calls = ipc.calls('export_results')
+        expect(calls).toHaveLength(1)
+        const args = calls[0] as Record<string, unknown>
+        expect(args.options).toMatchObject({ format: 'csv' })
       },
       { timeout: 5000 }
     )

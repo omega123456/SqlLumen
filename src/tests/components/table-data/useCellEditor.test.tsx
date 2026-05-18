@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import type { TableDataColumnMeta } from '../../../types/schema'
@@ -7,18 +7,6 @@ import type {
   CellEditorParams,
   CellEditorCallbacks,
 } from '../../../components/table-data/useCellEditor'
-
-// Mock date-utils — keep real implementations except getTodayMysqlString
-vi.mock('../../../lib/date-utils', async () => {
-  const actual =
-    await vi.importActual<typeof import('../../../lib/date-utils')>('../../../lib/date-utils')
-  return {
-    ...actual,
-    getTodayMysqlString: vi.fn(() => '2025-06-15 10:00:00'),
-  }
-})
-
-import { getTodayMysqlString } from '../../../lib/date-utils'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -138,7 +126,13 @@ function setupStore() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2025-06-15T10:00:00Z'))
   useTableDataStore.setState({ tabs: {} })
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('useCellEditor', () => {
@@ -222,8 +216,7 @@ describe('useCellEditor', () => {
     // Start as null, toggle off
     fireEvent.click(screen.getByTestId('toggle-null'))
 
-    expect(getTodayMysqlString).toHaveBeenCalledWith('DATETIME')
-    expect(getEditorValue()).toBe('2025-06-15 10:00:00')
+    expect(getEditorValue()).toBe('2025-06-15 11:00:00')
   })
 
   it('handleToggleNull: toggle off for non-temporal sets empty string', () => {
@@ -262,7 +255,7 @@ describe('useCellEditor', () => {
 
     // Toggle null off (sets a value)
     fireEvent.click(screen.getByTestId('toggle-null'))
-    expect(getEditorValue()).toBe('2025-06-15 10:00:00')
+    expect(getEditorValue()).toBe('2025-06-15 11:00:00')
 
     // Restore
     fireEvent.click(screen.getByTestId('restore'))

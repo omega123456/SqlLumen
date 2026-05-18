@@ -57,6 +57,7 @@ pnpm typecheck          # tsc --noEmit
 - **Never add `istanbul`/`c8` ignore comments or widen `exclude` lists** to hide coverage gaps without explicit user approval naming what to exclude.
 - **Package manager: `pnpm` only.** Do not use npm or yarn.
 - **Every new MySQL query path must use the shared query logger wrappers.** Before executing SQL, call `src-tauri/src/mysql/query_log.rs` helpers (at minimum `log_outgoing_sql`; plus row/execute/error helpers as applicable) so all new query traffic appears in debug logs.
+- **Vitest IPC mocking is mandatory and centralized.** All Vitest tests that touch Tauri IPC must use the shared harness in `src/tests/ipc-mock.ts` plus `ipc.override(...)` / `ipc.emit(...)`. Do not create ad hoc IPC mocks, per-test `mockIPC(...)` calls, direct `vi.mock()` stubs for `@tauri-apps/api/*` IPC modules, or direct mocks of `src/lib/*-commands.ts` command wrappers. If a command is missing from the default fixtures, add it to `src/tests/fixtures.ts` or override it in the test. The intentional missing-mock failure is part of the contract and must not be bypassed.
 
 ---
 
@@ -98,7 +99,7 @@ src/
     object-browser/
   styles/            # tokens.css, global.css, data-grid-precision.css
   types/             # Shared TypeScript types (connection.ts, schema.ts, …)
-  tests/             # Mirrors src/ layout; setup.ts mocks Tauri IPC + Monaco + polyfills
+  tests/             # Mirrors src/ layout; setup.ts wires the shared IPC harness plus Monaco/polyfills
 
 src-tauri/
   src/commands/      # Tauri command handlers (thin wrappers call *_impl)
@@ -154,13 +155,14 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
 ### Vitest (TypeScript)
 
 - Test files mirror source: `src/components/Foo.tsx` → `src/tests/components/Foo.test.tsx`.
-- Setup file `src/tests/setup.ts` provides: `mockIPC` for Tauri IPC, Monaco mocks, jsdom polyfills (ResizeObserver, matchMedia, HTMLDialogElement). A missing mock throws `[vitest] Unmocked Tauri IPC command: <cmd>` — add new commands to the `mockIPC` handler in each test.
+- Setup file `src/tests/setup.ts` provides Monaco mocks and jsdom polyfills (`ResizeObserver`, `matchMedia`, `HTMLDialogElement`) and wires Vitest IPC through the shared `src/tests/ipc-mock.ts` harness. A missing IPC fixture throws `[vitest] Unmocked Tauri IPC command: <cmd>`.
+- Vitest IPC tests must always go through the shared `src/tests/ipc-mock.ts` harness. Use `ipc.override(...)` for per-test behavior and `ipc.emit(...)` for events. Do not bypass the harness with inline `mockIPC(...)`, ad hoc `vi.mock()` stubs, per-test IPC handlers, or direct wrapper mocks. If a test needs a new IPC response, extend `src/tests/fixtures.ts` or override only the specific command in that test.
 - After `render`, use `waitFor` / `findBy*` for async-mounted state; do not assert synchronously right after render.
 - Avoid React `act(...)` warnings in every test run:
   - Use `const user = userEvent.setup()` and await interactions (`await user.click(...)`) instead of fire-and-forget interaction calls.
   - Wrap direct external store mutations (`useXStore.setState(...)`) in `act(() => { ... })` whenever components from that store may be mounted.
   - If mount effects schedule async updates, wait for the resulting UI/store state with `waitFor` before the test exits.
-- When a test drives an error path that logs to the console, spy and mock it: `vi.spyOn(console, 'error').mockImplementation(() => {})` and call `mockRestore()` in `afterEach`/`finally`. Still assert on observable behavior (UI, toasts, etc.).
+  - When a test change introduces or exposes React `act(...)` warnings, treat that as unfinished work and clean the warnings up before completing the task.
 - Tests ship alongside features in the same change set — not deferred.
 
 ### Rust

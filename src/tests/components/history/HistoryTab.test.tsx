@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { HistoryTab } from '../../../components/history/HistoryTab'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useHistoryStore } from '../../../stores/history-store'
@@ -96,17 +95,6 @@ beforeEach(() => {
   _resetTabIdCounter()
   _resetQueryTabCounter()
   vi.clearAllMocks()
-
-  mockIPC((cmd) => {
-    switch (cmd) {
-      case 'list_history':
-        return { entries: [], total: 0, page: 1, pageSize: 50 }
-      case 'log_frontend':
-        return undefined
-      default:
-        return null
-    }
-  })
 })
 
 describe('HistoryTab', () => {

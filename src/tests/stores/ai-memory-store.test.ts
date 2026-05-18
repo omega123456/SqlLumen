@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { listen } from '@tauri-apps/api/event'
-import { reembedMemories } from '../../lib/ai-memory-commands'
-import { logFrontend } from '../../lib/app-log-commands'
-import { hasTauriApis } from '../../lib/tauri-env'
+import { ipc } from '../ipc-mock'
 import {
   useAiMemoryStore,
   initAiMemoryStore,
@@ -10,33 +7,6 @@ import {
 } from '../../stores/ai-memory-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useConnectionStore } from '../../stores/connection-store'
-
-// Keep reference to the listen callback so we can simulate events
-let listenCallback: ((event: { payload: Record<string, unknown> }) => void) | null = null
-
-vi.mock('../../lib/tauri-env', () => ({
-  hasTauriApis: vi.fn(() => true),
-}))
-
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn((_eventName: string, cb: (event: unknown) => void) => {
-    listenCallback = cb as typeof listenCallback
-    return Promise.resolve(() => {})
-  }),
-}))
-
-vi.mock('../../lib/ai-memory-commands', () => ({
-  reembedMemories: vi.fn(() => Promise.resolve()),
-}))
-
-vi.mock('../../lib/app-log-commands', () => ({
-  logFrontend: vi.fn(),
-}))
-
-const mockedListen = vi.mocked(listen)
-const mockedHasTauriApis = vi.mocked(hasTauriApis)
-const mockedReembedMemories = vi.mocked(reembedMemories)
-const mockedLogFrontend = vi.mocked(logFrontend)
 
 describe('ai-memory-store', () => {
   beforeEach(() => {
@@ -79,58 +49,93 @@ describe('initAiMemoryStore', () => {
     vi.useFakeTimers()
     _resetAiMemoryStoreForTest()
     useAiMemoryStore.setState({ reembedStatus: {} })
-    listenCallback = null
-    mockedListen.mockClear()
-    mockedHasTauriApis.mockReturnValue(true)
-    mockedReembedMemories.mockClear()
-    mockedReembedMemories.mockResolvedValue(undefined as never)
-    mockedLogFrontend.mockClear()
+    ipc.override('reembed_memories', () => undefined)
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it('is idempotent — second call is a no-op', () => {
+  it('is idempotent — second call is a no-op', async () => {
+    let updates = 0
+    const unsubscribe = useAiMemoryStore.subscribe(() => {
+      updates += 1
+    })
+
     initAiMemoryStore()
-    const callsAfterFirst = mockedListen.mock.calls.length
     initAiMemoryStore()
-    expect(mockedListen.mock.calls.length).toBe(callsAfterFirst)
+
+    await ipc.emit('ai-memory-reembed-progress', {
+      connectionId: 'c1',
+      phase: 'embedding',
+      done: 1,
+      total: 5,
+    })
+
+    unsubscribe()
+
+    expect(updates).toBe(1)
+    expect(useAiMemoryStore.getState().reembedStatus['c1']).toEqual({
+      status: 'running',
+      done: 1,
+      total: 5,
+    })
   })
 
-  it('registers event listener via listen', () => {
+  it('registers event listener via listen — verifies via event delivery', async () => {
     initAiMemoryStore()
-    expect(mockedListen).toHaveBeenCalledWith('ai-memory-reembed-progress', expect.any(Function))
+
+    // If no listener was registered, emit would not update state
+    await ipc.emit('ai-memory-reembed-progress', {
+      connectionId: 'c2',
+      phase: 'embedding',
+      done: 3,
+      total: 7,
+    })
+    const status = useAiMemoryStore.getState().reembedStatus['c2']
+    expect(status).toEqual({ status: 'running', done: 3, total: 7 })
   })
 
-  it('handles embedding phase event', () => {
+  it('handles embedding phase event', async () => {
     initAiMemoryStore()
-    expect(listenCallback).not.toBeNull()
-    listenCallback!({
-      payload: { connectionId: 'c1', phase: 'embedding', done: 2, total: 5 },
+    await ipc.emit('ai-memory-reembed-progress', {
+      connectionId: 'c1',
+      phase: 'embedding',
+      done: 2,
+      total: 5,
     })
     const status = useAiMemoryStore.getState().reembedStatus['c1']
     expect(status).toEqual({ status: 'running', done: 2, total: 5 })
   })
 
-  it('handles error phase event', () => {
+  it('handles error phase event', async () => {
     initAiMemoryStore()
-    listenCallback!({
-      payload: { connectionId: 'c1', phase: 'error', done: 0, total: 0, error: 'test error' },
+    await ipc.emit('ai-memory-reembed-progress', {
+      connectionId: 'c1',
+      phase: 'error',
+      done: 0,
+      total: 0,
+      error: 'test error',
     })
     const status = useAiMemoryStore.getState().reembedStatus['c1']
     expect(status).toEqual({ status: 'idle', done: 0, total: 0 })
   })
 
-  it('handles done phase event with delayed reset', () => {
+  it('handles done phase event with delayed reset', async () => {
     initAiMemoryStore()
-    listenCallback!({
-      payload: { connectionId: 'c1', phase: 'embedding', done: 5, total: 5 },
+    await ipc.emit('ai-memory-reembed-progress', {
+      connectionId: 'c1',
+      phase: 'embedding',
+      done: 5,
+      total: 5,
     })
     expect(useAiMemoryStore.getState().reembedStatus['c1']?.status).toBe('running')
 
-    listenCallback!({
-      payload: { connectionId: 'c1', phase: 'done', done: 5, total: 5 },
+    await ipc.emit('ai-memory-reembed-progress', {
+      connectionId: 'c1',
+      phase: 'done',
+      done: 5,
+      total: 5,
     })
     // Still running — timer hasn't fired
     expect(useAiMemoryStore.getState().reembedStatus['c1']?.status).toBe('running')
@@ -140,23 +145,44 @@ describe('initAiMemoryStore', () => {
     expect(status).toEqual({ status: 'idle', done: 0, total: 0 })
   })
 
-  it('cancelResetTimer clears previous done timer on new event', () => {
+  it('cancelResetTimer clears previous done timer on new event', async () => {
     initAiMemoryStore()
-    listenCallback!({
-      payload: { connectionId: 'c1', phase: 'done', done: 5, total: 5 },
+    await ipc.emit('ai-memory-reembed-progress', {
+      connectionId: 'c1',
+      phase: 'done',
+      done: 5,
+      total: 5,
     })
-    listenCallback!({
-      payload: { connectionId: 'c1', phase: 'embedding', done: 1, total: 10 },
+    await ipc.emit('ai-memory-reembed-progress', {
+      connectionId: 'c1',
+      phase: 'embedding',
+      done: 1,
+      total: 10,
     })
     vi.advanceTimersByTime(3000)
     const status = useAiMemoryStore.getState().reembedStatus['c1']
     expect(status).toEqual({ status: 'running', done: 1, total: 10 })
   })
 
-  it('skips listen when hasTauriApis is false', () => {
-    mockedHasTauriApis.mockReturnValue(false)
+  it('skips listen when hasTauriApis is false — event does not update state', async () => {
+    // Remove __TAURI_INTERNALS__ to simulate non-Tauri environment
+    const saved = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+
     initAiMemoryStore()
-    expect(mockedListen).not.toHaveBeenCalled()
+
+    // Restore TAURI_INTERNALS so ipc.emit works correctly for the emit call
+    ;(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = saved
+
+    // Even though we emit the event, no listener was registered so state should not change
+    await ipc.emit('ai-memory-reembed-progress', {
+      connectionId: 'c1',
+      phase: 'embedding',
+      done: 2,
+      total: 5,
+    })
+    // Since no listener was registered, the state should remain empty
+    expect(useAiMemoryStore.getState().reembedStatus['c1']).toBeUndefined()
   })
 
   it('model change triggers reembed for saved connections', async () => {
@@ -178,7 +204,9 @@ describe('initAiMemoryStore', () => {
     } as never)
 
     await new Promise((r) => setTimeout(r, 50))
-    expect(mockedReembedMemories).toHaveBeenCalledWith({ connectionId: 'c1' })
+    const reembedCalls = ipc.calls('reembed_memories')
+    expect(reembedCalls.length).toBeGreaterThan(0)
+    expect((reembedCalls[0] as Record<string, unknown>)?.connectionId).toBe('c1')
   })
 
   it('model change does not trigger when new model is null', async () => {
@@ -190,12 +218,13 @@ describe('initAiMemoryStore', () => {
 
     initAiMemoryStore()
     // Clear any calls from prior subscription fires
-    mockedReembedMemories.mockClear()
+    ipc.reset()
+    ipc.override('reembed_memories', () => undefined)
 
     useSettingsStore.setState({ settings: {} } as never)
 
     await new Promise((r) => setTimeout(r, 50))
-    expect(mockedReembedMemories).not.toHaveBeenCalled()
+    expect(ipc.calls('reembed_memories').length).toBe(0)
   })
 
   it('model change fetches connections if savedConnections is empty', async () => {
@@ -225,12 +254,16 @@ describe('initAiMemoryStore', () => {
 
     await new Promise((r) => setTimeout(r, 50))
     expect(fetchMock).toHaveBeenCalled()
-    expect(mockedReembedMemories).toHaveBeenCalledWith({ connectionId: 'c2' })
+    const reembedCalls = ipc.calls('reembed_memories')
+    expect(reembedCalls.length).toBeGreaterThan(0)
+    expect((reembedCalls[0] as Record<string, unknown>)?.connectionId).toBe('c2')
   })
 
   it('model change handles reembed error gracefully', async () => {
     vi.useRealTimers()
-    mockedReembedMemories.mockRejectedValueOnce(new Error('network error'))
+    ipc.override('reembed_memories', () => {
+      throw new Error('network error')
+    })
 
     useSettingsStore.setState({
       settings: { 'ai.embeddingModel': 'model-a' },
@@ -248,9 +281,12 @@ describe('initAiMemoryStore', () => {
     } as never)
 
     await new Promise((r) => setTimeout(r, 50))
-    expect(mockedLogFrontend).toHaveBeenCalledWith(
-      'error',
-      expect.stringContaining('Re-embed failed')
+    const logCalls = ipc.calls('log_frontend')
+    const hasReembedError = logCalls.some(
+      (call) =>
+        (call as Record<string, unknown>)?.level === 'error' &&
+        String((call as Record<string, unknown>)?.message ?? '').includes('Re-embed failed')
     )
+    expect(hasReembedError).toBe(true)
   })
 })

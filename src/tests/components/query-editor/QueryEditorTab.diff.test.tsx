@@ -4,14 +4,12 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { QueryEditorTab } from '../../../components/query-editor/QueryEditorTab'
 import { AiDiffBridgeProvider } from '../../../components/query-editor/ai-diff-bridge-context'
 import { WorkspaceBody } from '../../../components/layout/WorkspaceBody'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
-import type { TabAiState } from '../../../stores/ai-store'
 import {
   useWorkspaceStore,
   _resetTabIdCounter,
@@ -19,37 +17,13 @@ import {
 } from '../../../stores/workspace-store'
 import { useToastStore } from '../../../stores/toast-store'
 import type { QueryEditorTab as QueryEditorTabType } from '../../../types/schema'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
-// Mock tauri dialog (EditorToolbar depends on it)
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  save: vi.fn(() => Promise.resolve(null)),
-  open: vi.fn(() => Promise.resolve(null)),
-}))
+// IPC fixtures in setup.ts handle plugin:dialog|save and plugin:dialog|open (return null = cancelled)
 
-function emptyAiTabState(overrides: Partial<TabAiState> = {}): TabAiState {
-  return {
-    messages: [],
-    isGenerating: false,
-    activeStreamId: null,
-    previousResponseId: null,
-    attachedContext: null,
-    isPanelOpen: true,
-    error: null,
-    providedChunkKeys: {},
-    cumulativeSchemaTokens: 0,
-    providedMemoryIds: {},
-    lastCompletedSystemPrompt: '',
-    lastCompletedTransport: null,
-    lastCompletedEndpoint: '',
-    lastCompletedModel: '',
-    activeRequestEndpoint: '',
-    activeRequestModel: '',
-    activeStreamHasAssistantOutput: false,
-    isWaitingForIndex: false,
-    connectionId: 'conn-1',
-    _unlisten: null,
-    ...overrides,
-  }
+/** Convenience: diff tests render with the panel open and a specific connectionId. */
+function emptyAiTabState(overrides?: Parameters<typeof makeAiTabState>[0]) {
+  return makeAiTabState({ isPanelOpen: true, connectionId: 'conn-1', ...overrides })
 }
 
 const mockTab: QueryEditorTabType = {
@@ -84,7 +58,6 @@ beforeEach(() => {
   useToastStore.setState({ toasts: [] })
   _resetTabIdCounter()
   _resetQueryTabCounter()
-  mockIPC(() => null)
   // Enable AI
   useSettingsStore.setState({
     settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },

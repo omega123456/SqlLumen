@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import { useFavoritesStore } from '../../stores/favorites-store'
 
 const INITIAL_STATE = {
@@ -16,34 +16,22 @@ let consoleSpy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   useFavoritesStore.setState(INITIAL_STATE)
   vi.clearAllMocks()
-
-  mockIPC((cmd, args) => {
-    switch (cmd) {
-      case 'list_favorites':
-        return [
-          {
-            id: 1,
-            name: 'Test Favorite',
-            sqlText: 'SELECT 1',
-            description: 'test description',
-            category: 'test',
-            connectionId: (args as Record<string, unknown>).connectionId,
-            createdAt: '2025-01-01T00:00:00Z',
-            updatedAt: '2025-01-01T00:00:00Z',
-          },
-        ]
-      case 'create_favorite':
-        return 1
-      case 'update_favorite':
-        return true
-      case 'delete_favorite':
-        return true
-      case 'log_frontend':
-        return undefined
-      default:
-        return null
-    }
-  })
+  ipc.override('list_favorites', (args) => [
+    {
+      id: 1,
+      name: 'Test Favorite',
+      sqlText: 'SELECT 1',
+      description: 'test description',
+      category: 'test',
+      connectionId: (args as Record<string, unknown>).connectionId,
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
+    },
+  ])
+  ipc.override('create_favorite', () => 1)
+  ipc.override('update_favorite', () => true)
+  ipc.override('delete_favorite', () => true)
+  ipc.override('log_frontend', () => undefined)
 })
 
 afterEach(() => {
@@ -65,7 +53,7 @@ describe('useFavoritesStore', () => {
 
     it('handles load errors gracefully', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockIPC(() => {
+      ipc.override('list_favorites', () => {
         throw new Error('IPC failure')
       })
 
@@ -95,10 +83,8 @@ describe('useFavoritesStore', () => {
 
     it('handles create errors with toast', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockIPC((cmd) => {
-        if (cmd === 'create_favorite') throw new Error('Create failed')
-        if (cmd === 'log_frontend') return undefined
-        return null
+      ipc.override('create_favorite', () => {
+        throw new Error('Create failed')
       })
 
       const id = await useFavoritesStore.getState().createFavorite({
@@ -127,10 +113,8 @@ describe('useFavoritesStore', () => {
 
     it('handles update errors with toast', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockIPC((cmd) => {
-        if (cmd === 'update_favorite') throw new Error('Update failed')
-        if (cmd === 'log_frontend') return undefined
-        return null
+      ipc.override('update_favorite', () => {
+        throw new Error('Update failed')
       })
 
       const result = await useFavoritesStore.getState().updateFavorite(1, {
@@ -155,10 +139,8 @@ describe('useFavoritesStore', () => {
 
     it('handles delete errors with toast', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockIPC((cmd) => {
-        if (cmd === 'delete_favorite') throw new Error('Delete failed')
-        if (cmd === 'log_frontend') return undefined
-        return null
+      ipc.override('delete_favorite', () => {
+        throw new Error('Delete failed')
       })
 
       await useFavoritesStore.getState().deleteFavorite(1)

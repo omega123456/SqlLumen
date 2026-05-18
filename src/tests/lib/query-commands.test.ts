@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import {
   executeQuery,
   fetchResultPage,
@@ -112,9 +112,6 @@ const mockReexecuteSingleResultFn = vi.fn(() => ({
   reExecutable: true,
 }))
 
-/** Captures the args passed to a mock IPC handler. */
-let lastIpcArgs: Record<string, unknown> | undefined
-
 beforeEach(() => {
   mockExecuteQueryFn.mockClear()
   mockFetchResultPageFn.mockClear()
@@ -129,41 +126,19 @@ beforeEach(() => {
   mockExecuteMultiQueryFn.mockClear()
   mockExecuteCallQueryFn.mockClear()
   mockReexecuteSingleResultFn.mockClear()
-  lastIpcArgs = undefined
-
-  mockIPC((cmd, args) => {
-    lastIpcArgs = args as Record<string, unknown>
-    switch (cmd) {
-      case 'execute_query':
-        return mockExecuteQueryFn()
-      case 'fetch_result_page':
-        return mockFetchResultPageFn()
-      case 'evict_results':
-        return mockEvictResultsFn()
-      case 'fetch_schema_metadata':
-        return mockFetchSchemaMetadataFn()
-      case 'read_file':
-        return mockReadFileFn()
-      case 'write_file':
-        return mockWriteFileFn()
-      case 'sort_results':
-        return mockSortResultsFn()
-      case 'select_database':
-        return mockSelectDatabaseFn()
-      case 'analyze_query_for_edit':
-        return mockAnalyzeQueryForEditFn()
-      case 'update_result_cell':
-        return mockUpdateResultCellFn()
-      case 'execute_multi_query':
-        return mockExecuteMultiQueryFn()
-      case 'execute_call_query':
-        return mockExecuteCallQueryFn()
-      case 'reexecute_single_result':
-        return mockReexecuteSingleResultFn()
-      default:
-        return null
-    }
-  })
+  ipc.override('execute_query', () => mockExecuteQueryFn())
+  ipc.override('fetch_result_page', () => mockFetchResultPageFn())
+  ipc.override('evict_results', () => mockEvictResultsFn())
+  ipc.override('fetch_schema_metadata', () => mockFetchSchemaMetadataFn())
+  ipc.override('read_file', () => mockReadFileFn())
+  ipc.override('write_file', () => mockWriteFileFn())
+  ipc.override('sort_results', () => mockSortResultsFn())
+  ipc.override('select_database', () => mockSelectDatabaseFn())
+  ipc.override('analyze_query_for_edit', () => mockAnalyzeQueryForEditFn())
+  ipc.override('update_result_cell', () => mockUpdateResultCellFn())
+  ipc.override('execute_multi_query', () => mockExecuteMultiQueryFn())
+  ipc.override('execute_call_query', () => mockExecuteCallQueryFn())
+  ipc.override('reexecute_single_result', () => mockReexecuteSingleResultFn())
 })
 
 describe('query-commands', () => {
@@ -260,37 +235,34 @@ describe('query-commands', () => {
 
   it('fetchResultPage does not include resultIndex when omitted', async () => {
     await fetchResultPage('conn-1', 'tab-1', 'q1', 1)
-    expect(lastIpcArgs).toBeDefined()
-    expect('resultIndex' in lastIpcArgs!).toBe(false)
+    const args = ipc.calls('fetch_result_page')[0] as Record<string, unknown>
+    expect('resultIndex' in args).toBe(false)
   })
 
   it('fetchResultPage includes resultIndex when provided', async () => {
     await fetchResultPage('conn-1', 'tab-1', 'q1', 1, 2)
-    expect(lastIpcArgs).toBeDefined()
-    expect(lastIpcArgs!.resultIndex).toBe(2)
+    expect((ipc.calls('fetch_result_page')[0] as Record<string, unknown>).resultIndex).toBe(2)
   })
 
   it('sortResults does not include resultIndex when omitted', async () => {
     await sortResults('conn-1', 'tab-1', 'id', 'asc')
-    expect(lastIpcArgs).toBeDefined()
-    expect('resultIndex' in lastIpcArgs!).toBe(false)
+    const args = ipc.calls('sort_results')[0] as Record<string, unknown>
+    expect('resultIndex' in args).toBe(false)
   })
 
   it('sortResults includes resultIndex when provided', async () => {
     await sortResults('conn-1', 'tab-1', 'id', 'asc', 1)
-    expect(lastIpcArgs).toBeDefined()
-    expect(lastIpcArgs!.resultIndex).toBe(1)
+    expect((ipc.calls('sort_results')[0] as Record<string, unknown>).resultIndex).toBe(1)
   })
 
   it('updateResultCell does not include resultIndex when omitted', async () => {
     await updateResultCell('conn-1', 'tab-1', 0, { 1: 'val' })
-    expect(lastIpcArgs).toBeDefined()
-    expect('resultIndex' in lastIpcArgs!).toBe(false)
+    const args = ipc.calls('update_result_cell')[0] as Record<string, unknown>
+    expect('resultIndex' in args).toBe(false)
   })
 
   it('updateResultCell includes resultIndex when provided', async () => {
     await updateResultCell('conn-1', 'tab-1', 0, { 1: 'val' }, 3)
-    expect(lastIpcArgs).toBeDefined()
-    expect(lastIpcArgs!.resultIndex).toBe(3)
+    expect((ipc.calls('update_result_cell')[0] as Record<string, unknown>).resultIndex).toBe(3)
   })
 })

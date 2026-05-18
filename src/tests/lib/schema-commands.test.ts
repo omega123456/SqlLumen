@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { ipc } from '../ipc-mock'
 import {
   listDatabases,
   listSchemaObjects,
@@ -17,17 +18,13 @@ import {
   renameTable,
 } from '../../lib/schema-commands'
 
-// Mock the @tauri-apps/api/core module
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
-}))
-
-import { invoke } from '@tauri-apps/api/core'
-const mockInvoke = vi.mocked(invoke)
-
 beforeEach(() => {
-  mockInvoke.mockReset()
+  vi.clearAllMocks()
 })
+
+function expectCommandCall(commandName: string, args: Record<string, unknown>) {
+  expect(ipc.calls(commandName)).toEqual([args])
+}
 
 // ---------------------------------------------------------------------------
 // Read-only query commands
@@ -35,23 +32,25 @@ beforeEach(() => {
 
 describe('listDatabases', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(['db1', 'db2'])
+    ipc.override('list_databases', () => ['db1', 'db2'])
     const result = await listDatabases('conn-1')
-    expect(mockInvoke).toHaveBeenCalledWith('list_databases', { connectionId: 'conn-1' })
+    expectCommandCall('list_databases', { connectionId: 'conn-1' })
     expect(result).toEqual(['db1', 'db2'])
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Not connected'))
+    ipc.override('list_databases', () => {
+      throw new Error('Not connected')
+    })
     await expect(listDatabases('conn-1')).rejects.toThrow('Not connected')
   })
 })
 
 describe('listSchemaObjects', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(['users', 'orders'])
+    ipc.override('list_schema_objects', () => ['users', 'orders'])
     const result = await listSchemaObjects('conn-1', 'mydb', 'table')
-    expect(mockInvoke).toHaveBeenCalledWith('list_schema_objects', {
+    expectCommandCall('list_schema_objects', {
       connectionId: 'conn-1',
       database: 'mydb',
       objectType: 'table',
@@ -60,7 +59,9 @@ describe('listSchemaObjects', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Unknown type'))
+    ipc.override('list_schema_objects', () => {
+      throw new Error('Unknown type')
+    })
     await expect(listSchemaObjects('conn-1', 'mydb', 'bad')).rejects.toThrow('Unknown type')
   })
 })
@@ -78,9 +79,9 @@ describe('listColumns', () => {
         ordinalPosition: 1,
       },
     ]
-    mockInvoke.mockResolvedValue(mockCols)
+    ipc.override('list_columns', () => mockCols)
     const result = await listColumns('conn-1', 'mydb', 'users')
-    expect(mockInvoke).toHaveBeenCalledWith('list_columns', {
+    expectCommandCall('list_columns', {
       connectionId: 'conn-1',
       database: 'mydb',
       table: 'users',
@@ -89,7 +90,9 @@ describe('listColumns', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Table not found'))
+    ipc.override('list_columns', () => {
+      throw new Error('Table not found')
+    })
     await expect(listColumns('conn-1', 'mydb', 'missing')).rejects.toThrow('Table not found')
   })
 })
@@ -97,9 +100,9 @@ describe('listColumns', () => {
 describe('getSchemaInfo', () => {
   it('calls invoke with correct command and args', async () => {
     const mockResponse = { columns: [], indexes: [], foreignKeys: [], ddl: '', metadata: null }
-    mockInvoke.mockResolvedValue(mockResponse)
+    ipc.override('get_schema_info', () => mockResponse)
     const result = await getSchemaInfo('conn-1', 'mydb', 'users', 'table')
-    expect(mockInvoke).toHaveBeenCalledWith('get_schema_info', {
+    expectCommandCall('get_schema_info', {
       connectionId: 'conn-1',
       database: 'mydb',
       objectName: 'users',
@@ -109,7 +112,9 @@ describe('getSchemaInfo', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Schema error'))
+    ipc.override('get_schema_info', () => {
+      throw new Error('Schema error')
+    })
     await expect(getSchemaInfo('conn-1', 'mydb', 'users', 'table')).rejects.toThrow('Schema error')
   })
 })
@@ -121,9 +126,9 @@ describe('getDatabaseDetails', () => {
       defaultCharacterSet: 'utf8mb4',
       defaultCollation: 'utf8mb4_general_ci',
     }
-    mockInvoke.mockResolvedValue(mockDetails)
+    ipc.override('get_database_details', () => mockDetails)
     const result = await getDatabaseDetails('conn-1', 'mydb')
-    expect(mockInvoke).toHaveBeenCalledWith('get_database_details', {
+    expectCommandCall('get_database_details', {
       connectionId: 'conn-1',
       database: 'mydb',
     })
@@ -131,7 +136,9 @@ describe('getDatabaseDetails', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('DB not found'))
+    ipc.override('get_database_details', () => {
+      throw new Error('DB not found')
+    })
     await expect(getDatabaseDetails('conn-1', 'missing')).rejects.toThrow('DB not found')
   })
 })
@@ -146,14 +153,16 @@ describe('listCharsets', () => {
         maxLength: 4,
       },
     ]
-    mockInvoke.mockResolvedValue(mockCharsets)
+    ipc.override('list_charsets', () => mockCharsets)
     const result = await listCharsets('conn-1')
-    expect(mockInvoke).toHaveBeenCalledWith('list_charsets', { connectionId: 'conn-1' })
+    expectCommandCall('list_charsets', { connectionId: 'conn-1' })
     expect(result).toEqual(mockCharsets)
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Charset error'))
+    ipc.override('list_charsets', () => {
+      throw new Error('Charset error')
+    })
     await expect(listCharsets('conn-1')).rejects.toThrow('Charset error')
   })
 })
@@ -161,14 +170,16 @@ describe('listCharsets', () => {
 describe('listCollations', () => {
   it('calls invoke with correct command and args', async () => {
     const mockCollations = [{ name: 'utf8mb4_general_ci', charset: 'utf8mb4', isDefault: true }]
-    mockInvoke.mockResolvedValue(mockCollations)
+    ipc.override('list_collations', () => mockCollations)
     const result = await listCollations('conn-1')
-    expect(mockInvoke).toHaveBeenCalledWith('list_collations', { connectionId: 'conn-1' })
+    expectCommandCall('list_collations', { connectionId: 'conn-1' })
     expect(result).toEqual(mockCollations)
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Collation error'))
+    ipc.override('list_collations', () => {
+      throw new Error('Collation error')
+    })
     await expect(listCollations('conn-1')).rejects.toThrow('Collation error')
   })
 })
@@ -186,9 +197,9 @@ describe('getTableForeignKeys', () => {
         onUpdate: 'CASCADE',
       },
     ]
-    mockInvoke.mockResolvedValue(mockFKs)
+    ipc.override('get_table_foreign_keys', () => mockFKs)
     const result = await getTableForeignKeys('conn-1', 'mydb', 'orders')
-    expect(mockInvoke).toHaveBeenCalledWith('get_table_foreign_keys', {
+    expectCommandCall('get_table_foreign_keys', {
       connectionId: 'conn-1',
       database: 'mydb',
       table: 'orders',
@@ -197,9 +208,9 @@ describe('getTableForeignKeys', () => {
   })
 
   it('returns empty array for tables without foreign keys', async () => {
-    mockInvoke.mockResolvedValue([])
+    ipc.override('get_table_foreign_keys', () => [])
     const result = await getTableForeignKeys('conn-1', 'mydb', 'standalone')
-    expect(mockInvoke).toHaveBeenCalledWith('get_table_foreign_keys', {
+    expectCommandCall('get_table_foreign_keys', {
       connectionId: 'conn-1',
       database: 'mydb',
       table: 'standalone',
@@ -208,7 +219,9 @@ describe('getTableForeignKeys', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('FK lookup failed'))
+    ipc.override('get_table_foreign_keys', () => {
+      throw new Error('FK lookup failed')
+    })
     await expect(getTableForeignKeys('conn-1', 'mydb', 'orders')).rejects.toThrow(
       'FK lookup failed'
     )
@@ -221,9 +234,8 @@ describe('getTableForeignKeys', () => {
 
 describe('createDatabase', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await createDatabase('conn-1', 'newdb', 'utf8mb4', 'utf8mb4_general_ci')
-    expect(mockInvoke).toHaveBeenCalledWith('create_database', {
+    expectCommandCall('create_database', {
       connectionId: 'conn-1',
       name: 'newdb',
       charset: 'utf8mb4',
@@ -232,9 +244,8 @@ describe('createDatabase', () => {
   })
 
   it('passes null for optional charset and collation when omitted', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await createDatabase('conn-1', 'newdb')
-    expect(mockInvoke).toHaveBeenCalledWith('create_database', {
+    expectCommandCall('create_database', {
       connectionId: 'conn-1',
       name: 'newdb',
       charset: null,
@@ -243,32 +254,34 @@ describe('createDatabase', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Create failed'))
+    ipc.override('create_database', () => {
+      throw new Error('Create failed')
+    })
     await expect(createDatabase('conn-1', 'newdb')).rejects.toThrow('Create failed')
   })
 })
 
 describe('dropDatabase', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await dropDatabase('conn-1', 'mydb')
-    expect(mockInvoke).toHaveBeenCalledWith('drop_database', {
+    expectCommandCall('drop_database', {
       connectionId: 'conn-1',
       name: 'mydb',
     })
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Drop failed'))
+    ipc.override('drop_database', () => {
+      throw new Error('Drop failed')
+    })
     await expect(dropDatabase('conn-1', 'mydb')).rejects.toThrow('Drop failed')
   })
 })
 
 describe('alterDatabase', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await alterDatabase('conn-1', 'mydb', 'utf8mb4', 'utf8mb4_unicode_ci')
-    expect(mockInvoke).toHaveBeenCalledWith('alter_database', {
+    expectCommandCall('alter_database', {
       connectionId: 'conn-1',
       name: 'mydb',
       charset: 'utf8mb4',
@@ -277,9 +290,8 @@ describe('alterDatabase', () => {
   })
 
   it('passes null for optional charset and collation when omitted', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await alterDatabase('conn-1', 'mydb')
-    expect(mockInvoke).toHaveBeenCalledWith('alter_database', {
+    expectCommandCall('alter_database', {
       connectionId: 'conn-1',
       name: 'mydb',
       charset: null,
@@ -288,16 +300,17 @@ describe('alterDatabase', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Alter failed'))
+    ipc.override('alter_database', () => {
+      throw new Error('Alter failed')
+    })
     await expect(alterDatabase('conn-1', 'mydb')).rejects.toThrow('Alter failed')
   })
 })
 
 describe('renameDatabase', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await renameDatabase('conn-1', 'olddb', 'newdb')
-    expect(mockInvoke).toHaveBeenCalledWith('rename_database', {
+    expectCommandCall('rename_database', {
       connectionId: 'conn-1',
       oldName: 'olddb',
       newName: 'newdb',
@@ -305,16 +318,17 @@ describe('renameDatabase', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Rename failed'))
+    ipc.override('rename_database', () => {
+      throw new Error('Rename failed')
+    })
     await expect(renameDatabase('conn-1', 'old', 'new')).rejects.toThrow('Rename failed')
   })
 })
 
 describe('dropTable', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await dropTable('conn-1', 'mydb', 'users')
-    expect(mockInvoke).toHaveBeenCalledWith('drop_table', {
+    expectCommandCall('drop_table', {
       connectionId: 'conn-1',
       database: 'mydb',
       table: 'users',
@@ -322,16 +336,17 @@ describe('dropTable', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Drop table failed'))
+    ipc.override('drop_table', () => {
+      throw new Error('Drop table failed')
+    })
     await expect(dropTable('conn-1', 'mydb', 'users')).rejects.toThrow('Drop table failed')
   })
 })
 
 describe('truncateTable', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await truncateTable('conn-1', 'mydb', 'users')
-    expect(mockInvoke).toHaveBeenCalledWith('truncate_table', {
+    expectCommandCall('truncate_table', {
       connectionId: 'conn-1',
       database: 'mydb',
       table: 'users',
@@ -339,16 +354,17 @@ describe('truncateTable', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Truncate failed'))
+    ipc.override('truncate_table', () => {
+      throw new Error('Truncate failed')
+    })
     await expect(truncateTable('conn-1', 'mydb', 'users')).rejects.toThrow('Truncate failed')
   })
 })
 
 describe('renameTable', () => {
   it('calls invoke with correct command and args', async () => {
-    mockInvoke.mockResolvedValue(undefined)
     await renameTable('conn-1', 'mydb', 'old_table', 'new_table')
-    expect(mockInvoke).toHaveBeenCalledWith('rename_table', {
+    expectCommandCall('rename_table', {
       connectionId: 'conn-1',
       database: 'mydb',
       oldName: 'old_table',
@@ -357,7 +373,9 @@ describe('renameTable', () => {
   })
 
   it('propagates errors from invoke', async () => {
-    mockInvoke.mockRejectedValue(new Error('Rename table failed'))
+    ipc.override('rename_table', () => {
+      throw new Error('Rename table failed')
+    })
     await expect(renameTable('conn-1', 'mydb', 'old', 'new')).rejects.toThrow('Rename table failed')
   })
 })

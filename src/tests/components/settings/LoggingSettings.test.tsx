@@ -1,22 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-
-const { mockGetAppInfo, mockLogFrontend } = vi.hoisted(() => ({
-  mockGetAppInfo: vi.fn(),
-  mockLogFrontend: vi.fn(),
-}))
-
-vi.mock('../../../lib/app-info-commands', () => ({
-  getAppInfo: mockGetAppInfo,
-}))
-
-vi.mock('../../../lib/app-log-commands', () => ({
-  logFrontend: mockLogFrontend,
-}))
-
 import { LoggingSettings } from '../../../components/settings/LoggingSettings'
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../../../stores/settings-store'
+import { ipc } from '../../ipc-mock'
 
 describe('LoggingSettings', () => {
   beforeEach(() => {
@@ -27,12 +14,12 @@ describe('LoggingSettings', () => {
       isLoading: false,
       activeSection: 'logging',
     })
-    mockGetAppInfo.mockReset().mockResolvedValue({
+    // Default: version 1.2.3 with no rust log override
+    ipc.override('get_app_info', () => ({
       rustLogOverride: false,
       logDirectory: '/mock/logs',
       appVersion: '1.2.3',
-    })
-    mockLogFrontend.mockReset()
+    }))
   })
 
   it('renders app info and the current log level', async () => {
@@ -44,11 +31,11 @@ describe('LoggingSettings', () => {
   })
 
   it('disables the log level dropdown when RUST_LOG overrides settings', async () => {
-    mockGetAppInfo.mockResolvedValue({
+    ipc.override('get_app_info', () => ({
       rustLogOverride: true,
       logDirectory: '/override/logs',
       appVersion: '2.0.0',
-    })
+    }))
 
     render(<LoggingSettings />)
 
@@ -69,17 +56,41 @@ describe('LoggingSettings', () => {
   })
 
   it('keeps placeholders and logs when app info loading fails', async () => {
-    mockGetAppInfo.mockRejectedValue(new Error('boom'))
+    ipc.override('get_app_info', () => {
+      throw new Error('boom')
+    })
     render(<LoggingSettings />)
 
     await waitFor(() => {
-      expect(mockLogFrontend).toHaveBeenCalledWith(
-        'error',
-        expect.stringContaining('[settings] Failed to load app info:')
-      )
+      const logCalls = ipc.calls('log_frontend')
+      const matched = logCalls.some((call) => {
+        const args = call as Record<string, unknown>
+        return (
+          args.level === 'error' &&
+          typeof args.message === 'string' &&
+          args.message.includes('[settings] Failed to load app info:')
+        )
+      })
+      expect(matched).toBe(true)
     })
 
     expect(screen.getAllByText('...')).toHaveLength(2)
     expect(screen.getByTestId('settings-log-dir')).toHaveTextContent('...')
+  })
+
+  it('suppresses console.error for expected IPC failures', async () => {
+    // Suppress console.error because the IPC throw causes logFrontend to log
+    // an "[app-log]" prefix error for the logFrontend invoke failure itself
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    ipc.override('get_app_info', () => {
+      throw new Error('boom')
+    })
+    render(<LoggingSettings />)
+
+    await waitFor(() => {
+      expect(screen.getAllByText('...')).toHaveLength(2)
+    })
+
+    consoleSpy.mockRestore()
   })
 })

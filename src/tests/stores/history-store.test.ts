@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import { useHistoryStore } from '../../stores/history-store'
 import type { HistoryEntry } from '../../types/schema'
 
@@ -18,37 +18,26 @@ let consoleSpy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   useHistoryStore.setState(INITIAL_STATE)
   vi.clearAllMocks()
-
-  mockIPC((cmd, args) => {
-    switch (cmd) {
-      case 'list_history':
-        return {
-          entries: [
-            {
-              id: 1,
-              connectionId: (args as Record<string, unknown>).connectionId,
-              databaseName: 'db1',
-              sqlText: 'SELECT 1',
-              timestamp: '2025-01-01T00:00:00Z',
-              durationMs: 10,
-              rowCount: 1,
-              affectedRows: 0,
-              success: true,
-              errorMessage: null,
-            },
-          ],
-          total: 1,
-          page: (args as Record<string, unknown>).page ?? 1,
-          pageSize: (args as Record<string, unknown>).pageSize ?? 50,
-        }
-      case 'delete_history_entry':
-        return true
-      case 'clear_history':
-        return 1
-      case 'log_frontend':
-        return undefined
-      default:
-        return null
+  ipc.override('list_history', (args) => {
+    const request = args as Record<string, unknown>
+    return {
+      entries: [
+        {
+          id: 1,
+          connectionId: request.connectionId,
+          databaseName: 'db1',
+          sqlText: 'SELECT 1',
+          timestamp: '2025-01-01T00:00:00Z',
+          durationMs: 10,
+          rowCount: 1,
+          affectedRows: 0,
+          success: true,
+          errorMessage: null,
+        },
+      ],
+      total: 1,
+      page: request.page ?? 1,
+      pageSize: request.pageSize ?? 50,
     }
   })
 })
@@ -71,7 +60,7 @@ describe('useHistoryStore', () => {
 
     it('handles load errors gracefully', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockIPC(() => {
+      ipc.override('list_history', () => {
         throw new Error('IPC failure')
       })
 
@@ -99,10 +88,8 @@ describe('useHistoryStore', () => {
 
     it('handles delete errors with toast', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockIPC((cmd) => {
-        if (cmd === 'delete_history_entry') throw new Error('Delete failed')
-        if (cmd === 'log_frontend') return undefined
-        return null
+      ipc.override('delete_history_entry', () => {
+        throw new Error('Delete failed')
       })
 
       await useHistoryStore.getState().deleteEntry('conn-1', 1)
@@ -123,10 +110,8 @@ describe('useHistoryStore', () => {
 
     it('handles clear errors with toast', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockIPC((cmd) => {
-        if (cmd === 'clear_history') throw new Error('Clear failed')
-        if (cmd === 'log_frontend') return undefined
-        return null
+      ipc.override('clear_history', () => {
+        throw new Error('Clear failed')
       })
 
       await useHistoryStore.getState().clearAll('conn-1')

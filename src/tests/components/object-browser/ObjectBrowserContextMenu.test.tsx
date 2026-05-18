@@ -7,18 +7,8 @@ import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-st
 import { useWorkspaceStore, _resetTabIdCounter } from '../../../stores/workspace-store'
 import type { TreeNode as TreeNodeType } from '../../../types/schema'
 
-// Mock clipboard
-vi.mock('../../../lib/context-menu-utils', async (importOriginal) => {
-  const orig = (await importOriginal()) as Record<string, unknown>
-  return {
-    ...orig,
-    writeClipboardText: vi.fn().mockResolvedValue(undefined),
-  }
-})
-
-import { writeClipboardText } from '../../../lib/context-menu-utils'
-
 const CONN_ID = 'conn-test'
+let writeClipboardTextSpy: ReturnType<typeof vi.spyOn>
 
 function setNodes(
   nodes: Record<string, TreeNodeType>,
@@ -169,8 +159,10 @@ function setBottomPanelSetting(enabled: boolean) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   _resetTabIdCounter()
+  writeClipboardTextSpy = vi
+    .spyOn(navigator.clipboard, 'writeText')
+    .mockImplementation(() => Promise.resolve())
   act(() => {
     useSchemaStore.setState({
       connectionStates: {},
@@ -401,7 +393,7 @@ describe('ObjectBrowserContextMenu', () => {
     })
   })
 
-  it('"Copy Table Name" click calls writeClipboardText', async () => {
+  it('"Copy Table Name" click writes to clipboard', async () => {
     const user = userEvent.setup()
     const { nodes, tableId } = makeNodes()
     setNodes(nodes)
@@ -420,7 +412,7 @@ describe('ObjectBrowserContextMenu', () => {
 
     await user.click(screen.getByText('Copy Table Name'))
 
-    expect(writeClipboardText).toHaveBeenCalledWith('users')
+    expect(writeClipboardTextSpy).toHaveBeenCalledWith('users')
   })
 
   it('"Refresh" click calls schema-store refreshDatabase', async () => {

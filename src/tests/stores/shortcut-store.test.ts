@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import { useShortcutStore, DEFAULT_SHORTCUTS } from '../../stores/shortcut-store'
 
 let mockGetSettingResult: string | null = null
@@ -17,11 +17,8 @@ beforeEach(() => {
 
   mockGetSettingResult = null
 
-  mockIPC((cmd) => {
-    if (cmd === 'get_setting') return mockGetSettingResult
-    if (cmd === 'log_frontend') return undefined
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
+  ipc.override('get_setting', () => mockGetSettingResult)
+  ipc.override('log_frontend', () => undefined)
 })
 
 describe('useShortcutStore', () => {
@@ -261,11 +258,10 @@ describe('useShortcutStore', () => {
 
     it('handles IPC errors gracefully and keeps defaults', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockIPC((cmd) => {
-        if (cmd === 'get_setting') throw new Error('IPC failure')
-        if (cmd === 'log_frontend') return undefined
-        throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
+      ipc.override('get_setting', () => {
+        throw new Error('IPC failure')
       })
+      ipc.override('log_frontend', () => undefined)
 
       await useShortcutStore.getState().initializeFromBackend()
 

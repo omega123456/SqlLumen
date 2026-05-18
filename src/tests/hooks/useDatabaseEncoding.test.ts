@@ -1,17 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useDatabaseEncoding } from '../../hooks/useDatabaseEncoding'
-
-// Mock schema-commands
-vi.mock('../../lib/schema-commands', () => ({
-  listCharsets: vi.fn(),
-  listCollations: vi.fn(),
-}))
-
-import { listCharsets, listCollations } from '../../lib/schema-commands'
-
-const mockListCharsets = vi.mocked(listCharsets)
-const mockListCollations = vi.mocked(listCollations)
+import { ipc } from '../ipc-mock'
 
 const CHARSETS = [
   {
@@ -37,8 +27,8 @@ const COLLATIONS = [
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockListCharsets.mockResolvedValue(CHARSETS)
-  mockListCollations.mockResolvedValue(COLLATIONS)
+  ipc.override('list_charsets', () => CHARSETS)
+  ipc.override('list_collations', () => COLLATIONS)
 })
 
 describe('useDatabaseEncoding', () => {
@@ -49,8 +39,8 @@ describe('useDatabaseEncoding', () => {
       expect(result.current.isLoading).toBe(false)
     })
 
-    expect(mockListCharsets).toHaveBeenCalledWith('conn-1')
-    expect(mockListCollations).toHaveBeenCalledWith('conn-1')
+    expect(ipc.calls('list_charsets')).toEqual([{ connectionId: 'conn-1' }])
+    expect(ipc.calls('list_collations')).toEqual([{ connectionId: 'conn-1' }])
     expect(result.current.charsets).toEqual(CHARSETS)
     expect(result.current.collations).toEqual(COLLATIONS)
   })
@@ -58,14 +48,13 @@ describe('useDatabaseEncoding', () => {
   it('does not fetch when isOpen is false', () => {
     renderHook(() => useDatabaseEncoding('conn-1', false))
 
-    expect(mockListCharsets).not.toHaveBeenCalled()
-    expect(mockListCollations).not.toHaveBeenCalled()
+    expect(ipc.calls('list_charsets')).toEqual([])
+    expect(ipc.calls('list_collations')).toEqual([])
   })
 
   it('starts with isLoading true when open', () => {
-    // Make the mocks hang
-    mockListCharsets.mockReturnValue(new Promise(() => {}))
-    mockListCollations.mockReturnValue(new Promise(() => {}))
+    ipc.override('list_charsets', () => new Promise(() => {}))
+    ipc.override('list_collations', () => new Promise(() => {}))
 
     const { result } = renderHook(() => useDatabaseEncoding('conn-1', true))
 
@@ -73,7 +62,9 @@ describe('useDatabaseEncoding', () => {
   })
 
   it('sets error when fetch fails', async () => {
-    mockListCharsets.mockRejectedValue(new Error('Connection lost'))
+    ipc.override('list_charsets', () => {
+      throw new Error('Connection lost')
+    })
 
     const { result } = renderHook(() => useDatabaseEncoding('conn-1', true))
 
@@ -193,7 +184,8 @@ describe('useDatabaseEncoding', () => {
   it('cancels fetch when unmounted during load', async () => {
     // Use a delayed mock that we can control
     let resolveCharsets: ((value: typeof CHARSETS) => void) | undefined
-    mockListCharsets.mockImplementation(
+    ipc.override(
+      'list_charsets',
       () =>
         new Promise((resolve) => {
           resolveCharsets = resolve

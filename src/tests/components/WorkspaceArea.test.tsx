@@ -12,87 +12,7 @@ import { useQueryStore } from '../../stores/query-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
-import { mockIPC } from '@tauri-apps/api/mocks'
-
-vi.mock('../../lib/schema-commands', () => ({
-  getSchemaInfo: vi.fn().mockResolvedValue({
-    columns: [
-      {
-        name: 'id',
-        dataType: 'bigint',
-        nullable: false,
-        columnKey: 'PRI',
-        defaultValue: null,
-        extra: 'auto_increment',
-        ordinalPosition: 1,
-      },
-    ],
-    indexes: [],
-    foreignKeys: [],
-    ddl: 'CREATE TABLE `users` (`id` bigint NOT NULL)',
-    metadata: {
-      engine: 'InnoDB',
-      collation: 'utf8mb4_general_ci',
-      autoIncrement: 1,
-      createTime: '2023-01-01',
-      tableRows: 100,
-      dataLength: 16384,
-      indexLength: 8192,
-    },
-  }),
-  getTableForeignKeys: vi.fn().mockResolvedValue([]),
-}))
-
-// Mock table-data-commands to prevent real IPC calls
-vi.mock('../../lib/table-data-commands', () => ({
-  fetchTableData: vi.fn().mockResolvedValue({
-    columns: [
-      {
-        name: 'id',
-        dataType: 'bigint',
-        isNullable: false,
-        isPrimaryKey: true,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isAutoIncrement: true,
-      },
-    ],
-    rows: [[1]],
-    currentPage: 1,
-    pageSize: 1000,
-    primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
-    executionTimeMs: 12,
-  }),
-  updateTableRow: vi.fn().mockResolvedValue(undefined),
-  insertTableRow: vi.fn().mockResolvedValue([]),
-  deleteTableRow: vi.fn().mockResolvedValue(undefined),
-  exportTableData: vi.fn().mockResolvedValue(undefined),
-}))
-
-// Mock the shared DataGrid wrapper (used by TableDataGrid and ResultGridView)
-vi.mock('../../components/shared/DataGrid', async () => {
-  const React = await import('react')
-  return {
-    DataGrid: React.forwardRef(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      (_props: Record<string, unknown>, _ref: React.Ref<unknown>) => {
-        return React.createElement('div', { 'data-testid': 'data-grid-mock' }, 'Grid Mock')
-      }
-    ),
-  }
-})
-
-vi.mock('../../components/table-designer/TableDesignerTab', () => ({
-  TableDesignerTab: () => <div data-testid="table-designer-tab">Designer Tab</div>,
-}))
-
-// Mock tauri dialog for EditorToolbar (used by QueryEditorTab)
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  save: vi.fn(() => Promise.resolve(null)),
-  open: vi.fn(() => Promise.resolve(null)),
-}))
+import { useTableDesignerStore } from '../../stores/table-designer-store'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -142,10 +62,35 @@ beforeEach(() => {
   })
   useQueryStore.setState({ tabs: {} })
   useTableDataStore.setState({ tabs: {} })
+  useTableDesignerStore.setState({ tabs: {} })
   _resetTabIdCounter()
   _resetQueryTabCounter()
-  mockIPC(() => null)
 })
+
+async function waitForWorkspaceTableDataSettled(options: { waitForLoad?: boolean } = {}) {
+  const { waitForLoad = true } = options
+  await waitFor(() => {
+    expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+  })
+  if (waitForLoad && screen.queryByText('Loading table data...')) {
+    await waitFor(() => {
+      expect(screen.queryByText('Loading table data...')).not.toBeInTheDocument()
+    })
+  }
+  await act(async () => {})
+}
+
+async function waitForWorkspaceTableDesignerSettled() {
+  await waitFor(() => {
+    expect(screen.getByTestId('table-designer-tab')).toBeInTheDocument()
+  })
+  if (screen.queryByTestId('table-designer-loading')) {
+    await waitFor(() => {
+      expect(screen.queryByTestId('table-designer-loading')).not.toBeInTheDocument()
+    })
+  }
+  await act(async () => {})
+}
 
 describe('WorkspaceArea', () => {
   it('renders the welcome message when no connections', () => {
@@ -215,11 +160,8 @@ describe('WorkspaceArea', () => {
 
     expect(screen.getByTestId('workspace-tabs')).toBeInTheDocument()
     expect(screen.getByText('users')).toBeInTheDocument()
-    // TableDataTab is rendered, which includes the toolbar
-    await waitFor(() => {
-      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
-      expect(screen.getByTestId('workspace-panel')).toHaveAttribute('data-active', 'true')
-    })
+    await waitForWorkspaceTableDataSettled()
+    expect(screen.getByTestId('workspace-panel')).toHaveAttribute('data-active', 'true')
   })
 
   it('keeps multiple active-connection tabs mounted in workspace panels', async () => {
@@ -241,8 +183,8 @@ describe('WorkspaceArea', () => {
 
     render(<WorkspaceArea />)
 
+    await waitForWorkspaceTableDataSettled({ waitForLoad: false })
     await waitFor(() => {
-      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
       expect(screen.getByTestId('query-editor-tab')).toBeInTheDocument()
     })
     expect(screen.getAllByTestId('workspace-panel')).toHaveLength(2)
@@ -425,7 +367,7 @@ describe('WorkspaceArea', () => {
     expect(screen.getByTestId('workspace-ai-panel-host')).toBeInTheDocument()
   })
 
-  it('renders TableDesignerTab for table-designer tab type', () => {
+  it('renders TableDesignerTab for table-designer tab type', async () => {
     const conn = makeActiveConnection()
     useConnectionStore.setState({
       activeConnections: { 'conn-1': conn },
@@ -443,7 +385,7 @@ describe('WorkspaceArea', () => {
 
     render(<WorkspaceArea />)
 
-    expect(screen.getByTestId('table-designer-tab')).toBeInTheDocument()
+    await waitForWorkspaceTableDesignerSettled()
   })
 
   it('always shows workspace-tabs and "+" button when connected', () => {
@@ -520,7 +462,7 @@ describe('WorkspaceArea', () => {
       expect(topRail).toBeInTheDocument()
       expect(screen.getByText('users')).toBeInTheDocument()
 
-      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+      await waitForWorkspaceTableDataSettled()
     })
 
     it('with setting on: scoped table-data tabs are excluded from the top rail and live in the query panel', async () => {
@@ -543,7 +485,7 @@ describe('WorkspaceArea', () => {
 
       render(<WorkspaceArea />)
 
-      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+      await waitForWorkspaceTableDataSettled()
       const topRail = screen.getByTestId('workspace-tabs')
       expect(topRail).not.toHaveTextContent('users')
       expect(screen.getAllByTestId('workspace-panel')).toHaveLength(1)
@@ -576,7 +518,7 @@ describe('WorkspaceArea', () => {
       expect(topRail).not.toHaveTextContent('users')
     })
 
-    it('saving the setting updates placement immediately without reloading', () => {
+    it('saving the setting updates placement immediately without reloading', async () => {
       // Start with setting off
       disableBottomTableTabs()
 
@@ -597,24 +539,24 @@ describe('WorkspaceArea', () => {
 
       render(<WorkspaceArea />)
 
-      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+      await waitForWorkspaceTableDataSettled()
 
       // Simulate saving the setting (committed to settings, not just pending)
       act(() => {
         enableBottomTableTabs()
       })
 
-      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+      await waitForWorkspaceTableDataSettled()
 
       // Simulate turning it back off
       act(() => {
         disableBottomTableTabs()
       })
 
-      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+      await waitForWorkspaceTableDataSettled()
     })
 
-    it('with setting on and AI enabled: AI panel host still appears for active query tab', () => {
+    it('with setting on and AI enabled: AI panel host still appears for active query tab', async () => {
       enableBottomTableTabs()
 
       useSettingsStore.setState({
@@ -681,7 +623,7 @@ describe('WorkspaceArea', () => {
       })
 
       expect(screen.queryByTestId('bottom-table-tabs')).not.toBeInTheDocument()
-      expect(screen.getByTestId('table-data-tab')).toBeInTheDocument()
+      await waitForWorkspaceTableDataSettled()
       expect(screen.getAllByTestId('workspace-panel')).toHaveLength(1)
       expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTabId)
     })

@@ -2,12 +2,12 @@ import type { ReactElement } from 'react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { QueryWorkspaceAiRail } from '../../../components/ai-panel/QueryWorkspaceAiRail'
 import { AiDiffBridgeProvider } from '../../../components/query-editor/ai-diff-bridge-context'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
 import type { QueryEditorTab as QueryEditorTabType } from '../../../types/schema'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
 const mockTab: QueryEditorTabType = {
   id: 'tab-1',
@@ -16,27 +16,11 @@ const mockTab: QueryEditorTabType = {
   connectionId: 'conn-1',
 }
 
-function setupMockIPC() {
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') {
-      return undefined
-    }
-    if (cmd === 'plugin:event|listen') {
-      return () => {}
-    }
-    if (cmd === 'plugin:event|unlisten') {
-      return undefined
-    }
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
-}
-
 function renderWithBridge(ui: ReactElement) {
   return render(<AiDiffBridgeProvider>{ui}</AiDiffBridgeProvider>)
 }
 
 beforeEach(() => {
-  setupMockIPC()
   useAiStore.setState({ tabs: {} })
   useSettingsStore.setState({
     settings: {
@@ -64,28 +48,7 @@ describe('QueryWorkspaceAiRail', () => {
     const user = userEvent.setup()
     useAiStore.setState({
       tabs: {
-        'tab-1': {
-          messages: [],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
-          isPanelOpen: false,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        'tab-1': makeAiTabState(),
       },
     })
     renderWithBridge(<QueryWorkspaceAiRail tab={mockTab} />)

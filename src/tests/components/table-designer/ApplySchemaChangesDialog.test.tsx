@@ -2,18 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApplySchemaChangesDialog } from '../../../components/table-designer/ApplySchemaChangesDialog'
-
-vi.mock('../../../lib/table-designer-commands', () => ({
-  applyTableDdl: vi.fn(),
-}))
-
-vi.mock('../../../stores/toast-store', () => ({
-  showSuccessToast: vi.fn(),
-  showErrorToast: vi.fn(),
-}))
-
-import { applyTableDdl } from '../../../lib/table-designer-commands'
-import { showErrorToast, showSuccessToast } from '../../../stores/toast-store'
+import { useToastStore } from '../../../stores/toast-store'
+import { expectToast, ipc } from '../../ipc-mock'
 
 describe('ApplySchemaChangesDialog', () => {
   const defaultProps = {
@@ -29,8 +19,7 @@ describe('ApplySchemaChangesDialog', () => {
   }
 
   beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(applyTableDdl).mockResolvedValue(undefined)
+    useToastStore.setState({ toasts: [] })
   })
 
   it('renders DDL code block content', () => {
@@ -67,13 +56,13 @@ describe('ApplySchemaChangesDialog', () => {
     await user.click(screen.getByTestId('apply-schema-confirm'))
 
     await waitFor(() => {
-      expect(applyTableDdl).toHaveBeenCalledWith(
-        'conn-1',
-        'app_db',
-        'ALTER TABLE `users` ADD COLUMN `nickname` VARCHAR(64);'
-      )
+      expect(ipc.calls('apply_table_ddl')).toContainEqual({
+        connectionId: 'conn-1',
+        database: 'app_db',
+        ddl: 'ALTER TABLE `users` ADD COLUMN `nickname` VARCHAR(64);',
+      })
     })
-    expect(showSuccessToast).toHaveBeenCalledWith('Table updated', 'app_db.users')
+    await expectToast('success', 'Table updated')
     expect(onSuccess).toHaveBeenCalledTimes(1)
   })
 
@@ -89,16 +78,15 @@ describe('ApplySchemaChangesDialog', () => {
     )
 
     await user.click(screen.getByTestId('apply-schema-confirm'))
-
-    await waitFor(() => {
-      expect(showSuccessToast).toHaveBeenCalledWith('Table created', 'app_db.audit_log')
-    })
+    await expectToast('success', 'Table created')
   })
 
   it('shows error message below code block on IPC failure', async () => {
     const user = userEvent.setup()
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    vi.mocked(applyTableDdl).mockRejectedValueOnce(new Error('DDL apply failed'))
+    ipc.override('apply_table_ddl', () => {
+      throw new Error('DDL apply failed')
+    })
 
     try {
       render(<ApplySchemaChangesDialog {...defaultProps} />)
@@ -107,10 +95,7 @@ describe('ApplySchemaChangesDialog', () => {
       await waitFor(() => {
         expect(screen.getByTestId('apply-schema-error')).toHaveTextContent('DDL apply failed')
       })
-      expect(showErrorToast).toHaveBeenCalledWith(
-        'Failed to apply schema changes',
-        'DDL apply failed'
-      )
+      await expectToast('error', 'Failed to apply schema changes')
     } finally {
       consoleErrorSpy.mockRestore()
     }
@@ -119,7 +104,8 @@ describe('ApplySchemaChangesDialog', () => {
   it('Execute Changes button disabled while in-flight', async () => {
     const user = userEvent.setup()
     let resolvePromise: (() => void) | undefined
-    vi.mocked(applyTableDdl).mockImplementation(
+    ipc.override(
+      'apply_table_ddl',
       () =>
         new Promise<void>((resolve) => {
           resolvePromise = resolve
@@ -140,7 +126,8 @@ describe('ApplySchemaChangesDialog', () => {
   it('backdrop click does not close dialog while executing', async () => {
     const user = userEvent.setup()
     let resolvePromise: (() => void) | undefined
-    vi.mocked(applyTableDdl).mockImplementation(
+    ipc.override(
+      'apply_table_ddl',
       () =>
         new Promise<void>((resolve) => {
           resolvePromise = resolve
@@ -164,7 +151,8 @@ describe('ApplySchemaChangesDialog', () => {
   it('Escape key does not close dialog while executing', async () => {
     const user = userEvent.setup()
     let resolvePromise: (() => void) | undefined
-    vi.mocked(applyTableDdl).mockImplementation(
+    ipc.override(
+      'apply_table_ddl',
       () =>
         new Promise<void>((resolve) => {
           resolvePromise = resolve

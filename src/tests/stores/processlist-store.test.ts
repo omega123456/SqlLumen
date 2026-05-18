@@ -1,21 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { ipc, expectToast } from '../ipc-mock'
 import { useProcessListStore } from '../../stores/processlist-store'
+import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import type { ProcessRow, KillResult } from '../../lib/processlist-commands'
 import { isIdleProcessRow } from '../../lib/processlist-filter'
-
-// Mock toast and log
-vi.mock('../../stores/toast-store', () => ({
-  showErrorToast: vi.fn(),
-  showSuccessToast: vi.fn(),
-}))
-
-vi.mock('../../lib/app-log-commands', () => ({
-  logFrontend: vi.fn(),
-}))
-
-import { showErrorToast } from '../../stores/toast-store'
-import { logFrontend } from '../../lib/app-log-commands'
 
 const CONN = 'conn-1'
 const SESSION = 'session-1'
@@ -49,21 +37,19 @@ function resetStore() {
     fetchGenerationByConnection: {},
     hasFetchedByConnection: {},
   })
+  useToastStore.setState({ toasts: [] })
+  _resetToastTimeoutsForTests()
 }
 
 beforeEach(() => {
   resetStore()
-  vi.clearAllMocks()
 })
 
 describe('processlist-store', () => {
   describe('fetchProcessList', () => {
     it('fetches rows and updates state', async () => {
       const rows = makeRows(3)
-      mockIPC((cmd) => {
-        if (cmd === 'get_processlist') return rows
-        return null
-      })
+      ipc.override('get_processlist', () => rows)
 
       await useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
 
@@ -81,10 +67,7 @@ describe('processlist-store', () => {
       })
 
       const rows = makeRows(3) // IDs 1, 2, 3
-      mockIPC((cmd) => {
-        if (cmd === 'get_processlist') return rows
-        return null
-      })
+      ipc.override('get_processlist', () => rows)
 
       await useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
 
@@ -121,10 +104,7 @@ describe('processlist-store', () => {
         },
       ]
 
-      mockIPC((cmd) => {
-        if (cmd === 'get_processlist') return rows
-        return null
-      })
+      ipc.override('get_processlist', () => rows)
 
       await useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
 
@@ -161,10 +141,7 @@ describe('processlist-store', () => {
         },
       ]
 
-      mockIPC((cmd) => {
-        if (cmd === 'get_processlist') return rows
-        return null
-      })
+      ipc.override('get_processlist', () => rows)
 
       await useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
 
@@ -173,59 +150,59 @@ describe('processlist-store', () => {
     })
 
     it('shows error toast on manual fetch failure', async () => {
-      mockIPC((cmd) => {
-        if (cmd === 'get_processlist') throw new Error('fail')
-        return null
+      ipc.override('get_processlist', () => {
+        throw new Error('fail')
       })
 
       await useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
 
-      expect(showErrorToast).toHaveBeenCalledWith('Failed to fetch process list', 'fail')
+      await expectToast('error', 'Failed to fetch process list')
       expect(useProcessListStore.getState().fetchErrorByConnection[CONN]).toBe('fail')
     })
 
     it('logs warning on auto-refresh failure and throttles toasts', async () => {
-      mockIPC((cmd) => {
-        if (cmd === 'get_processlist') throw new Error('timeout')
-        return null
+      ipc.override('get_processlist', () => {
+        throw new Error('timeout')
       })
 
       await useProcessListStore.getState().fetchProcessList(CONN, SESSION, false)
 
-      expect(logFrontend).toHaveBeenCalledWith(
-        'warn',
-        expect.stringContaining('Auto-refresh failed')
+      // Auto-refresh failure should log a warning via IPC and show a toast
+      const logCalls = ipc.calls('log_frontend')
+      const hasAutoRefreshWarning = logCalls.some(
+        (call) =>
+          (call as Record<string, unknown>)?.level === 'warn' &&
+          String((call as Record<string, unknown>)?.message ?? '').includes('Auto-refresh failed')
       )
-      expect(showErrorToast).toHaveBeenCalledTimes(1)
+      expect(hasAutoRefreshWarning).toBe(true)
+      await expectToast('error', 'Process list refresh failed')
 
       // Second call within cooldown should not show toast again
-      vi.clearAllMocks()
+      const toastsBefore = useToastStore.getState().toasts.length
+      ipc.override('get_processlist', () => {
+        throw new Error('timeout')
+      })
       await useProcessListStore.getState().fetchProcessList(CONN, SESSION, false)
-      expect(showErrorToast).not.toHaveBeenCalled()
+      expect(useToastStore.getState().toasts.length).toBe(toastsBefore)
     })
 
     it('normalizes non-Error throw values on manual fetch failure', async () => {
-      mockIPC((cmd) => {
-        if (cmd === 'get_processlist') {
-          throw 'plain-error'
-        }
-        return null
+      ipc.override('get_processlist', () => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'plain-error'
       })
 
       await useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
 
-      expect(showErrorToast).toHaveBeenCalledWith('Failed to fetch process list', 'plain-error')
+      await expectToast('error', 'Failed to fetch process list')
       expect(useProcessListStore.getState().fetchErrorByConnection[CONN]).toBe('plain-error')
     })
 
     it('skips overlapping fetches', async () => {
       let callCount = 0
-      mockIPC((cmd) => {
-        if (cmd === 'get_processlist') {
-          callCount++
-          return makeRows(1)
-        }
-        return null
+      ipc.override('get_processlist', () => {
+        callCount++
+        return makeRows(1)
       })
 
       // Set isFetching manually
@@ -244,12 +221,9 @@ describe('processlist-store', () => {
         { id: 1, success: true, error: null },
         { id: 2, success: false, error: 'access denied' },
       ]
-      mockIPC((cmd, args) => {
-        if (cmd === 'kill_queries') {
-          expect((args as { ids: number[] }).ids).toEqual([1, 2])
-          return results
-        }
-        return null
+      ipc.override('kill_queries', (args) => {
+        expect((args as { ids: number[] }).ids).toEqual([1, 2])
+        return results
       })
 
       useProcessListStore.setState({
@@ -440,14 +414,13 @@ describe('processlist-store', () => {
   describe('generation guard', () => {
     it('discards stale fetch results after resetConnection', async () => {
       let resolveIpc: ((rows: ProcessRow[]) => void) | null = null
-      mockIPC((cmd) => {
-        if (cmd === 'get_processlist') {
-          return new Promise<ProcessRow[]>((resolve) => {
+      ipc.override(
+        'get_processlist',
+        () =>
+          new Promise<ProcessRow[]>((resolve) => {
             resolveIpc = resolve
           })
-        }
-        return null
-      })
+      )
 
       // Start fetch
       const fetchPromise = useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
@@ -465,14 +438,13 @@ describe('processlist-store', () => {
 
     it('discards stale fetch errors after resetConnection', async () => {
       let rejectIpc: ((reason?: unknown) => void) | null = null
-      mockIPC((cmd) => {
-        if (cmd === 'get_processlist') {
-          return new Promise<ProcessRow[]>((_, reject) => {
+      ipc.override(
+        'get_processlist',
+        () =>
+          new Promise<ProcessRow[]>((_, reject) => {
             rejectIpc = reject
           })
-        }
-        return null
-      })
+      )
 
       const fetchPromise = useProcessListStore.getState().fetchProcessList(CONN, SESSION, true)
       useProcessListStore.getState().resetConnection(CONN)
@@ -481,7 +453,9 @@ describe('processlist-store', () => {
       await fetchPromise
 
       expect(useProcessListStore.getState().fetchErrorByConnection[CONN]).toBeUndefined()
-      expect(showErrorToast).not.toHaveBeenCalled()
+      expect(
+        useToastStore.getState().toasts.some((t) => t.variant === 'error')
+      ).toBe(false)
     })
   })
 })

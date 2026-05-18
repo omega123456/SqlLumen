@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import type { TableDataColumnMeta } from '../../../types/schema'
@@ -7,34 +7,7 @@ import type {
   CellEditorParams,
 } from '../../../components/table-data/useCellEditor'
 
-// Mock the DateTimePicker to avoid portal / react-datepicker DOM issues
-vi.mock('../../../components/table-data/DateTimePicker', () => ({
-  DateTimePicker: vi.fn(
-    ({ onApply, onCancel }: { onApply: (v: string) => void; onCancel: () => void }) => (
-      <div data-testid="date-time-picker-popup">
-        <button data-testid="mock-apply" onClick={() => onApply('2023-11-24 14:30:00')}>
-          Apply
-        </button>
-        <button data-testid="mock-cancel" onClick={() => onCancel()}>
-          Cancel
-        </button>
-      </div>
-    )
-  ),
-}))
-
-// Mock date-utils — keep real implementations except getTodayMysqlString
-vi.mock('../../../lib/date-utils', async () => {
-  const actual =
-    await vi.importActual<typeof import('../../../lib/date-utils')>('../../../lib/date-utils')
-  return {
-    ...actual,
-    getTodayMysqlString: vi.fn(() => '2025-06-15 10:00:00'),
-  }
-})
-
 import DateTimeCellEditor from '../../../components/table-data/DateTimeCellEditor'
-import { getTodayMysqlString } from '../../../lib/date-utils'
 
 type DateTimeCellEditorProps = CellEditorParams & CellEditorCallbacks
 
@@ -124,7 +97,13 @@ function setupStore() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2025-06-15T10:00:00Z'))
   useTableDataStore.setState({ tabs: {} })
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('DateTimeCellEditor', () => {
@@ -215,24 +194,19 @@ describe('DateTimeCellEditor', () => {
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
     expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
 
-    // Click apply in mock picker
-    fireEvent.click(screen.getByTestId('mock-apply'))
+    fireEvent.click(screen.getByTestId('btn-today'))
+    fireEvent.change(screen.getByTestId('time-input'), { target: { value: '16:45:00' } })
+    fireEvent.click(screen.getByTestId('btn-picker-apply'))
 
-    // Picker should be closed
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
 
-    // Input should show new value
     const input = screen.getByRole('textbox') as HTMLInputElement
-    expect(input.value).toBe('2023-11-24 14:30:00')
-
-    // onRowChange should have been called (preview)
+    expect(input.value).toBe('2025-06-15 16:45:00')
     expect(props.onRowChange).toHaveBeenCalledWith(
-      expect.objectContaining({ created_at: '2023-11-24 14:30:00' })
+      expect.objectContaining({ created_at: '2025-06-15 16:45:00' })
     )
-
-    // updateCellValue should have been called
     const state = useTableDataStore.getState().tabs['tab-1']
-    expect(state?.editState?.currentValues.created_at).toBe('2023-11-24 14:30:00')
+    expect(state?.editState?.currentValues.created_at).toBe('2025-06-15 16:45:00')
   })
 
   it('picker onApply commits the active grid editor so the grid persists the selected date', () => {
@@ -241,7 +215,8 @@ describe('DateTimeCellEditor', () => {
     render(<DateTimeCellEditor {...props} />)
 
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
-    fireEvent.click(screen.getByTestId('mock-apply'))
+    fireEvent.click(screen.getByTestId('btn-today'))
+    fireEvent.click(screen.getByTestId('btn-picker-apply'))
 
     expect(props.onClose).toHaveBeenCalledWith(true, false)
   })
@@ -255,8 +230,7 @@ describe('DateTimeCellEditor', () => {
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
     expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
 
-    // Click cancel
-    fireEvent.click(screen.getByTestId('mock-cancel'))
+    fireEvent.click(screen.getByTestId('btn-picker-cancel'))
 
     // Picker should be closed
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
@@ -302,7 +276,7 @@ describe('DateTimeCellEditor', () => {
     expect(input.value).toBe('')
   })
 
-  it('NULL toggle off calls getTodayMysqlString for temporal pre-fill', () => {
+  it('NULL toggle off prefills temporal values from the current clock', () => {
     setupStore()
     const props = makeMockProps({ row: { id: 1, created_at: null } })
     render(<DateTimeCellEditor {...props} />)
@@ -315,9 +289,7 @@ describe('DateTimeCellEditor', () => {
     const nullToggle = screen.getByText('NULL')
     fireEvent.click(nullToggle)
 
-    // Should have called getTodayMysqlString and set the value
-    expect(getTodayMysqlString).toHaveBeenCalledWith('DATETIME')
-    expect(input.value).toBe('2025-06-15 10:00:00')
+    expect(input.value).toBe('2025-06-15 11:00:00')
   })
 
   it('does NOT show NULL toggle when isNullable is false', () => {
@@ -336,7 +308,7 @@ describe('DateTimeCellEditor', () => {
     const props = makeMockProps()
     render(<DateTimeCellEditor {...props} />)
 
-    const input = screen.getByRole('textbox')
+    const input = screen.getAllByRole('textbox')[0]
     fireEvent.keyDown(input, { key: 'Escape' })
 
     expect(props.onClose).toHaveBeenCalledWith(false, false)
@@ -352,7 +324,7 @@ describe('DateTimeCellEditor', () => {
     expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
 
     // Press Escape on the input
-    const input = screen.getByRole('textbox')
+    const input = screen.getAllByRole('textbox')[0]
     fireEvent.keyDown(input, { key: 'Escape' })
 
     // Picker should be closed
@@ -371,7 +343,7 @@ describe('DateTimeCellEditor', () => {
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
     expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
 
-    const input = screen.getByRole('textbox')
+    const input = screen.getAllByRole('textbox')[0]
 
     // First Escape: close picker only
     fireEvent.keyDown(input, { key: 'Escape' })
@@ -509,14 +481,15 @@ describe('DateTimeCellEditor', () => {
 
     // Open picker and apply
     fireEvent.click(screen.getByTestId('grid-calendar-btn'))
-    fireEvent.click(screen.getByTestId('mock-apply'))
+    fireEvent.click(screen.getByTestId('btn-today'))
+    fireEvent.click(screen.getByTestId('btn-picker-apply'))
 
     // The input should show the new value
-    const input = screen.getByRole('textbox') as HTMLInputElement
-    expect(input.value).toBe('2023-11-24 14:30:00')
+    const input = screen.getAllByRole('textbox')[0] as HTMLInputElement
+    expect(input.value).toBe('2025-06-15 11:00:00')
 
     // The store was already updated by the picker's Apply (via editor.handleChange).
     const state = useTableDataStore.getState().tabs['tab-1']
-    expect(state?.editState?.currentValues.created_at).toBe('2023-11-24 14:30:00')
+    expect(state?.editState?.currentValues.created_at).toBe('2025-06-15 11:00:00')
   })
 })

@@ -1,33 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ConnectionForm } from '../../components/connection-dialog/ConnectionForm'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useSettingsStore } from '../../stores/settings-store'
+import { ipc } from '../ipc-mock'
 import type { SavedConnection } from '../../types/connection'
-
-// Mock IPC
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
-}))
-
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}))
-
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  open: vi.fn(),
-}))
-
-vi.mock('../../stores/toast-store', () => ({
-  showErrorToast: vi.fn(),
-  showSuccessToast: vi.fn(),
-}))
-
-import { invoke } from '@tauri-apps/api/core'
-import { open } from '@tauri-apps/plugin-dialog'
-const mockInvoke = vi.mocked(invoke)
-const mockOpen = vi.mocked(open)
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -55,9 +33,6 @@ function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedCon
 }
 
 beforeEach(() => {
-  mockInvoke.mockReset()
-  mockOpen.mockReset()
-
   useConnectionStore.setState({
     savedConnections: [],
     connectionGroups: [],
@@ -105,18 +80,14 @@ describe('ConnectionForm', () => {
 
   it('Test Connection button calls testConnection IPC', async () => {
     const user = userEvent.setup()
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'test_connection')
-        return Promise.resolve({
-          success: true,
-          serverVersion: '8.0.35',
-          authMethod: 'mysql_native_password',
-          sslStatus: 'Not using SSL',
-          connectionTimeMs: 42,
-          errorMessage: null,
-        })
-      return Promise.resolve([])
-    })
+    ipc.override('test_connection', () => ({
+      success: true,
+      serverVersion: '8.0.35',
+      authMethod: 'mysql_native_password',
+      sslStatus: 'Not using SSL',
+      connectionTimeMs: 42,
+      errorMessage: null,
+    }))
 
     render(<ConnectionForm />)
 
@@ -126,18 +97,13 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByText('Test Connection'))
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('test_connection', expect.any(Object))
+      expect(ipc.calls('test_connection')).toHaveLength(1)
     })
   })
 
   it('Save button calls saveConnection IPC', async () => {
     const user = userEvent.setup()
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'save_connection') return Promise.resolve('new-uuid-123')
-      if (cmd === 'list_connections') return Promise.resolve([])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      return Promise.resolve(null)
-    })
+    ipc.override('save_connection', () => 'new-uuid-123')
 
     render(<ConnectionForm />)
 
@@ -147,7 +113,7 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByText('Save'))
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('save_connection', expect.any(Object))
+      expect(ipc.calls('save_connection')).toHaveLength(1)
     })
   })
 
@@ -197,7 +163,7 @@ describe('ConnectionForm', () => {
     expect(screen.getByText('Connection name is required')).toBeInTheDocument()
     expect(screen.getByText('Host is required')).toBeInTheDocument()
     expect(screen.getByText('Username is required')).toBeInTheDocument()
-    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(ipc.calls('save_connection')).toHaveLength(0)
   })
 
   it('Connect validation prevents connect with empty fields', async () => {
@@ -209,7 +175,7 @@ describe('ConnectionForm', () => {
     expect(screen.getByText('Connection name is required')).toBeInTheDocument()
     expect(screen.getByText('Host is required')).toBeInTheDocument()
     expect(screen.getByText('Username is required')).toBeInTheDocument()
-    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(ipc.calls('save_connection')).toHaveLength(0)
   })
 
   it('password field toggles show/hide', async () => {
@@ -355,18 +321,14 @@ describe('ConnectionForm', () => {
 
   it('shows test connection success result', async () => {
     const user = userEvent.setup()
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'test_connection')
-        return Promise.resolve({
-          success: true,
-          serverVersion: '8.0.35',
-          authMethod: 'mysql_native_password',
-          sslStatus: 'Not using SSL',
-          connectionTimeMs: 42,
-          errorMessage: null,
-        })
-      return Promise.resolve([])
-    })
+    ipc.override('test_connection', () => ({
+      success: true,
+      serverVersion: '8.0.35',
+      authMethod: 'mysql_native_password',
+      sslStatus: 'Not using SSL',
+      connectionTimeMs: 42,
+      errorMessage: null,
+    }))
 
     render(<ConnectionForm />)
 
@@ -385,9 +347,8 @@ describe('ConnectionForm', () => {
 
   it('shows test connection error result', async () => {
     const user = userEvent.setup()
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'test_connection') return Promise.reject(new Error('Connection refused'))
-      return Promise.resolve([])
+    ipc.override('test_connection', () => {
+      throw new Error('Connection refused')
     })
 
     render(<ConnectionForm />)
@@ -440,7 +401,7 @@ describe('ConnectionForm', () => {
 
   it('file browse buttons call native dialog', async () => {
     const user = userEvent.setup()
-    mockOpen.mockResolvedValue('/path/to/ca.pem')
+    ipc.override('plugin:dialog|open', () => '/path/to/ca.pem')
 
     render(<ConnectionForm />)
 
@@ -452,11 +413,7 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByLabelText('Browse CA certificate'))
 
     await waitFor(() => {
-      expect(mockOpen).toHaveBeenCalledWith(
-        expect.objectContaining({
-          filters: [{ name: 'Certificates', extensions: ['pem', 'crt', 'key'] }],
-        })
-      )
+      expect(ipc.calls('plugin:dialog|open')).toHaveLength(1)
     })
 
     // Check that the file path was set
@@ -465,7 +422,7 @@ describe('ConnectionForm', () => {
 
   it('file browse handles user cancellation gracefully', async () => {
     const user = userEvent.setup()
-    mockOpen.mockResolvedValue(null)
+    ipc.override('plugin:dialog|open', () => null)
 
     render(<ConnectionForm />)
 
@@ -474,7 +431,7 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByLabelText('Browse client certificate'))
 
     await waitFor(() => {
-      expect(mockOpen).toHaveBeenCalled()
+      expect(ipc.calls('plugin:dialog|open')).toHaveLength(1)
     })
 
     // Field should remain empty
@@ -483,18 +440,11 @@ describe('ConnectionForm', () => {
 
   it('Connect button saves new connection and opens it', async () => {
     const user = userEvent.setup()
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'save_connection') return Promise.resolve('new-conn-id')
-      if (cmd === 'list_connections')
-        return Promise.resolve([
-          makeSavedConnection({ id: 'new-conn-id', name: 'Local', host: 'localhost' }),
-        ])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      if (cmd === 'open_connection') {
-        return Promise.resolve({ sessionId: 'sess-test-1', serverVersion: '8.0.35' })
-      }
-      return Promise.resolve(null)
-    })
+    ipc.override('save_connection', () => 'new-conn-id')
+    ipc.override('list_connections', () => [
+      makeSavedConnection({ id: 'new-conn-id', name: 'Local', host: 'localhost' }),
+    ])
+    ipc.override('open_connection', () => ({ sessionId: 'sess-test-1', serverVersion: '8.0.35' }))
 
     useConnectionStore.setState({ dialogOpen: true })
     render(<ConnectionForm />)
@@ -505,25 +455,18 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByText('Connect'))
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('save_connection', expect.any(Object))
-      expect(mockInvoke).toHaveBeenCalledWith('open_connection', expect.any(Object))
+      expect(ipc.calls('save_connection')).toHaveLength(1)
+      expect(ipc.calls('open_connection')).toHaveLength(1)
     })
   })
 
   it('Connect button closes dialog after connecting', async () => {
     const user = userEvent.setup()
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'save_connection') return Promise.resolve('new-conn-id')
-      if (cmd === 'list_connections')
-        return Promise.resolve([
-          makeSavedConnection({ id: 'new-conn-id', name: 'Local', host: 'localhost' }),
-        ])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      if (cmd === 'open_connection') {
-        return Promise.resolve({ sessionId: 'sess-test-1', serverVersion: '8.0.35' })
-      }
-      return Promise.resolve(null)
-    })
+    ipc.override('save_connection', () => 'new-conn-id')
+    ipc.override('list_connections', () => [
+      makeSavedConnection({ id: 'new-conn-id', name: 'Local', host: 'localhost' }),
+    ])
+    ipc.override('open_connection', () => ({ sessionId: 'sess-test-1', serverVersion: '8.0.35' }))
 
     useConnectionStore.setState({ dialogOpen: true })
     render(<ConnectionForm />)
@@ -540,9 +483,8 @@ describe('ConnectionForm', () => {
 
   it('Connect shows error on failure', async () => {
     const user = userEvent.setup()
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'save_connection') return Promise.reject(new Error('Save failed'))
-      return Promise.resolve([])
+    ipc.override('save_connection', () => {
+      throw new Error('Save failed')
     })
 
     render(<ConnectionForm />)
@@ -560,9 +502,8 @@ describe('ConnectionForm', () => {
 
   it('Save shows error on failure', async () => {
     const user = userEvent.setup()
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'save_connection') return Promise.reject(new Error('Database error'))
-      return Promise.resolve([])
+    ipc.override('save_connection', () => {
+      throw new Error('Database error')
     })
 
     render(<ConnectionForm />)
@@ -660,12 +601,7 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     const editConn = makeSavedConnection({ hasPassword: true })
 
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'update_connection') return Promise.resolve(undefined)
-      if (cmd === 'list_connections') return Promise.resolve([])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      return Promise.resolve(null)
-    })
+    ipc.override('update_connection', () => undefined)
 
     render(<ConnectionForm editingConnection={editConn} />)
 
@@ -673,12 +609,12 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByText('Save'))
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        'update_connection',
-        expect.objectContaining({
-          data: expect.objectContaining({ clearPassword: true, password: null }),
-        })
-      )
+      const calls = ipc.calls('update_connection')
+      expect(calls).toHaveLength(1)
+      expect((calls[0] as Record<string, unknown>)?.data).toMatchObject({
+        clearPassword: true,
+        password: null,
+      })
     })
   })
 
@@ -718,12 +654,7 @@ describe('ConnectionForm', () => {
   it('shows remove saved password option after saving a new password', async () => {
     const user = userEvent.setup()
 
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'save_connection') return Promise.resolve('new-uuid-123')
-      if (cmd === 'list_connections') return Promise.resolve([])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      return Promise.resolve(null)
-    })
+    ipc.override('save_connection', () => 'new-uuid-123')
 
     render(<ConnectionForm />)
 
@@ -742,12 +673,7 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     const editConn = makeSavedConnection({ hasPassword: false })
 
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'update_connection') return Promise.resolve(undefined)
-      if (cmd === 'list_connections') return Promise.resolve([])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      return Promise.resolve(null)
-    })
+    ipc.override('update_connection', () => undefined)
 
     render(<ConnectionForm editingConnection={editConn} />)
 
@@ -762,12 +688,12 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByText('Save'))
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        'update_connection',
-        expect.objectContaining({
-          data: expect.objectContaining({ clearPassword: false, password: null }),
-        })
-      )
+      const calls = ipc.calls('update_connection')
+      expect(calls).toHaveLength(1)
+      expect((calls[0] as Record<string, unknown>)?.data).toMatchObject({
+        clearPassword: false,
+        password: null,
+      })
     })
 
     expect(
@@ -778,13 +704,7 @@ describe('ConnectionForm', () => {
 
   it('Save calls updateConnection after previous save (no duplicates)', async () => {
     const user = userEvent.setup()
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'save_connection') return Promise.resolve('new-uuid-123')
-      if (cmd === 'update_connection') return Promise.resolve(undefined)
-      if (cmd === 'list_connections') return Promise.resolve([])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      return Promise.resolve(null)
-    })
+    ipc.override('save_connection', () => 'new-uuid-123')
 
     render(<ConnectionForm />)
 
@@ -795,41 +715,29 @@ describe('ConnectionForm', () => {
     // First save — should call save_connection
     await user.click(screen.getByText('Save'))
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('save_connection', expect.any(Object))
+      expect(ipc.calls('save_connection')).toHaveLength(1)
     })
 
-    mockInvoke.mockClear()
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'update_connection') return Promise.resolve(undefined)
-      if (cmd === 'list_connections') return Promise.resolve([])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      return Promise.resolve(null)
-    })
+    // Now override update_connection for the second save
+    ipc.override('update_connection', () => undefined)
 
     // Second save — should call update_connection instead of save_connection
     await user.click(screen.getByText('Save'))
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith(
-        'update_connection',
-        expect.objectContaining({ id: 'new-uuid-123' })
-      )
+      const updateCalls = ipc.calls('update_connection')
+      expect(updateCalls).toHaveLength(1)
+      expect((updateCalls[0] as Record<string, unknown>)?.id).toBe('new-uuid-123')
     })
-    expect(mockInvoke).not.toHaveBeenCalledWith('save_connection', expect.any(Object))
+    expect(ipc.calls('save_connection')).toHaveLength(1) // still only 1
   })
 
   it('Connect updates existing connection before opening', async () => {
     const user = userEvent.setup()
     const editConn = makeSavedConnection()
 
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'update_connection') return Promise.resolve(undefined)
-      if (cmd === 'list_connections') return Promise.resolve([editConn])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      if (cmd === 'open_connection') {
-        return Promise.resolve({ sessionId: 'sess-test-1', serverVersion: '8.0.35' })
-      }
-      return Promise.resolve(null)
-    })
+    ipc.override('update_connection', () => undefined)
+    ipc.override('list_connections', () => [editConn])
+    ipc.override('open_connection', () => ({ sessionId: 'sess-test-1', serverVersion: '8.0.35' }))
 
     useConnectionStore.setState({
       dialogOpen: true,
@@ -846,22 +754,19 @@ describe('ConnectionForm', () => {
     await user.click(screen.getByText('Connect'))
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('update_connection', expect.any(Object))
-      expect(mockInvoke).toHaveBeenCalledWith('open_connection', expect.any(Object))
+      expect(ipc.calls('update_connection')).toHaveLength(1)
+      expect(ipc.calls('open_connection')).toHaveLength(1)
     })
   })
 
   it('Connect does not close dialog on openConnection failure', async () => {
     const user = userEvent.setup()
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'save_connection') return Promise.resolve('new-conn-id')
-      if (cmd === 'list_connections')
-        return Promise.resolve([
-          makeSavedConnection({ id: 'new-conn-id', name: 'Local', host: 'localhost' }),
-        ])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      if (cmd === 'open_connection') return Promise.reject(new Error('Connection refused'))
-      return Promise.resolve(null)
+    ipc.override('save_connection', () => 'new-conn-id')
+    ipc.override('list_connections', () => [
+      makeSavedConnection({ id: 'new-conn-id', name: 'Local', host: 'localhost' }),
+    ])
+    ipc.override('open_connection', () => {
+      throw new Error('Connection refused')
     })
 
     useConnectionStore.setState({ dialogOpen: true })
@@ -883,19 +788,14 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     const editConn = makeSavedConnection()
 
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'update_connection') return Promise.resolve(undefined)
-      if (cmd === 'list_connections') return Promise.resolve([])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      return Promise.resolve(null)
-    })
+    ipc.override('update_connection', () => undefined)
 
     render(<ConnectionForm editingConnection={editConn} />)
 
     await user.click(screen.getByText('Save'))
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('update_connection', expect.any(Object))
+      expect(ipc.calls('update_connection')).toHaveLength(1)
     })
   })
 
@@ -917,12 +817,7 @@ describe('ConnectionForm', () => {
     const user = userEvent.setup()
     const editConn = makeSavedConnection({ defaultDatabase: 'mydb' })
 
-    mockInvoke.mockImplementation((cmd) => {
-      if (cmd === 'update_connection') return Promise.resolve(undefined)
-      if (cmd === 'list_connections') return Promise.resolve([])
-      if (cmd === 'list_connection_groups') return Promise.resolve([])
-      return Promise.resolve(null)
-    })
+    ipc.override('update_connection', () => undefined)
 
     render(<ConnectionForm editingConnection={editConn} />)
 

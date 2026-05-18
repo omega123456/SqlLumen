@@ -3,28 +3,39 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
+import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
+import * as ResultGridViewModule from '../../../components/query-editor/ResultGridView'
+import * as ResultFormViewModule from '../../../components/query-editor/ResultFormView'
+import * as ResultTextViewModule from '../../../components/query-editor/ResultTextView'
+import * as FilterDialogModule from '../../../components/dialogs/FilterDialog'
 
-vi.mock('../../../components/query-editor/ResultToolbar', () => ({
-  ResultToolbar: ({ tabId }: { tabId: string }) => <div data-testid="result-toolbar">{tabId}</div>,
-}))
-vi.mock('../../../components/query-editor/ResultGridView', () => ({
-  ResultGridView: ({ rows }: { rows: unknown[][] }) => (
-    <div data-testid="grid-view">Grid rows: {rows.length}</div>
-  ),
-}))
-vi.mock('../../../components/query-editor/ResultFormView', () => ({
-  ResultFormView: ({ totalRows }: { totalRows: number }) => (
-    <div data-testid="form-view">Form rows: {totalRows}</div>
-  ),
-}))
-vi.mock('../../../components/query-editor/ResultTextView', () => ({
-  ResultTextView: ({ rows }: { rows: unknown[][] }) => (
-    <div data-testid="text-view">Text rows: {rows.length}</div>
-  ),
-}))
-vi.mock('../../../components/dialogs/FilterDialog', () => ({
-  FilterDialog: () => null,
-}))
+// Use vi.spyOn to install per-test mock implementations without vi.mock().
+
+beforeEach(() => {
+  vi.spyOn(ResultToolbarModule, 'ResultToolbar').mockImplementation(
+    ({ tabId }: { tabId: string }) =>
+      (<div data-testid="result-toolbar">{tabId}</div>) as unknown as React.ReactElement
+  )
+  vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation(
+    ({ rows }: { rows: unknown[][] }) =>
+      (<div data-testid="grid-view">Grid rows: {rows.length}</div>) as unknown as React.ReactElement
+  )
+  vi.spyOn(ResultFormViewModule, 'ResultFormView').mockImplementation(
+    ({ totalRows }: { totalRows: number }) =>
+      (
+        <div data-testid="form-view">Form rows: {totalRows}</div>
+      ) as unknown as React.ReactElement
+  )
+  vi.spyOn(ResultTextViewModule, 'ResultTextView').mockImplementation(
+    ({ rows }: { rows: unknown[][] }) =>
+      (<div data-testid="text-view">Text rows: {rows.length}</div>) as unknown as React.ReactElement
+  )
+  vi.spyOn(FilterDialogModule, 'FilterDialog').mockImplementation(
+    () => null as unknown as React.ReactElement
+  )
+})
+
+import React from 'react'
 
 const result = {
   ...DEFAULT_RESULT_STATE,

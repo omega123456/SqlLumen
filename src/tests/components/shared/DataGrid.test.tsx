@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import React from 'react'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { createRef } from 'react'
 import { render, screen } from '@testing-library/react'
 import {
@@ -7,15 +8,23 @@ import {
   type GridCell,
   type Item,
 } from '@glideapps/glide-data-grid'
+import * as GlideDataGridModule from '../../../components/shared/glide/GlideDataGrid'
 import { DataGrid, type DataGridHandle } from '../../../components/shared/DataGrid'
+import type { GridHandle } from '../../../components/shared/glide/glide-grid-types'
 
+// GlideDataGrid is a forwardRef object — vi.spyOn can't intercept it directly.
+// Use Object.defineProperty to replace it per-test (local module namespace is mutable in vite-node).
+
+const originalGlideDataGrid = GlideDataGridModule.GlideDataGrid
 const mockGlideDataGrid = vi.fn()
 
-vi.mock('../../../components/shared/glide/GlideDataGrid', async () => {
-  const React = await import('react')
-  return {
-    GlideDataGrid: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
-      mockGlideDataGrid(props)
+beforeEach(() => {
+  mockGlideDataGrid.mockClear()
+
+  const mockFn = mockGlideDataGrid
+  Object.defineProperty(GlideDataGridModule, 'GlideDataGrid', {
+    value: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<GridHandle>) => {
+      mockFn(props)
       React.useImperativeHandle(ref, () => ({
         scrollToCell: vi.fn(),
         selectCell: vi.fn(),
@@ -23,11 +32,24 @@ vi.mock('../../../components/shared/glide/GlideDataGrid', async () => {
       }))
       return React.createElement(
         'div',
-        { className: props.className as string | undefined, 'data-testid': props['data-testid'] },
+        {
+          className: props.className as string | undefined,
+          'data-testid': props['data-testid'] as string | undefined,
+        },
         'grid'
       )
     }),
-  }
+    writable: true,
+    configurable: true,
+  })
+})
+
+afterEach(() => {
+  Object.defineProperty(GlideDataGridModule, 'GlideDataGrid', {
+    value: originalGlideDataGrid,
+    writable: true,
+    configurable: true,
+  })
 })
 
 describe('DataGrid', () => {

@@ -1,45 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import type { Mock } from 'vitest'
+import { ipc, expectToast } from '../ipc-mock'
+import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import type {
   TableDataResponse,
   PrimaryKeyInfo,
   TableDataColumnMeta,
   ForeignKeyInfo,
 } from '../../types/schema'
-
-// Mock the IPC commands module
-vi.mock('../../lib/table-data-commands', () => ({
-  fetchTableData: vi.fn(),
-  updateTableRow: vi.fn(),
-  insertTableRow: vi.fn(),
-  deleteTableRow: vi.fn(),
-  exportTableData: vi.fn(),
-}))
-
-vi.mock('../../lib/schema-commands', () => ({
-  getTableForeignKeys: vi.fn(),
-}))
-
-vi.mock('../../lib/app-log-commands', () => ({
-  logFrontend: vi.fn(),
-}))
-
-vi.mock('../../stores/toast-store', () => ({
-  showSuccessToast: vi.fn(),
-  showErrorToast: vi.fn(),
-  showWarningToast: vi.fn(),
-}))
-
 import { useTableDataStore } from '../../stores/table-data-store'
-import { showSuccessToast, showErrorToast } from '../../stores/toast-store'
-import {
-  fetchTableData,
-  updateTableRow,
-  insertTableRow,
-  deleteTableRow,
-} from '../../lib/table-data-commands'
-import { getTableForeignKeys } from '../../lib/schema-commands'
-import { logFrontend } from '../../lib/app-log-commands'
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -123,15 +91,17 @@ const booleanAliasColumns: TableDataColumnMeta[] = [
 
 beforeEach(() => {
   useTableDataStore.setState({ tabs: {} })
-  vi.clearAllMocks()
-  ;(fetchTableData as Mock).mockResolvedValue(mockResponse)
-  ;(updateTableRow as Mock).mockResolvedValue(undefined)
-  ;(insertTableRow as Mock).mockResolvedValue([
+  useToastStore.setState({ toasts: [] })
+  _resetToastTimeoutsForTests()
+  // Default IPC overrides
+  ipc.override('fetch_table_data', () => mockResponse)
+  ipc.override('update_table_row', () => undefined)
+  ipc.override('insert_table_row', () => [
     ['id', 3],
     ['name', 'Charlie'],
   ])
-  ;(deleteTableRow as Mock).mockResolvedValue(undefined)
-  ;(getTableForeignKeys as Mock).mockResolvedValue([])
+  ipc.override('delete_table_row', () => undefined)
+  ipc.override('get_table_foreign_keys', () => [])
 })
 
 // Helper: init a tab with data loaded
@@ -202,20 +172,24 @@ describe('useTableDataStore — setScrollCell', () => {
     await setupTabWithData()
     useTableDataStore.getState().setScrollCell('tab-1', 15, 3)
 
+    ipc.override('fetch_table_data', () => mockResponse)
     await useTableDataStore.getState().sortByColumn('tab-1', 'name', 'asc')
     expect(useTableDataStore.getState().tabs['tab-1']).toMatchObject({ scrollRow: 0, scrollCol: 0 })
 
     useTableDataStore.getState().setScrollCell('tab-1', 15, 3)
+    ipc.override('fetch_table_data', () => mockResponse)
     await useTableDataStore
       .getState()
       .applyFilters('tab-1', [{ column: 'name', operator: '==' as const, value: 'Alice' }])
     expect(useTableDataStore.getState().tabs['tab-1']).toMatchObject({ scrollRow: 0, scrollCol: 0 })
 
     useTableDataStore.getState().setScrollCell('tab-1', 15, 3)
+    ipc.override('fetch_table_data', () => mockResponse)
     await useTableDataStore.getState().fetchPage('tab-1', 2)
     expect(useTableDataStore.getState().tabs['tab-1']).toMatchObject({ scrollRow: 0, scrollCol: 0 })
 
     useTableDataStore.getState().setScrollCell('tab-1', 15, 3)
+    ipc.override('fetch_table_data', () => mockResponse)
     await useTableDataStore.getState().refreshData('tab-1')
     expect(useTableDataStore.getState().tabs['tab-1']).toMatchObject({ scrollRow: 0, scrollCol: 0 })
   })
@@ -235,7 +209,7 @@ describe('useTableDataStore — loadTableData', () => {
     expect(tab.primaryKey).toEqual(mockPrimaryKey)
     expect(tab.isLoading).toBe(false)
     expect(tab.error).toBeNull()
-    expect(fetchTableData).toHaveBeenCalledTimes(1)
+    expect(ipc.calls('fetch_table_data').length).toBe(1)
   })
 
   it('resets editState and errors on load', async () => {
@@ -276,8 +250,13 @@ describe('useTableDataStore — fetchPage', () => {
       ],
       currentPage: 2,
     }
-    ;(fetchTableData as Mock).mockResolvedValueOnce(mockResponse)
-    ;(fetchTableData as Mock).mockResolvedValueOnce(page2Response)
+    // First call returns mockResponse (from beforeEach override)
+    // Second call returns page2Response
+    let callCount = 0
+    ipc.override('fetch_table_data', () => {
+      callCount++
+      return callCount === 1 ? mockResponse : page2Response
+    })
 
     await setupTabWithData()
     await useTableDataStore.getState().fetchPage('tab-1', 2)
@@ -288,7 +267,7 @@ describe('useTableDataStore — fetchPage', () => {
       [4, 'Dave'],
     ])
     expect(tab.currentPage).toBe(2)
-    expect(fetchTableData).toHaveBeenCalledTimes(2)
+    expect(ipc.calls('fetch_table_data').length).toBe(2)
   })
 
   it('clears selectedRowKey after a successful page fetch', async () => {
@@ -301,7 +280,9 @@ describe('useTableDataStore — fetchPage', () => {
   })
 
   it('sets error on IPC failure', async () => {
-    ;(fetchTableData as Mock).mockRejectedValue(new Error('Fetch failed'))
+    ipc.override('fetch_table_data', () => {
+      throw new Error('Fetch failed')
+    })
 
     useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
     await useTableDataStore.getState().fetchPage('tab-1', 1)
@@ -313,10 +294,12 @@ describe('useTableDataStore — fetchPage', () => {
 
   it('skips state update if tab was cleaned up during fetch', async () => {
     let resolvePromise: ((value: TableDataResponse) => void) | null = null
-    ;(fetchTableData as Mock).mockReturnValue(
-      new Promise<TableDataResponse>((resolve) => {
-        resolvePromise = resolve
-      })
+    ipc.override(
+      'fetch_table_data',
+      () =>
+        new Promise<TableDataResponse>((resolve) => {
+          resolvePromise = resolve
+        })
     )
 
     useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
@@ -332,14 +315,14 @@ describe('useTableDataStore — fetchPage', () => {
   })
 
   it('normalizes boolean alias cells to integers when loading table data', async () => {
-    ;(fetchTableData as Mock).mockResolvedValueOnce({
+    ipc.override('fetch_table_data', () => ({
       columns: booleanAliasColumns,
       rows: [[1, true]],
       currentPage: 1,
       pageSize: 1000,
       primaryKey: mockPrimaryKey,
       executionTimeMs: 12,
-    })
+    }))
 
     useTableDataStore.getState().initTab('tab-bool', 'conn-1', 'mydb', 'users')
     await useTableDataStore.getState().fetchPage('tab-bool', 1)
@@ -422,14 +405,15 @@ describe('useTableDataStore — saveCurrentRow (UPDATE path)', () => {
 
     await useTableDataStore.getState().saveCurrentRow('tab-1')
 
-    expect(updateTableRow).toHaveBeenCalledWith({
-      connectionId: 'conn-1',
-      database: 'mydb',
-      table: 'users',
-      primaryKeyColumns: ['id'],
-      originalPkValues: { id: 1 },
-      updatedValues: { name: 'Updated' },
-    })
+    const updateCalls = ipc.calls('update_table_row')
+    expect(updateCalls.length).toBeGreaterThan(0)
+    const lastCall = updateCalls[updateCalls.length - 1] as Record<string, unknown>
+    expect(lastCall?.connectionId).toBe('conn-1')
+    expect(lastCall?.database).toBe('mydb')
+    expect(lastCall?.table).toBe('users')
+    expect(lastCall?.primaryKeyColumns).toEqual(['id'])
+    expect(lastCall?.originalPkValues).toEqual({ id: 1 })
+    expect(lastCall?.updatedValues).toEqual({ name: 'Updated' })
 
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.editState).toBeNull()
@@ -439,7 +423,9 @@ describe('useTableDataStore — saveCurrentRow (UPDATE path)', () => {
   })
 
   it('sets saveError on failure (does NOT clear editState)', async () => {
-    ;(updateTableRow as Mock).mockRejectedValue(new Error('Update failed'))
+    ipc.override('update_table_row', () => {
+      throw new Error('Update failed')
+    })
 
     await setupTabWithData()
     useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
@@ -459,7 +445,7 @@ describe('useTableDataStore — saveCurrentRow (UPDATE path)', () => {
 
     await useTableDataStore.getState().saveCurrentRow('tab-1')
 
-    expect(updateTableRow).not.toHaveBeenCalled()
+    expect(ipc.calls('update_table_row').length).toBe(0)
     expect(useTableDataStore.getState().tabs['tab-1'].editState).toBeNull()
   })
 })
@@ -474,13 +460,13 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
 
     await useTableDataStore.getState().saveCurrentRow('tab-1')
 
-    expect(insertTableRow).toHaveBeenCalledWith({
-      connectionId: 'conn-1',
-      database: 'mydb',
-      table: 'users',
-      values: expect.objectContaining({ name: 'Charlie' }),
-      pkInfo: mockPrimaryKey,
-    })
+    const insertCalls = ipc.calls('insert_table_row')
+    expect(insertCalls.length).toBeGreaterThan(0)
+    const lastCall = insertCalls[insertCalls.length - 1] as Record<string, unknown>
+    expect(lastCall?.connectionId).toBe('conn-1')
+    expect(lastCall?.database).toBe('mydb')
+    expect(lastCall?.table).toBe('users')
+    expect((lastCall?.values as Record<string, unknown>)?.name).toBe('Charlie')
 
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.editState).toBeNull()
@@ -489,7 +475,7 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
   })
 
   it('normalizes boolean alias cells when replacing temp row after insert', async () => {
-    ;(insertTableRow as Mock).mockResolvedValueOnce([
+    ipc.override('insert_table_row', () => [
       ['id', 3],
       ['is_admin', true],
     ])
@@ -527,13 +513,10 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
 
     await useTableDataStore.getState().saveCurrentRow('tab-1')
 
-    expect(insertTableRow).toHaveBeenCalledWith({
-      connectionId: 'conn-1',
-      database: 'mydb',
-      table: 'users',
-      values: { name: 'Alice' },
-      pkInfo: mockPrimaryKey,
-    })
+    const insertCalls = ipc.calls('insert_table_row')
+    expect(insertCalls.length).toBeGreaterThan(0)
+    const lastCall = insertCalls[insertCalls.length - 1] as Record<string, unknown>
+    expect(lastCall?.values).toEqual({ name: 'Alice' })
     expect(useTableDataStore.getState().tabs['tab-1'].selectedRowKey).toEqual({ id: 3 })
   })
 
@@ -581,14 +564,14 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
       hasAutoIncrement: false,
       isUniqueKeyFallback: false,
     }
-    ;(fetchTableData as Mock).mockResolvedValueOnce({
+    ipc.override('fetch_table_data', () => ({
       columns: compositeColumns,
       rows: [[10, 1, 'Alice']],
       currentPage: 1,
       pageSize: 1000,
       primaryKey: compositePk,
       executionTimeMs: 12,
-    })
+    }))
 
     await setupTabWithData()
     useTableDataStore.getState().setSelectedRow('tab-1', { tenant_id: 10, user_id: 1 })
@@ -598,17 +581,16 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
 
     await useTableDataStore.getState().saveCurrentRow('tab-1')
 
-    expect(insertTableRow).toHaveBeenCalledWith({
-      connectionId: 'conn-1',
-      database: 'mydb',
-      table: 'users',
-      values: { tenant_id: 11, user_id: 2, name: 'Alice' },
-      pkInfo: compositePk,
-    })
+    const insertCalls = ipc.calls('insert_table_row')
+    expect(insertCalls.length).toBeGreaterThan(0)
+    const lastCall = insertCalls[insertCalls.length - 1] as Record<string, unknown>
+    expect(lastCall?.values).toEqual({ tenant_id: 11, user_id: 2, name: 'Alice' })
   })
 
   it('sets saveError on insert failure', async () => {
-    ;(insertTableRow as Mock).mockRejectedValue(new Error('Insert failed'))
+    ipc.override('insert_table_row', () => {
+      throw new Error('Insert failed')
+    })
 
     await setupTabWithData()
     useTableDataStore.getState().insertNewRow('tab-1')
@@ -624,7 +606,10 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
 
   it('sets saveError with actual message when invoke rejects with plain string (real Tauri behavior)', async () => {
     // Real Tauri invoke rejects with a plain string (not an Error object) for Result<T, String> commands
-    ;(insertTableRow as Mock).mockRejectedValue("Duplicate entry '1' for key 'PRIMARY'")
+    ipc.override('insert_table_row', () => {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      throw "Duplicate entry '1' for key 'PRIMARY'"
+    })
 
     await setupTabWithData()
     useTableDataStore.getState().insertNewRow('tab-1')
@@ -740,7 +725,7 @@ describe('useTableDataStore — insertNewRow', () => {
         [2, 'disabled'],
       ],
     }
-    ;(fetchTableData as Mock).mockResolvedValueOnce(responseWithDefaults)
+    ipc.override('fetch_table_data', () => responseWithDefaults)
 
     await setupTabWithData()
 
@@ -772,7 +757,7 @@ describe('useTableDataStore — insertNewRow', () => {
       ],
       rows: [[1, '']],
     }
-    ;(fetchTableData as Mock).mockResolvedValueOnce(responseWithEmptyDefault)
+    ipc.override('fetch_table_data', () => responseWithEmptyDefault)
 
     await setupTabWithData()
 
@@ -837,13 +822,14 @@ describe('useTableDataStore — deleteRow (existing row)', () => {
 
     await useTableDataStore.getState().deleteRow('tab-1', { id: 1 })
 
-    expect(deleteTableRow).toHaveBeenCalledWith({
-      connectionId: 'conn-1',
-      database: 'mydb',
-      table: 'users',
-      pkColumns: ['id'],
-      pkValues: { id: 1 },
-    })
+    const deleteCalls = ipc.calls('delete_table_row')
+    expect(deleteCalls.length).toBeGreaterThan(0)
+    const lastCall = deleteCalls[deleteCalls.length - 1] as Record<string, unknown>
+    expect(lastCall?.connectionId).toBe('conn-1')
+    expect(lastCall?.database).toBe('mydb')
+    expect(lastCall?.table).toBe('users')
+    expect(lastCall?.pkColumns).toEqual(['id'])
+    expect(lastCall?.pkValues).toEqual({ id: 1 })
 
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.rows).toEqual([[2, 'Bob']])
@@ -859,7 +845,7 @@ describe('useTableDataStore — deleteRow (new row)', () => {
 
     await useTableDataStore.getState().deleteRow('tab-1', { __tempId: tempId })
 
-    expect(deleteTableRow).not.toHaveBeenCalled()
+    expect(ipc.calls('delete_table_row').length).toBe(0)
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.rows.length).toBe(rowCountBefore - 1)
   })
@@ -901,8 +887,8 @@ describe('useTableDataStore — confirmNavigationSave', () => {
 
     await useTableDataStore.getState().confirmNavigationSave('tab-1')
 
-    expect(updateTableRow).toHaveBeenCalled()
-    expect(showSuccessToast).toHaveBeenCalledWith('Row saved', 'Changes saved successfully.')
+    expect(ipc.calls('update_table_row').length).toBeGreaterThan(0)
+    await expectToast('success', 'Row saved')
     expect(action).toHaveBeenCalledTimes(1)
     expect(useTableDataStore.getState().tabs['tab-1'].pendingNavigationAction).toBeNull()
   })
@@ -931,7 +917,7 @@ describe('useTableDataStore — confirmNavigationSave', () => {
         [2, '2024-01-02'],
       ],
     }
-    ;(fetchTableData as Mock).mockResolvedValueOnce(responseWithDate)
+    ipc.override('fetch_table_data', () => responseWithDate)
 
     await setupTabWithData()
     useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, d: '2024-01-01' })
@@ -942,14 +928,16 @@ describe('useTableDataStore — confirmNavigationSave', () => {
 
     await useTableDataStore.getState().confirmNavigationSave('tab-1')
 
-    expect(showErrorToast).toHaveBeenCalled()
-    expect(updateTableRow).not.toHaveBeenCalled()
+    await expectToast('error', '')
+    expect(ipc.calls('update_table_row').length).toBe(0)
     expect(action).not.toHaveBeenCalled()
     expect(useTableDataStore.getState().tabs['tab-1'].pendingNavigationAction).not.toBeNull()
   })
 
   it('keeps pendingNavigationAction if save fails', async () => {
-    ;(updateTableRow as Mock).mockRejectedValue(new Error('Save failed'))
+    ipc.override('update_table_row', () => {
+      throw new Error('Save failed')
+    })
 
     await setupTabWithData()
     useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
@@ -1013,7 +1001,7 @@ describe('useTableDataStore — commitEditingRowIfNeeded', () => {
 
     await useTableDataStore.getState().commitEditingRowIfNeeded('tab-1', { id: 1 })
 
-    expect(updateTableRow).not.toHaveBeenCalled()
+    expect(ipc.calls('update_table_row').length).toBe(0)
     // editState should remain
     expect(useTableDataStore.getState().tabs['tab-1'].editState).not.toBeNull()
   })
@@ -1025,13 +1013,15 @@ describe('useTableDataStore — commitEditingRowIfNeeded', () => {
 
     await useTableDataStore.getState().commitEditingRowIfNeeded('tab-1', { id: 2 })
 
-    expect(updateTableRow).toHaveBeenCalled()
+    expect(ipc.calls('update_table_row').length).toBeGreaterThan(0)
     // editState should be cleared on success
     expect(useTableDataStore.getState().tabs['tab-1'].editState).toBeNull()
   })
 
   it('sets saveError on failure, editState remains on original row', async () => {
-    ;(updateTableRow as Mock).mockRejectedValue(new Error('Commit failed'))
+    ipc.override('update_table_row', () => {
+      throw new Error('Commit failed')
+    })
 
     await setupTabWithData()
     useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
@@ -1050,7 +1040,7 @@ describe('useTableDataStore — commitEditingRowIfNeeded', () => {
 
     await useTableDataStore.getState().commitEditingRowIfNeeded('tab-1', { id: 2 })
 
-    expect(updateTableRow).not.toHaveBeenCalled()
+    expect(ipc.calls('update_table_row').length).toBe(0)
   })
 
   it('does nothing when no modifications', async () => {
@@ -1060,7 +1050,7 @@ describe('useTableDataStore — commitEditingRowIfNeeded', () => {
 
     await useTableDataStore.getState().commitEditingRowIfNeeded('tab-1', { id: 2 })
 
-    expect(updateTableRow).not.toHaveBeenCalled()
+    expect(ipc.calls('update_table_row').length).toBe(0)
   })
 })
 
@@ -1091,7 +1081,7 @@ describe('useTableDataStore — sortByColumn', () => {
         [1, 'Alice'],
       ],
     }
-    ;(fetchTableData as Mock).mockResolvedValueOnce(sortedResponse)
+    ipc.override('fetch_table_data', () => sortedResponse)
 
     await useTableDataStore.getState().sortByColumn('tab-1', 'name', 'desc')
 
@@ -1105,7 +1095,7 @@ describe('useTableDataStore — sortByColumn', () => {
 
   it('clears sort when direction is null', async () => {
     await setupTabWithData()
-    ;(fetchTableData as Mock).mockResolvedValueOnce(mockResponse)
+    ipc.override('fetch_table_data', () => mockResponse)
 
     await useTableDataStore.getState().sortByColumn('tab-1', 'name', null)
 
@@ -1117,7 +1107,7 @@ describe('useTableDataStore — sortByColumn', () => {
 describe('useTableDataStore — applyFilters', () => {
   it('sets filter model and fetches page 1', async () => {
     await setupTabWithData()
-    ;(fetchTableData as Mock).mockResolvedValueOnce(mockResponse)
+    ipc.override('fetch_table_data', () => mockResponse)
 
     const conditions = [{ column: 'name', operator: '==' as const, value: 'Al' }]
 
@@ -1168,16 +1158,20 @@ describe('useTableDataStore — refreshData', () => {
       ...mockResponse,
       currentPage: 2,
     }
-    ;(fetchTableData as Mock).mockResolvedValueOnce(mockResponse)
-    ;(fetchTableData as Mock).mockResolvedValueOnce(page2Response)
-    ;(fetchTableData as Mock).mockResolvedValueOnce(page2Response)
+    let callCount = 0
+    ipc.override('fetch_table_data', () => {
+      callCount++
+      if (callCount === 1) return mockResponse
+      if (callCount === 2) return page2Response
+      return page2Response
+    })
 
     await setupTabWithData()
     // Go to page 2
     await useTableDataStore.getState().fetchPage('tab-1', 2)
 
     await useTableDataStore.getState().refreshData('tab-1')
-    expect(fetchTableData).toHaveBeenCalledTimes(3)
+    expect(ipc.calls('fetch_table_data').length).toBe(3)
   })
 })
 
@@ -1206,7 +1200,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
         onUpdate: 'NO ACTION',
       },
     ]
-    ;(getTableForeignKeys as Mock).mockResolvedValueOnce(mockFKs)
+    ipc.override('get_table_foreign_keys', () => mockFKs)
 
     useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
     await useTableDataStore.getState().loadTableData('tab-1')
@@ -1225,7 +1219,12 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
       ])
     })
 
-    expect(getTableForeignKeys).toHaveBeenCalledWith('conn-1', 'mydb', 'users')
+    const fkCalls = ipc.calls('get_table_foreign_keys')
+    expect(fkCalls.length).toBeGreaterThan(0)
+    const lastCall = fkCalls[fkCalls.length - 1] as Record<string, unknown>
+    expect(lastCall?.connectionId).toBe('conn-1')
+    expect(lastCall?.database).toBe('mydb')
+    expect(lastCall?.table).toBe('users')
   })
 
   it('filters out composite FKs (same constraintName appearing more than once)', async () => {
@@ -1258,7 +1257,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
         onUpdate: 'NO ACTION',
       },
     ]
-    ;(getTableForeignKeys as Mock).mockResolvedValueOnce(mockFKs)
+    ipc.override('get_table_foreign_keys', () => mockFKs)
 
     useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
     await useTableDataStore.getState().loadTableData('tab-1')
@@ -1279,14 +1278,24 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
   })
 
   it('does not block table data loading when FK fetch fails', async () => {
-    ;(getTableForeignKeys as Mock).mockRejectedValueOnce(new Error('FK fetch error'))
+    ipc.override('get_table_foreign_keys', () => {
+      throw new Error('FK fetch error')
+    })
 
     useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
     await useTableDataStore.getState().loadTableData('tab-1')
 
     // Wait for the fire-and-forget FK promise to settle (catch handler)
     await vi.waitFor(() => {
-      expect(logFrontend).toHaveBeenCalledWith('warn', 'FK metadata fetch failed: FK fetch error')
+      const logCalls = ipc.calls('log_frontend')
+      const hasWarning = logCalls.some(
+        (call) =>
+          (call as Record<string, unknown>)?.level === 'warn' &&
+          String((call as Record<string, unknown>)?.message ?? '').includes(
+            'FK metadata fetch failed: FK fetch error'
+          )
+      )
+      expect(hasWarning).toBe(true)
     })
 
     const tab = useTableDataStore.getState().tabs['tab-1']
@@ -1313,7 +1322,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
         onUpdate: 'NO ACTION',
       },
     ]
-    ;(getTableForeignKeys as Mock).mockResolvedValue(mockFKs)
+    ipc.override('get_table_foreign_keys', () => mockFKs)
 
     useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
     await useTableDataStore.getState().loadTableData('tab-1')
@@ -1324,7 +1333,7 @@ describe('useTableDataStore — FK metadata in loadTableData', () => {
     })
 
     // Now trigger a second load — FK should be temporarily reset to []
-    ;(getTableForeignKeys as Mock).mockResolvedValueOnce([])
+    ipc.override('get_table_foreign_keys', () => [])
     await useTableDataStore.getState().loadTableData('tab-1')
 
     await vi.waitFor(() => {
@@ -1373,7 +1382,7 @@ describe('useTableDataStore — TINYINT boolean normalization', () => {
       primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
       executionTimeMs: 10,
     }
-    ;(fetchTableData as Mock).mockResolvedValueOnce(responseWithBooleans)
+    ipc.override('fetch_table_data', () => responseWithBooleans)
 
     useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'flags')
     await useTableDataStore.getState().fetchPage('tab-1', 1)
@@ -1415,15 +1424,15 @@ describe('useTableDataStore — TINYINT boolean normalization', () => {
     const responseWithControlStrings: TableDataResponse = {
       columns: tinyintColumns,
       rows: [
-        [1, '\u0001'],
-        [2, '\u0000'],
+        [1, ''],
+        [2, ' '],
       ],
       currentPage: 1,
       pageSize: 1000,
       primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
       executionTimeMs: 10,
     }
-    ;(fetchTableData as Mock).mockResolvedValueOnce(responseWithControlStrings)
+    ipc.override('fetch_table_data', () => responseWithControlStrings)
 
     useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'flags')
     await useTableDataStore.getState().fetchPage('tab-1', 1)

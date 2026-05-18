@@ -4,11 +4,7 @@ import { DdlPreviewTab } from '../../../components/table-designer/DdlPreviewTab'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import type { TableDesignerTabState } from '../../../stores/table-designer-store'
 
-const mockWriteClipboardText = vi.fn().mockResolvedValue(undefined)
-
-vi.mock('../../../lib/context-menu-utils', () => ({
-  writeClipboardText: (...args: unknown[]) => mockWriteClipboardText(...args),
-}))
+let writeClipboardTextSpy: ReturnType<typeof vi.spyOn>
 
 function makeTabState(overrides: Partial<TableDesignerTabState> = {}): TableDesignerTabState {
   return {
@@ -57,7 +53,9 @@ describe('DdlPreviewTab', () => {
   beforeEach(() => {
     useTableDesignerStore.getState().cleanupTab('tab-1')
     useTableDesignerStore.setState({ tabs: {} })
-    vi.clearAllMocks()
+    writeClipboardTextSpy = vi
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockImplementation(() => Promise.resolve())
   })
 
   it('renders DDL string from store', () => {
@@ -91,7 +89,7 @@ describe('DdlPreviewTab', () => {
     fireEvent.click(copyButton)
 
     await waitFor(() => {
-      expect(mockWriteClipboardText).toHaveBeenCalledWith(makeTabState().ddl)
+      expect(writeClipboardTextSpy).toHaveBeenCalledWith(makeTabState().ddl)
     })
   })
 

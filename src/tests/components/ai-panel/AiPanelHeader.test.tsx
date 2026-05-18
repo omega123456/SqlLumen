@@ -1,47 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { AiPanelHeader } from '../../../components/ai-panel/AiPanelHeader'
 import { useAiStore } from '../../../stores/ai-store'
-import type { TabAiState } from '../../../stores/ai-store'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
-function setupMockIPC() {
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    if (cmd === 'get_setting') return null
-    if (cmd === 'set_setting') return undefined
-    if (cmd === 'get_all_settings') return {}
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
-}
-
-function emptyTabState(overrides?: Partial<TabAiState>): TabAiState {
-  return {
-    messages: [],
-    isGenerating: false,
-    activeStreamId: null,
-    previousResponseId: null,
-    attachedContext: null,
-    isPanelOpen: true,
-    error: null,
-    providedChunkKeys: {},
-    cumulativeSchemaTokens: 0,
-    providedMemoryIds: {},
-    lastCompletedSystemPrompt: '',
-    lastCompletedTransport: null,
-    lastCompletedEndpoint: '',
-    lastCompletedModel: '',
-    activeRequestEndpoint: '',
-    activeRequestModel: '',
-    activeStreamHasAssistantOutput: false,
-    isWaitingForIndex: false,
-    connectionId: null,
-    _unlisten: null,
-    ...overrides,
-  }
+/** Convenience: panel-open tab state for AiPanelHeader tests. */
+function emptyTabState(overrides?: Parameters<typeof makeAiTabState>[0]) {
+  return makeAiTabState({ isPanelOpen: true, ...overrides })
 }
 
 let consoleSpy: ReturnType<typeof vi.spyOn>
@@ -49,7 +15,6 @@ let consoleSpy: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.clearAllMocks()
-  setupMockIPC()
   useAiStore.setState({ tabs: { 'tab-1': emptyTabState() } })
 })
 

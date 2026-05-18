@@ -1,20 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CreateDatabaseDialog } from '../../../components/dialogs/CreateDatabaseDialog'
+import { ipc } from '../../ipc-mock'
 
-// Mock schema-commands
-vi.mock('../../../lib/schema-commands', () => ({
-  createDatabase: vi.fn(),
-  listCharsets: vi.fn(),
-  listCollations: vi.fn(),
-}))
+const MOCK_CHARSETS = [
+  {
+    charset: 'utf8mb4',
+    description: 'UTF-8 Unicode',
+    defaultCollation: 'utf8mb4_general_ci',
+    maxLength: 4,
+  },
+  {
+    charset: 'latin1',
+    description: 'Latin 1',
+    defaultCollation: 'latin1_swedish_ci',
+    maxLength: 1,
+  },
+]
 
-import { createDatabase, listCharsets, listCollations } from '../../../lib/schema-commands'
-
-const mockCreateDatabase = vi.mocked(createDatabase)
-const mockListCharsets = vi.mocked(listCharsets)
-const mockListCollations = vi.mocked(listCollations)
+const MOCK_COLLATIONS = [
+  { name: 'utf8mb4_general_ci', charset: 'utf8mb4', isDefault: true },
+  { name: 'utf8mb4_unicode_ci', charset: 'utf8mb4', isDefault: false },
+  { name: 'latin1_swedish_ci', charset: 'latin1', isDefault: true },
+  { name: 'latin1_bin', charset: 'latin1', isDefault: false },
+]
 
 /** Waits until charset/collation fetch finished (avoids act() warnings from async setState). */
 async function waitForCreateDatabaseEncodingIdle() {
@@ -24,28 +34,9 @@ async function waitForCreateDatabaseEncodingIdle() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  mockListCharsets.mockResolvedValue([
-    {
-      charset: 'utf8mb4',
-      description: 'UTF-8 Unicode',
-      defaultCollation: 'utf8mb4_general_ci',
-      maxLength: 4,
-    },
-    {
-      charset: 'latin1',
-      description: 'Latin 1',
-      defaultCollation: 'latin1_swedish_ci',
-      maxLength: 1,
-    },
-  ])
-  mockListCollations.mockResolvedValue([
-    { name: 'utf8mb4_general_ci', charset: 'utf8mb4', isDefault: true },
-    { name: 'utf8mb4_unicode_ci', charset: 'utf8mb4', isDefault: false },
-    { name: 'latin1_swedish_ci', charset: 'latin1', isDefault: true },
-    { name: 'latin1_bin', charset: 'latin1', isDefault: false },
-  ])
-  mockCreateDatabase.mockResolvedValue(undefined)
+  ipc.override('list_charsets', () => MOCK_CHARSETS)
+  ipc.override('list_collations', () => MOCK_COLLATIONS)
+  ipc.override('create_database', () => undefined)
 })
 
 describe('CreateDatabaseDialog', () => {
@@ -94,7 +85,7 @@ describe('CreateDatabaseDialog', () => {
     expect(screen.getByTestId('create-db-submit-button')).not.toBeDisabled()
   })
 
-  it('calls createDatabase on confirm with correct args', async () => {
+  it('calls create_database IPC on confirm with correct args', async () => {
     const user = userEvent.setup()
     const onSuccess = vi.fn()
     render(<CreateDatabaseDialog {...defaultProps} onSuccess={onSuccess} />)
@@ -108,12 +99,15 @@ describe('CreateDatabaseDialog', () => {
     await user.click(screen.getByTestId('create-db-submit-button'))
 
     await waitFor(() => {
-      expect(mockCreateDatabase).toHaveBeenCalledWith(
-        'conn-1',
-        'new_database',
-        undefined,
-        undefined
-      )
+      const calls = ipc.calls('create_database')
+      expect(calls).toHaveLength(1)
+      const args = calls[0] as Record<string, unknown>
+      expect(args).toMatchObject({
+        connectionId: 'conn-1',
+        name: 'new_database',
+        charset: null,
+        collation: null,
+      })
     })
   })
 
@@ -136,8 +130,8 @@ describe('CreateDatabaseDialog', () => {
   })
 
   it('shows loading state during submission', async () => {
-    // Make createDatabase hang (never resolve)
-    mockCreateDatabase.mockReturnValue(new Promise(() => {}))
+    // Make create_database hang (never resolve)
+    ipc.override('create_database', () => new Promise(() => {}))
     const user = userEvent.setup()
     render(<CreateDatabaseDialog {...defaultProps} />)
 
@@ -154,7 +148,7 @@ describe('CreateDatabaseDialog', () => {
   })
 
   it('cannot be dismissed while submission is in progress', async () => {
-    mockCreateDatabase.mockReturnValue(new Promise(() => {}))
+    ipc.override('create_database', () => new Promise(() => {}))
     const user = userEvent.setup()
     const onCancel = vi.fn()
     render(<CreateDatabaseDialog {...defaultProps} onCancel={onCancel} />)
@@ -173,7 +167,9 @@ describe('CreateDatabaseDialog', () => {
   })
 
   it('shows error if backend fails', async () => {
-    mockCreateDatabase.mockRejectedValue(new Error('Database already exists'))
+    ipc.override('create_database', () => {
+      throw new Error('Database already exists')
+    })
     const user = userEvent.setup()
     render(<CreateDatabaseDialog {...defaultProps} />)
 
@@ -221,8 +217,14 @@ describe('CreateDatabaseDialog', () => {
     render(<CreateDatabaseDialog {...defaultProps} />)
 
     await waitFor(() => {
-      expect(mockListCharsets).toHaveBeenCalledWith('conn-1')
-      expect(mockListCollations).toHaveBeenCalledWith('conn-1')
+      const charsetCalls = ipc.calls('list_charsets')
+      expect(charsetCalls).toHaveLength(1)
+      const args = charsetCalls[0] as Record<string, unknown>
+      expect(args).toMatchObject({ connectionId: 'conn-1' })
+    })
+    await waitFor(() => {
+      const collationCalls = ipc.calls('list_collations')
+      expect(collationCalls).toHaveLength(1)
     })
     await waitForCreateDatabaseEncodingIdle()
   })
@@ -277,13 +279,26 @@ describe('CreateDatabaseDialog', () => {
   })
 
   it('resets charset and collation selections when reopened after cancel', async () => {
-    const user = userEvent.setup()
     const { rerender } = render(<CreateDatabaseDialog {...defaultProps} isOpen={true} />)
 
     await waitForCreateDatabaseEncodingIdle()
 
-    await user.click(screen.getByRole('combobox', { name: 'Character Set' }))
-    await user.click(screen.getByRole('option', { name: 'latin1' }))
+    const charsetCombobox = screen.getByRole('combobox', { name: 'Character Set' })
+    // Use fireEvent.click to open the dropdown: avoids userEvent's full pointer simulation
+    // which can trigger the focus-trap's requestAnimationFrame focus restoration causing
+    // the dropdown to close before the portal commits the <ul> to the DOM.
+    fireEvent.click(charsetCombobox)
+    // Flush pending React state updates (setOpen(true)) and layout effects so the portal
+    // <ul> is committed to document.body before we access it.
+    await act(async () => {})
+    // Retrieve the listbox via aria-controls (synchronous, no polling required after act)
+    const charsetListboxId = charsetCombobox.getAttribute('aria-controls')!
+    const charsetListbox = document.getElementById(charsetListboxId)!
+    // Use fireEvent.click on the option (not user.click) to avoid blur-before-click
+    // closing the Dropdown via its onBlur handler.
+    fireEvent.click(within(charsetListbox).getByRole('option', { name: 'latin1' }))
+    // Flush state updates from selectIndex (setCharsetState + setCollation)
+    await act(async () => {})
 
     expect(screen.getByRole('combobox', { name: 'Character Set' })).toHaveTextContent('latin1')
     expect(screen.getByRole('combobox', { name: 'Collation' })).toHaveTextContent(

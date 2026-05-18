@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { QueryEditorTab } from '../../../components/query-editor/QueryEditorTab'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
@@ -11,39 +10,11 @@ import {
   _resetQueryTabCounter,
 } from '../../../stores/workspace-store'
 import type { QueryEditorTab as QueryEditorTabType } from '../../../types/schema'
-import type { TabAiState } from '../../../stores/ai-store'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
-// Mock tauri dialog (EditorToolbar depends on it)
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  save: vi.fn(() => Promise.resolve(null)),
-  open: vi.fn(() => Promise.resolve(null)),
-}))
+// IPC fixtures in setup.ts handle plugin:dialog|save and plugin:dialog|open (return null = cancelled)
 
-function emptyAiTabState(overrides: Partial<TabAiState> = {}): TabAiState {
-  return {
-    messages: [],
-    isGenerating: false,
-    activeStreamId: null,
-    previousResponseId: null,
-    attachedContext: null,
-    isPanelOpen: false,
-    error: null,
-    providedChunkKeys: {},
-    cumulativeSchemaTokens: 0,
-    providedMemoryIds: {},
-    lastCompletedSystemPrompt: '',
-    lastCompletedTransport: null,
-    lastCompletedEndpoint: '',
-    lastCompletedModel: '',
-    activeRequestEndpoint: '',
-    activeRequestModel: '',
-    activeStreamHasAssistantOutput: false,
-    isWaitingForIndex: false,
-    connectionId: null,
-    _unlisten: null,
-    ...overrides,
-  }
-}
+const emptyAiTabState = makeAiTabState
 
 const mockTab: QueryEditorTabType = {
   id: 'tab-1',
@@ -58,7 +29,6 @@ beforeEach(() => {
   useAiStore.setState({ tabs: {} })
   _resetTabIdCounter()
   _resetQueryTabCounter()
-  mockIPC(() => null)
   // Default AI to disabled
   useSettingsStore.setState({
     settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'false' },

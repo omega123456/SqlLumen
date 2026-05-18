@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import {
   createFavorite,
   listFavorites,
@@ -9,6 +9,10 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  ipc.override('create_favorite', () => 1)
+  ipc.override('list_favorites', () => [])
+  ipc.override('update_favorite', () => true)
+  ipc.override('delete_favorite', () => true)
 })
 
 describe('createFavorite', () => {
@@ -21,16 +25,13 @@ describe('createFavorite', () => {
       category: 'test',
     }
 
-    mockIPC((cmd, args) => {
-      if (cmd === 'create_favorite') {
-        expect((args as Record<string, unknown>).input).toEqual(input)
-        return 1
-      }
-      return null
-    })
-
     const result = await createFavorite(input)
     expect(result).toBe(1)
+
+    const calls = ipc.calls('create_favorite')
+    expect(calls).toHaveLength(1)
+    const capturedArgs = calls[0] as Record<string, unknown>
+    expect(capturedArgs.input).toEqual(input)
   })
 })
 
@@ -49,16 +50,15 @@ describe('listFavorites', () => {
       },
     ]
 
-    mockIPC((cmd, args) => {
-      if (cmd === 'list_favorites') {
-        expect((args as Record<string, unknown>).connectionId).toBe('conn-1')
-        return mockResponse
-      }
-      return null
-    })
+    ipc.override('list_favorites', () => mockResponse)
 
     const result = await listFavorites('conn-1')
     expect(result).toEqual(mockResponse)
+
+    const calls = ipc.calls('list_favorites')
+    expect(calls).toHaveLength(1)
+    const capturedArgs = calls[0] as Record<string, unknown>
+    expect(capturedArgs.connectionId).toBe('conn-1')
   })
 })
 
@@ -71,31 +71,25 @@ describe('updateFavorite', () => {
       category: null,
     }
 
-    mockIPC((cmd, args) => {
-      if (cmd === 'update_favorite') {
-        expect((args as Record<string, unknown>).id).toBe(1)
-        expect((args as Record<string, unknown>).input).toEqual(input)
-        return true
-      }
-      return null
-    })
-
     const result = await updateFavorite(1, input)
     expect(result).toBe(true)
+
+    const calls = ipc.calls('update_favorite')
+    expect(calls).toHaveLength(1)
+    const capturedArgs = calls[0] as Record<string, unknown>
+    expect(capturedArgs.id).toBe(1)
+    expect(capturedArgs.input).toEqual(input)
   })
 })
 
 describe('deleteFavorite', () => {
   it('calls invoke with correct id', async () => {
-    mockIPC((cmd, args) => {
-      if (cmd === 'delete_favorite') {
-        expect((args as Record<string, unknown>).id).toBe(1)
-        return true
-      }
-      return null
-    })
-
     const result = await deleteFavorite(1)
     expect(result).toBe(true)
+
+    const calls = ipc.calls('delete_favorite')
+    expect(calls).toHaveLength(1)
+    const capturedArgs = calls[0] as Record<string, unknown>
+    expect(capturedArgs.id).toBe(1)
   })
 })

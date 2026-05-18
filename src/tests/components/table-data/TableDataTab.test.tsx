@@ -1,95 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import userEvent from '@testing-library/user-event'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { TableDataTabState } from '../../../types/schema'
-
-const exportDialogSpy = vi.fn()
-
-vi.mock('../../../components/dialogs/ExportDialog', () => ({
-  default: (props: Record<string, unknown>) => {
-    exportDialogSpy(props)
-    return (
-      <div data-testid="export-dialog">
-        <button
-          type="button"
-          data-testid="export-cancel-button"
-          onClick={() => (props.onClose as (() => void) | undefined)?.()}
-        >
-          Cancel
-        </button>
-      </div>
-    )
-  },
-}))
-
-// Mock table-data-commands
-vi.mock('../../../lib/table-data-commands', () => ({
-  fetchTableData: vi.fn().mockResolvedValue({
-    columns: [
-      {
-        name: 'id',
-        dataType: 'bigint',
-        isNullable: false,
-        isPrimaryKey: true,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isBooleanAlias: false,
-        isAutoIncrement: true,
-      },
-      {
-        name: 'name',
-        dataType: 'varchar',
-        isNullable: true,
-        isPrimaryKey: false,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isBooleanAlias: false,
-        isAutoIncrement: false,
-      },
-    ],
-    rows: [
-      [1, 'Alice'],
-      [2, 'Bob'],
-    ],
-    currentPage: 1,
-    pageSize: 1000,
-    primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
-    executionTimeMs: 15,
-  }),
-  updateTableRow: vi.fn().mockResolvedValue(undefined),
-  insertTableRow: vi.fn().mockResolvedValue([]),
-  deleteTableRow: vi.fn().mockResolvedValue(undefined),
-  exportTableData: vi.fn().mockResolvedValue(undefined),
-}))
-
-// Mock schema-commands (getTableForeignKeys used by table-data-store)
-vi.mock('../../../lib/schema-commands', () => ({
-  getTableForeignKeys: vi.fn().mockResolvedValue([]),
-}))
-
-// Mock app-log-commands (logFrontend used by table-data-store on FK fetch failure)
-vi.mock('../../../lib/app-log-commands', () => ({
-  logFrontend: vi.fn(),
-}))
-
-// Mock the shared DataGrid wrapper (used by TableDataGrid)
-vi.mock('../../../components/shared/DataGrid', async () => {
-  const React = await import('react')
-  return {
-    DataGrid: React.forwardRef(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      (_props: Record<string, unknown>, _ref: React.Ref<unknown>) => {
-        return React.createElement('div', { 'data-testid': 'data-grid-mock' }, 'Grid Mock')
-      }
-    ),
-  }
-})
+import { ipc } from '../../ipc-mock'
+import { makeTableDataTabState, setupTestConnection } from '../../helpers/table-data-test-utils'
 
 // Import after mocks
 import { TableDataTab } from '../../../components/table-data/TableDataTab'
@@ -108,42 +24,10 @@ function makeTab(overrides: Partial<TableDataTabType> = {}): TableDataTabType {
   }
 }
 
-function setupConnection(readOnly = false) {
-  useConnectionStore.setState({
-    activeConnections: {
-      'conn-1': {
-        id: 'conn-1',
-        profile: {
-          id: 'conn-1',
-          name: 'Test DB',
-          host: '127.0.0.1',
-          port: 3306,
-          username: 'root',
-          hasPassword: true,
-          defaultDatabase: null,
-          sslEnabled: false,
-          sslCaPath: null,
-          sslCertPath: null,
-          sslKeyPath: null,
-          color: '#3b82f6',
-          groupId: null,
-          readOnly,
-          sortOrder: 0,
-          connectTimeoutSecs: 10,
-          keepaliveIntervalSecs: 30,
-          createdAt: '2025-01-01T00:00:00Z',
-          updatedAt: '2025-01-01T00:00:00Z',
-        },
-        status: 'connected',
-        serverVersion: '8.0.35',
-      },
-    },
-    activeTabId: 'conn-1',
-  })
-}
+const setupConnection = setupTestConnection
 
 function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
-  return {
+  return makeTableDataTabState({
     columns: [
       {
         name: 'id',
@@ -174,28 +58,10 @@ function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabS
       [1, 'Alice'],
       [2, 'Bob'],
     ],
-    currentPage: 1,
-    pageSize: 1000,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
     executionTimeMs: 15,
-    connectionId: 'conn-1',
-    database: 'mydb',
-    table: 'users',
-    editState: null,
-    viewMode: 'grid',
-    selectedRowKey: null,
-    selectedCell: null,
-    filterModel: [],
-    sort: null,
-    isLoading: false,
-    error: null,
-    saveError: null,
-    isExportDialogOpen: false,
-    pendingNavigationAction: null,
-    scrollRow: 0,
-    scrollCol: 0,
     ...overrides,
-  }
+  })
 }
 
 beforeEach(() => {
@@ -204,8 +70,15 @@ beforeEach(() => {
     activeConnections: {},
     activeTabId: null,
   })
-  mockIPC(() => null)
-  exportDialogSpy.mockClear()
+  ipc.override('fetch_table_data', () => ({
+    columns: makeTabState().columns,
+    rows: makeTabState().rows,
+    currentPage: 1,
+    pageSize: 1000,
+    primaryKey: makeTabState().primaryKey,
+    executionTimeMs: 15,
+  }))
+  ipc.override('export_table_data', () => undefined)
 })
 
 /** Drain async loadTableData so follow-up assertions and test teardown do not warn on act(). */
@@ -258,9 +131,7 @@ describe('TableDataTab', () => {
   it('shows no-PK warning banner when primaryKey is null', async () => {
     setupConnection()
 
-    // Override the fetchTableData mock to return no primaryKey
-    const { fetchTableData } = await import('../../../lib/table-data-commands')
-    vi.mocked(fetchTableData).mockResolvedValueOnce({
+    ipc.override('fetch_table_data', () => ({
       columns: [
         {
           name: 'id',
@@ -280,7 +151,7 @@ describe('TableDataTab', () => {
       pageSize: 1000,
       primaryKey: null,
       executionTimeMs: 10,
-    })
+    }))
 
     render(<TableDataTab tab={makeTab()} />)
 
@@ -303,9 +174,9 @@ describe('TableDataTab', () => {
   it('shows error state with retry button', async () => {
     setupConnection()
 
-    // Override to reject
-    const { fetchTableData } = await import('../../../lib/table-data-commands')
-    vi.mocked(fetchTableData).mockRejectedValueOnce(new Error('Connection lost'))
+    ipc.override('fetch_table_data', () => {
+      throw new Error('Connection lost')
+    })
 
     render(<TableDataTab tab={makeTab()} />)
 
@@ -317,10 +188,24 @@ describe('TableDataTab', () => {
   })
 
   it('retry button calls loadTableData', async () => {
+    const user = userEvent.setup()
     setupConnection()
 
-    const { fetchTableData } = await import('../../../lib/table-data-commands')
-    vi.mocked(fetchTableData).mockRejectedValueOnce(new Error('Some error'))
+    let attempt = 0
+    ipc.override('fetch_table_data', () => {
+      attempt += 1
+      if (attempt === 1) {
+        throw new Error('Some error')
+      }
+      return {
+        columns: makeTabState().columns,
+        rows: makeTabState().rows,
+        currentPage: 1,
+        pageSize: 1000,
+        primaryKey: makeTabState().primaryKey,
+        executionTimeMs: 15,
+      }
+    })
 
     render(<TableDataTab tab={makeTab()} />)
 
@@ -328,22 +213,16 @@ describe('TableDataTab', () => {
       expect(screen.getByTestId('btn-retry')).toBeInTheDocument()
     })
 
-    // Now restore the mock for the retry
-    vi.mocked(fetchTableData).mockResolvedValueOnce({
-      columns: makeTabState().columns,
-      rows: makeTabState().rows,
-      currentPage: 1,
-      pageSize: 1000,
-      primaryKey: makeTabState().primaryKey,
-      executionTimeMs: 15,
-    })
+    expect(ipc.calls('fetch_table_data')).toHaveLength(1)
 
-    fireEvent.click(screen.getByTestId('btn-retry'))
+    await user.click(screen.getByTestId('btn-retry'))
 
     await waitFor(() => {
-      const tab = useTableDataStore.getState().tabs['tab-1']
-      expect(tab).toBeDefined()
+      expect(ipc.calls('fetch_table_data')).toHaveLength(2)
+      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
     })
+
+    expect(screen.queryByTestId('table-data-error')).not.toBeInTheDocument()
   })
 
   it('passes correct tab context to store initTab', async () => {
@@ -402,14 +281,9 @@ describe('TableDataTab', () => {
       useTableDataStore.getState().openExportDialog('tab-1')
     })
 
-    await waitFor(() => {
-      expect(exportDialogSpy).toHaveBeenCalled()
-    })
-
-    const lastCall = exportDialogSpy.mock.calls[exportDialogSpy.mock.calls.length - 1]?.[0] as {
-      totalRows?: number
-    }
-    expect(lastCall.totalRows).toBeUndefined()
+    const dialog = await screen.findByTestId('export-dialog')
+    expect(dialog).toBeInTheDocument()
+    expect(screen.queryByText(/total rows/i)).not.toBeInTheDocument()
   })
 
   it('shows unsaved changes dialog when pendingNavigationAction is set', async () => {
@@ -443,7 +317,8 @@ describe('TableDataTab', () => {
     })
   })
 
-  it('handleExport calls exportTableData and closes dialog', async () => {
+  it('handleExport submits the export dialog, calls exportTableData, and closes dialog', async () => {
+    const user = userEvent.setup()
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
@@ -458,9 +333,26 @@ describe('TableDataTab', () => {
       expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
     })
 
-    // The export dialog is rendered — now verify it can be closed
-    const cancelBtn = screen.getByTestId('export-cancel-button')
-    fireEvent.click(cancelBtn)
+    fireEvent.change(screen.getByTestId('export-file-path-input'), {
+      target: { value: '/tmp/export-users.csv' },
+    })
+    await user.click(screen.getByTestId('export-submit-button'))
+
+    await waitFor(() => {
+      expect(ipc.calls('export_table_data')).toContainEqual(
+        expect.objectContaining({
+          connectionId: 'conn-1',
+          database: 'mydb',
+          table: 'users',
+          format: 'csv',
+          filePath: '/tmp/export-users.csv',
+          includeHeaders: true,
+          tableNameForSql: 'users',
+          page: 1,
+          pageSize: 1000,
+        })
+      )
+    })
 
     await waitFor(() => {
       expect(screen.queryByTestId('export-dialog')).not.toBeInTheDocument()
@@ -468,6 +360,7 @@ describe('TableDataTab', () => {
   })
 
   it('handleExport passes page and pageSize to exportTableData', async () => {
+    const user = userEvent.setup()
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
@@ -496,44 +389,30 @@ describe('TableDataTab', () => {
       expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
     })
 
-    // Verify onExport is passed with correct page/pageSize by invoking it
-    const lastCall = exportDialogSpy.mock.calls[exportDialogSpy.mock.calls.length - 1][0]
-    const onExport = lastCall.onExport as (options: {
-      format: string
-      filePath: string
-      includeHeaders: boolean
-      tableName: string
-    }) => Promise<void>
-
-    const { exportTableData } = await import('../../../lib/table-data-commands')
-    const mockExportTableData = vi.mocked(exportTableData)
-    mockExportTableData.mockClear()
-
-    await act(async () => {
-      await onExport({
-        format: 'csv',
-        filePath: '/tmp/test.csv',
-        includeHeaders: true,
-        tableName: 'users',
-      })
+    fireEvent.change(screen.getByTestId('export-file-path-input'), {
+      target: { value: '/tmp/test.csv' },
     })
+    await user.click(screen.getByTestId('export-submit-button'))
 
-    expect(mockExportTableData).toHaveBeenCalledWith(
-      expect.objectContaining({
-        connectionId: 'conn-1',
-        database: 'mydb',
-        table: 'users',
-        format: 'csv',
-        filePath: '/tmp/test.csv',
-        includeHeaders: true,
-        tableNameForSql: 'users',
-        page: 3,
-        pageSize: 50,
-      })
-    )
+    await waitFor(() => {
+      expect(ipc.calls('export_table_data')).toContainEqual(
+        expect.objectContaining({
+          connectionId: 'conn-1',
+          database: 'mydb',
+          table: 'users',
+          format: 'csv',
+          filePath: '/tmp/test.csv',
+          includeHeaders: true,
+          tableNameForSql: 'users',
+          page: 3,
+          pageSize: 50,
+        })
+      )
+    })
   })
 
   it('handleDiscardNavigation closes unsaved dialog', async () => {
+    const user = userEvent.setup()
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
@@ -565,7 +444,7 @@ describe('TableDataTab', () => {
 
     // Click discard in the dialog
     const discardBtn = screen.getByTestId('btn-discard-changes')
-    fireEvent.click(discardBtn)
+    await user.click(discardBtn)
 
     await waitFor(() => {
       expect(screen.queryByTestId('unsaved-changes-dialog')).not.toBeInTheDocument()
@@ -573,6 +452,7 @@ describe('TableDataTab', () => {
   })
 
   it('handleCancelNavigation closes unsaved dialog', async () => {
+    const user = userEvent.setup()
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
@@ -604,7 +484,7 @@ describe('TableDataTab', () => {
 
     // Click cancel
     const cancelBtn = screen.getByTestId('btn-cancel-changes')
-    fireEvent.click(cancelBtn)
+    await user.click(cancelBtn)
 
     await waitFor(() => {
       expect(screen.queryByTestId('unsaved-changes-dialog')).not.toBeInTheDocument()
@@ -635,8 +515,7 @@ describe('TableDataTab', () => {
   it('view objectType suppresses no-PK warning even without primaryKey', async () => {
     setupConnection()
 
-    const { fetchTableData } = await import('../../../lib/table-data-commands')
-    vi.mocked(fetchTableData).mockResolvedValueOnce({
+    ipc.override('fetch_table_data', () => ({
       columns: [
         {
           name: 'user_id',
@@ -656,7 +535,7 @@ describe('TableDataTab', () => {
       pageSize: 1000,
       primaryKey: null,
       executionTimeMs: 10,
-    })
+    }))
 
     render(<TableDataTab tab={makeTab({ objectType: 'view', objectName: 'my_view' })} />)
 

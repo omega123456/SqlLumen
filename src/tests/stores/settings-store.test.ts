@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import { renderHook, act } from '@testing-library/react'
 import { useSettingsStore, SETTINGS_DEFAULTS, useSettingValue } from '../../stores/settings-store'
 import {
@@ -37,21 +37,11 @@ beforeEach(() => {
   mockGetAllSettings.mockClear()
   mockSetSetting.mockClear()
 
-  mockIPC((cmd, args) => {
-    switch (cmd) {
-      case 'get_all_settings':
-        return mockGetAllSettings()
-      case 'set_setting':
-        return mockSetSetting(
-          (args as Record<string, string>).key,
-          (args as Record<string, string>).value
-        )
-      case 'log_frontend':
-        return undefined
-      default:
-        return null
-    }
-  })
+  ipc.override('get_all_settings', () => mockGetAllSettings())
+  ipc.override('set_setting', (args) =>
+    mockSetSetting((args as Record<string, string>).key, (args as Record<string, string>).value)
+  )
+  ipc.override('log_frontend', () => undefined)
 })
 
 describe('useSettingsStore', () => {

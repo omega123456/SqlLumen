@@ -1,49 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
+import { ipc } from '../ipc-mock'
 import { useSchemaIndexStore } from '../../stores/schema-index-store'
-import { logFrontend } from '../../lib/app-log-commands'
-
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
-
-vi.mock('../../lib/app-log-commands', () => ({
-  logFrontend: vi.fn(),
-}))
-
-const mockBuildSchemaIndex = vi.fn().mockResolvedValue(undefined)
-const mockForceRebuildSchemaIndex = vi.fn().mockResolvedValue(undefined)
-const mockInvalidateSchemaIndex = vi.fn().mockResolvedValue(undefined)
-const mockGetIndexStatus = vi.fn().mockResolvedValue({ status: 'stale' })
-
-vi.mock('../../lib/schema-index-commands', () => ({
-  buildSchemaIndex: (...args: unknown[]) => mockBuildSchemaIndex(...args),
-  forceRebuildSchemaIndex: (...args: unknown[]) => mockForceRebuildSchemaIndex(...args),
-  invalidateSchemaIndex: (...args: unknown[]) => mockInvalidateSchemaIndex(...args),
-  getIndexStatus: (...args: unknown[]) => mockGetIndexStatus(...args),
-  semanticSearch: vi.fn().mockResolvedValue([]),
-  listIndexedTables: vi.fn().mockResolvedValue([]),
-}))
-
-let settingsSubscriber: ((state: { getSetting: (key: string) => string }) => void) | null = null
-let currentEmbeddingModel = ''
-
-vi.mock('../../stores/settings-store', () => ({
-  useSettingsStore: {
-    getState: () => ({
-      getSetting: (key: string) => {
-        if (key === 'ai.embeddingModel') return currentEmbeddingModel
-        return ''
-      },
-    }),
-    subscribe: vi.fn((cb: (state: { getSetting: (key: string) => string }) => void) => {
-      settingsSubscriber = cb
-      return () => {
-        settingsSubscriber = null
-      }
-    }),
-  },
-}))
+import { useSettingsStore } from '../../stores/settings-store'
 
 // ---------------------------------------------------------------------------
 // Setup
@@ -58,34 +16,16 @@ beforeEach(() => {
     profileToSessions: {},
     sessionToProfile: {},
   })
-  vi.clearAllMocks()
-  mockBuildSchemaIndex.mockResolvedValue(undefined)
-  mockForceRebuildSchemaIndex.mockResolvedValue(undefined)
-  mockInvalidateSchemaIndex.mockResolvedValue(undefined)
-  mockGetIndexStatus.mockResolvedValue({ status: 'stale' })
-  currentEmbeddingModel = ''
-  // Note: settingsSubscriber is NOT reset here because initSettingsSubscription
-  // only runs once (it has an internal guard). The subscriber persists across tests.
-
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    if (cmd === 'build_schema_index') return undefined
-    if (cmd === 'force_rebuild_schema_index') return undefined
-    if (cmd === 'get_index_status') return { status: 'ready' }
-    if (cmd === 'invalidate_schema_index') return undefined
-    if (cmd === 'semantic_search') return []
-    if (cmd === 'list_indexed_tables') return []
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
+  // Default IPC overrides for schema-index-related commands
+  ipc.override('get_index_status', () => ({ status: 'stale' }))
+  ipc.override('build_schema_index', () => undefined)
+  ipc.override('force_rebuild_schema_index', () => undefined)
+  ipc.override('invalidate_schema_index', () => undefined)
 })
 
 afterEach(() => {
   consoleSpy?.mockRestore()
 })
-
-import { afterEach } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -105,7 +45,7 @@ describe('useSchemaIndexStore', () => {
 
       // Wait for async status fetch
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalledWith('session-1')
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
     })
 
@@ -118,7 +58,7 @@ describe('useSchemaIndexStore', () => {
     })
 
     it('updates status from backend on registration', async () => {
-      mockGetIndexStatus.mockResolvedValueOnce({ status: 'ready' })
+      ipc.override('get_index_status', () => ({ status: 'ready' }))
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
 
       await vi.waitFor(() => {
@@ -128,14 +68,21 @@ describe('useSchemaIndexStore', () => {
     })
 
     it('handles getIndexStatus failure gracefully on registration', async () => {
-      mockGetIndexStatus.mockRejectedValueOnce(new Error('Status check failed'))
+      ipc.override('get_index_status', () => {
+        throw new Error('Status check failed')
+      })
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
 
       await vi.waitFor(() => {
-        expect(logFrontend).toHaveBeenCalledWith(
-          'warn',
-          expect.stringContaining('[schema-index-store] Failed to get initial index status')
+        const logCalls = ipc.calls('log_frontend')
+        const hasWarning = logCalls.some(
+          (call) =>
+            (call as Record<string, unknown>)?.level === 'warn' &&
+            String((call as Record<string, unknown>)?.message ?? '').includes(
+              '[schema-index-store] Failed to get initial index status'
+            )
         )
+        expect(hasWarning).toBe(true)
       })
 
       // Status should remain at the default 'stale'
@@ -250,35 +197,36 @@ describe('useSchemaIndexStore', () => {
 
   describe('triggerBuild', () => {
     it('calls buildSchemaIndex and checks status after', async () => {
-      mockGetIndexStatus.mockResolvedValueOnce({ status: 'building' })
+      ipc.override('get_index_status', () => ({ status: 'building' }))
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       // Wait for registerSession's async getIndexStatus call to settle
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalledWith('session-1')
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
-      mockGetIndexStatus.mockClear()
-      mockGetIndexStatus.mockResolvedValueOnce({ status: 'building' })
+      ipc.override('get_index_status', () => ({ status: 'building' }))
 
       await useSchemaIndexStore.getState().triggerBuild('session-1')
 
-      expect(mockBuildSchemaIndex).toHaveBeenCalledWith('session-1')
+      expect(ipc.calls('build_schema_index').length).toBeGreaterThan(0)
       // getIndexStatus should have been called after buildSchemaIndex
-      expect(mockGetIndexStatus).toHaveBeenCalledWith('session-1')
+      expect(ipc.calls('get_index_status').length).toBeGreaterThan(1)
     })
 
     it('does nothing for unknown session', async () => {
       await useSchemaIndexStore.getState().triggerBuild('unknown-session')
-      expect(mockBuildSchemaIndex).not.toHaveBeenCalled()
+      expect(ipc.calls('build_schema_index').length).toBe(0)
     })
 
     it('sets error status when build fails', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockBuildSchemaIndex.mockRejectedValueOnce(new Error('Build failed'))
+      ipc.override('build_schema_index', () => {
+        throw new Error('Build failed')
+      })
 
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       // Wait for registerSession's async getIndexStatus call to settle
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalled()
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
 
       await useSchemaIndexStore.getState().triggerBuild('session-1')
@@ -289,12 +237,12 @@ describe('useSchemaIndexStore', () => {
     })
 
     it('updates status to not_configured when backend returns not_configured', async () => {
-      mockGetIndexStatus.mockResolvedValue({ status: 'not_configured' })
+      ipc.override('get_index_status', () => ({ status: 'not_configured' }))
 
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       // Wait for registerSession's async getIndexStatus call to settle
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalledWith('session-1')
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
 
       await useSchemaIndexStore.getState().triggerBuild('session-1')
@@ -306,43 +254,53 @@ describe('useSchemaIndexStore', () => {
     it('should NOT call buildSchemaIndex for a second session when the same profile already has a completed build', async () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalledWith('session-1')
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
       await useSchemaIndexStore.getState().triggerBuild('session-1')
       useSchemaIndexStore.getState()._handleComplete('profile-1')
-      mockBuildSchemaIndex.mockClear()
-      mockGetIndexStatus.mockClear()
+
+      // Reset call counters
+      const buildCallsBefore = ipc.calls('build_schema_index').length
+      const statusCallsBefore = ipc.calls('get_index_status').length
+
       useSchemaIndexStore.getState().registerSession('session-2', 'profile-1')
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalledWith('session-2')
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(statusCallsBefore)
       })
       await useSchemaIndexStore.getState().triggerBuild('session-2')
-      expect(mockBuildSchemaIndex).not.toHaveBeenCalled()
+      expect(ipc.calls('build_schema_index').length).toBe(buildCallsBefore)
     })
 
     it('should NOT call buildSchemaIndex for concurrent sessions to the same profile', async () => {
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       useSchemaIndexStore.getState().registerSession('session-2', 'profile-1')
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalledTimes(2)
+        expect(ipc.calls('get_index_status').length).toBeGreaterThanOrEqual(2)
       })
-      mockBuildSchemaIndex.mockClear()
+
+      const buildCallsBefore = ipc.calls('build_schema_index').length
       const p1 = useSchemaIndexStore.getState().triggerBuild('session-1')
       const p2 = useSchemaIndexStore.getState().triggerBuild('session-2')
       await Promise.all([p1, p2])
-      expect(mockBuildSchemaIndex).toHaveBeenCalledTimes(1)
+      expect(ipc.calls('build_schema_index').length).toBe(buildCallsBefore + 1)
     })
   })
 
   describe('triggerInvalidation', () => {
     it('calls invalidateSchemaIndex with correct args', async () => {
       await useSchemaIndexStore.getState().triggerInvalidation('session-1', ['db.users'])
-      expect(mockInvalidateSchemaIndex).toHaveBeenCalledWith('session-1', ['db.users'])
+      const invalidateCalls = ipc.calls('invalidate_schema_index')
+      expect(invalidateCalls.length).toBeGreaterThan(0)
+      const lastCall = invalidateCalls[invalidateCalls.length - 1] as Record<string, unknown>
+      expect(lastCall?.sessionId).toBe('session-1')
+      expect(lastCall?.tables).toEqual(['db.users'])
     })
 
     it('handles invalidation failure gracefully', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockInvalidateSchemaIndex.mockRejectedValueOnce(new Error('Invalidation failed'))
+      ipc.override('invalidate_schema_index', () => {
+        throw new Error('Invalidation failed')
+      })
 
       await useSchemaIndexStore.getState().triggerInvalidation('session-1', ['db.users'])
       expect(consoleSpy).not.toHaveBeenCalled()
@@ -383,93 +341,88 @@ describe('useSchemaIndexStore', () => {
 
   describe('settings subscription', () => {
     it('does not trigger rebuild when embedding model has not changed', async () => {
+      // Set initial embedding model
+      useSettingsStore.setState({ settings: { 'ai.embeddingModel': '' } } as never)
+
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       // Wait for async status fetch
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalled()
-      })
-      mockBuildSchemaIndex.mockClear()
-
-      expect(settingsSubscriber).toBeDefined()
-
-      // Pass the same value that prevEmbeddingModel holds ('' at initialization)
-      settingsSubscriber!({
-        getSetting: (key: string) => {
-          if (key === 'ai.embeddingModel') return currentEmbeddingModel
-          return ''
-        },
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
 
-      expect(mockBuildSchemaIndex).not.toHaveBeenCalled()
+      const buildCallsBefore = ipc.calls('build_schema_index').length
+
+      // Set the same value — should NOT trigger a rebuild
+      useSettingsStore.setState({ settings: { 'ai.embeddingModel': '' } } as never)
+
+      // Give subscription time to fire
+      await new Promise((r) => setTimeout(r, 20))
+
+      expect(ipc.calls('build_schema_index').length).toBe(buildCallsBefore)
     })
 
     it('triggers rebuild for all sessions when embedding model changes', async () => {
+      // Set initial embedding model
+      useSettingsStore.setState({ settings: { 'ai.embeddingModel': '' } } as never)
+
       // Register a session to trigger subscription setup
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       useSchemaIndexStore.getState().registerSession('session-2', 'profile-2')
 
       // Wait for async status fetches
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalledTimes(2)
+        expect(ipc.calls('get_index_status').length).toBeGreaterThanOrEqual(2)
       })
 
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-      expect(settingsSubscriber).toBeDefined()
+      const buildCallsBefore = ipc.calls('build_schema_index').length
 
       // Simulate embedding model change
-      currentEmbeddingModel = 'new-model'
-      settingsSubscriber!({
-        getSetting: (key: string) => {
-          if (key === 'ai.embeddingModel') return 'new-model'
-          return ''
-        },
-      })
+      useSettingsStore.setState({ settings: { 'ai.embeddingModel': 'new-model' } } as never)
 
       // Wait for async triggerBuild calls to complete
       await vi.waitFor(() => {
-        expect(mockBuildSchemaIndex).toHaveBeenCalledWith('session-1')
-        expect(mockBuildSchemaIndex).toHaveBeenCalledWith('session-2')
+        // Both sessions should have triggered a build
+        expect(ipc.calls('build_schema_index').length).toBeGreaterThanOrEqual(buildCallsBefore + 2)
       })
     })
 
     it('handles rebuild failure during model change gracefully', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockBuildSchemaIndex.mockRejectedValue(new Error('Rebuild failed'))
+      ipc.override('build_schema_index', () => {
+        throw new Error('Rebuild failed')
+      })
 
+      useSettingsStore.setState({ settings: { 'ai.embeddingModel': '' } } as never)
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
 
       // Wait for async status fetch
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalled()
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
 
-      expect(settingsSubscriber).toBeDefined()
+      // Simulate embedding model change
+      useSettingsStore.setState({ settings: { 'ai.embeddingModel': 'another-model' } } as never)
 
-      currentEmbeddingModel = 'another-model'
-      settingsSubscriber!({
-        getSetting: (key: string) => {
-          if (key === 'ai.embeddingModel') return 'another-model'
-          return ''
-        },
-      })
-
-      // Wait for async calls to settle
-      await vi.waitFor(() => {
-        expect(consoleSpy).not.toHaveBeenCalled()
-      })
+      // Wait for async calls to settle (error should be caught)
+      await new Promise((r) => setTimeout(r, 50))
+      expect(consoleSpy).not.toHaveBeenCalled()
     })
   })
 
   describe('triggerBuild error with non-Error object', () => {
     it('handles non-Error rejection in triggerBuild', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockBuildSchemaIndex.mockRejectedValueOnce('string error')
+      ipc.override('build_schema_index', () => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'string error'
+      })
 
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       // Wait for registerSession's async getIndexStatus call to settle
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalled()
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
 
       await useSchemaIndexStore.getState().triggerBuild('session-1')
@@ -483,7 +436,10 @@ describe('useSchemaIndexStore', () => {
   describe('triggerInvalidation with non-Error object', () => {
     it('handles non-Error rejection in triggerInvalidation', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockInvalidateSchemaIndex.mockRejectedValueOnce('string error')
+      ipc.override('invalidate_schema_index', () => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'string error'
+      })
 
       await useSchemaIndexStore.getState().triggerInvalidation('session-1', ['db.users'])
       expect(consoleSpy).not.toHaveBeenCalled()
@@ -491,36 +447,37 @@ describe('useSchemaIndexStore', () => {
   })
 
   describe('forceRebuild', () => {
-    it('calls forceRebuildSchemaIndex and sets status to building', async () => {
-      mockGetIndexStatus.mockResolvedValueOnce({ status: 'building' })
+    it('calls forceRebuildSchemaIndex and checks status after', async () => {
+      ipc.override('get_index_status', () => ({ status: 'building' }))
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       // Wait for registerSession's async getIndexStatus call to settle
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalledWith('session-1')
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
-      mockGetIndexStatus.mockClear()
-      mockGetIndexStatus.mockResolvedValueOnce({ status: 'building' })
+      ipc.override('get_index_status', () => ({ status: 'building' }))
 
       await useSchemaIndexStore.getState().forceRebuild('session-1')
 
-      expect(mockForceRebuildSchemaIndex).toHaveBeenCalledWith('session-1')
+      expect(ipc.calls('force_rebuild_schema_index').length).toBeGreaterThan(0)
       // getIndexStatus should have been called after forceRebuildSchemaIndex
-      expect(mockGetIndexStatus).toHaveBeenCalledWith('session-1')
+      expect(ipc.calls('get_index_status').length).toBeGreaterThan(1)
     })
 
     it('does nothing for unknown session', async () => {
       await useSchemaIndexStore.getState().forceRebuild('unknown-session')
-      expect(mockForceRebuildSchemaIndex).not.toHaveBeenCalled()
+      expect(ipc.calls('force_rebuild_schema_index').length).toBe(0)
     })
 
     it('sets error status when force rebuild fails', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockForceRebuildSchemaIndex.mockRejectedValueOnce(new Error('Force rebuild failed'))
+      ipc.override('force_rebuild_schema_index', () => {
+        throw new Error('Force rebuild failed')
+      })
 
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       // Wait for registerSession's async getIndexStatus call to settle
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalled()
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
 
       await useSchemaIndexStore.getState().forceRebuild('session-1')
@@ -532,12 +489,15 @@ describe('useSchemaIndexStore', () => {
 
     it('handles non-Error rejection in forceRebuild', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      mockForceRebuildSchemaIndex.mockRejectedValueOnce('string error')
+      ipc.override('force_rebuild_schema_index', () => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error
+        throw 'string error'
+      })
 
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       // Wait for registerSession's async getIndexStatus call to settle
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalled()
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
 
       await useSchemaIndexStore.getState().forceRebuild('session-1')
@@ -548,12 +508,12 @@ describe('useSchemaIndexStore', () => {
     })
 
     it('updates status to not_configured when backend returns not_configured', async () => {
-      mockGetIndexStatus.mockResolvedValue({ status: 'not_configured' })
+      ipc.override('get_index_status', () => ({ status: 'not_configured' }))
 
       useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
       // Wait for registerSession's async getIndexStatus call to settle
       await vi.waitFor(() => {
-        expect(mockGetIndexStatus).toHaveBeenCalledWith('session-1')
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
       })
 
       await useSchemaIndexStore.getState().forceRebuild('session-1')

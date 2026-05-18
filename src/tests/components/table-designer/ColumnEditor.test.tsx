@@ -1,15 +1,9 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { ColumnEditor } from '../../../components/table-designer/ColumnEditor'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import type { TableDesignerTabState } from '../../../stores/table-designer-store'
-
-vi.mock('../../../lib/table-designer-commands', () => ({
-  loadTableForDesigner: vi.fn().mockResolvedValue(undefined),
-  generateTableDdl: vi.fn().mockResolvedValue({ ddl: 'ALTER TABLE `users` ...', warnings: [] }),
-  applyTableDdl: vi.fn().mockResolvedValue(undefined),
-}))
 
 function makeTabState(overrides: Partial<TableDesignerTabState> = {}): TableDesignerTabState {
   return {
@@ -510,21 +504,26 @@ describe('ColumnEditor', () => {
   it('default value dropdown updates to NULL and custom value', async () => {
     const { user, getTab } = renderEditor()
 
-    // Select NULL from the default value dropdown
+    // Select NULL from the default value dropdown. Use findByRole (async) to
+    // wait for the Dropdown portal to commit its option buttons to the DOM —
+    // synchronous getByRole can race the portal render under full-suite load.
     await user.click(screen.getByTestId('column-default-0'))
-    await user.click(screen.getByRole('option', { name: 'NULL' }))
+    await user.click(await screen.findByRole('option', { name: 'NULL' }))
     expect(getTab()?.currentSchema.columns[0]?.defaultValue).toEqual({
       tag: 'NULL_DEFAULT',
     })
 
     // Select Custom from the default value dropdown
     await user.click(screen.getByTestId('column-default-0'))
-    await user.click(screen.getByRole('option', { name: 'Custom' }))
+    await user.click(await screen.findByRole('option', { name: 'Custom' }))
     const customInput = screen.getByTestId('column-default-input-0')
-    await user.type(customInput, '42')
-    expect(getTab()?.currentSchema.columns[0]?.defaultValue).toEqual({
-      tag: 'LITERAL',
-      value: '42',
+    fireEvent.change(customInput, { target: { value: '42' } })
+
+    await waitFor(() => {
+      expect(getTab()?.currentSchema.columns[0]?.defaultValue).toEqual({
+        tag: 'LITERAL',
+        value: '42',
+      })
     })
   })
 

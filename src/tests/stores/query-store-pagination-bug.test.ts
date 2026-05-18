@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
-import { useQueryStore, getFlatTabState } from '../../stores/query-store'
+import { overrideIpcCommands } from '../ipc-mock'
+import { useQueryStore } from '../../stores/query-store'
+import { flat } from '../helpers/query-test-utils'
 
 /**
  * Regression test: When the user provides an explicit LIMIT (autoLimitApplied=false),
@@ -8,9 +9,7 @@ import { useQueryStore, getFlatTabState } from '../../stores/query-store'
  * displays every row without needing pagination.
  */
 
-function flat(tabId: string) {
-  return getFlatTabState(useQueryStore.getState().getTabState(tabId))
-}
+const overrideCommands = overrideIpcCommands
 
 describe('query result view should show all returned rows regardless of page size', () => {
   beforeEach(() => {
@@ -22,24 +21,18 @@ describe('query result view should show all returned rows regardless of page siz
     const allRows = Array.from({ length: 100 }, (_, i) => [i + 1])
     const totalRows = 100
 
-    mockIPC((cmd) => {
-      switch (cmd) {
-        case 'execute_query':
-          return {
-            queryId: 'q-limit-bug',
-            columns: [{ name: 'id', dataType: 'INT' }],
-            totalRows,
-            executionTimeMs: 10,
-            affectedRows: 0,
-            firstPage: allRows,
-            totalPages: 1,
-            autoLimitApplied: false,
-          }
-        case 'evict_results':
-          return null
-        default:
-          return null
-      }
+    overrideCommands({
+      execute_query: () => ({
+        queryId: 'q-limit-bug',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows,
+        executionTimeMs: 10,
+        affectedRows: 0,
+        firstPage: allRows,
+        totalPages: 1,
+        autoLimitApplied: false,
+      }),
+      evict_results: () => null,
     })
 
     const store = useQueryStore.getState()

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { SlashCommandDropdown } from '../../../components/ai-panel/SlashCommandDropdown'
 import type { SlashCommand } from '../../../lib/slash-commands'
 
@@ -14,12 +13,6 @@ let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
 })
 
 afterEach(() => {

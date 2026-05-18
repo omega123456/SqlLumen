@@ -3,32 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import SqlDumpDialog from '../../../components/dialogs/SqlDumpDialog'
 import type { ExportableDatabase, DumpJobProgress } from '../../../lib/sql-dump-commands'
-
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
-
-const mockListExportableObjects = vi.fn()
-const mockStartSqlDump = vi.fn()
-const mockGetDumpProgress = vi.fn()
-
-vi.mock('../../../lib/sql-dump-commands', () => ({
-  listExportableObjects: (...args: unknown[]) => mockListExportableObjects(...args),
-  startSqlDump: (...args: unknown[]) => mockStartSqlDump(...args),
-  getDumpProgress: (...args: unknown[]) => mockGetDumpProgress(...args),
-}))
-
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  save: vi.fn().mockResolvedValue('/mock/path/dump.sql'),
-}))
-
-const mockShowSuccessToast = vi.fn()
-const mockShowErrorToast = vi.fn()
-
-vi.mock('../../../stores/toast-store', () => ({
-  showSuccessToast: (...args: unknown[]) => mockShowSuccessToast(...args),
-  showErrorToast: (...args: unknown[]) => mockShowErrorToast(...args),
-}))
+import { ipc, expectToast } from '../../ipc-mock'
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -75,10 +50,10 @@ async function waitForDumpDialogLoaded() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  mockListExportableObjects.mockResolvedValue(MOCK_DATABASES)
-  mockStartSqlDump.mockResolvedValue('job-1')
-  mockGetDumpProgress.mockResolvedValue(MOCK_PROGRESS_COMPLETED)
+  ipc.override('list_exportable_objects', () => MOCK_DATABASES)
+  ipc.override('start_sql_dump', () => 'job-1')
+  ipc.override('get_dump_progress', () => MOCK_PROGRESS_COMPLETED)
+  ipc.override('plugin:dialog|save', () => '/mock/path/dump.sql')
 })
 
 // ---------------------------------------------------------------------------
@@ -114,8 +89,8 @@ describe('SqlDumpDialog', () => {
   })
 
   it('shows loading state while objects are being fetched', () => {
-    // Make listExportableObjects hang
-    mockListExportableObjects.mockReturnValue(new Promise(() => {}))
+    // Make list_exportable_objects hang
+    ipc.override('list_exportable_objects', () => new Promise(() => {}))
     render(<SqlDumpDialog {...defaultProps} />)
 
     expect(screen.getByTestId('dump-loading-objects')).toBeInTheDocument()
@@ -123,7 +98,9 @@ describe('SqlDumpDialog', () => {
 
   it('shows error when object loading fails', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockListExportableObjects.mockRejectedValue(new Error('Connection lost'))
+    ipc.override('list_exportable_objects', () => {
+      throw new Error('Connection lost')
+    })
     render(<SqlDumpDialog {...defaultProps} />)
 
     await waitFor(() => {
@@ -244,7 +221,7 @@ describe('SqlDumpDialog', () => {
     expect(screen.getByTestId('dump-submit-button')).toBeDisabled()
   })
 
-  it('export button calls startSqlDump with correct params', async () => {
+  it('export button calls start_sql_dump IPC with correct params', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     render(<SqlDumpDialog {...defaultProps} onClose={onClose} />)
@@ -260,7 +237,11 @@ describe('SqlDumpDialog', () => {
     await user.click(screen.getByTestId('dump-submit-button'))
 
     await waitFor(() => {
-      expect(mockStartSqlDump).toHaveBeenCalledWith({
+      const calls = ipc.calls('start_sql_dump')
+      expect(calls).toHaveLength(1)
+      const args = calls[0] as Record<string, unknown>
+      const input = args.input as Record<string, unknown>
+      expect(input).toMatchObject({
         connectionId: 'conn-1',
         filePath: '/tmp/dump.sql',
         databases: ['test_db'],
@@ -279,7 +260,9 @@ describe('SqlDumpDialog', () => {
 
   it('shows error when export fails', async () => {
     const user = userEvent.setup()
-    mockStartSqlDump.mockRejectedValue(new Error('Permission denied'))
+    ipc.override('start_sql_dump', () => {
+      throw new Error('Permission denied')
+    })
     render(<SqlDumpDialog {...defaultProps} />)
     await waitForDumpDialogLoaded()
 
@@ -377,7 +360,9 @@ describe('SqlDumpDialog', () => {
 
   it('shows non-Error thrown value as error message', async () => {
     const user = userEvent.setup()
-    mockStartSqlDump.mockRejectedValue('string error')
+    ipc.override('start_sql_dump', () => {
+      throw 'string error'
+    })
     render(<SqlDumpDialog {...defaultProps} />)
     await waitForDumpDialogLoaded()
 
@@ -392,8 +377,8 @@ describe('SqlDumpDialog', () => {
 
   it('export button shows Exporting... while export is in progress', async () => {
     const user = userEvent.setup()
-    // Make startSqlDump resolve but getDumpProgress never completes
-    mockGetDumpProgress.mockReturnValue(new Promise(() => {}))
+    // Make get_dump_progress never complete
+    ipc.override('get_dump_progress', () => new Promise(() => {}))
     render(<SqlDumpDialog {...defaultProps} />)
     await waitForDumpDialogLoaded()
 
@@ -408,7 +393,7 @@ describe('SqlDumpDialog', () => {
   })
 
   it('shows "No databases found" when list is empty', async () => {
-    mockListExportableObjects.mockResolvedValue([])
+    ipc.override('list_exportable_objects', () => [])
     render(<SqlDumpDialog {...defaultProps} />)
 
     await waitFor(() => {
@@ -418,25 +403,21 @@ describe('SqlDumpDialog', () => {
 
   it('shows success toast when dump completes', async () => {
     const user = userEvent.setup()
-    mockGetDumpProgress.mockResolvedValue(MOCK_PROGRESS_COMPLETED)
     render(<SqlDumpDialog {...defaultProps} />)
     await waitForDumpDialogLoaded()
     await user.click(screen.getByTestId('dump-db-test_db'))
     setFilePath('/tmp/dump.sql')
     await user.click(screen.getByTestId('dump-submit-button'))
 
-    await waitFor(() => {
-      expect(mockShowSuccessToast).toHaveBeenCalledWith(
-        'Export completed',
-        expect.stringContaining('/tmp/dump.sql')
-      )
+    await waitFor(async () => {
+      await expectToast('success', 'Export completed')
     })
   })
 
   it('shows error toast when dump fails', async () => {
     const user = userEvent.setup()
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockGetDumpProgress.mockResolvedValue({
+    ipc.override('get_dump_progress', () => ({
       jobId: 'job-1',
       status: 'failed',
       tablesTotal: 3,
@@ -444,15 +425,15 @@ describe('SqlDumpDialog', () => {
       currentTable: null,
       bytesWritten: 0,
       errorMessage: 'Disk full',
-    })
+    }))
     render(<SqlDumpDialog {...defaultProps} />)
     await waitForDumpDialogLoaded()
     await user.click(screen.getByTestId('dump-db-test_db'))
     setFilePath('/tmp/dump.sql')
     await user.click(screen.getByTestId('dump-submit-button'))
 
-    await waitFor(() => {
-      expect(mockShowErrorToast).toHaveBeenCalledWith('Export failed', 'Disk full')
+    await waitFor(async () => {
+      await expectToast('error', 'Export failed')
     })
     consoleSpy.mockRestore()
   })

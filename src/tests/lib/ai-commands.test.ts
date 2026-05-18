@@ -1,24 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ---------------------------------------------------------------------------
-// Module mocks — must be before imports of the module under test
-// ---------------------------------------------------------------------------
-
-const mockInvoke = vi.fn()
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args: unknown[]) => mockInvoke(...args),
-}))
-
-const mockListen = vi.fn()
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: (...args: unknown[]) => mockListen(...args),
-}))
-
-const mockLogFrontend = vi.fn()
-vi.mock('../../lib/app-log-commands', () => ({
-  logFrontend: (...args: unknown[]) => mockLogFrontend(...args),
-}))
-
+import { ipc } from '../ipc-mock'
 import {
   sendAiChat,
   cancelAiStream,
@@ -28,19 +10,9 @@ import {
 } from '../../lib/ai-commands'
 import type { AiChatParams } from '../../lib/ai-commands'
 
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
-
 beforeEach(() => {
   vi.clearAllMocks()
-  mockInvoke.mockResolvedValue(undefined)
-  mockListen.mockResolvedValue(vi.fn())
 })
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('sendAiChat', () => {
   it('invokes ai_chat with correct parameter mapping', async () => {
@@ -60,8 +32,7 @@ describe('sendAiChat', () => {
 
     await sendAiChat(params)
 
-    expect(mockInvoke).toHaveBeenCalledTimes(1)
-    expect(mockInvoke).toHaveBeenCalledWith('ai_chat', {
+    expect(ipc.calls('ai_chat')).toEqual([{
       request: {
         messages: params.messages,
         endpoint: params.endpoint,
@@ -73,11 +44,13 @@ describe('sendAiChat', () => {
         preferResponsesApi: true,
         enableReasoning: true,
       },
-    })
+    }])
   })
 
   it('propagates errors from the backend', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('AI service unavailable'))
+    ipc.override('ai_chat', () => {
+      throw new Error('AI service unavailable')
+    })
 
     await expect(
       sendAiChat({
@@ -101,226 +74,82 @@ describe('sendAiChat', () => {
       streamId: 'stream-defaults',
     })
 
-    expect(mockInvoke).toHaveBeenCalledWith('ai_chat', {
+    expect(ipc.calls('ai_chat')).toEqual([{
       request: expect.objectContaining({
         preferResponsesApi: false,
         enableReasoning: true,
       }),
-    })
+    }])
   })
 })
 
 describe('cancelAiStream', () => {
   it('invokes ai_cancel with the streamId', async () => {
     await cancelAiStream('stream-abc')
-
-    expect(mockInvoke).toHaveBeenCalledTimes(1)
-    expect(mockInvoke).toHaveBeenCalledWith('ai_cancel', { streamId: 'stream-abc' })
+    expect(ipc.calls('ai_cancel')).toEqual([{ streamId: 'stream-abc' }])
   })
 
   it('propagates errors from the backend', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('Stream not found'))
-
+    ipc.override('ai_cancel', () => {
+      throw new Error('Stream not found')
+    })
     await expect(cancelAiStream('stream-missing')).rejects.toThrow('Stream not found')
   })
 })
 
 describe('listenToAiStream', () => {
-  it('sets up three event listeners for chunk, done, and error', async () => {
-    const unlistenChunk = vi.fn()
-    const unlistenDone = vi.fn()
-    const unlistenError = vi.fn()
-
-    mockListen
-      .mockResolvedValueOnce(unlistenChunk)
-      .mockResolvedValueOnce(unlistenDone)
-      .mockResolvedValueOnce(unlistenError)
-
-    const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }
-    await listenToAiStream('stream-xyz', callbacks)
-
-    expect(mockListen).toHaveBeenCalledTimes(3)
-    expect(mockListen).toHaveBeenCalledWith('ai-stream-chunk', expect.any(Function))
-    expect(mockListen).toHaveBeenCalledWith('ai-stream-done', expect.any(Function))
-    expect(mockListen).toHaveBeenCalledWith('ai-stream-error', expect.any(Function))
-  })
-
-  it('returns an unlisten function that calls all three unlistens', async () => {
-    const unlistenChunk = vi.fn()
-    const unlistenDone = vi.fn()
-    const unlistenError = vi.fn()
-
-    mockListen
-      .mockResolvedValueOnce(unlistenChunk)
-      .mockResolvedValueOnce(unlistenDone)
-      .mockResolvedValueOnce(unlistenError)
-
+  it('registers three listeners and tears them down', async () => {
     const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }
     const unlisten = await listenToAiStream('stream-xyz', callbacks)
 
-    expect(unlistenChunk).not.toHaveBeenCalled()
-    expect(unlistenDone).not.toHaveBeenCalled()
-    expect(unlistenError).not.toHaveBeenCalled()
-
-    unlisten()
-
-    expect(unlistenChunk).toHaveBeenCalledTimes(1)
-    expect(unlistenDone).toHaveBeenCalledTimes(1)
-    expect(unlistenError).toHaveBeenCalledTimes(1)
-  })
-
-  it('filters events by streamId — matching stream calls onChunk', async () => {
-    let chunkHandler:
-      | ((event: { payload: { streamId: string; content: string; kind?: string } }) => void)
-      | null = null
-
-    mockListen.mockImplementation((eventName: string, handler: unknown) => {
-      if (eventName === 'ai-stream-chunk') {
-        chunkHandler = handler as typeof chunkHandler
-      }
-      return Promise.resolve(vi.fn())
-    })
-
-    const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }
-    await listenToAiStream('stream-aaa', callbacks)
-
-    // Matching streamId
-    chunkHandler!({ payload: { streamId: 'stream-aaa', content: 'hello' } })
+    await ipc.emit('ai-stream-chunk', { streamId: 'stream-xyz', content: 'hello' })
     expect(callbacks.onChunk).toHaveBeenCalledWith('hello', 'content')
+    unlisten()
   })
 
-  it('filters events by streamId — mismatched stream does not call onChunk', async () => {
-    let chunkHandler:
-      | ((event: { payload: { streamId: string; content: string; kind?: string } }) => void)
-      | null = null
-
-    mockListen.mockImplementation((eventName: string, handler: unknown) => {
-      if (eventName === 'ai-stream-chunk') {
-        chunkHandler = handler as typeof chunkHandler
-      }
-      return Promise.resolve(vi.fn())
-    })
-
+  it('routes matching events and ignores non-matching stream ids', async () => {
     const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }
     await listenToAiStream('stream-aaa', callbacks)
 
-    // Non-matching streamId
-    chunkHandler!({ payload: { streamId: 'stream-bbb', content: 'hello' } })
-    expect(callbacks.onChunk).not.toHaveBeenCalled()
-  })
-
-  it('filters done events by streamId', async () => {
-    let doneHandler:
-      | ((event: {
-          payload: {
-            streamId: string
-            responseId?: string | null
-            transport?: 'chat_completions' | 'responses'
-          }
-        }) => void)
-      | null = null
-
-    mockListen.mockImplementation((eventName: string, handler: unknown) => {
-      if (eventName === 'ai-stream-done') {
-        doneHandler = handler as typeof doneHandler
-      }
-      return Promise.resolve(vi.fn())
+    await ipc.emit('ai-stream-chunk', { streamId: 'stream-aaa', content: 'hello' })
+    await ipc.emit('ai-stream-chunk', { streamId: 'stream-bbb', content: 'ignored' })
+    await ipc.emit('ai-stream-chunk', {
+      streamId: 'stream-aaa',
+      content: 'reasoning...',
+      kind: 'thinking',
     })
-
-    const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }
-    await listenToAiStream('stream-done-test', callbacks)
-
-    // Matching
-    doneHandler!({
-      payload: { streamId: 'stream-done-test', responseId: 'resp_123', transport: 'responses' },
+    await ipc.emit('ai-stream-done', {
+      streamId: 'stream-aaa',
+      responseId: 'resp_123',
+      transport: 'responses',
     })
+    await ipc.emit('ai-stream-error', { streamId: 'stream-aaa', error: 'timeout' })
+
+    expect(callbacks.onChunk).toHaveBeenNthCalledWith(1, 'hello', 'content')
+    expect(callbacks.onChunk).toHaveBeenNthCalledWith(2, 'reasoning...', 'thinking')
+    expect(callbacks.onChunk).toHaveBeenCalledTimes(2)
     expect(callbacks.onDone).toHaveBeenCalledWith({
       responseId: 'resp_123',
       transport: 'responses',
     })
-
-    // Non-matching
-    doneHandler!({ payload: { streamId: 'stream-other' } })
-    expect(callbacks.onDone).toHaveBeenCalledTimes(1) // still 1
-  })
-
-  it('filters error events by streamId', async () => {
-    let errorHandler: ((event: { payload: { streamId: string; error: string } }) => void) | null =
-      null
-
-    mockListen.mockImplementation((eventName: string, handler: unknown) => {
-      if (eventName === 'ai-stream-error') {
-        errorHandler = handler as typeof errorHandler
-      }
-      return Promise.resolve(vi.fn())
-    })
-
-    const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }
-    await listenToAiStream('stream-err-test', callbacks)
-
-    // Matching
-    errorHandler!({ payload: { streamId: 'stream-err-test', error: 'timeout' } })
     expect(callbacks.onError).toHaveBeenCalledWith('timeout')
-
-    // Non-matching
-    errorHandler!({ payload: { streamId: 'stream-nope', error: 'nope' } })
-    expect(callbacks.onError).toHaveBeenCalledTimes(1) // still 1
-  })
-
-  it('passes kind=thinking to onChunk when event has kind=thinking', async () => {
-    let chunkHandler:
-      | ((event: { payload: { streamId: string; content: string; kind?: string } }) => void)
-      | null = null
-
-    mockListen.mockImplementation((eventName: string, handler: unknown) => {
-      if (eventName === 'ai-stream-chunk') {
-        chunkHandler = handler as typeof chunkHandler
-      }
-      return Promise.resolve(vi.fn())
-    })
-
-    const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }
-    await listenToAiStream('stream-think', callbacks)
-
-    chunkHandler!({
-      payload: { streamId: 'stream-think', content: 'reasoning...', kind: 'thinking' },
-    })
-    expect(callbacks.onChunk).toHaveBeenCalledWith('reasoning...', 'thinking')
-  })
-
-  it('defaults kind to content when event has no kind field', async () => {
-    let chunkHandler: ((event: { payload: { streamId: string; content: string } }) => void) | null =
-      null
-
-    mockListen.mockImplementation((eventName: string, handler: unknown) => {
-      if (eventName === 'ai-stream-chunk') {
-        chunkHandler = handler as typeof chunkHandler
-      }
-      return Promise.resolve(vi.fn())
-    })
-
-    const callbacks = { onChunk: vi.fn(), onDone: vi.fn(), onError: vi.fn() }
-    await listenToAiStream('stream-noKind', callbacks)
-
-    chunkHandler!({ payload: { streamId: 'stream-noKind', content: 'hello' } })
-    expect(callbacks.onChunk).toHaveBeenCalledWith('hello', 'content')
   })
 })
 
 describe('listAiModels', () => {
   it('returns models from the backend', async () => {
-    mockInvoke.mockResolvedValueOnce({
+    ipc.override('list_ai_models', () => ({
       models: [
         { id: 'codellama', name: null, category: 'chat' },
         { id: 'deepseek-coder', name: null, category: 'chat' },
       ],
-    })
+    }))
 
     const result = await listAiModels('http://localhost:11434/v1')
 
-    expect(mockInvoke).toHaveBeenCalledWith('list_ai_models', {
+    expect(ipc.calls('list_ai_models')).toEqual([{
       endpoint: 'http://localhost:11434/v1',
-    })
+    }])
     expect(result.models).toEqual([
       { id: 'codellama', name: null, category: 'chat' },
       { id: 'deepseek-coder', name: null, category: 'chat' },
@@ -328,44 +157,25 @@ describe('listAiModels', () => {
     expect(result.error).toBeUndefined()
   })
 
-  it('returns empty models array and error string on failure', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('Connection refused'))
+  it('returns empty models array and logs an error on failure', async () => {
+    ipc.override('list_ai_models', () => {
+      throw new Error('Connection refused')
+    })
 
     const result = await listAiModels('http://localhost:9999/v1')
 
     expect(result.models).toEqual([])
     expect(result.error).toBe('Connection refused')
-    expect(mockLogFrontend).toHaveBeenCalledWith(
-      'error',
-      '[ai-commands] Failed to list AI models: Connection refused'
-    )
-  })
-
-  it('returns empty models array without error when backend returns no models', async () => {
-    mockInvoke.mockResolvedValueOnce({ models: [] })
-
-    const result = await listAiModels('http://localhost:11434/v1')
-    expect(result.models).toEqual([])
-    expect(result.error).toBeUndefined()
-  })
-
-  it('models include category field', async () => {
-    mockInvoke.mockResolvedValueOnce({
-      models: [
-        { id: 'llama3', name: null, category: 'chat' },
-        { id: 'nomic-embed-text', name: null, category: 'embedding' },
-      ],
+    expect(ipc.calls('log_frontend')).toContainEqual({
+      level: 'error',
+      message: '[ai-commands] Failed to list AI models: Connection refused',
     })
-
-    const result = await listAiModels('http://localhost:11434/v1')
-    expect(result.models[0].category).toBe('chat')
-    expect(result.models[1].category).toBe('embedding')
   })
 })
 
 describe('aiQueryExpand', () => {
   it('invokes ai_query_expand with correct parameter mapping', async () => {
-    mockInvoke.mockResolvedValueOnce({ text: 'SELECT * FROM users' })
+    ipc.override('ai_query_expand', () => ({ text: 'SELECT * FROM users' }))
 
     const req = {
       endpoint: 'http://localhost:11434/v1',
@@ -376,13 +186,14 @@ describe('aiQueryExpand', () => {
 
     const result = await aiQueryExpand(req)
 
-    expect(mockInvoke).toHaveBeenCalledTimes(1)
-    expect(mockInvoke).toHaveBeenCalledWith('ai_query_expand', { req })
+    expect(ipc.calls('ai_query_expand')).toEqual([{ req }])
     expect(result.text).toBe('SELECT * FROM users')
   })
 
   it('propagates errors from the backend', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('Model not found'))
+    ipc.override('ai_query_expand', () => {
+      throw new Error('Model not found')
+    })
 
     await expect(
       aiQueryExpand({

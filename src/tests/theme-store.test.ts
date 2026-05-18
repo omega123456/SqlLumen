@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from './ipc-mock'
 import { useThemeStore } from '../stores/theme-store'
 import { setupMatchMedia } from './helpers/mock-match-media'
 
@@ -50,28 +50,14 @@ describe('useThemeStore — setTheme', () => {
   })
 
   it('setTheme calls set_setting IPC with correct args', async () => {
-    const setCalls: Array<{ key: string; value: string }> = []
-    mockIPC((cmd, args) => {
-      if (cmd === 'set_setting') {
-        const { key, value } = args as { key: string; value: string }
-        setCalls.push({ key, value })
-      }
-      return null
-    })
-
     await useThemeStore.getState().setTheme('dark')
-    // Allow microtasks to flush
-    await new Promise((resolve) => setTimeout(resolve, 0))
-
-    expect(setCalls).toContainEqual({ key: 'theme', value: 'dark' })
+    await Promise.resolve()
+    expect(ipc.calls('set_setting')).toContainEqual({ key: 'theme', value: 'dark' })
   })
 
   it('setTheme still works when IPC fails (silent error)', async () => {
-    mockIPC((cmd) => {
-      if (cmd === 'set_setting') {
-        throw new Error('IPC error')
-      }
-      return null
+    ipc.override('set_setting', () => {
+      throw new Error('IPC error')
     })
 
     // Should not throw
@@ -85,10 +71,7 @@ describe('useThemeStore — setTheme', () => {
 describe('useThemeStore — initialize', () => {
   it('initialize reads system preference when no saved theme', async () => {
     setupMatchMedia(true) // system prefers dark
-    mockIPC((cmd) => {
-      if (cmd === 'get_setting') return null // no saved theme
-      return null
-    })
+    ipc.override('get_setting', () => null)
 
     await useThemeStore.getState().initialize()
     expect(useThemeStore.getState().resolvedTheme).toBe('dark')
@@ -97,10 +80,7 @@ describe('useThemeStore — initialize', () => {
 
   it('initialize applies saved theme from SQLite', async () => {
     setupMatchMedia(false) // system prefers light
-    mockIPC((cmd) => {
-      if (cmd === 'get_setting') return 'dark' // saved theme is dark
-      return null
-    })
+    ipc.override('get_setting', () => 'dark')
 
     await useThemeStore.getState().initialize()
     expect(useThemeStore.getState().theme).toBe('dark')
@@ -110,9 +90,8 @@ describe('useThemeStore — initialize', () => {
 
   it('initialize falls back to system preference when IPC fails', async () => {
     setupMatchMedia(true) // system prefers dark
-    mockIPC((cmd) => {
-      if (cmd === 'get_setting') throw new Error('IPC error')
-      return null
+    ipc.override('get_setting', () => {
+      throw new Error('IPC error')
     })
 
     await expect(useThemeStore.getState().initialize()).resolves.toBeUndefined()
@@ -121,10 +100,7 @@ describe('useThemeStore — initialize', () => {
   })
 
   it('initialize sets theme to "system" when falling back to system preference', async () => {
-    mockIPC((cmd) => {
-      if (cmd === 'get_setting') return null
-      return null
-    })
+    ipc.override('get_setting', () => null)
 
     await useThemeStore.getState().initialize()
     expect(useThemeStore.getState().theme).toBe('system')

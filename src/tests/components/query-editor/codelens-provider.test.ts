@@ -6,7 +6,7 @@
  * and command handlers directly.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../../ipc-mock'
 import {
   offsetToLineNumber,
   offsetToColumn,
@@ -19,20 +19,12 @@ import {
 import { useQueryStore } from '../../../stores/query-store'
 import { useAiStore } from '../../../stores/ai-store'
 import { useSettingsStore } from '../../../stores/settings-store'
-import { getModelContext } from '../../../components/query-editor/completion-service'
+import * as CompletionServiceModule from '../../../components/query-editor/completion-service'
 import type { CancellationToken, editor } from 'monaco-editor'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
-// Mock the codelens-provider's dependency on completion-service
-vi.mock('../../../components/query-editor/completion-service', () => ({
-  getModelContext: vi.fn(),
-  registerModelConnection: vi.fn(),
-  unregisterModelConnection: vi.fn(),
-  getModelConnectionId: vi.fn(),
-  resetModelConnections: vi.fn(),
-  completionService: vi.fn(async () => []),
-}))
-
-const mockGetModelContext = vi.mocked(getModelContext)
+// Use vi.spyOn to install per-test mock on completion-service.getModelContext without vi.mock().
+// IPC commands are handled via ipc.override() instead of mockIPC().
 
 /** Build a minimal mock text model that supports getPositionAt for codelens tests. */
 function makeMockModel(content: string): editor.ITextModel {
@@ -54,38 +46,29 @@ function makeMockModel(content: string): editor.ITextModel {
   } as unknown as editor.ITextModel
 }
 
-function setupMockIPC() {
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    if (cmd === 'get_setting') return null
-    if (cmd === 'set_setting') return undefined
-    if (cmd === 'get_all_settings') return {}
-    if (cmd === 'execute_query')
-      return {
-        queryId: 'q1',
-        columns: [],
-        totalRows: 0,
-        executionTimeMs: 1,
-        affectedRows: 0,
-        firstPage: [],
-        totalPages: 0,
-        autoLimitApplied: false,
-      }
-    if (cmd === 'execute_call_query') return { results: [] }
-    if (cmd === 'execute_multi_query') return { results: [] }
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
-}
-
 let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-  setupMockIPC()
+
+  ipc.override('execute_query', () => ({
+    queryId: 'q1',
+    columns: [],
+    totalRows: 0,
+    executionTimeMs: 1,
+    affectedRows: 0,
+    firstPage: [],
+    totalPages: 0,
+    autoLimitApplied: false,
+  }))
+  ipc.override('execute_call_query', () => ({ results: [] }))
+  ipc.override('execute_multi_query', () => ({ results: [] }))
+
   useQueryStore.setState({ tabs: {} })
   useAiStore.setState({ tabs: {} })
+
+  // Spy on getModelContext — individual tests set return values
+  vi.spyOn(CompletionServiceModule, 'getModelContext').mockReturnValue(undefined)
 })
 
 afterEach(() => {
@@ -190,28 +173,7 @@ describe('handleAskAi', () => {
   it('opens the AI panel if not already open', () => {
     useAiStore.setState({
       tabs: {
-        'tab-1': {
-          messages: [],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
-          isPanelOpen: false,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        'tab-1': makeAiTabState(),
       },
     })
 
@@ -289,28 +251,7 @@ describe('handleAskAi', () => {
   it('does not re-open panel if already open', () => {
     useAiStore.setState({
       tabs: {
-        'tab-1': {
-          messages: [],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
-          isPanelOpen: true,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        'tab-1': makeAiTabState({ isPanelOpen: true }),
       },
     })
 
@@ -327,7 +268,7 @@ describe('handleAskAi', () => {
 
 describe('provideCodeLenses', () => {
   it('returns empty lenses when getModelContext returns null', () => {
-    mockGetModelContext.mockReturnValue(null as unknown as undefined)
+    vi.mocked(CompletionServiceModule.getModelContext).mockReturnValue(null as unknown as undefined)
 
     const result = provideCodeLenses(
       makeMockModel('SELECT 1'),
@@ -337,7 +278,7 @@ describe('provideCodeLenses', () => {
   })
 
   it('returns empty lenses when tabType is not query-editor', () => {
-    mockGetModelContext.mockReturnValue({
+    vi.mocked(CompletionServiceModule.getModelContext).mockReturnValue({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       tabType: 'object-editor',
@@ -351,7 +292,7 @@ describe('provideCodeLenses', () => {
   })
 
   it('returns empty lenses when text is empty', () => {
-    mockGetModelContext.mockReturnValue({
+    vi.mocked(CompletionServiceModule.getModelContext).mockReturnValue({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       tabType: 'query-editor',
@@ -362,7 +303,7 @@ describe('provideCodeLenses', () => {
   })
 
   it('returns Run lens for a single statement when AI is disabled', () => {
-    mockGetModelContext.mockReturnValue({
+    vi.mocked(CompletionServiceModule.getModelContext).mockReturnValue({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       tabType: 'query-editor',
@@ -380,7 +321,7 @@ describe('provideCodeLenses', () => {
   })
 
   it('returns Run and Ask AI lenses when AI is enabled', () => {
-    mockGetModelContext.mockReturnValue({
+    vi.mocked(CompletionServiceModule.getModelContext).mockReturnValue({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       tabType: 'query-editor',
@@ -399,7 +340,7 @@ describe('provideCodeLenses', () => {
   })
 
   it('returns lenses for multiple statements', () => {
-    mockGetModelContext.mockReturnValue({
+    vi.mocked(CompletionServiceModule.getModelContext).mockReturnValue({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       tabType: 'query-editor',
@@ -417,7 +358,7 @@ describe('provideCodeLenses', () => {
   })
 
   it('lenses have a dispose function', () => {
-    mockGetModelContext.mockReturnValue({
+    vi.mocked(CompletionServiceModule.getModelContext).mockReturnValue({
       connectionId: 'conn-1',
       tabId: 'tab-1',
       tabType: 'query-editor',

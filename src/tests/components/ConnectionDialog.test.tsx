@@ -3,23 +3,8 @@ import { render, screen, act, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ConnectionDialog } from '../../components/connection-dialog/ConnectionDialog'
 import { useConnectionStore } from '../../stores/connection-store'
+import { ipc } from '../ipc-mock'
 import type { SavedConnection } from '../../types/connection'
-
-// Mock IPC
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn().mockResolvedValue([]),
-}))
-
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}))
-
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  open: vi.fn(),
-}))
-
-import { invoke } from '@tauri-apps/api/core'
-const mockInvoke = vi.mocked(invoke)
 
 // Polyfill HTMLDialogElement methods for jsdom
 const showModalMock = vi.fn(function (this: HTMLDialogElement) {
@@ -34,8 +19,6 @@ beforeEach(() => {
   HTMLDialogElement.prototype.close = closeMock
   showModalMock.mockClear()
   closeMock.mockClear()
-  mockInvoke.mockReset()
-  mockInvoke.mockResolvedValue([])
 
   useConnectionStore.setState({
     savedConnections: [],
@@ -116,7 +99,7 @@ describe('ConnectionDialog', () => {
     })
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('list_connections')
+      expect(ipc.calls('list_connections')).toHaveLength(1)
     })
   })
 
@@ -181,16 +164,8 @@ describe('ConnectionDialog', () => {
       updatedAt: '2025-01-01T00:00:00Z',
     }
 
-    function mockInvokeForConnections(connections: SavedConnection[]) {
-      mockInvoke.mockImplementation(async (cmd: string) => {
-        if (cmd === 'list_connections') return connections
-        if (cmd === 'list_connection_groups') return []
-        return undefined
-      })
-    }
-
     it('renders SavedConnectionsList in left pane', async () => {
-      mockInvokeForConnections([testConnection])
+      ipc.override('list_connections', () => [testConnection])
 
       useConnectionStore.setState({ dialogOpen: true })
       render(<ConnectionDialog />)
@@ -203,7 +178,7 @@ describe('ConnectionDialog', () => {
 
     it('clicking a saved connection populates the form', async () => {
       const user = userEvent.setup()
-      mockInvokeForConnections([testConnection])
+      ipc.override('list_connections', () => [testConnection])
 
       useConnectionStore.setState({ dialogOpen: true })
       render(<ConnectionDialog />)
@@ -225,7 +200,7 @@ describe('ConnectionDialog', () => {
 
     it('"+ New" button clears the form for a new connection', async () => {
       const user = userEvent.setup()
-      mockInvokeForConnections([testConnection])
+      ipc.override('list_connections', () => [testConnection])
 
       useConnectionStore.setState({ dialogOpen: true })
       render(<ConnectionDialog />)

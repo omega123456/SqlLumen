@@ -2,7 +2,6 @@
  * Tests for connection-store: close-connection guard with dirty non-active query results.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { useConnectionStore, _resetListenersSetup } from '../../stores/connection-store'
 import {
   useWorkspaceStore,
@@ -11,6 +10,7 @@ import {
 } from '../../stores/workspace-store'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useTableDataStore } from '../../stores/table-data-store'
+import { ipc } from '../ipc-mock'
 
 beforeEach(() => {
   // Reset all stores
@@ -33,29 +33,14 @@ beforeEach(() => {
   _resetQueryTabCounter()
   _resetListenersSetup()
 
-  // Default IPC mock
-  mockIPC((cmd) => {
-    switch (cmd) {
-      case 'close_connection':
-        return null
-      case 'evict_results':
-        return null
-      case 'log_frontend':
-        return undefined
-      case 'build_schema_index':
-        return undefined
-      case 'get_index_status':
-        return { status: 'ready' }
-      case 'invalidate_schema_index':
-        return undefined
-      case 'semantic_search':
-        return []
-      case 'list_indexed_tables':
-        return []
-      default:
-        return null
-    }
-  })
+  ipc.override('close_connection', () => null)
+  ipc.override('evict_results', () => null)
+  ipc.override('log_frontend', () => undefined)
+  ipc.override('build_schema_index', () => undefined)
+  ipc.override('get_index_status', () => ({ status: 'ready' }))
+  ipc.override('invalidate_schema_index', () => undefined)
+  ipc.override('semantic_search', () => [])
+  ipc.override('list_indexed_tables', () => [])
 })
 
 describe('useConnectionStore — closeConnection guard for dirty non-active query results', () => {
@@ -442,31 +427,7 @@ describe('useConnectionStore — openConnection creates default workspace tabs',
       ],
     })
 
-    // Mock IPC to return a session
-    mockIPC((cmd) => {
-      switch (cmd) {
-        case 'open_connection':
-          return { sessionId: 'session-1', serverVersion: '8.0.0' }
-        case 'close_connection':
-          return null
-        case 'evict_results':
-          return null
-        case 'log_frontend':
-          return undefined
-        case 'build_schema_index':
-          return undefined
-        case 'get_index_status':
-          return { status: 'ready' }
-        case 'invalidate_schema_index':
-          return undefined
-        case 'semantic_search':
-          return []
-        case 'list_indexed_tables':
-          return []
-        default:
-          return null
-      }
-    })
+    ipc.override('open_connection', () => ({ sessionId: 'session-1', serverVersion: '8.0.0' }))
 
     await useConnectionStore.getState().openConnection('profile-1')
 

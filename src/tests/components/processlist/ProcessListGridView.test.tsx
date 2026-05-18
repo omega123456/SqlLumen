@@ -1,23 +1,23 @@
+import React from 'react'
 import { act, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProcessListGridView } from '../../../components/processlist/ProcessListGridView'
 import { useProcessListStore } from '../../../stores/processlist-store'
 import type { ProcessRow } from '../../../lib/processlist-commands'
+import * as CanvasBaseGridViewModule from '../../../components/shared/glide/CanvasBaseGridView'
+import * as InfoCellPopoverModule from '../../../components/processlist/InfoCellPopover'
 
-const mockCanvasBaseGridView = vi.hoisted(() =>
-  vi.fn((props: Record<string, unknown>) => (
-    <div data-testid="mock-canvas-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
-  ))
+// CanvasBaseGridView is a forwardRef object — vi.spyOn can't intercept it.
+// Use Object.defineProperty to replace it per-test (same pattern as ResultGridView.test.tsx).
+
+const originalCanvasBaseGridView = CanvasBaseGridViewModule.CanvasBaseGridView
+
+const mockCanvasBaseGridView = vi.fn(
+  (props: Record<string, unknown>) =>
+    (
+      <div data-testid="mock-canvas-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
+    ) as unknown as React.ReactElement
 )
-
-vi.mock('../../../components/shared/glide/CanvasBaseGridView', () => ({
-  CanvasBaseGridView: mockCanvasBaseGridView,
-}))
-
-vi.mock('../../../components/processlist/InfoCellPopover', () => ({
-  InfoCellPopover: ({ sql }: { sql: string | null }) =>
-    sql ? <div data-testid="info-popover">{sql}</div> : null,
-}))
 
 const rows: ProcessRow[] = [
   {
@@ -36,6 +36,22 @@ const rows: ProcessRow[] = [
 describe('ProcessListGridView', () => {
   beforeEach(() => {
     mockCanvasBaseGridView.mockClear()
+
+    const mockFn = mockCanvasBaseGridView
+    Object.defineProperty(CanvasBaseGridViewModule, 'CanvasBaseGridView', {
+      value: React.forwardRef(
+        (props: Record<string, unknown>, ref: React.Ref<unknown>) =>
+          mockFn({ ...props, ref }) as unknown as React.ReactElement
+      ),
+      writable: true,
+      configurable: true,
+    })
+
+    // Spy on InfoCellPopover (plain function — vi.spyOn works)
+    vi.spyOn(InfoCellPopoverModule, 'InfoCellPopover').mockImplementation(
+      ({ sql }: { sql: string | null }) => (sql ? <div data-testid="info-popover">{sql}</div> : null)
+    )
+
     act(() => {
       useProcessListStore.setState({
         rowsByConnection: { c1: rows },
@@ -43,6 +59,15 @@ describe('ProcessListGridView', () => {
         excludeIdleConnectionsByConnection: { c1: false },
         sortColumnByConnection: {},
       })
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    Object.defineProperty(CanvasBaseGridViewModule, 'CanvasBaseGridView', {
+      value: originalCanvasBaseGridView,
+      writable: true,
+      configurable: true,
     })
   })
 

@@ -1,18 +1,16 @@
+import React from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ResultGridView } from '../../../components/query-editor/ResultGridView'
 import { useQueryStore } from '../../../stores/query-store'
 import type { ColumnMeta } from '../../../types/schema'
+import * as CanvasBaseGridViewModule from '../../../components/shared/glide/CanvasBaseGridView'
 
-const mockCanvasBaseGridView = vi.hoisted(() =>
-  vi.fn((props: Record<string, unknown>) => (
-    <div data-testid="mock-result-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
-  ))
-)
+// CanvasBaseGridView is a forwardRef object — vi.spyOn can't intercept it.
+// Use Object.defineProperty to replace it per-test (same pattern as TableDataFormView.test.tsx).
 
-vi.mock('../../../components/shared/glide/CanvasBaseGridView', () => ({
-  CanvasBaseGridView: mockCanvasBaseGridView,
-}))
+const originalCanvasBaseGridView = CanvasBaseGridViewModule.CanvasBaseGridView
+let mockCanvasBaseGridView: ReturnType<typeof vi.fn>
 
 const columns: ColumnMeta[] = [
   { name: 'id', dataType: 'INT' },
@@ -68,13 +66,32 @@ function getGridProps() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockCanvasBaseGridView.mockClear()
   useQueryStore.setState({ tabs: {} })
+
+  mockCanvasBaseGridView = vi.fn(
+    (props: Record<string, unknown>) =>
+      (
+        <div data-testid="mock-result-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
+      ) as unknown as React.ReactElement
+  )
+  const mockFn = mockCanvasBaseGridView as unknown as (props: Record<string, unknown>) => React.ReactElement
+  Object.defineProperty(CanvasBaseGridViewModule, 'CanvasBaseGridView', {
+    value: React.forwardRef(
+      (props: Record<string, unknown>, ref: React.Ref<unknown>) => mockFn({ ...props, ref })
+    ),
+    writable: true,
+    configurable: true,
+  })
 })
 
 afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
+  Object.defineProperty(CanvasBaseGridViewModule, 'CanvasBaseGridView', {
+    value: originalCanvasBaseGridView,
+    writable: true,
+    configurable: true,
+  })
 })
 
 describe('ResultGridView', () => {

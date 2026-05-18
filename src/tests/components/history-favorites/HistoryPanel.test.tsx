@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { HistoryPanel } from '../../../components/history-favorites/HistoryPanel'
 import { useHistoryStore } from '../../../stores/history-store'
 import type { HistoryEntry } from '../../../types/schema'
@@ -73,21 +72,6 @@ beforeEach(() => {
     pageSize: 50,
   })
   vi.clearAllMocks()
-
-  mockIPC((cmd) => {
-    switch (cmd) {
-      case 'list_history':
-        return { entries: [], total: 0, page: 1, pageSize: 50 }
-      case 'delete_history_entry':
-        return true
-      case 'clear_history':
-        return 0
-      case 'log_frontend':
-        return undefined
-      default:
-        return null
-    }
-  })
 })
 
 describe('HistoryPanel', () => {

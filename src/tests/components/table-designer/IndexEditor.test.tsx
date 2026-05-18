@@ -1,16 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { IndexEditor } from '../../../components/table-designer/IndexEditor'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import type { TableDesignerTabState } from '../../../stores/table-designer-store'
 import styles from '../../../components/table-designer/IndexEditor.module.css'
-
-vi.mock('../../../lib/table-designer-commands', () => ({
-  loadTableForDesigner: vi.fn().mockResolvedValue(undefined),
-  generateTableDdl: vi.fn().mockResolvedValue({ ddl: 'ALTER TABLE `users` ...', warnings: [] }),
-  applyTableDdl: vi.fn().mockResolvedValue(undefined),
-}))
 
 function makeTabState(overrides: Partial<TableDesignerTabState> = {}): TableDesignerTabState {
   return {

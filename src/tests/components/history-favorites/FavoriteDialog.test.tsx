@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { fireEvent } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { FavoriteDialog } from '../../../components/history-favorites/FavoriteDialog'
 import { useFavoritesStore } from '../../../stores/favorites-store'
 import type { FavoriteEntry } from '../../../types/schema'
@@ -30,21 +29,6 @@ beforeEach(() => {
     editingFavorite: null,
   })
   vi.clearAllMocks()
-
-  mockIPC((cmd) => {
-    switch (cmd) {
-      case 'create_favorite':
-        return 1
-      case 'update_favorite':
-        return true
-      case 'list_favorites':
-        return []
-      case 'log_frontend':
-        return undefined
-      default:
-        return null
-    }
-  })
 })
 
 describe('FavoriteDialog', () => {

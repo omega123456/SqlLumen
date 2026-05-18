@@ -2,7 +2,6 @@
  * Tests for diff-overlay-utils — pure-logic helpers for the diff overlay.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import {
   buildDiffState,
   applyDiff,
@@ -16,23 +15,10 @@ import { useToastStore } from '../../../stores/toast-store'
 import { _resetToastTimeoutsForTests } from '../../../stores/toast-store'
 import type * as MonacoType from 'monaco-editor'
 
-function setupMockIPC() {
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    if (cmd === 'get_setting') return null
-    if (cmd === 'set_setting') return undefined
-    if (cmd === 'get_all_settings') return {}
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
-}
-
 let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-  setupMockIPC()
   useToastStore.setState({ toasts: [] })
 })
 

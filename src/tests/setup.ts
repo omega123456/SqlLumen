@@ -1,7 +1,9 @@
 import '@testing-library/jest-dom'
+import 'jest-canvas-mock'
 import { act, cleanup } from '@testing-library/react'
-import { afterEach, beforeEach, vi } from 'vitest'
-import { clearMocks, mockIPC } from '@tauri-apps/api/mocks'
+import { afterEach, vi } from 'vitest'
+
+import { setupIpc } from './ipc-mock'
 
 /** React 19 + Vitest: known stray act() warnings from long-lived async test-only mocks. */
 const FILTERED_ACT_NOISE_PATTERNS = [
@@ -47,31 +49,8 @@ process.stderr.write = ((chunk: string | Uint8Array, encoding?: unknown, cb?: un
   )
 }) as typeof process.stderr.write
 
-// Default IPC: log_frontend + Tauri event listen/unlisten (used by App / connection store).
-beforeEach(() => {
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') {
-      return undefined
-    }
-    if (cmd === 'plugin:event|listen') {
-      return () => {}
-    }
-    if (cmd === 'plugin:event|unlisten') {
-      return undefined
-    }
-    // App / stores call these on mount (theme, shortcuts, session restore, etc.)
-    if (cmd === 'get_setting') {
-      return null
-    }
-    if (cmd === 'set_setting') {
-      return undefined
-    }
-    if (cmd === 'get_all_settings') {
-      return {}
-    }
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
-})
+// Register IPC mock hooks (beforeEach + afterEach) for all tests.
+setupIpc()
 
 // ---------------------------------------------------------------------------
 // Monaco Editor mocks for Vitest (jsdom doesn't support Monaco workers)
@@ -360,9 +339,20 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function () {}
 }
 
+// Polyfill navigator.clipboard for jsdom (needed by copy-to-clipboard flows)
+if (typeof navigator.clipboard === 'undefined') {
+  Object.defineProperty(navigator, 'clipboard', {
+    writable: true,
+    configurable: true,
+    value: {
+      writeText: vi.fn(() => Promise.resolve()),
+      readText: vi.fn(() => Promise.resolve('')),
+    },
+  })
+}
+
 afterEach(() => {
   act(() => {
     cleanup()
   })
-  clearMocks()
 })

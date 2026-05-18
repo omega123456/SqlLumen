@@ -1,57 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
-import React from 'react'
-
-// Mock react-datepicker before importing the component
-vi.mock('react-datepicker', () => {
-  return {
-    __esModule: true,
-    default: ({
-      selected,
-      onChange,
-      inline,
-      shouldCloseOnSelect,
-      renderCustomHeader,
-    }: {
-      selected: Date | null
-      onChange: (date: Date | null) => void
-      inline: boolean
-      shouldCloseOnSelect: boolean
-      renderCustomHeader?: (params: {
-        date: Date
-        decreaseMonth: () => void
-        increaseMonth: () => void
-      }) => React.ReactNode
-    }) => {
-      return React.createElement(
-        'div',
-        {
-          'data-testid': 'mock-datepicker',
-          'data-inline': String(inline),
-          'data-close-on-select': String(shouldCloseOnSelect),
-        },
-        renderCustomHeader
-          ? renderCustomHeader({
-              date: selected || new Date(2023, 10, 24),
-              decreaseMonth: () => {},
-              increaseMonth: () => {},
-            })
-          : null,
-        React.createElement(
-          'button',
-          {
-            'data-testid': 'mock-datepicker-select-day',
-            onClick: () => onChange(new Date(2023, 10, 15)),
-          },
-          'Select Nov 15'
-        )
-      )
-    },
-  }
-})
-
-// Mock the react-datepicker CSS import
-vi.mock('react-datepicker/dist/react-datepicker.css', () => ({}))
 
 import { DateTimePicker } from '../../../components/table-data/DateTimePicker'
 import type { TemporalColumnType } from '../../../lib/date-utils'
@@ -193,7 +141,7 @@ describe('DateTimePicker', () => {
     const onApply = vi.fn()
     renderPicker({ onApply, columnType: 'DATETIME', value: '2023-11-24 14:30:00' })
 
-    fireEvent.click(screen.getByTestId('mock-datepicker-select-day'))
+    fireEvent.click(screen.getByLabelText(/choose wednesday, november 15th, 2023/i))
 
     expect(onApply).toHaveBeenCalledWith('2023-11-15 14:30:00')
   })

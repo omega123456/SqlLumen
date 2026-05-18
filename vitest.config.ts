@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',
-    setupFiles: ['src/tests/setup.ts'],
+    setupFiles: ['src/tests/jest-compat.ts', 'src/tests/setup.ts'],
     globals: true,
     // With coverage, React still emits RunningIndicator act() warnings to stderr; setup.ts filters
     // console.error, and this avoids Vitest duplicating those lines during `pnpm test:coverage`.

@@ -1,43 +1,86 @@
+import React from 'react'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../../ipc-mock'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FilterCondition, ForeignKeyColumnInfo } from '../../../types/schema'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
 import { makeTabState } from '../../helpers/query-test-utils'
+import * as ResultSubTabsModule from '../../../components/query-editor/ResultSubTabs'
+import * as ResultToolbarModule from '../../../components/query-editor/ResultToolbar'
+import * as ResultGridViewModule from '../../../components/query-editor/ResultGridView'
+import * as ResultFormViewModule from '../../../components/query-editor/ResultFormView'
+import * as ResultTextViewModule from '../../../components/query-editor/ResultTextView'
+import * as ExportDialogModule from '../../../components/dialogs/ExportDialog'
+import * as FilterDialogModule from '../../../components/dialogs/FilterDialog'
+import * as FkLookupDialogModule from '../../../components/table-data/FkLookupDialog'
+import { useFkLookup } from '../../../components/shared/fk-lookup-context'
+
+// Use vi.spyOn to install per-test mock implementations without vi.mock().
+// IPC commands are handled via ipc.override().
 
 let capturedGridProps: Record<string, unknown> = {}
 let capturedFormProps: Record<string, unknown> = {}
 let capturedExportDialogProps: Record<string, unknown> = {}
 
-vi.mock('../../../components/query-editor/ResultSubTabs', () => ({
-  ResultSubTabs: ({ tabId }: { tabId: string }) => <div data-testid="result-subtabs">{tabId}</div>,
-}))
+beforeEach(() => {
+  vi.clearAllMocks()
+  capturedGridProps = {}
+  capturedFormProps = {}
+  capturedExportDialogProps = {}
+  useQueryStore.setState({ tabs: {} })
 
-vi.mock('../../../components/query-editor/ResultToolbar', () => ({
-  ResultToolbar: (props: Record<string, unknown>) => {
+  ipc.override('execute_query', () => ({
+    queryId: 'q1',
+    columns: [],
+    totalRows: 0,
+    executionTimeMs: 0,
+    affectedRows: 0,
+    totalPages: 1,
+    autoLimitApplied: false,
+    firstPage: [],
+  }))
+  ipc.override('fetch_result_page', () => ({ rows: [], page: 1, totalPages: 1 }))
+  ipc.override('evict_results', () => undefined)
+  ipc.override('sort_results', () => ({ rows: [], page: 1, totalPages: 1 }))
+  ipc.override('export_results', () => ({ bytesWritten: 1024, rowsExported: 2 }))
+  ipc.override('fetch_table_data', () => ({
+    columns: [],
+    rows: [],
+    currentPage: 1,
+    pageSize: 100,
+    primaryKey: null,
+    executionTimeMs: 0,
+  }))
+  ipc.override('update_table_row', () => undefined)
+  ipc.override('insert_table_row', () => [])
+  ipc.override('delete_table_row', () => undefined)
+  ipc.override('export_table_data', () => undefined)
+
+  vi.spyOn(ResultSubTabsModule, 'ResultSubTabs').mockImplementation(
+    ({ tabId }: { tabId: string }) =>
+      (<div data-testid="result-subtabs">{tabId}</div>) as unknown as React.ReactElement
+  )
+
+  vi.spyOn(ResultToolbarModule, 'ResultToolbar').mockImplementation((props) => {
+    const p = props as unknown as Record<string, unknown>
     return (
       <div data-testid="result-toolbar">
-        <button data-testid="toolbar-open-filter" onClick={props.onFilterClick as () => void}>
+        <button data-testid="toolbar-open-filter" onClick={p.onFilterClick as () => void}>
           Filter
         </button>
-        <button data-testid="toolbar-clear-filter" onClick={props.onClearFilterClick as () => void}>
+        <button data-testid="toolbar-clear-filter" onClick={p.onClearFilterClick as () => void}>
           Clear
         </button>
-        <span data-testid="toolbar-clone-disabled">{String(props.isCloneDisabled)}</span>
+        <span data-testid="toolbar-clone-disabled">{String(p.isCloneDisabled)}</span>
       </div>
-    )
-  },
-}))
+    ) as unknown as React.ReactElement
+  })
 
-vi.mock('../../../components/query-editor/ResultGridView', async () => {
-  const React = await import('react')
-  const { useFkLookup } = await import('../../../components/shared/fk-lookup-context')
-
-  return {
-    ResultGridView: (props: Record<string, unknown>) => {
-      capturedGridProps = props
+  vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation(
+    (props) => {
+      capturedGridProps = props as unknown as Record<string, unknown>
       const fkLookup = useFkLookup()
       const defaultForeignKey: ForeignKeyColumnInfo = {
         columnName: 'role_id',
@@ -78,38 +121,35 @@ vi.mock('../../../components/query-editor/ResultGridView', async () => {
           },
           'Unresolved FK'
         )
-      )
-    },
-  }
-})
+      ) as unknown as React.ReactElement
+    }
+  )
 
-vi.mock('../../../components/query-editor/ResultFormView', () => ({
-  ResultFormView: (props: Record<string, unknown>) => {
-    capturedFormProps = props
-    return <div data-testid="result-form-view">Form View</div>
-  },
-}))
+  vi.spyOn(ResultFormViewModule, 'ResultFormView').mockImplementation(
+    (props) => {
+      capturedFormProps = props as unknown as Record<string, unknown>
+      return (<div data-testid="result-form-view">Form View</div>) as unknown as React.ReactElement
+    }
+  )
 
-vi.mock('../../../components/query-editor/ResultTextView', () => ({
-  ResultTextView: ({ rows }: { rows: unknown[][] }) => (
-    <div data-testid="result-text-view">{rows.length}</div>
-  ),
-}))
+  vi.spyOn(ResultTextViewModule, 'ResultTextView').mockImplementation(
+    ({ rows }: { rows: unknown[][] }) =>
+      (<div data-testid="result-text-view">{rows.length}</div>) as unknown as React.ReactElement
+  )
 
-vi.mock('../../../components/dialogs/ExportDialog', () => ({
-  default: (props: Record<string, unknown>) => {
-    capturedExportDialogProps = props
+  vi.spyOn(ExportDialogModule, 'default').mockImplementation((props) => {
+    const p = props as unknown as Record<string, unknown>
+    capturedExportDialogProps = p
     return (
-      <button data-testid="export-dialog-close" onClick={props.onClose as () => void}>
+      <button data-testid="export-dialog-close" onClick={p.onClose as () => void}>
         Close Export
       </button>
-    )
-  },
-}))
+    ) as unknown as React.ReactElement
+  })
 
-vi.mock('../../../components/dialogs/FilterDialog', () => ({
-  FilterDialog: (props: Record<string, unknown>) => {
-    if (!props.isOpen) return null
+  vi.spyOn(FilterDialogModule, 'FilterDialog').mockImplementation((props) => {
+    const p = props as unknown as Record<string, unknown>
+    if (!p.isOpen) return null as unknown as React.ReactElement
 
     const applyConditions: FilterCondition[] = [{ column: 'name', operator: '==', value: 'Alice' }]
 
@@ -117,88 +157,44 @@ vi.mock('../../../components/dialogs/FilterDialog', () => ({
       <div data-testid="filter-dialog-mock">
         <button
           data-testid="filter-dialog-apply"
-          onClick={() =>
-            (props.onApply as (conditions: FilterCondition[]) => void)(applyConditions)
-          }
+          onClick={() => (p.onApply as (conditions: FilterCondition[]) => void)(applyConditions)}
         >
           Apply
         </button>
-        <button data-testid="filter-dialog-cancel" onClick={props.onCancel as () => void}>
+        <button data-testid="filter-dialog-cancel" onClick={p.onCancel as () => void}>
           Cancel
         </button>
       </div>
-    )
-  },
-}))
+    ) as unknown as React.ReactElement
+  })
 
-vi.mock('../../../components/table-data/FkLookupDialog', () => ({
-  FkLookupDialog: (props: Record<string, unknown>) => {
-    if (!props.isOpen) return null
+  vi.spyOn(FkLookupDialogModule, 'FkLookupDialog').mockImplementation((props) => {
+    const p = props as unknown as Record<string, unknown>
+    if (!p.isOpen) return null as unknown as React.ReactElement
 
     return (
       <div data-testid="fk-lookup-dialog-mock">
-        <div data-testid="fk-lookup-database">{String(props.database)}</div>
-        <div data-testid="fk-lookup-source-column">{String(props.sourceColumn)}</div>
+        <div data-testid="fk-lookup-database">{String(p.database)}</div>
+        <div data-testid="fk-lookup-source-column">{String(p.sourceColumn)}</div>
         <button
           data-testid="fk-lookup-apply-same"
-          onClick={() =>
-            (props.onApply as ((v: unknown) => void) | undefined)?.(props.currentValue)
-          }
+          onClick={() => (p.onApply as ((v: unknown) => void) | undefined)?.(p.currentValue)}
         >
           Apply Same
         </button>
         <button
           data-testid="fk-lookup-apply-new"
-          onClick={() => (props.onApply as ((v: unknown) => void) | undefined)?.(9)}
+          onClick={() => (p.onApply as ((v: unknown) => void) | undefined)?.(9)}
         >
           Apply New
         </button>
-        <button data-testid="fk-lookup-close" onClick={props.onClose as () => void}>
+        <button data-testid="fk-lookup-close" onClick={p.onClose as () => void}>
           Close
         </button>
       </div>
-    )
-  },
-}))
-
-vi.mock('../../../lib/context-menu-utils', () => ({
-  writeClipboardText: vi.fn().mockResolvedValue(undefined),
-}))
-
-vi.mock('../../../lib/export-commands', () => ({
-  exportResults: vi.fn().mockResolvedValue({ bytesWritten: 1024, rowsExported: 2 }),
-}))
-
-vi.mock('../../../lib/query-commands', () => ({
-  executeQuery: vi.fn().mockResolvedValue({
-    queryId: 'q1',
-    columns: [],
-    totalRows: 0,
-    executionTimeMs: 0,
-    affectedRows: 0,
-    totalPages: 1,
-    autoLimitApplied: false,
-    firstPage: [],
-  }),
-  fetchResultPage: vi.fn().mockResolvedValue({ rows: [], page: 1, totalPages: 1 }),
-  evictResults: vi.fn().mockResolvedValue(undefined),
-  sortResults: vi.fn().mockResolvedValue({ rows: [], page: 1, totalPages: 1 }),
-}))
-
-vi.mock('../../../lib/table-data-commands', () => ({
-  fetchTableData: vi.fn().mockResolvedValue({
-    columns: [],
-    rows: [],
-    currentPage: 1,
-    pageSize: 100,
-    primaryKey: null,
-    executionTimeMs: 0,
-  }),
-  updateTableRow: vi.fn().mockResolvedValue(undefined),
-  insertTableRow: vi.fn().mockResolvedValue([]),
-  deleteTableRow: vi.fn().mockResolvedValue(undefined),
-  exportTableData: vi.fn().mockResolvedValue(undefined),
-}))
+    ) as unknown as React.ReactElement
+  })
+})
 
 function renderPanel(overrides: Record<string, unknown> = {}) {
   useQueryStore.setState({
@@ -225,15 +221,6 @@ function renderPanel(overrides: Record<string, unknown> = {}) {
 
   return render(<ResultPanel tabId="tab-1" connectionId="conn-1" />)
 }
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  capturedGridProps = {}
-  capturedFormProps = {}
-  capturedExportDialogProps = {}
-  useQueryStore.setState({ tabs: {} })
-  mockIPC(() => null)
-})
 
 describe('ResultPanel actions and states', () => {
   it('handles missing active-result fields via safe defaults', () => {

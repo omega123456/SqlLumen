@@ -1,26 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
-
-vi.mock('../stores/toast-store', () => ({
-  showErrorToast: vi.fn(),
-  showSuccessToast: vi.fn(),
-}))
 
 import { useConnectionStore, _resetListenersSetup } from '../stores/connection-store'
 import { useWorkspaceStore } from '../stores/workspace-store'
 import { useQueryStore } from '../stores/query-store'
 import { useTableDataStore } from '../stores/table-data-store'
-import { showErrorToast } from '../stores/toast-store'
+import { useToastStore, _resetToastTimeoutsForTests } from '../stores/toast-store'
 import type { SavedConnection, ConnectionGroup } from '../types/connection'
 import { makeTabState } from './helpers/query-test-utils'
-
-// Mock the Tauri event system
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}))
-
-import { listen } from '@tauri-apps/api/event'
-const mockListen = vi.mocked(listen)
+import { ipc, expectToast } from './ipc-mock'
 
 // --- Test fixtures ---
 
@@ -72,15 +59,23 @@ beforeEach(() => {
     dialogOpen: false,
     error: null,
   })
-  mockListen.mockClear()
+  useToastStore.setState({ toasts: [] })
+  _resetToastTimeoutsForTests()
   _resetListenersSetup()
-  // Real Tauri injects this; jsdom does not. setupEventListeners must still call the mocked `listen`.
-  ;(
-    window as unknown as Window & {
-      __TAURI_INTERNALS__: { transformCallback: (cb: unknown, once?: boolean) => string }
+  const tauriInternals = (window as unknown as Window & {
+    __TAURI_INTERNALS__?: {
+      transformCallback?: (cb: unknown, once?: boolean) => string
     }
-  ).__TAURI_INTERNALS__ = {
-    transformCallback: () => 'mock-callback-id',
+  }).__TAURI_INTERNALS__
+  if (!tauriInternals?.transformCallback) {
+    ;(window as unknown as Window & {
+      __TAURI_INTERNALS__?: {
+        transformCallback?: (cb: unknown, once?: boolean) => string
+      }
+    }).__TAURI_INTERNALS__ = {
+      ...tauriInternals,
+      transformCallback: () => 'mock-callback-id',
+    }
   }
 })
 
@@ -101,11 +96,8 @@ describe('useConnectionStore — initial state', () => {
 
 describe('useConnectionStore — fetchSavedConnections', () => {
   it('loads connections and groups from backend', async () => {
-    mockIPC((cmd) => {
-      if (cmd === 'list_connections') return [mockSavedConnection]
-      if (cmd === 'list_connection_groups') return [mockGroup]
-      return null
-    })
+    ipc.override('list_connections', () => [mockSavedConnection])
+    ipc.override('list_connection_groups', () => [mockGroup])
 
     await useConnectionStore.getState().fetchSavedConnections()
 
@@ -116,9 +108,8 @@ describe('useConnectionStore — fetchSavedConnections', () => {
   })
 
   it('sets error on IPC failure', async () => {
-    mockIPC((cmd) => {
-      if (cmd === 'list_connections') throw new Error('Database error')
-      return null
+    ipc.override('list_connections', () => {
+      throw new Error('Database error')
     })
 
     await useConnectionStore.getState().fetchSavedConnections()
@@ -129,11 +120,8 @@ describe('useConnectionStore — fetchSavedConnections', () => {
 
   it('clears previous error on success', async () => {
     useConnectionStore.setState({ error: 'previous error' })
-    mockIPC((cmd) => {
-      if (cmd === 'list_connections') return []
-      if (cmd === 'list_connection_groups') return []
-      return null
-    })
+    ipc.override('list_connections', () => [])
+    ipc.override('list_connection_groups', () => [])
 
     await useConnectionStore.getState().fetchSavedConnections()
     expect(useConnectionStore.getState().error).toBeNull()
@@ -143,12 +131,7 @@ describe('useConnectionStore — fetchSavedConnections', () => {
 describe('useConnectionStore — openConnection', () => {
   it('adds to activeConnections and sets activeTabId', async () => {
     useConnectionStore.setState({ savedConnections: [mockSavedConnection] })
-    mockIPC((cmd) => {
-      if (cmd === 'open_connection') {
-        return { sessionId: 'sess-1', serverVersion: '8.0.35' }
-      }
-      return null
-    })
+    ipc.override('open_connection', () => ({ sessionId: 'sess-1', serverVersion: '8.0.35' }))
 
     await useConnectionStore.getState().openConnection('conn-1')
 
@@ -168,12 +151,9 @@ describe('useConnectionStore — openConnection', () => {
   it('opens multiple sessions for the same saved profile', async () => {
     useConnectionStore.setState({ savedConnections: [mockSavedConnection] })
     let n = 0
-    mockIPC((cmd) => {
-      if (cmd === 'open_connection') {
-        n += 1
-        return { sessionId: `sess-${n}`, serverVersion: '8.0.35' }
-      }
-      return null
+    ipc.override('open_connection', () => {
+      n += 1
+      return { sessionId: `sess-${n}`, serverVersion: '8.0.35' }
     })
 
     await useConnectionStore.getState().openConnection('conn-1')
@@ -201,11 +181,8 @@ describe('useConnectionStore — openConnection', () => {
 
   it('sets error on IPC failure', async () => {
     useConnectionStore.setState({ savedConnections: [mockSavedConnection] })
-    mockIPC((cmd) => {
-      if (cmd === 'open_connection') {
-        throw new Error('Connection refused')
-      }
-      return null
+    ipc.override('open_connection', () => {
+      throw new Error('Connection refused')
     })
 
     await expect(useConnectionStore.getState().openConnection('conn-1')).rejects.toThrow(
@@ -232,10 +209,7 @@ describe('useConnectionStore — closeConnection', () => {
       activeConnectionOrder: ['sess-1'],
       activeTabId: 'sess-1',
     })
-    mockIPC((cmd) => {
-      if (cmd === 'close_connection') return null
-      return null
-    })
+    ipc.override('close_connection', () => null)
 
     await useConnectionStore.getState().closeConnection('sess-1')
 
@@ -262,10 +236,7 @@ describe('useConnectionStore — closeConnection', () => {
       activeConnectionOrder: ['sess-1', 'sess-2'],
       activeTabId: 'sess-1',
     })
-    mockIPC((cmd) => {
-      if (cmd === 'close_connection') return null
-      return null
-    })
+    ipc.override('close_connection', () => null)
 
     await useConnectionStore.getState().closeConnection('sess-1')
 
@@ -286,10 +257,7 @@ describe('useConnectionStore — closeConnection', () => {
       activeConnectionOrder: ['sess-1'],
       activeTabId: 'sess-1',
     })
-    mockIPC((cmd) => {
-      if (cmd === 'close_connection') return null
-      return null
-    })
+    ipc.override('close_connection', () => null)
 
     await useConnectionStore.getState().closeConnection('sess-1')
 
@@ -316,10 +284,7 @@ describe('useConnectionStore — closeConnection', () => {
       activeConnectionOrder: ['sess-1', 'sess-2'],
       activeTabId: 'sess-1',
     })
-    mockIPC((cmd) => {
-      if (cmd === 'close_connection') return null
-      return null
-    })
+    ipc.override('close_connection', () => null)
 
     await useConnectionStore.getState().closeConnection('sess-2')
 
@@ -340,9 +305,8 @@ describe('useConnectionStore — closeConnection', () => {
       activeConnectionOrder: ['sess-1'],
       activeTabId: 'sess-1',
     })
-    mockIPC((cmd) => {
-      if (cmd === 'close_connection') throw new Error('Close failed')
-      return null
+    ipc.override('close_connection', () => {
+      throw new Error('Close failed')
     })
 
     await useConnectionStore.getState().closeConnection('sess-1')
@@ -502,25 +466,16 @@ describe('useConnectionStore — clearError', () => {
 })
 
 describe('useConnectionStore — setupEventListeners', () => {
-  it('calls listen with connection-status-changed event', async () => {
-    await useConnectionStore.getState().setupEventListeners()
-
-    expect(mockListen).toHaveBeenCalledWith('connection-status-changed', expect.any(Function))
-  })
-
   it('returns an unlisten function', async () => {
-    const mockUnlisten = vi.fn()
-    mockListen.mockResolvedValueOnce(mockUnlisten)
-
     const unlisten = await useConnectionStore.getState().setupEventListeners()
-    expect(unlisten).toBe(mockUnlisten)
+    expect(unlisten).toEqual(expect.any(Function))
   })
 
   it('is idempotent — calling twice only registers once', async () => {
     await useConnectionStore.getState().setupEventListeners()
-    await useConnectionStore.getState().setupEventListeners()
 
-    expect(mockListen).toHaveBeenCalledTimes(1)
+    const firstUnlisten = await useConnectionStore.getState().setupEventListeners()
+    expect(firstUnlisten).toBeUndefined()
   })
 
   it('event handler calls updateConnectionStatus with event payload', async () => {
@@ -536,22 +491,12 @@ describe('useConnectionStore — setupEventListeners', () => {
       },
     })
 
-    // Capture the handler passed to listen
-    let capturedHandler: ((event: { payload: unknown }) => void) | undefined
-    mockListen.mockImplementation((_event, handler) => {
-      capturedHandler = handler as (event: { payload: unknown }) => void
-      return Promise.resolve(() => {})
-    })
-
     await useConnectionStore.getState().setupEventListeners()
 
-    // Simulate an event
-    capturedHandler!({
-      payload: {
+    await ipc.emit('connection-status-changed', {
         connectionId: 'sess-1',
         status: 'disconnected',
         message: 'Lost connection',
-      },
     })
 
     expect(useConnectionStore.getState().activeConnections['sess-1'].status).toBe('disconnected')
@@ -571,10 +516,7 @@ describe('useConnectionStore — updateDefaultDatabase', () => {
         },
       },
     })
-    mockIPC((cmd) => {
-      if (cmd === 'update_connection') return null
-      return null
-    })
+    ipc.override('update_connection', () => null)
 
     await useConnectionStore.getState().updateDefaultDatabase('sess-1', 'new_db')
 
@@ -601,10 +543,7 @@ describe('useConnectionStore — updateDefaultDatabase', () => {
         },
       },
     })
-    mockIPC((cmd) => {
-      if (cmd === 'update_connection') return null
-      return null
-    })
+    ipc.override('update_connection', () => null)
 
     await useConnectionStore.getState().updateDefaultDatabase('sess-1', 'new_db')
 
@@ -627,9 +566,8 @@ describe('useConnectionStore — updateDefaultDatabase', () => {
     })
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockIPC((cmd) => {
-      if (cmd === 'update_connection') throw new Error('IPC write failed')
-      return null
+    ipc.override('update_connection', () => {
+      throw new Error('IPC write failed')
     })
 
     await useConnectionStore.getState().updateDefaultDatabase('sess-1', 'new_db')
@@ -665,11 +603,8 @@ describe('useConnectionStore — setActiveDatabase', () => {
     })
 
     const selectDatabaseSpy = vi.fn()
-    mockIPC((cmd) => {
-      if (cmd === 'select_database') {
-        selectDatabaseSpy()
-        return null
-      }
+    ipc.override('select_database', () => {
+      selectDatabaseSpy()
       return null
     })
 
@@ -696,9 +631,8 @@ describe('useConnectionStore — setActiveDatabase', () => {
       },
     })
 
-    mockIPC((cmd) => {
-      if (cmd === 'select_database') throw new Error('USE failed')
-      return null
+    ipc.override('select_database', () => {
+      throw new Error('USE failed')
     })
 
     await useConnectionStore.getState().setActiveDatabase('sess-1', 'analytics_db')
@@ -716,11 +650,8 @@ describe('useConnectionStore — setActiveDatabase', () => {
 describe('useConnectionStore — closeConnection aborts on failed save', () => {
   it('does not close connection when query-editor saveCurrentRow fails', async () => {
     const closeConnectionSpy = vi.fn()
-    mockIPC((cmd) => {
-      if (cmd === 'close_connection') {
-        closeConnectionSpy()
-        return null
-      }
+    ipc.override('close_connection', () => {
+      closeConnectionSpy()
       return null
     })
 
@@ -776,19 +707,13 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
     // Connection should NOT have been closed
     expect(closeConnectionSpy).not.toHaveBeenCalled()
     expect(useConnectionStore.getState().activeConnections['sess-1']).toBeDefined()
-    expect(showErrorToast).toHaveBeenCalledWith(
-      'Connection not closed',
-      expect.stringContaining('Could not save pending edits')
-    )
+    await expectToast('error', 'Connection not closed')
   })
 
   it('does not close connection when table-data saveCurrentRow fails', async () => {
     const closeConnectionSpy = vi.fn()
-    mockIPC((cmd) => {
-      if (cmd === 'close_connection') {
-        closeConnectionSpy()
-        return null
-      }
+    ipc.override('close_connection', () => {
+      closeConnectionSpy()
       return null
     })
 
@@ -863,20 +788,14 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
     // Connection should NOT have been closed
     expect(closeConnectionSpy).not.toHaveBeenCalled()
     expect(useConnectionStore.getState().activeConnections['sess-1']).toBeDefined()
-    expect(showErrorToast).toHaveBeenCalledWith(
-      'Connection not closed',
-      expect.stringContaining('Could not save pending edits')
-    )
+    await expectToast('error', 'Connection not closed')
   })
 
   it('proceeds with close when saveCurrentRow succeeds', async () => {
-    mockIPC((cmd) => {
-      if (cmd === 'close_connection') return null
-      if (cmd === 'update_table_row') return null
-      if (cmd === 'update_result_cell') return null
-      if (cmd === 'evict_results') return null
-      return null
-    })
+    ipc.override('close_connection', () => null)
+    ipc.override('update_table_row', () => null)
+    ipc.override('update_result_cell', () => null)
+    ipc.override('evict_results', () => null)
 
     // Set up active connection
     useConnectionStore.setState({

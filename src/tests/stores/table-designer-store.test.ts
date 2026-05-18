@@ -1,14 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
-
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
-}))
-
-import { invoke } from '@tauri-apps/api/core'
+import { ipc } from '../ipc-mock'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import type { TableDesignerSchema } from '../../types/schema'
-
-const invokeMock = vi.mocked(invoke)
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -82,7 +75,17 @@ const loadedSchema: TableDesignerSchema = {
 }
 
 function getGenerateDdlCalls() {
-  return invokeMock.mock.calls.filter(([command]) => command === 'generate_table_ddl')
+  return ipc.calls('generate_table_ddl')
+}
+
+let loadTableForDesignerImpl: () => Promise<TableDesignerSchema> | TableDesignerSchema
+let generateTableDdlImpl: () =>
+  | Promise<{ ddl: string; warnings: string[] }>
+  | { ddl: string; warnings: string[] }
+
+function registerTableDesignerIpc() {
+  ipc.override('load_table_for_designer', () => loadTableForDesignerImpl())
+  ipc.override('generate_table_ddl', () => generateTableDdlImpl())
 }
 
 function deferred<T>() {
@@ -131,19 +134,9 @@ beforeEach(() => {
   }
 
   useTableDesignerStore.setState({ tabs: {} })
-
-  invokeMock.mockReset()
-  invokeMock.mockImplementation(async (command) => {
-    if (command === 'load_table_for_designer') {
-      return clone(loadedSchema)
-    }
-
-    if (command === 'generate_table_ddl') {
-      return { ddl: 'CREATE TABLE users (...);', warnings: [] }
-    }
-
-    throw new Error(`Unexpected IPC command: ${String(command)}`)
-  })
+  loadTableForDesignerImpl = () => clone(loadedSchema)
+  generateTableDdlImpl = () => ({ ddl: 'CREATE TABLE users (...);', warnings: [] })
+  registerTableDesignerIpc()
 })
 
 afterEach(() => {
@@ -504,7 +497,8 @@ describe('useTableDesignerStore — properties', () => {
 describe('useTableDesignerStore — debounce', () => {
   it('updateColumn triggers exactly 1 regenerateDdl call after 300ms debounce when called 5 times rapidly', async () => {
     seedAlterTab('debounce-tab')
-    invokeMock.mockClear()
+    ipc.reset()
+    registerTableDesignerIpc()
 
     for (let i = 0; i < 5; i += 1) {
       useTableDesignerStore.getState().updateColumn('debounce-tab', 1, 'comment', `comment-${i}`)
@@ -562,7 +556,8 @@ describe('useTableDesignerStore — discardChanges', () => {
       },
     }))
 
-    invokeMock.mockClear()
+    ipc.reset()
+    registerTableDesignerIpc()
     useTableDesignerStore.getState().discardChanges('tab-1')
 
     expect(useTableDesignerStore.getState().tabs['tab-1'].ddl).toBe('')
@@ -605,11 +600,11 @@ describe('useTableDesignerStore — loadSchema', () => {
     initAlterTab('load-tab')
     await useTableDesignerStore.getState().loadSchema('load-tab')
 
-    expect(invokeMock).toHaveBeenCalledWith('load_table_for_designer', {
+    expect(ipc.calls('load_table_for_designer')).toEqual([{
       connectionId: 'conn-1',
       database: 'app_db',
       tableName: 'users',
-    })
+    }])
   })
 
   it('loadSchema on success sets originalSchema and currentSchema', async () => {
@@ -626,17 +621,8 @@ describe('useTableDesignerStore — loadSchema', () => {
     const schemaWithoutIntegerLengths = clone(loadedSchema)
     schemaWithoutIntegerLengths.columns[0]!.length = ''
     schemaWithoutIntegerLengths.columns[2]!.length = ''
-    invokeMock.mockImplementation(async (command) => {
-      if (command === 'load_table_for_designer') {
-        return schemaWithoutIntegerLengths
-      }
-
-      if (command === 'generate_table_ddl') {
-        return { ddl: '', warnings: [] }
-      }
-
-      throw new Error(`Unexpected IPC command: ${String(command)}`)
-    })
+    loadTableForDesignerImpl = () => schemaWithoutIntegerLengths
+    generateTableDdlImpl = () => ({ ddl: '', warnings: [] })
 
     initAlterTab('load-tab')
     await useTableDesignerStore.getState().loadSchema('load-tab')
@@ -652,7 +638,9 @@ describe('useTableDesignerStore — loadSchema', () => {
   it('loadSchema on error sets loadError', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
-      invokeMock.mockRejectedValueOnce(new Error('Load failed'))
+      loadTableForDesignerImpl = () => {
+        throw new Error('Load failed')
+      }
       initAlterTab('load-tab')
 
       await useTableDesignerStore.getState().loadSchema('load-tab')
@@ -670,7 +658,7 @@ describe('useTableDesignerStore — regenerateDdl', () => {
     useTableDesignerStore.getState().updateTableName('tab-1', 'users')
     await useTableDesignerStore.getState().regenerateDdl('tab-1')
 
-    expect(invokeMock).toHaveBeenCalledWith('generate_table_ddl', {
+    expect(getGenerateDdlCalls()).toEqual([{
       request: {
         originalSchema: null,
         currentSchema: {
@@ -683,7 +671,7 @@ describe('useTableDesignerStore — regenerateDdl', () => {
         database: 'app_db',
         mode: 'create',
       },
-    })
+    }])
   })
 
   it('regenerateDdl sets ddl on success', async () => {
@@ -707,7 +695,8 @@ describe('useTableDesignerStore — regenerateDdl', () => {
         },
       },
     }))
-    invokeMock.mockClear()
+    ipc.reset()
+    registerTableDesignerIpc()
 
     await useTableDesignerStore.getState().regenerateDdl('tab-1')
 
@@ -732,7 +721,9 @@ describe('useTableDesignerStore — regenerateDdl', () => {
           },
         },
       }))
-      invokeMock.mockRejectedValueOnce(new Error('DDL failed'))
+      generateTableDdlImpl = () => {
+        throw new Error('DDL failed')
+      }
 
       await useTableDesignerStore.getState().regenerateDdl('tab-1')
 
@@ -751,16 +742,11 @@ describe('useTableDesignerStore — regenerateDdl', () => {
     const first = deferred<{ ddl: string; warnings: string[] }>()
     const second = deferred<{ ddl: string; warnings: string[] }>()
 
-    invokeMock.mockReset()
-    invokeMock
-      .mockImplementationOnce(async (command) => {
-        expect(command).toBe('generate_table_ddl')
-        return first.promise
-      })
-      .mockImplementationOnce(async (command) => {
-        expect(command).toBe('generate_table_ddl')
-        return second.promise
-      })
+    let callIndex = 0
+    generateTableDdlImpl = () => {
+      callIndex += 1
+      return callIndex === 1 ? first.promise : second.promise
+    }
 
     const firstRun = useTableDesignerStore.getState().regenerateDdl('tab-1')
     const secondRun = useTableDesignerStore.getState().regenerateDdl('tab-1')
@@ -780,11 +766,7 @@ describe('useTableDesignerStore — regenerateDdl', () => {
     useTableDesignerStore.getState().updateTableName('tab-1', 'users')
 
     const first = deferred<{ ddl: string; warnings: string[] }>()
-    invokeMock.mockReset()
-    invokeMock.mockImplementationOnce(async (command) => {
-      expect(command).toBe('generate_table_ddl')
-      return first.promise
-    })
+    generateTableDdlImpl = () => first.promise
 
     const firstRun = useTableDesignerStore.getState().regenerateDdl('tab-1')
     useTableDesignerStore.getState().updateTableName('tab-1', 'users_v2')

@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import type { ColumnMeta, FilterCondition } from '../../types/schema'
 
@@ -55,7 +54,6 @@ const ROWS: unknown[][] = [
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
-  mockIPC(() => null)
 })
 
 describe('applyQueryFilters — apply and clear', () => {

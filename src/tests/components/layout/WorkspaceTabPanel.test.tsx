@@ -1,36 +1,8 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 import { WorkspaceTabPanel } from '../../../components/layout/WorkspaceTabPanel'
 import type { WorkspaceTab } from '../../../types/schema'
 import styles from '../../../components/layout/WorkspaceTabPanel.module.css'
-
-vi.mock('../../../components/table-data/TableDataTab', () => ({
-  TableDataTab: () => <div data-testid="mock-table-data" />,
-}))
-
-vi.mock('../../../components/schema-info/SchemaInfoTab', () => ({
-  SchemaInfoTab: () => <div data-testid="mock-schema-info" />,
-}))
-
-vi.mock('../../../components/query-editor/QueryEditorTab', () => ({
-  QueryEditorTab: () => <div data-testid="mock-query-editor" />,
-}))
-
-vi.mock('../../../components/table-designer/TableDesignerTab', () => ({
-  TableDesignerTab: () => <div data-testid="mock-table-designer" />,
-}))
-
-vi.mock('../../../components/object-editor/ObjectEditorTab', () => ({
-  ObjectEditorTab: () => <div data-testid="mock-object-editor" />,
-}))
-
-vi.mock('../../../components/history/HistoryTab', () => ({
-  HistoryTab: () => <div data-testid="mock-history" />,
-}))
-
-vi.mock('../../../components/processlist/ProcessListTab', () => ({
-  default: () => <div data-testid="mock-processlist" />,
-}))
 
 const baseTab = {
   id: 'tab-1',
@@ -38,7 +10,7 @@ const baseTab = {
   connectionId: 'connection-1',
 }
 
-const tabsByMockTestId: Array<[WorkspaceTab, string]> = [
+const tabsByRealTestId: Array<[WorkspaceTab, string]> = [
   [
     {
       ...baseTab,
@@ -47,7 +19,7 @@ const tabsByMockTestId: Array<[WorkspaceTab, string]> = [
       objectName: 'actor',
       objectType: 'table',
     },
-    'mock-table-data',
+    'table-data-tab',
   ],
   [
     {
@@ -57,9 +29,9 @@ const tabsByMockTestId: Array<[WorkspaceTab, string]> = [
       objectName: 'actor',
       objectType: 'table',
     },
-    'mock-schema-info',
+    'schema-info-tab',
   ],
-  [{ ...baseTab, type: 'query-editor' }, 'mock-query-editor'],
+  [{ ...baseTab, type: 'query-editor' }, 'query-editor-tab'],
   [
     {
       ...baseTab,
@@ -68,7 +40,7 @@ const tabsByMockTestId: Array<[WorkspaceTab, string]> = [
       databaseName: 'sakila',
       objectName: 'actor',
     },
-    'mock-table-designer',
+    'table-designer-tab',
   ],
   [
     {
@@ -79,18 +51,23 @@ const tabsByMockTestId: Array<[WorkspaceTab, string]> = [
       objectType: 'view',
       mode: 'alter',
     },
-    'mock-object-editor',
+    'object-editor-tab',
   ],
-  [{ ...baseTab, type: 'history' }, 'mock-history'],
-  [{ ...baseTab, type: 'processlist' }, 'mock-processlist'],
+  [{ ...baseTab, type: 'history' }, 'history-tab'],
+  [{ ...baseTab, type: 'processlist' }, 'processlist-tab'],
 ]
 
 describe('WorkspaceTabPanel', () => {
-  it.each(tabsByMockTestId)('renders the correct child component for %s', (tab, testId) => {
-    render(<WorkspaceTabPanel tab={tab} connectionId="connection-1" sessionId="session-1" />)
+  it.each(tabsByRealTestId)(
+    'renders the correct child component for %s',
+    async (tab, testId) => {
+      render(<WorkspaceTabPanel tab={tab} connectionId="connection-1" sessionId="session-1" />)
 
-    expect(screen.getByTestId(testId)).toBeInTheDocument()
-  })
+      await waitFor(() => {
+        expect(screen.getByTestId(testId)).toBeInTheDocument()
+      })
+    }
+  )
 
   it('marks an active panel as active and visible', () => {
     render(

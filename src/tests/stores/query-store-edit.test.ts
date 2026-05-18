@@ -1,18 +1,25 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc, overrideNamedIpcCommands } from '../ipc-mock'
 import {
   useQueryStore,
   isEditableSelectSql,
-  getFlatTabState,
   DEFAULT_RESULT_STATE,
 } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import type { QueryTableEditInfo, TableDataColumnMeta, PrimaryKeyInfo } from '../../types/schema'
+import { flat } from '../helpers/query-test-utils'
 
-/** Shorthand: get a flat (tab + active result) view for assertions. */
-function flat(tabId: string) {
-  return getFlatTabState(useQueryStore.getState().getTabState(tabId))
-}
+const overrideNamedCommands = overrideNamedIpcCommands
+
+const QUERY_STORE_EDIT_COMMANDS = [
+  'analyze_query_for_edit',
+  'evict_results',
+  'execute_query',
+  'insert_table_row',
+  'sort_results',
+  'update_result_cell',
+  'update_table_row',
+] as const
 
 /**
  * Patch result-level fields on an existing tab's results[0].
@@ -207,7 +214,7 @@ beforeEach(() => {
   useToastStore.setState({ toasts: [] })
   _resetToastTimeoutsForTests()
 
-  mockIPC((cmd) => {
+  overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
     switch (cmd) {
       case 'execute_query':
         return {
@@ -287,7 +294,7 @@ describe('useQueryStore — setEditMode', () => {
       },
     ]
 
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       switch (cmd) {
         case 'execute_query':
           return {
@@ -347,7 +354,7 @@ describe('useQueryStore — setEditMode', () => {
   })
 
   it('shows error toast when table metadata is not available', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -380,7 +387,7 @@ describe('useQueryStore — setEditMode', () => {
 
   it('shows error toast when PK columns are missing from result', async () => {
     // Result has 'name' but not 'id' — PK column missing
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -413,7 +420,7 @@ describe('useQueryStore — setEditMode', () => {
 
   it('shows error toast when PK columns are ambiguous', async () => {
     // Result has duplicate 'id' columns
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -452,7 +459,7 @@ describe('useQueryStore — setEditMode', () => {
 
   it('shows warning toast for ambiguous non-key columns but enables editing', async () => {
     // Result has duplicate 'name' (non-key) but 'id' (key) is fine
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -488,7 +495,7 @@ describe('useQueryStore — setEditMode', () => {
   })
 
   it('enables edit mode for joined SELECT * results when the selected table key is duplicated by another table', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -537,7 +544,7 @@ describe('useQueryStore — setEditMode', () => {
   })
 
   it('enables edit mode when joined key columns are aliased in the query result', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -632,7 +639,7 @@ describe('useQueryStore — setEditMode', () => {
       },
     ]
 
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -679,7 +686,7 @@ describe('useQueryStore — setEditMode', () => {
   })
 
   it('does not enable edit mode when only another joined table contributes the key column name', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -713,7 +720,7 @@ describe('useQueryStore — setEditMode', () => {
   })
 
   it('does not enable edit mode when an expression aliases itself to a key column name', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -749,7 +756,7 @@ describe('useQueryStore — setEditMode', () => {
   })
 
   it('does not enable edit mode for single-table expression aliases that mimic key columns', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -779,7 +786,7 @@ describe('useQueryStore — setEditMode', () => {
   })
 
   it('does not enable edit mode for expression aliases without AS that mimic key columns', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -807,7 +814,7 @@ describe('useQueryStore — setEditMode', () => {
   })
 
   it('does not enable edit mode for unresolved wildcard subquery projections', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -845,7 +852,7 @@ describe('useQueryStore — setEditMode', () => {
 
   it('uses cached metadata on second call', async () => {
     let analyzeCallCount = 0
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -897,7 +904,7 @@ describe('useQueryStore — setEditMode', () => {
   })
 
   it('enables joined edit mode on the first attempt without waiting for background analysis', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -947,7 +954,7 @@ describe('useQueryStore — setEditMode', () => {
       },
     ]
 
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -1041,7 +1048,7 @@ describe('useQueryStore — cloneSelectedRow', () => {
   })
 
   it('lets the user enter required natural primary-key values after clone without copying them from the source row', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-natural',
@@ -1090,7 +1097,7 @@ describe('useQueryStore — cloneSelectedRow', () => {
       },
     ]
 
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-fallback',
@@ -1153,7 +1160,7 @@ describe('useQueryStore — cloneSelectedRow', () => {
   })
 
   it('does not create a clone draft when no non-primary bound columns can produce an insert payload', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-no-clone-path',
@@ -1327,7 +1334,7 @@ describe('useQueryStore — saveCurrentRow', () => {
   })
 
   it('sets saveError and shows toast on IPC failure, returns false', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -1420,7 +1427,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     const updateTableRowSpy = vi.fn()
     const updateResultCellSpy = vi.fn()
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd, args) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -1489,7 +1496,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     const insertTableRowSpy = vi.fn()
     let executeQueryCount = 0
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd, args) => {
       if (cmd === 'execute_query') {
         executeQueryCount += 1
         if (executeQueryCount === 1) {
@@ -1574,7 +1581,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     const insertTableRowSpy = vi.fn()
     let executeQueryCount = 0
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd, args) => {
       if (cmd === 'execute_query') {
         executeQueryCount += 1
         if (executeQueryCount === 1) {
@@ -1642,7 +1649,7 @@ describe('useQueryStore — saveCurrentRow', () => {
   it('includes cloned non-primary-key blob values in insert payload even when not inline editable', async () => {
     const insertTableRowSpy = vi.fn()
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd, args) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-blob-before',
@@ -1717,7 +1724,7 @@ describe('useQueryStore — saveCurrentRow', () => {
   it('marks the previous result stale and clears the clone draft when refresh fails after a successful insert', async () => {
     let executeQueryCount = 0
 
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         executeQueryCount += 1
         if (executeQueryCount > 1) {
@@ -1782,7 +1789,7 @@ describe('useQueryStore — saveCurrentRow', () => {
     }
     let executeQueryCount = 0
 
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         executeQueryCount += 1
         if (executeQueryCount === 1) {
@@ -1895,7 +1902,7 @@ describe('useQueryStore — discardCurrentRow', () => {
   })
 
   it('restores the correct aliased joined column on discard', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -2147,7 +2154,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
   })
 
   it('does not analyze for DML results (no columns)', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-dml',
@@ -2176,7 +2183,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
 
   it('handles analysis failure gracefully', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',
@@ -2208,7 +2215,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
   })
 
   it('does not analyze for SHOW/DESCRIBE/EXPLAIN even when columns are returned', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-show',
@@ -2239,7 +2246,7 @@ describe('useQueryStore — executeQuery background analysis', () => {
 
   it('discards stale analysis when queryId has changed', async () => {
     let analysisResolve: ((tables: unknown[]) => void) | null = null
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-' + Math.random(),
@@ -2454,7 +2461,7 @@ describe('useQueryStore — sortResults sort-clear clears edit state', () => {
   })
 
   it('does not clear edit state for normal sort (asc/desc)', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(QUERY_STORE_EDIT_COMMANDS, (cmd) => {
       if (cmd === 'execute_query') {
         return {
           queryId: 'q-mock',

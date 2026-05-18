@@ -1,12 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { SchemaMetadataFull } from '../../../types/schema'
 
-// Mock fetchSchemaMetadataFull from query-commands
-vi.mock('../../../lib/query-commands', () => ({
-  fetchSchemaMetadataFull: vi.fn(),
-}))
+// Use vi.spyOn to install per-test mock on fetchSchemaMetadataFull without vi.mock().
+import * as QueryCommandsModule from '../../../lib/query-commands'
 
-import { fetchSchemaMetadataFull } from '../../../lib/query-commands'
 import {
   getCache,
   loadCache,
@@ -21,8 +18,6 @@ import {
   _clearAllCaches,
 } from '../../../components/query-editor/schema-metadata-cache'
 
-const mockFetchSchema = vi.mocked(fetchSchemaMetadataFull)
-
 /** Helper to build a full mock response with defaults for foreignKeys and indexes. */
 function mockMetadata(partial: Partial<SchemaMetadataFull>): SchemaMetadataFull {
   return {
@@ -36,9 +31,13 @@ function mockMetadata(partial: Partial<SchemaMetadataFull>): SchemaMetadataFull 
   }
 }
 
+function mockFetchSchema() {
+  return QueryCommandsModule.fetchSchemaMetadataFull as ReturnType<typeof vi.fn>
+}
+
 beforeEach(() => {
   _clearAllCaches()
-  vi.clearAllMocks()
+  vi.spyOn(QueryCommandsModule, 'fetchSchemaMetadataFull').mockReset().mockResolvedValue(mockMetadata({}))
 })
 
 describe('schema-metadata-cache', () => {
@@ -54,7 +53,7 @@ describe('schema-metadata-cache', () => {
   })
 
   it('loadCache transitions to loading then ready', async () => {
-    mockFetchSchema.mockResolvedValue(
+    mockFetchSchema().mockResolvedValue(
       mockMetadata({
         databases: ['test_db'],
         tables: {
@@ -84,7 +83,7 @@ describe('schema-metadata-cache', () => {
 
   it('loadCache is a no-op if already loading', async () => {
     let resolvePromise: (() => void) | null = null
-    mockFetchSchema.mockReturnValue(
+    mockFetchSchema().mockReturnValue(
       new Promise((resolve) => {
         resolvePromise = () => resolve(mockMetadata({ databases: ['db'] }))
       })
@@ -93,7 +92,7 @@ describe('schema-metadata-cache', () => {
     const p1 = loadCache('conn-1')
     const p2 = loadCache('conn-1')
 
-    expect(mockFetchSchema).toHaveBeenCalledTimes(1)
+    expect(mockFetchSchema()).toHaveBeenCalledTimes(1)
 
     resolvePromise!()
     await p1
@@ -104,7 +103,7 @@ describe('schema-metadata-cache', () => {
 
   it('concurrent callers await the same in-flight fetch', async () => {
     let resolvePromise: (() => void) | null = null
-    mockFetchSchema.mockReturnValue(
+    mockFetchSchema().mockReturnValue(
       new Promise((resolve) => {
         resolvePromise = () => resolve(mockMetadata({ databases: ['shared_db'] }))
       })
@@ -114,7 +113,7 @@ describe('schema-metadata-cache', () => {
     const p2 = loadCache('conn-concurrent')
     const p3 = loadCache('conn-concurrent')
 
-    expect(mockFetchSchema).toHaveBeenCalledTimes(1)
+    expect(mockFetchSchema()).toHaveBeenCalledTimes(1)
 
     resolvePromise!()
     await Promise.all([p1, p2, p3])
@@ -124,28 +123,28 @@ describe('schema-metadata-cache', () => {
   })
 
   it('loadCache is a no-op if already ready', async () => {
-    mockFetchSchema.mockResolvedValue(mockMetadata({}))
+    mockFetchSchema().mockResolvedValue(mockMetadata({}))
 
     await loadCache('conn-1')
     expect(getCache('conn-1').status).toBe('ready')
 
     await loadCache('conn-1')
-    expect(mockFetchSchema).toHaveBeenCalledTimes(1)
+    expect(mockFetchSchema()).toHaveBeenCalledTimes(1)
   })
 
   it('loadCache retries after error status', async () => {
-    mockFetchSchema.mockRejectedValueOnce(new Error('Connection failed'))
+    mockFetchSchema().mockRejectedValueOnce(new Error('Connection failed'))
     await loadCache('conn-1')
     expect(getCache('conn-1').status).toBe('error')
 
-    mockFetchSchema.mockResolvedValueOnce(mockMetadata({ databases: ['db1'] }))
+    mockFetchSchema().mockResolvedValueOnce(mockMetadata({ databases: ['db1'] }))
     await loadCache('conn-1')
     expect(getCache('conn-1').status).toBe('ready')
-    expect(mockFetchSchema).toHaveBeenCalledTimes(2)
+    expect(mockFetchSchema()).toHaveBeenCalledTimes(2)
   })
 
   it('loadCache sets error status on failure', async () => {
-    mockFetchSchema.mockRejectedValue(new Error('Connection failed'))
+    mockFetchSchema().mockRejectedValue(new Error('Connection failed'))
 
     await loadCache('conn-1')
 
@@ -155,7 +154,7 @@ describe('schema-metadata-cache', () => {
   })
 
   it('loadCache sets error status on non-Error rejection', async () => {
-    mockFetchSchema.mockRejectedValue('string error')
+    mockFetchSchema().mockRejectedValue('string error')
 
     await loadCache('conn-1')
 
@@ -165,7 +164,7 @@ describe('schema-metadata-cache', () => {
   })
 
   it('filterDatabases returns prefix matches (case-insensitive)', async () => {
-    mockFetchSchema.mockResolvedValue(
+    mockFetchSchema().mockResolvedValue(
       mockMetadata({ databases: ['app_db', 'analytics_db', 'test_db'] })
     )
 
@@ -183,7 +182,7 @@ describe('schema-metadata-cache', () => {
   })
 
   it('filterTables returns tables for a given database with prefix', async () => {
-    mockFetchSchema.mockResolvedValue(
+    mockFetchSchema().mockResolvedValue(
       mockMetadata({
         databases: ['db1'],
         tables: {
@@ -220,7 +219,7 @@ describe('schema-metadata-cache', () => {
   })
 
   it('filterColumns returns columns for database.table', async () => {
-    mockFetchSchema.mockResolvedValue(
+    mockFetchSchema().mockResolvedValue(
       mockMetadata({
         databases: ['db1'],
         tables: {
@@ -254,7 +253,7 @@ describe('schema-metadata-cache', () => {
   })
 
   it('filterRoutines returns routines for a database', async () => {
-    mockFetchSchema.mockResolvedValue(
+    mockFetchSchema().mockResolvedValue(
       mockMetadata({
         databases: ['db1'],
         routines: {
@@ -276,7 +275,7 @@ describe('schema-metadata-cache', () => {
   })
 
   it('invalidateCache removes the entry', async () => {
-    mockFetchSchema.mockResolvedValue(mockMetadata({ databases: ['db1'] }))
+    mockFetchSchema().mockResolvedValue(mockMetadata({ databases: ['db1'] }))
 
     await loadCache('conn-1')
     expect(getCache('conn-1').status).toBe('ready')
@@ -287,7 +286,7 @@ describe('schema-metadata-cache', () => {
 
   it('invalidateCache during in-flight load discards stale data', async () => {
     let resolveStale: (() => void) | null = null
-    mockFetchSchema.mockReturnValueOnce(
+    mockFetchSchema().mockReturnValueOnce(
       new Promise((resolve) => {
         resolveStale = () =>
           resolve(
@@ -314,7 +313,7 @@ describe('schema-metadata-cache', () => {
 
   it('invalidateCache during in-flight load discards stale error', async () => {
     let rejectStale: ((err: Error) => void) | null = null
-    mockFetchSchema.mockReturnValueOnce(
+    mockFetchSchema().mockReturnValueOnce(
       new Promise((_resolve, reject) => {
         rejectStale = reject
       })
@@ -334,7 +333,7 @@ describe('schema-metadata-cache', () => {
 
   it('fresh load succeeds after invalidation discards stale in-flight', async () => {
     let resolveStale: (() => void) | null = null
-    mockFetchSchema.mockReturnValueOnce(
+    mockFetchSchema().mockReturnValueOnce(
       new Promise((resolve) => {
         resolveStale = () => resolve(mockMetadata({ databases: ['stale_db'] }))
       })
@@ -349,7 +348,7 @@ describe('schema-metadata-cache', () => {
     await stalePromise
     expect(getCache('conn-fresh').status).toBe('empty')
 
-    mockFetchSchema.mockResolvedValueOnce(
+    mockFetchSchema().mockResolvedValueOnce(
       mockMetadata({
         databases: ['fresh_db'],
         routines: { fresh_db: [{ name: 'new_routine', routineType: 'PROCEDURE' }] },
@@ -365,7 +364,7 @@ describe('schema-metadata-cache', () => {
   })
 
   it('maintains separate caches per connection', async () => {
-    mockFetchSchema
+    mockFetchSchema()
       .mockResolvedValueOnce(mockMetadata({ databases: ['db_a'] }))
       .mockResolvedValueOnce(mockMetadata({ databases: ['db_b'] }))
 
@@ -381,7 +380,7 @@ describe('schema-metadata-cache', () => {
   })
 
   it('filters malformed schema metadata entries before storing cache', async () => {
-    mockFetchSchema.mockResolvedValue({
+    mockFetchSchema().mockResolvedValue({
       databases: ['valid_db', '', '   '],
       tables: {
         valid_db: [
@@ -461,7 +460,7 @@ describe('schema-metadata-cache', () => {
   })
 
   it('populates foreignKeys and indexes in the cache after loading', async () => {
-    mockFetchSchema.mockResolvedValue(
+    mockFetchSchema().mockResolvedValue(
       mockMetadata({
         databases: ['mydb'],
         tables: {
@@ -543,7 +542,7 @@ describe('schema-metadata-cache', () => {
 
       // Set up a delayed fetch for fresh data
       let resolveRefresh: (() => void) | null = null
-      mockFetchSchema.mockReturnValue(
+      mockFetchSchema().mockReturnValue(
         new Promise((resolve) => {
           resolveRefresh = () =>
             resolve(
@@ -593,7 +592,7 @@ describe('schema-metadata-cache', () => {
       expect(getCache('conn-bg-err').status).toBe('ready')
       expect(getCache('conn-bg-err').databases).toEqual(['existing_db'])
 
-      mockFetchSchema.mockRejectedValue(new Error('Network error'))
+      mockFetchSchema().mockRejectedValue(new Error('Network error'))
 
       await expect(refreshCacheInBackground('conn-bg-err')).rejects.toThrow('Network error')
 
@@ -609,7 +608,7 @@ describe('schema-metadata-cache', () => {
       )
 
       let resolveRefresh: (() => void) | null = null
-      mockFetchSchema.mockReturnValue(
+      mockFetchSchema().mockReturnValue(
         new Promise((resolve) => {
           resolveRefresh = () => resolve(mockMetadata({ databases: ['should_discard'] }))
         })

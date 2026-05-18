@@ -1,19 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { ShortcutsSettings } from '../../../components/settings/ShortcutsSettings'
 import { useShortcutStore, DEFAULT_SHORTCUTS } from '../../../stores/shortcut-store'
 import { useSettingsStore } from '../../../stores/settings-store'
-
-function setupMockIPC() {
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
-}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -26,7 +16,6 @@ beforeEach(() => {
   })
   // Clear pending changes in settings store
   useSettingsStore.setState({ pendingChanges: {} })
-  setupMockIPC()
 })
 
 describe('ShortcutsSettings', () => {

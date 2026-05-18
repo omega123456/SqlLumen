@@ -5,59 +5,15 @@ import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
 import { DEFAULT_SHORTCUTS, useShortcutStore } from '../../../stores/shortcut-store'
+import * as SchemaMetadataCacheModule from '../../../components/query-editor/schema-metadata-cache'
+import * as CodeLensProviderModule from '../../../components/query-editor/codelens-provider'
+import * as CompletionServiceModule from '../../../components/query-editor/completion-service'
+import * as MonacoEditorReactModule from '@monaco-editor/react'
 
-// Mock the schema-metadata-cache (loadCache is called on mount)
-vi.mock('../../../components/query-editor/schema-metadata-cache', () => ({
-  loadCache: vi.fn(() => Promise.resolve()),
-  getCache: vi.fn(() => ({
-    status: 'empty',
-    databases: [],
-    tables: {},
-    columns: {},
-    routines: {},
-  })),
-  getPendingLoad: vi.fn(() => null),
-  _clearAllCaches: vi.fn(),
-}))
-
-// Mock monaco-sql-languages contribution (side-effect import)
-vi.mock('monaco-sql-languages/esm/languages/mysql/mysql.contribution', () => ({}))
-
-// Mock monaco-sql-languages named exports
-vi.mock('monaco-sql-languages', () => ({
-  setupLanguageFeatures: vi.fn(),
-  LanguageIdEnum: { MYSQL: 'mysql' },
-  EntityContextType: {
-    DATABASE: 'database',
-    TABLE: 'table',
-    COLUMN: 'column',
-    FUNCTION: 'function',
-    PROCEDURE: 'procedure',
-  },
-}))
-
-// Mock the mysql-language-setup side-effect import (no-op in tests)
-vi.mock('../../../components/query-editor/mysql-language-setup', () => ({}))
-
-// Mock the signature-help-provider side-effect import (no-op in tests)
-vi.mock('../../../components/query-editor/signature-help-provider', () => ({}))
-
-// Mock the codelens-provider side-effect import
-const mockTriggerCodeLensRefresh = vi.fn()
-vi.mock('../../../components/query-editor/codelens-provider', () => ({
-  triggerCodeLensRefresh: (...args: unknown[]) => mockTriggerCodeLensRefresh(...args),
-}))
-
-// Mock the completion-service model registry
-const mockRegisterModelConnection = vi.fn()
-const mockUnregisterModelConnection = vi.fn()
-vi.mock('../../../components/query-editor/completion-service', () => ({
-  registerModelConnection: (...args: unknown[]) => mockRegisterModelConnection(...args),
-  unregisterModelConnection: (...args: unknown[]) => mockUnregisterModelConnection(...args),
-  getModelConnectionId: vi.fn(),
-  resetModelConnections: vi.fn(),
-  completionService: vi.fn(async () => []),
-}))
+// Use vi.spyOn to install per-test mock implementations without vi.mock().
+// Monaco, monaco-sql-languages, and monaco-sql-languages/esm are globally mocked in setup.ts.
+// mysql-language-setup and signature-help-provider are side-effect-only imports whose
+// side effects call already-globally-mocked Monaco APIs (safe without mocking).
 
 // Override the useMonaco mock to return a functional Monaco instance
 const mockSetTheme = vi.fn()
@@ -130,56 +86,47 @@ const mockEditorInstance = {
   }),
   updateOptions: vi.fn(),
 }
+
 // Track props passed to the mock Editor component
 const mockEditorComponent = vi.fn()
-vi.mock('@monaco-editor/react', async () => {
-  const React = await import('react')
-  return {
-    default: (props: Record<string, unknown>) => {
-      mockEditorComponent(props)
-      function MockEditor() {
-        React.useEffect(() => {
-          const onMount = props.onMount as
-            | ((editor: typeof mockEditorInstance, monaco: Record<string, unknown>) => void)
-            | undefined
-          onMount?.(mockEditorInstance, {
-            editor: {
-              defineTheme: mockDefineTheme,
-              setTheme: mockSetTheme,
-            },
-            languages: {},
-            KeyCode: { F9: 78, F12: 81, KeyT: 52, KeyN: 49, Enter: 3, Tab: 2, Comma: 6 },
-            KeyMod: { CtrlCmd: 2048, Shift: 1024, Alt: 512 },
-          })
-        }, [])
 
-        return React.createElement('textarea', {
-          'data-testid': 'monaco-editor',
-          value: (props.value as string) ?? '',
-          onChange: (e: { target: { value: string } }) => {
-            const fn = props.onChange as ((v: string | undefined) => void) | undefined
-            fn?.(e.target.value)
+import React from 'react'
+
+function createRichMonacoEditorMock() {
+  return (props: Record<string, unknown>) => {
+    mockEditorComponent(props)
+    function MockEditor() {
+      React.useEffect(() => {
+        const onMount = props.onMount as
+          | ((editor: typeof mockEditorInstance, monaco: Record<string, unknown>) => void)
+          | undefined
+        onMount?.(mockEditorInstance, {
+          editor: {
+            defineTheme: mockDefineTheme,
+            setTheme: mockSetTheme,
           },
+          languages: {},
+          KeyCode: { F9: 78, F12: 81, KeyT: 52, KeyN: 49, Enter: 3, Tab: 2, Comma: 6 },
+          KeyMod: { CtrlCmd: 2048, Shift: 1024, Alt: 512 },
         })
-      }
+      }, [])
 
-      return React.createElement(MockEditor)
-    },
-    useMonaco: () => ({
-      editor: {
-        defineTheme: mockDefineTheme,
-        setTheme: mockSetTheme,
-      },
-      languages: {},
-    }),
-    loader: {
-      init: () => Promise.resolve(),
-      config: () => {},
-    },
+      return React.createElement('textarea', {
+        'data-testid': 'monaco-editor',
+        value: (props.value as string) ?? '',
+        onChange: (e: { target: { value: string } }) => {
+          const fn = props.onChange as ((v: string | undefined) => void) | undefined
+          fn?.(e.target.value)
+        },
+      })
+    }
+
+    return React.createElement(MockEditor)
   }
-})
+}
 
 beforeEach(() => {
+  vi.clearAllMocks()
   useQueryStore.setState({ tabs: {} })
   useShortcutStore.setState({
     shortcuts: { ...DEFAULT_SHORTCUTS },
@@ -209,10 +156,7 @@ beforeEach(() => {
   mockEditorInstance.onDidChangeModelContent.mockClear()
   mockContentChangeDispose.mockClear()
   mockSelectionDispose.mockClear()
-  mockRegisterModelConnection.mockClear()
-  mockUnregisterModelConnection.mockClear()
   mockEditorComponent.mockClear()
-  mockTriggerCodeLensRefresh.mockClear()
   capturedContentChangeHandler = null
   capturedSelectionChangeHandler = null
   Object.keys(capturedAddCommandHandlers).forEach(
@@ -227,7 +171,43 @@ beforeEach(() => {
     endLineNumber: 1,
     endColumn: 1,
   }))
+
+  // Override @monaco-editor/react default export with a richer mock that calls onMount
+  vi.spyOn(MonacoEditorReactModule, 'default').mockImplementation(createRichMonacoEditorMock())
+
+  // Spy on schema-metadata-cache — loadCache resolves immediately, getCache returns empty cache
+  vi.spyOn(SchemaMetadataCacheModule, 'loadCache').mockResolvedValue(undefined)
+  vi.spyOn(SchemaMetadataCacheModule, 'getCache').mockReturnValue({
+    status: 'empty',
+    databases: [],
+    tables: {},
+    columns: {},
+    routines: {},
+    foreignKeys: {},
+    indexes: {},
+  })
+  vi.spyOn(SchemaMetadataCacheModule, 'getPendingLoad').mockReturnValue(null)
+
+  // Spy on codelens-provider — triggerCodeLensRefresh is used to verify calls
+  vi.spyOn(CodeLensProviderModule, 'triggerCodeLensRefresh')
+
+  // Spy on completion-service — track model connection registration
+  vi.spyOn(CompletionServiceModule, 'registerModelConnection')
+  vi.spyOn(CompletionServiceModule, 'unregisterModelConnection')
+  vi.spyOn(CompletionServiceModule, 'getModelConnectionId').mockReturnValue(undefined)
+  vi.spyOn(CompletionServiceModule, 'resetModelConnections')
 })
+
+// Convenience accessors for spy call tracking
+function mockRegisterModelConnection() {
+  return CompletionServiceModule.registerModelConnection as ReturnType<typeof vi.fn>
+}
+function mockUnregisterModelConnection() {
+  return CompletionServiceModule.unregisterModelConnection as ReturnType<typeof vi.fn>
+}
+function mockTriggerCodeLensRefresh() {
+  return CodeLensProviderModule.triggerCodeLensRefresh as ReturnType<typeof vi.fn>
+}
 
 describe('MonacoEditorWrapper', () => {
   it('renders the editor container', () => {
@@ -277,7 +257,7 @@ describe('MonacoEditorWrapper', () => {
 
   it('registers model-connection mapping when connectionId is provided', () => {
     render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
-    expect(mockRegisterModelConnection).toHaveBeenCalledWith(
+    expect(mockRegisterModelConnection()).toHaveBeenCalledWith(
       'inmemory://model/1',
       'conn-1',
       'tab-1',
@@ -287,7 +267,7 @@ describe('MonacoEditorWrapper', () => {
 
   it('does not register model-connection mapping when connectionId is not provided', () => {
     render(<MonacoEditorWrapper tabId="tab-1" />)
-    expect(mockRegisterModelConnection).not.toHaveBeenCalled()
+    expect(mockRegisterModelConnection()).not.toHaveBeenCalled()
   })
 
   it('unregisters model-connection mapping on editor dispose', () => {
@@ -297,7 +277,7 @@ describe('MonacoEditorWrapper', () => {
     const handleDispose = registeredDisposeHandlers[0]
     handleDispose()
 
-    expect(mockUnregisterModelConnection).toHaveBeenCalledWith('inmemory://model/1')
+    expect(mockUnregisterModelConnection()).toHaveBeenCalledWith('inmemory://model/1')
   })
 
   it('disposes the cursor listener when the editor is disposed', () => {
@@ -346,7 +326,7 @@ describe('MonacoEditorWrapper', () => {
     render(<MonacoEditorWrapper tabId="tab-1" connectionId="conn-1" />)
 
     // Verify initial registration used the correct URI
-    expect(mockRegisterModelConnection).toHaveBeenCalledWith(
+    expect(mockRegisterModelConnection()).toHaveBeenCalledWith(
       'inmemory://model/1',
       'conn-1',
       'tab-1',
@@ -364,7 +344,7 @@ describe('MonacoEditorWrapper', () => {
     handleDispose()
 
     // Should still unregister using the captured URI from mount time
-    expect(mockUnregisterModelConnection).toHaveBeenCalledWith('inmemory://model/1')
+    expect(mockUnregisterModelConnection()).toHaveBeenCalledWith('inmemory://model/1')
   })
 
   // -----------------------------------------------------------------------
@@ -623,7 +603,7 @@ describe('MonacoEditorWrapper', () => {
       expect(capturedContentChangeHandler).not.toBeNull()
       capturedContentChangeHandler!()
 
-      expect(mockTriggerCodeLensRefresh).toHaveBeenCalledTimes(1)
+      expect(mockTriggerCodeLensRefresh()).toHaveBeenCalledTimes(1)
     })
 
     it('does not rewrite unchanged selected text on plain typing', () => {
@@ -674,7 +654,7 @@ describe('MonacoEditorWrapper', () => {
       capturedContentChangeHandler!()
 
       // triggerCodeLensRefresh should still be called
-      expect(mockTriggerCodeLensRefresh).toHaveBeenCalledTimes(1)
+      expect(mockTriggerCodeLensRefresh()).toHaveBeenCalledTimes(1)
       // AI store should have no attached context for this tab
       const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
       expect(ctx).toBeFalsy()
@@ -697,7 +677,7 @@ describe('MonacoEditorWrapper', () => {
       capturedContentChangeHandler!()
 
       // triggerCodeLensRefresh is still called
-      expect(mockTriggerCodeLensRefresh).toHaveBeenCalledTimes(1)
+      expect(mockTriggerCodeLensRefresh()).toHaveBeenCalledTimes(1)
       // The context should remain unchanged (the old value) since model was null
       const ctx = useAiStore.getState().tabs['tab-1']?.attachedContext
       expect(ctx!.sql).toBe('old')

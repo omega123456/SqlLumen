@@ -1,18 +1,16 @@
+import React from 'react'
 import { act, render } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 import { ResultGridView } from '../../../components/query-editor/ResultGridView'
 import type { ColumnMeta, RowEditState, TableDataColumnMeta } from '../../../types/schema'
 import { DEFAULT_RESULT_STATE, useQueryStore } from '../../../stores/query-store'
+import * as CanvasBaseGridViewModule from '../../../components/shared/glide/CanvasBaseGridView'
 
-const mockCanvasBaseGridView = vi.hoisted(() =>
-  vi.fn((props: Record<string, unknown>) => (
-    <div data-testid="mock-result-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
-  ))
-)
+// CanvasBaseGridView is a forwardRef object — vi.spyOn can't intercept it.
+// Use Object.defineProperty to replace it per-test (same pattern as TableDataFormView.test.tsx).
 
-vi.mock('../../../components/shared/glide/CanvasBaseGridView', () => ({
-  CanvasBaseGridView: mockCanvasBaseGridView,
-}))
+const originalCanvasBaseGridView = CanvasBaseGridViewModule.CanvasBaseGridView
+let mockCanvasBaseGridView: ReturnType<typeof vi.fn>
 
 const columns: ColumnMeta[] = [{ name: 'name', dataType: 'VARCHAR' }]
 const tableColumns: TableDataColumnMeta[] = [
@@ -101,6 +99,38 @@ function getGridProps() {
     showReadOnlyHeaders: boolean
   }
 }
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  useQueryStore.setState({ tabs: {} })
+
+  mockCanvasBaseGridView = vi.fn(
+    (gridProps: Record<string, unknown>) =>
+      (
+        <div
+          data-testid="mock-result-grid"
+          data-row-count={(gridProps.rows as unknown[])?.length ?? 0}
+        />
+      ) as unknown as React.ReactElement
+  )
+  const mockFn = mockCanvasBaseGridView as unknown as (props: Record<string, unknown>) => React.ReactElement
+  Object.defineProperty(CanvasBaseGridViewModule, 'CanvasBaseGridView', {
+    value: React.forwardRef(
+      (props: Record<string, unknown>, ref: React.Ref<unknown>) => mockFn({ ...props, ref })
+    ),
+    writable: true,
+    configurable: true,
+  })
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  Object.defineProperty(CanvasBaseGridViewModule, 'CanvasBaseGridView', {
+    value: originalCanvasBaseGridView,
+    writable: true,
+    configurable: true,
+  })
+})
 
 describe('ResultGridView editing', () => {
   it('cell editing triggers onSyncCellValue', () => {

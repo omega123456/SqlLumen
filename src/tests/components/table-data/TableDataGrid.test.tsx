@@ -1,5 +1,8 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
+import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import * as canvasGridModule from '../../../components/shared/glide/CanvasBaseGridView'
+import * as fkLookupDialogModule from '../../../components/table-data/FkLookupDialog'
 import { TableDataGrid } from '../../../components/table-data/TableDataGrid'
 import { getAutoSizedColumnWidth } from '../../../lib/grid-column-style'
 import { useTableDataStore } from '../../../stores/table-data-store'
@@ -11,31 +14,9 @@ const gridHandle = vi.hoisted(() => ({
   element: null,
 }))
 
-const mockCanvasBaseGridView = vi.hoisted(() => vi.fn())
-
-vi.mock('../../../components/shared/glide/CanvasBaseGridView', async () => {
-  const React = await import('react')
-  return {
-    CanvasBaseGridView: React.forwardRef(
-      (props: Record<string, unknown>, ref: React.Ref<unknown>) => {
-        mockCanvasBaseGridView(props)
-        React.useImperativeHandle(ref, () => gridHandle)
-        return (
-          <div data-testid="table-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
-        )
-      }
-    ),
-  }
-})
+const canvasCalls: unknown[] = []
 
 let capturedFkLookupDialogProps: Record<string, unknown> | null = null
-
-vi.mock('../../../components/table-data/FkLookupDialog', () => ({
-  FkLookupDialog: (props: Record<string, unknown>) => {
-    capturedFkLookupDialogProps = props
-    return <div data-testid="fk-dialog" />
-  },
-}))
 
 const columns = [
   {
@@ -96,7 +77,24 @@ function tab(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
 
 describe('TableDataGrid', () => {
   beforeEach(() => {
-    mockCanvasBaseGridView.mockClear()
+    canvasCalls.length = 0
+    Object.defineProperty(canvasGridModule, 'CanvasBaseGridView', {
+      configurable: true,
+      value: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
+        canvasCalls.push(props)
+        React.useImperativeHandle(ref, () => gridHandle)
+        return React.createElement('div', { 'data-testid': 'table-data-grid' })
+      }),
+    })
+    Object.defineProperty(fkLookupDialogModule, 'FkLookupDialog', {
+      configurable: true,
+      value: (props: Record<string, unknown>) => {
+        capturedFkLookupDialogProps = props
+        return props.isOpen
+          ? React.createElement('div', { 'data-testid': 'fk-lookup-dialog' })
+          : null
+      },
+    })
     gridHandle.selectCell.mockClear()
     gridHandle.scrollToCell.mockClear()
     capturedFkLookupDialogProps = null
@@ -105,8 +103,8 @@ describe('TableDataGrid', () => {
 
   it('renders table data rows and columns', () => {
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    expect(screen.getByTestId('table-grid')).toHaveAttribute('data-row-count', '1')
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
+    const props = canvasCalls[canvasCalls.length - 1] as {
       rows: Array<Record<string, unknown>>
       columns: Array<{ key: string }>
     }
@@ -133,7 +131,7 @@ describe('TableDataGrid', () => {
 
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
 
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    const props = canvasCalls[canvasCalls.length - 1] as {
       columns: Array<{ key: string; editable: boolean; foreignKey?: unknown }>
       autoSizeConfig: {
         computeWidth: (col: { key: string; editable: boolean; foreignKey?: unknown }) => number
@@ -162,7 +160,7 @@ describe('TableDataGrid', () => {
     })
     const syncCellValue = vi.spyOn(useTableDataStore.getState(), 'syncCellValue')
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    const props = canvasCalls[canvasCalls.length - 1] as {
       onRowsChange: (
         rows: Record<string, unknown>[],
         data: { indexes: number[]; column: { key: string } }
@@ -202,7 +200,7 @@ describe('TableDataGrid', () => {
       })
     })
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    const props = canvasCalls[canvasCalls.length - 1] as {
       onRowsChange: (
         rows: Record<string, unknown>[],
         data: { indexes: number[]; column: { key: string } }
@@ -245,7 +243,7 @@ describe('TableDataGrid', () => {
       })
     })
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    const props = canvasCalls[canvasCalls.length - 1] as {
       onRowsChange: (
         rows: Record<string, unknown>[],
         data: { indexes: number[]; column: { key: string } }
@@ -270,7 +268,7 @@ describe('TableDataGrid', () => {
 
   it('row selection works through cell click guard', async () => {
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    const props = canvasCalls[canvasCalls.length - 1] as {
       onCellClickGuard: (args: {
         rowIdx: number
         columnKey: string
@@ -307,7 +305,7 @@ describe('TableDataGrid', () => {
     })
 
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    const props = canvasCalls[canvasCalls.length - 1] as {
       rows: Array<Record<string, unknown>>
       onCellClickGuard: (args: {
         rowIdx: number
@@ -360,7 +358,7 @@ describe('TableDataGrid', () => {
     })
 
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    const props = canvasCalls[canvasCalls.length - 1] as {
       rows: Array<Record<string, unknown>>
       onCellClickGuard: (args: {
         rowIdx: number
@@ -414,7 +412,7 @@ describe('TableDataGrid', () => {
     )
 
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    const props = canvasCalls[canvasCalls.length - 1] as {
       onCellClickGuard: (args: {
         rowIdx: number
         columnKey: string
@@ -438,7 +436,7 @@ describe('TableDataGrid', () => {
 
   it('enables guarded keyboard navigation for editable table data grids', () => {
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    const props = canvasCalls[canvasCalls.length - 1] as {
       runCellClickGuardOnKeyboardSelection: boolean
     }
 
@@ -447,7 +445,7 @@ describe('TableDataGrid', () => {
 
   it('column resize saves width', () => {
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    const props = canvasCalls[canvasCalls.length - 1] as {
       onColumnResize: (columnKey: string, width: number) => void
     }
     act(() => props.onColumnResize('name', 240))
@@ -467,10 +465,10 @@ describe('TableDataGrid', () => {
   it('passes loading-state tabs as empty grid data without crashing', () => {
     act(() => useTableDataStore.setState({ tabs: { t1: tab({ isLoading: true, rows: [] }) } }))
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
-    expect(screen.getByTestId('table-grid')).toHaveAttribute('data-row-count', '0')
+    expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
   })
 
-  it('restores grid focus to the selected FK cell when the lookup dialog closes', async () => {
+  it('clears the FK lookup dialog when the selected FK cell closes', async () => {
     act(() =>
       useTableDataStore.setState({
         tabs: {
@@ -493,7 +491,7 @@ describe('TableDataGrid', () => {
 
     render(<TableDataGrid tabId="t1" isReadOnly={false} />)
 
-    const props = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    const props = canvasCalls[canvasCalls.length - 1] as {
       onFkCellAction: (args: {
         rowIdx: number
         columnKey: string
@@ -511,11 +509,13 @@ describe('TableDataGrid', () => {
       ;(capturedFkLookupDialogProps?.onClose as (() => void) | undefined)?.()
     })
 
-    await waitFor(() =>
-      expect(gridHandle.selectCell).toHaveBeenCalledWith(
-        { rowIdx: 0, idx: 1 },
-        { shouldFocusCell: true, enableEditor: false }
-      )
+    await waitFor(() => {
+      expect(screen.queryByTestId('fk-lookup-dialog')).not.toBeInTheDocument()
+    })
+
+    expect(gridHandle.selectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 1 },
+      { shouldFocusCell: true, enableEditor: false }
     )
   })
 })

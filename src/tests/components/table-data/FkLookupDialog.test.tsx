@@ -1,21 +1,12 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import React from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import * as canvasGridModule from '../../../components/shared/glide/CanvasBaseGridView'
 import { FkLookupDialog } from '../../../components/table-data/FkLookupDialog'
-import { fetchTableData } from '../../../lib/table-data-commands'
+import { ipc } from '../../ipc-mock'
 
-const mockCanvasBaseGridView = vi.hoisted(() =>
-  vi.fn((props: Record<string, unknown>) => (
-    <div data-testid="fk-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
-  ))
-)
-
-vi.mock('../../../components/shared/glide/CanvasBaseGridView', () => ({
-  CanvasBaseGridView: mockCanvasBaseGridView,
-}))
-vi.mock('../../../lib/table-data-commands', () => ({
-  fetchTableData: vi.fn(),
-}))
+const originalCanvasBaseGridView = canvasGridModule.CanvasBaseGridView
 
 const response = {
   columns: [
@@ -65,18 +56,28 @@ const props = {
   isReadOnly: false,
 }
 
+const canvasCalls: unknown[] = []
+
 describe('FkLookupDialog', () => {
   beforeEach(() => {
-    vi.mocked(fetchTableData).mockResolvedValue(response)
-    mockCanvasBaseGridView.mockClear()
+    ipc.override('fetch_table_data', () => response)
+    canvasCalls.length = 0
+    Object.defineProperty(canvasGridModule, 'CanvasBaseGridView', {
+      configurable: true,
+      value: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
+        canvasCalls.push(props)
+        return React.createElement(originalCanvasBaseGridView as never, {
+          ...props,
+          ref,
+        })
+      }),
+    })
   })
 
   it('renders FK lookup results', async () => {
     render(<FkLookupDialog {...props} />)
     expect(screen.getByTestId('fk-lookup-loading')).toBeInTheDocument()
-    await waitFor(() =>
-      expect(screen.getByTestId('fk-grid')).toHaveAttribute('data-row-count', '1')
-    )
+    await waitFor(() => expect(screen.getByTestId('fk-lookup-grid')).toBeInTheDocument())
     expect(screen.getByTestId('fk-lookup-title')).toHaveTextContent('customers.id')
   })
 
@@ -84,9 +85,10 @@ describe('FkLookupDialog', () => {
     const onApply = vi.fn()
     const onClose = vi.fn()
     const user = userEvent.setup()
+
     render(<FkLookupDialog {...props} onApply={onApply} onClose={onClose} />)
-    await waitFor(() => expect(mockCanvasBaseGridView).toHaveBeenCalled())
-    const gridProps = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    await waitFor(() => expect(canvasCalls.length).toBeGreaterThan(0))
+    const gridProps = canvasCalls[canvasCalls.length - 1] as {
       rows: Record<string, unknown>[]
       onRowClick: (row: Record<string, unknown>) => void
     }
@@ -102,8 +104,8 @@ describe('FkLookupDialog', () => {
     const onApply = vi.fn()
     const onClose = vi.fn()
     render(<FkLookupDialog {...props} onApply={onApply} onClose={onClose} />)
-    await waitFor(() => expect(mockCanvasBaseGridView).toHaveBeenCalled())
-    const gridProps = mockCanvasBaseGridView.mock.lastCall?.[0] as {
+    await waitFor(() => expect(canvasCalls.length).toBeGreaterThan(0))
+    const gridProps = canvasCalls[canvasCalls.length - 1] as {
       rows: Record<string, unknown>[]
       onRowDoubleClicked: (row: Record<string, unknown>) => void
     }
@@ -129,7 +131,7 @@ describe('FkLookupDialog', () => {
     const user = userEvent.setup()
     render(<FkLookupDialog {...props} onClose={onClose} />)
 
-    await waitFor(() => expect(screen.getByTestId('fk-grid')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('fk-lookup-grid')).toBeInTheDocument())
     await user.keyboard('{Escape}')
 
     expect(onClose).toHaveBeenCalled()
@@ -138,15 +140,17 @@ describe('FkLookupDialog', () => {
   it('filtering reloads data with filter model', async () => {
     const user = userEvent.setup()
     render(<FkLookupDialog {...props} />)
-    await waitFor(() => expect(screen.getByTestId('fk-grid')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('fk-lookup-grid')).toBeInTheDocument())
     await user.click(screen.getByTestId('fk-lookup-btn-filter'))
     await user.click(screen.getByTestId('filter-add-button'))
     await user.type(screen.getByTestId('filter-value-input'), 'One')
     await user.click(screen.getByTestId('filter-apply-button'))
-    await waitFor(() =>
-      expect(vi.mocked(fetchTableData).mock.calls).toContainEqual([
-        expect.objectContaining({ filterModel: [expect.objectContaining({ value: 'One' })] }),
-      ])
-    )
+    await waitFor(() => {
+      expect(ipc.calls('fetch_table_data')).toContainEqual(
+        expect.objectContaining({
+          filterModel: [expect.objectContaining({ value: 'One' })],
+        })
+      )
+    })
   })
 })

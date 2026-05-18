@@ -1,33 +1,38 @@
+import React from 'react'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { QueryBottomPanel } from '../../../components/query-editor/QueryBottomPanel'
 import { useQueryStore } from '../../../stores/query-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import { makeTabState } from '../../helpers/query-test-utils'
+import * as ResultPanelModule from '../../../components/query-editor/ResultPanel'
+import * as TableDataTabModule from '../../../components/table-data/TableDataTab'
 
-vi.mock('../../../components/query-editor/ResultPanel', () => ({
-  ResultPanel: (props: Record<string, unknown>) => (
-    <div data-testid="result-panel-mock" data-hide-sub-tabs={String(props.hideSubTabs)}>
-      results:{String(props.isActive)}
-    </div>
-  ),
-}))
-
-vi.mock('../../../components/table-data/TableDataTab', () => ({
-  TableDataTab: (props: Record<string, unknown>) => (
-    <div
-      data-testid={`table-data-tab-mock-${String((props.tab as { id: string }).id)}`}
-      data-render-mode={String(props.renderMode)}
-      data-active={String(props.isActive)}
-    >
-      {String((props.tab as { label: string }).label)}
-    </div>
-  ),
-}))
+// Use vi.spyOn to install per-test mock implementations without vi.mock().
+// These stubs provide data-testid attributes the tests assert on.
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
+
+  vi.spyOn(ResultPanelModule, 'ResultPanel').mockImplementation((props) => {
+    const p = props as unknown as Record<string, unknown>
+    return (
+      <div data-testid="result-panel-mock" data-hide-sub-tabs={String(p.hideSubTabs)}>
+        results:{String(p.isActive)}
+      </div>
+    ) as unknown as React.ReactElement
+  })
+
+  vi.spyOn(TableDataTabModule, 'TableDataTab').mockImplementation((props) => (
+    <div
+      data-testid={`table-data-tab-mock-${props.tab.id}`}
+      data-render-mode={String(props.renderMode)}
+      data-active={String(props.isActive)}
+    >
+      {props.tab.label}
+    </div>
+  ) as unknown as React.ReactElement)
 })
 
 describe('QueryBottomPanel', () => {

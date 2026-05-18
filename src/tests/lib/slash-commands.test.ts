@@ -1,28 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-const mockSaveMemory = vi.fn()
-const mockShowSuccessToast = vi.fn()
-const mockShowErrorToast = vi.fn()
-const mockLogFrontend = vi.fn()
-
-vi.mock('../../lib/ai-memory-commands', () => ({
-  saveMemory: (...args: unknown[]) => mockSaveMemory(...args),
-}))
-
-vi.mock('../../stores/toast-store', () => ({
-  showSuccessToast: (...args: unknown[]) => mockShowSuccessToast(...args),
-  showErrorToast: (...args: unknown[]) => mockShowErrorToast(...args),
-}))
-
-vi.mock('../../lib/app-log-commands', () => ({
-  logFrontend: (...args: unknown[]) => mockLogFrontend(...args),
-}))
-
+import { describe, it, expect, beforeEach } from 'vitest'
+import { ipc, expectToast } from '../ipc-mock'
 import { SLASH_COMMANDS, listCommands, filterCommands, findCommand } from '../../lib/slash-commands'
 
 describe('slash-commands', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    mockSaveMemory.mockResolvedValue(undefined)
+    // Default: save_memory succeeds (already in fixtures)
+    // Individual tests override for error paths
   })
 
   it('registry contains /remember', () => {
@@ -67,11 +50,14 @@ describe('slash-commands', () => {
 
     await remember!.execute('  save this note  ', 'session-1')
 
-    expect(mockSaveMemory).toHaveBeenCalledWith({
+    const calls = ipc.calls('save_memory')
+    expect(calls).toHaveLength(1)
+    const args = calls[0] as Record<string, unknown>
+    expect(args).toMatchObject({
       sessionId: 'session-1',
       content: 'save this note',
     })
-    expect(mockShowSuccessToast).toHaveBeenCalledWith('Memory saved')
+    await expectToast('success', 'Memory saved')
   })
 
   it('rejects /remember with empty args and shows an error toast', async () => {
@@ -81,23 +67,31 @@ describe('slash-commands', () => {
       'Cannot save empty memory. Usage: /remember <text>'
     )
 
-    expect(mockShowErrorToast).toHaveBeenCalledWith('Please provide text to remember')
-    expect(mockSaveMemory).not.toHaveBeenCalled()
+    await expectToast('error', 'Please provide text to remember')
+    expect(ipc.calls('save_memory')).toHaveLength(0)
   })
 
   it('logs and rethrows when /remember fails to save', async () => {
     const remember = findCommand('remember')
-    const error = new Error('backend unavailable')
-    mockSaveMemory.mockRejectedValueOnce(error)
+    ipc.override('save_memory', () => {
+      throw new Error('backend unavailable')
+    })
 
     await expect(remember!.execute('remember me', 'session-1')).rejects.toThrow(
       'backend unavailable'
     )
 
-    expect(mockLogFrontend).toHaveBeenCalledWith(
-      'error',
-      '[slash-commands] /remember failed: backend unavailable'
-    )
-    expect(mockShowErrorToast).toHaveBeenCalledWith('Failed to save memory', 'backend unavailable')
+    const logCalls = ipc.calls('log_frontend')
+    const matched = logCalls.some((call) => {
+      const a = call as Record<string, unknown>
+      return (
+        a.level === 'error' &&
+        typeof a.message === 'string' &&
+        a.message.includes('[slash-commands] /remember failed: backend unavailable')
+      )
+    })
+    expect(matched).toBe(true)
+
+    await expectToast('error', 'Failed to save memory')
   })
 })

@@ -2,7 +2,7 @@
  * Tests for session-restore-store: save/restore session, isEnabled, error handling.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc, overrideNamedIpcCommands } from '../ipc-mock'
 import {
   _setLoadTauriWindowApiForTests,
   _resetSessionPersistenceForTests,
@@ -20,8 +20,24 @@ import { useQueryStore } from '../../stores/query-store'
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 
+const overrideNamedCommands = overrideNamedIpcCommands
+
+const SESSION_RESTORE_COMMANDS = [
+  'close_connection',
+  'evict_results',
+  'get_all_settings',
+  'get_setting',
+  'list_connection_groups',
+  'list_connections',
+  'log_frontend',
+  'open_connection',
+  'plugin:event|listen',
+  'plugin:event|unlisten',
+  'set_setting',
+] as const
+
 function setupDefaultIpc() {
-  mockIPC((cmd, args) => {
+  overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
     const a = args as Record<string, unknown> | undefined
     switch (cmd) {
       case 'log_frontend':
@@ -151,7 +167,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('serializes active connections and their tabs', async () => {
     let savedValue: string | null = null
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -216,7 +232,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('serializes the active scoped bottom-panel table tab on query tabs', async () => {
     let savedValue: string | null = null
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -290,7 +306,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('skips table-designer and object-editor tabs', async () => {
     let savedValue: string | null = null
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -358,7 +374,7 @@ describe('useSessionRestoreStore — saveSession', () => {
     })
 
     let setCalled = false
-    mockIPC((cmd) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd) => {
       if (cmd === 'set_setting') {
         setCalled = true
         return null
@@ -374,7 +390,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('serializes table-data tabs', async () => {
     let savedValue: string | null = null
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -440,7 +456,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('serializes history tabs', async () => {
     let savedValue: string | null = null
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -494,7 +510,7 @@ describe('useSessionRestoreStore — saveSession', () => {
   it('preserves renamed query labels and workspace order in saved session state', async () => {
     let savedValue: string | null = null
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -575,7 +591,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -653,7 +669,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -734,7 +750,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -819,7 +835,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
   })
 
   it('does nothing when no saved state exists', async () => {
-    mockIPC((cmd) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd) => {
       if (cmd === 'log_frontend') return undefined
       if (cmd === 'get_setting') return null
       if (cmd === 'list_connections') return []
@@ -844,7 +860,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -880,7 +896,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -943,7 +959,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -1014,7 +1030,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
       ],
     }
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -1070,7 +1086,7 @@ describe('useSessionRestoreStore — restoreSession', () => {
 
 describe('useSessionRestoreStore — restoreSession for non-query tab types', () => {
   function restoreIpc(savedState: unknown) {
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -1596,7 +1612,7 @@ describe('useSessionRestoreStore — connectByProfileId edge cases', () => {
       ],
     }
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       switch (cmd) {
         case 'log_frontend':
@@ -1727,7 +1743,7 @@ describe('registerCloseHandler', () => {
 
     let saveCount = 0
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         saveCount++
@@ -1800,7 +1816,7 @@ describe('registerCloseHandler', () => {
       }),
     }))
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         saveCount++
@@ -1879,7 +1895,7 @@ describe('registerCloseHandler', () => {
       }),
     }))
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         throw new Error('Disk full')
@@ -1958,7 +1974,7 @@ describe('registerCloseHandler', () => {
       }),
     }))
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         saveCount++
@@ -2049,7 +2065,7 @@ describe('useSessionRestoreStore — saveSession with schema-info tabs', () => {
   it('serializes schema-info tabs correctly', async () => {
     let savedValue: string | null = null
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = a.value as string
@@ -2115,7 +2131,7 @@ describe('useSessionRestoreStore — active connection order persistence', () =>
   it('saves connections using normalized active connection order', async () => {
     let savedValue: string | null = null
 
-    mockIPC((cmd, args) => {
+    overrideNamedCommands(SESSION_RESTORE_COMMANDS, (cmd, args) => {
       const a = args as Record<string, unknown> | undefined
       if (cmd === 'set_setting' && a?.key === 'session.state') {
         savedValue = String(a.value)

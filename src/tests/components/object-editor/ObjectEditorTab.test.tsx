@@ -4,22 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ObjectEditorTab } from '../../../components/object-editor/ObjectEditorTab'
 import { useObjectEditorStore } from '../../../stores/object-editor-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { ipc } from '../../ipc-mock'
 import type { ObjectEditorTab as ObjectEditorTabType } from '../../../types/schema'
-
-// Mock IPC commands used by the object-editor store
-vi.mock('../../../lib/object-editor-commands', () => ({
-  getObjectBody: vi.fn().mockResolvedValue('CREATE PROCEDURE `app_db`.`my_proc`() BEGIN END'),
-  saveObject: vi.fn().mockResolvedValue({
-    success: true,
-    errorMessage: null,
-    dropSucceeded: false,
-    savedObjectName: null,
-  }),
-  dropObject: vi.fn().mockResolvedValue(undefined),
-  getRoutineParameters: vi.fn().mockResolvedValue([]),
-}))
-
-import { getObjectBody, saveObject } from '../../../lib/object-editor-commands'
 
 function makeTab(overrides: Partial<ObjectEditorTabType> = {}): ObjectEditorTabType {
   return {
@@ -36,16 +22,15 @@ function makeTab(overrides: Partial<ObjectEditorTabType> = {}): ObjectEditorTabT
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   useObjectEditorStore.setState({ tabs: {} })
   useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
-  vi.mocked(getObjectBody).mockResolvedValue('CREATE PROCEDURE `app_db`.`my_proc`() BEGIN END')
-  vi.mocked(saveObject).mockResolvedValue({
+  ipc.override('get_object_body', () => 'CREATE PROCEDURE `app_db`.`my_proc`() BEGIN END')
+  ipc.override('save_object', () => ({
     success: true,
     errorMessage: null,
     dropSucceeded: false,
     savedObjectName: null,
-  })
+  }))
 })
 
 describe('ObjectEditorTab', () => {
@@ -150,7 +135,7 @@ describe('ObjectEditorTab', () => {
     })
     expect(screen.getByText('New Stored Procedure')).toBeInTheDocument()
     // getObjectBody should NOT have been called in create mode
-    expect(getObjectBody).not.toHaveBeenCalled()
+    expect(ipc.calls('get_object_body')).toHaveLength(0)
   })
 
   it('save button click triggers saveBody', async () => {
@@ -179,14 +164,16 @@ describe('ObjectEditorTab', () => {
     await user.click(screen.getByTestId('object-editor-save-button'))
 
     await waitFor(() => {
-      expect(saveObject).toHaveBeenCalledWith(
-        'conn-1',
-        'app_db',
-        'my_proc',
-        'procedure',
-        'modified content',
-        'alter'
-      )
+      expect(ipc.calls('save_object')).toContainEqual({
+        request: {
+          connectionId: 'conn-1',
+          database: 'app_db',
+          objectName: 'my_proc',
+          objectType: 'procedure',
+          body: 'modified content',
+          mode: 'alter',
+        },
+      })
     })
   })
 
@@ -220,7 +207,7 @@ describe('ObjectEditorTab', () => {
     })
 
     // saveObject should NOT have been called — no local handler exists anymore
-    expect(saveObject).not.toHaveBeenCalled()
+    expect(ipc.calls('save_object')).toHaveLength(0)
   })
 
   it('unsaved changes dialog appears when pendingNavigationAction is set', () => {
@@ -250,12 +237,12 @@ describe('ObjectEditorTab', () => {
 
   it('after create-mode save, updateObjectEditorTab is called with savedObjectName', async () => {
     const user = userEvent.setup()
-    vi.mocked(saveObject).mockResolvedValue({
+    ipc.override('save_object', () => ({
       success: true,
       errorMessage: null,
       dropSucceeded: false,
       savedObjectName: 'my_new_proc',
-    })
+    }))
 
     // Set up workspace store with the tab
     useWorkspaceStore.getState().openTab({
@@ -309,7 +296,7 @@ describe('ObjectEditorTab', () => {
 
   it('loading state shows loading indicator with data-testid', async () => {
     // Let getObjectBody never resolve to keep loading
-    vi.mocked(getObjectBody).mockReturnValue(new Promise(() => {}))
+    ipc.override('get_object_body', () => new Promise(() => {}))
 
     render(<ObjectEditorTab tab={makeTab()} />)
 

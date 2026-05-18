@@ -1,40 +1,27 @@
 /**
  * Tests for ResultPanel edit mode callback wiring.
  *
- * Uses a different mocking strategy than ResultPanel.test.tsx:
- * ResultGridView is mocked to capture callback props and invoke them directly.
+ * Uses vi.spyOn to capture callback props passed to ResultGridView and invoke them directly.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../../ipc-mock'
 import React from 'react'
 import { useQueryStore } from '../../../stores/query-store'
 import { makeTabState } from '../../helpers/query-test-utils'
+import { ResultPanel } from '../../../components/query-editor/ResultPanel'
+import * as ResultGridViewModule from '../../../components/query-editor/ResultGridView'
 
 // Store captured ResultGridView props for test assertions
 let capturedGridProps: Record<string, unknown> = {}
 
-// Mock ResultGridView to capture its props
-vi.mock('../../../components/query-editor/ResultGridView', () => ({
-  ResultGridView: vi.fn((props: Record<string, unknown>) => {
-    capturedGridProps = props
-    return React.createElement('div', { 'data-testid': 'result-grid-view' }, 'Grid Mock')
-  }),
-}))
+// Use vi.spyOn in beforeEach to install per-test mock implementations without vi.mock().
 
-// Mock clipboard utility (used by ResultFormView and ResultTextView)
-vi.mock('../../../lib/context-menu-utils', () => ({
-  writeClipboardText: vi.fn().mockResolvedValue(undefined),
-}))
+beforeEach(() => {
+  useQueryStore.setState({ tabs: {} })
+  capturedGridProps = {}
 
-// Mock export-commands (used by ExportDialog)
-vi.mock('../../../lib/export-commands', () => ({
-  exportResults: vi.fn().mockResolvedValue({ bytesWritten: 1024, rowsExported: 5 }),
-}))
-
-// Mock query-commands (used by query store)
-vi.mock('../../../lib/query-commands', () => ({
-  executeQuery: vi.fn().mockResolvedValue({
+  ipc.override('execute_query', () => ({
     queryId: 'q1',
     columns: [],
     totalRows: 0,
@@ -43,18 +30,21 @@ vi.mock('../../../lib/query-commands', () => ({
     totalPages: 1,
     autoLimitApplied: false,
     firstPage: [],
-  }),
-  fetchResultPage: vi.fn().mockResolvedValue({ rows: [], page: 1, totalPages: 1 }),
-  evictResults: vi.fn().mockResolvedValue(undefined),
-  sortResults: vi.fn().mockResolvedValue({ rows: [], page: 1, totalPages: 1 }),
-}))
+  }))
+  ipc.override('fetch_result_page', () => ({ rows: [], page: 1, totalPages: 1 }))
+  ipc.override('evict_results', () => undefined)
+  ipc.override('sort_results', () => ({ rows: [], page: 1, totalPages: 1 }))
+  ipc.override('export_results', () => ({ bytesWritten: 1024, rowsExported: 5 }))
+  ipc.override('update_table_row', () => undefined)
 
-import { ResultPanel } from '../../../components/query-editor/ResultPanel'
-
-beforeEach(() => {
-  useQueryStore.setState({ tabs: {} })
-  capturedGridProps = {}
-  mockIPC(() => null)
+  vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation(
+    (props) => {
+      capturedGridProps = props as unknown as Record<string, unknown>
+      return (
+        <div data-testid="result-grid-view">Grid Mock</div>
+      ) as unknown as React.ReactElement
+    }
+  )
 })
 
 describe('ResultPanel edit mode callbacks', () => {

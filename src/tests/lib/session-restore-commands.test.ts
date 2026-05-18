@@ -2,32 +2,16 @@
  * Tests for session-restore-commands IPC wrappers.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../ipc-mock'
 import type { SessionState } from '../../lib/session-restore-commands'
 import { saveSessionState, loadSessionState } from '../../lib/session-restore-commands'
 
-let lastSetKey: string | null = null
-let lastSetValue: string | null = null
 let getSettingReturn: string | null = null
 
 beforeEach(() => {
-  lastSetKey = null
-  lastSetValue = null
   getSettingReturn = null
-
-  mockIPC((cmd, args) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'set_setting') {
-      const a = args as Record<string, unknown>
-      lastSetKey = a.key as string
-      lastSetValue = a.value as string
-      return null
-    }
-    if (cmd === 'get_setting') {
-      return getSettingReturn
-    }
-    return null
-  })
+  ipc.override('set_setting', () => null)
+  ipc.override('get_setting', () => getSettingReturn)
 })
 
 describe('saveSessionState', () => {
@@ -45,9 +29,10 @@ describe('saveSessionState', () => {
 
     await saveSessionState(state)
 
-    expect(lastSetKey).toBe('session.state')
-    expect(lastSetValue).not.toBeNull()
-    const parsed = JSON.parse(lastSetValue!)
+    const args = ipc.calls('set_setting')[0] as { key: string; value: string }
+    expect(args.key).toBe('session.state')
+    expect(args.value).not.toBeNull()
+    const parsed = JSON.parse(args.value)
     expect(parsed.version).toBe(1)
     expect(parsed.connections).toHaveLength(1)
     expect(parsed.connections[0].profileId).toBe('profile-1')
@@ -58,8 +43,9 @@ describe('saveSessionState', () => {
     const state: SessionState = { version: 1, connections: [] }
     await saveSessionState(state)
 
-    expect(lastSetKey).toBe('session.state')
-    const parsed = JSON.parse(lastSetValue!)
+    const args = ipc.calls('set_setting')[0] as { key: string; value: string }
+    expect(args.key).toBe('session.state')
+    const parsed = JSON.parse(args.value)
     expect(parsed.connections).toHaveLength(0)
   })
 })
