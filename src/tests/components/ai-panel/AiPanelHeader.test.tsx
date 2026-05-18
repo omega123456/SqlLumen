@@ -3,32 +3,11 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AiPanelHeader } from '../../../components/ai-panel/AiPanelHeader'
 import { useAiStore } from '../../../stores/ai-store'
-import type { TabAiState } from '../../../stores/ai-store'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
-function emptyTabState(overrides?: Partial<TabAiState>): TabAiState {
-  return {
-    messages: [],
-    isGenerating: false,
-    activeStreamId: null,
-    previousResponseId: null,
-    attachedContext: null,
-    isPanelOpen: true,
-    error: null,
-    providedChunkKeys: {},
-    cumulativeSchemaTokens: 0,
-    providedMemoryIds: {},
-    lastCompletedSystemPrompt: '',
-    lastCompletedTransport: null,
-    lastCompletedEndpoint: '',
-    lastCompletedModel: '',
-    activeRequestEndpoint: '',
-    activeRequestModel: '',
-    activeStreamHasAssistantOutput: false,
-    isWaitingForIndex: false,
-    connectionId: null,
-    _unlisten: null,
-    ...overrides,
-  }
+/** Convenience: panel-open tab state for AiPanelHeader tests. */
+function emptyTabState(overrides?: Parameters<typeof makeAiTabState>[0]) {
+  return makeAiTabState({ isPanelOpen: true, ...overrides })
 }
 
 let consoleSpy: ReturnType<typeof vi.spyOn>

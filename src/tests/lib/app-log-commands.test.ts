@@ -5,7 +5,6 @@ import { logFrontend } from '../../lib/app-log-commands'
 let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
-  ipc.reset()
   vi.clearAllMocks()
 })
 

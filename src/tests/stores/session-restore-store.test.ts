@@ -2,7 +2,7 @@
  * Tests for session-restore-store: save/restore session, isEnabled, error handling.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { ipc } from '../ipc-mock'
+import { ipc, overrideNamedIpcCommands } from '../ipc-mock'
 import {
   _setLoadTauriWindowApiForTests,
   _resetSessionPersistenceForTests,
@@ -20,14 +20,7 @@ import { useQueryStore } from '../../stores/query-store'
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 
-function overrideNamedCommands(
-  commandNames: readonly string[],
-  handler: (cmd: string, args?: Record<string, unknown>) => unknown
-) {
-  for (const commandName of commandNames) {
-    ipc.override(commandName, (args) => handler(commandName, args))
-  }
-}
+const overrideNamedCommands = overrideNamedIpcCommands
 
 const SESSION_RESTORE_COMMANDS = [
   'close_connection',

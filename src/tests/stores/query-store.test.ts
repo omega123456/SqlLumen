@@ -1,12 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ipc } from '../ipc-mock'
-import { useQueryStore, getFlatTabState, DEFAULT_RESULT_STATE } from '../../stores/query-store'
+import { ipc, overrideIpcCommands, overrideNamedIpcCommands } from '../ipc-mock'
+import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
-
-/** Shorthand: get a flat (tab + active result) view for assertions. */
-function flat(tabId: string) {
-  return getFlatTabState(useQueryStore.getState().getTabState(tabId))
-}
+import { flat } from '../helpers/query-test-utils'
 
 /**
  * Set result-level fields on an existing tab created by setContent().
@@ -29,22 +25,8 @@ function patchResult(tabId: string, resultOverrides: Record<string, unknown>) {
   })
 }
 
-function overrideCommands(
-  overrides: Record<string, (args?: Record<string, unknown>, commandName?: string) => unknown>
-) {
-  for (const [commandName, handler] of Object.entries(overrides)) {
-    ipc.override(commandName, handler)
-  }
-}
-
-function overrideNamedCommands(
-  commandNames: readonly string[],
-  handler: (cmd: string, args?: Record<string, unknown>) => unknown
-) {
-  for (const commandName of commandNames) {
-    ipc.override(commandName, (args) => handler(commandName, args))
-  }
-}
+const overrideCommands = overrideIpcCommands
+const overrideNamedCommands = overrideNamedIpcCommands
 
 const QUERY_STORE_COMMANDS = [
   'analyze_query_for_edit',

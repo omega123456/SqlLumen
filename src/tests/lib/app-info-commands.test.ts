@@ -9,7 +9,6 @@ const mockGetAppInfoFn = vi.fn(() => ({
 }))
 
 beforeEach(() => {
-  ipc.reset()
   mockGetAppInfoFn.mockClear()
   ipc.override('get_app_info', () => mockGetAppInfoFn())
 })

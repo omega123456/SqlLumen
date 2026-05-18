@@ -21,6 +21,7 @@ import { useAiStore } from '../../../stores/ai-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import * as CompletionServiceModule from '../../../components/query-editor/completion-service'
 import type { CancellationToken, editor } from 'monaco-editor'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
 // Use vi.spyOn to install per-test mock on completion-service.getModelContext without vi.mock().
 // IPC commands are handled via ipc.override() instead of mockIPC().
@@ -172,28 +173,7 @@ describe('handleAskAi', () => {
   it('opens the AI panel if not already open', () => {
     useAiStore.setState({
       tabs: {
-        'tab-1': {
-          messages: [],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
-          isPanelOpen: false,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        'tab-1': makeAiTabState(),
       },
     })
 
@@ -271,28 +251,7 @@ describe('handleAskAi', () => {
   it('does not re-open panel if already open', () => {
     useAiStore.setState({
       tabs: {
-        'tab-1': {
-          messages: [],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
-          isPanelOpen: true,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        'tab-1': makeAiTabState({ isPanelOpen: true }),
       },
     })
 

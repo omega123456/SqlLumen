@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { ipc } from '../ipc-mock'
 import {
@@ -8,10 +8,6 @@ import {
   getRoutineParameters,
   getRoutineParametersWithReturnType,
 } from '../../lib/object-editor-commands'
-
-beforeEach(() => {
-  ipc.reset()
-})
 
 describe('getObjectBody', () => {
   it('calls invoke with the correct command and args', async () => {

@@ -3,12 +3,13 @@ import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import * as canvasGridModule from '../../../components/shared/glide/CanvasBaseGridView'
-import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
+import { useTableDataStore } from '../../../stores/table-data-store'
 import { useToastStore } from '../../../stores/toast-store'
 import type { TableDataTabState, TableDataColumnMeta, RowEditState } from '../../../types/schema'
 import { TableDataFormView } from '../../../components/table-data/TableDataFormView'
 import { expectToast, ipc } from '../../ipc-mock'
+import { makeTableDataTabState, setupTestConnection } from '../../helpers/table-data-test-utils'
 
 const originalCanvasBaseGridView = canvasGridModule.CanvasBaseGridView
 const canvasCalls: unknown[] = []
@@ -60,66 +61,18 @@ const mockRows: unknown[][] = [[1, 'Alice', '[BLOB - 128 bytes]']]
 const mockPK = { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false }
 
 function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
-  return {
+  return makeTableDataTabState({
     columns: mockColumns,
     rows: mockRows,
-    currentPage: 1,
-    pageSize: 1000,
     primaryKey: mockPK,
     executionTimeMs: 15,
-    connectionId: 'conn-1',
-    database: 'mydb',
-    table: 'users',
-    editState: null,
     viewMode: 'form',
     selectedRowKey: { id: 1 },
-    selectedCell: null,
-    filterModel: [],
-    sort: null,
-    isLoading: false,
-    error: null,
-    saveError: null,
-    isExportDialogOpen: false,
-    pendingNavigationAction: null,
-    scrollRow: 0,
-    scrollCol: 0,
     ...overrides,
-  }
-}
-
-function setupConnection(readOnly = false) {
-  useConnectionStore.setState({
-    activeConnections: {
-      'conn-1': {
-        id: 'conn-1',
-        profile: {
-          id: 'conn-1',
-          name: 'Test DB',
-          host: '127.0.0.1',
-          port: 3306,
-          username: 'root',
-          hasPassword: true,
-          defaultDatabase: null,
-          sslEnabled: false,
-          sslCaPath: null,
-          sslCertPath: null,
-          sslKeyPath: null,
-          color: '#3b82f6',
-          groupId: null,
-          readOnly,
-          sortOrder: 0,
-          connectTimeoutSecs: 10,
-          keepaliveIntervalSecs: 30,
-          createdAt: '2025-01-01T00:00:00Z',
-          updatedAt: '2025-01-01T00:00:00Z',
-        },
-        status: 'connected',
-        serverVersion: '8.0.35',
-      },
-    },
-    activeTabId: 'conn-1',
   })
 }
+
+const setupConnection = setupTestConnection
 
 function setupStore(overrides: Partial<TableDataTabState> = {}) {
   setupConnection()
@@ -1202,55 +1155,72 @@ describe('TableDataFormView — DateTimePicker integration', () => {
     expect(clockBtn).toHaveAttribute('aria-label', 'Open time picker')
   })
 
-  it('clicking the calendar icon opens the DateTimePicker', () => {
+  it('clicking the calendar icon opens the DateTimePicker', async () => {
     setupStoreWithTemporal()
     renderFormView()
+    const user = userEvent.setup()
 
     // No picker initially
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
+    await user.click(screen.getByTestId('calendar-btn-created_at'))
 
-    expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
+    })
   })
 
-  it('picker onApply updates the field value via the store', () => {
+  it('picker onApply updates the field value via the store', async () => {
     setupStoreWithTemporal()
     renderFormView()
+    const user = userEvent.setup()
 
     // Open picker
-    fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
+    await user.click(screen.getByTestId('calendar-btn-created_at'))
+    await waitFor(() => {
+      expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
+    })
 
-    fireEvent.click(screen.getByTestId('btn-picker-apply'))
+    await user.click(screen.getByTestId('btn-picker-apply'))
 
-    const state = useTableDataStore.getState().tabs['tab-1']
-    expect(state?.editState).not.toBeNull()
-    expect(state?.editState?.currentValues.created_at).toBe('2023-06-15 10:30:00')
+    await waitFor(() => {
+      const state = useTableDataStore.getState().tabs['tab-1']
+      expect(state?.editState).not.toBeNull()
+      expect(state?.editState?.currentValues.created_at).toBe('2023-06-15 10:30:00')
+    })
   })
 
-  it('picker onCancel closes the popup without changing the value', () => {
+  it('picker onCancel closes the popup without changing the value', async () => {
     setupStoreWithTemporal()
     renderFormView()
+    const user = userEvent.setup()
 
     // Open picker
-    fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
+    await user.click(screen.getByTestId('calendar-btn-created_at'))
     expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByTestId('btn-picker-cancel'))
-    expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('btn-picker-cancel'))
+    await waitFor(() => {
+      expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
+    })
   })
 
-  it('only one picker is open at a time', () => {
+  it('only one picker is open at a time', async () => {
     setupStoreWithTemporal()
     renderFormView()
+    const user = userEvent.setup()
 
     // Open picker for created_at
-    fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
-    expect(screen.getAllByTestId('date-time-picker-popup')).toHaveLength(1)
+    await user.click(screen.getByTestId('calendar-btn-created_at'))
+    await waitFor(() => {
+      expect(screen.getAllByTestId('date-time-picker-popup')).toHaveLength(1)
+    })
 
     // Open picker for login_time (should replace the first)
-    fireEvent.click(screen.getByTestId('calendar-btn-login_time'))
-    expect(screen.getAllByTestId('date-time-picker-popup')).toHaveLength(1)
+    await user.click(screen.getByTestId('calendar-btn-login_time'))
+    await waitFor(() => {
+      expect(screen.getAllByTestId('date-time-picker-popup')).toHaveLength(1)
+    })
   })
 
   it('NULL toggle off on a temporal field sets today date instead of empty string', () => {
@@ -1431,10 +1401,11 @@ describe('TableDataFormView — Save validation', () => {
 
     setupStoreWithTemporal({ editState })
     renderFormView()
+    const user = userEvent.setup()
 
     const saveBtn = screen.getByTestId('btn-form-save')
     expect(saveBtn).not.toBeDisabled()
-    fireEvent.click(saveBtn)
+    await user.click(saveBtn)
 
     await expectToast('error', 'Invalid date value')
 
@@ -1467,9 +1438,10 @@ describe('TableDataFormView — Save validation', () => {
 
     setupStoreWithTemporal({ editState })
     renderFormView()
+    const user = userEvent.setup()
 
     const saveBtn = screen.getByTestId('btn-form-save')
-    fireEvent.click(saveBtn)
+    await user.click(saveBtn)
 
     // Should NOT show error
     await expectToast('success', 'Row saved')
@@ -1498,8 +1470,9 @@ describe('TableDataFormView — Save validation', () => {
 
     setupStoreWithTemporal({ editState })
     renderFormView()
+    const user = userEvent.setup()
 
-    fireEvent.click(screen.getByTestId('btn-form-save'))
+    await user.click(screen.getByTestId('btn-form-save'))
 
     await expectToast('error', 'Invalid date value')
 
@@ -1540,8 +1513,9 @@ describe('TableDataFormView — Save validation', () => {
 
     setupStoreWithTemporal({ editState })
     renderFormView()
+    const user = userEvent.setup()
 
-    fireEvent.click(screen.getByTestId('btn-form-save'))
+    await user.click(screen.getByTestId('btn-form-save'))
 
     await expectToast('error', 'Save failed')
   })
@@ -1569,8 +1543,9 @@ describe('TableDataFormView — Save validation', () => {
 
     setupStoreWithTemporal({ editState })
     renderFormView()
+    const user = userEvent.setup()
 
-    fireEvent.click(screen.getByTestId('btn-form-save'))
+    await user.click(screen.getByTestId('btn-form-save'))
 
     await expectToast('error', 'Invalid date value')
   })
@@ -1598,8 +1573,9 @@ describe('TableDataFormView — Save validation', () => {
 
     setupStoreWithTemporal({ editState })
     renderFormView()
+    const user = userEvent.setup()
 
-    fireEvent.click(screen.getByTestId('btn-form-save'))
+    await user.click(screen.getByTestId('btn-form-save'))
 
     await waitFor(() => {
       expect(useToastStore.getState().toasts.some((toast) => toast.variant === 'error')).toBe(false)

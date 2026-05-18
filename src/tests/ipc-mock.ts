@@ -42,8 +42,12 @@ export const ipc = {
    * Register a per-test override for a specific IPC command.
    * The handler will receive the raw args and should return the mock response.
    * Overrides are cleared automatically after each test via afterEach.
+   *
+   * Passing '*' as the command name is not allowed — use specific command names.
    */
   override(commandName: string, handlerFn: IpcHandler): void {
+    if (commandName === '*')
+      throw new Error('[ipc-mock] Wildcard override not allowed — use specific command names')
     _overrides.set(commandName, handlerFn)
   },
 
@@ -105,6 +109,34 @@ export async function expectToast(
 }
 
 // ---------------------------------------------------------------------------
+// Convenience helpers for tests that set multiple overrides at once
+// ---------------------------------------------------------------------------
+
+/**
+ * Register multiple per-test IPC overrides in one call.
+ *
+ * @example
+ * overrideIpcCommands({ execute_query: () => mockResult, evict_results: () => null })
+ */
+export function overrideIpcCommands(overrides: Record<string, IpcHandler>): void {
+  Object.entries(overrides).forEach(([cmd, handler]) => ipc.override(cmd, handler))
+}
+
+/**
+ * Register the same handler for multiple command names — useful when a test
+ * needs to intercept a fixed set of commands with shared dispatch logic.
+ *
+ * @example
+ * overrideNamedIpcCommands(COMMANDS, (cmd, args) => { switch (cmd) { ... } })
+ */
+export function overrideNamedIpcCommands(
+  commandNames: readonly string[],
+  handler: (cmd: string, args?: Record<string, unknown>) => unknown
+): void {
+  commandNames.forEach((cmd) => ipc.override(cmd, (args) => handler(cmd, args)))
+}
+
+// ---------------------------------------------------------------------------
 // Setup function — call at module scope in setup.ts
 // ---------------------------------------------------------------------------
 
@@ -144,11 +176,6 @@ export function setupIpc(): void {
           return override(args, cmd)
         }
 
-        const wildcardOverride = _overrides.get('*')
-        if (wildcardOverride) {
-          return wildcardOverride(args, cmd)
-        }
-
         // 2. Default fixture response
         const fixture = IPC_FIXTURES[cmd]
         if (fixture) {
@@ -163,7 +190,7 @@ export function setupIpc(): void {
   })
 
   afterEach(async () => {
-    // Clear per-test state
+    // Clear per-test state — called automatically; test files do not need ipc.reset() in their beforeEach
     ipc.reset()
 
     // Clear module-level caches using dynamic imports. Static imports would eagerly load

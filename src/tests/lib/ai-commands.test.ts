@@ -11,7 +11,6 @@ import {
 import type { AiChatParams } from '../../lib/ai-commands'
 
 beforeEach(() => {
-  ipc.reset()
   vi.clearAllMocks()
 })
 

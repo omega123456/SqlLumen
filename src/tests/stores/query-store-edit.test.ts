@@ -1,27 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ipc } from '../ipc-mock'
+import { ipc, overrideNamedIpcCommands } from '../ipc-mock'
 import {
   useQueryStore,
   isEditableSelectSql,
-  getFlatTabState,
   DEFAULT_RESULT_STATE,
 } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import type { QueryTableEditInfo, TableDataColumnMeta, PrimaryKeyInfo } from '../../types/schema'
+import { flat } from '../helpers/query-test-utils'
 
-/** Shorthand: get a flat (tab + active result) view for assertions. */
-function flat(tabId: string) {
-  return getFlatTabState(useQueryStore.getState().getTabState(tabId))
-}
-
-function overrideNamedCommands(
-  commandNames: readonly string[],
-  handler: (cmd: string, args?: Record<string, unknown>) => unknown
-) {
-  for (const commandName of commandNames) {
-    ipc.override(commandName, (args) => handler(commandName, args))
-  }
-}
+const overrideNamedCommands = overrideNamedIpcCommands
 
 const QUERY_STORE_EDIT_COMMANDS = [
   'analyze_query_for_edit',

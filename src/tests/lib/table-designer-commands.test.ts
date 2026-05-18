@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { ipc } from '../ipc-mock'
 import {
@@ -6,10 +6,6 @@ import {
   generateTableDdl,
   loadTableForDesigner,
 } from '../../lib/table-designer-commands'
-
-beforeEach(() => {
-  ipc.reset()
-})
 
 describe('loadTableForDesigner', () => {
   it('calls invoke with the correct command and args', async () => {

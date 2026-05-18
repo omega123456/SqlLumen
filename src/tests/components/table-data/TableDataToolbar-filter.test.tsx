@@ -5,45 +5,14 @@ import { useConnectionStore } from '../../../stores/connection-store'
 import { useToastStore } from '../../../stores/toast-store'
 import type { TableDataTabState } from '../../../types/schema'
 import { expectToast, ipc } from '../../ipc-mock'
+import { makeTableDataTabState, setupTestConnection } from '../../helpers/table-data-test-utils'
 
 import { TableDataToolbar } from '../../../components/table-data/TableDataToolbar'
 
-function setupConnection() {
-  useConnectionStore.setState({
-    activeConnections: {
-      'conn-1': {
-        id: 'conn-1',
-        profile: {
-          id: 'conn-1',
-          name: 'Test DB',
-          host: '127.0.0.1',
-          port: 3306,
-          username: 'root',
-          hasPassword: true,
-          defaultDatabase: null,
-          sslEnabled: false,
-          sslCaPath: null,
-          sslCertPath: null,
-          sslKeyPath: null,
-          color: '#3b82f6',
-          groupId: null,
-          readOnly: false,
-          sortOrder: 0,
-          connectTimeoutSecs: 10,
-          keepaliveIntervalSecs: 30,
-          createdAt: '2025-01-01T00:00:00Z',
-          updatedAt: '2025-01-01T00:00:00Z',
-        },
-        status: 'connected',
-        serverVersion: '8.0.35',
-      },
-    },
-    activeTabId: 'conn-1',
-  })
-}
+const setupConnection = setupTestConnection
 
 function makeDefaultTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
-  return {
+  return makeTableDataTabState({
     columns: [
       {
         name: 'id',
@@ -75,28 +44,10 @@ function makeDefaultTabState(overrides: Partial<TableDataTabState> = {}): TableD
       [2, 'Bob'],
       [3, 'Charlie'],
     ],
-    currentPage: 1,
-    pageSize: 1000,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
     executionTimeMs: 15,
-    connectionId: 'conn-1',
-    database: 'mydb',
-    table: 'users',
-    editState: null,
-    viewMode: 'grid',
-    selectedRowKey: null,
-    selectedCell: null,
-    filterModel: [],
-    sort: null,
-    isLoading: false,
-    error: null,
-    saveError: null,
-    isExportDialogOpen: false,
-    pendingNavigationAction: null,
-    scrollRow: 0,
-    scrollCol: 0,
     ...overrides,
-  }
+  })
 }
 
 function setupTabState(overrides: Partial<TableDataTabState> = {}) {

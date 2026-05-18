@@ -4,10 +4,6 @@ import { ipc } from '../ipc-mock'
 import { loadSchemaCacheSnapshot, saveSchemaCacheSnapshot } from '../../lib/schema-cache-commands'
 
 describe('schema-cache-commands', () => {
-  beforeEach(() => {
-    ipc.reset()
-  })
-
   it('loads a schema cache snapshot for a connection', async () => {
     ipc.override('load_schema_cache_snapshot', () => '{"tables":[]}')
 

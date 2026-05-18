@@ -18,7 +18,6 @@ import {
 import type { ConnectionFormData } from '../types/connection'
 
 beforeEach(() => {
-  ipc.reset()
   vi.clearAllMocks()
 })
 

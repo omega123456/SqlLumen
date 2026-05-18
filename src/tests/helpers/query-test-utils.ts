@@ -1,11 +1,10 @@
 /**
- * Test helper to build TabQueryState with the new multi-result shape.
+ * Shared query-store test utilities.
  *
- * Converts flat result-level fields into a results[] array,
- * minimizing the changes needed in existing test files.
+ * Exports `flat`, `makeTabState`, and `getTestActiveResult`.
  */
 import type { TabQueryState, SingleResultState } from '../../stores/query-store'
-import { DEFAULT_RESULT_STATE } from '../../stores/query-store'
+import { useQueryStore, getFlatTabState, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import type {
   ColumnMeta,
   ForeignKeyColumnInfo,
@@ -13,6 +12,21 @@ import type {
   RowEditState,
   ViewMode,
 } from '../../types/schema'
+
+/**
+ * Shorthand: get a flat (tab + active result) view for the given tab ID.
+ * Use this instead of defining a local `flat` function in each query-store test.
+ */
+export function flat(tabId: string) {
+  return getFlatTabState(useQueryStore.getState().getTabState(tabId))
+}
+
+/**
+ * Test helper to build TabQueryState with the new multi-result shape.
+ *
+ * Converts flat result-level fields into a results[] array,
+ * minimizing the changes needed in existing test files.
+ */
 
 /** Fields that belong on a SingleResultState (per-result). */
 interface ResultOverrides {

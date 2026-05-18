@@ -26,7 +26,6 @@ const COLLATIONS = [
 ]
 
 beforeEach(() => {
-  ipc.reset()
   vi.clearAllMocks()
   ipc.override('list_charsets', () => CHARSETS)
   ipc.override('list_collations', () => COLLATIONS)

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 
 import { ipc } from './ipc-mock'
 import {
@@ -8,10 +8,6 @@ import {
   getThemeSetting,
   setThemeSetting,
 } from '../lib/tauri-commands'
-
-beforeEach(() => {
-  ipc.reset()
-})
 
 describe('getSetting', () => {
   it('calls invoke with correct command and args', async () => {

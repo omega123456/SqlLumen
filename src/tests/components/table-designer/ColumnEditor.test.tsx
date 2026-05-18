@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { ColumnEditor } from '../../../components/table-designer/ColumnEditor'
@@ -517,11 +517,13 @@ describe('ColumnEditor', () => {
     await user.click(screen.getByTestId('column-default-0'))
     await user.click(await screen.findByRole('option', { name: 'Custom' }))
     const customInput = screen.getByTestId('column-default-input-0')
-    await user.clear(customInput)
-    await user.type(customInput, '42')
-    expect(getTab()?.currentSchema.columns[0]?.defaultValue).toEqual({
-      tag: 'LITERAL',
-      value: '42',
+    fireEvent.change(customInput, { target: { value: '42' } })
+
+    await waitFor(() => {
+      expect(getTab()?.currentSchema.columns[0]?.defaultValue).toEqual({
+        tag: 'LITERAL',
+        value: '42',
+      })
     })
   })
 

@@ -134,8 +134,6 @@ beforeEach(() => {
   }
 
   useTableDesignerStore.setState({ tabs: {} })
-
-  ipc.reset()
   loadTableForDesignerImpl = () => clone(loadedSchema)
   generateTableDdlImpl = () => ({ ddl: 'CREATE TABLE users (...);', warnings: [] })
   registerTableDesignerIpc()

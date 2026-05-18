@@ -3,7 +3,6 @@ import { ipc } from '../ipc-mock'
 import { listHistory, deleteHistoryEntry, clearHistory } from '../../lib/history-commands'
 
 beforeEach(() => {
-  ipc.reset()
   vi.clearAllMocks()
 })
 

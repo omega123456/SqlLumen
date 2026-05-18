@@ -3,35 +3,14 @@ import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AiChatInput } from '../../../components/ai-panel/AiChatInput'
 import { useAiStore } from '../../../stores/ai-store'
-import type { TabAiState } from '../../../stores/ai-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import * as slashCommandsModule from '../../../lib/slash-commands'
 import { dispatchWorkspaceTabDeactivated } from '../../../lib/workspace-tab-activity-events'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
-function emptyTabState(overrides?: Partial<TabAiState>): TabAiState {
-  return {
-    messages: [],
-    isGenerating: false,
-    activeStreamId: null,
-    previousResponseId: null,
-    attachedContext: null,
-    isPanelOpen: true,
-    error: null,
-    providedChunkKeys: {},
-    cumulativeSchemaTokens: 0,
-    providedMemoryIds: {},
-    lastCompletedSystemPrompt: '',
-    lastCompletedTransport: null,
-    lastCompletedEndpoint: '',
-    lastCompletedModel: '',
-    activeRequestEndpoint: '',
-    activeRequestModel: '',
-    activeStreamHasAssistantOutput: false,
-    isWaitingForIndex: false,
-    connectionId: null,
-    _unlisten: null,
-    ...overrides,
-  }
+/** Convenience: panel-open tab state for AiChatInput tests. */
+function emptyTabState(overrides?: Parameters<typeof makeAiTabState>[0]) {
+  return makeAiTabState({ isPanelOpen: true, ...overrides })
 }
 
 let consoleSpy: ReturnType<typeof vi.spyOn>

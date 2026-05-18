@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
 import { useQueryStore } from '../../../stores/query-store'
-import { getFlatTabState } from '../../../stores/query-store'
-import { makeTabState } from '../../helpers/query-test-utils'
+import { makeTabState, flat } from '../../helpers/query-test-utils'
 
 /** Helper to set up store state for a tab. */
 function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
@@ -12,11 +11,6 @@ function setupTabState(tabId: string, overrides: Record<string, unknown> = {}) {
       [tabId]: makeTabState(overrides),
     },
   })
-}
-
-/** Shorthand: get flat view for assertions. */
-function flat(tabId: string) {
-  return getFlatTabState(useQueryStore.getState().getTabState(tabId))
 }
 
 beforeEach(() => {

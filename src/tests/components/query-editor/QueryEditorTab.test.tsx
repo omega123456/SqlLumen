@@ -10,35 +10,11 @@ import {
   _resetQueryTabCounter,
 } from '../../../stores/workspace-store'
 import type { QueryEditorTab as QueryEditorTabType } from '../../../types/schema'
-import type { TabAiState } from '../../../stores/ai-store'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
 // IPC fixtures in setup.ts handle plugin:dialog|save and plugin:dialog|open (return null = cancelled)
 
-function emptyAiTabState(overrides: Partial<TabAiState> = {}): TabAiState {
-  return {
-    messages: [],
-    isGenerating: false,
-    activeStreamId: null,
-    previousResponseId: null,
-    attachedContext: null,
-    isPanelOpen: false,
-    error: null,
-    providedChunkKeys: {},
-    cumulativeSchemaTokens: 0,
-    providedMemoryIds: {},
-    lastCompletedSystemPrompt: '',
-    lastCompletedTransport: null,
-    lastCompletedEndpoint: '',
-    lastCompletedModel: '',
-    activeRequestEndpoint: '',
-    activeRequestModel: '',
-    activeStreamHasAssistantOutput: false,
-    isWaitingForIndex: false,
-    connectionId: null,
-    _unlisten: null,
-    ...overrides,
-  }
-}
+const emptyAiTabState = makeAiTabState
 
 const mockTab: QueryEditorTabType = {
   id: 'tab-1',

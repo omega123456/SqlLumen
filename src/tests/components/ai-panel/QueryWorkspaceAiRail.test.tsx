@@ -7,6 +7,7 @@ import { AiDiffBridgeProvider } from '../../../components/query-editor/ai-diff-b
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
 import type { QueryEditorTab as QueryEditorTabType } from '../../../types/schema'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
 const mockTab: QueryEditorTabType = {
   id: 'tab-1',
@@ -47,28 +48,7 @@ describe('QueryWorkspaceAiRail', () => {
     const user = userEvent.setup()
     useAiStore.setState({
       tabs: {
-        'tab-1': {
-          messages: [],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
-          isPanelOpen: false,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        'tab-1': makeAiTabState(),
       },
     })
     renderWithBridge(<QueryWorkspaceAiRail tab={mockTab} />)

@@ -10,7 +10,6 @@ import {
 } from '../../lib/schema-index-commands'
 
 beforeEach(() => {
-  ipc.reset()
   ipc.override('build_schema_index', () => undefined)
   ipc.override('force_rebuild_schema_index', () => undefined)
   ipc.override('semantic_search', () => [

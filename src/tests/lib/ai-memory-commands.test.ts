@@ -9,7 +9,6 @@ import {
 } from '../../lib/ai-memory-commands'
 
 beforeEach(() => {
-  ipc.reset()
   ipc.override('save_memory', (args) => ({
     id: 1,
     connectionId: 'conn-1',

@@ -16,7 +16,6 @@ import type {
 } from '../../lib/sql-dump-commands'
 
 beforeEach(() => {
-  ipc.reset()
   vi.clearAllMocks()
 })
 

@@ -126,7 +126,6 @@ beforeEach(() => {
   mockExecuteMultiQueryFn.mockClear()
   mockExecuteCallQueryFn.mockClear()
   mockReexecuteSingleResultFn.mockClear()
-  ipc.reset()
   ipc.override('execute_query', () => mockExecuteQueryFn())
   ipc.override('fetch_result_page', () => mockFetchResultPageFn())
   ipc.override('evict_results', () => mockEvictResultsFn())

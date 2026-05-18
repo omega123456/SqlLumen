@@ -582,9 +582,8 @@ describe('StatusBar', () => {
             },
           },
         })
+        rerender(<StatusBar />)
       })
-
-      rerender(<StatusBar />)
 
       act(() => {
         vi.advanceTimersByTime(16)
@@ -671,9 +670,8 @@ describe('StatusBar', () => {
             },
           },
         })
+        rerender(<StatusBar />)
       })
-
-      rerender(<StatusBar />)
 
       act(() => {
         vi.advanceTimersByTime(16)

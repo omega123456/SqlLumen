@@ -2,10 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { WorkspaceBody } from '../../../components/layout/WorkspaceBody'
 import { WORKSPACE_LAYOUT_EVENT } from '../../../lib/workspace-layout-events'
-import { useAiStore, type TabAiState } from '../../../stores/ai-store'
+import { useAiStore } from '../../../stores/ai-store'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import type { WorkspaceTab } from '../../../types/schema'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
 const queryTabOne: WorkspaceTab = {
   id: 'query-1',
@@ -37,31 +38,7 @@ const scopedTableTab: WorkspaceTab = {
   parentQueryTabId: 'query-1',
 }
 
-function emptyAiTabState(overrides: Partial<TabAiState> = {}): TabAiState {
-  return {
-    messages: [],
-    isGenerating: false,
-    activeStreamId: null,
-    previousResponseId: null,
-    attachedContext: null,
-    isPanelOpen: false,
-    error: null,
-    providedChunkKeys: {},
-    cumulativeSchemaTokens: 0,
-    providedMemoryIds: {},
-    lastCompletedSystemPrompt: '',
-    lastCompletedTransport: null,
-    lastCompletedEndpoint: '',
-    lastCompletedModel: '',
-    activeRequestEndpoint: '',
-    activeRequestModel: '',
-    activeStreamHasAssistantOutput: false,
-    isWaitingForIndex: false,
-    connectionId: null,
-    _unlisten: null,
-    ...overrides,
-  }
-}
+const emptyAiTabState = makeAiTabState
 
 function renderWorkspaceBody(activeTabId: string | null) {
   return render(

@@ -4,32 +4,11 @@ import userEvent from '@testing-library/user-event'
 import { AiChatMessages } from '../../../components/ai-panel/AiChatMessages'
 import { useAiStore } from '../../../stores/ai-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
-import type { TabAiState } from '../../../stores/ai-store'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
-function emptyTabState(overrides?: Partial<TabAiState>): TabAiState {
-  return {
-    messages: [],
-    isGenerating: false,
-    activeStreamId: null,
-    previousResponseId: null,
-    attachedContext: null,
-    isPanelOpen: true,
-    error: null,
-    providedChunkKeys: {},
-    cumulativeSchemaTokens: 0,
-    providedMemoryIds: {},
-    lastCompletedSystemPrompt: '',
-    lastCompletedTransport: null,
-    lastCompletedEndpoint: '',
-    lastCompletedModel: '',
-    activeRequestEndpoint: '',
-    activeRequestModel: '',
-    activeStreamHasAssistantOutput: false,
-    isWaitingForIndex: false,
-    connectionId: null,
-    _unlisten: null,
-    ...overrides,
-  }
+/** Convenience: panel-open tab state for AiChatMessages tests. */
+function emptyTabState(overrides?: Parameters<typeof makeAiTabState>[0]) {
+  return makeAiTabState({ isPanelOpen: true, ...overrides })
 }
 
 let consoleSpy: ReturnType<typeof vi.spyOn>

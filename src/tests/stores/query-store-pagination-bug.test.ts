@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { ipc } from '../ipc-mock'
-import { useQueryStore, getFlatTabState } from '../../stores/query-store'
+import { overrideIpcCommands } from '../ipc-mock'
+import { useQueryStore } from '../../stores/query-store'
+import { flat } from '../helpers/query-test-utils'
 
 /**
  * Regression test: When the user provides an explicit LIMIT (autoLimitApplied=false),
@@ -8,17 +9,7 @@ import { useQueryStore, getFlatTabState } from '../../stores/query-store'
  * displays every row without needing pagination.
  */
 
-function flat(tabId: string) {
-  return getFlatTabState(useQueryStore.getState().getTabState(tabId))
-}
-
-function overrideCommands(
-  overrides: Record<string, (args?: Record<string, unknown>, commandName?: string) => unknown>
-) {
-  for (const [commandName, handler] of Object.entries(overrides)) {
-    ipc.override(commandName, handler)
-  }
-}
+const overrideCommands = overrideIpcCommands
 
 describe('query result view should show all returned rows regardless of page size', () => {
   beforeEach(() => {

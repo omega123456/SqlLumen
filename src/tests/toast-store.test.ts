@@ -10,7 +10,6 @@ import {
 
 describe('useToastStore', () => {
   beforeEach(() => {
-    ipc.reset()
     _resetToastTimeoutsForTests()
     useToastStore.setState({ toasts: [] })
   })

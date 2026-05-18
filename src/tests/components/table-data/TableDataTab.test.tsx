@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { TableDataTabState } from '../../../types/schema'
 import { ipc } from '../../ipc-mock'
+import { makeTableDataTabState, setupTestConnection } from '../../helpers/table-data-test-utils'
 
 // Import after mocks
 import { TableDataTab } from '../../../components/table-data/TableDataTab'
@@ -22,42 +24,10 @@ function makeTab(overrides: Partial<TableDataTabType> = {}): TableDataTabType {
   }
 }
 
-function setupConnection(readOnly = false) {
-  useConnectionStore.setState({
-    activeConnections: {
-      'conn-1': {
-        id: 'conn-1',
-        profile: {
-          id: 'conn-1',
-          name: 'Test DB',
-          host: '127.0.0.1',
-          port: 3306,
-          username: 'root',
-          hasPassword: true,
-          defaultDatabase: null,
-          sslEnabled: false,
-          sslCaPath: null,
-          sslCertPath: null,
-          sslKeyPath: null,
-          color: '#3b82f6',
-          groupId: null,
-          readOnly,
-          sortOrder: 0,
-          connectTimeoutSecs: 10,
-          keepaliveIntervalSecs: 30,
-          createdAt: '2025-01-01T00:00:00Z',
-          updatedAt: '2025-01-01T00:00:00Z',
-        },
-        status: 'connected',
-        serverVersion: '8.0.35',
-      },
-    },
-    activeTabId: 'conn-1',
-  })
-}
+const setupConnection = setupTestConnection
 
 function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
-  return {
+  return makeTableDataTabState({
     columns: [
       {
         name: 'id',
@@ -88,28 +58,10 @@ function makeTabState(overrides: Partial<TableDataTabState> = {}): TableDataTabS
       [1, 'Alice'],
       [2, 'Bob'],
     ],
-    currentPage: 1,
-    pageSize: 1000,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
     executionTimeMs: 15,
-    connectionId: 'conn-1',
-    database: 'mydb',
-    table: 'users',
-    editState: null,
-    viewMode: 'grid',
-    selectedRowKey: null,
-    selectedCell: null,
-    filterModel: [],
-    sort: null,
-    isLoading: false,
-    error: null,
-    saveError: null,
-    isExportDialogOpen: false,
-    pendingNavigationAction: null,
-    scrollRow: 0,
-    scrollCol: 0,
     ...overrides,
-  }
+  })
 }
 
 beforeEach(() => {
@@ -236,6 +188,7 @@ describe('TableDataTab', () => {
   })
 
   it('retry button calls loadTableData', async () => {
+    const user = userEvent.setup()
     setupConnection()
 
     let attempt = 0
@@ -262,7 +215,7 @@ describe('TableDataTab', () => {
 
     expect(ipc.calls('fetch_table_data')).toHaveLength(1)
 
-    fireEvent.click(screen.getByTestId('btn-retry'))
+    await user.click(screen.getByTestId('btn-retry'))
 
     await waitFor(() => {
       expect(ipc.calls('fetch_table_data')).toHaveLength(2)
@@ -365,6 +318,7 @@ describe('TableDataTab', () => {
   })
 
   it('handleExport submits the export dialog, calls exportTableData, and closes dialog', async () => {
+    const user = userEvent.setup()
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
@@ -382,7 +336,7 @@ describe('TableDataTab', () => {
     fireEvent.change(screen.getByTestId('export-file-path-input'), {
       target: { value: '/tmp/export-users.csv' },
     })
-    fireEvent.click(screen.getByTestId('export-submit-button'))
+    await user.click(screen.getByTestId('export-submit-button'))
 
     await waitFor(() => {
       expect(ipc.calls('export_table_data')).toContainEqual(
@@ -406,6 +360,7 @@ describe('TableDataTab', () => {
   })
 
   it('handleExport passes page and pageSize to exportTableData', async () => {
+    const user = userEvent.setup()
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
@@ -437,7 +392,7 @@ describe('TableDataTab', () => {
     fireEvent.change(screen.getByTestId('export-file-path-input'), {
       target: { value: '/tmp/test.csv' },
     })
-    fireEvent.click(screen.getByTestId('export-submit-button'))
+    await user.click(screen.getByTestId('export-submit-button'))
 
     await waitFor(() => {
       expect(ipc.calls('export_table_data')).toContainEqual(
@@ -457,6 +412,7 @@ describe('TableDataTab', () => {
   })
 
   it('handleDiscardNavigation closes unsaved dialog', async () => {
+    const user = userEvent.setup()
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
@@ -488,7 +444,7 @@ describe('TableDataTab', () => {
 
     // Click discard in the dialog
     const discardBtn = screen.getByTestId('btn-discard-changes')
-    fireEvent.click(discardBtn)
+    await user.click(discardBtn)
 
     await waitFor(() => {
       expect(screen.queryByTestId('unsaved-changes-dialog')).not.toBeInTheDocument()
@@ -496,6 +452,7 @@ describe('TableDataTab', () => {
   })
 
   it('handleCancelNavigation closes unsaved dialog', async () => {
+    const user = userEvent.setup()
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
@@ -527,7 +484,7 @@ describe('TableDataTab', () => {
 
     // Click cancel
     const cancelBtn = screen.getByTestId('btn-cancel-changes')
-    fireEvent.click(cancelBtn)
+    await user.click(cancelBtn)
 
     await waitFor(() => {
       expect(screen.queryByTestId('unsaved-changes-dialog')).not.toBeInTheDocument()

@@ -3,7 +3,6 @@ import { ipc } from '../ipc-mock'
 import { exportResults } from '../../lib/export-commands'
 
 beforeEach(() => {
-  ipc.reset()
   vi.clearAllMocks()
 })
 

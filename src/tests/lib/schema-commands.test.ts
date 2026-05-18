@@ -19,7 +19,6 @@ import {
 } from '../../lib/schema-commands'
 
 beforeEach(() => {
-  ipc.reset()
   vi.clearAllMocks()
 })
 

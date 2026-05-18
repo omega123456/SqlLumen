@@ -12,6 +12,7 @@ import type { QueryEditorTab as QueryEditorTabType } from '../../../types/schema
 import * as SchemaMetadataCacheModule from '../../../components/query-editor/schema-metadata-cache'
 import * as CompletionServiceModule from '../../../components/query-editor/completion-service'
 import * as MonacoEditorReactModule from '@monaco-editor/react'
+import { makeAiTabState } from '../../helpers/ai-test-utils'
 
 // IPC fixtures in setup.ts handle plugin:dialog|save, plugin:dialog|open, and all other commands.
 // Monaco, monaco-sql-languages, and monaco-sql-languages/esm are globally mocked in setup.ts.
@@ -83,31 +84,7 @@ const mockTab: QueryEditorTabType = {
   connectionId: 'conn-1',
 }
 
-function emptyAiTabState(overrides: Partial<import('../../../stores/ai-store').TabAiState> = {}) {
-  return {
-    messages: [],
-    isGenerating: false,
-    activeStreamId: null,
-    previousResponseId: null,
-    attachedContext: null,
-    isPanelOpen: false,
-    error: null,
-    providedChunkKeys: {},
-    cumulativeSchemaTokens: 0,
-    providedMemoryIds: {},
-    lastCompletedSystemPrompt: '',
-    lastCompletedTransport: null,
-    lastCompletedEndpoint: '',
-    lastCompletedModel: '',
-    activeRequestEndpoint: '',
-    activeRequestModel: '',
-    activeStreamHasAssistantOutput: false,
-    isWaitingForIndex: false,
-    connectionId: null,
-    _unlisten: null,
-    ...overrides,
-  }
-}
+const emptyAiTabState = makeAiTabState
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })

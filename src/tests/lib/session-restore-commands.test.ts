@@ -10,7 +10,6 @@ let getSettingReturn: string | null = null
 
 beforeEach(() => {
   getSettingReturn = null
-  ipc.reset()
   ipc.override('set_setting', () => null)
   ipc.override('get_setting', () => getSettingReturn)
 })

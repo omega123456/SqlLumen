@@ -10,6 +10,7 @@ import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
+import { makeAiTabState } from '../helpers/ai-test-utils'
 import { ipc } from '../ipc-mock'
 import type {
   TableDataTab,
@@ -394,28 +395,10 @@ describe('useWorkspaceStore — reorderWorkspaceTab', () => {
 
     useAiStore.setState({
       tabs: {
-        [q1]: {
+        [q1]: makeAiTabState({
           messages: [{ id: 'm1', role: 'user', content: 'hello', timestamp: 1 }],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
           isPanelOpen: true,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        }),
       },
     })
 
@@ -1239,28 +1222,10 @@ describe('useWorkspaceStore — AI store cleanup', () => {
     // Set up AI state for the tab
     useAiStore.setState({
       tabs: {
-        [tabId]: {
+        [tabId]: makeAiTabState({
           messages: [{ id: '1', role: 'user', content: 'hello', timestamp: 1 }],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
           isPanelOpen: true,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        }),
       },
     })
 
@@ -1275,28 +1240,7 @@ describe('useWorkspaceStore — AI store cleanup', () => {
 
     useAiStore.setState({
       tabs: {
-        [tabId]: {
-          messages: [],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
-          isPanelOpen: false,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        [tabId]: makeAiTabState(),
       },
     })
 
@@ -1311,50 +1255,8 @@ describe('useWorkspaceStore — AI store cleanup', () => {
 
     useAiStore.setState({
       tabs: {
-        [tabId1]: {
-          messages: [],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
-          isPanelOpen: true,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
-        [tabId2]: {
-          messages: [],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
-          isPanelOpen: false,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        [tabId1]: makeAiTabState({ isPanelOpen: true }),
+        [tabId2]: makeAiTabState(),
       },
     })
 
@@ -1372,28 +1274,7 @@ describe('useWorkspaceStore — AI store cleanup', () => {
 
     useAiStore.setState({
       tabs: {
-        [tabId]: {
-          messages: [],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
-          isPanelOpen: false,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        [tabId]: makeAiTabState(),
       },
     })
 
@@ -1408,28 +1289,7 @@ describe('useWorkspaceStore — AI store cleanup', () => {
 
     useAiStore.setState({
       tabs: {
-        [tabId]: {
-          messages: [],
-          isGenerating: false,
-          activeStreamId: null,
-          previousResponseId: null,
-          attachedContext: null,
-          isPanelOpen: false,
-          error: null,
-          providedChunkKeys: {},
-          cumulativeSchemaTokens: 0,
-          providedMemoryIds: {},
-          lastCompletedSystemPrompt: '',
-          lastCompletedTransport: null,
-          lastCompletedEndpoint: '',
-          lastCompletedModel: '',
-          activeRequestEndpoint: '',
-          activeRequestModel: '',
-          activeStreamHasAssistantOutput: false,
-          isWaitingForIndex: false,
-          connectionId: null,
-          _unlisten: null,
-        },
+        [tabId]: makeAiTabState(),
       },
     })
 
