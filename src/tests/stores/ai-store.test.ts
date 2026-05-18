@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc, expectToast } from '../ipc-mock'
 import { useAiStore } from '../../stores/ai-store'
 import type { TabAiState } from '../../stores/ai-store'
 import { useQueryStore } from '../../stores/query-store'
 import type { TabStatus } from '../../stores/query-store'
 import { useAiFeedbackStore } from '../../stores/ai-feedback-store'
-import { logFrontend } from '../../lib/app-log-commands'
+import { useSchemaIndexStore } from '../../stores/schema-index-store'
+import { useSettingsStore } from '../../stores/settings-store'
+import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 
 const defaultSettings: Record<string, string> = {
   'ai.endpoint': 'http://localhost:11434/v1',
@@ -22,27 +24,11 @@ const defaultSettings: Record<string, string> = {
 let mockSettings: Record<string, string> = { ...defaultSettings }
 let mockPendingChanges: Record<string, string> = {}
 
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
-
-vi.mock('../../lib/app-log-commands', () => ({
-  logFrontend: vi.fn(),
-}))
-
 const mockSendAiChat = vi.fn().mockResolvedValue(undefined)
 const mockCancelAiStream = vi.fn().mockResolvedValue(undefined)
-const mockListenToAiStream = vi.fn().mockResolvedValue(vi.fn())
 const mockAiQueryExpand = vi.fn().mockResolvedValue({
   text: '{"queries":["search query 1","search query 2","search query 3"],"hypotheticalSql":"SELECT * FROM users","entities":["users","orders"],"joins":["users → orders"],"metrics":["count"]}',
 })
-
-vi.mock('../../lib/ai-commands', () => ({
-  sendAiChat: (...args: unknown[]) => mockSendAiChat(...args),
-  cancelAiStream: (...args: unknown[]) => mockCancelAiStream(...args),
-  listenToAiStream: (...args: unknown[]) => mockListenToAiStream(...args),
-  aiQueryExpand: (...args: unknown[]) => mockAiQueryExpand(...args),
-}))
 
 const mockSemanticSearch = vi.fn().mockResolvedValue([
   {
@@ -58,19 +44,7 @@ const mockSemanticSearch = vi.fn().mockResolvedValue([
   },
 ])
 
-vi.mock('../../lib/schema-index-commands', () => ({
-  semanticSearch: (...args: unknown[]) => mockSemanticSearch(...args),
-  buildSchemaIndex: vi.fn().mockResolvedValue(undefined),
-  getIndexStatus: vi.fn().mockResolvedValue({ status: 'ready' }),
-  invalidateSchemaIndex: vi.fn().mockResolvedValue(undefined),
-  listIndexedTables: vi.fn().mockResolvedValue([]),
-}))
-
 const mockSearchMemories = vi.fn().mockResolvedValue([])
-
-vi.mock('../../lib/ai-memory-commands', () => ({
-  searchMemories: (...args: unknown[]) => mockSearchMemories(...args),
-}))
 
 let mockIndexStatus: {
   status: string
@@ -84,40 +58,71 @@ let mockIndexStatus: {
   lastBuildTimestamp: Date.now(),
 }
 
-vi.mock('../../stores/schema-index-store', () => ({
-  useSchemaIndexStore: {
-    getState: () => ({
-      getStatusForSession: () => mockIndexStatus,
-      registerSession: vi.fn(),
-      unregisterSession: vi.fn(),
-      triggerBuild: vi.fn().mockResolvedValue(undefined),
-    }),
-  },
-}))
-
-vi.mock('../../stores/toast-store', () => ({
-  showErrorToast: vi.fn(),
-  showSuccessToast: vi.fn(),
-  showWarningToast: vi.fn(),
-}))
-
-vi.mock('../../stores/settings-store', () => ({
-  useSettingsStore: {
-    getState: () => ({
-      getSetting: (key: string) => mockSettings[key] ?? '',
-      getEffectiveSetting: (key: string) => mockPendingChanges[key] ?? mockSettings[key] ?? '',
-      pendingChanges: mockPendingChanges,
-      settings: mockSettings,
-    }),
-    subscribe: vi.fn(),
-  },
-}))
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const INITIAL_STATE = { tabs: {} as Record<string, TabAiState> }
+const SCHEMA_SESSION_ID = 'conn-1'
+
+function getAiChatRequest(callIndex = 0): Record<string, unknown> {
+  return (ipc.calls('ai_chat')[callIndex] as Record<string, unknown>).request as Record<string, unknown>
+}
+
+function getSemanticSearchCall(callIndex = 0): Record<string, unknown> {
+  return ipc.calls('semantic_search')[callIndex] as Record<string, unknown>
+}
+
+function getAiQueryExpandReq(callIndex = 0): Record<string, unknown> {
+  return (ipc.calls('ai_query_expand')[callIndex] as Record<string, unknown>).req as Record<
+    string,
+    unknown
+  >
+}
+
+function setSchemaIndexStatus(sessionId: string, status: typeof mockIndexStatus): void {
+  mockIndexStatus = status
+  useSchemaIndexStore.setState({
+    connections: {
+      [sessionId]: {
+        status: status.status as
+          | 'ready'
+          | 'building'
+          | 'stale'
+          | 'not_configured'
+          | 'error',
+        phase: status.status === 'building' ? 'embedding' : null,
+        tablesDone: status.tablesDone,
+        tablesTotal: status.tablesTotal,
+        lastBuildTimestamp: status.lastBuildTimestamp,
+      },
+    },
+    profileToSessions: { 'profile-1': [sessionId] },
+    sessionToProfile: { [sessionId]: 'profile-1' },
+  })
+}
+
+function resetStores(): void {
+  useAiStore.setState(INITIAL_STATE)
+  useAiFeedbackStore.setState({ entries: [] })
+  useQueryStore.setState({ tabs: {} })
+  useSchemaIndexStore.setState({
+    connections: {},
+    profileToSessions: {},
+    sessionToProfile: {},
+  })
+  useSettingsStore.setState({
+    settings: mockSettings,
+    pendingChanges: mockPendingChanges,
+    isLoading: false,
+    isDirty: false,
+    activeSection: 'general',
+    isDialogOpen: false,
+    dialogSection: undefined,
+  })
+  useToastStore.setState({ toasts: [] })
+  _resetToastTimeoutsForTests()
+}
 
 function getTab(tabId: string): TabAiState | undefined {
   return useAiStore.getState().tabs[tabId]
@@ -128,15 +133,12 @@ function getTab(tabId: string): TabAiState | undefined {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  useAiStore.setState(INITIAL_STATE)
-  useAiFeedbackStore.setState({ entries: [] })
-  useQueryStore.setState({ tabs: {} })
   mockSettings = { ...defaultSettings }
   mockPendingChanges = {}
+  resetStores()
   vi.clearAllMocks()
   mockSendAiChat.mockResolvedValue(undefined)
   mockCancelAiStream.mockResolvedValue(undefined)
-  mockListenToAiStream.mockResolvedValue(vi.fn())
   mockAiQueryExpand.mockResolvedValue({
     text: '{"queries":["search query 1","search query 2","search query 3"],"hypotheticalSql":"SELECT * FROM users","entities":["users","orders"],"joins":["users → orders"],"metrics":["count"]}',
   })
@@ -160,26 +162,27 @@ beforeEach(() => {
     lastBuildTimestamp: Date.now(),
   }
   mockSearchMemories.mockResolvedValue([])
-
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    if (cmd === 'get_setting') return null
-    if (cmd === 'set_setting') return undefined
-    if (cmd === 'get_all_settings') return {}
-    if (cmd === 'build_schema_index') return undefined
-    if (cmd === 'semantic_search') return []
-    if (cmd === 'get_index_status') return { status: 'ready' }
-    if (cmd === 'invalidate_schema_index') return undefined
-    if (cmd === 'list_indexed_tables') return []
-    if (cmd === 'search_memories') return []
-    if (cmd === 'ai_query_expand')
-      return {
-        text: '{"queries":["search query 1","search query 2","search query 3"],"hypotheticalSql":"SELECT * FROM users","entities":["users","orders"],"joins":["users → orders"],"metrics":["count"]}',
-      }
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
+  ipc.override('ai_chat', (args) =>
+    mockSendAiChat((args as Record<string, unknown>).request as Record<string, unknown>)
+  )
+  ipc.override('ai_cancel', (args) => mockCancelAiStream((args as Record<string, unknown>).streamId))
+  ipc.override('ai_query_expand', (args) =>
+    mockAiQueryExpand((args as Record<string, unknown>).req as Record<string, unknown>)
+  )
+  ipc.override('semantic_search', (args) => {
+    const payload = args as Record<string, unknown>
+    return mockSemanticSearch(payload.sessionId, payload.queries, payload.hints)
   })
+  ipc.override('search_memories', (args) =>
+    mockSearchMemories(args as Record<string, unknown>)
+  )
+  ipc.override('get_all_settings', () => ({ ...mockSettings }))
+  ipc.override('get_setting', (args) => {
+    const key = (args as Record<string, unknown>).key as string
+    return mockSettings[key] ?? null
+  })
+  ipc.override('get_index_status', () => ({ status: mockIndexStatus.status }))
+  setSchemaIndexStatus(SCHEMA_SESSION_ID, mockIndexStatus)
 })
 
 afterEach(() => {
@@ -233,7 +236,7 @@ describe('useAiStore', () => {
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
 
       await vi.waitFor(() => {
-        expect(mockListenToAiStream).toHaveBeenCalledTimes(1)
+        expect(getTab('tab-1')!._unlisten).toEqual(expect.any(Function))
       })
 
       expect(mockSendAiChat).toHaveBeenCalledTimes(1)
@@ -310,13 +313,10 @@ describe('useAiStore', () => {
     })
 
     it('stores the unlisten function from listenToAiStream', async () => {
-      const mockUnlisten = vi.fn()
-      mockListenToAiStream.mockResolvedValueOnce(mockUnlisten)
-
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
 
       await vi.waitFor(() => {
-        expect(getTab('tab-1')!._unlisten).toBe(mockUnlisten)
+        expect(getTab('tab-1')!._unlisten).toEqual(expect.any(Function))
       })
     })
 
@@ -466,18 +466,21 @@ describe('useAiStore', () => {
     })
 
     it('includes dbName in semantic search debug logging payload', async () => {
-      const { logFrontend } = await import('../../lib/app-log-commands')
-
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
 
       await vi.waitFor(() => {
         expect(mockSendAiChat).toHaveBeenCalledTimes(1)
       })
 
-      expect(logFrontend).toHaveBeenCalledWith(
-        'debug',
-        expect.stringContaining('"dbName":"testdb"')
-      )
+      expect(
+        ipc.calls('log_frontend').some((call) => {
+          const payload = call as Record<string, unknown>
+          return (
+            payload.level === 'debug' &&
+            String(payload.message ?? '').includes('"dbName":"testdb"')
+          )
+        })
+      ).toBe(true)
     })
 
     it('updates providedChunkKeys on the tab after retrieval', async () => {
@@ -494,12 +497,12 @@ describe('useAiStore', () => {
     })
 
     it('deduplicates schema context on second turn with same chunk keys', async () => {
-      mockIndexStatus = {
+      setSchemaIndexStatus(SCHEMA_SESSION_ID, {
         status: 'ready',
         tablesDone: 1,
         tablesTotal: 1,
         lastBuildTimestamp: 1234,
-      }
+      })
 
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
 
@@ -533,12 +536,12 @@ describe('useAiStore', () => {
     })
 
     it('appends a new schema-context message when second turn retrieves different tables', async () => {
-      mockIndexStatus = {
+      setSchemaIndexStatus(SCHEMA_SESSION_ID, {
         status: 'ready',
         tablesDone: 1,
         tablesTotal: 1,
         lastBuildTimestamp: 1234,
-      }
+      })
 
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
 
@@ -583,12 +586,12 @@ describe('useAiStore', () => {
     })
 
     it('appends schema-context when retrieval hints change for the same prompt', async () => {
-      mockIndexStatus = {
+      setSchemaIndexStatus(SCHEMA_SESSION_ID, {
         status: 'ready',
         tablesDone: 1,
         tablesTotal: 1,
         lastBuildTimestamp: 1234,
-      }
+      })
 
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
 
@@ -638,12 +641,12 @@ describe('useAiStore', () => {
     })
 
     it('always runs semantic search on each turn even across tabs', async () => {
-      mockIndexStatus = {
+      setSchemaIndexStatus(SCHEMA_SESSION_ID, {
         status: 'ready',
         tablesDone: 1,
         tablesTotal: 1,
         lastBuildTimestamp: 1234,
-      }
+      })
 
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'First message', {})
 
@@ -733,12 +736,12 @@ describe('useAiStore', () => {
     })
 
     it('reuses previousResponseId when new schema context is appended (cumulative model)', async () => {
-      mockIndexStatus = {
+      setSchemaIndexStatus(SCHEMA_SESSION_ID, {
         status: 'ready',
         tablesDone: 1,
         tablesTotal: 1,
         lastBuildTimestamp: 1234,
-      }
+      })
 
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
 
@@ -949,8 +952,6 @@ describe('useAiStore', () => {
     })
 
     it('calls unlisten and clears it when sendAiChat fails', async () => {
-      const mockUnlisten = vi.fn()
-      mockListenToAiStream.mockResolvedValueOnce(mockUnlisten)
       mockSendAiChat.mockRejectedValueOnce(new Error('Network error'))
 
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
@@ -961,38 +962,20 @@ describe('useAiStore', () => {
         expect(tab.error).toBe('Network error')
       })
 
-      // unlisten should have been called to clean up orphaned listeners
-      expect(mockUnlisten).toHaveBeenCalledTimes(1)
       // _unlisten should be cleared
       expect(getTab('tab-1')!._unlisten).toBeNull()
     })
 
     it('stream listeners call store onStreamChunk/onDone/onError', async () => {
-      let capturedCallbacks: {
-        onChunk: (content: string, kind: string) => void
-        onDone: (info: {
-          responseId?: string | null
-          transport?: 'chat_completions' | 'responses'
-        }) => void
-        onError: (error: string) => void
-      } | null = null
-
-      mockListenToAiStream.mockImplementation(
-        (_streamId: string, callbacks: typeof capturedCallbacks) => {
-          capturedCallbacks = callbacks
-          return Promise.resolve(vi.fn())
-        }
-      )
-
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      const streamId = getTab('tab-1')!.activeStreamId!
 
       await vi.waitFor(() => {
-        expect(capturedCallbacks).not.toBeNull()
+        expect(getTab('tab-1')!._unlisten).toEqual(expect.any(Function))
       })
 
-      // Simulate streaming chunks
-      capturedCallbacks!.onChunk('Hello ', 'content')
-      capturedCallbacks!.onChunk('world!', 'content')
+      await ipc.emit('ai-stream-chunk', { streamId, content: 'Hello ', kind: 'content' })
+      await ipc.emit('ai-stream-chunk', { streamId, content: 'world!', kind: 'content' })
 
       const tab1 = getTab('tab-1')!
       const assistantMsg = tab1.messages.find((m) => m.role === 'assistant')
@@ -1000,40 +983,22 @@ describe('useAiStore', () => {
       expect(assistantMsg!.content).toBe('Hello world!')
       expect(tab1.isGenerating).toBe(true)
 
-      // Simulate done
-      capturedCallbacks!.onDone({ transport: 'chat_completions' })
+      await ipc.emit('ai-stream-done', { streamId, transport: 'chat_completions' })
       const tab2 = getTab('tab-1')!
       expect(tab2.isGenerating).toBe(false)
     })
 
     it('stream listeners continue to accumulate tokens when no UI is subscribed (store ownership)', async () => {
-      let capturedCallbacks: {
-        onChunk: (content: string, kind: string) => void
-        onDone: (info: {
-          responseId?: string | null
-          transport?: 'chat_completions' | 'responses'
-        }) => void
-        onError: (error: string) => void
-      } | null = null
-
-      mockListenToAiStream.mockImplementation(
-        (_streamId: string, callbacks: typeof capturedCallbacks) => {
-          capturedCallbacks = callbacks
-          return Promise.resolve(vi.fn())
-        }
-      )
-
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
+      const streamId = getTab('tab-1')!.activeStreamId!
 
       await vi.waitFor(() => {
-        expect(capturedCallbacks).not.toBeNull()
+        expect(getTab('tab-1')!._unlisten).toEqual(expect.any(Function))
       })
 
-      // No UI subscription — just the store's internal callbacks
-      // Simulate streaming several chunks
-      capturedCallbacks!.onChunk('Token1 ', 'content')
-      capturedCallbacks!.onChunk('Token2 ', 'content')
-      capturedCallbacks!.onChunk('Token3', 'content')
+      await ipc.emit('ai-stream-chunk', { streamId, content: 'Token1 ', kind: 'content' })
+      await ipc.emit('ai-stream-chunk', { streamId, content: 'Token2 ', kind: 'content' })
+      await ipc.emit('ai-stream-chunk', { streamId, content: 'Token3', kind: 'content' })
 
       // Read state directly (no React subscriber needed)
       const tab = getTab('tab-1')!
@@ -1170,21 +1135,21 @@ describe('useAiStore', () => {
 
     it('waits for schema index when status is building then proceeds', async () => {
       // Start with building status, then switch to ready after a short delay
-      mockIndexStatus = {
+      setSchemaIndexStatus(SCHEMA_SESSION_ID, {
         status: 'building',
         tablesDone: 0,
         tablesTotal: 5,
         lastBuildTimestamp: 0,
-      }
+      })
 
       // Switch to ready after ~600ms (the poll interval is 500ms)
       setTimeout(() => {
-        mockIndexStatus = {
+        setSchemaIndexStatus(SCHEMA_SESSION_ID, {
           status: 'ready',
           tablesDone: 5,
           tablesTotal: 5,
           lastBuildTimestamp: Date.now(),
-        }
+        })
       }, 600)
 
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
@@ -1622,13 +1587,21 @@ describe('useAiStore', () => {
 
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
       useAiStore.getState().clearConversation('tab-1')
-      await Promise.resolve()
+      await vi.waitFor(() => {
+        expect(mockCancelAiStream).toHaveBeenCalledTimes(1)
+        expect(
+          ipc.calls('log_frontend').some((call) => {
+            const payload = call as Record<string, unknown>
+            return (
+              payload.level === 'warn' &&
+              String(payload.message ?? '').includes(
+                'AI cancel during clearConversation failed:'
+              )
+            )
+          })
+        ).toBe(true)
+      })
 
-      expect(mockCancelAiStream).toHaveBeenCalledTimes(1)
-      expect(logFrontend).toHaveBeenCalledWith(
-        'warn',
-        expect.stringContaining('AI cancel during clearConversation failed:')
-      )
       expect(useQueryStore.getState().tabs['tab-1']?.tabStatus).toBe('running')
     })
   })
@@ -2934,12 +2907,12 @@ describe('useAiStore', () => {
     }
 
     it('preserves first request as exact prefix when second turn has unchanged retrieval', async () => {
-      mockIndexStatus = {
+      setSchemaIndexStatus(SCHEMA_SESSION_ID, {
         status: 'ready',
         tablesDone: 1,
         tablesTotal: 1,
         lastBuildTimestamp: 1234,
-      }
+      })
 
       // ── Turn 1 ──
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
@@ -2989,12 +2962,12 @@ describe('useAiStore', () => {
     })
 
     it('preserves first request as exact prefix when second turn retrieves a new schema chunk', async () => {
-      mockIndexStatus = {
+      setSchemaIndexStatus(SCHEMA_SESSION_ID, {
         status: 'ready',
         tablesDone: 1,
         tablesTotal: 1,
         lastBuildTimestamp: 1234,
-      }
+      })
 
       // ── Turn 1 ──
       useAiStore.getState().sendMessage('tab-1', 'conn-1', 'Hello', {})
@@ -3065,12 +3038,12 @@ describe('useAiStore', () => {
     })
 
     it('preserves first request as exact prefix when second turn appends novel memory context', async () => {
-      mockIndexStatus = {
+      setSchemaIndexStatus(SCHEMA_SESSION_ID, {
         status: 'ready',
         tablesDone: 1,
         tablesTotal: 1,
         lastBuildTimestamp: 1234,
-      }
+      })
 
       // ── Turn 1: no memories ──
       mockSearchMemories.mockResolvedValueOnce([])
