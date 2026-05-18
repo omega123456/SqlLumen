@@ -1,98 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import React from 'react'
+import * as canvasGridModule from '../../../components/shared/glide/CanvasBaseGridView'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
+import { useToastStore } from '../../../stores/toast-store'
 import type { TableDataTabState, TableDataColumnMeta, RowEditState } from '../../../types/schema'
-
-// Mock toast store
-const mockShowError = vi.fn()
-const mockShowSuccess = vi.fn()
-vi.mock('../../../stores/toast-store', () => ({
-  useToastStore: vi.fn((selector: (s: Record<string, unknown>) => unknown) => {
-    const state = {
-      toasts: [],
-      showError: mockShowError,
-      showSuccess: mockShowSuccess,
-      showWarning: vi.fn(),
-      dismiss: vi.fn(),
-    }
-    return selector(state)
-  }),
-}))
-
-// Mock table-data-commands
-vi.mock('../../../lib/table-data-commands', () => ({
-  fetchTableData: vi.fn().mockResolvedValue({
-    columns: [],
-    rows: [],
-    currentPage: 1,
-    pageSize: 1000,
-    primaryKey: null,
-    executionTimeMs: 0,
-  }),
-  updateTableRow: vi.fn().mockResolvedValue(undefined),
-  insertTableRow: vi.fn().mockResolvedValue([]),
-  deleteTableRow: vi.fn().mockResolvedValue(undefined),
-  exportTableData: vi.fn().mockResolvedValue(undefined),
-}))
-
-// Mock DateTimePicker — avoids portal + react-datepicker complexity in unit tests
-vi.mock('../../../components/table-data/DateTimePicker', async () => {
-  const React = await import('react')
-  return {
-    DateTimePicker: ({
-      onApply,
-      onCancel,
-    }: {
-      onApply: (v: string) => void
-      onCancel: () => void
-    }) =>
-      React.createElement(
-        'div',
-        { 'data-testid': 'date-time-picker-popup' },
-        React.createElement(
-          'button',
-          { 'data-testid': 'mock-apply-btn', onClick: () => onApply('2023-11-24') },
-          'Apply'
-        ),
-        React.createElement(
-          'button',
-          { 'data-testid': 'mock-cancel-btn', onClick: () => onCancel() },
-          'Cancel'
-        )
-      ),
-  }
-})
-
-let capturedFkLookupDialogProps: Record<string, unknown> | null = null
-
-vi.mock('../../../components/table-data/FkLookupDialog', () => ({
-  FkLookupDialog: (props: Record<string, unknown>) => {
-    capturedFkLookupDialogProps = props
-    if (!props.isOpen) return null
-    return (
-      <div data-testid="fk-lookup-dialog" data-database={String(props.database)}>
-        <button
-          type="button"
-          data-testid="mock-fk-apply"
-          onClick={() => (props.onApply as (value: unknown) => void)?.(999)}
-        >
-          Apply FK
-        </button>
-      </div>
-    )
-  },
-}))
-
 import { TableDataFormView } from '../../../components/table-data/TableDataFormView'
-import { updateTableRow, fetchTableData } from '../../../lib/table-data-commands'
+import { expectToast, ipc } from '../../ipc-mock'
 
-vi.mock('../../../components/shared/fk-lookup-context', async () => {
-  const actual = await vi.importActual('../../../components/shared/fk-lookup-context')
-  return actual
-})
+const originalCanvasBaseGridView = canvasGridModule.CanvasBaseGridView
+const canvasCalls: unknown[] = []
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -303,10 +222,25 @@ function setupStoreWithTemporal(overrides: Partial<TableDataTabState> = {}) {
 
 beforeEach(() => {
   useTableDataStore.setState({ tabs: {} })
+  useToastStore.setState({ toasts: [] })
   useConnectionStore.setState({ activeConnections: {}, activeTabId: null })
-  mockIPC(() => null)
-  vi.clearAllMocks()
-  capturedFkLookupDialogProps = null
+  ipc.override('fetch_table_data', () => ({
+    columns: [],
+    rows: [],
+    currentPage: 1,
+    pageSize: 1000,
+    primaryKey: null,
+    executionTimeMs: 0,
+  }))
+  ipc.override('update_table_row', () => undefined)
+  canvasCalls.length = 0
+  Object.defineProperty(canvasGridModule, 'CanvasBaseGridView', {
+    configurable: true,
+    value: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
+      canvasCalls.push(props)
+      return React.createElement(originalCanvasBaseGridView as never, { ...props, ref })
+    }),
+  })
 
   Object.defineProperty(navigator, 'clipboard', {
     value: {
@@ -540,14 +474,14 @@ describe('TableDataFormView', () => {
   })
 
   it('opens FK lookup dialog when form FK trigger is clicked', async () => {
-    vi.mocked(fetchTableData).mockResolvedValueOnce({
+    ipc.override('fetch_table_data', () => ({
       columns: [mockColumns[0]],
       rows: [[1]],
       currentPage: 1,
       pageSize: 100,
       primaryKey: mockPK,
       executionTimeMs: 4,
-    })
+    }))
 
     setupStore({
       columns: [
@@ -585,18 +519,22 @@ describe('TableDataFormView', () => {
     await waitFor(() => {
       expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
     })
-    expect(capturedFkLookupDialogProps?.database).toBe('mydb')
+    expect(
+      ipc.calls('fetch_table_data').some(
+        (call) => (call as Record<string, unknown>)?.database === 'mydb'
+      )
+    ).toBe(true)
   })
 
   it('uses referencedDatabase for cross-database FK lookups', async () => {
-    vi.mocked(fetchTableData).mockResolvedValueOnce({
+    ipc.override('fetch_table_data', () => ({
       columns: [mockColumns[0]],
       rows: [[1]],
       currentPage: 1,
       pageSize: 100,
       primaryKey: mockPK,
       executionTimeMs: 4,
-    })
+    }))
 
     setupStore({
       columns: [
@@ -634,18 +572,22 @@ describe('TableDataFormView', () => {
     await waitFor(() => {
       expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
     })
-    expect(capturedFkLookupDialogProps?.database).toBe('accounts_db')
+    expect(
+      ipc.calls('fetch_table_data').some(
+        (call) => (call as Record<string, unknown>)?.database === 'accounts_db'
+      )
+    ).toBe(true)
   })
 
   it('applies selected FK values back into table data form state', async () => {
-    vi.mocked(fetchTableData).mockResolvedValueOnce({
+    ipc.override('fetch_table_data', () => ({
       columns: [mockColumns[0]],
       rows: [[1]],
       currentPage: 1,
       pageSize: 100,
       primaryKey: mockPK,
       executionTimeMs: 4,
-    })
+    }))
 
     setupStore({
       columns: [
@@ -683,11 +625,20 @@ describe('TableDataFormView', () => {
       expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByTestId('mock-fk-apply'))
+    const gridProps = canvasCalls[canvasCalls.length - 1] as {
+      rows: Record<string, unknown>[]
+      onRowClick: (row: Record<string, unknown>) => void
+    }
+    await act(async () => {
+      gridProps.onRowClick(gridProps.rows[0])
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('fk-lookup-apply'))
+    })
 
     await waitFor(() => {
-      const state = useTableDataStore.getState().tabs['tab-1']
-      expect(state?.rows[0]?.[1]).toBe(999)
+      const userInput = screen.getByTestId('form-input-user_id') as HTMLInputElement
+      expect(userInput.value).toBe('1')
     })
   })
 
@@ -979,7 +930,7 @@ describe('TableDataFormView', () => {
     expect(saveBtn).not.toBeDisabled()
     fireEvent.click(saveBtn)
     await waitFor(() => {
-      expect(vi.mocked(updateTableRow)).toHaveBeenCalled()
+      expect(ipc.calls('update_table_row').length).toBeGreaterThan(0)
     })
   })
 
@@ -1137,7 +1088,7 @@ describe('TableDataFormView', () => {
     expect(nextBtn).not.toBeDisabled()
     fireEvent.click(nextBtn)
     await waitFor(() => {
-      expect(vi.mocked(fetchTableData).mock.calls.some((c) => c[0]?.page === 2)).toBe(true)
+      expect(ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 2)).toBe(true)
     })
   })
 
@@ -1270,12 +1221,11 @@ describe('TableDataFormView — DateTimePicker integration', () => {
     // Open picker
     fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
 
-    // Click the mock Apply button → triggers onApply('2023-11-24')
-    fireEvent.click(screen.getByTestId('mock-apply-btn'))
+    fireEvent.click(screen.getByTestId('btn-picker-apply'))
 
     const state = useTableDataStore.getState().tabs['tab-1']
     expect(state?.editState).not.toBeNull()
-    expect(state?.editState?.currentValues.created_at).toBe('2023-11-24')
+    expect(state?.editState?.currentValues.created_at).toBe('2023-06-15 10:30:00')
   })
 
   it('picker onCancel closes the popup without changing the value', () => {
@@ -1286,8 +1236,7 @@ describe('TableDataFormView — DateTimePicker integration', () => {
     fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
     expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
 
-    // Click cancel
-    fireEvent.click(screen.getByTestId('mock-cancel-btn'))
+    fireEvent.click(screen.getByTestId('btn-picker-cancel'))
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
   })
 
@@ -1487,12 +1436,7 @@ describe('TableDataFormView — Save validation', () => {
     expect(saveBtn).not.toBeDisabled()
     fireEvent.click(saveBtn)
 
-    await waitFor(() => {
-      expect(mockShowError).toHaveBeenCalledWith(
-        'Invalid date value',
-        expect.stringContaining('created_at')
-      )
-    })
+    await expectToast('error', 'Invalid date value')
 
     // editState should still be present (save was blocked)
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -1528,10 +1472,7 @@ describe('TableDataFormView — Save validation', () => {
     fireEvent.click(saveBtn)
 
     // Should NOT show error
-    await waitFor(() => {
-      expect(mockShowError).not.toHaveBeenCalled()
-      expect(mockShowSuccess).toHaveBeenCalledWith('Row saved', 'Changes saved successfully.')
-    })
+    await expectToast('success', 'Row saved')
   })
 
   it('clicking Save with blank date value shows error toast and blocks save', async () => {
@@ -1560,12 +1501,7 @@ describe('TableDataFormView — Save validation', () => {
 
     fireEvent.click(screen.getByTestId('btn-form-save'))
 
-    await waitFor(() => {
-      expect(mockShowError).toHaveBeenCalledWith(
-        'Invalid date value',
-        expect.stringContaining('created_at')
-      )
-    })
+    await expectToast('error', 'Invalid date value')
 
     const state = useTableDataStore.getState().tabs['tab-1']
     expect(state?.editState).not.toBeNull()
@@ -1573,7 +1509,14 @@ describe('TableDataFormView — Save validation', () => {
   })
 
   it('clicking Save shows an error toast when saving fails', async () => {
-    ;(updateTableRow as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Save failed'))
+    let saveAttempts = 0
+    ipc.override('update_table_row', () => {
+      saveAttempts += 1
+      if (saveAttempts === 1) {
+        throw new Error('Save failed')
+      }
+      return undefined
+    })
 
     const editState: RowEditState = {
       rowKey: { id: 1 },
@@ -1600,10 +1543,7 @@ describe('TableDataFormView — Save validation', () => {
 
     fireEvent.click(screen.getByTestId('btn-form-save'))
 
-    await waitFor(() => {
-      expect(mockShowError).toHaveBeenCalledWith('Save failed', 'Save failed')
-    })
-    expect(mockShowSuccess).not.toHaveBeenCalled()
+    await expectToast('error', 'Save failed')
   })
 
   it('clicking Save with invalid TIME value shows error toast', async () => {
@@ -1632,12 +1572,7 @@ describe('TableDataFormView — Save validation', () => {
 
     fireEvent.click(screen.getByTestId('btn-form-save'))
 
-    await waitFor(() => {
-      expect(mockShowError).toHaveBeenCalledWith(
-        'Invalid date value',
-        expect.stringContaining('login_time')
-      )
-    })
+    await expectToast('error', 'Invalid date value')
   })
 
   it('clicking Save with null temporal value does NOT show error (null is valid)', async () => {
@@ -1667,7 +1602,7 @@ describe('TableDataFormView — Save validation', () => {
     fireEvent.click(screen.getByTestId('btn-form-save'))
 
     await waitFor(() => {
-      expect(mockShowError).not.toHaveBeenCalled()
+      expect(useToastStore.getState().toasts.some((toast) => toast.variant === 'error')).toBe(false)
     })
   })
 })

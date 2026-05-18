@@ -1,40 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
+import { useToastStore } from '../../../stores/toast-store'
 import type { TableDataTabState } from '../../../types/schema'
-
-// Mock toast store
-const mockShowSuccess = vi.fn()
-vi.mock('../../../stores/toast-store', () => ({
-  useToastStore: vi.fn((selector: (s: Record<string, unknown>) => unknown) => {
-    const state = {
-      toasts: [],
-      showError: vi.fn(),
-      showSuccess: mockShowSuccess,
-      showWarning: vi.fn(),
-      dismiss: vi.fn(),
-    }
-    return selector(state)
-  }),
-}))
-
-// Mock table-data-commands
-vi.mock('../../../lib/table-data-commands', () => ({
-  fetchTableData: vi.fn().mockResolvedValue({
-    columns: [],
-    rows: [],
-    currentPage: 1,
-    pageSize: 1000,
-    primaryKey: null,
-    executionTimeMs: 0,
-  }),
-  updateTableRow: vi.fn().mockResolvedValue(undefined),
-  insertTableRow: vi.fn().mockResolvedValue([]),
-  deleteTableRow: vi.fn().mockResolvedValue(undefined),
-  exportTableData: vi.fn().mockResolvedValue(undefined),
-}))
+import { expectToast, ipc } from '../../ipc-mock'
 
 import { TableDataToolbar } from '../../../components/table-data/TableDataToolbar'
 
@@ -138,7 +108,15 @@ function setupTabState(overrides: Partial<TableDataTabState> = {}) {
 beforeEach(() => {
   useTableDataStore.setState({ tabs: {} })
   useConnectionStore.setState({ activeConnections: {}, activeTabId: null })
-  mockIPC(() => null)
+  useToastStore.setState({ toasts: [] })
+  ipc.override('fetch_table_data', () => ({
+    columns: [],
+    rows: [],
+    currentPage: 1,
+    pageSize: 1000,
+    primaryKey: null,
+    executionTimeMs: 0,
+  }))
   vi.clearAllMocks()
 })
 
@@ -179,7 +157,7 @@ describe('TableDataToolbar — Clear Filter button', () => {
     })
 
     // Toast should be shown
-    expect(mockShowSuccess).toHaveBeenCalledWith('Filters cleared')
+    await expectToast('success', 'Filters cleared')
   })
 
   it('confirming clear filter calls applyFilters([]) and shows "Filters cleared" toast', async () => {
@@ -199,7 +177,7 @@ describe('TableDataToolbar — Clear Filter button', () => {
     })
 
     // Toast should be shown
-    expect(mockShowSuccess).toHaveBeenCalledWith('Filters cleared')
+    await expectToast('success', 'Filters cleared')
   })
 
   it('clear filter button has aria-label', () => {

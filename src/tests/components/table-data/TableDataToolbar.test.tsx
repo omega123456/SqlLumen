@@ -1,48 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'
+import { useToastStore } from '../../../stores/toast-store'
 import type { TableDataTabState } from '../../../types/schema'
-import {
-  updateTableRow,
-  fetchTableData,
-  insertTableRow,
-  deleteTableRow,
-} from '../../../lib/table-data-commands'
-
-// Mock toast store
-const mockShowError = vi.fn()
-const mockShowSuccess = vi.fn()
-vi.mock('../../../stores/toast-store', () => ({
-  useToastStore: vi.fn((selector: (s: Record<string, unknown>) => unknown) => {
-    const state = {
-      toasts: [],
-      showError: mockShowError,
-      showSuccess: mockShowSuccess,
-      showWarning: vi.fn(),
-      dismiss: vi.fn(),
-    }
-    return selector(state)
-  }),
-}))
-
-// Mock table-data-commands
-vi.mock('../../../lib/table-data-commands', () => ({
-  fetchTableData: vi.fn().mockResolvedValue({
-    columns: [],
-    rows: [],
-    currentPage: 1,
-    pageSize: 1000,
-    primaryKey: null,
-    executionTimeMs: 0,
-  }),
-  updateTableRow: vi.fn().mockResolvedValue(undefined),
-  insertTableRow: vi.fn().mockResolvedValue([]),
-  deleteTableRow: vi.fn().mockResolvedValue(undefined),
-  exportTableData: vi.fn().mockResolvedValue(undefined),
-}))
+import { expectToast, ipc } from '../../ipc-mock'
 
 import { TableDataToolbar } from '../../../components/table-data/TableDataToolbar'
 
@@ -129,12 +92,22 @@ function setupTabState(overrides: Partial<TableDataTabState> = {}) {
 
 beforeEach(() => {
   useTableDataStore.setState({ tabs: {} })
+  useToastStore.setState({ toasts: [] })
   useConnectionStore.setState({
     activeConnections: {},
     activeTabId: null,
   })
-  mockIPC(() => null)
-  vi.clearAllMocks()
+  ipc.override('fetch_table_data', () => ({
+    columns: [],
+    rows: [],
+    currentPage: 1,
+    pageSize: 1000,
+    primaryKey: null,
+    executionTimeMs: 0,
+  }))
+  ipc.override('update_table_row', () => undefined)
+  ipc.override('insert_table_row', () => [])
+  ipc.override('delete_table_row', () => undefined)
 })
 
 describe('TableDataToolbar', () => {
@@ -285,11 +258,11 @@ describe('TableDataToolbar', () => {
     setupConnection()
     setupTabState({ pageSize: 1000 })
     render(<TableDataToolbar tabId="tab-1" />)
-    const callsBefore = vi.mocked(fetchTableData).mock.calls.length
+    const callsBefore = ipc.calls('fetch_table_data').length
     await user.click(screen.getByTestId('page-size-select'))
     await user.click(screen.getByRole('option', { name: '500' }))
     await waitFor(() => {
-      expect(vi.mocked(fetchTableData).mock.calls.length).toBeGreaterThan(callsBefore)
+      expect(ipc.calls('fetch_table_data').length).toBeGreaterThan(callsBefore)
     })
   })
 
@@ -421,7 +394,7 @@ describe('TableDataToolbar', () => {
     fireEvent.click(screen.getByTestId('btn-save'))
 
     await waitFor(() => {
-      expect(vi.mocked(insertTableRow)).toHaveBeenCalled()
+      expect(ipc.calls('insert_table_row').length).toBeGreaterThan(0)
     })
   })
 
@@ -485,7 +458,7 @@ describe('TableDataToolbar', () => {
     // Dialog should close
     expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()
     await waitFor(() => {
-      expect(vi.mocked(deleteTableRow)).toHaveBeenCalled()
+      expect(ipc.calls('delete_table_row').length).toBeGreaterThan(0)
     })
   })
 
@@ -560,7 +533,7 @@ describe('TableDataToolbar', () => {
     fireEvent.click(screen.getByTestId('confirm-confirm-button'))
 
     await waitFor(() => {
-      expect(vi.mocked(deleteTableRow)).toHaveBeenCalled()
+      expect(ipc.calls('delete_table_row').length).toBeGreaterThan(0)
     })
     // editState should be cleared (discard + delete)
     const state = useTableDataStore.getState().tabs['tab-1']
@@ -583,7 +556,7 @@ describe('TableDataToolbar', () => {
     expect(saveBtn).not.toBeDisabled()
     fireEvent.click(saveBtn)
     await waitFor(() => {
-      expect(vi.mocked(updateTableRow)).toHaveBeenCalled()
+      expect(ipc.calls('update_table_row').length).toBeGreaterThan(0)
     })
   })
 
@@ -610,12 +583,12 @@ describe('TableDataToolbar', () => {
     setupConnection()
     setupTabState()
     render(<TableDataToolbar tabId="tab-1" />)
-    const callsBefore = vi.mocked(fetchTableData).mock.calls.length
+    const callsBefore = ipc.calls('fetch_table_data').length
     const refreshBtn = screen.getByTestId('btn-refresh')
     expect(refreshBtn).not.toBeDisabled()
     fireEvent.click(refreshBtn)
     await waitFor(() => {
-      expect(vi.mocked(fetchTableData).mock.calls.length).toBeGreaterThan(callsBefore)
+      expect(ipc.calls('fetch_table_data').length).toBeGreaterThan(callsBefore)
     })
   })
 
@@ -641,7 +614,7 @@ describe('TableDataToolbar', () => {
     render(<TableDataToolbar tabId="tab-1" />)
     fireEvent.click(screen.getByTestId('pagination-next'))
     await waitFor(() => {
-      expect(vi.mocked(fetchTableData).mock.calls.some((c) => c[0]?.page === 2)).toBe(true)
+      expect(ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 2)).toBe(true)
     })
   })
 
@@ -656,7 +629,7 @@ describe('TableDataToolbar', () => {
     await user.type(pageInput, '7{Enter}')
 
     await waitFor(() => {
-      expect(vi.mocked(fetchTableData).mock.calls.some((c) => c[0]?.page === 7)).toBe(true)
+      expect(ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 7)).toBe(true)
     })
   })
 
@@ -666,7 +639,7 @@ describe('TableDataToolbar', () => {
     render(<TableDataToolbar tabId="tab-1" />)
     fireEvent.click(screen.getByTestId('pagination-prev'))
     await waitFor(() => {
-      expect(vi.mocked(fetchTableData).mock.calls.some((c) => c[0]?.page === 1)).toBe(true)
+      expect(ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 1)).toBe(true)
     })
   })
 
@@ -803,11 +776,8 @@ describe('TableDataToolbar — Save validation', () => {
     expect(saveBtn).not.toBeDisabled()
     fireEvent.click(saveBtn)
 
-    await waitFor(() => {
-      expect(mockShowError).toHaveBeenCalledWith(
-        'Invalid date value',
-        expect.stringContaining('created_at')
-      )
+    await waitFor(async () => {
+      await expectToast('error', 'Invalid date value')
     })
   })
 
@@ -828,9 +798,8 @@ describe('TableDataToolbar — Save validation', () => {
     fireEvent.click(saveBtn)
 
     // Should NOT show error toast
-    await waitFor(() => {
-      expect(mockShowError).not.toHaveBeenCalled()
-      expect(mockShowSuccess).toHaveBeenCalledWith('Row saved', 'Changes saved successfully.')
+    await waitFor(async () => {
+      await expectToast('success', 'Row saved')
     })
   })
 
@@ -875,16 +844,20 @@ describe('TableDataToolbar — Save validation', () => {
 
     fireEvent.click(screen.getByTestId('btn-save'))
 
-    await waitFor(() => {
-      expect(mockShowError).toHaveBeenCalledWith(
-        'Invalid date value',
-        expect.stringContaining('created_at')
-      )
+    await waitFor(async () => {
+      await expectToast('error', 'Invalid date value')
     })
   })
 
   it('clicking Save shows an error toast when saving fails', async () => {
-    ;(updateTableRow as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Save failed'))
+    let saveAttempts = 0
+    ipc.override('update_table_row', () => {
+      saveAttempts += 1
+      if (saveAttempts === 1) {
+        throw new Error('Save failed')
+      }
+      return undefined
+    })
 
     setupConnection()
     setupTabState({
@@ -900,10 +873,9 @@ describe('TableDataToolbar — Save validation', () => {
 
     fireEvent.click(screen.getByTestId('btn-save'))
 
-    await waitFor(() => {
-      expect(mockShowError).toHaveBeenCalledWith('Save failed', 'Save failed')
+    await waitFor(async () => {
+      await expectToast('error', 'Save failed')
     })
-    expect(mockShowSuccess).not.toHaveBeenCalled()
   })
 
   it('clicking Save with null temporal value does NOT show error', async () => {
@@ -948,7 +920,7 @@ describe('TableDataToolbar — Save validation', () => {
     fireEvent.click(screen.getByTestId('btn-save'))
 
     await waitFor(() => {
-      expect(mockShowError).not.toHaveBeenCalled()
+      expect(useToastStore.getState().toasts.some((toast) => toast.variant === 'error')).toBe(false)
     })
   })
 })
