@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ObjectEditorTab } from '../../../components/object-editor/ObjectEditorTab'
 import { useObjectEditorStore } from '../../../stores/object-editor-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'

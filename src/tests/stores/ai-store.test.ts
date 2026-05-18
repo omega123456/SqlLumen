@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ipc, expectToast } from '../ipc-mock'
+import { ipc } from '../ipc-mock'
 import { useAiStore } from '../../stores/ai-store'
 import type { TabAiState } from '../../stores/ai-store'
 import { useQueryStore } from '../../stores/query-store'
@@ -64,21 +64,6 @@ let mockIndexStatus: {
 
 const INITIAL_STATE = { tabs: {} as Record<string, TabAiState> }
 const SCHEMA_SESSION_ID = 'conn-1'
-
-function getAiChatRequest(callIndex = 0): Record<string, unknown> {
-  return (ipc.calls('ai_chat')[callIndex] as Record<string, unknown>).request as Record<string, unknown>
-}
-
-function getSemanticSearchCall(callIndex = 0): Record<string, unknown> {
-  return ipc.calls('semantic_search')[callIndex] as Record<string, unknown>
-}
-
-function getAiQueryExpandReq(callIndex = 0): Record<string, unknown> {
-  return (ipc.calls('ai_query_expand')[callIndex] as Record<string, unknown>).req as Record<
-    string,
-    unknown
-  >
-}
 
 function setSchemaIndexStatus(sessionId: string, status: typeof mockIndexStatus): void {
   mockIndexStatus = status

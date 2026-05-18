@@ -117,7 +117,8 @@ function restoreWindowProperty<K extends keyof TauriTestWindow>(
 }
 
 function setMockPlatform(platform: 'macos' | 'windows' | 'linux'): void {
-  ;(window as TauriTestWindow).__TAURI_OS_PLUGIN_INTERNALS__ = { platform }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(window as any).__TAURI_OS_PLUGIN_INTERNALS__ = { platform }
 }
 
 describe('useUpdateStore', () => {

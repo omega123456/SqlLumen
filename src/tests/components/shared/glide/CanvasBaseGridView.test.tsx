@@ -1,9 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import React from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentType } from 'react'
 import { GridCellKind } from '@glideapps/glide-data-grid'
 import { CanvasBaseGridView } from '../../../../components/shared/glide/CanvasBaseGridView'
+import * as GlideDataGridModule from '../../../../components/shared/glide/GlideDataGrid'
+
+// GlideDataGrid is a forwardRef object — vi.spyOn can't intercept it.
+// Use Object.defineProperty to replace it per-test (same pattern as ResultGridView.test.tsx).
+
+const originalGlideDataGrid = GlideDataGridModule.GlideDataGrid
 
 const mockGlideDataGrid = vi.fn()
 const mockSelectCell = vi.fn()
@@ -14,21 +21,6 @@ type TestEditorProps = {
   onChange: (value: unknown) => void
   onFinishedEditing: () => void
 }
-
-vi.mock('../../../../components/shared/glide/GlideDataGrid', async () => {
-  const React = await import('react')
-  return {
-    GlideDataGrid: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
-      mockGlideDataGrid(props)
-      React.useImperativeHandle(ref, () => ({
-        selectCell: mockSelectCell,
-        scrollToCell: mockScrollToCell,
-        element: null,
-      }))
-      return React.createElement('div', { 'data-testid': props['data-testid'] }, 'glide')
-    }),
-  }
-})
 
 const rows = [{ id: 1, name: 'alpha', info: 'SELECT 1' }]
 const columns = [
@@ -56,6 +48,29 @@ beforeEach(() => {
   mockGlideDataGrid.mockClear()
   mockSelectCell.mockClear()
   mockScrollToCell.mockClear()
+
+  const mockFn = mockGlideDataGrid
+  Object.defineProperty(GlideDataGridModule, 'GlideDataGrid', {
+    value: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
+      mockFn(props)
+      React.useImperativeHandle(ref, () => ({
+        selectCell: mockSelectCell,
+        scrollToCell: mockScrollToCell,
+        element: null,
+      }))
+      return React.createElement('div', { 'data-testid': props['data-testid'] as string | undefined }, 'glide')
+    }),
+    writable: true,
+    configurable: true,
+  })
+})
+
+afterEach(() => {
+  Object.defineProperty(GlideDataGridModule, 'GlideDataGrid', {
+    value: originalGlideDataGrid,
+    writable: true,
+    configurable: true,
+  })
 })
 
 function mockCanvasContext(): CanvasRenderingContext2D {

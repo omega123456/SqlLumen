@@ -20,12 +20,6 @@ import { useQueryStore } from '../../stores/query-store'
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 
-function overrideCommands(overrides: Record<string, (...args: never[]) => unknown>) {
-  for (const [commandName, handler] of Object.entries(overrides)) {
-    ipc.override(commandName, handler)
-  }
-}
-
 function overrideNamedCommands(
   commandNames: readonly string[],
   handler: (cmd: string, args?: Record<string, unknown>) => unknown

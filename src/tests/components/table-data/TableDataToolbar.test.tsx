@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useTableDataStore } from '../../../stores/table-data-store'
@@ -387,7 +387,7 @@ describe('TableDataToolbar', () => {
 
     fireEvent.click(screen.getByTestId('btn-clone-row'))
 
-    let state = useTableDataStore.getState().tabs['tab-1']
+    const state = useTableDataStore.getState().tabs['tab-1']
     expect(state?.selectedRowKey).toEqual({ __tempId: state?.editState?.tempId })
     expect(state?.rows[state.rows.length - 1]).toEqual([null, 'Alice'])
 

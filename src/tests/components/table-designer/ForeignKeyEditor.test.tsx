@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ForeignKeyEditor } from '../../../components/table-designer/ForeignKeyEditor'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { ipc } from '../../ipc-mock'
@@ -132,7 +132,8 @@ describe('ForeignKeyEditor', () => {
     useTableDesignerStore.getState().cleanupTab('tab-1')
     useTableDesignerStore.setState({ tabs: {} })
     ipc.override('list_schema_objects', () => ['roles', 'teams'])
-    ipc.override('list_columns', ({ table }) => {
+    ipc.override('list_columns', (args) => {
+      const table = (args as { table?: string })?.table
       if (table === 'roles') {
         return [
           {

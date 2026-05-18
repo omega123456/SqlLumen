@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { ipc } from '../ipc-mock'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import type { ColumnMeta, FilterCondition } from '../../types/schema'
 

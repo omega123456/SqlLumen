@@ -78,7 +78,7 @@ beforeEach(() => {
     tabsByConnection: {},
     activeTabByConnection: {},
   })
-  useQueryStore.setState({ tabs: {}, activeTabIds: {}, pendingChanges: {} })
+  useQueryStore.setState({ tabs: {} })
 })
 
 describe('useObjectBrowserActions — object editor actions', () => {
@@ -345,7 +345,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
       const { result } = renderActions()
 
       await act(async () => {
-        await result.onExecuteRoutine('testdb', 'my_proc', 'procedure')
+        result.onExecuteRoutine('testdb', 'my_proc', 'procedure')
       })
 
       expect(ipc.calls('get_routine_parameters')).toContainEqual({
@@ -381,7 +381,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
       const { result } = renderActions()
 
       await act(async () => {
-        await result.onExecuteRoutine('testdb', 'my_func', 'function')
+        result.onExecuteRoutine('testdb', 'my_func', 'function')
       })
 
       expect(ipc.calls('get_routine_parameters')).toContainEqual({
@@ -410,7 +410,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
       const { result } = renderActions()
 
       await act(async () => {
-        await result.onExecuteRoutine('testdb', 'broken_proc', 'procedure')
+        result.onExecuteRoutine('testdb', 'broken_proc', 'procedure')
       })
 
       // Should still open a tab
@@ -438,7 +438,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
       const { result } = renderActions()
 
       await act(async () => {
-        await result.onExecuteRoutine('testdb', 'broken_func', 'function')
+        result.onExecuteRoutine('testdb', 'broken_func', 'function')
       })
 
       const state = useWorkspaceStore.getState()
@@ -456,7 +456,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
       const { result } = renderActions()
 
       await act(async () => {
-        await result.onExecuteRoutine('testdb', 'simple_proc', 'procedure')
+        result.onExecuteRoutine('testdb', 'simple_proc', 'procedure')
       })
 
       const state = useWorkspaceStore.getState()

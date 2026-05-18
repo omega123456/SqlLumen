@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { useTableDataStore } from '../../../stores/table-data-store'
 import { useConnectionStore } from '../../../stores/connection-store'

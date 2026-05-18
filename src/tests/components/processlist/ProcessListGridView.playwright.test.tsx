@@ -1,21 +1,28 @@
+import React from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProcessRow } from '../../../lib/processlist-commands'
+import * as CanvasBaseGridViewModule from '../../../components/shared/glide/CanvasBaseGridView'
+import * as InfoCellPopoverModule from '../../../components/processlist/InfoCellPopover'
+
+// CanvasBaseGridView is a forwardRef object — vi.spyOn can't intercept it.
+// Use Object.defineProperty to replace it per-test (same pattern as ResultGridView.test.tsx).
+
+const originalCanvasBaseGridView = CanvasBaseGridViewModule.CanvasBaseGridView
 
 type ProcessListTestApi = {
   openInfoPopover?: (connectionId: string, rowIndex: number) => boolean
   sentinel?: string
 }
 
-const mockCanvasBaseGridView = vi.hoisted(() => vi.fn())
+const mockCanvasBaseGridView = vi.fn()
 
-vi.mock('../../../components/shared/glide/CanvasBaseGridView', async () => {
-  const React = await import('react')
-
-  return {
-    CanvasBaseGridView: React.forwardRef(
+function applyCanvasBaseGridViewMock(module: typeof CanvasBaseGridViewModule) {
+  const mockFn = mockCanvasBaseGridView
+  Object.defineProperty(module, 'CanvasBaseGridView', {
+    value: React.forwardRef(
       (props: Record<string, unknown>, ref: React.Ref<unknown>) => {
-        mockCanvasBaseGridView(props)
+        mockFn(props)
 
         const hostRef = React.useRef<HTMLDivElement>(null)
 
@@ -68,23 +75,27 @@ vi.mock('../../../components/shared/glide/CanvasBaseGridView', async () => {
         )
       }
     ),
-  }
-})
+    writable: true,
+    configurable: true,
+  })
+}
 
-vi.mock('../../../components/processlist/InfoCellPopover', () => ({
-  InfoCellPopover: ({ sql, anchorRect }: { sql: string | null; anchorRect?: DOMRect | null }) =>
-    sql ? (
-      <div
-        data-testid="info-popover"
-        data-anchor-left={String(anchorRect?.x ?? '')}
-        data-anchor-top={String(anchorRect?.y ?? '')}
-        data-anchor-width={String(anchorRect?.width ?? '')}
-        data-anchor-height={String(anchorRect?.height ?? '')}
-      >
-        {sql}
-      </div>
-    ) : null,
-}))
+function applyInfoCellPopoverMock(module: typeof InfoCellPopoverModule) {
+  vi.spyOn(module, 'InfoCellPopover').mockImplementation(
+    ({ sql, anchorRect }: { sql: string | null; anchorRect?: DOMRect | null }) =>
+      sql ? (
+        <div
+          data-testid="info-popover"
+          data-anchor-left={String(anchorRect?.x ?? '')}
+          data-anchor-top={String(anchorRect?.y ?? '')}
+          data-anchor-width={String(anchorRect?.width ?? '')}
+          data-anchor-height={String(anchorRect?.height ?? '')}
+        >
+          {sql}
+        </div>
+      ) : null
+  )
+}
 
 const rows: ProcessRow[] = [
   {
@@ -113,10 +124,16 @@ async function loadPlaywrightModules() {
   vi.resetModules()
   vi.stubEnv('VITE_PLAYWRIGHT', 'true')
 
-  const [{ ProcessListGridView }, { useProcessListStore }] = await Promise.all([
+  const [{ ProcessListGridView }, { useProcessListStore }, canvasMod, infoMod] = await Promise.all([
     import('../../../components/processlist/ProcessListGridView'),
     import('../../../stores/processlist-store'),
+    import('../../../components/shared/glide/CanvasBaseGridView'),
+    import('../../../components/processlist/InfoCellPopover'),
   ])
+
+  // Apply mocks to the newly-loaded module instances (vi.resetModules creates fresh instances)
+  applyCanvasBaseGridViewMock(canvasMod as typeof CanvasBaseGridViewModule)
+  applyInfoCellPopoverMock(infoMod as typeof InfoCellPopoverModule)
 
   return { ProcessListGridView, useProcessListStore }
 }
@@ -129,12 +146,20 @@ function getProcessListTestApi(): ProcessListTestApi | undefined {
 describe('ProcessListGridView Playwright helpers', () => {
   beforeEach(() => {
     mockCanvasBaseGridView.mockClear()
+    applyCanvasBaseGridViewMock(CanvasBaseGridViewModule)
+    applyInfoCellPopoverMock(InfoCellPopoverModule)
     delete (window as typeof window & { __processListTestApi__?: ProcessListTestApi })
       .__processListTestApi__
   })
 
   afterEach(() => {
     vi.unstubAllEnvs()
+    vi.restoreAllMocks()
+    Object.defineProperty(CanvasBaseGridViewModule, 'CanvasBaseGridView', {
+      value: originalCanvasBaseGridView,
+      writable: true,
+      configurable: true,
+    })
     delete (window as typeof window & { __processListTestApi__?: ProcessListTestApi })
       .__processListTestApi__
   })

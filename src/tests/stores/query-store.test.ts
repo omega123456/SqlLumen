@@ -29,7 +29,9 @@ function patchResult(tabId: string, resultOverrides: Record<string, unknown>) {
   })
 }
 
-function overrideCommands(overrides: Record<string, (...args: never[]) => unknown>) {
+function overrideCommands(
+  overrides: Record<string, (args?: Record<string, unknown>, commandName?: string) => unknown>
+) {
   for (const [commandName, handler] of Object.entries(overrides)) {
     ipc.override(commandName, handler)
   }

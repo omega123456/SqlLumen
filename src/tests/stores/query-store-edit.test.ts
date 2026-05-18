@@ -14,12 +14,6 @@ function flat(tabId: string) {
   return getFlatTabState(useQueryStore.getState().getTabState(tabId))
 }
 
-function overrideCommands(overrides: Record<string, (...args: never[]) => unknown>) {
-  for (const [commandName, handler] of Object.entries(overrides)) {
-    ipc.override(commandName, handler)
-  }
-}
-
 function overrideNamedCommands(
   commandNames: readonly string[],
   handler: (cmd: string, args?: Record<string, unknown>) => unknown
