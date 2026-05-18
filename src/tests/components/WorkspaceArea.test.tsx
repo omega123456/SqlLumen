@@ -12,87 +12,7 @@ import { useQueryStore } from '../../stores/query-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
-import { mockIPC } from '@tauri-apps/api/mocks'
-
-vi.mock('../../lib/schema-commands', () => ({
-  getSchemaInfo: vi.fn().mockResolvedValue({
-    columns: [
-      {
-        name: 'id',
-        dataType: 'bigint',
-        nullable: false,
-        columnKey: 'PRI',
-        defaultValue: null,
-        extra: 'auto_increment',
-        ordinalPosition: 1,
-      },
-    ],
-    indexes: [],
-    foreignKeys: [],
-    ddl: 'CREATE TABLE `users` (`id` bigint NOT NULL)',
-    metadata: {
-      engine: 'InnoDB',
-      collation: 'utf8mb4_general_ci',
-      autoIncrement: 1,
-      createTime: '2023-01-01',
-      tableRows: 100,
-      dataLength: 16384,
-      indexLength: 8192,
-    },
-  }),
-  getTableForeignKeys: vi.fn().mockResolvedValue([]),
-}))
-
-// Mock table-data-commands to prevent real IPC calls
-vi.mock('../../lib/table-data-commands', () => ({
-  fetchTableData: vi.fn().mockResolvedValue({
-    columns: [
-      {
-        name: 'id',
-        dataType: 'bigint',
-        isNullable: false,
-        isPrimaryKey: true,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isAutoIncrement: true,
-      },
-    ],
-    rows: [[1]],
-    currentPage: 1,
-    pageSize: 1000,
-    primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
-    executionTimeMs: 12,
-  }),
-  updateTableRow: vi.fn().mockResolvedValue(undefined),
-  insertTableRow: vi.fn().mockResolvedValue([]),
-  deleteTableRow: vi.fn().mockResolvedValue(undefined),
-  exportTableData: vi.fn().mockResolvedValue(undefined),
-}))
-
-// Mock the shared DataGrid wrapper (used by TableDataGrid and ResultGridView)
-vi.mock('../../components/shared/DataGrid', async () => {
-  const React = await import('react')
-  return {
-    DataGrid: React.forwardRef(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      (_props: Record<string, unknown>, _ref: React.Ref<unknown>) => {
-        return React.createElement('div', { 'data-testid': 'data-grid-mock' }, 'Grid Mock')
-      }
-    ),
-  }
-})
-
-vi.mock('../../components/table-designer/TableDesignerTab', () => ({
-  TableDesignerTab: () => <div data-testid="table-designer-tab">Designer Tab</div>,
-}))
-
-// Mock tauri dialog for EditorToolbar (used by QueryEditorTab)
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  save: vi.fn(() => Promise.resolve(null)),
-  open: vi.fn(() => Promise.resolve(null)),
-}))
+import { ipc } from '../ipc-mock'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -144,7 +64,6 @@ beforeEach(() => {
   useTableDataStore.setState({ tabs: {} })
   _resetTabIdCounter()
   _resetQueryTabCounter()
-  mockIPC(() => null)
 })
 
 describe('WorkspaceArea', () => {
