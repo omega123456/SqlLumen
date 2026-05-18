@@ -3,24 +3,8 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SavedConnectionsList } from '../../components/connection-dialog/SavedConnectionsList'
 import { useConnectionStore } from '../../stores/connection-store'
+import { ipc } from '../ipc-mock'
 import type { SavedConnection, ConnectionGroup } from '../../types/connection'
-
-// Mock IPC
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn().mockResolvedValue(undefined),
-}))
-
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}))
-
-vi.mock('../../stores/toast-store', () => ({
-  showErrorToast: vi.fn(),
-  showSuccessToast: vi.fn(),
-}))
-
-import { invoke } from '@tauri-apps/api/core'
-const mockInvoke = vi.mocked(invoke)
 
 function makeConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -66,13 +50,6 @@ const defaultProps = {
 }
 
 beforeEach(() => {
-  mockInvoke.mockReset()
-  // Default mock: list commands return empty arrays, others return undefined
-  mockInvoke.mockImplementation(async (cmd: string) => {
-    if (cmd === 'list_connections') return []
-    if (cmd === 'list_connection_groups') return []
-    return undefined
-  })
   defaultProps.onSelectConnection.mockClear()
   defaultProps.onNewConnection.mockClear()
   defaultProps.onDeleteConnection.mockClear()
@@ -396,7 +373,7 @@ describe('SavedConnectionsList', () => {
       await user.click(deleteBtn)
 
       expect(confirmSpy).toHaveBeenCalledWith('Are you sure you want to delete this connection?')
-      expect(mockInvoke).toHaveBeenCalledWith('delete_connection', { id: 'c1' })
+      expect(ipc.calls('delete_connection')).toHaveLength(1)
 
       await waitFor(() => {
         expect(defaultProps.onDeleteConnection).toHaveBeenCalledWith('c1')
@@ -423,7 +400,7 @@ describe('SavedConnectionsList', () => {
       await user.click(deleteBtn)
 
       expect(confirmSpy).toHaveBeenCalled()
-      expect(mockInvoke).not.toHaveBeenCalledWith('delete_connection', expect.anything())
+      expect(ipc.calls('delete_connection')).toHaveLength(0)
 
       confirmSpy.mockRestore()
     })
@@ -523,10 +500,9 @@ describe('SavedConnectionsList', () => {
       await user.clear(renameInput)
       await user.type(renameInput, 'NewName{Enter}')
 
-      expect(mockInvoke).toHaveBeenCalledWith('update_connection_group', {
-        id: 'grp-1',
-        name: 'NewName',
-      })
+      const calls = ipc.calls('update_connection_group')
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toMatchObject({ id: 'grp-1', name: 'NewName' })
     })
 
     it('renames a group on blur', async () => {
@@ -552,10 +528,9 @@ describe('SavedConnectionsList', () => {
       await user.click(document.body)
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('update_connection_group', {
-          id: 'grp-1',
-          name: 'BlurName',
-        })
+        const calls = ipc.calls('update_connection_group')
+        expect(calls).toHaveLength(1)
+        expect(calls[0]).toMatchObject({ id: 'grp-1', name: 'BlurName' })
       })
     })
 
@@ -578,7 +553,7 @@ describe('SavedConnectionsList', () => {
       expect(confirmSpy).toHaveBeenCalledWith(
         'Are you sure you want to delete this group? Connections will be moved to ungrouped.'
       )
-      expect(mockInvoke).toHaveBeenCalledWith('delete_connection_group', { id: 'grp-1' })
+      expect(ipc.calls('delete_connection_group')).toHaveLength(1)
 
       confirmSpy.mockRestore()
     })
@@ -616,9 +591,9 @@ describe('SavedConnectionsList', () => {
       const input = screen.getByLabelText('New group name')
       await user.type(input, 'My New Group{Enter}')
 
-      expect(mockInvoke).toHaveBeenCalledWith('create_connection_group', {
-        name: 'My New Group',
-      })
+      const calls = ipc.calls('create_connection_group')
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toMatchObject({ name: 'My New Group' })
     })
 
     it('discards new group when name is empty on blur', async () => {
@@ -637,7 +612,7 @@ describe('SavedConnectionsList', () => {
       await waitFor(() => {
         expect(screen.queryByLabelText('New group name')).not.toBeInTheDocument()
       })
-      expect(mockInvoke).not.toHaveBeenCalledWith('create_connection_group', expect.anything())
+      expect(ipc.calls('create_connection_group')).toHaveLength(0)
     })
 
     it('cancels new group on Escape key', async () => {
@@ -650,7 +625,7 @@ describe('SavedConnectionsList', () => {
       const input = screen.getByLabelText('New group name')
       await user.type(input, 'discard me')
       await user.keyboard('{Escape}')
-      expect(mockInvoke).not.toHaveBeenCalledWith('create_connection_group', expect.anything())
+      expect(ipc.calls('create_connection_group')).toHaveLength(0)
     })
   })
 
@@ -678,11 +653,8 @@ describe('SavedConnectionsList', () => {
     it('displays error when delete connection fails', async () => {
       const user = userEvent.setup()
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-      mockInvoke.mockImplementation(async (cmd: string) => {
-        if (cmd === 'delete_connection') throw new Error('Network error')
-        if (cmd === 'list_connections') return []
-        if (cmd === 'list_connection_groups') return []
-        return undefined
+      ipc.override('delete_connection', () => {
+        throw new Error('Network error')
       })
 
       const conn = makeConnection({ id: 'c1', name: 'Fail Delete' })
@@ -707,11 +679,8 @@ describe('SavedConnectionsList', () => {
     it('error can be dismissed', async () => {
       const user = userEvent.setup()
       const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-      mockInvoke.mockImplementation(async (cmd: string) => {
-        if (cmd === 'delete_connection') throw new Error('Delete failed')
-        if (cmd === 'list_connections') return []
-        if (cmd === 'list_connection_groups') return []
-        return undefined
+      ipc.override('delete_connection', () => {
+        throw new Error('Delete failed')
       })
 
       const conn = makeConnection({ id: 'c1', name: 'Error DB' })

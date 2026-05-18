@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { insertSqlIntoEditor } from '../../lib/query-tab-utils'
 import {
   useWorkspaceStore,
@@ -17,15 +16,6 @@ beforeEach(() => {
   _resetTabIdCounter()
   _resetQueryTabCounter()
   vi.clearAllMocks()
-
-  mockIPC((cmd) => {
-    switch (cmd) {
-      case 'log_frontend':
-        return undefined
-      default:
-        return null
-    }
-  })
 })
 
 describe('insertSqlIntoEditor', () => {

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { FavouritesView } from '../../../components/favourites/FavouritesView'
 import { useFavoritesStore } from '../../../stores/favorites-store'
 import {
@@ -46,23 +45,6 @@ beforeEach(() => {
   _resetTabIdCounter()
   _resetQueryTabCounter()
   vi.clearAllMocks()
-
-  mockIPC((cmd) => {
-    switch (cmd) {
-      case 'list_favorites':
-        return []
-      case 'create_favorite':
-        return 1
-      case 'update_favorite':
-        return true
-      case 'delete_favorite':
-        return true
-      case 'log_frontend':
-        return undefined
-      default:
-        return null
-    }
-  })
 })
 
 describe('FavouritesView', () => {

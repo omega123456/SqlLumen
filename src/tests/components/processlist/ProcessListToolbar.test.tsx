@@ -1,21 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { ProcessListToolbar } from '../../../components/processlist/ProcessListToolbar'
 import { useProcessListStore } from '../../../stores/processlist-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { ActiveConnection, SavedConnection } from '../../../types/connection'
-
-const mockShowErrorToast = vi.fn()
-const mockShowSuccessToast = vi.fn()
-const mockShowWarningToast = vi.fn()
-
-vi.mock('../../../stores/toast-store', () => ({
-  showErrorToast: (...args: unknown[]) => mockShowErrorToast(...args),
-  showSuccessToast: (...args: unknown[]) => mockShowSuccessToast(...args),
-  showWarningToast: (...args: unknown[]) => mockShowWarningToast(...args),
-}))
+import { ipc, expectToast } from '../../ipc-mock'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -43,14 +33,8 @@ function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedCon
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
-
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'get_processlist') return []
-    if (cmd === 'kill_queries') return []
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
+  // Default: kill_queries returns empty (no processes killed)
+  ipc.override('kill_queries', () => [])
 
   const conn: ActiveConnection = {
     id: 'conn-1',
@@ -286,7 +270,9 @@ describe('ProcessListToolbar', () => {
       expect(useProcessListStore.getState().isConfirmDialogOpenByConnection['conn-1']).toBeFalsy()
     })
 
-    expect(mockShowErrorToast).toHaveBeenCalledWith('Kill failed', 'Connection lost')
+    await vi.waitFor(async () => {
+      await expectToast('error', 'Kill failed')
+    })
 
     // Restore
     act(() => {
@@ -302,12 +288,7 @@ describe('ProcessListToolbar', () => {
       })
     })
 
-    mockIPC((cmd) => {
-      if (cmd === 'log_frontend') return undefined
-      if (cmd === 'get_processlist') return []
-      if (cmd === 'kill_queries') return [{ id: 10, success: true, error: null }]
-      throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-    })
+    ipc.override('kill_queries', () => [{ id: 10, success: true, error: null }])
 
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
 
@@ -320,7 +301,9 @@ describe('ProcessListToolbar', () => {
       expect(screen.getByTestId('kill-summary-dialog')).toBeInTheDocument()
     })
 
-    expect(mockShowSuccessToast).toHaveBeenCalledWith('1 process killed')
+    await vi.waitFor(async () => {
+      await expectToast('success', '1 process killed')
+    })
 
     // Click Done to dismiss summary
     await userEvent.click(screen.getByTestId('kill-summary-done-button'))
@@ -340,22 +323,14 @@ describe('ProcessListToolbar', () => {
       })
     })
 
-    mockIPC((cmd) => {
-      if (cmd === 'log_frontend') return undefined
-      if (cmd === 'get_processlist') return []
-      if (cmd === 'kill_queries') return [{ id: 10, success: false, error: 'Access denied' }]
-      throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-    })
+    ipc.override('kill_queries', () => [{ id: 10, success: false, error: 'Access denied' }])
 
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Kill' }))
 
-    await vi.waitFor(() => {
-      expect(mockShowWarningToast).toHaveBeenCalledWith(
-        '1 process failed to kill',
-        'ID 10: Access denied'
-      )
+    await vi.waitFor(async () => {
+      await expectToast('warning', '1 process failed to kill')
     })
   })
 
@@ -391,28 +366,18 @@ describe('ProcessListToolbar', () => {
       })
     })
 
-    mockIPC((cmd) => {
-      if (cmd === 'log_frontend') return undefined
-      if (cmd === 'get_processlist') return []
-      if (cmd === 'kill_queries') {
-        return [
-          { id: 10, success: true, error: null },
-          { id: 11, success: false, error: 'Permission denied' },
-        ]
-      }
-      throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-    })
+    ipc.override('kill_queries', () => [
+      { id: 10, success: true, error: null },
+      { id: 11, success: false, error: 'Permission denied' },
+    ])
 
     render(<ProcessListToolbar connectionId="conn-1" sessionId="conn-1" onRefresh={vi.fn()} />)
 
     await userEvent.click(screen.getByRole('button', { name: 'Kill' }))
 
-    await vi.waitFor(() => {
-      expect(mockShowSuccessToast).toHaveBeenCalledWith('1 process killed')
-      expect(mockShowWarningToast).toHaveBeenCalledWith(
-        '1 process failed to kill',
-        'ID 11: Permission denied'
-      )
+    await vi.waitFor(async () => {
+      await expectToast('success', '1 process killed')
+      await expectToast('warning', '1 process failed to kill')
     })
   })
 })

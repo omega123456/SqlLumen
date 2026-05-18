@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../../ipc-mock'
 import { SettingsDialog } from '../../../components/settings/SettingsDialog'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import { useShortcutStore } from '../../../stores/shortcut-store'
@@ -17,22 +17,14 @@ async function waitForSettingsHydrated() {
   })
 }
 
-function setupMockIPC() {
-  mockIPC((cmd, args) => {
-    if (cmd === 'get_all_settings') return { ...SETTINGS_DEFAULTS }
-    if (cmd === 'set_setting') return null
-    if (cmd === 'get_app_info')
-      return { rustLogOverride: false, logDirectory: '/mock/logs', appVersion: '1.0.0' }
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    if (cmd === 'get_setting') return null
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd} ${JSON.stringify(args)}`)
-  })
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
+  ipc.override('get_all_settings', () => ({ ...SETTINGS_DEFAULTS }))
+  ipc.override('get_app_info', () => ({
+    rustLogOverride: false,
+    logDirectory: '/mock/logs',
+    appVersion: '1.0.0',
+  }))
   useSettingsStore.setState({
     settings: {},
     pendingChanges: {},
@@ -50,7 +42,6 @@ beforeEach(() => {
     restartPeriodicCheck: vi.fn().mockResolvedValue(undefined),
   })
   document.documentElement.removeAttribute('data-theme')
-  setupMockIPC()
 })
 
 describe('SettingsDialog', () => {
@@ -137,7 +128,7 @@ describe('SettingsDialog', () => {
     await waitForSettingsHydrated()
 
     // Make dirty by changing a setting
-    await act(() => {
+    act(() => {
       useSettingsStore.setState({ isDirty: true, pendingChanges: { theme: 'dark' } })
     })
 
@@ -158,7 +149,7 @@ describe('SettingsDialog', () => {
     await waitForSettingsHydrated()
 
     // Make dirty
-    await act(() => {
+    act(() => {
       useSettingsStore.setState({ isDirty: true, pendingChanges: { theme: 'dark' } })
     })
 

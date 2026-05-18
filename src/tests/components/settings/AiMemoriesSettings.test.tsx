@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../../ipc-mock'
 import { AiMemoriesSettings } from '../../../components/settings/AiMemoriesSettings'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { AiMemory } from '../../../lib/ai-memory-commands'
@@ -28,31 +28,21 @@ const mockMemories: Record<string, AiMemory[]> = {
 
 let deletedIds: number[] = []
 
-function setupMockIPC() {
-  mockIPC((cmd, args) => {
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    if (cmd === 'list_memories') {
-      const connectionId = (args as Record<string, unknown>).connectionId as string
-      return mockMemories[connectionId] ?? []
-    }
-    if (cmd === 'delete_memory') {
-      const memoryId = (args as Record<string, unknown>).memoryId as number
-      deletedIds.push(memoryId)
-      return undefined
-    }
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
-}
-
 let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   deletedIds = []
   vi.clearAllMocks()
-  setupMockIPC()
+  ipc.override('list_memories', (args) => {
+    const connectionId = (args as Record<string, unknown>).connectionId as string
+    return mockMemories[connectionId] ?? []
+  })
+  ipc.override('delete_memory', (args) => {
+    const memoryId = (args as Record<string, unknown>).memoryId as number
+    deletedIds.push(memoryId)
+    return undefined
+  })
   useConnectionStore.setState({
     savedConnections: [
       {
@@ -114,15 +104,8 @@ describe('AiMemoriesSettings', () => {
   })
 
   it('shows empty state when no memories exist', async () => {
-    // Override to return empty for all
-    mockIPC((cmd) => {
-      if (cmd === 'log_frontend') return undefined
-      if (cmd === 'plugin:event|listen') return () => {}
-      if (cmd === 'plugin:event|unlisten') return undefined
-      if (cmd === 'list_memories') return []
-      if (cmd === 'delete_memory') return undefined
-      throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-    })
+    // Override to return empty for all connections
+    ipc.override('list_memories', () => [])
 
     render(<AiMemoriesSettings />)
     await waitFor(() => {

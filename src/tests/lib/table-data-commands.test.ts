@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { ipc } from '../ipc-mock'
 import {
   fetchTableData,
   updateTableRow,
@@ -9,60 +9,39 @@ import {
 } from '../../lib/table-data-commands'
 import type { FilterCondition, PrimaryKeyInfo, TableDataResponse } from '../../types/schema'
 
-const mockFetchTableDataFn = vi.fn(
-  (): TableDataResponse => ({
-    columns: [
-      {
-        name: 'id',
-        dataType: 'INT',
-        isBooleanAlias: false,
-        isNullable: false,
-        isPrimaryKey: true,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isAutoIncrement: true,
-      },
-    ],
-    rows: [[1], [2]],
-    currentPage: 1,
-    pageSize: 1000,
-    primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
-    executionTimeMs: 10,
-  })
-)
-const mockUpdateTableRowFn = vi.fn(() => null)
-const mockInsertTableRowFn = vi.fn(() => [
+const DEFAULT_FETCH_RESPONSE: TableDataResponse = {
+  columns: [
+    {
+      name: 'id',
+      dataType: 'INT',
+      isBooleanAlias: false,
+      isNullable: false,
+      isPrimaryKey: true,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: true,
+    },
+  ],
+  rows: [[1], [2]],
+  currentPage: 1,
+  pageSize: 1000,
+  primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+  executionTimeMs: 10,
+}
+
+const DEFAULT_INSERT_RESPONSE = [
   ['id', 3],
   ['name', 'Charlie'],
-])
-const mockDeleteTableRowFn = vi.fn(() => null)
-const mockExportTableDataFn = vi.fn(() => null)
+]
 
 beforeEach(() => {
-  mockFetchTableDataFn.mockClear()
-  mockUpdateTableRowFn.mockClear()
-  mockInsertTableRowFn.mockClear()
-  mockDeleteTableRowFn.mockClear()
-  mockExportTableDataFn.mockClear()
-
-  mockIPC((cmd) => {
-    switch (cmd) {
-      case 'fetch_table_data':
-        return mockFetchTableDataFn()
-      case 'update_table_row':
-        return mockUpdateTableRowFn()
-      case 'insert_table_row':
-        return mockInsertTableRowFn()
-      case 'delete_table_row':
-        return mockDeleteTableRowFn()
-      case 'export_table_data':
-        return mockExportTableDataFn()
-      default:
-        return null
-    }
-  })
+  ipc.override('fetch_table_data', () => DEFAULT_FETCH_RESPONSE)
+  ipc.override('update_table_row', () => null)
+  ipc.override('insert_table_row', () => DEFAULT_INSERT_RESPONSE)
+  ipc.override('delete_table_row', () => null)
+  ipc.override('export_table_data', () => null)
 })
 
 describe('fetchTableData', () => {
@@ -77,7 +56,7 @@ describe('fetchTableData', () => {
     expect(result.columns).toHaveLength(1)
     expect(result.rows).toEqual([[1], [2]])
     expect(result.primaryKey?.keyColumns).toEqual(['id'])
-    expect(mockFetchTableDataFn).toHaveBeenCalled()
+    expect(ipc.calls('fetch_table_data')).toHaveLength(1)
   })
 
   it('invokes with sort and filter params', async () => {
@@ -93,19 +72,10 @@ describe('fetchTableData', () => {
       sortDirection: 'asc',
       filterModel,
     })
-    expect(mockFetchTableDataFn).toHaveBeenCalled()
+    expect(ipc.calls('fetch_table_data')).toHaveLength(1)
   })
 
   it('maps filter conditions to backend format', async () => {
-    let capturedArgs: Record<string, unknown> = {}
-    mockIPC((cmd, args) => {
-      if (cmd === 'fetch_table_data') {
-        capturedArgs = args as Record<string, unknown>
-        return mockFetchTableDataFn()
-      }
-      return null
-    })
-
     const filterModel: FilterCondition[] = [{ column: 'name', operator: '==', value: 'Alice' }]
 
     await fetchTableData({
@@ -117,6 +87,9 @@ describe('fetchTableData', () => {
       filterModel,
     })
 
+    const calls = ipc.calls('fetch_table_data')
+    expect(calls).toHaveLength(1)
+    const capturedArgs = calls[0] as Record<string, unknown>
     const sentFilter = capturedArgs.filterModel as {
       column: string
       operator: string
@@ -129,15 +102,6 @@ describe('fetchTableData', () => {
   })
 
   it('sends multiple filter conditions including same column', async () => {
-    let capturedArgs: Record<string, unknown> = {}
-    mockIPC((cmd, args) => {
-      if (cmd === 'fetch_table_data') {
-        capturedArgs = args as Record<string, unknown>
-        return mockFetchTableDataFn()
-      }
-      return null
-    })
-
     const filterModel: FilterCondition[] = [
       { column: 'price', operator: '>', value: '10' },
       { column: 'price', operator: '<', value: '100' },
@@ -152,6 +116,7 @@ describe('fetchTableData', () => {
       filterModel,
     })
 
+    const capturedArgs = ipc.calls('fetch_table_data')[0] as Record<string, unknown>
     const sentFilter = capturedArgs.filterModel as {
       column: string
       operator: string
@@ -163,7 +128,7 @@ describe('fetchTableData', () => {
   })
 
   it('preserves enumValues from fetch_table_data responses', async () => {
-    mockFetchTableDataFn.mockReturnValueOnce({
+    ipc.override('fetch_table_data', () => ({
       columns: [
         {
           name: 'status',
@@ -184,7 +149,7 @@ describe('fetchTableData', () => {
       pageSize: 1000,
       primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
       executionTimeMs: 10,
-    })
+    }))
 
     const result = await fetchTableData({
       connectionId: 'conn-1',
@@ -200,15 +165,6 @@ describe('fetchTableData', () => {
 
 describe('updateTableRow', () => {
   it('invokes update_table_row with correct params', async () => {
-    let capturedArgs: Record<string, unknown> = {}
-    mockIPC((cmd, args) => {
-      if (cmd === 'update_table_row') {
-        capturedArgs = args as Record<string, unknown>
-        return null
-      }
-      return null
-    })
-
     await updateTableRow({
       connectionId: 'conn-1',
       database: 'mydb',
@@ -218,6 +174,9 @@ describe('updateTableRow', () => {
       updatedValues: { name: 'Updated' },
     })
 
+    const calls = ipc.calls('update_table_row')
+    expect(calls).toHaveLength(1)
+    const capturedArgs = calls[0] as Record<string, unknown>
     expect(capturedArgs.connectionId).toBe('conn-1')
     expect(capturedArgs.database).toBe('mydb')
     expect(capturedArgs.table).toBe('users')
@@ -247,21 +206,12 @@ describe('insertTableRow', () => {
       ['id', 3],
       ['name', 'Charlie'],
     ])
-    expect(mockInsertTableRowFn).toHaveBeenCalled()
+    expect(ipc.calls('insert_table_row')).toHaveLength(1)
   })
 })
 
 describe('deleteTableRow', () => {
   it('invokes delete_table_row with correct params', async () => {
-    let capturedArgs: Record<string, unknown> = {}
-    mockIPC((cmd, args) => {
-      if (cmd === 'delete_table_row') {
-        capturedArgs = args as Record<string, unknown>
-        return null
-      }
-      return null
-    })
-
     await deleteTableRow({
       connectionId: 'conn-1',
       database: 'mydb',
@@ -270,6 +220,9 @@ describe('deleteTableRow', () => {
       pkValues: { id: 1 },
     })
 
+    const calls = ipc.calls('delete_table_row')
+    expect(calls).toHaveLength(1)
+    const capturedArgs = calls[0] as Record<string, unknown>
     expect(capturedArgs.connectionId).toBe('conn-1')
     expect(capturedArgs.pkColumns).toEqual(['id'])
     expect(capturedArgs.pkValues).toEqual({ id: 1 })
@@ -278,15 +231,6 @@ describe('deleteTableRow', () => {
 
 describe('exportTableData', () => {
   it('invokes export_table_data with correct params', async () => {
-    let capturedArgs: Record<string, unknown> = {}
-    mockIPC((cmd, args) => {
-      if (cmd === 'export_table_data') {
-        capturedArgs = args as Record<string, unknown>
-        return null
-      }
-      return null
-    })
-
     await exportTableData({
       connectionId: 'conn-1',
       database: 'mydb',
@@ -297,6 +241,9 @@ describe('exportTableData', () => {
       tableNameForSql: 'users',
     })
 
+    const calls = ipc.calls('export_table_data')
+    expect(calls).toHaveLength(1)
+    const capturedArgs = calls[0] as Record<string, unknown>
     expect(capturedArgs.connectionId).toBe('conn-1')
     expect(capturedArgs.format).toBe('csv')
     expect(capturedArgs.filePath).toBe('/tmp/export.csv')
@@ -305,15 +252,6 @@ describe('exportTableData', () => {
   })
 
   it('passes filter and sort params for export', async () => {
-    let capturedArgs: Record<string, unknown> = {}
-    mockIPC((cmd, args) => {
-      if (cmd === 'export_table_data') {
-        capturedArgs = args as Record<string, unknown>
-        return null
-      }
-      return null
-    })
-
     const filterModel: FilterCondition[] = [{ column: 'status', operator: '==', value: 'active' }]
 
     await exportTableData({
@@ -329,6 +267,7 @@ describe('exportTableData', () => {
       sortDirection: 'desc',
     })
 
+    const capturedArgs = ipc.calls('export_table_data')[0] as Record<string, unknown>
     expect(capturedArgs.sortColumn).toBe('name')
     expect(capturedArgs.sortDirection).toBe('desc')
     const sentFilter = capturedArgs.filterModel as {
@@ -342,15 +281,6 @@ describe('exportTableData', () => {
   })
 
   it('maps sql-insert format to sql for the backend', async () => {
-    let capturedArgs: Record<string, unknown> = {}
-    mockIPC((cmd, args) => {
-      if (cmd === 'export_table_data') {
-        capturedArgs = args as Record<string, unknown>
-        return null
-      }
-      return null
-    })
-
     await exportTableData({
       connectionId: 'conn-1',
       database: 'mydb',
@@ -361,19 +291,11 @@ describe('exportTableData', () => {
       tableNameForSql: 'users',
     })
 
+    const capturedArgs = ipc.calls('export_table_data')[0] as Record<string, unknown>
     expect(capturedArgs.format).toBe('sql')
   })
 
   it('passes through non-sql-insert formats unchanged', async () => {
-    let capturedArgs: Record<string, unknown> = {}
-    mockIPC((cmd, args) => {
-      if (cmd === 'export_table_data') {
-        capturedArgs = args as Record<string, unknown>
-        return null
-      }
-      return null
-    })
-
     await exportTableData({
       connectionId: 'conn-1',
       database: 'mydb',
@@ -384,17 +306,15 @@ describe('exportTableData', () => {
       tableNameForSql: 'users',
     })
 
+    const capturedArgs = ipc.calls('export_table_data')[0] as Record<string, unknown>
     expect(capturedArgs.format).toBe('csv')
   })
 })
 
 describe('error propagation', () => {
   it('propagates errors from invoke', async () => {
-    mockIPC((cmd) => {
-      if (cmd === 'fetch_table_data') {
-        throw new Error('Connection lost')
-      }
-      return null
+    ipc.override('fetch_table_data', () => {
+      throw new Error('Connection lost')
     })
 
     await expect(

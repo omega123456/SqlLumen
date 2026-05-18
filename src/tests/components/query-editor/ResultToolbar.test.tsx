@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultToolbar } from '../../../components/query-editor/ResultToolbar'
 import { useQueryStore } from '../../../stores/query-store'
 import { getFlatTabState } from '../../../stores/query-store'
@@ -22,7 +21,6 @@ function flat(tabId: string) {
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
-  mockIPC(() => null)
 })
 
 describe('ResultToolbar', () => {

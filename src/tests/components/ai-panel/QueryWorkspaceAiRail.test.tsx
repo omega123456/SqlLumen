@@ -2,7 +2,6 @@ import type { ReactElement } from 'react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { QueryWorkspaceAiRail } from '../../../components/ai-panel/QueryWorkspaceAiRail'
 import { AiDiffBridgeProvider } from '../../../components/query-editor/ai-diff-bridge-context'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
@@ -16,27 +15,11 @@ const mockTab: QueryEditorTabType = {
   connectionId: 'conn-1',
 }
 
-function setupMockIPC() {
-  mockIPC((cmd) => {
-    if (cmd === 'log_frontend') {
-      return undefined
-    }
-    if (cmd === 'plugin:event|listen') {
-      return () => {}
-    }
-    if (cmd === 'plugin:event|unlisten') {
-      return undefined
-    }
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-  })
-}
-
 function renderWithBridge(ui: ReactElement) {
   return render(<AiDiffBridgeProvider>{ui}</AiDiffBridgeProvider>)
 }
 
 beforeEach(() => {
-  setupMockIPC()
   useAiStore.setState({ tabs: {} })
   useSettingsStore.setState({
     settings: {

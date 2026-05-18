@@ -2,21 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { InfoCellPopover } from '../../../components/processlist/InfoCellPopover'
-
-const mockShowSuccessToast = vi.fn()
-const mockShowErrorToast = vi.fn()
-
-vi.mock('../../../lib/context-menu-utils', () => ({
-  writeClipboardText: vi.fn().mockResolvedValue(undefined),
-  readClipboardText: vi.fn().mockResolvedValue(''),
-  getContextMenuPortalRoot: vi.fn().mockReturnValue(document.body),
-  positionContextMenuInPortal: vi.fn().mockReturnValue({ x: 0, y: 0 }),
-}))
-
-vi.mock('../../../stores/toast-store', () => ({
-  showSuccessToast: (...args: unknown[]) => mockShowSuccessToast(...args),
-  showErrorToast: (...args: unknown[]) => mockShowErrorToast(...args),
-}))
+import { expectToast } from '../../ipc-mock'
 
 describe('InfoCellPopover', () => {
   let anchor: HTMLDivElement
@@ -39,7 +25,6 @@ describe('InfoCellPopover', () => {
 
   afterEach(() => {
     anchor.remove()
-    vi.clearAllMocks()
   })
 
   it('renders nothing when sql is null', () => {
@@ -66,25 +51,30 @@ describe('InfoCellPopover', () => {
   })
 
   it('shows success toast after copying SQL', async () => {
+    // navigator.clipboard.writeText is polyfilled in setup.ts as vi.fn() resolving to undefined
     render(<InfoCellPopover sql="SELECT 1" anchorEl={anchor} onClose={vi.fn()} />)
 
     await userEvent.click(screen.getByTestId('info-popover-copy'))
 
-    await vi.waitFor(() => {
-      expect(mockShowSuccessToast).toHaveBeenCalledWith('Copied to clipboard')
+    await vi.waitFor(async () => {
+      await expectToast('success', 'Copied to clipboard')
     })
   })
 
   it('shows error toast when copying SQL fails', async () => {
-    const { writeClipboardText } = await import('../../../lib/context-menu-utils')
-    vi.mocked(writeClipboardText).mockRejectedValueOnce(new Error('clipboard denied'))
+    // Spy on navigator.clipboard.writeText to make it reject
+    const writeTextSpy = vi
+      .spyOn(navigator.clipboard, 'writeText')
+      .mockRejectedValueOnce(new Error('clipboard denied'))
 
     render(<InfoCellPopover sql="SELECT 1" anchorEl={anchor} onClose={vi.fn()} />)
 
     await userEvent.click(screen.getByTestId('info-popover-copy'))
 
-    await vi.waitFor(() => {
-      expect(mockShowErrorToast).toHaveBeenCalledWith('Copy failed', 'clipboard denied')
+    await vi.waitFor(async () => {
+      await expectToast('error', 'clipboard denied')
     })
+
+    writeTextSpy.mockRestore()
   })
 })

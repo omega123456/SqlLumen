@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { ResultFormView } from '../../../components/query-editor/ResultFormView'
 import { useQueryStore } from '../../../stores/query-store'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../../types/schema'
@@ -56,7 +55,6 @@ function buildTabState(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockIPC(() => null)
   mockClipboardWriteText.mockResolvedValue(undefined)
   Object.defineProperty(navigator, 'clipboard', {
     value: { writeText: mockClipboardWriteText },

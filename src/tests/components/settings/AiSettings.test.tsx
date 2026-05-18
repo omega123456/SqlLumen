@@ -1,50 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { AiSettings } from '../../../components/settings/AiSettings'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
-
-// Mock the ai-commands module for listAiModels
-const mockListAiModels = vi.fn()
-vi.mock('../../../lib/ai-commands', () => ({
-  listAiModels: (...args: unknown[]) => mockListAiModels(...args),
-}))
-
-// Mock the schema-index-store module as a callable hook with `getState`.
-// The hook form is used by AiSettings for subscribing to `connections`.
-// Using vi.hoisted so the state object survives vi.mock hoisting.
-const { mockStoreState } = vi.hoisted(() => ({
-  mockStoreState: {
-    connections: {} as Record<string, unknown>,
-    sessionToProfile: {} as Record<string, string>,
-    forceRebuild: (() => Promise.resolve()) as (sid: string) => Promise<void>,
-  },
-}))
-
-vi.mock('../../../stores/schema-index-store', () => {
-  const hook = ((selector?: (state: typeof mockStoreState) => unknown) =>
-    selector ? selector(mockStoreState) : mockStoreState) as unknown as {
-    (selector?: (state: typeof mockStoreState) => unknown): unknown
-    getState: () => typeof mockStoreState
-  }
-  hook.getState = () => mockStoreState
-  return { useSchemaIndexStore: hook }
-})
-
-function setupMockIPC() {
-  mockIPC((cmd, args) => {
-    if (cmd === 'get_all_settings') return { ...SETTINGS_DEFAULTS }
-    if (cmd === 'set_setting') return null
-    if (cmd === 'get_app_info')
-      return { rustLogOverride: false, logDirectory: '/mock/logs', appVersion: '1.0.0' }
-    if (cmd === 'log_frontend') return undefined
-    if (cmd === 'plugin:event|listen') return () => {}
-    if (cmd === 'plugin:event|unlisten') return undefined
-    if (cmd === 'get_setting') return null
-    throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd} ${JSON.stringify(args)}`)
-  })
-}
+import { useSchemaIndexStore } from '../../../stores/schema-index-store'
+import { ipc } from '../../ipc-mock'
 
 const MOCK_MODELS_WITH_CATEGORIES = [
   { id: 'llama3', name: 'llama3:latest', category: 'chat' },
@@ -55,14 +15,8 @@ const MOCK_MODELS_WITH_CATEGORIES = [
 let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  mockListAiModels.mockReset()
-  mockStoreState.connections = {}
-  mockStoreState.sessionToProfile = {}
-  mockStoreState.forceRebuild = vi.fn().mockResolvedValue(undefined) as unknown as (
-    sid: string
-  ) => Promise<void>
   consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
   useSettingsStore.setState({
     settings: { ...SETTINGS_DEFAULTS },
     pendingChanges: {},
@@ -70,8 +24,15 @@ beforeEach(() => {
     isLoading: false,
     activeSection: 'ai',
   })
-  setupMockIPC()
-  mockListAiModels.mockResolvedValue({ models: [], error: undefined })
+
+  useSchemaIndexStore.setState({
+    connections: {},
+    sessionToProfile: {},
+    forceRebuild: vi.fn().mockResolvedValue(undefined),
+  })
+
+  // Default: empty models list
+  ipc.override('list_ai_models', () => ({ models: [] }))
 })
 
 afterEach(() => {
@@ -417,9 +378,7 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('auto-fetches models when AI is enabled and endpoint is set', () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -432,16 +391,11 @@ describe('AiSettings - Model Categories', () => {
     })
 
     render(<AiSettings />)
-    expect(mockListAiModels).toHaveBeenCalledTimes(1)
+    expect(ipc.calls('list_ai_models')).toHaveLength(1)
   })
 
   it('shows loading state automatically during model fetch', () => {
-    let _resolve: (value: { models: unknown[] }) => void
-    mockListAiModels.mockReturnValueOnce(
-      new Promise<{ models: unknown[] }>((resolve) => {
-        _resolve = resolve
-      })
-    )
+    ipc.override('list_ai_models', () => new Promise(() => {}))
 
     useSettingsStore.setState({
       settings: {
@@ -455,17 +409,10 @@ describe('AiSettings - Model Categories', () => {
 
     render(<AiSettings />)
     expect(screen.getByTestId('ai-models-loading')).toBeInTheDocument()
-
-    // Resolve to clean up
-    void act(() => {
-      _resolve!({ models: [] })
-    })
   })
 
   it('auto-shows model categories after fetching', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -485,9 +432,10 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('auto-shows error when listAiModels returns an error', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: [],
-      error: 'Connection refused',
+    // listAiModels catches IPC errors and returns { models: [], error: errorMsg }
+    // so we throw from the IPC handler to trigger the error path
+    ipc.override('list_ai_models', () => {
+      throw new Error('Connection refused')
     })
 
     useSettingsStore.setState({
@@ -521,7 +469,7 @@ describe('AiSettings - Model Categories', () => {
     })
 
     render(<AiSettings />)
-    expect(mockListAiModels).not.toHaveBeenCalled()
+    expect(ipc.calls('list_ai_models')).toHaveLength(0)
   })
 
   it('does not auto-fetch when endpoint is empty', () => {
@@ -536,13 +484,11 @@ describe('AiSettings - Model Categories', () => {
     })
 
     render(<AiSettings />)
-    expect(mockListAiModels).not.toHaveBeenCalled()
+    expect(ipc.calls('list_ai_models')).toHaveLength(0)
   })
 
   it('re-fetches models when endpoint changes', async () => {
-    mockListAiModels.mockResolvedValue({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -557,7 +503,7 @@ describe('AiSettings - Model Categories', () => {
     render(<AiSettings />)
 
     await waitFor(() => {
-      expect(mockListAiModels).toHaveBeenCalledTimes(1)
+      expect(ipc.calls('list_ai_models')).toHaveLength(1)
     })
 
     // Change endpoint via store
@@ -574,14 +520,12 @@ describe('AiSettings - Model Categories', () => {
     })
 
     await waitFor(() => {
-      expect(mockListAiModels).toHaveBeenCalledTimes(2)
+      expect(ipc.calls('list_ai_models')).toHaveLength(2)
     })
   })
 
   it('renders two category sections after fetching models', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -604,9 +548,7 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('renders chat models in the Chat section', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -630,9 +572,7 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('renders embedding models in the Embedding section', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -656,10 +596,7 @@ describe('AiSettings - Model Categories', () => {
 
   it('clicking a chat model card updates ai.model setting', async () => {
     const user = userEvent.setup()
-
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -686,10 +623,7 @@ describe('AiSettings - Model Categories', () => {
 
   it('clicking an embedding model card updates ai.embeddingModel setting', async () => {
     const user = userEvent.setup()
-
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -715,12 +649,12 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('shows empty state when no embedding models found', async () => {
-    mockListAiModels.mockResolvedValueOnce({
+    ipc.override('list_ai_models', () => ({
       models: [
         { id: 'llama3', name: 'llama3:latest', category: 'chat' },
         { id: 'mistral', name: 'mistral:latest', category: 'chat' },
       ],
-    })
+    }))
 
     useSettingsStore.setState({
       settings: {
@@ -745,9 +679,9 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('shows empty state when no chat models found', async () => {
-    mockListAiModels.mockResolvedValueOnce({
+    ipc.override('list_ai_models', () => ({
       models: [{ id: 'nomic-embed-text', name: 'nomic-embed-text', category: 'embedding' }],
-    })
+    }))
 
     useSettingsStore.setState({
       settings: {
@@ -770,9 +704,7 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('category headers show correct count in badge', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -795,9 +727,7 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('category headers show correct labels', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -820,9 +750,7 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('ARIA: category sections have role="radiogroup" with aria-labelledby', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -850,9 +778,7 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('ARIA: model cards have role="radio" and correct aria-checked', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -889,9 +815,7 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('selected models show checkmark icons', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -920,9 +844,7 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('model cards use ElevatedSurface wrapper with correct attributes', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -947,12 +869,12 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('models without category default to chat', async () => {
-    mockListAiModels.mockResolvedValueOnce({
+    ipc.override('list_ai_models', () => ({
       models: [
         { id: 'uncategorized', name: 'Uncategorized Model' },
         { id: 'embed', name: 'Embed Model', category: 'embedding' },
       ],
-    })
+    }))
 
     useSettingsStore.setState({
       settings: {
@@ -975,7 +897,7 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('shows error when no models are returned', async () => {
-    mockListAiModels.mockResolvedValueOnce({ models: [] })
+    ipc.override('list_ai_models', () => ({ models: [] }))
 
     useSettingsStore.setState({
       settings: {
@@ -999,9 +921,7 @@ describe('AiSettings - Model Categories', () => {
   })
 
   it('selected chat card is highlighted with modelCardSelected class', async () => {
-    mockListAiModels.mockResolvedValueOnce({
-      models: MOCK_MODELS_WITH_CATEGORIES,
-    })
+    ipc.override('list_ai_models', () => ({ models: MOCK_MODELS_WITH_CATEGORIES }))
 
     useSettingsStore.setState({
       settings: {
@@ -1083,8 +1003,10 @@ describe('AiSettings - Force Reindex', () => {
   it('cancelling the confirm dialog closes it without calling forceRebuild', async () => {
     const user = userEvent.setup()
     const mockForceRebuild = vi.fn().mockResolvedValue(undefined)
-    mockStoreState.sessionToProfile = { 'session-1': 'profile-1' }
-    mockStoreState.forceRebuild = mockForceRebuild
+    useSchemaIndexStore.setState({
+      sessionToProfile: { 'session-1': 'profile-1' },
+      forceRebuild: mockForceRebuild,
+    })
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1104,11 +1026,13 @@ describe('AiSettings - Force Reindex', () => {
   it('confirming reindex calls forceRebuild for each registered session', async () => {
     const user = userEvent.setup()
     const mockForceRebuild = vi.fn().mockResolvedValue(undefined)
-    mockStoreState.sessionToProfile = {
-      'session-1': 'profile-1',
-      'session-2': 'profile-2',
-    }
-    mockStoreState.forceRebuild = mockForceRebuild
+    useSchemaIndexStore.setState({
+      sessionToProfile: {
+        'session-1': 'profile-1',
+        'session-2': 'profile-2',
+      },
+      forceRebuild: mockForceRebuild,
+    })
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1130,8 +1054,10 @@ describe('AiSettings - Force Reindex', () => {
   it('confirm dialog closes after successful reindex', async () => {
     const user = userEvent.setup()
     const mockForceRebuild = vi.fn().mockResolvedValue(undefined)
-    mockStoreState.sessionToProfile = { 'session-1': 'profile-1' }
-    mockStoreState.forceRebuild = mockForceRebuild
+    useSchemaIndexStore.setState({
+      sessionToProfile: { 'session-1': 'profile-1' },
+      forceRebuild: mockForceRebuild,
+    })
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1152,8 +1078,10 @@ describe('AiSettings - Force Reindex', () => {
   it('calls forceRebuild with no sessions when sessionToProfile is empty', async () => {
     const user = userEvent.setup()
     const mockForceRebuild = vi.fn().mockResolvedValue(undefined)
-    mockStoreState.sessionToProfile = {}
-    mockStoreState.forceRebuild = mockForceRebuild
+    useSchemaIndexStore.setState({
+      sessionToProfile: {},
+      forceRebuild: mockForceRebuild,
+    })
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1173,15 +1101,17 @@ describe('AiSettings - Force Reindex', () => {
   })
 
   it('disables the Force Reindex button when any connection is building', () => {
-    mockStoreState.connections = {
-      'session-1': {
-        status: 'building',
-        phase: 'embedding',
-        tablesDone: 3,
-        tablesTotal: 25,
-        lastBuildTimestamp: 0,
+    useSchemaIndexStore.setState({
+      connections: {
+        'session-1': {
+          status: 'building',
+          phase: 'embedding',
+          tablesDone: 3,
+          tablesTotal: 25,
+          lastBuildTimestamp: 0,
+        },
       },
-    }
+    })
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1198,15 +1128,17 @@ describe('AiSettings - Force Reindex', () => {
   })
 
   it('shows inline reindex status with embedding phase progress', () => {
-    mockStoreState.connections = {
-      'session-1': {
-        status: 'building',
-        phase: 'embedding',
-        tablesDone: 7,
-        tablesTotal: 20,
-        lastBuildTimestamp: 0,
+    useSchemaIndexStore.setState({
+      connections: {
+        'session-1': {
+          status: 'building',
+          phase: 'embedding',
+          tablesDone: 7,
+          tablesTotal: 20,
+          lastBuildTimestamp: 0,
+        },
       },
-    }
+    })
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1222,22 +1154,24 @@ describe('AiSettings - Force Reindex', () => {
   })
 
   it('shows inline reindex status with loading_schema phase', () => {
-    mockStoreState.connections = {
-      'session-1': {
-        status: 'building',
-        phase: 'loading_schema',
-        tablesDone: 5,
-        tablesTotal: 0,
-        lastBuildTimestamp: 0,
+    useSchemaIndexStore.setState({
+      connections: {
+        'session-1': {
+          status: 'building',
+          phase: 'loading_schema',
+          tablesDone: 5,
+          tablesTotal: 0,
+          lastBuildTimestamp: 0,
+        },
+        'session-2': {
+          status: 'building',
+          phase: 'loading_schema',
+          tablesDone: 5,
+          tablesTotal: 0,
+          lastBuildTimestamp: 0,
+        },
       },
-      'session-2': {
-        status: 'building',
-        phase: 'loading_schema',
-        tablesDone: 5,
-        tablesTotal: 0,
-        lastBuildTimestamp: 0,
-      },
-    }
+    })
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1254,15 +1188,17 @@ describe('AiSettings - Force Reindex', () => {
   })
 
   it('shows inline reindex status with finalizing phase', () => {
-    mockStoreState.connections = {
-      'session-1': {
-        status: 'building',
-        phase: 'finalizing',
-        tablesDone: 20,
-        tablesTotal: 20,
-        lastBuildTimestamp: 0,
+    useSchemaIndexStore.setState({
+      connections: {
+        'session-1': {
+          status: 'building',
+          phase: 'finalizing',
+          tablesDone: 20,
+          tablesTotal: 20,
+          lastBuildTimestamp: 0,
+        },
       },
-    }
+    })
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,
@@ -1279,15 +1215,17 @@ describe('AiSettings - Force Reindex', () => {
   })
 
   it('does not show inline reindex status when no builds are active', () => {
-    mockStoreState.connections = {
-      'session-1': {
-        status: 'ready',
-        phase: null,
-        tablesDone: 10,
-        tablesTotal: 10,
-        lastBuildTimestamp: 0,
+    useSchemaIndexStore.setState({
+      connections: {
+        'session-1': {
+          status: 'ready',
+          phase: null,
+          tablesDone: 10,
+          tablesTotal: 10,
+          lastBuildTimestamp: 0,
+        },
       },
-    }
+    })
     useSettingsStore.setState({
       settings: {
         ...SETTINGS_DEFAULTS,

@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { EditModeDropdown } from '../../../components/query-editor/EditModeDropdown'
 import { useQueryStore } from '../../../stores/query-store'
 import { useConnectionStore } from '../../../stores/connection-store'
@@ -114,7 +113,6 @@ function setupConnectionStore(connectionId: string, readOnly = false) {
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
   useConnectionStore.setState({ activeConnections: {} })
-  mockIPC(() => null)
 })
 
 describe('EditModeDropdown', () => {

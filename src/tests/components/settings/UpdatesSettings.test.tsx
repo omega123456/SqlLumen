@@ -1,25 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-
-const { mockGetAppInfo, mockLogFrontend, mockHasTauriApis } = vi.hoisted(() => ({
-  mockGetAppInfo: vi.fn(),
-  mockLogFrontend: vi.fn(),
-  mockHasTauriApis: vi.fn(),
-}))
-
-vi.mock('../../../lib/app-info-commands', () => ({
-  getAppInfo: mockGetAppInfo,
-}))
-
-vi.mock('../../../lib/app-log-commands', () => ({
-  logFrontend: mockLogFrontend,
-}))
-
-vi.mock('../../../lib/tauri-env', () => ({
-  hasTauriApis: mockHasTauriApis,
-}))
-
 import { UpdatesSettings } from '../../../components/settings/UpdatesSettings'
 import { useConnectionStore } from '../../../stores/connection-store'
 import { useObjectEditorStore } from '../../../stores/object-editor-store'
@@ -30,6 +11,7 @@ import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { useUpdateStore } from '../../../stores/update-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
 import type { ObjectEditorTab, TableDataTab, TableDesignerTab } from '../../../types/schema'
+import { ipc } from '../../ipc-mock'
 
 const mockCheckForUpdate = vi.fn<(manual: boolean) => Promise<void>>()
 const mockDownloadAndInstall = vi.fn<() => Promise<void>>()
@@ -138,13 +120,12 @@ describe('UpdatesSettings', () => {
     mockCheckForUpdate.mockReset()
     mockDownloadAndInstall.mockReset().mockResolvedValue(undefined)
     mockRestartApp.mockReset().mockResolvedValue(undefined)
-    mockGetAppInfo.mockReset().mockResolvedValue({
+    // Default: version 1.2.3 for most tests
+    ipc.override('get_app_info', () => ({
       rustLogOverride: false,
       logDirectory: '/mock/logs',
       appVersion: '1.2.3',
-    })
-    mockLogFrontend.mockReset()
-    mockHasTauriApis.mockReset().mockReturnValue(true)
+    }))
   })
 
   it('renders idle state with Check for Updates button', async () => {
@@ -266,15 +247,25 @@ describe('UpdatesSettings', () => {
   })
 
   it('shows unavailable app version and logs when app info loading fails', async () => {
-    mockGetAppInfo.mockRejectedValueOnce(new Error('boom'))
+    ipc.override('get_app_info', () => {
+      throw new Error('boom')
+    })
 
     render(<UpdatesSettings />)
 
     expect(await screen.findByTestId('updates-app-version')).toHaveTextContent('Unavailable')
-    expect(mockLogFrontend).toHaveBeenCalledWith(
-      'error',
-      expect.stringContaining('Failed to load app version')
-    )
+    await waitFor(() => {
+      const logCalls = ipc.calls('log_frontend')
+      const matched = logCalls.some((call) => {
+        const args = call as Record<string, unknown>
+        return (
+          args.level === 'error' &&
+          typeof args.message === 'string' &&
+          args.message.includes('Failed to load app version')
+        )
+      })
+      expect(matched).toBe(true)
+    })
   })
 
   it('shows confirmation dialog before download when active work exists', async () => {
