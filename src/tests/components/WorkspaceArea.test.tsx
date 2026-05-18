@@ -12,7 +12,6 @@ import { useQueryStore } from '../../stores/query-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { useTableDataStore } from '../../stores/table-data-store'
 import type { ActiveConnection, SavedConnection } from '../../types/connection'
-import { ipc } from '../ipc-mock'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
