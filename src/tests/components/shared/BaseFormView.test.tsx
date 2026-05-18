@@ -2,39 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { GridColumnDescriptor, RowEditState } from '../../../types/shared-data-view'
-
-vi.mock('../../../components/shared/fk-lookup-context', () => ({
-  useFkLookup: () => ({ onFkLookup: vi.fn() }),
-}))
-
-// Mock DateTimePicker — avoids portal + react-datepicker complexity in unit tests
-vi.mock('../../../components/table-data/DateTimePicker', async () => {
-  const React = await import('react')
-  return {
-    DateTimePicker: ({
-      onApply,
-      onCancel,
-    }: {
-      onApply: (v: string) => void
-      onCancel: () => void
-    }) =>
-      React.createElement(
-        'div',
-        { 'data-testid': 'date-time-picker-popup' },
-        React.createElement(
-          'button',
-          { 'data-testid': 'mock-apply-btn', onClick: () => onApply('2023-11-24') },
-          'Apply'
-        ),
-        React.createElement(
-          'button',
-          { 'data-testid': 'mock-cancel-btn', onClick: () => onCancel() },
-          'Cancel'
-        )
-      ),
-  }
-})
-
 import { BaseFormView } from '../../../components/shared/BaseFormView'
 import type { BaseFormViewProps } from '../../../types/shared-data-view'
 
@@ -854,8 +821,11 @@ describe('BaseFormView — DateTimePicker integration', () => {
       onUpdateCell,
     })
     fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
-    fireEvent.click(screen.getByTestId('mock-apply-btn'))
-    expect(onUpdateCell).toHaveBeenCalledWith('created_at', '2023-11-24')
+    // Apply button in the real DateTimePicker
+    fireEvent.click(screen.getByTestId('btn-picker-apply'))
+    // The real picker applies the current date value (not a hardcoded '2023-11-24')
+    expect(onUpdateCell).toHaveBeenCalledTimes(1)
+    expect(onUpdateCell.mock.calls[0][0]).toBe('created_at')
   })
 
   it('picker onCancel closes the popup without calling onUpdateCell', () => {
@@ -868,7 +838,8 @@ describe('BaseFormView — DateTimePicker integration', () => {
     })
     fireEvent.click(screen.getByTestId('calendar-btn-created_at'))
     expect(screen.getByTestId('date-time-picker-popup')).toBeInTheDocument()
-    fireEvent.click(screen.getByTestId('mock-cancel-btn'))
+    // Cancel button in the real DateTimePicker
+    fireEvent.click(screen.getByTestId('btn-picker-cancel'))
     expect(screen.queryByTestId('date-time-picker-popup')).not.toBeInTheDocument()
     expect(onUpdateCell).not.toHaveBeenCalled()
   })
