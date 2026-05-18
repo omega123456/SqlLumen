@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ipc, overrideNamedIpcCommands } from '../ipc-mock'
+import { overrideNamedIpcCommands } from '../ipc-mock'
 import {
   useQueryStore,
   isEditableSelectSql,

@@ -2,7 +2,7 @@
  * Tests for session-restore-store: save/restore session, isEnabled, error handling.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { ipc, overrideNamedIpcCommands } from '../ipc-mock'
+import { overrideNamedIpcCommands } from '../ipc-mock'
 import {
   _setLoadTauriWindowApiForTests,
   _resetSessionPersistenceForTests,

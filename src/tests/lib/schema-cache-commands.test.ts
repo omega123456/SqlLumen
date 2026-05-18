@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 
 import { ipc } from '../ipc-mock'
 import { loadSchemaCacheSnapshot, saveSchemaCacheSnapshot } from '../../lib/schema-cache-commands'
