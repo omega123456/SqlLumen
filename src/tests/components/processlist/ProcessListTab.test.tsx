@@ -1,21 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, act } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../../../tests/ipc-mock'
 import ProcessListTab from '../../../components/processlist/ProcessListTab'
 import { useProcessListStore } from '../../../stores/processlist-store'
 import { useConnectionStore } from '../../../stores/connection-store'
 import type { ActiveConnection, SavedConnection } from '../../../types/connection'
-
-// Mock DataGrid
-vi.mock('../../../components/shared/DataGrid', async () => {
-  const React = await import('react')
-  return {
-    DataGrid: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
-      React.useImperativeHandle(ref, () => ({ selectCell: vi.fn() }))
-      return React.createElement('div', { 'data-testid': props['data-testid'] }, 'grid')
-    }),
-  }
-})
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -96,12 +85,8 @@ function setupStore() {
 
 describe('ProcessListTab', () => {
   beforeEach(() => {
-    mockIPC((cmd) => {
-      if (cmd === 'log_frontend') return undefined
-      if (cmd === 'get_processlist') return MOCK_ROWS
-      if (cmd === 'kill_queries') return []
-      throw new Error(`[vitest] Unmocked Tauri IPC command: ${cmd}`)
-    })
+    ipc.override('get_processlist', () => MOCK_ROWS)
+    ipc.override('kill_queries', () => [])
     setupStore()
   })
 
