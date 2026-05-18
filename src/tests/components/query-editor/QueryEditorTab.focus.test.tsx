@@ -4,7 +4,6 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, waitFor } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
@@ -14,46 +13,15 @@ import {
   _resetQueryTabCounter,
 } from '../../../stores/workspace-store'
 import type { QueryEditorTab as QueryEditorTabType } from '../../../types/schema'
+import * as SchemaMetadataCacheModule from '../../../components/query-editor/schema-metadata-cache'
+import * as CompletionServiceModule from '../../../components/query-editor/completion-service'
+import * as MonacoEditorReactModule from '@monaco-editor/react'
 
-// Mock tauri dialog
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  save: vi.fn(() => Promise.resolve(null)),
-  open: vi.fn(() => Promise.resolve(null)),
-}))
+// IPC fixtures in setup.ts handle plugin:dialog|save, plugin:dialog|open, and all other commands.
+// Monaco, monaco-sql-languages, and monaco-sql-languages/esm are globally mocked in setup.ts.
+// Use vi.spyOn to install per-test mock implementations without vi.mock().
 
-// Mock schema-metadata-cache
-vi.mock('../../../components/query-editor/schema-metadata-cache', () => ({
-  loadCache: vi.fn(() => Promise.resolve()),
-  getCache: vi.fn(() => ({
-    status: 'empty',
-    databases: [],
-    tables: {},
-    columns: {},
-    routines: {},
-  })),
-  getPendingLoad: vi.fn(() => null),
-  _clearAllCaches: vi.fn(),
-}))
-
-vi.mock('monaco-sql-languages/esm/languages/mysql/mysql.contribution', () => ({}))
-vi.mock('monaco-sql-languages', () => ({
-  setupLanguageFeatures: vi.fn(),
-  LanguageIdEnum: { MYSQL: 'mysql' },
-  EntityContextType: {
-    DATABASE: 'database',
-    TABLE: 'table',
-    COLUMN: 'column',
-    FUNCTION: 'function',
-    PROCEDURE: 'procedure',
-  },
-}))
-vi.mock('../../../components/query-editor/mysql-language-setup', () => ({}))
-vi.mock('../../../components/query-editor/completion-service', () => ({
-  registerModelConnection: vi.fn(),
-  unregisterModelConnection: vi.fn(),
-  resetModelConnections: vi.fn(),
-  completionService: vi.fn(async () => []),
-}))
+import React from 'react'
 
 // Mock editor with focus spy
 const mockFocus = vi.fn()
@@ -80,49 +48,30 @@ const mockEditorInstance = {
   updateOptions: vi.fn(),
 }
 
-vi.mock('@monaco-editor/react', async () => {
-  const React = await import('react')
-  return {
-    default: (props: Record<string, unknown>) => {
-      function MockEditor() {
-        React.useEffect(() => {
-          const onMount = props.onMount as
-            | ((editor: typeof mockEditorInstance, monaco: Record<string, unknown>) => void)
-            | undefined
-          onMount?.(mockEditorInstance, {
-            editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
-            languages: {},
-            KeyCode: { F9: 78, F12: 81 },
-          })
-        }, [])
-
-        return React.createElement('textarea', {
-          'data-testid': 'monaco-editor',
-          value: (props.value as string) ?? '',
-          readOnly: true,
+function createRichMonacoEditorMock() {
+  return (props: Record<string, unknown>) => {
+    function MockEditor() {
+      React.useEffect(() => {
+        const onMount = props.onMount as
+          | ((editor: typeof mockEditorInstance, monaco: Record<string, unknown>) => void)
+          | undefined
+        onMount?.(mockEditorInstance, {
+          editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
+          languages: {},
+          KeyCode: { F9: 78, F12: 81 },
+          KeyMod: { CtrlCmd: 2048, Shift: 1024, Alt: 512 },
         })
-      }
-      return React.createElement(MockEditor)
-    },
-    useMonaco: () => ({
-      editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
-      languages: {},
-    }),
-    loader: { init: () => Promise.resolve(), config: () => {} },
-  }
-})
+      }, [])
 
-vi.mock('react-resizable-panels', async () => {
-  const React = await import('react')
-  return {
-    Group: ({ children }: { children: React.ReactNode }) =>
-      React.createElement('div', { 'data-testid': 'panel-group' }, children),
-    Panel: ({ children }: { children: React.ReactNode }) =>
-      React.createElement('div', null, children),
-    Separator: ({ children }: { children: React.ReactNode }) =>
-      React.createElement('div', null, children),
+      return React.createElement('textarea', {
+        'data-testid': 'monaco-editor',
+        value: (props.value as string) ?? '',
+        readOnly: true,
+      })
+    }
+    return React.createElement(MockEditor)
   }
-})
+}
 
 const mockTab: QueryEditorTabType = {
   id: 'tab-focus-1',
@@ -133,18 +82,51 @@ const mockTab: QueryEditorTabType = {
 
 beforeEach(() => {
   mockFocus.mockClear()
+  mockEditorInstance.layout.mockClear()
+  mockEditorInstance.onDidChangeCursorPosition.mockClear()
+  mockEditorInstance.onDidChangeCursorSelection.mockClear()
+  mockEditorInstance.onDidChangeModelContent.mockClear()
+  mockEditorInstance.onDidDispose.mockClear()
+  mockEditorInstance.getModel.mockClear()
+  mockEditorInstance.getSelection.mockClear()
+  mockEditorInstance.setPosition.mockClear()
+  mockEditorInstance.revealPositionInCenter.mockClear()
+  mockEditorInstance.addCommand.mockClear()
+  mockEditorInstance.updateOptions.mockClear()
+
   useQueryStore.setState({ tabs: {} })
   useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
   useAiStore.setState({ tabs: {} })
   _resetTabIdCounter()
   _resetQueryTabCounter()
-  mockIPC(() => null)
   useSettingsStore.setState({
     settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'false' },
   })
+
+  // Override @monaco-editor/react with richer mock that calls onMount
+  vi.spyOn(MonacoEditorReactModule, 'default').mockImplementation(createRichMonacoEditorMock())
+
+  // Spy on schema-metadata-cache
+  vi.spyOn(SchemaMetadataCacheModule, 'loadCache').mockResolvedValue(undefined)
+  vi.spyOn(SchemaMetadataCacheModule, 'getCache').mockReturnValue({
+    status: 'empty',
+    databases: [],
+    tables: {},
+    columns: {},
+    routines: {},
+    foreignKeys: {},
+    indexes: {},
+  })
+  vi.spyOn(SchemaMetadataCacheModule, 'getPendingLoad').mockReturnValue(null)
+
+  // Spy on completion-service
+  vi.spyOn(CompletionServiceModule, 'registerModelConnection')
+  vi.spyOn(CompletionServiceModule, 'unregisterModelConnection')
+  vi.spyOn(CompletionServiceModule, 'resetModelConnections')
+
+  // react-resizable-panels renders real panels (ResizeObserver polyfilled in setup.ts).
 })
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
 import { QueryEditorTab } from '../../../components/query-editor/QueryEditorTab'
 
 describe('QueryEditorTab - editor focus on mount', () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../../ipc-mock'
 import { EditorToolbar } from '../../../components/query-editor/EditorToolbar'
 import { useQueryStore } from '../../../stores/query-store'
 import {
@@ -12,11 +12,8 @@ import { useConnectionStore } from '../../../stores/connection-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
 
-// Mock tauri dialog
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  save: vi.fn(() => Promise.resolve(null)), // cancelled
-  open: vi.fn(() => Promise.resolve(null)), // cancelled
-}))
+// IPC fixtures in setup.ts handle plugin:dialog|save and plugin:dialog|open (return null = cancelled)
+// For tests that need a specific path returned, use ipc.override('plugin:dialog|save', () => '/path')
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
@@ -30,58 +27,49 @@ beforeEach(() => {
   _resetTabIdCounter()
   _resetQueryTabCounter()
 
-  mockIPC((cmd) => {
-    switch (cmd) {
-      case 'execute_query':
-        return {
-          queryId: 'q1',
-          columns: [{ name: 'id', dataType: 'INT' }],
-          totalRows: 1,
-          executionTimeMs: 10,
-          affectedRows: 0,
-          firstPage: [[1]],
-          totalPages: 1,
-          autoLimitApplied: false,
-        }
-      case 'execute_multi_query':
-        return {
-          results: [
-            {
-              queryId: 'q1',
-              sourceSql: 'SELECT 1',
-              columns: [{ name: 'id', dataType: 'INT' }],
-              totalRows: 1,
-              executionTimeMs: 5,
-              affectedRows: 0,
-              firstPage: [[1]],
-              totalPages: 1,
-              autoLimitApplied: false,
-              error: null,
-              reExecutable: true,
-            },
-            {
-              queryId: 'q2',
-              sourceSql: 'SELECT 2',
-              columns: [{ name: 'id', dataType: 'INT' }],
-              totalRows: 1,
-              executionTimeMs: 5,
-              affectedRows: 0,
-              firstPage: [[2]],
-              totalPages: 1,
-              autoLimitApplied: false,
-              error: null,
-              reExecutable: true,
-            },
-          ],
-        }
-      case 'write_file':
-        return null
-      case 'read_file':
-        return 'SELECT * FROM loaded_file;'
-      default:
-        return null
-    }
-  })
+  // Override execute commands to return realistic results
+  ipc.override('execute_query', () => ({
+    queryId: 'q1',
+    columns: [{ name: 'id', dataType: 'INT' }],
+    totalRows: 1,
+    executionTimeMs: 10,
+    affectedRows: 0,
+    firstPage: [[1]],
+    totalPages: 1,
+    autoLimitApplied: false,
+  }))
+  ipc.override('execute_multi_query', () => ({
+    results: [
+      {
+        queryId: 'q1',
+        sourceSql: 'SELECT 1',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows: 1,
+        executionTimeMs: 5,
+        affectedRows: 0,
+        firstPage: [[1]],
+        totalPages: 1,
+        autoLimitApplied: false,
+        error: null,
+        reExecutable: true,
+      },
+      {
+        queryId: 'q2',
+        sourceSql: 'SELECT 2',
+        columns: [{ name: 'id', dataType: 'INT' }],
+        totalRows: 1,
+        executionTimeMs: 5,
+        affectedRows: 0,
+        firstPage: [[2]],
+        totalPages: 1,
+        autoLimitApplied: false,
+        error: null,
+        reExecutable: true,
+      },
+    ],
+  }))
+  ipc.override('write_file', () => null)
+  ipc.override('read_file', () => 'SELECT * FROM loaded_file;')
 })
 
 describe('EditorToolbar', () => {
@@ -215,26 +203,25 @@ describe('EditorToolbar', () => {
   })
 
   it('save button opens dialog (no-op on cancel)', async () => {
-    const { save } = await import('@tauri-apps/plugin-dialog')
+    // Default fixture returns null (cancelled) for plugin:dialog|save
     renderToolbar('SELECT 1')
     await act(async () => {
       fireEvent.click(screen.getByTestId('toolbar-save'))
     })
     await vi.waitFor(() => {
-      expect(save).toHaveBeenCalled()
+      expect(ipc.calls('plugin:dialog|save').length).toBeGreaterThan(0)
     })
   })
 
   it('save button writes file when path selected', async () => {
-    const dialogMod = await import('@tauri-apps/plugin-dialog')
-    vi.mocked(dialogMod.save).mockResolvedValueOnce('/tmp/query.sql')
+    ipc.override('plugin:dialog|save', () => '/tmp/query.sql')
 
     renderToolbar('SELECT 1')
     await act(async () => {
       fireEvent.click(screen.getByTestId('toolbar-save'))
     })
     await vi.waitFor(() => {
-      expect(dialogMod.save).toHaveBeenCalled()
+      expect(ipc.calls('plugin:dialog|save').length).toBeGreaterThan(0)
     })
     // File path should be set on the tab
     const tabState = useQueryStore.getState().tabs['tab-1']
@@ -242,26 +229,25 @@ describe('EditorToolbar', () => {
   })
 
   it('open button opens dialog (no-op on cancel)', async () => {
-    const { open } = await import('@tauri-apps/plugin-dialog')
+    // Default fixture returns null (cancelled) for plugin:dialog|open
     renderToolbar()
     await act(async () => {
       fireEvent.click(screen.getByTestId('toolbar-open'))
     })
     await vi.waitFor(() => {
-      expect(open).toHaveBeenCalled()
+      expect(ipc.calls('plugin:dialog|open').length).toBeGreaterThan(0)
     })
   })
 
   it('open button reads file and creates new tab when path selected', async () => {
-    const dialogMod = await import('@tauri-apps/plugin-dialog')
-    vi.mocked(dialogMod.open).mockResolvedValueOnce('/tmp/query.sql')
+    ipc.override('plugin:dialog|open', () => '/tmp/query.sql')
 
     renderToolbar()
     await act(async () => {
       fireEvent.click(screen.getByTestId('toolbar-open'))
     })
     await vi.waitFor(() => {
-      expect(dialogMod.open).toHaveBeenCalled()
+      expect(ipc.calls('plugin:dialog|open').length).toBeGreaterThan(0)
     })
     // A new query tab should have been created
     const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
@@ -270,33 +256,15 @@ describe('EditorToolbar', () => {
   })
 
   it('execute all stops on error', async () => {
-    // Set up IPC to fail on second query
-    let callCount = 0
-    mockIPC((cmd) => {
-      if (cmd === 'execute_query') {
-        callCount++
-        if (callCount === 2) {
-          throw new Error('Query failed')
-        }
-        return {
-          queryId: 'q1',
-          columns: [{ name: 'id', dataType: 'INT' }],
-          totalRows: 1,
-          executionTimeMs: 10,
-          affectedRows: 0,
-          firstPage: [[1]],
-          totalPages: 1,
-          autoLimitApplied: false,
-        }
-      }
-      return null
+    // execute_multi_query is the IPC command used by "execute all"
+    ipc.override('execute_multi_query', () => {
+      throw new Error('Query failed')
     })
 
     renderToolbar('SELECT 1; SELECT 2; SELECT 3;')
     await act(async () => {
       fireEvent.click(screen.getByTestId('toolbar-execute-all'))
     })
-    // Should have stopped after the error on second statement
     const tabState = useQueryStore.getState().tabs['tab-1']
     expect(tabState?.tabStatus).toBe('error')
   })
