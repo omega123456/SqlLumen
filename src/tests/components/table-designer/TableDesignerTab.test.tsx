@@ -6,67 +6,8 @@ import { useSchemaStore } from '../../../stores/schema-store'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import { useThemeStore } from '../../../stores/theme-store'
 import { useWorkspaceStore } from '../../../stores/workspace-store'
+import { ipc } from '../../ipc-mock'
 import type { TableDesignerTab as TableDesignerTabType } from '../../../types/schema'
-
-vi.mock('../../../lib/table-designer-commands', () => ({
-  loadTableForDesigner: vi.fn().mockResolvedValue({
-    tableName: 'users',
-    columns: [],
-    indexes: [],
-    foreignKeys: [],
-    properties: {
-      engine: 'InnoDB',
-      charset: 'utf8mb4',
-      collation: 'utf8mb4_unicode_ci',
-      autoIncrement: null,
-      rowFormat: 'DEFAULT',
-      comment: '',
-    },
-  }),
-  generateTableDdl: vi.fn().mockResolvedValue({ ddl: 'ALTER TABLE `users` ...', warnings: [] }),
-  applyTableDdl: vi.fn().mockResolvedValue(undefined),
-}))
-
-vi.mock('../../../lib/schema-index-commands', () => ({
-  invalidateSchemaIndex: vi.fn().mockResolvedValue(undefined),
-  buildSchemaIndex: vi.fn().mockResolvedValue(undefined),
-}))
-
-import {
-  applyTableDdl,
-  generateTableDdl,
-  loadTableForDesigner,
-} from '../../../lib/table-designer-commands'
-
-vi.mock('../../../components/table-designer/ColumnEditor', () => ({
-  ColumnEditor: ({ tabId }: { tabId: string }) => (
-    <div data-testid="column-editor">editor {tabId}</div>
-  ),
-}))
-
-vi.mock('../../../components/table-designer/IndexEditor', () => ({
-  IndexEditor: ({ tabId }: { tabId: string }) => (
-    <div data-testid="index-editor">indexes {tabId}</div>
-  ),
-}))
-
-vi.mock('../../../components/table-designer/ForeignKeyEditor', () => ({
-  ForeignKeyEditor: ({ tabId }: { tabId: string }) => (
-    <div data-testid="foreign-key-editor">foreign keys {tabId}</div>
-  ),
-}))
-
-vi.mock('../../../components/table-designer/TablePropertiesEditor', () => ({
-  TablePropertiesEditor: ({ tabId }: { tabId: string }) => (
-    <div data-testid="table-properties-editor">properties {tabId}</div>
-  ),
-}))
-
-vi.mock('../../../components/table-designer/DdlPreviewTab', () => ({
-  DdlPreviewTab: ({ tabId }: { tabId: string }) => (
-    <div data-testid="ddl-preview-tab">ddl {tabId}</div>
-  ),
-}))
 
 function makeTab(overrides: Partial<TableDesignerTabType> = {}): TableDesignerTabType {
   return {
@@ -87,7 +28,7 @@ beforeEach(() => {
   useWorkspaceStore.setState({ tabsByConnection: {}, activeTabByConnection: {} })
   useSchemaStore.setState({ connectionStates: {} })
   useThemeStore.setState({ theme: 'dark', resolvedTheme: 'dark' })
-  vi.mocked(loadTableForDesigner).mockResolvedValue({
+  ipc.override('load_table_for_designer', () => ({
     tableName: 'users',
     columns: [],
     indexes: [],
@@ -100,9 +41,22 @@ beforeEach(() => {
       rowFormat: 'DEFAULT',
       comment: '',
     },
-  })
-  vi.mocked(generateTableDdl).mockResolvedValue({ ddl: 'ALTER TABLE `users` ...', warnings: [] })
-  vi.mocked(applyTableDdl).mockResolvedValue(undefined)
+  }))
+  ipc.override('generate_table_ddl', () => ({ ddl: 'ALTER TABLE `users` ...', warnings: [] }))
+  ipc.override('apply_table_ddl', () => undefined)
+  ipc.override('list_schema_objects', () => ['roles', 'teams'])
+  ipc.override('list_columns', () => [])
+  ipc.override('list_charsets', () => [
+    {
+      charset: 'utf8mb4',
+      description: 'UTF-8 Unicode',
+      defaultCollation: 'utf8mb4_unicode_ci',
+      maxLength: 4,
+    },
+  ])
+  ipc.override('list_collations', () => [
+    { name: 'utf8mb4_unicode_ci', charset: 'utf8mb4', isDefault: true },
+  ])
 })
 
 describe('TableDesignerTab', () => {
@@ -370,7 +324,7 @@ describe('TableDesignerTab', () => {
 
     await user.click(screen.getByRole('button', { name: 'DDL Preview' }))
 
-    expect(screen.getByTestId('ddl-preview-tab')).toBeInTheDocument()
+    expect(screen.getByTestId('table-designer-ddl-preview')).toBeInTheDocument()
     expect(useTableDesignerStore.getState().tabs['tab-1']?.selectedSubTab).toBe('ddl')
   })
 
@@ -394,7 +348,7 @@ describe('TableDesignerTab', () => {
     await waitFor(() => {
       expect(screen.getByTestId('apply-schema-dialog')).toBeInTheDocument()
     })
-    expect(generateTableDdl).toHaveBeenCalled()
+    expect(ipc.calls('generate_table_ddl').length).toBeGreaterThan(0)
   })
 
   it('successful create apply updates workspace tab context and refreshes schema tree', async () => {

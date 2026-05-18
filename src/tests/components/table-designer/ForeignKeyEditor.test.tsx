@@ -1,25 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { ForeignKeyEditor } from '../../../components/table-designer/ForeignKeyEditor'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
+import { ipc } from '../../ipc-mock'
 import type { TableDesignerTabState } from '../../../stores/table-designer-store'
-
-vi.mock('../../../lib/table-designer-commands', () => ({
-  loadTableForDesigner: vi.fn().mockResolvedValue(undefined),
-  generateTableDdl: vi.fn().mockResolvedValue({ ddl: 'ALTER TABLE `users` ...', warnings: [] }),
-  applyTableDdl: vi.fn().mockResolvedValue(undefined),
-}))
-
-vi.mock('../../../lib/schema-commands', () => ({
-  listSchemaObjects: vi.fn(),
-  listColumns: vi.fn(),
-}))
-
-import { listColumns, listSchemaObjects } from '../../../lib/schema-commands'
-
-const mockListSchemaObjects = vi.mocked(listSchemaObjects)
-const mockListColumns = vi.mocked(listColumns)
 
 function makeTabState(overrides: Partial<TableDesignerTabState> = {}): TableDesignerTabState {
   return {
@@ -146,9 +131,8 @@ describe('ForeignKeyEditor', () => {
   beforeEach(() => {
     useTableDesignerStore.getState().cleanupTab('tab-1')
     useTableDesignerStore.setState({ tabs: {} })
-    vi.restoreAllMocks()
-    mockListSchemaObjects.mockResolvedValue(['roles', 'teams'])
-    mockListColumns.mockImplementation(async (_connectionId, _database, table) => {
+    ipc.override('list_schema_objects', () => ['roles', 'teams'])
+    ipc.override('list_columns', ({ table }) => {
       if (table === 'roles') {
         return [
           {
@@ -314,7 +298,11 @@ describe('ForeignKeyEditor', () => {
     render(<ForeignKeyEditor tabId="tab-1" />)
 
     await waitFor(() => {
-      expect(mockListColumns).toHaveBeenCalledWith('conn-1', 'app_db', 'roles')
+      expect(ipc.calls('list_columns')).toContainEqual({
+        connectionId: 'conn-1',
+        database: 'app_db',
+        table: 'roles',
+      })
     })
 
     const user = userEvent.setup()
@@ -325,7 +313,7 @@ describe('ForeignKeyEditor', () => {
 
   it('falls back to text input when referenced table columns are unavailable', async () => {
     const user = userEvent.setup()
-    mockListColumns.mockResolvedValue([])
+    ipc.override('list_columns', () => [])
     seedStore()
     render(<ForeignKeyEditor tabId="tab-1" />)
 
@@ -345,7 +333,9 @@ describe('ForeignKeyEditor', () => {
   it('logs and recovers when referenced tables fail to load', async () => {
     const user = userEvent.setup()
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockListSchemaObjects.mockRejectedValue(new Error('tables failed'))
+    ipc.override('list_schema_objects', () => {
+      throw new Error('tables failed')
+    })
     seedStore()
     render(<ForeignKeyEditor tabId="tab-1" />)
 
@@ -360,7 +350,9 @@ describe('ForeignKeyEditor', () => {
 
   it('logs and falls back when referenced columns fail to load', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockListColumns.mockRejectedValue(new Error('columns failed'))
+    ipc.override('list_columns', () => {
+      throw new Error('columns failed')
+    })
     seedStore()
     render(<ForeignKeyEditor tabId="tab-1" />)
 

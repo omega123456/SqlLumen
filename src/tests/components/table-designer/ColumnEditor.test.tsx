@@ -1,15 +1,9 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent, { type UserEvent } from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { ColumnEditor } from '../../../components/table-designer/ColumnEditor'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
 import type { TableDesignerTabState } from '../../../stores/table-designer-store'
-
-vi.mock('../../../lib/table-designer-commands', () => ({
-  loadTableForDesigner: vi.fn().mockResolvedValue(undefined),
-  generateTableDdl: vi.fn().mockResolvedValue({ ddl: 'ALTER TABLE `users` ...', warnings: [] }),
-  applyTableDdl: vi.fn().mockResolvedValue(undefined),
-}))
 
 function makeTabState(overrides: Partial<TableDesignerTabState> = {}): TableDesignerTabState {
   return {
@@ -523,6 +517,7 @@ describe('ColumnEditor', () => {
     await user.click(screen.getByTestId('column-default-0'))
     await user.click(await screen.findByRole('option', { name: 'Custom' }))
     const customInput = screen.getByTestId('column-default-input-0')
+    await user.clear(customInput)
     await user.type(customInput, '42')
     expect(getTab()?.currentSchema.columns[0]?.defaultValue).toEqual({
       tag: 'LITERAL',

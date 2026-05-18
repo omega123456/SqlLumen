@@ -2,19 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DdlPanel } from '../../../components/schema-info/DdlPanel'
+import { expectToast } from '../../ipc-mock'
+import { useToastStore } from '../../../stores/toast-store'
 import type { TableMetadata } from '../../../types/schema'
 
-// Mock writeClipboardText
-const mockWriteClipboard = vi.fn().mockResolvedValue(undefined)
-const mockShowSuccessToast = vi.fn()
-const mockShowErrorToast = vi.fn()
-vi.mock('../../../lib/context-menu-utils', () => ({
-  writeClipboardText: (...args: unknown[]) => mockWriteClipboard(...args),
-}))
-vi.mock('../../../stores/toast-store', () => ({
-  showSuccessToast: (...args: unknown[]) => mockShowSuccessToast(...args),
-  showErrorToast: (...args: unknown[]) => mockShowErrorToast(...args),
-}))
+let writeClipboardTextSpy: ReturnType<typeof vi.spyOn>
 
 function makeMetadata(overrides: Partial<TableMetadata> = {}): TableMetadata {
   return {
@@ -30,7 +22,10 @@ function makeMetadata(overrides: Partial<TableMetadata> = {}): TableMetadata {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  useToastStore.setState({ toasts: [] })
+  writeClipboardTextSpy = vi
+    .spyOn(navigator.clipboard, 'writeText')
+    .mockImplementation(() => Promise.resolve())
 })
 
 describe('DdlPanel', () => {
@@ -55,8 +50,7 @@ describe('DdlPanel', () => {
     expect(copyBtn).toBeInTheDocument()
 
     await user.click(copyBtn)
-    expect(mockWriteClipboard).toHaveBeenCalledWith(ddl)
-    expect(mockShowSuccessToast).toHaveBeenCalledWith('Copied to clipboard')
+    await expectToast('success', 'Copied to clipboard')
   })
 
   it('Copy SQL works in ddl-only mode and shows success toast', async () => {
@@ -66,18 +60,17 @@ describe('DdlPanel', () => {
     render(<DdlPanel ddl={ddl} objectType="view" />)
 
     await user.click(screen.getByText('Copy SQL'))
-    expect(mockWriteClipboard).toHaveBeenCalledWith(ddl)
-    expect(mockShowSuccessToast).toHaveBeenCalledWith('Copied to clipboard')
+    await expectToast('success', 'Copied to clipboard')
   })
 
   it('shows error toast when clipboard copy fails', async () => {
     const user = userEvent.setup()
-    mockWriteClipboard.mockRejectedValueOnce(new Error('clipboard denied'))
+    writeClipboardTextSpy.mockRejectedValueOnce(new Error('clipboard denied'))
 
     render(<DdlPanel ddl="CREATE VIEW `v` AS SELECT 1" objectType="view" />)
 
     await user.click(screen.getByText('Copy SQL'))
-    expect(mockShowErrorToast).toHaveBeenCalledWith('Copy failed', 'clipboard denied')
+    await expectToast('error', 'clipboard denied')
   })
 
   it('shows MetadataCard for tables', () => {

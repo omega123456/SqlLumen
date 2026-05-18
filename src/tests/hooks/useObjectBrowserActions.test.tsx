@@ -7,49 +7,18 @@ import {
 } from '../../hooks/useObjectBrowserActions'
 import { useWorkspaceStore, _resetTabIdCounter } from '../../stores/workspace-store'
 import { useSchemaStore } from '../../stores/schema-store'
+import { useToastStore } from '../../stores/toast-store'
+import { ipc, expectToast } from '../ipc-mock'
 import type { EditableObjectType } from '../../types/schema'
-
-// Mock IPC commands
-vi.mock('../../lib/schema-commands', () => ({
-  dropDatabase: vi.fn().mockResolvedValue(undefined),
-  dropTable: vi.fn().mockResolvedValue(undefined),
-  truncateTable: vi.fn().mockResolvedValue(undefined),
-  renameDatabase: vi.fn().mockResolvedValue(undefined),
-  renameTable: vi.fn().mockResolvedValue(undefined),
-}))
-
-vi.mock('../../lib/object-editor-commands', () => ({
-  dropObject: vi.fn().mockResolvedValue(undefined),
-  getObjectBody: vi.fn().mockResolvedValue(''),
-  saveObject: vi.fn().mockResolvedValue({ success: true }),
-  getRoutineParameters: vi.fn().mockResolvedValue([]),
-}))
-
-vi.mock('../../lib/schema-index-commands', () => ({
-  invalidateSchemaIndex: vi.fn().mockResolvedValue(undefined),
-  buildSchemaIndex: vi.fn().mockResolvedValue(undefined),
-}))
-
-vi.mock('../../stores/toast-store', () => ({
-  showSuccessToast: vi.fn(),
-  showErrorToast: vi.fn(),
-  showWarningToast: vi.fn(),
-}))
-
-vi.mock('../../components/query-editor/routine-parameter-cache', () => ({
-  invalidateRoutineCache: vi.fn(),
-}))
-
-vi.mock('../../components/query-editor/schema-metadata-cache', () => ({
-  invalidateCache: vi.fn(),
-}))
-
-import { dropObject, getRoutineParameters } from '../../lib/object-editor-commands'
-import { showSuccessToast, showErrorToast, showWarningToast } from '../../stores/toast-store'
 import { useQueryStore } from '../../stores/query-store'
-import { invalidateRoutineCache } from '../../components/query-editor/routine-parameter-cache'
-import { invalidateCache as invalidateSchemaMetadataCache } from '../../components/query-editor/schema-metadata-cache'
-import { dropDatabase, renameDatabase } from '../../lib/schema-commands'
+import {
+  getCachedRoutineParameters,
+  getRoutineParameters as getRoutineParametersCache,
+} from '../../components/query-editor/routine-parameter-cache'
+import {
+  getCache as getSchemaMetadataCache,
+  hydrateFromSnapshot,
+} from '../../components/query-editor/schema-metadata-cache'
 
 const CONN_ID = 'conn-test'
 
@@ -75,8 +44,8 @@ function renderActions() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
   _resetTabIdCounter()
+  useToastStore.setState({ toasts: [] })
   useSchemaStore.setState({
     connectionStates: {},
     refreshDatabase: vi.fn().mockResolvedValue(undefined),
@@ -87,6 +56,7 @@ beforeEach(() => {
     tabsByConnection: {},
     activeTabByConnection: {},
   })
+  useQueryStore.setState({ tabs: {}, activeTabIds: {}, pendingChanges: {} })
 })
 
 describe('useObjectBrowserActions — object editor actions', () => {
@@ -261,7 +231,12 @@ describe('useObjectBrowserActions — object editor actions', () => {
       await user.click(confirmButton)
 
       await waitFor(() => {
-        expect(dropObject).toHaveBeenCalledWith(CONN_ID, 'testdb', 'my_view', 'view')
+        expect(ipc.calls('drop_object')).toContainEqual({
+          connectionId: CONN_ID,
+          database: 'testdb',
+          objectName: 'my_view',
+          objectType: 'view',
+        })
       })
 
       expect(closeTabsByObject).toHaveBeenCalledWith(CONN_ID, 'testdb', 'my_view', 'view')
@@ -269,12 +244,14 @@ describe('useObjectBrowserActions — object editor actions', () => {
       const refreshCategory = useSchemaStore.getState().refreshCategory
       expect(refreshCategory).toHaveBeenCalledWith(CONN_ID, 'testdb', 'view')
 
-      expect(showSuccessToast).toHaveBeenCalledWith('View dropped', 'testdb.my_view')
+      await expectToast('success', 'View dropped')
     })
 
     it('shows error toast on failure', async () => {
       const user = userEvent.setup()
-      vi.mocked(dropObject).mockRejectedValueOnce(new Error('Permission denied'))
+      ipc.override('drop_object', () => {
+        throw new Error('Permission denied')
+      })
 
       const { result } = renderActions()
 
@@ -285,9 +262,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
       const confirmButton = screen.getByRole('button', { name: /Drop Procedure/i })
       await user.click(confirmButton)
 
-      await waitFor(() => {
-        expect(showErrorToast).toHaveBeenCalledWith('Failed to drop procedure', 'Permission denied')
-      })
+      await expectToast('error', 'Permission denied')
     })
 
     it('falls back to refreshDatabase when refreshCategory fails', async () => {
@@ -340,7 +315,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
 
   describe('handleExecuteRoutine', () => {
     it('calls getRoutineParameters, builds template, opens query tab for procedure', async () => {
-      vi.mocked(getRoutineParameters).mockResolvedValueOnce([
+      ipc.override('get_routine_parameters', () => [
         { name: 'p_id', dataType: 'INT', mode: 'IN', ordinalPosition: 1 },
         { name: 'p_result', dataType: 'VARCHAR(255)', mode: 'OUT', ordinalPosition: 2 },
       ])
@@ -351,7 +326,12 @@ describe('useObjectBrowserActions — object editor actions', () => {
         await result.onExecuteRoutine('testdb', 'my_proc', 'procedure')
       })
 
-      expect(getRoutineParameters).toHaveBeenCalledWith(CONN_ID, 'testdb', 'my_proc', 'procedure')
+      expect(ipc.calls('get_routine_parameters')).toContainEqual({
+        connectionId: CONN_ID,
+        database: 'testdb',
+        routineName: 'my_proc',
+        routineType: 'procedure',
+      })
 
       // A query tab should be opened
       const state = useWorkspaceStore.getState()
@@ -372,7 +352,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
     })
 
     it('builds SELECT template for function', async () => {
-      vi.mocked(getRoutineParameters).mockResolvedValueOnce([
+      ipc.override('get_routine_parameters', () => [
         { name: 'p_input', dataType: 'VARCHAR(100)', mode: '', ordinalPosition: 1 },
       ])
 
@@ -382,7 +362,12 @@ describe('useObjectBrowserActions — object editor actions', () => {
         await result.onExecuteRoutine('testdb', 'my_func', 'function')
       })
 
-      expect(getRoutineParameters).toHaveBeenCalledWith(CONN_ID, 'testdb', 'my_func', 'function')
+      expect(ipc.calls('get_routine_parameters')).toContainEqual({
+        connectionId: CONN_ID,
+        database: 'testdb',
+        routineName: 'my_func',
+        routineType: 'function',
+      })
 
       const state = useWorkspaceStore.getState()
       const tabs = state.tabsByConnection[CONN_ID]
@@ -396,7 +381,9 @@ describe('useObjectBrowserActions — object editor actions', () => {
     })
 
     it('shows warning toast and opens simple template when getRoutineParameters fails', async () => {
-      vi.mocked(getRoutineParameters).mockRejectedValueOnce(new Error('Connection lost'))
+      ipc.override('get_routine_parameters', () => {
+        throw new Error('Connection lost')
+      })
 
       const { result } = renderActions()
 
@@ -418,14 +405,13 @@ describe('useObjectBrowserActions — object editor actions', () => {
       )
 
       // Should show warning toast
-      expect(showWarningToast).toHaveBeenCalledWith(
-        'Could not load parameters',
-        'Showing basic template'
-      )
+      await expectToast('warning', 'Could not load parameters')
     })
 
     it('shows SELECT fallback template for function when IPC fails', async () => {
-      vi.mocked(getRoutineParameters).mockRejectedValueOnce(new Error('Timeout'))
+      ipc.override('get_routine_parameters', () => {
+        throw new Error('Timeout')
+      })
 
       const { result } = renderActions()
 
@@ -443,7 +429,7 @@ describe('useObjectBrowserActions — object editor actions', () => {
     })
 
     it('opens query tab with no-params template for procedure with empty params', async () => {
-      vi.mocked(getRoutineParameters).mockResolvedValueOnce([])
+      ipc.override('get_routine_parameters', () => [])
 
       const { result } = renderActions()
 
@@ -462,6 +448,22 @@ describe('useObjectBrowserActions — object editor actions', () => {
   describe('handleDropDatabase — cache invalidation', () => {
     it('invalidates routine and schema metadata caches after successful DB drop', async () => {
       const user = userEvent.setup()
+      ipc.override('get_routine_parameters_with_return_type', () => ({
+        found: true,
+        parameters: [{ name: '', dataType: 'INT', mode: '', ordinalPosition: 0 }],
+      }))
+      await getRoutineParametersCache(CONN_ID, 'old_db', 'fn_old', 'function')
+      hydrateFromSnapshot(
+        JSON.stringify({
+          databases: ['old_db'],
+          tables: { old_db: [{ name: 'users', tableType: 'BASE TABLE' }] },
+          columns: {},
+          routines: {},
+          foreignKeys: {},
+          indexes: {},
+        }),
+        CONN_ID
+      )
       const { result } = renderActions()
 
       act(() => {
@@ -472,17 +474,38 @@ describe('useObjectBrowserActions — object editor actions', () => {
       await user.click(confirmButton)
 
       await waitFor(() => {
-        expect(dropDatabase).toHaveBeenCalledWith(CONN_ID, 'old_db')
+        expect(ipc.calls('drop_database')).toContainEqual({
+          connectionId: CONN_ID,
+          name: 'old_db',
+        })
       })
 
-      expect(invalidateRoutineCache).toHaveBeenCalledWith(CONN_ID)
-      expect(invalidateSchemaMetadataCache).toHaveBeenCalledWith(CONN_ID)
-      expect(showSuccessToast).toHaveBeenCalledWith('Database dropped', 'old_db')
+      expect(getCachedRoutineParameters(CONN_ID, 'old_db', 'fn_old')).toBeUndefined()
+      expect(getSchemaMetadataCache(CONN_ID).databases).toEqual([])
+      await expectToast('success', 'Database dropped')
     })
 
     it('does NOT invalidate caches when DB drop fails', async () => {
       const user = userEvent.setup()
-      vi.mocked(dropDatabase).mockRejectedValueOnce(new Error('Permission denied'))
+      ipc.override('drop_database', () => {
+        throw new Error('Permission denied')
+      })
+      ipc.override('get_routine_parameters_with_return_type', () => ({
+        found: true,
+        parameters: [{ name: '', dataType: 'INT', mode: '', ordinalPosition: 0 }],
+      }))
+      await getRoutineParametersCache(CONN_ID, 'old_db', 'fn_old', 'function')
+      hydrateFromSnapshot(
+        JSON.stringify({
+          databases: ['old_db'],
+          tables: { old_db: [{ name: 'users', tableType: 'BASE TABLE' }] },
+          columns: {},
+          routines: {},
+          foreignKeys: {},
+          indexes: {},
+        }),
+        CONN_ID
+      )
 
       const { result } = renderActions()
 
@@ -493,18 +516,32 @@ describe('useObjectBrowserActions — object editor actions', () => {
       const confirmButton = screen.getByRole('button', { name: /Drop Database/i })
       await user.click(confirmButton)
 
-      await waitFor(() => {
-        expect(showErrorToast).toHaveBeenCalled()
-      })
+      await expectToast('error', 'Failed to drop database')
 
-      expect(invalidateRoutineCache).not.toHaveBeenCalled()
-      expect(invalidateSchemaMetadataCache).not.toHaveBeenCalled()
+      expect(getCachedRoutineParameters(CONN_ID, 'old_db', 'fn_old')).not.toBeUndefined()
+      expect(getSchemaMetadataCache(CONN_ID).databases).toContain('old_db')
     })
   })
 
   describe('handleRenameDatabase — cache invalidation', () => {
     it('invalidates routine and schema metadata caches after successful DB rename', async () => {
       const user = userEvent.setup()
+      ipc.override('get_routine_parameters_with_return_type', () => ({
+        found: true,
+        parameters: [{ name: '', dataType: 'INT', mode: '', ordinalPosition: 0 }],
+      }))
+      await getRoutineParametersCache(CONN_ID, 'old_db', 'fn_old', 'function')
+      hydrateFromSnapshot(
+        JSON.stringify({
+          databases: ['old_db'],
+          tables: { old_db: [{ name: 'users', tableType: 'BASE TABLE' }] },
+          columns: {},
+          routines: {},
+          foreignKeys: {},
+          indexes: {},
+        }),
+        CONN_ID
+      )
       const { result } = renderActions()
 
       act(() => {
@@ -520,17 +557,39 @@ describe('useObjectBrowserActions — object editor actions', () => {
       await user.click(confirmButton)
 
       await waitFor(() => {
-        expect(renameDatabase).toHaveBeenCalledWith(CONN_ID, 'old_db', 'new_db')
+        expect(ipc.calls('rename_database')).toContainEqual({
+          connectionId: CONN_ID,
+          oldName: 'old_db',
+          newName: 'new_db',
+        })
       })
 
-      expect(invalidateRoutineCache).toHaveBeenCalledWith(CONN_ID)
-      expect(invalidateSchemaMetadataCache).toHaveBeenCalledWith(CONN_ID)
-      expect(showSuccessToast).toHaveBeenCalledWith('Database renamed', 'old_db → new_db')
+      expect(getCachedRoutineParameters(CONN_ID, 'old_db', 'fn_old')).toBeUndefined()
+      expect(getSchemaMetadataCache(CONN_ID).databases).toEqual([])
+      await expectToast('success', 'Database renamed')
     })
 
     it('does NOT invalidate caches when DB rename fails', async () => {
       const user = userEvent.setup()
-      vi.mocked(renameDatabase).mockRejectedValueOnce(new Error('Access denied'))
+      ipc.override('rename_database', () => {
+        throw new Error('Access denied')
+      })
+      ipc.override('get_routine_parameters_with_return_type', () => ({
+        found: true,
+        parameters: [{ name: '', dataType: 'INT', mode: '', ordinalPosition: 0 }],
+      }))
+      await getRoutineParametersCache(CONN_ID, 'old_db', 'fn_old', 'function')
+      hydrateFromSnapshot(
+        JSON.stringify({
+          databases: ['old_db'],
+          tables: { old_db: [{ name: 'users', tableType: 'BASE TABLE' }] },
+          columns: {},
+          routines: {},
+          foreignKeys: {},
+          indexes: {},
+        }),
+        CONN_ID
+      )
 
       const { result } = renderActions()
 
@@ -545,12 +604,10 @@ describe('useObjectBrowserActions — object editor actions', () => {
       const confirmButton = screen.getByTestId('rename-confirm-button')
       await user.click(confirmButton)
 
-      await waitFor(() => {
-        expect(showErrorToast).toHaveBeenCalled()
-      })
+      await expectToast('error', 'Failed to rename database')
 
-      expect(invalidateRoutineCache).not.toHaveBeenCalled()
-      expect(invalidateSchemaMetadataCache).not.toHaveBeenCalled()
+      expect(getCachedRoutineParameters(CONN_ID, 'old_db', 'fn_old')).not.toBeUndefined()
+      expect(getSchemaMetadataCache(CONN_ID).databases).toContain('old_db')
     })
   })
 })

@@ -6,52 +6,9 @@ import { useConnectionStore } from '../../../stores/connection-store'
 import { useSchemaStore, makeNodeId } from '../../../stores/schema-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../../stores/settings-store'
 import { useWorkspaceStore, _resetTabIdCounter } from '../../../stores/workspace-store'
+import { ipc } from '../../ipc-mock'
 import type { ActiveConnection, SavedConnection } from '../../../types/connection'
 import type { TreeNode as TreeNodeType, WorkspaceTab } from '../../../types/schema'
-
-// Mock clipboard
-vi.mock('../../../lib/context-menu-utils', async (importOriginal) => {
-  const orig = (await importOriginal()) as Record<string, unknown>
-  return {
-    ...orig,
-    writeClipboardText: vi.fn().mockResolvedValue(undefined),
-  }
-})
-
-// Mock schema-commands (mutating operations used by dialog handlers)
-vi.mock('../../../lib/schema-commands', () => ({
-  dropDatabase: vi.fn().mockResolvedValue(undefined),
-  dropTable: vi.fn().mockResolvedValue(undefined),
-  truncateTable: vi.fn().mockResolvedValue(undefined),
-  renameDatabase: vi.fn().mockResolvedValue(undefined),
-  renameTable: vi.fn().mockResolvedValue(undefined),
-  createDatabase: vi.fn().mockResolvedValue(undefined),
-  alterDatabase: vi.fn().mockResolvedValue(undefined),
-  getDatabaseDetails: vi.fn().mockResolvedValue({
-    name: 'ecommerce_db',
-    defaultCharacterSet: 'utf8mb4',
-    defaultCollation: 'utf8mb4_general_ci',
-  }),
-  listCharsets: vi.fn().mockResolvedValue([
-    {
-      charset: 'utf8mb4',
-      description: 'UTF-8 Unicode',
-      defaultCollation: 'utf8mb4_general_ci',
-      maxLength: 4,
-    },
-  ]),
-  listCollations: vi
-    .fn()
-    .mockResolvedValue([{ name: 'utf8mb4_general_ci', charset: 'utf8mb4', isDefault: true }]),
-}))
-
-import {
-  dropDatabase,
-  dropTable,
-  truncateTable,
-  renameDatabase,
-  renameTable,
-} from '../../../lib/schema-commands'
 
 function makeSavedConnection(overrides: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -1301,7 +1258,10 @@ describe('ObjectBrowser', () => {
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
-        expect(dropDatabase).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db')
+        expect(ipc.calls('drop_database')).toContainEqual({
+          connectionId: CONN_ID,
+          name: 'ecommerce_db',
+        })
       })
       await waitFor(() => {
         expect(refreshAll).toHaveBeenCalledWith(CONN_ID)
@@ -1309,7 +1269,9 @@ describe('ObjectBrowser', () => {
     })
 
     it('shows error on failed drop and keeps dialog open', async () => {
-      vi.mocked(dropDatabase).mockRejectedValueOnce(new Error('Access denied'))
+      ipc.override('drop_database', () => {
+        throw new Error('Access denied')
+      })
       const user = userEvent.setup()
       setupConnectedState()
       setupDatabaseNodes()
@@ -1375,7 +1337,11 @@ describe('ObjectBrowser', () => {
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
-        expect(dropTable).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db', 'users')
+        expect(ipc.calls('drop_table')).toContainEqual({
+          connectionId: CONN_ID,
+          database: 'ecommerce_db',
+          table: 'users',
+        })
       })
       await waitFor(() => {
         expect(refreshCategory).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db', 'table')
@@ -1422,7 +1388,11 @@ describe('ObjectBrowser', () => {
       await user.click(screen.getByTestId('confirm-confirm-button'))
 
       await waitFor(() => {
-        expect(truncateTable).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db', 'users')
+        expect(ipc.calls('truncate_table')).toContainEqual({
+          connectionId: CONN_ID,
+          database: 'ecommerce_db',
+          table: 'users',
+        })
       })
     })
   })
@@ -1472,7 +1442,12 @@ describe('ObjectBrowser', () => {
       await user.click(screen.getByTestId('rename-confirm-button'))
 
       await waitFor(() => {
-        expect(renameTable).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db', 'users', 'customers')
+        expect(ipc.calls('rename_table')).toContainEqual({
+          connectionId: CONN_ID,
+          database: 'ecommerce_db',
+          oldName: 'users',
+          newName: 'customers',
+        })
       })
       await waitFor(() => {
         expect(refreshCategory).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db', 'table')
@@ -1480,7 +1455,9 @@ describe('ObjectBrowser', () => {
     })
 
     it('shows error on failed rename and keeps dialog open', async () => {
-      vi.mocked(renameTable).mockRejectedValueOnce(new Error('Table locked'))
+      ipc.override('rename_table', () => {
+        throw new Error('Table locked')
+      })
       const user = userEvent.setup()
       setupConnectedState()
       setupDatabaseNodes()
@@ -1629,7 +1606,11 @@ describe('ObjectBrowser', () => {
       await user.click(screen.getByTestId('rename-confirm-button'))
 
       await waitFor(() => {
-        expect(renameDatabase).toHaveBeenCalledWith(CONN_ID, 'ecommerce_db', 'production_db')
+        expect(ipc.calls('rename_database')).toContainEqual({
+          connectionId: CONN_ID,
+          oldName: 'ecommerce_db',
+          newName: 'production_db',
+        })
       })
       await waitFor(() => {
         expect(refreshAll).toHaveBeenCalledWith(CONN_ID)

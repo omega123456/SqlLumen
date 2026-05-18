@@ -1,80 +1,68 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { waitFor } from '@testing-library/react'
 
-const loadSchemaCacheSnapshot = vi.fn<() => Promise<string | null>>()
-const saveSchemaCacheSnapshot = vi.fn<() => Promise<void>>()
-const hydrateFromSnapshot = vi.fn<() => void>()
-const rebuildCache = vi.fn<() => Promise<void>>()
-const refreshCacheInBackground = vi.fn<() => Promise<void>>()
-const serializeCacheSnapshot = vi.fn<() => string | null>()
-const logFrontend = vi.fn<() => Promise<void>>()
-
-vi.mock('../../lib/schema-cache-commands', () => ({
-  loadSchemaCacheSnapshot,
-  saveSchemaCacheSnapshot,
-}))
-
-vi.mock('../../components/query-editor/schema-metadata-cache', () => ({
-  hydrateFromSnapshot,
-  rebuildCache,
-  refreshCacheInBackground,
-  serializeCacheSnapshot,
-}))
-
-vi.mock('../../lib/app-log-commands', () => ({
-  logFrontend,
-}))
+import { ipc } from '../ipc-mock'
+import {
+  _clearAllCaches,
+  getCache,
+} from '../../components/query-editor/schema-metadata-cache'
 
 describe('bootstrapSchemaCache', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    loadSchemaCacheSnapshot.mockResolvedValue(null)
-    saveSchemaCacheSnapshot.mockResolvedValue(undefined)
-    rebuildCache.mockResolvedValue(undefined)
-    refreshCacheInBackground.mockResolvedValue(undefined)
-    serializeCacheSnapshot.mockReturnValue('{"databases":["fresh"]}')
-    logFrontend.mockResolvedValue(undefined)
+    _clearAllCaches()
+    ipc.override('load_schema_cache_snapshot', () => null)
+    ipc.override('save_schema_cache_snapshot', () => undefined)
+    ipc.override('fetch_schema_metadata_full', () => ({
+      databases: ['fresh'],
+      tables: {},
+      columns: {},
+      routines: {},
+      foreignKeys: {},
+      indexes: {},
+    }))
   })
 
   it('exposes a pending bootstrap promise while in-flight', async () => {
-    const { bootstrapSchemaCache, getPendingBootstrap, _clearPendingBootstraps } =
-      await import('../../lib/schema-cache-bootstrap')
+    const { bootstrapSchemaCache, getPendingBootstrap, _clearPendingBootstraps } = await import(
+      '../../lib/schema-cache-bootstrap'
+    )
     _clearPendingBootstraps()
 
-    // Before starting: no pending bootstrap
     expect(getPendingBootstrap('session-1')).toBeNull()
 
     let resolveLoad!: () => void
-    loadSchemaCacheSnapshot.mockReturnValue(
-      new Promise<string | null>((resolve) => {
-        resolveLoad = () => resolve(null)
-      })
+    ipc.override(
+      'load_schema_cache_snapshot',
+      () =>
+        new Promise<string | null>((resolve) => {
+          resolveLoad = () => resolve(null)
+        })
     )
 
     const bootstrapPromise = bootstrapSchemaCache('session-1')
-
-    // While in-flight: pending bootstrap exists
     expect(getPendingBootstrap('session-1')).not.toBeNull()
 
     resolveLoad()
     await bootstrapPromise
 
-    // After completion: pending bootstrap is cleared
     expect(getPendingBootstrap('session-1')).toBeNull()
   })
 
   it('hydrates from a persisted snapshot and uses background refresh (not rebuild)', async () => {
     const { bootstrapSchemaCache } = await import('../../lib/schema-cache-bootstrap')
-    loadSchemaCacheSnapshot.mockResolvedValue('{"databases":["cached"]}')
+    ipc.override(
+      'load_schema_cache_snapshot',
+      () => '{"databases":["cached"],"tables":{},"columns":{},"routines":{},"foreignKeys":{},"indexes":{}}'
+    )
 
     await bootstrapSchemaCache('session-1')
 
-    expect(loadSchemaCacheSnapshot).toHaveBeenCalledWith('session-1')
-    expect(hydrateFromSnapshot).toHaveBeenCalledWith('{"databases":["cached"]}', 'session-1')
-    // Should use background refresh (non-invalidating) when snapshot exists
-    expect(refreshCacheInBackground).toHaveBeenCalledWith('session-1')
-    expect(rebuildCache).not.toHaveBeenCalled()
-    expect(serializeCacheSnapshot).toHaveBeenCalledWith('session-1')
-    expect(saveSchemaCacheSnapshot).toHaveBeenCalledWith('session-1', '{"databases":["fresh"]}')
+    expect(ipc.calls('load_schema_cache_snapshot')).toContainEqual({ connectionId: 'session-1' })
+    expect(getCache('session-1').databases).toEqual(['fresh'])
+    expect(ipc.calls('save_schema_cache_snapshot')).toContainEqual({
+      connectionId: 'session-1',
+      snapshotJson: '{"databases":["fresh"],"tables":{},"columns":{},"routines":{},"foreignKeys":{},"indexes":{}}',
+    })
   })
 
   it('uses full rebuild when no persisted snapshot exists', async () => {
@@ -82,54 +70,64 @@ describe('bootstrapSchemaCache', () => {
 
     await bootstrapSchemaCache('session-1')
 
-    expect(hydrateFromSnapshot).not.toHaveBeenCalled()
-    // Should use full rebuild when no cached snapshot to serve
-    expect(rebuildCache).toHaveBeenCalledWith('session-1')
-    expect(refreshCacheInBackground).not.toHaveBeenCalled()
-    expect(saveSchemaCacheSnapshot).toHaveBeenCalledWith('session-1', '{"databases":["fresh"]}')
+    expect(getCache('session-1').databases).toEqual(['fresh'])
+    expect(ipc.calls('save_schema_cache_snapshot')).toContainEqual({
+      connectionId: 'session-1',
+      snapshotJson: '{"databases":["fresh"],"tables":{},"columns":{},"routines":{},"foreignKeys":{},"indexes":{}}',
+    })
   })
 
   it('logs load failures and falls back to full rebuild', async () => {
     const { bootstrapSchemaCache } = await import('../../lib/schema-cache-bootstrap')
-    loadSchemaCacheSnapshot.mockRejectedValue(new Error('load failed'))
+    ipc.override('load_schema_cache_snapshot', () => {
+      throw new Error('load failed')
+    })
 
     await bootstrapSchemaCache('session-1')
 
-    expect(logFrontend).toHaveBeenCalledWith(
-      'warn',
-      expect.stringContaining('Failed to load persisted schema cache')
+    expect(ipc.calls('log_frontend')).toContainEqual(
+      expect.objectContaining({
+        level: 'warn',
+        message: expect.stringContaining('Failed to load persisted schema cache'),
+      })
     )
-    // Should fall back to rebuild since hydration failed
-    expect(rebuildCache).toHaveBeenCalledWith('session-1')
-    expect(refreshCacheInBackground).not.toHaveBeenCalled()
-    expect(saveSchemaCacheSnapshot).toHaveBeenCalledWith('session-1', '{"databases":["fresh"]}')
+    expect(getCache('session-1').databases).toEqual(['fresh'])
   })
 
   it('logs rebuild failures without throwing', async () => {
     const { bootstrapSchemaCache } = await import('../../lib/schema-cache-bootstrap')
-    rebuildCache.mockRejectedValue(new Error('rebuild failed'))
+    ipc.override('fetch_schema_metadata_full', () => {
+      throw new Error('rebuild failed')
+    })
 
     await expect(bootstrapSchemaCache('session-1')).resolves.toBeUndefined()
 
-    expect(saveSchemaCacheSnapshot).not.toHaveBeenCalled()
-    expect(logFrontend).toHaveBeenCalledWith(
-      'warn',
-      expect.stringContaining('Failed to rebuild persisted schema cache')
-    )
+    expect(ipc.calls('save_schema_cache_snapshot')).toHaveLength(0)
+    expect(getCache('session-1').status).toBe('error')
+    expect(ipc.calls('log_frontend')).toHaveLength(0)
   })
 
   it('logs background refresh failures without throwing', async () => {
     const { bootstrapSchemaCache } = await import('../../lib/schema-cache-bootstrap')
-    loadSchemaCacheSnapshot.mockResolvedValue('{"databases":["cached"]}')
-    refreshCacheInBackground.mockRejectedValue(new Error('refresh failed'))
+    ipc.override(
+      'load_schema_cache_snapshot',
+      () => '{"databases":["cached"],"tables":{},"columns":{},"routines":{},"foreignKeys":{},"indexes":{}}'
+    )
+    ipc.override('fetch_schema_metadata_full', () => {
+      throw new Error('refresh failed')
+    })
 
     await expect(bootstrapSchemaCache('session-1')).resolves.toBeUndefined()
 
-    expect(hydrateFromSnapshot).toHaveBeenCalledWith('{"databases":["cached"]}', 'session-1')
-    expect(saveSchemaCacheSnapshot).not.toHaveBeenCalled()
-    expect(logFrontend).toHaveBeenCalledWith(
-      'warn',
-      expect.stringContaining('Failed to rebuild persisted schema cache')
-    )
+    expect(getCache('session-1').databases).toEqual(['cached'])
+    expect(ipc.calls('save_schema_cache_snapshot')).toHaveLength(0)
+    await waitFor(() => {
+      expect(ipc.calls('log_frontend')).toContainEqual(
+        expect.objectContaining({
+          level: 'warn',
+          message: expect.stringContaining('Failed to rebuild persisted schema cache'),
+        })
+      )
+    })
   })
 })

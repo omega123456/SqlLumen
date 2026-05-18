@@ -3,31 +3,16 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TablePropertiesEditor } from '../../../components/table-designer/TablePropertiesEditor'
 import { useTableDesignerStore } from '../../../stores/table-designer-store'
+import { ipc } from '../../ipc-mock'
 import type { TableDesignerTabState } from '../../../stores/table-designer-store'
-
-vi.mock('../../../lib/table-designer-commands', () => ({
-  loadTableForDesigner: vi.fn().mockResolvedValue(undefined),
-  generateTableDdl: vi.fn().mockResolvedValue({ ddl: 'ALTER TABLE `users` ...', warnings: [] }),
-  applyTableDdl: vi.fn().mockResolvedValue(undefined),
-}))
-
-vi.mock('../../../lib/schema-commands', () => ({
-  listCharsets: vi.fn(),
-  listCollations: vi.fn(),
-}))
-
-import { listCharsets, listCollations } from '../../../lib/schema-commands'
-
-const mockListCharsets = vi.mocked(listCharsets)
-const mockListCollations = vi.mocked(listCollations)
 
 /** Charset/collation effects resolve after mount; wait so React state updates stay inside `waitFor`/`act`. */
 async function waitForTablePropertiesEditorEffects() {
   await waitFor(() => {
-    expect(mockListCharsets).toHaveBeenCalledWith('conn-1')
+    expect(ipc.calls('list_charsets')).toContainEqual({ connectionId: 'conn-1' })
   })
   await waitFor(() => {
-    expect(mockListCollations).toHaveBeenCalledWith('conn-1')
+    expect(ipc.calls('list_collations')).toContainEqual({ connectionId: 'conn-1' })
   })
   await waitFor(() => {
     expect(screen.getByTestId('table-properties-collation')).toHaveTextContent('utf8mb4_unicode_ci')
@@ -81,9 +66,7 @@ describe('TablePropertiesEditor', () => {
   beforeEach(() => {
     useTableDesignerStore.getState().cleanupTab('tab-1')
     useTableDesignerStore.setState({ tabs: {} })
-    vi.restoreAllMocks()
-
-    mockListCharsets.mockResolvedValue([
+    ipc.override('list_charsets', () => [
       {
         charset: 'utf8mb4',
         description: 'UTF-8 Unicode',
@@ -98,7 +81,7 @@ describe('TablePropertiesEditor', () => {
       },
     ])
 
-    mockListCollations.mockResolvedValue([
+    ipc.override('list_collations', () => [
       { name: 'utf8mb4_unicode_ci', charset: 'utf8mb4', isDefault: true },
       { name: 'utf8mb4_general_ci', charset: 'utf8mb4', isDefault: false },
       { name: 'latin1_swedish_ci', charset: 'latin1', isDefault: true },
@@ -181,7 +164,7 @@ describe('TablePropertiesEditor', () => {
     await user.click(screen.getByRole('option', { name: 'latin1' }))
 
     await waitFor(() => {
-      expect(mockListCollations).toHaveBeenCalled()
+      expect(ipc.calls('list_collations').length).toBeGreaterThan(0)
     })
 
     const collationSelect = screen.getByTestId('table-properties-collation')

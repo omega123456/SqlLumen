@@ -3,13 +3,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SchemaInfoTab } from '../../../components/schema-info/SchemaInfoTab'
 import { useWorkspaceStore, _resetTabIdCounter } from '../../../stores/workspace-store'
+import { ipc } from '../../ipc-mock'
 import type { SchemaInfoTab as SchemaInfoTabType, SchemaInfoResponse } from '../../../types/schema'
-
-const mockGetSchemaInfo = vi.fn()
-
-vi.mock('../../../lib/schema-commands', () => ({
-  getSchemaInfo: (...args: unknown[]) => mockGetSchemaInfo(...args),
-}))
 
 function makeTab(overrides: Partial<SchemaInfoTabType> = {}): SchemaInfoTabType {
   return {
@@ -72,8 +67,6 @@ function makeSchemaInfoResponse(overrides: Partial<SchemaInfoResponse> = {}): Sc
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  mockGetSchemaInfo.mockReset()
   useWorkspaceStore.setState({
     tabsByConnection: {},
     activeTabByConnection: {},
@@ -84,7 +77,7 @@ beforeEach(() => {
 describe('SchemaInfoTab', () => {
   it('renders loading state while fetching', () => {
     // Never resolve the promise to keep loading
-    mockGetSchemaInfo.mockReturnValue(new Promise(() => {}))
+    ipc.override('get_schema_info', () => new Promise(() => {}))
     const tab = makeTab()
 
     render(<SchemaInfoTab tab={tab} />)
@@ -94,7 +87,9 @@ describe('SchemaInfoTab', () => {
   })
 
   it('renders error state on fetch failure', async () => {
-    mockGetSchemaInfo.mockRejectedValue(new Error('Connection failed'))
+    ipc.override('get_schema_info', () => {
+      throw new Error('Connection failed')
+    })
     const tab = makeTab()
 
     render(<SchemaInfoTab tab={tab} />)
@@ -105,7 +100,7 @@ describe('SchemaInfoTab', () => {
   })
 
   it('shows correct sub-tabs for table (all 4)', async () => {
-    mockGetSchemaInfo.mockResolvedValue(makeSchemaInfoResponse())
+    ipc.override('get_schema_info', () => makeSchemaInfoResponse())
     const tab = makeTab({ objectType: 'table' })
 
     render(<SchemaInfoTab tab={tab} />)
@@ -119,7 +114,7 @@ describe('SchemaInfoTab', () => {
   })
 
   it('shows correct sub-tabs for view (columns + ddl)', async () => {
-    mockGetSchemaInfo.mockResolvedValue(
+    ipc.override('get_schema_info', () =>
       makeSchemaInfoResponse({ indexes: [], foreignKeys: [], metadata: null })
     )
     const tab = makeTab({ objectType: 'view' })
@@ -135,7 +130,7 @@ describe('SchemaInfoTab', () => {
   })
 
   it('shows correct sub-tabs for procedure (ddl only)', async () => {
-    mockGetSchemaInfo.mockResolvedValue(
+    ipc.override('get_schema_info', () =>
       makeSchemaInfoResponse({ columns: [], indexes: [], foreignKeys: [], metadata: null })
     )
     const tab = makeTab({ objectType: 'procedure' })
@@ -152,7 +147,7 @@ describe('SchemaInfoTab', () => {
 
   it('shows column count stat on every table sub-tab', async () => {
     const user = userEvent.setup()
-    mockGetSchemaInfo.mockResolvedValue(makeSchemaInfoResponse())
+    ipc.override('get_schema_info', () => makeSchemaInfoResponse())
 
     useWorkspaceStore.getState().openTab({
       type: 'schema-info',
@@ -183,7 +178,7 @@ describe('SchemaInfoTab', () => {
   })
 
   it('renders stats row for tables, not for other types', async () => {
-    mockGetSchemaInfo.mockResolvedValue(makeSchemaInfoResponse())
+    ipc.override('get_schema_info', () => makeSchemaInfoResponse())
     const tableTab = makeTab({ objectType: 'table' })
 
     const { unmount } = render(<SchemaInfoTab tab={tableTab} />)
@@ -194,7 +189,7 @@ describe('SchemaInfoTab', () => {
 
     unmount()
 
-    mockGetSchemaInfo.mockResolvedValue(
+    ipc.override('get_schema_info', () =>
       makeSchemaInfoResponse({ columns: [], indexes: [], foreignKeys: [], metadata: null })
     )
     const viewTab = makeTab({ id: 'tab-view', objectType: 'view' })
@@ -209,7 +204,7 @@ describe('SchemaInfoTab', () => {
 
   it('clicking sub-tab changes active sub-tab in store', async () => {
     const user = userEvent.setup()
-    mockGetSchemaInfo.mockResolvedValue(makeSchemaInfoResponse())
+    ipc.override('get_schema_info', () => makeSchemaInfoResponse())
 
     // Set up the tab in the workspace store to track sub-tab changes
     useWorkspaceStore.getState().openTab({
@@ -237,7 +232,7 @@ describe('SchemaInfoTab', () => {
   })
 
   it('calls getSchemaInfo with correct args on mount', async () => {
-    mockGetSchemaInfo.mockResolvedValue(makeSchemaInfoResponse())
+    ipc.override('get_schema_info', () => makeSchemaInfoResponse())
     const tab = makeTab({
       connectionId: 'conn-2',
       databaseName: 'testdb',
@@ -248,7 +243,12 @@ describe('SchemaInfoTab', () => {
     render(<SchemaInfoTab tab={tab} />)
 
     await waitFor(() => {
-      expect(mockGetSchemaInfo).toHaveBeenCalledWith('conn-2', 'testdb', 'orders', 'view')
+      expect(ipc.calls('get_schema_info')).toContainEqual({
+        connectionId: 'conn-2',
+        database: 'testdb',
+        objectName: 'orders',
+        objectType: 'view',
+      })
     })
   })
 })
