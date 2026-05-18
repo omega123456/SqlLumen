@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 
 import App from '../App'
 import { useConnectionStore } from '../stores/connection-store'
 import { useUpdateStore } from '../stores/update-store'
 
 beforeEach(() => {
-  useConnectionStore.setState({
-    activeConnections: {},
-    activeTabId: null,
-    dialogOpen: false,
-    error: null,
+  act(() => {
+    useConnectionStore.setState({
+      activeConnections: {},
+      activeTabId: null,
+      dialogOpen: false,
+      error: null,
+    })
   })
 })
 
@@ -24,9 +26,11 @@ describe('App', () => {
     const startPeriodicCheck = vi.fn().mockResolvedValue(undefined)
     const stopPeriodicCheck = vi.fn()
 
-    useUpdateStore.setState({
-      startPeriodicCheck,
-      stopPeriodicCheck,
+    act(() => {
+      useUpdateStore.setState({
+        startPeriodicCheck,
+        stopPeriodicCheck,
+      })
     })
 
     const { unmount } = render(<App />)

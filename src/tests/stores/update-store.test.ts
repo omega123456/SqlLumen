@@ -9,6 +9,16 @@ type MockProgressEvent =
   | { event: 'Progress'; data: { chunkLength: number } }
   | { event: 'Finished' }
 
+type TauriTestWindow = Window & {
+  __TAURI_INTERNALS__?: unknown
+  __TAURI_OS_PLUGIN_INTERNALS__?: { platform: string }
+}
+
+type WindowPropertySnapshot = {
+  hadValue: boolean
+  value: unknown
+}
+
 function makeAvailableUpdateMetadata(version = '2.0.0') {
   return {
     rid: 101,
@@ -23,7 +33,7 @@ function makeAvailableUpdateMetadata(version = '2.0.0') {
 function overrideAvailableUpdate(
   version = '2.0.0',
   progressChunks: number[] = [100],
-  options?: { downloadError?: string }
+  options?: { downloadError?: string; emitFinished?: boolean }
 ): void {
   ipc.override('plugin:updater|check', () => makeAvailableUpdateMetadata(version))
   ipc.override('plugin:updater|download_and_install', (args) => {
@@ -33,7 +43,9 @@ function overrideAvailableUpdate(
     for (const chunkLength of progressChunks) {
       onEvent?.onmessage?.({ event: 'Progress', data: { chunkLength } })
     }
-    onEvent?.onmessage?.({ event: 'Finished' })
+    if (options?.emitFinished ?? true) {
+      onEvent?.onmessage?.({ event: 'Finished' })
+    }
 
     if (options?.downloadError) {
       throw new Error(options.downloadError)
@@ -85,42 +97,45 @@ function resetStores(): void {
   })
 }
 
+function captureWindowProperty<K extends keyof TauriTestWindow>(property: K): WindowPropertySnapshot {
+  return {
+    hadValue: property in window,
+    value: (window as TauriTestWindow)[property],
+  }
+}
+
+function restoreWindowProperty<K extends keyof TauriTestWindow>(
+  property: K,
+  snapshot: WindowPropertySnapshot
+): void {
+  if (snapshot.hadValue) {
+    ;(window as TauriTestWindow)[property] = snapshot.value as TauriTestWindow[K]
+    return
+  }
+
+  delete (window as TauriTestWindow)[property]
+}
+
+function setMockPlatform(platform: 'macos' | 'windows' | 'linux'): void {
+  ;(window as TauriTestWindow).__TAURI_OS_PLUGIN_INTERNALS__ = { platform }
+}
+
 describe('useUpdateStore', () => {
-  let originalTauriInternals: unknown
-  let hadTauriInternals = false
-  let originalOsPluginInternals: unknown
-  let hadOsPluginInternals = false
+  let tauriInternalsSnapshot: WindowPropertySnapshot
+  let osPluginInternalsSnapshot: WindowPropertySnapshot
 
   beforeEach(() => {
     vi.useFakeTimers()
     resetStores()
-    hadTauriInternals = '__TAURI_INTERNALS__' in window
-    originalTauriInternals = (
-      window as Window & { __TAURI_INTERNALS__?: unknown }
-    ).__TAURI_INTERNALS__
-    hadOsPluginInternals = '__TAURI_OS_PLUGIN_INTERNALS__' in window
-    originalOsPluginInternals = (
-      window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: unknown }
-    ).__TAURI_OS_PLUGIN_INTERNALS__
-    ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: { platform: string } })
-      .__TAURI_OS_PLUGIN_INTERNALS__ = { platform: 'macos' }
+    tauriInternalsSnapshot = captureWindowProperty('__TAURI_INTERNALS__')
+    osPluginInternalsSnapshot = captureWindowProperty('__TAURI_OS_PLUGIN_INTERNALS__')
+    setMockPlatform('macos')
   })
 
   afterEach(() => {
     useUpdateStore.getState().stopPeriodicCheck()
-    if (hadTauriInternals) {
-      ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
-        originalTauriInternals
-    } else {
-      delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
-    }
-    if (hadOsPluginInternals) {
-      ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: unknown }).__TAURI_OS_PLUGIN_INTERNALS__ =
-        originalOsPluginInternals
-    } else {
-      delete (window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: unknown })
-        .__TAURI_OS_PLUGIN_INTERNALS__
-    }
+    restoreWindowProperty('__TAURI_INTERNALS__', tauriInternalsSnapshot)
+    restoreWindowProperty('__TAURI_OS_PLUGIN_INTERNALS__', osPluginInternalsSnapshot)
     vi.useRealTimers()
   })
 
@@ -268,8 +283,7 @@ describe('useUpdateStore', () => {
   ] as const)(
     'downloadAndInstall moves to ready-to-finish after finish on $platform',
     async ({ platform, version, readyToFinishAction, readyToFinishCta, readyToFinishMessage }) => {
-      ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: { platform: string } })
-        .__TAURI_OS_PLUGIN_INTERNALS__ = { platform }
+      setMockPlatform(platform)
 
       overrideAvailableUpdate(version)
       await useUpdateStore.getState().checkForUpdate(true)
@@ -292,8 +306,7 @@ describe('useUpdateStore', () => {
   )
 
   it('restartApp relaunches on Windows from ready-to-finish', async () => {
-    ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: { platform: string } })
-      .__TAURI_OS_PLUGIN_INTERNALS__ = { platform: 'windows' }
+    setMockPlatform('windows')
     setReadyToFinishState('4.0.0', 'windows')
 
     await useUpdateStore.getState().restartApp()
@@ -302,8 +315,7 @@ describe('useUpdateStore', () => {
   })
 
   it('restartApp does not relaunch on Linux from ready-to-finish', async () => {
-    ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: { platform: string } })
-      .__TAURI_OS_PLUGIN_INTERNALS__ = { platform: 'linux' }
+    setMockPlatform('linux')
     setReadyToFinishState('4.1.0', 'linux')
 
     await useUpdateStore.getState().restartApp()
@@ -317,8 +329,7 @@ describe('useUpdateStore', () => {
   })
 
   it('restartApp keeps ready-to-finish state when relaunch fails', async () => {
-    ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: { platform: string } })
-      .__TAURI_OS_PLUGIN_INTERNALS__ = { platform: 'windows' }
+    setMockPlatform('windows')
     ipc.override('plugin:process|restart', () => {
       throw new Error('restart failed')
     })
@@ -339,13 +350,17 @@ describe('useUpdateStore', () => {
   })
 
   it('downloadAndInstall stores error state on failure', async () => {
-    overrideAvailableUpdate('4.0.0', [100], { downloadError: 'download failed' })
+    overrideAvailableUpdate('4.0.0', [40], {
+      downloadError: 'download failed',
+      emitFinished: false,
+    })
     await useUpdateStore.getState().checkForUpdate(true)
 
     await useUpdateStore.getState().downloadAndInstall()
 
     expect(useUpdateStore.getState()).toMatchObject({
       status: 'error',
+      downloadProgress: 40,
       errorMessage: 'download failed',
     })
     expect(ipc.calls('log_frontend')).toContainEqual({

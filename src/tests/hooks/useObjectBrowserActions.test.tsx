@@ -21,6 +21,28 @@ import {
 } from '../../components/query-editor/schema-metadata-cache'
 
 const CONN_ID = 'conn-test'
+const OLD_DB_NAME = 'old_db'
+const OLD_ROUTINE_NAME = 'fn_old'
+
+function buildOldDbSchemaSnapshot(): string {
+  return JSON.stringify({
+    databases: [OLD_DB_NAME],
+    tables: { [OLD_DB_NAME]: [{ name: 'users', tableType: 'BASE TABLE' }] },
+    columns: {},
+    routines: {},
+    foreignKeys: {},
+    indexes: {},
+  })
+}
+
+async function primeOldDbCaches(): Promise<void> {
+  ipc.override('get_routine_parameters_with_return_type', () => ({
+    found: true,
+    parameters: [{ name: '', dataType: 'INT', mode: '', ordinalPosition: 0 }],
+  }))
+  await getRoutineParametersCache(CONN_ID, OLD_DB_NAME, OLD_ROUTINE_NAME, 'function')
+  hydrateFromSnapshot(buildOldDbSchemaSnapshot(), CONN_ID)
+}
 
 /**
  * Wrapper component that renders the dialogs returned by the hook
@@ -448,26 +470,11 @@ describe('useObjectBrowserActions — object editor actions', () => {
   describe('handleDropDatabase — cache invalidation', () => {
     it('invalidates routine and schema metadata caches after successful DB drop', async () => {
       const user = userEvent.setup()
-      ipc.override('get_routine_parameters_with_return_type', () => ({
-        found: true,
-        parameters: [{ name: '', dataType: 'INT', mode: '', ordinalPosition: 0 }],
-      }))
-      await getRoutineParametersCache(CONN_ID, 'old_db', 'fn_old', 'function')
-      hydrateFromSnapshot(
-        JSON.stringify({
-          databases: ['old_db'],
-          tables: { old_db: [{ name: 'users', tableType: 'BASE TABLE' }] },
-          columns: {},
-          routines: {},
-          foreignKeys: {},
-          indexes: {},
-        }),
-        CONN_ID
-      )
+      await primeOldDbCaches()
       const { result } = renderActions()
 
       act(() => {
-        result.onDropDatabase('old_db')
+        result.onDropDatabase(OLD_DB_NAME)
       })
 
       const confirmButton = screen.getByRole('button', { name: /Drop Database/i })
@@ -476,11 +483,11 @@ describe('useObjectBrowserActions — object editor actions', () => {
       await waitFor(() => {
         expect(ipc.calls('drop_database')).toContainEqual({
           connectionId: CONN_ID,
-          name: 'old_db',
+          name: OLD_DB_NAME,
         })
       })
 
-      expect(getCachedRoutineParameters(CONN_ID, 'old_db', 'fn_old')).toBeUndefined()
+      expect(getCachedRoutineParameters(CONN_ID, OLD_DB_NAME, OLD_ROUTINE_NAME)).toBeUndefined()
       expect(getSchemaMetadataCache(CONN_ID).databases).toEqual([])
       await expectToast('success', 'Database dropped')
     })
@@ -490,27 +497,12 @@ describe('useObjectBrowserActions — object editor actions', () => {
       ipc.override('drop_database', () => {
         throw new Error('Permission denied')
       })
-      ipc.override('get_routine_parameters_with_return_type', () => ({
-        found: true,
-        parameters: [{ name: '', dataType: 'INT', mode: '', ordinalPosition: 0 }],
-      }))
-      await getRoutineParametersCache(CONN_ID, 'old_db', 'fn_old', 'function')
-      hydrateFromSnapshot(
-        JSON.stringify({
-          databases: ['old_db'],
-          tables: { old_db: [{ name: 'users', tableType: 'BASE TABLE' }] },
-          columns: {},
-          routines: {},
-          foreignKeys: {},
-          indexes: {},
-        }),
-        CONN_ID
-      )
+      await primeOldDbCaches()
 
       const { result } = renderActions()
 
       act(() => {
-        result.onDropDatabase('old_db')
+        result.onDropDatabase(OLD_DB_NAME)
       })
 
       const confirmButton = screen.getByRole('button', { name: /Drop Database/i })
@@ -518,34 +510,19 @@ describe('useObjectBrowserActions — object editor actions', () => {
 
       await expectToast('error', 'Failed to drop database')
 
-      expect(getCachedRoutineParameters(CONN_ID, 'old_db', 'fn_old')).not.toBeUndefined()
-      expect(getSchemaMetadataCache(CONN_ID).databases).toContain('old_db')
+      expect(getCachedRoutineParameters(CONN_ID, OLD_DB_NAME, OLD_ROUTINE_NAME)).not.toBeUndefined()
+      expect(getSchemaMetadataCache(CONN_ID).databases).toContain(OLD_DB_NAME)
     })
   })
 
   describe('handleRenameDatabase — cache invalidation', () => {
     it('invalidates routine and schema metadata caches after successful DB rename', async () => {
       const user = userEvent.setup()
-      ipc.override('get_routine_parameters_with_return_type', () => ({
-        found: true,
-        parameters: [{ name: '', dataType: 'INT', mode: '', ordinalPosition: 0 }],
-      }))
-      await getRoutineParametersCache(CONN_ID, 'old_db', 'fn_old', 'function')
-      hydrateFromSnapshot(
-        JSON.stringify({
-          databases: ['old_db'],
-          tables: { old_db: [{ name: 'users', tableType: 'BASE TABLE' }] },
-          columns: {},
-          routines: {},
-          foreignKeys: {},
-          indexes: {},
-        }),
-        CONN_ID
-      )
+      await primeOldDbCaches()
       const { result } = renderActions()
 
       act(() => {
-        result.onRenameDatabase('old_db')
+        result.onRenameDatabase(OLD_DB_NAME)
       })
 
       // Type a new name in the rename input
@@ -559,12 +536,12 @@ describe('useObjectBrowserActions — object editor actions', () => {
       await waitFor(() => {
         expect(ipc.calls('rename_database')).toContainEqual({
           connectionId: CONN_ID,
-          oldName: 'old_db',
+          oldName: OLD_DB_NAME,
           newName: 'new_db',
         })
       })
 
-      expect(getCachedRoutineParameters(CONN_ID, 'old_db', 'fn_old')).toBeUndefined()
+      expect(getCachedRoutineParameters(CONN_ID, OLD_DB_NAME, OLD_ROUTINE_NAME)).toBeUndefined()
       expect(getSchemaMetadataCache(CONN_ID).databases).toEqual([])
       await expectToast('success', 'Database renamed')
     })
@@ -574,27 +551,12 @@ describe('useObjectBrowserActions — object editor actions', () => {
       ipc.override('rename_database', () => {
         throw new Error('Access denied')
       })
-      ipc.override('get_routine_parameters_with_return_type', () => ({
-        found: true,
-        parameters: [{ name: '', dataType: 'INT', mode: '', ordinalPosition: 0 }],
-      }))
-      await getRoutineParametersCache(CONN_ID, 'old_db', 'fn_old', 'function')
-      hydrateFromSnapshot(
-        JSON.stringify({
-          databases: ['old_db'],
-          tables: { old_db: [{ name: 'users', tableType: 'BASE TABLE' }] },
-          columns: {},
-          routines: {},
-          foreignKeys: {},
-          indexes: {},
-        }),
-        CONN_ID
-      )
+      await primeOldDbCaches()
 
       const { result } = renderActions()
 
       act(() => {
-        result.onRenameDatabase('old_db')
+        result.onRenameDatabase(OLD_DB_NAME)
       })
 
       const input = screen.getByTestId('rename-name-input')
@@ -606,8 +568,8 @@ describe('useObjectBrowserActions — object editor actions', () => {
 
       await expectToast('error', 'Failed to rename database')
 
-      expect(getCachedRoutineParameters(CONN_ID, 'old_db', 'fn_old')).not.toBeUndefined()
-      expect(getSchemaMetadataCache(CONN_ID).databases).toContain('old_db')
+      expect(getCachedRoutineParameters(CONN_ID, OLD_DB_NAME, OLD_ROUTINE_NAME)).not.toBeUndefined()
+      expect(getSchemaMetadataCache(CONN_ID).databases).toContain(OLD_DB_NAME)
     })
   })
 })

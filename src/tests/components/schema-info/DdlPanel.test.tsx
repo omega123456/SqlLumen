@@ -4,8 +4,10 @@ import userEvent from '@testing-library/user-event'
 import { DdlPanel } from '../../../components/schema-info/DdlPanel'
 import { expectToast } from '../../ipc-mock'
 import { useToastStore } from '../../../stores/toast-store'
+import * as contextMenuUtils from '../../../lib/context-menu-utils'
 import type { TableMetadata } from '../../../types/schema'
 
+let clipboardWriteTextSpy: ReturnType<typeof vi.spyOn>
 let writeClipboardTextSpy: ReturnType<typeof vi.spyOn>
 
 function makeMetadata(overrides: Partial<TableMetadata> = {}): TableMetadata {
@@ -23,9 +25,10 @@ function makeMetadata(overrides: Partial<TableMetadata> = {}): TableMetadata {
 
 beforeEach(() => {
   useToastStore.setState({ toasts: [] })
-  writeClipboardTextSpy = vi
+  clipboardWriteTextSpy = vi
     .spyOn(navigator.clipboard, 'writeText')
     .mockImplementation(() => Promise.resolve())
+  writeClipboardTextSpy = vi.spyOn(contextMenuUtils, 'writeClipboardText')
 })
 
 describe('DdlPanel', () => {
@@ -50,6 +53,7 @@ describe('DdlPanel', () => {
     expect(copyBtn).toBeInTheDocument()
 
     await user.click(copyBtn)
+    expect(writeClipboardTextSpy).toHaveBeenCalledWith(ddl)
     await expectToast('success', 'Copied to clipboard')
   })
 
@@ -60,6 +64,8 @@ describe('DdlPanel', () => {
     render(<DdlPanel ddl={ddl} objectType="view" />)
 
     await user.click(screen.getByText('Copy SQL'))
+    expect(writeClipboardTextSpy).toHaveBeenCalledWith(ddl)
+    expect(clipboardWriteTextSpy).toHaveBeenCalledWith(ddl)
     await expectToast('success', 'Copied to clipboard')
   })
 
