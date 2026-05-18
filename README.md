@@ -267,14 +267,4 @@ Use this only for binaries you trust.
 
 1. Complete **[Setup](#setup)** (including Playwright, cargo-nextest, and Rust coverage tools if you run the full suite), then stay on the latest dependencies with `pnpm install` as needed.
 2. Run `pnpm lint`, `pnpm typecheck`, and `pnpm test:all` (Vitest coverage, Rust with llvm-cov, Playwright) before opening a PR.
-3. For behavior that depends on the native shell, verify with `pnpm tauri dev` when possible. See **[AGENTS.md](AGENTS.md)** for IPC conventions, directory map, and screenshot baseline workflow.
-
----
-
-### Upgrade note (rename from older builds)
-
-If you previously ran installs under **`io.mysqlclient.app`**, **`mysql-client.db`**, keychain service **`mysql-client`**, or log files **`mysql-client.*.log`**, those paths are **not** reused after this rename. The app now uses identifier **`app.sqllumen.desktop`**, local DB **`sqllumen.db`**, keychain service **`sqllumen`**, and log stem **`sqllumen`**. Re-enter saved passwords and migrate data manually if needed.
-
----
-
-**Product name:** SqlLumen · **Version:** 0.1.0 (see `package.json` / `src-tauri/tauri.conf.json`) · **Identifier:** `app.sqllumen.desktop` · **Bundle short description:** cross-platform desktop MySQL/MariaDB client
+3. For behavior that depends on the native shell, verify with `pnpm tauri dev` when possible. See **[CLAUDE.md](CLAUDE.md)** for IPC conventions, directory map, and screenshot baseline workflow.
