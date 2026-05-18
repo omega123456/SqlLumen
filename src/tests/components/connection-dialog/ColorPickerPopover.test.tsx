@@ -3,13 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { ColorPickerPopover } from '../../../components/connection-dialog/ColorPickerPopover'
 
-// Mock react-colorful to avoid canvas issues in jsdom
-vi.mock('react-colorful', () => ({
-  HexColorPicker: ({ color }: { color: string }) => (
-    <div data-testid="hex-color-picker" data-color={color} />
-  ),
-}))
-
 describe('ColorPickerPopover', () => {
   it('should flip popover upward when near the bottom of the viewport', async () => {
     const user = userEvent.setup()
