@@ -90,6 +90,10 @@ beforeEach(() => {
   })
 })
 
+afterEach(async () => {
+  await act(async () => {})
+})
+
 describe('StatusBar', () => {
   it('renders the Ready status text when no connections', () => {
     render(<StatusBar />)
@@ -401,6 +405,11 @@ describe('StatusBar', () => {
 
   describe('schema indexing indicator', () => {
     afterEach(() => {
+      if (vi.isFakeTimers()) {
+        act(() => {
+          vi.runOnlyPendingTimers()
+        })
+      }
       vi.useRealTimers()
     })
 

@@ -3,6 +3,9 @@ import { act, render, screen } from '@testing-library/react'
 
 import App from '../App'
 import { useConnectionStore } from '../stores/connection-store'
+import { useSessionRestoreStore } from '../stores/session-restore-store'
+import { useShortcutStore } from '../stores/shortcut-store'
+import { useThemeStore } from '../stores/theme-store'
 import { useUpdateStore } from '../stores/update-store'
 
 beforeEach(() => {
@@ -12,6 +15,31 @@ beforeEach(() => {
       activeTabId: null,
       dialogOpen: false,
       error: null,
+    })
+    useThemeStore.setState({
+      theme: 'light',
+      resolvedTheme: 'light',
+      initialize: vi.fn().mockResolvedValue(undefined),
+      setTheme: vi.fn().mockResolvedValue(undefined),
+    })
+    useShortcutStore.setState({
+      initializeFromBackend: vi.fn().mockResolvedValue(undefined),
+    } as never)
+    useSessionRestoreStore.setState({
+      isRestoring: false,
+      restoreError: null,
+      restoreSession: vi.fn().mockResolvedValue(undefined),
+    } as never)
+    useConnectionStore.setState({
+      setupEventListeners: vi.fn().mockResolvedValue(undefined),
+    } as never)
+    useUpdateStore.setState({
+      startPeriodicCheck: vi.fn().mockResolvedValue(undefined),
+      stopPeriodicCheck: vi.fn(),
+      status: 'idle',
+      availableVersion: null,
+      downloadProgress: 0,
+      errorMessage: null,
     })
   })
 })
