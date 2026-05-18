@@ -1,27 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
+import { ipc } from '../../ipc-mock'
 import { ResultPanel } from '../../../components/query-editor/ResultPanel'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store'
+import { useToastStore } from '../../../stores/toast-store'
 import type { SingleResultState, TabQueryState } from '../../../stores/query-store'
+import * as ResultGridViewModule from '../../../components/query-editor/ResultGridView'
+import * as FkLookupDialogModule from '../../../components/table-data/FkLookupDialog'
 
-vi.mock('../../../components/query-editor/ResultGridView', () => ({
-  ResultGridView: () => <div data-testid="grid-view">Grid Mock</div>,
-}))
+// Use vi.spyOn to install per-test mock implementations without vi.mock().
+// ResultGridView is stubbed to avoid rendering the real grid canvas.
+// FkLookupDialog is stubbed to null (no dialog needed for filter tests).
+// Real FilterDialog is used — the tests assert on its real rendered output.
+// IPC fixtures in setup.ts handle log_frontend. Per-test ipc.override() covers
+// query and table-data commands.
 
-// Mock clipboard utility
-vi.mock('../../../lib/context-menu-utils', () => ({
-  writeClipboardText: vi.fn().mockResolvedValue(undefined),
-}))
+beforeEach(() => {
+  useQueryStore.setState({ tabs: {} })
+  useToastStore.setState({ toasts: [] })
+  vi.clearAllMocks()
 
-// Mock export-commands
-vi.mock('../../../lib/export-commands', () => ({
-  exportResults: vi.fn().mockResolvedValue({ bytesWritten: 1024, rowsExported: 5 }),
-}))
-
-// Mock query-commands
-vi.mock('../../../lib/query-commands', () => ({
-  executeQuery: vi.fn().mockResolvedValue({
+  ipc.override('execute_query', () => ({
     queryId: 'q1',
     columns: [],
     totalRows: 0,
@@ -30,47 +29,33 @@ vi.mock('../../../lib/query-commands', () => ({
     totalPages: 1,
     autoLimitApplied: false,
     firstPage: [],
-  }),
-  fetchResultPage: vi.fn().mockResolvedValue({ rows: [], page: 1, totalPages: 1 }),
-  evictResults: vi.fn().mockResolvedValue(undefined),
-  sortResults: vi.fn().mockResolvedValue({ rows: [], page: 1, totalPages: 1 }),
-}))
-
-// Mock table-data-commands
-vi.mock('../../../lib/table-data-commands', () => ({
-  fetchTableData: vi.fn().mockResolvedValue({
+  }))
+  ipc.override('fetch_result_page', () => ({ rows: [], page: 1, totalPages: 1 }))
+  ipc.override('evict_results', () => undefined)
+  ipc.override('sort_results', () => ({ rows: [], page: 1, totalPages: 1 }))
+  ipc.override('fetch_table_data', () => ({
     columns: [],
     rows: [],
     currentPage: 1,
     pageSize: 100,
     primaryKey: null,
     executionTimeMs: 0,
-  }),
-  updateTableRow: vi.fn().mockResolvedValue(undefined),
-  insertTableRow: vi.fn().mockResolvedValue([]),
-  deleteTableRow: vi.fn().mockResolvedValue(undefined),
-  exportTableData: vi.fn().mockResolvedValue(undefined),
-}))
+  }))
+  ipc.override('update_table_row', () => undefined)
+  ipc.override('insert_table_row', () => [])
+  ipc.override('delete_table_row', () => undefined)
+  ipc.override('export_table_data', () => undefined)
+  ipc.override('export_results', () => ({ bytesWritten: 1024, rowsExported: 5 }))
 
-// Mock FkLookupDialog
-vi.mock('../../../components/table-data/FkLookupDialog', () => ({
-  FkLookupDialog: () => null,
-}))
+  vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation(
+    () => (<div data-testid="grid-view">Grid Mock</div>) as unknown as React.ReactElement
+  )
+  vi.spyOn(FkLookupDialogModule, 'FkLookupDialog').mockImplementation(
+    () => null as unknown as React.ReactElement
+  )
+})
 
-// Mock toast store — capture showSuccess calls
-const mockShowSuccess = vi.fn()
-vi.mock('../../../stores/toast-store', () => ({
-  useToastStore: vi.fn((selector: (s: Record<string, unknown>) => unknown) => {
-    const state = {
-      toasts: [],
-      showError: vi.fn(),
-      showSuccess: mockShowSuccess,
-      showWarning: vi.fn(),
-      dismiss: vi.fn(),
-    }
-    return selector(state)
-  }),
-}))
+import React from 'react'
 
 /**
  * Set up a tab in the query store with success status and filter-relevant state.
@@ -111,12 +96,6 @@ function setupQueryTab(resultOverrides: Partial<SingleResultState> = {}) {
 
   useQueryStore.setState({ tabs: { 'tab-1': tab } })
 }
-
-beforeEach(() => {
-  useQueryStore.setState({ tabs: {} })
-  mockIPC(() => null)
-  vi.clearAllMocks()
-})
 
 describe('ResultPanel — Filter button state', () => {
   it('filter button is disabled when no columns', () => {
@@ -161,8 +140,9 @@ describe('ResultPanel — Clear filter', () => {
       expect(result.filterModel).toEqual([])
     })
 
-    // Toast should be shown
-    expect(mockShowSuccess).toHaveBeenCalledWith('Filters cleared')
+    // Toast should be shown via real toast store
+    const toasts = useToastStore.getState().toasts
+    expect(toasts.some((t) => t.variant === 'success' && t.title === 'Filters cleared')).toBe(true)
 
     // No confirm dialog should appear
     expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument()

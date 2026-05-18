@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { mockIPC } from '@tauri-apps/api/mocks'
 import { QueryEditorTab } from '../../../components/query-editor/QueryEditorTab'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
@@ -13,11 +12,7 @@ import {
 import type { QueryEditorTab as QueryEditorTabType } from '../../../types/schema'
 import type { TabAiState } from '../../../stores/ai-store'
 
-// Mock tauri dialog (EditorToolbar depends on it)
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  save: vi.fn(() => Promise.resolve(null)),
-  open: vi.fn(() => Promise.resolve(null)),
-}))
+// IPC fixtures in setup.ts handle plugin:dialog|save and plugin:dialog|open (return null = cancelled)
 
 function emptyAiTabState(overrides: Partial<TabAiState> = {}): TabAiState {
   return {
@@ -58,7 +53,6 @@ beforeEach(() => {
   useAiStore.setState({ tabs: {} })
   _resetTabIdCounter()
   _resetQueryTabCounter()
-  mockIPC(() => null)
   // Default AI to disabled
   useSettingsStore.setState({
     settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'false' },
