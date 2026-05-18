@@ -1,46 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { languages } from 'monaco-editor'
 
-// Mock schema-metadata-cache before importing the module under test
-vi.mock('../../../components/query-editor/schema-metadata-cache', () => ({
-  getCache: vi.fn(),
-  getPendingLoad: vi.fn(() => null),
-  loadCache: vi.fn(() => Promise.resolve()),
-  _clearAllCaches: vi.fn(),
-}))
+// Use vi.spyOn to install per-test mock implementations without vi.mock().
+// IPC commands are handled via fixtures in setup.ts.
+// mysql-language-setup is side-effect-only calling already-mocked Monaco APIs — no mock needed.
 
-// Mock mysql-language-setup (side-effect import used by MonacoEditorWrapper, not by completion-service)
-vi.mock('../../../components/query-editor/mysql-language-setup', () => ({}))
+import * as SchemaMetadataCacheModule from '../../../components/query-editor/schema-metadata-cache'
+import * as SchemaStoreModule from '../../../stores/schema-store'
+import * as ConnectionStoreModule from '../../../stores/connection-store'
+import { useSettingsStore } from '../../../stores/settings-store'
 
-vi.mock('../../../stores/schema-store', () => ({
-  useSchemaStore: {
-    getState: vi.fn(() => ({ connectionStates: {} })),
-  },
-  parseNodeId: vi.fn((nodeId: string) => {
-    const [type, database, name] = nodeId.split(':')
-    return {
-      type: type as NodeType,
-      database: database ?? '',
-      name: name ?? '',
-    }
-  }),
-}))
-
-// Mock connection store so completionService can read activeDatabase
-const mockConnectionState = {
-  activeConnections: {} as Record<string, unknown>,
-}
-vi.mock('../../../stores/connection-store', () => ({
-  useConnectionStore: {
-    getState: () => mockConnectionState,
-  },
-}))
-
-import {
-  getCache,
-  getPendingLoad,
-  loadCache,
-} from '../../../components/query-editor/schema-metadata-cache'
 import {
   completionService,
   registerModelConnection,
@@ -48,15 +17,7 @@ import {
   resetModelConnections,
 } from '../../../components/query-editor/completion-service'
 import { EntityContextType } from 'monaco-sql-languages'
-import { parseNodeId, useSchemaStore } from '../../../stores/schema-store'
-import { useSettingsStore } from '../../../stores/settings-store'
 import type { NodeType } from '../../../types/schema'
-
-const mockGetCache = vi.mocked(getCache)
-const mockGetPendingLoad = vi.mocked(getPendingLoad)
-const mockLoadCache = vi.mocked(loadCache)
-const mockUseSchemaStoreGetState = vi.mocked(useSchemaStore.getState)
-const mockParseNodeId = vi.mocked(parseNodeId)
 
 // ---------------------------------------------------------------------------
 // Helpers for working with completion items
@@ -344,22 +305,56 @@ const EMPTY_CACHE = {
 }
 
 // ---------------------------------------------------------------------------
+// Accessor helpers for spied functions
+// ---------------------------------------------------------------------------
+
+function mockGetCache() {
+  return SchemaMetadataCacheModule.getCache as ReturnType<typeof vi.fn>
+}
+
+function mockGetPendingLoad() {
+  return SchemaMetadataCacheModule.getPendingLoad as ReturnType<typeof vi.fn>
+}
+
+function mockLoadCache() {
+  return SchemaMetadataCacheModule.loadCache as ReturnType<typeof vi.fn>
+}
+
+function mockUseSchemaStoreGetState() {
+  return SchemaStoreModule.useSchemaStore.getState as ReturnType<typeof vi.fn>
+}
+
+function mockParseNodeId() {
+  return SchemaStoreModule.parseNodeId as ReturnType<typeof vi.fn>
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  // Reset connection state to empty for each test
-  mockConnectionState.activeConnections = {}
-  mockUseSchemaStoreGetState.mockReturnValue({ connectionStates: {} } as never)
-  mockParseNodeId.mockImplementation((nodeId: string) => {
+  // Spy on schema-metadata-cache exports
+  vi.spyOn(SchemaMetadataCacheModule, 'getCache').mockReturnValue(EMPTY_CACHE as never)
+  vi.spyOn(SchemaMetadataCacheModule, 'getPendingLoad').mockReturnValue(null)
+  vi.spyOn(SchemaMetadataCacheModule, 'loadCache').mockResolvedValue(undefined)
+
+  // Spy on schema-store exports
+  vi.spyOn(SchemaStoreModule.useSchemaStore, 'getState').mockReturnValue({
+    connectionStates: {},
+  } as never)
+  vi.spyOn(SchemaStoreModule, 'parseNodeId').mockImplementation((nodeId: string) => {
     const [type, database, name] = nodeId.split(':')
     return {
-      type: type as never,
+      type: type as NodeType,
       database: database ?? '',
       name: name ?? '',
     }
   })
+
+  // Reset connection store to empty state
+  ConnectionStoreModule.useConnectionStore.setState({
+    activeConnections: {},
+  } as never)
 })
 
 afterEach(() => {
@@ -369,7 +364,7 @@ afterEach(() => {
 describe('Model-URI registry', () => {
   it('registers and looks up a model-connection mapping', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService('SEL', pos(1, 4), buildSuggestions({ keywords: ['SELECT'] }))
     expect(items.map(getLabel)).toContain('SELECT')
@@ -378,7 +373,7 @@ describe('Model-URI registry', () => {
   it('unregisters a mapping so subsequent lookups return undefined', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
     unregisterModelConnection('inmemory://model/1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SEL',
@@ -398,7 +393,7 @@ describe('Model-URI registry', () => {
     registerModelConnection('inmemory://model/2', 'conn-2')
     resetModelConnections()
 
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
     const items = await callService('SE', pos(1, 3), buildSuggestions({ keywords: ['SELECT'] }))
     // No schema items since no connectionId after reset
     const moduleItems = items.filter((i: AnyItem) => i.kind === languages.CompletionItemKind.Module)
@@ -422,7 +417,7 @@ describe('completionService — no connectionId', () => {
 describe('completionService — parse-failure fallback', () => {
   it('returns schema dump + basic keywords when suggestions is null', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService('SELECT * FRM', pos(1, 13), null)
     const labels = items.map(getLabel)
@@ -447,6 +442,7 @@ describe('completionService — parse-failure fallback', () => {
 
     // Routines
     expect(labels).toContain('get_user_count')
+    // PROCEDURE should NOT be included in SELECT parse-fallback
     expect(labels).not.toContain('sp_cleanup')
   })
 
@@ -465,7 +461,7 @@ describe('completionService — parse-failure fallback', () => {
 describe('completionService — loading cache', () => {
   it('returns parser keywords immediately when cache status is loading', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue({ ...EMPTY_CACHE, status: 'loading' })
+    mockGetCache().mockReturnValue({ ...EMPTY_CACHE, status: 'loading' })
 
     const items = await callService(
       '',
@@ -483,7 +479,7 @@ describe('completionService — loading cache', () => {
 describe('completionService — error cache', () => {
   it('returns error placeholder when cache status is error', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue({
+    mockGetCache().mockReturnValue({
       ...EMPTY_CACHE,
       status: 'error',
       error: 'Connection failed',
@@ -499,7 +495,7 @@ describe('completionService — error cache', () => {
 describe('completionService — keyword suggestions', () => {
   it('maps suggestions.keywords to CompletionItem with kind Keyword', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SE',
@@ -517,7 +513,7 @@ describe('completionService — keyword suggestions', () => {
 describe('completionService — database suggestions', () => {
   it('returns databases when EntityContextType.DATABASE is in suggestions.syntax', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'USE ',
@@ -536,7 +532,7 @@ describe('completionService — database suggestions', () => {
 describe('completionService — table suggestions', () => {
   it('returns databases when no database is selected and EntityContextType.TABLE is in syntax', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT * FROM ',
@@ -556,7 +552,7 @@ describe('completionService — table suggestions', () => {
 
   it('ranks databases above keywords after FROM when no database is selected', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT * FROM ',
@@ -590,8 +586,8 @@ describe('completionService — table suggestions', () => {
 
   it('returns tables only for the selected database when EntityContextType.TABLE is in syntax', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockUseSchemaStoreGetState.mockReturnValue({
+    mockGetCache().mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:app_db:app_db',
@@ -617,8 +613,8 @@ describe('completionService — table suggestions', () => {
 
   it('returns database names and selected-database tables before keywords', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockUseSchemaStoreGetState.mockReturnValue({
+    mockGetCache().mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:analytics_db:analytics_db',
@@ -656,15 +652,17 @@ describe('completionService — table suggestions', () => {
 
   it('ignores defaultDatabase when no tree node is selected', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     const items = await callService(
       'SELECT * FROM ',
@@ -685,8 +683,8 @@ describe('completionService — table suggestions', () => {
 
   it('uses the selected node database even when the selected node is not a database root', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockUseSchemaStoreGetState.mockReturnValue({
+    mockGetCache().mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'table:analytics_db:events',
@@ -713,7 +711,7 @@ describe('completionService — table suggestions', () => {
 describe('completionService — column suggestions scoped', () => {
   it('scopes columns to tables in the caret statement when entities are available', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const entities = [buildEntity(EntityContextType.TABLE, 'users', true)]
     const items = await callService(
@@ -738,7 +736,7 @@ describe('completionService — column suggestions scoped', () => {
 
   it('scopes columns for qualified table entity (analytics_db.events)', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     // Entity text is "analytics_db.events" — a qualified table reference
     const entities = [buildEntity(EntityContextType.TABLE, 'analytics_db.events', true)]
@@ -766,7 +764,7 @@ describe('completionService — column suggestions scoped', () => {
 describe('completionService — column suggestions broad fallback', () => {
   it('returns all columns when no entities with isContainCaret exist', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT ',
@@ -788,7 +786,7 @@ describe('completionService — column suggestions broad fallback', () => {
 
   it('after SELECT * space, keeps FROM keyword suggestions instead of broad column suggestions', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT * ',
@@ -809,7 +807,7 @@ describe('completionService — column suggestions broad fallback', () => {
 
   it('after SELECT table.* space, keeps FROM keyword suggestions instead of broad column suggestions', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT users.* ',
@@ -830,7 +828,7 @@ describe('completionService — column suggestions broad fallback', () => {
 
   it('after SELECT db.table.* space, keeps FROM keyword suggestions instead of broad column suggestions', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT app_db.users.* ',
@@ -851,15 +849,17 @@ describe('completionService — column suggestions broad fallback', () => {
 
   it('scopes broad SELECT-list column suggestions to the active database', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     const items = await callService(
       'SELECT ',
@@ -884,7 +884,7 @@ describe('completionService — column suggestions broad fallback', () => {
 
   it('supplements broad SELECT-list suggestions with databases, functions, and views from all databases when no scope is selected', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
 
     const items = await callService(
       'SELECT ',
@@ -912,8 +912,8 @@ describe('completionService — column suggestions broad fallback', () => {
 
   it('scopes broad SELECT-list functions and views to the selected database while still listing databases', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
-    mockUseSchemaStoreGetState.mockReturnValue({
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:analytics_db:analytics_db',
@@ -945,16 +945,18 @@ describe('completionService — column suggestions broad fallback', () => {
 
   it('prefers the selected database over the active database for broad SELECT-list suggestions', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
-    mockUseSchemaStoreGetState.mockReturnValue({
+    } as never)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:analytics_db:analytics_db',
@@ -982,16 +984,18 @@ describe('completionService — column suggestions broad fallback', () => {
 
   it('falls back to the selected schema database when no active database is set', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: null },
-        sessionDatabase: null,
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: null },
+          sessionDatabase: null,
+          status: 'connected',
+        },
       },
-    }
-    mockUseSchemaStoreGetState.mockReturnValue({
+    } as never)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:analytics_db:analytics_db',
@@ -1020,15 +1024,17 @@ describe('completionService — column suggestions broad fallback', () => {
 
   it('scopes SELECT-list Ctrl+Space suggestions to tables referenced later in the same statement', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     const items = await callService(
       'SELECT  FROM users u',
@@ -1054,7 +1060,7 @@ describe('completionService — column suggestions broad fallback', () => {
 describe('completionService — function suggestions', () => {
   it('returns functions when EntityContextType.FUNCTION is in syntax', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT ',
@@ -1072,7 +1078,7 @@ describe('completionService — function suggestions', () => {
 
   it('includes built-in functions alongside stored functions in FUNCTION context', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT ',
@@ -1095,7 +1101,7 @@ describe('completionService — function suggestions', () => {
 
   it('does not surface operator keywords as function completions in FUNCTION context', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT ',
@@ -1119,7 +1125,7 @@ describe('completionService — function suggestions', () => {
 describe('completionService — procedure suggestions', () => {
   it('returns procedures when EntityContextType.PROCEDURE is in syntax', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'CALL ',
@@ -1144,7 +1150,7 @@ describe('completionService — procedure suggestions', () => {
 
   it('supplements CALL suggestions with database names and procedures in the current scope', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
 
     const items = await callService(
       'CALL ',
@@ -1167,8 +1173,8 @@ describe('completionService — procedure suggestions', () => {
 
   it('scopes CALL suggestions to the selected database while still listing databases', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
-    mockUseSchemaStoreGetState.mockReturnValue({
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:analytics_db:analytics_db',
@@ -1197,16 +1203,18 @@ describe('completionService — procedure suggestions', () => {
 
   it('prefers the selected database over the active database for CALL suggestions', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
-    mockUseSchemaStoreGetState.mockReturnValue({
+    } as never)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:analytics_db:analytics_db',
@@ -1231,7 +1239,7 @@ describe('completionService — procedure suggestions', () => {
 
   it('supplements CALL suggestions even when the parser provides no procedure syntax context', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
 
     const items = await callService(
       'CALL ',
@@ -1252,7 +1260,7 @@ describe('completionService — procedure suggestions', () => {
 
   it('supplements stored routine body keywords that the parser omits inside BEGIN END blocks', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'CREATE PROCEDURE test()\nBEGIN\n  DECL\nEND',
@@ -1285,7 +1293,7 @@ describe('completionService — procedure suggestions', () => {
 
   it('does not treat BEGIN inside routine comments as routine-body context', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'CREATE PROCEDURE test()\n-- BEGIN later\nSELECT ',
@@ -1304,7 +1312,7 @@ describe('completionService — procedure suggestions', () => {
 
   it('does not inject routine-body keywords inside nested SQL clause contexts', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'CREATE PROCEDURE test()\nBEGIN\n  SELECT * FROM users WHERE \nEND',
@@ -1324,7 +1332,7 @@ describe('completionService — procedure suggestions', () => {
 
   it('still detects routine-body context when a comment contains quotes before BEGIN', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       "CREATE PROCEDURE test()\n-- comment with ' quote\nBEGIN\n  SET @value = 'x'\n  DECL\nEND",
@@ -1342,7 +1350,7 @@ describe('completionService — procedure suggestions', () => {
 
   it('does not inject routine-body keywords after END closes the routine body', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'CREATE PROCEDURE test()\nBEGIN\n  SELECT 1;\nEND\nSEL',
@@ -1361,7 +1369,7 @@ describe('completionService — procedure suggestions', () => {
 
   it('still supplements DECLARE in procedure bodies after prior semicolon statements', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'CREATE PROCEDURE test()\nBEGIN\n  SET @value = 1;\n  DECL\nEND',
@@ -1380,7 +1388,7 @@ describe('completionService — procedure suggestions', () => {
 
   it('keeps supplementing DECLARE after END IF inside a procedure body', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       [
@@ -1406,7 +1414,7 @@ describe('completionService — procedure suggestions', () => {
 
   it('supplements DECLARE when DELIMITER and USE appear before CREATE PROCEDURE', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       [
@@ -1433,7 +1441,7 @@ describe('completionService — procedure suggestions', () => {
 
   it('supplements DECLARE in routine body even when parser syntax contexts are non-empty', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'CREATE PROCEDURE test()\nBEGIN\n  DECL\nEND',
@@ -1455,7 +1463,7 @@ describe('completionService — procedure suggestions', () => {
 describe('completionService — dot notation (db.)', () => {
   it('returns tables for a database when trigger is dot after db name', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT * FROM app_db.',
@@ -1476,7 +1484,7 @@ describe('completionService — dot notation (db.)', () => {
 
   it('returns tables and functions for a database when db. is typed in the SELECT list', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT app_db.',
@@ -1499,7 +1507,7 @@ describe('completionService — dot notation (db.)', () => {
 
   it('returns procedures only for a database when db. is typed after CALL', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'CALL app_db.',
@@ -1522,7 +1530,7 @@ describe('completionService — dot notation (db.)', () => {
 
   it('does not fall back to broad CALL suggestions when a matched database has no procedures', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_EMPTY_DB)
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_EMPTY_DB)
 
     const items = await callService(
       'CALL empty_db.',
@@ -1542,7 +1550,7 @@ describe('completionService — dot notation (db.)', () => {
 describe('completionService — parse fallback statement-aware routine filtering', () => {
   it('SELECT parse fallback excludes procedures from broad SELECT-list suggestions', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
 
     const items = await callService('SELECT ', pos(1, 8), null)
     const labels = items.map(getLabel)
@@ -1555,8 +1563,8 @@ describe('completionService — parse fallback statement-aware routine filtering
 
   it('CALL parse fallback returns database names and scoped procedures only', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
-    mockUseSchemaStoreGetState.mockReturnValue({
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:analytics_db:analytics_db',
@@ -1579,16 +1587,18 @@ describe('completionService — parse fallback statement-aware routine filtering
 
   it('CALL parse fallback prefers the selected database over the active database', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
-    mockUseSchemaStoreGetState.mockReturnValue({
+    } as never)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:analytics_db:analytics_db',
@@ -1606,7 +1616,7 @@ describe('completionService — parse fallback statement-aware routine filtering
 
   it('CALL parse fallback ranks databases and procedures above keywords', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService('CALL ', pos(1, 6), null)
     const schemaLabels = ['app_db', 'analytics_db', 'sp_cleanup']
@@ -1630,15 +1640,17 @@ describe('completionService — parse fallback statement-aware routine filtering
 
   it('SELECT parse fallback uses the active database as the current scope when no tree node is selected', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'analytics_db' },
-        sessionDatabase: 'analytics_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'analytics_db' },
+          sessionDatabase: 'analytics_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     const items = await callService('SELECT ', pos(1, 8), null)
     const labels = items.map(getLabel)
@@ -1656,15 +1668,17 @@ describe('completionService — parse fallback statement-aware routine filtering
 
   it('CALL parse fallback uses the active database as the current scope when no tree node is selected', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'analytics_db' },
-        sessionDatabase: 'analytics_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE_WITH_SCOPED_OBJECTS)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'analytics_db' },
+          sessionDatabase: 'analytics_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     const items = await callService('CALL ', pos(1, 6), null)
     const labels = items.map(getLabel)
@@ -1681,7 +1695,7 @@ describe('completionService — parse fallback statement-aware routine filtering
 describe('completionService — dot notation (table.)', () => {
   it('does not return columns for invalid FROM table-dot syntax', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT * FROM users.',
@@ -1699,7 +1713,7 @@ describe('completionService — dot notation (table.)', () => {
 
   it('returns columns for a table when trigger is dot after table name in valid column context', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT users.',
@@ -1724,7 +1738,7 @@ describe('completionService — dot notation (table.)', () => {
 describe('completionService — snippet handling', () => {
   it('maps snippets to CompletionItem with InsertAsSnippet insertTextRules', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const snippets = [
       {
@@ -1756,7 +1770,7 @@ describe('completionService — snippet handling', () => {
 
   it('converts snippet body array to single string', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const snippets = [
       {
@@ -1785,7 +1799,7 @@ describe('completionService — snippet handling', () => {
 
   it('filters out built-in snippet completions with lowercase/hyphenated labels', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const snippets = [
       {
@@ -1821,7 +1835,7 @@ describe('completionService — snippet handling', () => {
 describe('completionService — empty/ready cache with no syntax matches', () => {
   it('returns keywords from suggestions even when cache is empty', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(EMPTY_CACHE)
+    mockGetCache().mockReturnValue(EMPTY_CACHE)
 
     const items = await callService(
       'SE',
@@ -1837,7 +1851,7 @@ describe('completionService — empty/ready cache with no syntax matches', () =>
 describe('completionService — multiple syntax types', () => {
   it('handles both DATABASE and TABLE syntax in a single suggestions object', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT * FROM ',
@@ -1862,7 +1876,7 @@ describe('completionService — multiple syntax types', () => {
 describe('completionService — no range set on items', () => {
   it('does not set range on completion items (library handles it)', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT ',
@@ -1885,15 +1899,17 @@ describe('completionService — no range set on items', () => {
 describe('completionService — alias resolution via dot notation', () => {
   it('returns columns for an aliased table (unqualified alias with activeDatabase)', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     const entities = [buildEntityWithAlias(EntityContextType.TABLE, 'users', 't', true)]
     const items = await callService(
@@ -1914,15 +1930,17 @@ describe('completionService — alias resolution via dot notation', () => {
 
   it('returns columns for a cross-database alias (analytics_db.events)', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     const entities = [
       buildEntityWithAlias(EntityContextType.TABLE, 'analytics_db.events', 'e', true),
@@ -1944,15 +1962,17 @@ describe('completionService — alias resolution via dot notation', () => {
 
   it('falls through to db/table matching when word before dot is not an alias', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     // Entity with alias 't', but we type 'app_db.' — should suggest tables, not alias columns
     const entities = [buildEntityWithAlias(EntityContextType.TABLE, 'users', 't', true)]
@@ -1971,15 +1991,17 @@ describe('completionService — alias resolution via dot notation', () => {
 
   it('returns empty when alias resolves but database/table not in cache', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'nonexistent_db' },
-        sessionDatabase: 'nonexistent_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'nonexistent_db' },
+          sessionDatabase: 'nonexistent_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     // Entity references a table not in the cache
     const entities = [buildEntityWithAlias(EntityContextType.TABLE, 'missing_table', 't', true)]
@@ -1998,15 +2020,17 @@ describe('completionService — alias resolution via dot notation', () => {
 describe('completionService — text-based alias fallback (entities null)', () => {
   it('resolves alias from SQL text when entities are null', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     // entities is null (parser didn't produce entities) but SQL text has alias
     const items = await callService(
@@ -2024,15 +2048,17 @@ describe('completionService — text-based alias fallback (entities null)', () =
 
   it('resolves cross-database alias from SQL text when entities are null', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     const items = await callService(
       'SELECT * FROM analytics_db.events e WHERE e.',
@@ -2048,15 +2074,17 @@ describe('completionService — text-based alias fallback (entities null)', () =
 
   it('resolves aliases declared later in the same statement when editing the SELECT list', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     const items = await callService(
       'SELECT u. FROM users u',
@@ -2085,7 +2113,7 @@ describe('completionService — text-based alias fallback (entities null)', () =
 describe('completionService — context-aware ranking', () => {
   it('column context → columns get sortText "0_" prefix, keywords get "2_" prefix', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT * FROM users WHERE ',
@@ -2114,8 +2142,8 @@ describe('completionService — context-aware ranking', () => {
 
   it('table-reference context ranks schema above keywords', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockUseSchemaStoreGetState.mockReturnValue({
+    mockGetCache().mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:app_db:app_db',
@@ -2149,7 +2177,7 @@ describe('completionService — context-aware ranking', () => {
 
   it('CALL context ranks databases and procedures above keywords', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'CALL ',
@@ -2180,7 +2208,7 @@ describe('completionService — context-aware ranking', () => {
 
   it('keywords are still present in column context (not filtered out)', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT * FROM users WHERE ',
@@ -2208,7 +2236,7 @@ describe('completionService — context-aware ranking', () => {
 
   it('column context with mixed syntax types ranks columns higher than other schema items', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT  FROM users',
@@ -2244,7 +2272,7 @@ describe('completionService — context-aware ranking', () => {
 
   it('parse-failure fallback (null suggestions) uses neutral "1_" for all items', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService('SELECT * FRM', pos(1, 13), null)
 
@@ -2262,12 +2290,12 @@ describe('completionService — context-aware ranking', () => {
 describe('completionService — parse-failure fallback while cache is unavailable', () => {
   it('returns fallback keywords immediately when cache is empty', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(EMPTY_CACHE)
+    mockGetCache().mockReturnValue(EMPTY_CACHE)
 
     const items = await callService('SELECT * FRM', pos(1, 13), null)
     const labels = items.map(getLabel)
 
-    expect(mockLoadCache).not.toHaveBeenCalled()
+    expect(mockLoadCache()).not.toHaveBeenCalled()
     expect(labels).toContain('SELECT')
     expect(labels).toContain('UPDATE')
     expect(labels).not.toContain('users')
@@ -2276,10 +2304,10 @@ describe('completionService — parse-failure fallback while cache is unavailabl
 
   it('does not await pending cache load before returning parser keywords', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue({ ...EMPTY_CACHE, status: 'loading' })
+    mockGetCache().mockReturnValue({ ...EMPTY_CACHE, status: 'loading' })
 
     let pendingResolved = false
-    mockGetPendingLoad.mockReturnValueOnce(
+    mockGetPendingLoad().mockReturnValueOnce(
       new Promise<void>((resolve) => {
         setTimeout(() => {
           pendingResolved = true
@@ -2295,7 +2323,7 @@ describe('completionService — parse-failure fallback while cache is unavailabl
     )
     const labels = items.map(getLabel)
 
-    expect(mockGetPendingLoad).not.toHaveBeenCalled()
+    expect(mockGetPendingLoad()).not.toHaveBeenCalled()
     expect(pendingResolved).toBe(false)
     expect(labels).toContain('SELECT')
     expect(labels).toContain('UPDATE')
@@ -2382,7 +2410,7 @@ describe('completionService — empty keywords fallback', () => {
 describe('completionService — dot notation (db.table.)', () => {
   it('returns columns for db.table. syntax using exact database lookup', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT analytics_db.events.',
@@ -2406,7 +2434,7 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('falls through to normal completion for db.table. when db.table is not in cache', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT nonexistent_db.fake_table.',
@@ -2426,7 +2454,7 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('single db. prefix still returns tables for that database', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT * FROM app_db.',
@@ -2446,7 +2474,7 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('single table. prefix still returns columns (no qualifiedDb)', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService(
       'SELECT users.',
@@ -2466,7 +2494,7 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('db. prefix returns tables from that database during parse fallback', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService('SELECT * FROM app_db.', pos(1, 22), null)
     const labels = items.map(getLabel)
@@ -2478,7 +2506,7 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('FROM without selected database returns only databases during parse fallback', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService('SELECT * FROM ', pos(1, 15), null)
     const labels = items.map(getLabel)
@@ -2492,7 +2520,7 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('FROM parse fallback ranks databases above keywords when no database is selected', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService('SELECT * FROM ', pos(1, 15), null)
     const dbItems = items.filter(
@@ -2518,8 +2546,8 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('FROM with selected database returns databases plus that database tables during parse fallback', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockUseSchemaStoreGetState.mockReturnValue({
+    mockGetCache().mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:app_db:app_db',
@@ -2538,8 +2566,8 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('FROM with selected database includes databases and selected tables during parse fallback', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockUseSchemaStoreGetState.mockReturnValue({
+    mockGetCache().mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:analytics_db:analytics_db',
@@ -2572,15 +2600,17 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('FROM ignores defaultDatabase during parse fallback when no tree node is selected', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     const items = await callService('SELECT * FROM ', pos(1, 15), null)
     const labels = items.map(getLabel)
@@ -2594,16 +2624,18 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('selected node database overrides defaultDatabase during parse fallback while still listing databases', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        sessionDatabase: 'app_db',
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          sessionDatabase: 'app_db',
+          status: 'connected',
+        },
       },
-    }
-    mockUseSchemaStoreGetState.mockReturnValue({
+    } as never)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'category:analytics_db:table',
@@ -2622,15 +2654,17 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('selected node database does not override defaultDatabase for alias column resolution', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'app_db' },
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'app_db' },
+          status: 'connected',
+        },
       },
-    }
-    mockUseSchemaStoreGetState.mockReturnValue({
+    } as never)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'category:analytics_db:table',
@@ -2656,16 +2690,18 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('selected node database resolves alias columns when defaultDatabase is missing', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: null },
-        sessionDatabase: null,
-        status: 'connected',
+    mockGetCache().mockReturnValue(READY_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: null },
+          sessionDatabase: null,
+          status: 'connected',
+        },
       },
-    }
-    mockUseSchemaStoreGetState.mockReturnValue({
+    } as never)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'category:analytics_db:table',
@@ -2690,7 +2726,7 @@ describe('completionService — dot notation (db.table.)', () => {
 
   it('table. in FROM clause returns nothing during parse fallback', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     const items = await callService('SELECT * FROM users.', pos(1, 21), null)
 
@@ -2731,15 +2767,17 @@ describe('completionService — dot notation prefers activeDatabase for unqualif
 
   it('unqualified table dot-notation prefers activeDatabase over other databases', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(MULTI_SCHEMA_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'db_beta' },
-        sessionDatabase: 'db_beta',
-        status: 'connected',
+    mockGetCache().mockReturnValue(MULTI_SCHEMA_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'db_beta' },
+          sessionDatabase: 'db_beta',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     // Type "users." — both db_alpha and db_beta have a "users" table.
     // With activeDatabase = db_beta, columns from db_beta.users should be returned.
@@ -2760,9 +2798,9 @@ describe('completionService — dot notation prefers activeDatabase for unqualif
 
   it('unqualified table dot-notation falls back to first match when no activeDatabase', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(MULTI_SCHEMA_CACHE)
+    mockGetCache().mockReturnValue(MULTI_SCHEMA_CACHE)
     // No activeDatabase set
-    mockConnectionState.activeConnections = {}
+    ConnectionStoreModule.useConnectionStore.setState({ activeConnections: {} } as never)
 
     const items = await callService(
       'SELECT users.',
@@ -2781,15 +2819,17 @@ describe('completionService — dot notation prefers activeDatabase for unqualif
 
   it('addColumnsForTable prefers activeDatabase for unqualified table refs in column context', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(MULTI_SCHEMA_CACHE)
-    mockConnectionState.activeConnections = {
-      'conn-1': {
-        id: 'conn-1',
-        profile: { defaultDatabase: 'db_beta' },
-        sessionDatabase: 'db_beta',
-        status: 'connected',
+    mockGetCache().mockReturnValue(MULTI_SCHEMA_CACHE)
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': {
+          id: 'conn-1',
+          profile: { defaultDatabase: 'db_beta' },
+          sessionDatabase: 'db_beta',
+          status: 'connected',
+        },
       },
-    }
+    } as never)
 
     // Entity references unqualified "users" table in caret statement
     const entities = [buildEntity(EntityContextType.TABLE, 'users', true)]
@@ -2820,7 +2860,7 @@ describe('completionService — dot notation prefers activeDatabase for unqualif
 describe('completionService — dot-notation on manual invoke (Ctrl+Space)', () => {
   it('dot-notation activated when cursor is in middle of dotted word (manual invoke)', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     // User typed "users.em" and then pressed Ctrl+Space (no triggerCharacter).
     // The cursor is at col 9 ("users.em|"), triggerCharacter is undefined.
@@ -2847,7 +2887,7 @@ describe('completionService — dot-notation on manual invoke (Ctrl+Space)', () 
 
   it('dot-notation activated for db. prefix on manual invoke', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetCache().mockReturnValue(READY_CACHE)
 
     // User typed "app_db.us" and hit Ctrl+Space
     const items = await callService(
@@ -2869,8 +2909,8 @@ describe('completionService — dot-notation on manual invoke (Ctrl+Space)', () 
 
   it('no false positive for non-dotted text on manual invoke', async () => {
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockGetCache.mockReturnValue(READY_CACHE)
-    mockUseSchemaStoreGetState.mockReturnValue({
+    mockGetCache().mockReturnValue(READY_CACHE)
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': {
           selectedNodeId: 'database:app_db:app_db',
@@ -2907,16 +2947,16 @@ describe('backtick quoting (editor.autocompleteBackticks)', () => {
 
   beforeEach(() => {
     resetModelConnections()
-    mockGetPendingLoad.mockReturnValue(null)
-    mockLoadCache.mockResolvedValue(undefined)
-    mockGetCache.mockReturnValue(READY_CACHE)
+    mockGetPendingLoad().mockReturnValue(null)
+    mockLoadCache().mockResolvedValue(undefined)
+    mockGetCache().mockReturnValue(READY_CACHE)
     registerModelConnection('inmemory://model/1', 'conn-1')
-    mockUseSchemaStoreGetState.mockReturnValue({
+    mockUseSchemaStoreGetState().mockReturnValue({
       connectionStates: {
         'conn-1': { selectedNodeId: 'database:app_db:' },
       },
     } as AnyItem)
-    mockParseNodeId.mockImplementation((nodeId: string) => {
+    mockParseNodeId().mockImplementation((nodeId: string) => {
       const [type, database, name] = nodeId.split(':')
       return { type: type as NodeType, database: database ?? '', name: name ?? '' }
     })
@@ -3029,7 +3069,7 @@ describe('backtick quoting (editor.autocompleteBackticks)', () => {
         ],
       },
     }
-    mockGetCache.mockReturnValue(cacheWithBacktick)
+    mockGetCache().mockReturnValue(cacheWithBacktick)
 
     const items = await callService(
       'SELECT * FROM ',
@@ -3060,3 +3100,4 @@ describe('backtick quoting (editor.autocompleteBackticks)', () => {
     expect((tableItem as AnyItem).filterText).toBeUndefined()
   })
 })
+

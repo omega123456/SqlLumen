@@ -1,43 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as monaco from 'monaco-editor'
 
-// ---------------------------------------------------------------------------
-// Mocks — must be declared before importing the module under test
-// ---------------------------------------------------------------------------
+// Use vi.spyOn to install per-test mock implementations without vi.mock().
+// All dependencies (routine-parameter-cache, schema-metadata-cache, schema-cache-bootstrap,
+// completion-service) are only called at runtime inside provideSignatureHelp, not at import
+// time — so vi.spyOn in beforeEach is sufficient.
 
-const mockGetRoutineParameters = vi.fn().mockResolvedValue(null)
-vi.mock('../../../components/query-editor/routine-parameter-cache', () => ({
-  getRoutineParameters: (...args: unknown[]) => mockGetRoutineParameters(...args),
-}))
-
-const mockGetCache = vi.fn().mockReturnValue({ status: 'ready', routines: {} })
-const mockGetPendingLoad = vi.fn().mockReturnValue(null)
-const mockLoadCache = vi.fn().mockResolvedValue(undefined)
-vi.mock('../../../components/query-editor/schema-metadata-cache', () => ({
-  getCache: (...args: unknown[]) => mockGetCache(...args),
-  getPendingLoad: (...args: unknown[]) => mockGetPendingLoad(...args),
-  loadCache: (...args: unknown[]) => mockLoadCache(...args),
-}))
-
-vi.mock('../../../lib/schema-cache-bootstrap', () => ({
-  getPendingBootstrap: vi.fn(() => null),
-}))
-
-const mockGetModelConnectionId = vi.fn().mockReturnValue(undefined)
-const mockGetSelectedDatabase = vi.fn().mockReturnValue(null)
-vi.mock('../../../components/query-editor/completion-service', () => ({
-  getModelConnectionId: (...args: unknown[]) => mockGetModelConnectionId(...args),
-  getSelectedDatabase: (...args: unknown[]) => mockGetSelectedDatabase(...args),
-}))
-
-const mockConnectionState = {
-  activeConnections: {} as Record<string, unknown>,
-}
-vi.mock('../../../stores/connection-store', () => ({
-  useConnectionStore: {
-    getState: () => mockConnectionState,
-  },
-}))
+import * as RoutineParameterCacheModule from '../../../components/query-editor/routine-parameter-cache'
+import * as SchemaMetadataCacheModule from '../../../components/query-editor/schema-metadata-cache'
+import * as SchemaCacheBootstrapModule from '../../../lib/schema-cache-bootstrap'
+import * as CompletionServiceModule from '../../../components/query-editor/completion-service'
+import * as ConnectionStoreModule from '../../../stores/connection-store'
 
 // Import the module under test — triggers side-effect registration
 import {
@@ -88,18 +61,54 @@ function mockPosition() {
 }
 
 // ---------------------------------------------------------------------------
+// Accessor helpers for spied functions
+// ---------------------------------------------------------------------------
+
+function mockGetRoutineParameters() {
+  return RoutineParameterCacheModule.getRoutineParameters as ReturnType<typeof vi.fn>
+}
+
+function mockGetCache() {
+  return SchemaMetadataCacheModule.getCache as ReturnType<typeof vi.fn>
+}
+
+function mockGetPendingLoad() {
+  return SchemaMetadataCacheModule.getPendingLoad as ReturnType<typeof vi.fn>
+}
+
+function mockLoadCache() {
+  return SchemaMetadataCacheModule.loadCache as ReturnType<typeof vi.fn>
+}
+
+function mockGetModelConnectionId() {
+  return CompletionServiceModule.getModelConnectionId as ReturnType<typeof vi.fn>
+}
+
+function mockGetSelectedDatabase() {
+  return CompletionServiceModule.getSelectedDatabase as ReturnType<typeof vi.fn>
+}
+
+// ---------------------------------------------------------------------------
 // Reset mocks before each test
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  mockGetRoutineParameters.mockResolvedValue(null)
-  mockGetCache.mockReturnValue({ status: 'ready', routines: {} })
-  mockGetPendingLoad.mockReturnValue(null)
-  mockLoadCache.mockResolvedValue(undefined)
-  mockGetModelConnectionId.mockReturnValue(undefined)
-  mockGetSelectedDatabase.mockReturnValue(null)
-  mockConnectionState.activeConnections = {}
+  vi.spyOn(RoutineParameterCacheModule, 'getRoutineParameters')
+    .mockReset()
+    .mockResolvedValue(null)
+  vi.spyOn(SchemaMetadataCacheModule, 'getCache')
+    .mockReset()
+    .mockReturnValue({ status: 'ready', routines: {} } as never)
+  vi.spyOn(SchemaMetadataCacheModule, 'getPendingLoad').mockReset().mockReturnValue(null)
+  vi.spyOn(SchemaMetadataCacheModule, 'loadCache').mockReset().mockResolvedValue(undefined)
+  vi.spyOn(SchemaCacheBootstrapModule, 'getPendingBootstrap').mockReset().mockReturnValue(null)
+  vi.spyOn(CompletionServiceModule, 'getModelConnectionId')
+    .mockReset()
+    .mockReturnValue(undefined)
+  vi.spyOn(CompletionServiceModule, 'getSelectedDatabase').mockReset().mockReturnValue(null)
+
+  // Reset connection store to empty state
+  ConnectionStoreModule.useConnectionStore.setState({ activeConnections: {} } as never)
 })
 
 // ---------------------------------------------------------------------------
@@ -554,12 +563,14 @@ describe('provideSignatureHelp — built-in functions', () => {
   })
 
   it('does NOT return built-in ABS for CALL ABS(', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'testdb', profile: {} },
-    }
-    mockGetCache.mockReturnValue({ status: 'ready', routines: {} })
-    mockGetRoutineParameters.mockResolvedValue(null)
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'testdb', profile: {} },
+      },
+    } as never)
+    mockGetCache().mockReturnValue({ status: 'ready', routines: {} })
+    mockGetRoutineParameters().mockResolvedValue(null)
 
     const sql = 'CALL ABS('
     const model = mockModel(sql)
@@ -573,15 +584,17 @@ describe('provideSignatureHelp — built-in functions', () => {
     // Should NOT return the built-in ABS — it's a CALL, so look up stored procedure
     expect(result).toBeUndefined()
     // Should have attempted routine lookup with procedure type
-    expect(mockGetRoutineParameters).not.toHaveBeenCalled()
+    expect(mockGetRoutineParameters()).not.toHaveBeenCalled()
   })
 
   it('does NOT return built-in ABS for mydb.abs(', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'testdb', profile: {} },
-    }
-    mockGetRoutineParameters.mockResolvedValue(null)
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'testdb', profile: {} },
+      },
+    } as never)
+    mockGetRoutineParameters().mockResolvedValue(null)
 
     const sql = 'SELECT mydb.abs('
     const model = mockModel(sql)
@@ -595,13 +608,13 @@ describe('provideSignatureHelp — built-in functions', () => {
     // Should NOT return the built-in ABS — it's database-qualified
     expect(result).toBeUndefined()
     // Should have attempted a database-qualified routine lookup
-    expect(mockGetRoutineParameters).toHaveBeenCalledWith('conn-1', 'mydb', 'abs', 'FUNCTION')
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith('conn-1', 'mydb', 'abs', 'FUNCTION')
   })
 })
 
 describe('provideSignatureHelp — cancellation', () => {
   it('returns undefined when token is cancelled', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
+    mockGetModelConnectionId().mockReturnValue('conn-1')
     const sql = 'SELECT unknown_func('
     const model = mockModel(sql)
     const result = await capturedProvider.provideSignatureHelp(
@@ -676,11 +689,13 @@ describe('provideSignatureHelp — dispose method', () => {
 
 describe('provideSignatureHelp — database-qualified stored routine', () => {
   it('returns signature for database-qualified function name', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'mydb', profile: {} },
-    }
-    mockGetRoutineParameters.mockResolvedValue({
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'mydb', profile: {} },
+      },
+    } as never)
+    mockGetRoutineParameters().mockResolvedValue({
       parameters: [{ name: 'val', dataType: 'INT', mode: 'IN' }],
       returnType: 'INT',
     })
@@ -699,15 +714,17 @@ describe('provideSignatureHelp — database-qualified stored routine', () => {
     expect(result).not.toBeNull()
     expect(result!.value.signatures[0].label).toContain('my_func')
     expect(result!.value.signatures[0].label).toContain('IN val INT')
-    expect(mockGetRoutineParameters).toHaveBeenCalledWith('conn-1', 'mydb', 'my_func', 'FUNCTION')
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith('conn-1', 'mydb', 'my_func', 'FUNCTION')
   })
 
   it('returns undefined when database-qualified routine is not found', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'mydb', profile: {} },
-    }
-    mockGetRoutineParameters.mockResolvedValue(null)
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'mydb', profile: {} },
+      },
+    } as never)
+    mockGetRoutineParameters().mockResolvedValue(null)
 
     const sql = 'SELECT mydb.unknown_func('
     const model = mockModel(sql)
@@ -722,13 +739,15 @@ describe('provideSignatureHelp — database-qualified stored routine', () => {
   })
 
   it('returns undefined when cancelled during database-qualified lookup', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'mydb', profile: {} },
-    }
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'mydb', profile: {} },
+      },
+    } as never)
     // Simulate slow fetch — token becomes cancelled before result
     let resolveRoutine: (v: unknown) => void
-    mockGetRoutineParameters.mockReturnValue(
+    mockGetRoutineParameters().mockReturnValue(
       new Promise((resolve) => {
         resolveRoutine = resolve
       })
@@ -753,17 +772,19 @@ describe('provideSignatureHelp — database-qualified stored routine', () => {
 
 describe('provideSignatureHelp — unqualified stored routine via cache', () => {
   it('returns signature when routine found in session database via cache', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'testdb', profile: { defaultDatabase: '' } },
-    }
-    mockGetCache.mockReturnValue({
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'testdb', profile: { defaultDatabase: '' } },
+      },
+    } as never)
+    mockGetCache().mockReturnValue({
       status: 'ready',
       routines: {
         testdb: [{ name: 'my_proc', routineType: 'PROCEDURE' }],
       },
-    })
-    mockGetRoutineParameters.mockResolvedValue({
+    } as never)
+    mockGetRoutineParameters().mockResolvedValue({
       parameters: [
         { name: 'p1', dataType: 'VARCHAR(255)', mode: 'IN' },
         { name: 'p2', dataType: 'INT', mode: 'OUT' },
@@ -790,7 +811,7 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
     expect(result!.value.signatures[0].parameters).toHaveLength(2)
     expect(result!.value.signatures[0].parameters[0].label).toBe('IN p1 VARCHAR(255)')
     expect(result!.value.signatures[0].parameters[1].label).toBe('OUT p2 INT')
-    expect(mockGetRoutineParameters).toHaveBeenCalledWith(
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith(
       'conn-1',
       'testdb',
       'my_proc',
@@ -799,18 +820,20 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
   })
 
   it('awaits cache load on first use and returns result after loading', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'testdb', profile: { defaultDatabase: '' } },
-    }
-    mockGetPendingLoad.mockReturnValue(Promise.resolve())
-    mockGetCache.mockReturnValue({
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'testdb', profile: { defaultDatabase: '' } },
+      },
+    } as never)
+    mockGetPendingLoad().mockReturnValue(Promise.resolve())
+    mockGetCache().mockReturnValue({
       status: 'ready',
       routines: {
         testdb: [{ name: 'my_func', routineType: 'FUNCTION' }],
       },
-    })
-    mockGetRoutineParameters.mockResolvedValue({
+    } as never)
+    mockGetRoutineParameters().mockResolvedValue({
       parameters: [{ name: 'x', dataType: 'INT', mode: 'IN' }],
       returnType: 'INT',
     })
@@ -826,18 +849,20 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
       value: { signatures: Array<{ label: string }> }
     } | null
 
-    expect(mockLoadCache).not.toHaveBeenCalled()
+    expect(mockLoadCache()).not.toHaveBeenCalled()
     expect(result).not.toBeNull()
     expect(result!.value.signatures[0].label).toContain('my_func')
   })
 
   it('awaits pending cache load before lookup', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'testdb', profile: {} },
-    }
-    mockGetPendingLoad.mockReturnValue(Promise.resolve())
-    mockGetCache.mockReturnValue({ status: 'ready', routines: {} })
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'testdb', profile: {} },
+      },
+    } as never)
+    mockGetPendingLoad().mockReturnValue(Promise.resolve())
+    mockGetCache().mockReturnValue({ status: 'ready', routines: {} } as never)
 
     const sql = 'SELECT some_func('
     const model = mockModel(sql)
@@ -849,20 +874,22 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
     )
 
     expect(result).toBeUndefined()
-    expect(mockGetPendingLoad).toHaveBeenCalledWith('conn-1')
+    expect(mockGetPendingLoad()).toHaveBeenCalledWith('conn-1')
   })
 
   it('returns undefined when no routine matches in any database', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'testdb', profile: {} },
-    }
-    mockGetCache.mockReturnValue({
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'testdb', profile: {} },
+      },
+    } as never)
+    mockGetCache().mockReturnValue({
       status: 'ready',
       routines: {
         testdb: [{ name: 'other_func', routineType: 'FUNCTION' }],
       },
-    })
+    } as never)
 
     const sql = 'SELECT nonexistent('
     const model = mockModel(sql)
@@ -877,17 +904,19 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
   })
 
   it('includes return type in documentation for functions', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'testdb', profile: {} },
-    }
-    mockGetCache.mockReturnValue({
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'testdb', profile: {} },
+      },
+    } as never)
+    mockGetCache().mockReturnValue({
       status: 'ready',
       routines: {
         testdb: [{ name: 'calc', routineType: 'FUNCTION' }],
       },
-    })
-    mockGetRoutineParameters.mockResolvedValue({
+    } as never)
+    mockGetRoutineParameters().mockResolvedValue({
       parameters: [{ name: 'x', dataType: 'DECIMAL', mode: null }],
       returnType: 'DECIMAL(10,2)',
     })
@@ -910,18 +939,20 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
   })
 
   it('resolves schemaTreeDb from schema store selectedNodeId', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: null, profile: { defaultDatabase: '' } },
-    }
-    mockGetSelectedDatabase.mockReturnValue('schemadb')
-    mockGetCache.mockReturnValue({
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: null, profile: { defaultDatabase: '' } },
+      },
+    } as never)
+    mockGetSelectedDatabase().mockReturnValue('schemadb')
+    mockGetCache().mockReturnValue({
       status: 'ready',
       routines: {
         schemadb: [{ name: 'tree_func', routineType: 'FUNCTION' }],
       },
-    })
-    mockGetRoutineParameters.mockResolvedValue({
+    } as never)
+    mockGetRoutineParameters().mockResolvedValue({
       parameters: [],
       returnType: 'INT',
     })
@@ -937,7 +968,7 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
 
     expect(result).not.toBeNull()
     expect(result!.value.signatures[0].label).toContain('tree_func')
-    expect(mockGetRoutineParameters).toHaveBeenCalledWith(
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith(
       'conn-1',
       'schemadb',
       'tree_func',
@@ -946,12 +977,14 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
   })
 
   it('handles getSelectedDatabase returning null gracefully', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: null, profile: {} },
-    }
-    mockGetSelectedDatabase.mockReturnValue(null)
-    mockGetCache.mockReturnValue({ status: 'ready', routines: {} })
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: null, profile: {} },
+      },
+    } as never)
+    mockGetSelectedDatabase().mockReturnValue(null)
+    mockGetCache().mockReturnValue({ status: 'ready', routines: {} } as never)
 
     const sql = 'SELECT some_func('
     const model = mockModel(sql)
@@ -973,11 +1006,13 @@ describe('provideSignatureHelp — unqualified stored routine via cache', () => 
 
 describe('provideSignatureHelp — qualified CALL should look up procedure', () => {
   it('CALL mydb.my_proc( returns procedure signature from cache', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'testdb', profile: {} },
-    }
-    mockGetRoutineParameters.mockResolvedValue({
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'testdb', profile: {} },
+      },
+    } as never)
+    mockGetRoutineParameters().mockResolvedValue({
       parameters: [
         { name: 'p1', dataType: 'INT', mode: 'IN' },
         { name: 'p2', dataType: 'TEXT', mode: 'OUT' },
@@ -1003,7 +1038,7 @@ describe('provideSignatureHelp — qualified CALL should look up procedure', () 
     expect(result!.value.signatures[0].label).toContain('my_proc')
     expect(result!.value.signatures[0].parameters).toHaveLength(2)
     // Must have called with procedure type (not function)
-    expect(mockGetRoutineParameters).toHaveBeenCalledWith('conn-1', 'mydb', 'my_proc', 'PROCEDURE')
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith('conn-1', 'mydb', 'my_proc', 'PROCEDURE')
   })
 })
 
@@ -1024,21 +1059,23 @@ describe('provideSignatureHelp — same-name disambiguation', () => {
     // The built-in ABS label includes the uppercase function name
     expect(result!.value.signatures[0].label).toContain('ABS')
     // Should NOT have attempted a routine cache lookup
-    expect(mockGetRoutineParameters).not.toHaveBeenCalled()
+    expect(mockGetRoutineParameters()).not.toHaveBeenCalled()
   })
 
   it('CALL abs( prefers stored procedure over built-in', async () => {
-    mockGetModelConnectionId.mockReturnValue('conn-1')
-    mockConnectionState.activeConnections = {
-      'conn-1': { sessionDatabase: 'testdb', profile: {} },
-    }
-    mockGetCache.mockReturnValue({
+    mockGetModelConnectionId().mockReturnValue('conn-1')
+    ConnectionStoreModule.useConnectionStore.setState({
+      activeConnections: {
+        'conn-1': { sessionDatabase: 'testdb', profile: {} },
+      },
+    } as never)
+    mockGetCache().mockReturnValue({
       status: 'ready',
       routines: {
         testdb: [{ name: 'abs', routineType: 'PROCEDURE' }],
       },
-    })
-    mockGetRoutineParameters.mockResolvedValue({
+    } as never)
+    mockGetRoutineParameters().mockResolvedValue({
       parameters: [],
       returnType: null,
       routineType: 'PROCEDURE',
@@ -1055,7 +1092,7 @@ describe('provideSignatureHelp — same-name disambiguation', () => {
 
     expect(result).not.toBeNull()
     // Should have looked up procedure, not returned the built-in
-    expect(mockGetRoutineParameters).toHaveBeenCalledWith('conn-1', 'testdb', 'abs', 'PROCEDURE')
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith('conn-1', 'testdb', 'abs', 'PROCEDURE')
   })
 })
 
