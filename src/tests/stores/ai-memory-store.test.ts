@@ -57,22 +57,29 @@ describe('initAiMemoryStore', () => {
   })
 
   it('is idempotent — second call is a no-op', async () => {
+    let updates = 0
+    const unsubscribe = useAiMemoryStore.subscribe(() => {
+      updates += 1
+    })
+
     initAiMemoryStore()
     initAiMemoryStore()
 
-    // Verify only one listener is registered: emit event once and check state updates only once
     await ipc.emit('ai-memory-reembed-progress', {
       connectionId: 'c1',
       phase: 'embedding',
       done: 1,
       total: 5,
     })
-    const status = useAiMemoryStore.getState().reembedStatus['c1']
-    // If two listeners were registered, the count/state would be applied twice —
-    // but since state updates are idempotent here, verify by checking the second
-    // initAiMemoryStore call does not register a new listen handler.
-    // We verify this behaviorally: state should reflect exactly the event payload.
-    expect(status).toEqual({ status: 'running', done: 1, total: 5 })
+
+    unsubscribe()
+
+    expect(updates).toBe(1)
+    expect(useAiMemoryStore.getState().reembedStatus['c1']).toEqual({
+      status: 'running',
+      done: 1,
+      total: 5,
+    })
   })
 
   it('registers event listener via listen — verifies via event delivery', async () => {

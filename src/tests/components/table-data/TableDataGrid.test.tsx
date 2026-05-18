@@ -14,8 +14,6 @@ const gridHandle = vi.hoisted(() => ({
   element: null,
 }))
 
-const originalCanvasBaseGridView = canvasGridModule.CanvasBaseGridView
-const originalFkLookupDialog = fkLookupDialogModule.FkLookupDialog
 const canvasCalls: unknown[] = []
 
 let capturedFkLookupDialogProps: Record<string, unknown> | null = null
@@ -84,14 +82,17 @@ describe('TableDataGrid', () => {
       configurable: true,
       value: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) => {
         canvasCalls.push(props)
-        return React.createElement(originalCanvasBaseGridView as never, { ...props, ref })
+        React.useImperativeHandle(ref, () => gridHandle)
+        return React.createElement('div', { 'data-testid': 'table-data-grid' })
       }),
     })
     Object.defineProperty(fkLookupDialogModule, 'FkLookupDialog', {
       configurable: true,
       value: (props: Record<string, unknown>) => {
         capturedFkLookupDialogProps = props
-        return React.createElement(originalFkLookupDialog as never, props)
+        return props.isOpen
+          ? React.createElement('div', { 'data-testid': 'fk-lookup-dialog' })
+          : null
       },
     })
     gridHandle.selectCell.mockClear()
@@ -511,5 +512,10 @@ describe('TableDataGrid', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('fk-lookup-dialog')).not.toBeInTheDocument()
     })
+
+    expect(gridHandle.selectCell).toHaveBeenCalledWith(
+      { rowIdx: 0, idx: 1 },
+      { shouldFocusCell: true, enableEditor: false }
+    )
   })
 })

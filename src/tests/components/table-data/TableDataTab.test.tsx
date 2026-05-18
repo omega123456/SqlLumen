@@ -260,12 +260,16 @@ describe('TableDataTab', () => {
       expect(screen.getByTestId('btn-retry')).toBeInTheDocument()
     })
 
+    expect(ipc.calls('fetch_table_data')).toHaveLength(1)
+
     fireEvent.click(screen.getByTestId('btn-retry'))
 
     await waitFor(() => {
-      const tab = useTableDataStore.getState().tabs['tab-1']
-      expect(tab).toBeDefined()
+      expect(ipc.calls('fetch_table_data')).toHaveLength(2)
+      expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
     })
+
+    expect(screen.queryByTestId('table-data-error')).not.toBeInTheDocument()
   })
 
   it('passes correct tab context to store initTab', async () => {
@@ -360,7 +364,7 @@ describe('TableDataTab', () => {
     })
   })
 
-  it('handleExport calls exportTableData and closes dialog', async () => {
+  it('handleExport submits the export dialog, calls exportTableData, and closes dialog', async () => {
     setupConnection()
     render(<TableDataTab tab={makeTab()} />)
 
@@ -375,7 +379,26 @@ describe('TableDataTab', () => {
       expect(screen.getByTestId('export-dialog')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByLabelText('Close'))
+    fireEvent.change(screen.getByTestId('export-file-path-input'), {
+      target: { value: '/tmp/export-users.csv' },
+    })
+    fireEvent.click(screen.getByTestId('export-submit-button'))
+
+    await waitFor(() => {
+      expect(ipc.calls('export_table_data')).toContainEqual(
+        expect.objectContaining({
+          connectionId: 'conn-1',
+          database: 'mydb',
+          table: 'users',
+          format: 'csv',
+          filePath: '/tmp/export-users.csv',
+          includeHeaders: true,
+          tableNameForSql: 'users',
+          page: 1,
+          pageSize: 1000,
+        })
+      )
+    })
 
     await waitFor(() => {
       expect(screen.queryByTestId('export-dialog')).not.toBeInTheDocument()

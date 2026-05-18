@@ -146,7 +146,7 @@ export function setupIpc(): void {
 
         const wildcardOverride = _overrides.get('*')
         if (wildcardOverride) {
-          return wildcardOverride(cmd as unknown as Record<string, unknown>, args as never)
+          return wildcardOverride(args, cmd)
         }
 
         // 2. Default fixture response
