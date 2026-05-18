@@ -1,35 +1,6 @@
-import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockCheck, mockRelaunch, mockPlatform, mockHasTauriApis, mockLogFrontend } = vi.hoisted(
-  () => ({
-    mockCheck: vi.fn(),
-    mockRelaunch: vi.fn(),
-    mockPlatform: vi.fn(),
-    mockHasTauriApis: vi.fn(),
-    mockLogFrontend: vi.fn(),
-  })
-)
-
-vi.mock('@tauri-apps/plugin-updater', () => ({
-  check: mockCheck,
-}))
-
-vi.mock('@tauri-apps/plugin-os', () => ({
-  platform: mockPlatform,
-}))
-
-vi.mock('@tauri-apps/plugin-process', () => ({
-  relaunch: mockRelaunch,
-}))
-
-vi.mock('../../lib/tauri-env', () => ({
-  hasTauriApis: mockHasTauriApis,
-}))
-
-vi.mock('../../lib/app-log-commands', () => ({
-  logFrontend: mockLogFrontend,
-}))
-
+import { ipc } from '../ipc-mock'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useUpdateStore } from '../../stores/update-store'
 
@@ -38,22 +9,38 @@ type MockProgressEvent =
   | { event: 'Progress'; data: { chunkLength: number } }
   | { event: 'Finished' }
 
-interface MockUpdate {
-  version?: string
-  downloadAndInstall: (onEvent?: (event: MockProgressEvent) => void) => Promise<void>
+function makeAvailableUpdateMetadata(version = '2.0.0') {
+  return {
+    rid: 101,
+    version,
+    currentVersion: '1.0.0',
+    date: '2026-05-17T12:00:00.000Z',
+    body: `Release ${version}`,
+    rawJson: null,
+  }
 }
 
-function makeAvailableUpdate(version = '2.0.0', progressChunks: number[] = [100]): MockUpdate {
-  return {
-    version,
-    downloadAndInstall: vi.fn(async (onEvent?: (event: MockProgressEvent) => void) => {
-      onEvent?.({ event: 'Started', data: { contentLength: 100 } })
-      for (const chunkLength of progressChunks) {
-        onEvent?.({ event: 'Progress', data: { chunkLength } })
-      }
-      onEvent?.({ event: 'Finished' })
-    }),
-  }
+function overrideAvailableUpdate(
+  version = '2.0.0',
+  progressChunks: number[] = [100],
+  options?: { downloadError?: string }
+): void {
+  ipc.override('plugin:updater|check', () => makeAvailableUpdateMetadata(version))
+  ipc.override('plugin:updater|download_and_install', (args) => {
+    const onEvent = args?.onEvent as { onmessage?: (event: MockProgressEvent) => void } | undefined
+
+    onEvent?.onmessage?.({ event: 'Started', data: { contentLength: 100 } })
+    for (const chunkLength of progressChunks) {
+      onEvent?.onmessage?.({ event: 'Progress', data: { chunkLength } })
+    }
+    onEvent?.onmessage?.({ event: 'Finished' })
+
+    if (options?.downloadError) {
+      throw new Error(options.downloadError)
+    }
+
+    return null
+  })
 }
 
 function setReadyToFinishState(version: string, platform: 'macos' | 'windows' | 'linux'): void {
@@ -99,47 +86,69 @@ function resetStores(): void {
 }
 
 describe('useUpdateStore', () => {
+  let originalTauriInternals: unknown
+  let hadTauriInternals = false
+  let originalOsPluginInternals: unknown
+  let hadOsPluginInternals = false
+
   beforeEach(() => {
     vi.useFakeTimers()
     resetStores()
-    mockCheck.mockReset()
-    mockRelaunch.mockReset()
-    mockPlatform.mockReset()
-    mockHasTauriApis.mockReset()
-    mockLogFrontend.mockReset()
-    mockHasTauriApis.mockReturnValue(true)
-    mockPlatform.mockResolvedValue('macos')
+    hadTauriInternals = '__TAURI_INTERNALS__' in window
+    originalTauriInternals = (
+      window as Window & { __TAURI_INTERNALS__?: unknown }
+    ).__TAURI_INTERNALS__
+    hadOsPluginInternals = '__TAURI_OS_PLUGIN_INTERNALS__' in window
+    originalOsPluginInternals = (
+      window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: unknown }
+    ).__TAURI_OS_PLUGIN_INTERNALS__
+    ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: { platform: string } })
+      .__TAURI_OS_PLUGIN_INTERNALS__ = { platform: 'macos' }
   })
 
   afterEach(() => {
     useUpdateStore.getState().stopPeriodicCheck()
+    if (hadTauriInternals) {
+      ;(window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+        originalTauriInternals
+    } else {
+      delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+    }
+    if (hadOsPluginInternals) {
+      ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: unknown }).__TAURI_OS_PLUGIN_INTERNALS__ =
+        originalOsPluginInternals
+    } else {
+      delete (window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: unknown })
+        .__TAURI_OS_PLUGIN_INTERNALS__
+    }
     vi.useRealTimers()
   })
 
   it('manual check sets available state when update exists', async () => {
-    const update = makeAvailableUpdate()
-    mockCheck.mockResolvedValue(update)
+    overrideAvailableUpdate()
 
     await useUpdateStore.getState().checkForUpdate(true)
 
-    expect(mockCheck).toHaveBeenCalledTimes(1)
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(1)
     expect(useUpdateStore.getState()).toMatchObject({
       status: 'available',
       availableVersion: '2.0.0',
       errorMessage: null,
-      updateObject: update,
     })
+    expect(useUpdateStore.getState().updateObject).not.toBeNull()
   })
 
   it('manual check errors set error state and message', async () => {
-    mockCheck.mockRejectedValue(new Error('manual failure'))
+    ipc.override('plugin:updater|check', () => {
+      throw new Error('manual failure')
+    })
 
     await useUpdateStore.getState().checkForUpdate(true)
 
-    expect(mockLogFrontend).toHaveBeenCalledWith(
-      'error',
-      '[update-store] Manual update check failed: manual failure'
-    )
+    expect(ipc.calls('log_frontend')).toContainEqual({
+      level: 'error',
+      message: '[update-store] Manual update check failed: manual failure',
+    })
     expect(useUpdateStore.getState()).toMatchObject({
       status: 'error',
       errorMessage: 'manual failure',
@@ -147,7 +156,7 @@ describe('useUpdateStore', () => {
   })
 
   it('manual check with no update shows up-to-date then returns to idle after 5 seconds', async () => {
-    mockCheck.mockResolvedValue(null)
+    ipc.override('plugin:updater|check', () => null)
 
     await useUpdateStore.getState().checkForUpdate(true)
     expect(useUpdateStore.getState().status).toBe('up-to-date')
@@ -160,7 +169,7 @@ describe('useUpdateStore', () => {
   })
 
   it('automatic check with no update returns to idle directly', async () => {
-    mockCheck.mockResolvedValue(null)
+    ipc.override('plugin:updater|check', () => null)
 
     await useUpdateStore.getState().checkForUpdate(false)
 
@@ -173,7 +182,7 @@ describe('useUpdateStore', () => {
 
   it('check from error state resets to checking and proceeds', async () => {
     useUpdateStore.setState({ status: 'error', errorMessage: 'previous failure' })
-    mockCheck.mockResolvedValue(null)
+    ipc.override('plugin:updater|check', () => null)
 
     const pending = useUpdateStore.getState().checkForUpdate(true)
     expect(useUpdateStore.getState()).toMatchObject({ status: 'checking', errorMessage: null })
@@ -183,10 +192,11 @@ describe('useUpdateStore', () => {
   })
 
   it('ignores overlapping checks while already checking', async () => {
-    let resolveCheck: ((value: MockUpdate | null) => void) | undefined
-    mockCheck.mockImplementation(
+    let resolveCheck: ((value: ReturnType<typeof makeAvailableUpdateMetadata> | null) => void) | undefined
+    ipc.override(
+      'plugin:updater|check',
       () =>
-        new Promise<MockUpdate | null>((resolve) => {
+        new Promise<ReturnType<typeof makeAvailableUpdateMetadata> | null>((resolve) => {
           resolveCheck = resolve
         })
     )
@@ -194,7 +204,7 @@ describe('useUpdateStore', () => {
     const firstCheck = useUpdateStore.getState().checkForUpdate(true)
     const secondCheck = useUpdateStore.getState().checkForUpdate(true)
 
-    expect(mockCheck).toHaveBeenCalledTimes(1)
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(1)
 
     resolveCheck?.(null)
     await firstCheck
@@ -206,17 +216,16 @@ describe('useUpdateStore', () => {
 
     await useUpdateStore.getState().checkForUpdate(true)
 
-    expect(mockCheck).not.toHaveBeenCalled()
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(0)
   })
 
   it('cancels pending up-to-date timeout when a new check starts', async () => {
-    mockCheck.mockResolvedValue(null)
+    ipc.override('plugin:updater|check', () => null)
 
     await useUpdateStore.getState().checkForUpdate(true)
     expect(useUpdateStore.getState().status).toBe('up-to-date')
 
-    const update = makeAvailableUpdate('3.1.0')
-    mockCheck.mockResolvedValueOnce(update)
+    overrideAvailableUpdate('3.1.0')
 
     await useUpdateStore.getState().checkForUpdate(true)
     await vi.advanceTimersByTimeAsync(5_000)
@@ -226,20 +235,19 @@ describe('useUpdateStore', () => {
   })
 
   it('downloadAndInstall tracks progress and relaunches after finish on macOS', async () => {
-    const update = makeAvailableUpdate('4.0.0', [25, 25, 50])
-    mockCheck.mockResolvedValue(update)
+    overrideAvailableUpdate('4.0.0', [25, 25, 50])
     await useUpdateStore.getState().checkForUpdate(true)
 
     await useUpdateStore.getState().downloadAndInstall()
 
-    expect(update.downloadAndInstall).toHaveBeenCalledTimes(1)
+    expect(ipc.calls('plugin:updater|download_and_install')).toHaveLength(1)
     expect(useUpdateStore.getState()).toMatchObject({
       status: 'installing',
       downloadProgress: 100,
       errorMessage: null,
       updateObject: null,
     })
-    expect(mockRelaunch).toHaveBeenCalledTimes(1)
+    expect(ipc.calls('plugin:process|restart')).toHaveLength(1)
   })
 
   it.each([
@@ -260,10 +268,10 @@ describe('useUpdateStore', () => {
   ] as const)(
     'downloadAndInstall moves to ready-to-finish after finish on $platform',
     async ({ platform, version, readyToFinishAction, readyToFinishCta, readyToFinishMessage }) => {
-      mockPlatform.mockResolvedValue(platform)
+      ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: { platform: string } })
+        .__TAURI_OS_PLUGIN_INTERNALS__ = { platform }
 
-      const update = makeAvailableUpdate(version)
-      mockCheck.mockResolvedValue(update)
+      overrideAvailableUpdate(version)
       await useUpdateStore.getState().checkForUpdate(true)
 
       await useUpdateStore.getState().downloadAndInstall()
@@ -279,26 +287,28 @@ describe('useUpdateStore', () => {
         errorMessage: null,
         updateObject: null,
       })
-      expect(mockRelaunch).not.toHaveBeenCalled()
+      expect(ipc.calls('plugin:process|restart')).toHaveLength(0)
     }
   )
 
   it('restartApp relaunches on Windows from ready-to-finish', async () => {
-    mockPlatform.mockResolvedValue('windows')
+    ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: { platform: string } })
+      .__TAURI_OS_PLUGIN_INTERNALS__ = { platform: 'windows' }
     setReadyToFinishState('4.0.0', 'windows')
 
     await useUpdateStore.getState().restartApp()
 
-    expect(mockRelaunch).toHaveBeenCalledTimes(1)
+    expect(ipc.calls('plugin:process|restart')).toHaveLength(1)
   })
 
   it('restartApp does not relaunch on Linux from ready-to-finish', async () => {
-    mockPlatform.mockResolvedValue('linux')
+    ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: { platform: string } })
+      .__TAURI_OS_PLUGIN_INTERNALS__ = { platform: 'linux' }
     setReadyToFinishState('4.1.0', 'linux')
 
     await useUpdateStore.getState().restartApp()
 
-    expect(mockRelaunch).not.toHaveBeenCalled()
+    expect(ipc.calls('plugin:process|restart')).toHaveLength(0)
     expect(useUpdateStore.getState()).toMatchObject({
       status: 'ready-to-finish',
       availableVersion: '4.1.0',
@@ -307,16 +317,19 @@ describe('useUpdateStore', () => {
   })
 
   it('restartApp keeps ready-to-finish state when relaunch fails', async () => {
-    mockPlatform.mockResolvedValue('windows')
-    mockRelaunch.mockRejectedValue(new Error('restart failed'))
+    ;(window as Window & { __TAURI_OS_PLUGIN_INTERNALS__?: { platform: string } })
+      .__TAURI_OS_PLUGIN_INTERNALS__ = { platform: 'windows' }
+    ipc.override('plugin:process|restart', () => {
+      throw new Error('restart failed')
+    })
     setReadyToFinishState('4.0.0', 'windows')
 
     await useUpdateStore.getState().restartApp()
 
-    expect(mockLogFrontend).toHaveBeenCalledWith(
-      'error',
-      '[update-store] Restart failed: restart failed'
-    )
+    expect(ipc.calls('log_frontend')).toContainEqual({
+      level: 'error',
+      message: '[update-store] Restart failed: restart failed',
+    })
     expect(useUpdateStore.getState()).toMatchObject({
       status: 'ready-to-finish',
       availableVersion: '4.0.0',
@@ -326,11 +339,7 @@ describe('useUpdateStore', () => {
   })
 
   it('downloadAndInstall stores error state on failure', async () => {
-    const downloadAndInstall = vi.fn(async () => {
-      throw new Error('download failed')
-    })
-
-    mockCheck.mockResolvedValue({ version: '4.0.0', downloadAndInstall })
+    overrideAvailableUpdate('4.0.0', [100], { downloadError: 'download failed' })
     await useUpdateStore.getState().checkForUpdate(true)
 
     await useUpdateStore.getState().downloadAndInstall()
@@ -339,30 +348,30 @@ describe('useUpdateStore', () => {
       status: 'error',
       errorMessage: 'download failed',
     })
-    expect(mockLogFrontend).toHaveBeenCalledWith(
-      'error',
-      '[update-store] Install failed: download failed'
-    )
-    expect(mockRelaunch).not.toHaveBeenCalled()
+    expect(ipc.calls('log_frontend')).toContainEqual({
+      level: 'error',
+      message: '[update-store] Install failed: download failed',
+    })
+    expect(ipc.calls('plugin:process|restart')).toHaveLength(0)
   })
 
   it('allows re-checks when update is already available to catch newer versions', async () => {
     useUpdateStore.setState({ status: 'available', availableVersion: '1.2.3' })
-    mockCheck.mockResolvedValueOnce({ version: '1.2.4' })
+    ipc.override('plugin:updater|check', () => makeAvailableUpdateMetadata('1.2.4'))
 
     await useUpdateStore.getState().checkForUpdate(false)
 
-    expect(mockCheck).toHaveBeenCalled()
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(1)
     expect(useUpdateStore.getState().availableVersion).toBe('1.2.4')
   })
 
   it('keeps cached update when re-check from available returns null', async () => {
     useUpdateStore.setState({ status: 'available', availableVersion: '1.2.3' })
-    mockCheck.mockResolvedValueOnce(null)
+    ipc.override('plugin:updater|check', () => null)
 
     await useUpdateStore.getState().checkForUpdate(false)
 
-    expect(mockCheck).toHaveBeenCalled()
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(1)
     expect(useUpdateStore.getState().status).toBe('available')
     expect(useUpdateStore.getState().availableVersion).toBe('1.2.3')
   })
@@ -371,7 +380,8 @@ describe('useUpdateStore', () => {
     useSettingsStore.setState({ settings: { 'updates.checkInterval': '1h' } })
 
     let resolveCheck: (() => void) | undefined
-    mockCheck.mockImplementation(
+    ipc.override(
+      'plugin:updater|check',
       () =>
         new Promise<null>((resolve) => {
           resolveCheck = () => resolve(null)
@@ -384,19 +394,19 @@ describe('useUpdateStore', () => {
     await startPromise
 
     await vi.advanceTimersByTimeAsync(3_600_000)
-    expect(mockCheck).toHaveBeenCalledTimes(1)
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(1)
   })
 
   it('startPeriodicCheck with 1h interval runs immediately and again after interval', async () => {
     useSettingsStore.setState({ settings: { 'updates.checkInterval': '1h' } })
-    mockCheck.mockResolvedValue(null)
+    ipc.override('plugin:updater|check', () => null)
 
     await useUpdateStore.getState().startPeriodicCheck()
 
-    expect(mockCheck).toHaveBeenCalledTimes(1)
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(1)
 
     await vi.advanceTimersByTimeAsync(3_600_000)
-    expect(mockCheck).toHaveBeenCalledTimes(2)
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(2)
   })
 
   it('startPeriodicCheck with off does not schedule or run immediate checks', async () => {
@@ -405,47 +415,47 @@ describe('useUpdateStore', () => {
     await useUpdateStore.getState().startPeriodicCheck()
     await vi.advanceTimersByTimeAsync(7_200_000)
 
-    expect(mockCheck).not.toHaveBeenCalled()
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(0)
   })
 
   it('startPeriodicCheck is idempotent when called twice', async () => {
     useSettingsStore.setState({ settings: { 'updates.checkInterval': '1h' } })
-    mockCheck.mockResolvedValue(null)
+    ipc.override('plugin:updater|check', () => null)
 
     await useUpdateStore.getState().startPeriodicCheck()
     await useUpdateStore.getState().startPeriodicCheck()
-    expect(mockCheck).toHaveBeenCalledTimes(2)
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(2)
 
     await vi.advanceTimersByTimeAsync(3_600_000)
-    expect(mockCheck).toHaveBeenCalledTimes(3)
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(3)
   })
 
   it('stopPeriodicCheck clears the periodic timer', async () => {
     useSettingsStore.setState({ settings: { 'updates.checkInterval': '1h' } })
-    mockCheck.mockResolvedValue(null)
+    ipc.override('plugin:updater|check', () => null)
 
     await useUpdateStore.getState().startPeriodicCheck()
     useUpdateStore.getState().stopPeriodicCheck()
     await vi.advanceTimersByTimeAsync(3_600_000)
 
-    expect(mockCheck).toHaveBeenCalledTimes(1)
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(1)
   })
 
   it('restartPeriodicCheck recreates the periodic timer', async () => {
     useSettingsStore.setState({ settings: { 'updates.checkInterval': '1h' } })
-    mockCheck.mockResolvedValue(null)
+    ipc.override('plugin:updater|check', () => null)
 
     await useUpdateStore.getState().startPeriodicCheck()
     await useUpdateStore.getState().restartPeriodicCheck()
 
-    expect(mockCheck).toHaveBeenCalledTimes(2)
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(2)
 
     await vi.advanceTimersByTimeAsync(3_600_000)
-    expect(mockCheck).toHaveBeenCalledTimes(3)
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(3)
   })
 
   it('all actions are no-ops when Tauri APIs are unavailable', async () => {
-    mockHasTauriApis.mockReturnValue(false)
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
 
     await useUpdateStore.getState().checkForUpdate(true)
     await useUpdateStore.getState().downloadAndInstall()
@@ -455,8 +465,8 @@ describe('useUpdateStore', () => {
     useUpdateStore.getState().stopPeriodicCheck()
     await vi.advanceTimersByTimeAsync(3_600_000)
 
-    expect(mockCheck).not.toHaveBeenCalled()
-    expect(mockRelaunch).not.toHaveBeenCalled()
+    expect(ipc.calls('plugin:updater|check')).toHaveLength(0)
+    expect(ipc.calls('plugin:process|restart')).toHaveLength(0)
     expect(useUpdateStore.getState()).toMatchObject({
       status: 'idle',
       availableVersion: null,
@@ -504,14 +514,16 @@ describe('useUpdateStore', () => {
   )
 
   it('automatic check errors are logged and keep status idle', async () => {
-    mockCheck.mockRejectedValue(new Error('network down'))
+    ipc.override('plugin:updater|check', () => {
+      throw new Error('network down')
+    })
 
     await useUpdateStore.getState().checkForUpdate(false)
 
-    expect(mockLogFrontend).toHaveBeenCalledWith(
-      'error',
-      '[update-store] Automatic update check failed: network down'
-    )
+    expect(ipc.calls('log_frontend')).toContainEqual({
+      level: 'error',
+      message: '[update-store] Automatic update check failed: network down',
+    })
     expect(useUpdateStore.getState()).toMatchObject({
       status: 'idle',
       errorMessage: null,
