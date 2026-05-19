@@ -1,0 +1,91 @@
+import type {
+  PlaywrightForeignKey,
+  PlaywrightListColumn,
+  PlaywrightTableDataResult,
+} from './types'
+
+export const USERS_LIST_COLUMNS: PlaywrightListColumn[] = [
+  {
+    name: 'id',
+    dataType: 'bigint',
+    nullable: false,
+    columnKey: 'PRI',
+    defaultValue: null,
+    extra: 'auto_increment',
+    ordinalPosition: 1,
+  },
+  {
+    name: 'name',
+    dataType: 'varchar',
+    nullable: false,
+    columnKey: '',
+    defaultValue: null,
+    extra: '',
+    ordinalPosition: 2,
+  },
+  {
+    name: 'email',
+    dataType: 'varchar',
+    nullable: true,
+    columnKey: 'UNI',
+    defaultValue: null,
+    extra: '',
+    ordinalPosition: 3,
+  },
+]
+
+export const USERS_TABLE_DATA: PlaywrightTableDataResult = {
+  columns: [
+    {
+      name: 'id',
+      dataType: 'INT',
+      isBooleanAlias: false,
+      isNullable: false,
+      isPrimaryKey: true,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: true,
+    },
+    {
+      name: 'name',
+      dataType: 'VARCHAR',
+      isBooleanAlias: false,
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+    },
+    {
+      name: 'email',
+      dataType: 'VARCHAR',
+      isBooleanAlias: false,
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+    },
+  ],
+  rows: [
+    [1, 'Alice', 'alice@example.com'],
+    [2, 'Bob', 'bob@example.com'],
+    [3, 'Charlie', 'charlie@example.com'],
+  ],
+  currentPage: 1,
+  pageSize: 100,
+  primaryKey: {
+    keyColumns: ['id'],
+    hasAutoIncrement: true,
+    isUniqueKeyFallback: false,
+  },
+  executionTimeMs: 12,
+}
+
+export const USERS_FOREIGN_KEYS: PlaywrightForeignKey[] = []

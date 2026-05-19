@@ -1,0 +1,56 @@
+import type { PlaywrightTableDataResult } from './types'
+
+export const SCROLL_TEST_TABLE_DATA: PlaywrightTableDataResult = {
+  columns: [
+    {
+      name: 'id',
+      dataType: 'INT',
+      isBooleanAlias: false,
+      isNullable: false,
+      isPrimaryKey: true,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: true,
+    },
+    {
+      name: 'name',
+      dataType: 'VARCHAR',
+      isBooleanAlias: false,
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+    },
+    {
+      name: 'status',
+      dataType: 'ENUM',
+      isBooleanAlias: false,
+      enumValues: ['active', 'inactive'],
+      isNullable: false,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+    },
+  ],
+  rows: Array.from({ length: 120 }, (_, index) => [
+    index + 1,
+    `Scroll row ${index + 1}`,
+    index % 2 === 0 ? 'active' : 'inactive',
+  ]),
+  currentPage: 1,
+  pageSize: 1000,
+  primaryKey: {
+    keyColumns: ['id'],
+    hasAutoIncrement: true,
+    isUniqueKeyFallback: false,
+  },
+  executionTimeMs: 9,
+}
