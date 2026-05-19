@@ -107,6 +107,19 @@ function getPreferredMultilineOverlayHeight(_: Rectangle): number {
   return Math.max(132, Math.min(500, Math.floor(viewportHeight * 0.5)))
 }
 
+function applyInitialInputValue(value: GridCell, initialInputValue: string | undefined): GridCell {
+  if (initialInputValue == null || value.kind !== GridCellKind.Text) {
+    return value
+  }
+
+  return {
+    ...(value as TextCell),
+    data: initialInputValue,
+    displayData: initialInputValue,
+    copyData: initialInputValue,
+  }
+}
+
 export function wrapEditorAsGlideOverlay(
   EditorComponent: VendorNeutralEditorComponent,
   config: GlideOverlayConfig = {}
@@ -118,29 +131,28 @@ export function wrapEditorAsGlideOverlay(
     onFinishedEditing,
   }: CustomEditorProps) {
     const { testId, reserveMarkerWidth = true, overlayExtraWidth = 20, overlayHeight } = config
-    const currentValueRef = useRef(value)
+    const editorData = extractEditorData(value)
+    const initialInputValue = editorData?.initialInputValue
+    const currentValueRef = useRef(applyInitialInputValue(value, initialInputValue))
+    const appliedInitialInputValueRef = useRef(initialInputValue)
     const close = useCallback(
       (commitChanges?: boolean) => {
         onFinishedEditing(commitChanges === false ? undefined : currentValueRef.current)
       },
       [onFinishedEditing]
     )
-    const editorData = extractEditorData(value)
-    const initialInputValue = editorData?.initialInputValue
 
     useEffect(() => {
       if (initialInputValue == null) {
         currentValueRef.current = value
+        appliedInitialInputValueRef.current = undefined
         return
       }
 
-      const seededCell = {
-        ...(value as TextCell),
-        data: initialInputValue,
-        displayData: initialInputValue,
-        copyData: initialInputValue,
+      if (appliedInitialInputValueRef.current !== initialInputValue) {
+        currentValueRef.current = applyInitialInputValue(value, initialInputValue)
+        appliedInitialInputValueRef.current = initialInputValue
       }
-      currentValueRef.current = seededCell
     }, [initialInputValue, value])
 
     if (!editorData) return null

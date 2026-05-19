@@ -72,6 +72,68 @@ describe('wrapEditorAsGlideOverlay', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
+  it('does not overwrite a typed value with the first-character seed before blur commit', () => {
+    let changeRow: ((nextValue: string) => void) | null = null
+    let closeEditor: (() => void) | null = null
+    const onFinishedEditing = vi.fn()
+    const Editor = wrapEditorAsGlideOverlay(
+      ({ row, column, onRowChange, onClose }) => {
+        changeRow = (nextValue: string) => onRowChange({ ...row, [column.key]: nextValue })
+        closeEditor = () => onClose(true, false)
+        return <input aria-label="wrapped editor" readOnly value={String(row[column.key] ?? '')} />
+      },
+      { testId: 'test-editor' }
+    )
+
+    const buildValue = (): TextCell & {
+      glideEditorData: {
+        row: Record<string, unknown>
+        columnKey: string
+        isNullable: boolean
+        initialInputValue: string
+        selectAllOnFocus: boolean
+      }
+    } => ({
+      kind: GridCellKind.Text,
+      data: 'alpha',
+      displayData: 'alpha',
+      copyData: 'alpha',
+      allowOverlay: true,
+      readonly: false,
+      glideEditorData: {
+        row: { name: 'alpha' },
+        columnKey: 'name',
+        isNullable: true,
+        initialInputValue: '1',
+        selectAllOnFocus: false,
+      },
+    })
+
+    const { rerender } = render(
+      <Editor
+        target={{ x: 0, y: 0, width: 80, height: 32 }}
+        value={buildValue()}
+        onChange={vi.fn()}
+        onFinishedEditing={onFinishedEditing}
+      />
+    )
+
+    changeRow?.('1234')
+    rerender(
+      <Editor
+        target={{ x: 0, y: 0, width: 80, height: 32 }}
+        value={buildValue()}
+        onChange={vi.fn()}
+        onFinishedEditing={onFinishedEditing}
+      />
+    )
+    closeEditor?.()
+
+    expect(onFinishedEditing).toHaveBeenCalledWith(
+      expect.objectContaining({ data: '1234', displayData: '1234', copyData: '1234' })
+    )
+  })
+
   it('writes overlay padding metadata when configured', () => {
     const Editor = wrapEditorAsGlideOverlay(() => null, {
       testId: 'test-editor',
