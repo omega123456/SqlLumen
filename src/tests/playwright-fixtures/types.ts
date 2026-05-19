@@ -81,6 +81,30 @@ export interface PlaywrightForeignKey {
   onUpdate: string
 }
 
+export interface PlaywrightAnalyzeQueryColumn {
+  name: string
+  dataType: string
+  isBooleanAlias: boolean
+  enumValues: string[] | null
+  isNullable: boolean
+  isPrimaryKey: boolean
+  isUniqueKey: boolean
+  hasDefault: boolean
+  columnDefault: string | null
+  isBinary: boolean
+  isAutoIncrement: boolean
+}
+
+export interface PlaywrightAnalyzeQueryTableInfo {
+  database: string
+  table: string
+  columns: PlaywrightAnalyzeQueryColumn[]
+  primaryKey: PlaywrightPrimaryKey
+  foreignKeys: PlaywrightForeignKey[]
+}
+
+export type PlaywrightAnalyzeQueryResult = PlaywrightAnalyzeQueryTableInfo[]
+
 export interface PlaywrightRoutineParametersResponse {
   parameters: Array<{
     name: string

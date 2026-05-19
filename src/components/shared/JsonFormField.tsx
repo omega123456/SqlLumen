@@ -80,7 +80,7 @@ export function JsonFormField({
     }
 
     return (
-      <div className={styles.field} data-testid={testId}>
+      <div className={`${styles.field} ${styles.readOnly}`} data-testid={testId}>
         <ElevatedCodePanel
           hideHeader={true}
           className={styles.readPanel}
@@ -117,6 +117,7 @@ export function JsonFormField({
         originalValue={originalValue}
         monacoTheme={monacoTheme}
         onChange={onChange}
+        testId={`${testId}-editor`}
       />
     </div>
   )
@@ -127,6 +128,7 @@ interface JsonFormFieldEditorProps {
   originalValue: string
   monacoTheme: ReturnType<typeof getMonacoThemeName>
   onChange: (value: string) => void
+  testId?: string
 }
 
 function JsonFormFieldEditor({
@@ -134,6 +136,7 @@ function JsonFormFieldEditor({
   originalValue,
   monacoTheme,
   onChange,
+  testId,
 }: JsonFormFieldEditorProps) {
   const draftValueRef = useRef(externalValue)
   const lastSyncedExternalValueRef = useRef(externalValue)
@@ -174,7 +177,7 @@ function JsonFormFieldEditor({
   }, [externalValue])
 
   return (
-    <div className={styles.editorShell}>
+    <div className={styles.editorShell} data-testid={testId}>
       <div className={styles.editorViewport}>
         <Editor
           height="300px"
@@ -186,6 +189,8 @@ function JsonFormFieldEditor({
             monacoRef.current = monaco
             registerMonacoThemes(monaco)
             monaco.editor.setTheme(monacoTheme)
+            // Disable command palette (F1) — not useful in a cell editor
+            editor.addCommand(monaco.KeyCode.F1, () => null)
           }}
           onChange={(nextValue) => {
             draftValueRef.current = nextValue ?? ''
@@ -195,6 +200,8 @@ function JsonFormFieldEditor({
             automaticLayout: true,
             minimap: { enabled: false },
             scrollBeyondLastLine: false,
+            contextmenu: false,
+            quickSuggestions: false,
           }}
         />
       </div>
