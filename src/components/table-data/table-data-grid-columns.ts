@@ -1,7 +1,7 @@
 import type { GridColumnDescriptor } from '../../types/shared-data-view'
 import type { ForeignKeyColumnInfo, TableDataColumnMeta } from '../../types/schema'
 import { getTemporalColumnType } from '../../lib/date-utils'
-import { isEnumColumn } from './enum-field-utils'
+import { isEnumColumn, isSetColumn } from './enum-field-utils'
 
 export function buildColumnDescriptors(
   columns: TableDataColumnMeta[],
@@ -13,11 +13,13 @@ export function buildColumnDescriptors(
     const fk = foreignKeys.find((fk) => fk.columnName === col.name)
     const editorType = col.isBinary
       ? 'none'
-      : getTemporalColumnType(col.dataType)
-        ? 'datetime'
+        : getTemporalColumnType(col.dataType)
+          ? 'datetime'
         : isEnumColumn(col)
           ? 'enum'
-          : fk
+        : isSetColumn(col)
+          ? 'set'
+        : fk
             ? 'fk'
             : 'text'
     return {
@@ -30,6 +32,7 @@ export function buildColumnDescriptors(
       isPrimaryKey: col.isPrimaryKey,
       isUniqueKey: col.isUniqueKey,
       enumValues: col.enumValues,
+      setValues: col.setValues,
       tableColumnMeta: col,
       editorType,
       ...(fk && { foreignKey: fk }),

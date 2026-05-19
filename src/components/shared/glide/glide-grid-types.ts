@@ -48,9 +48,11 @@ export interface GridColumn<TRow> {
   /** Full table-data column metadata used by cell editors. */
   tableColumnMeta?: unknown
   /** Vendor-neutral editor type used by grid adapters. */
-  editorType?: 'text' | 'enum' | 'datetime' | 'fk' | 'none'
+  editorType?: 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'none'
   /** Enum options for enum editors. */
   enumValues?: string[]
+  /** SET options for multi-select editors. */
+  setValues?: string[]
   /** Allows feature-specific metadata while the shared contract remains vendor-neutral. */
   [key: string]: unknown
 }

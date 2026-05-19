@@ -39,6 +39,7 @@ pub struct TableDataColumnMeta {
     pub data_type: String,
     pub is_boolean_alias: bool,
     pub enum_values: Option<Vec<String>>,
+    pub set_values: Option<Vec<String>>,
     pub is_nullable: bool,
     pub is_primary_key: bool,
     pub is_unique_key: bool,
@@ -340,13 +341,24 @@ fn is_binary_data_type(data_type: &str) -> bool {
 
 #[cfg(not(coverage))]
 pub fn parse_enum_values(column_type: &str) -> Option<Vec<String>> {
+    parse_quoted_type_values(column_type, "enum")
+}
+
+#[cfg(not(coverage))]
+pub fn parse_set_values(column_type: &str) -> Option<Vec<String>> {
+    parse_quoted_type_values(column_type, "set")
+}
+
+#[cfg(not(coverage))]
+fn parse_quoted_type_values(column_type: &str, type_name: &str) -> Option<Vec<String>> {
     let trimmed = column_type.trim();
     let lower = trimmed.to_ascii_lowercase();
-    if !lower.starts_with("enum(") || !trimmed.ends_with(')') {
+    let prefix = format!("{type_name}(");
+    if !lower.starts_with(&prefix) || !trimmed.ends_with(')') {
         return None;
     }
 
-    let inner = &trimmed[5..trimmed.len() - 1];
+    let inner = &trimmed[prefix.len()..trimmed.len() - 1];
     let mut values = Vec::new();
     let mut current = String::new();
     let mut chars = inner.chars().peekable();
@@ -797,6 +809,7 @@ pub async fn fetch_table_pk_impl(
         let data_type = decode_text(row, 1).to_uppercase();
         let column_type = decode_text(row, 2);
         let enum_values = parse_enum_values(&column_type);
+        let set_values = parse_set_values(&column_type);
         let is_nullable = decode_text(row, 3) == "YES";
         let column_key = decode_text(row, 4);
         let column_default = decode_optional_text(row, 5);
@@ -816,6 +829,7 @@ pub async fn fetch_table_pk_impl(
             data_type,
             is_boolean_alias,
             enum_values,
+            set_values,
             is_nullable,
             is_primary_key,
             is_unique_key,

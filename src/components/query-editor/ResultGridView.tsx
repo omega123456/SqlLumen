@@ -333,10 +333,13 @@ export function ResultGridView({
       isPrimaryKey: column.tableColumnMeta?.isPrimaryKey ?? false,
       isUniqueKey: column.tableColumnMeta?.isUniqueKey ?? false,
       enumValues: column.tableColumnMeta?.enumValues,
+      setValues: column.tableColumnMeta?.setValues,
       tableColumnMeta: column.editable ? column.tableColumnMeta : undefined,
       foreignKey: column.foreignKey,
       editorType: column.tableColumnMeta?.enumValues?.length
         ? 'enum'
+        : column.tableColumnMeta?.setValues?.length
+          ? 'set'
         : column.tableColumnMeta
           ? 'text'
           : 'none',

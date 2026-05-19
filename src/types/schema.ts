@@ -313,6 +313,7 @@ export interface TableDataColumnMeta {
   dataType: string
   isBooleanAlias: boolean
   enumValues?: string[]
+  setValues?: string[]
   isNullable: boolean
   isPrimaryKey: boolean
   isUniqueKey: boolean

@@ -44,12 +44,14 @@ export interface GridColumnDescriptor {
   isUniqueKey: boolean
   /** Enum options if applicable. */
   enumValues?: string[]
+  /** SET options if applicable. */
+  setValues?: string[]
   /** Optional full table-data column meta for editor factory. */
   tableColumnMeta?: TableDataColumnMeta
   /** FK metadata for this column (set when the column is an FK source). */
   foreignKey?: ForeignKeyColumnInfo
   /** Vendor-neutral editor type used by grid adapters. */
-  editorType?: 'text' | 'enum' | 'datetime' | 'fk' | 'none'
+  editorType?: 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'none'
   /** Preferred column width in pixels. */
   width?: number
 }

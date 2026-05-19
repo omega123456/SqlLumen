@@ -2,7 +2,7 @@
 
 use sqllumen_lib::commands::table_data::interpolate_sql_params;
 #[cfg(not(coverage))]
-use sqllumen_lib::mysql::table_data::parse_enum_values;
+use sqllumen_lib::mysql::table_data::{parse_enum_values, parse_set_values};
 use sqllumen_lib::mysql::table_data::{
     translate_filter_model, translate_filter_model_with_columns, ExportTableOptions,
     FilterCondition, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
@@ -534,6 +534,106 @@ use opensrv_mysql::{ColumnFlags, ColumnType};
         assert_eq!(
             response["columns"][1]["enumValues"],
             serde_json::json!(["active", "disabled"])
+        );
+
+        set_test_pool_factory(None);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fetch_table_data_returns_set_values_for_set_columns() {
+        let server = MockMySqlServer::start_script(vec![
+            MockQueryStep {
+                query: "SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, EXTRA FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
+                columns: vec![
+                    MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "DATA_TYPE", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "COLUMN_TYPE", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "IS_NULLABLE", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                    MockColumnDef { name: "COLUMN_KEY", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::empty() },
+                    MockColumnDef { name: "COLUMN_DEFAULT", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::empty() },
+                    MockColumnDef { name: "EXTRA", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG },
+                ],
+                rows: vec![
+                    vec![
+                        MockCell::Bytes(b"id"),
+                        MockCell::Bytes(b"int"),
+                        MockCell::Bytes(b"int(11)"),
+                        MockCell::Bytes(b"NO"),
+                        MockCell::Bytes(b"PRI"),
+                        MockCell::Null,
+                        MockCell::Bytes(b"auto_increment"),
+                    ],
+                    vec![
+                        MockCell::Bytes(b"flags"),
+                        MockCell::Bytes(b"set"),
+                        MockCell::Bytes(b"set('alpha','beta','gamma')"),
+                        MockCell::Bytes(b"YES"),
+                        MockCell::Bytes(b""),
+                        MockCell::Null,
+                        MockCell::Bytes(b""),
+                    ],
+                ],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT kcu.COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME WHERE kcu.TABLE_SCHEMA = ? AND kcu.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' ORDER BY kcu.ORDINAL_POSITION",
+                columns: vec![MockColumnDef { name: "COLUMN_NAME", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::NOT_NULL_FLAG }],
+                rows: vec![vec![MockCell::Bytes(b"id")]],
+                error: None,
+            },
+            MockQueryStep {
+                query: "SELECT * FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
+                columns: vec![
+                    MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
+                    MockColumnDef { name: "flags", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::empty() },
+                ],
+                rows: vec![vec![MockCell::U32(1), MockCell::Bytes(b"alpha,gamma")]],
+                error: None,
+            },
+        ])
+        .await;
+
+        set_test_pool_factory(None);
+
+        let (_app, webview) = build_app();
+
+        let profile_id: String = invoke_tauri_command(
+            &webview,
+            "save_connection",
+            json!({ "data": save_input_json(server.port) }),
+        )
+        .expect("save_connection IPC should succeed");
+
+        let open_result: OpenConnectionResultDto = invoke_tauri_command(
+            &webview,
+            "open_connection",
+            json!({
+                "payload": {
+                    "profileId": profile_id,
+                }
+            }),
+        )
+        .expect("open_connection IPC should succeed");
+
+        let response = invoke_tauri_command::<serde_json::Value>(
+            &webview,
+            "fetch_table_data",
+            json!({
+                "connectionId": open_result.session_id,
+                "database": "pi_management",
+                "table": "users",
+                "page": 1,
+                "pageSize": 50,
+                "sortColumn": null,
+                "sortDirection": null,
+                "filterModel": null
+            }),
+        )
+        .expect("fetch_table_data IPC should succeed");
+
+        assert_eq!(
+            response["columns"][1]["setValues"],
+            serde_json::json!(["alpha", "beta", "gamma"])
         );
 
         set_test_pool_factory(None);
@@ -1924,6 +2024,7 @@ fn make_column_meta(name: &str, data_type: &str) -> TableDataColumnMeta {
         data_type: data_type.to_string(),
         is_boolean_alias: false,
         enum_values: None,
+        set_values: None,
         is_nullable: true,
         is_primary_key: false,
         is_unique_key: false,
@@ -2048,6 +2149,19 @@ fn parse_enum_values_extracts_options_and_escaped_quotes() {
 fn parse_enum_values_returns_none_for_non_enum_types() {
     assert!(parse_enum_values("varchar(255)").is_none());
     assert!(parse_enum_values("set('a','b')").is_none());
+}
+
+#[test]
+fn parse_set_values_extracts_options_and_escaped_quotes() {
+    let values =
+        parse_set_values("set('alpha','it''s ok','gamma')").expect("SET values should parse");
+    assert_eq!(values, vec!["alpha", "it's ok", "gamma"]);
+}
+
+#[test]
+fn parse_set_values_returns_none_for_non_set_types() {
+    assert!(parse_set_values("varchar(255)").is_none());
+    assert!(parse_set_values("enum('a','b')").is_none());
 }
 
 // ── Data structure serialization tests ────────────────────────────────────────

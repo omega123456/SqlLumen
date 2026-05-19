@@ -1065,7 +1065,7 @@ describe('CanvasBaseGridView', () => {
       provideEditor: (cell: unknown) => unknown
     }
     const cell = props.getCellContent([0, 0])
-    expect(props.customRenderers).toHaveLength(1)
+    expect(props.customRenderers).toHaveLength(2)
     expect(cell).toMatchObject({
       kind: GridCellKind.Custom,
       readonly: false,
@@ -1698,6 +1698,113 @@ describe('CanvasBaseGridView', () => {
       indexes: [0],
       column: expect.objectContaining({ key: 'name' }),
     })
+  })
+
+  it('keeps unchanged multi-select commits out of the dirty path', () => {
+    const onCellValueChange = vi.fn()
+    const onRowsChange = vi.fn()
+    const multiSelectRows = [{ id: 1, name: 'alpha,beta', info: 'SELECT 1' }]
+
+    render(
+      <CanvasBaseGridView
+        rows={multiSelectRows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            editorType: 'set' as const,
+            setValues: ['alpha', 'beta', 'gamma'],
+          },
+        ]}
+        editState={{
+          rowKey: '1',
+          currentValues: { name: 'alpha,beta' },
+          originalValues: { name: 'alpha,beta' },
+        }}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellActivated: (cell: readonly [number, number]) => void
+      onCellEdited: (
+        cell: readonly [number, number],
+        value: {
+          kind: GridCellKind
+          data: { kind: 'multi-select-cell'; values: string[] }
+        }
+      ) => void
+    }
+
+    props.onCellActivated([0, 0])
+    props.onCellEdited([0, 0], {
+      kind: GridCellKind.Custom,
+      data: { kind: 'multi-select-cell', values: ['alpha', 'beta'] },
+    })
+
+    expect(onCellValueChange).not.toHaveBeenCalled()
+    expect(onRowsChange).toHaveBeenCalledWith(multiSelectRows, {
+      indexes: [0],
+      column: expect.objectContaining({ key: 'name' }),
+    })
+  })
+
+  it('propagates changed multi-select commits through the dirty path', () => {
+    const onCellValueChange = vi.fn()
+    const onRowsChange = vi.fn()
+    const multiSelectRows = [{ id: 1, name: 'alpha', info: 'SELECT 1' }]
+
+    render(
+      <CanvasBaseGridView
+        rows={multiSelectRows}
+        columns={[
+          {
+            ...columns[0],
+            editable: true,
+            editorType: 'set' as const,
+            setValues: ['alpha', 'beta', 'gamma'],
+          },
+        ]}
+        editState={{
+          rowKey: '1',
+          currentValues: { name: 'alpha' },
+          originalValues: { name: 'alpha' },
+        }}
+        isEditMode={true}
+        editableColumnKeys={new Set(['name'])}
+        onCellValueChange={onCellValueChange}
+        onRowsChange={onRowsChange}
+      />
+    )
+
+    const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+      onCellActivated: (cell: readonly [number, number]) => void
+      onCellEdited: (
+        cell: readonly [number, number],
+        value: {
+          kind: GridCellKind
+          data: { kind: 'multi-select-cell'; values: string[] }
+        }
+      ) => void
+    }
+
+    props.onCellActivated([0, 0])
+    props.onCellEdited([0, 0], {
+      kind: GridCellKind.Custom,
+      data: { kind: 'multi-select-cell', values: ['alpha', 'beta'] },
+    })
+
+    expect(onCellValueChange).toHaveBeenCalledWith(0, 'name', 'alpha,beta')
+    expect(onRowsChange).toHaveBeenCalledWith(
+      [{ ...multiSelectRows[0], name: 'alpha,beta' }],
+      {
+        indexes: [0],
+        column: expect.objectContaining({ key: 'name' }),
+      }
+    )
   })
 
   it('guards cell clicks and restores focus when navigation is denied', async () => {

@@ -24,7 +24,12 @@ import {
   type Item,
   type Rectangle,
 } from '@glideapps/glide-data-grid'
-import { DropdownCell, type DropdownCellType } from '@glideapps/glide-data-grid-cells'
+import {
+  DropdownCell as DropdownCellRenderer,
+  MultiSelectCell as MultiSelectCellRenderer,
+  type DropdownCellType,
+  type MultiSelectCellType,
+} from '@glideapps/glide-data-grid-cells'
 import { getDefaultColumnWidth } from '../../../lib/grid-column-style'
 import type {
   BaseGridViewProps,
@@ -50,12 +55,13 @@ import {
 import { GlideDataGrid } from './GlideDataGrid'
 import type { GridColumn, GridHandle, GridSortColumn } from './glide-grid-types'
 import { getGlideEditor } from './glide-editors'
+import { parseSetCellValue, serializeSetCellValue } from '../../table-data/enum-field-utils'
 
 import { logFrontend } from '../../../lib/app-log-commands'
 type GridRow = Record<string, unknown>
 type GlideKeyDownEvent = GridKeyEventArgs
+type GlideDropdownOption = string | { value: string; label: string }
 type ScrollCell = { scrollRow: number; scrollCol: number }
-type DropdownOption = string | { value: string; label: string }
 
 interface EditorSessionBaseline {
   rowIndex: number
@@ -77,7 +83,17 @@ function isTypingActivationKey(event: GlideKeyDownEvent): boolean {
 }
 
 function normalizeEditorValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value
   return value == null ? null : String(value)
+}
+
+function areEditorValuesEqual(left: unknown, right: unknown): boolean {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right)) return false
+    if (left.length !== right.length) return false
+    return left.every((value, index) => Object.is(value, right[index]))
+  }
+  return Object.is(left, right)
 }
 
 function deriveNullSentinel(enumValues: string[]): string {
@@ -93,12 +109,12 @@ function deriveNullSentinel(enumValues: string[]): string {
   }
 }
 
-function buildEnumAllowedValues(column: EnumGridColumn): DropdownOption[] {
+function buildEnumAllowedValues(column: EnumGridColumn): GlideDropdownOption[] {
   if (column.isNullable !== true) return column.enumValues
   return [{ value: deriveNullSentinel(column.enumValues), label: 'NULL' }, ...column.enumValues]
 }
 
-function getDropdownOptionValue(option: DropdownOption | null | undefined): string | null {
+function getDropdownOptionValue(option: GlideDropdownOption | null | undefined): string | null {
   if (typeof option === 'string') return option
   return option?.value ?? null
 }
@@ -148,6 +164,7 @@ function toGridColumn(
     tableColumnMeta: column.tableColumnMeta,
     editorType: column.editorType,
     enumValues: column.enumValues,
+    setValues: column.setValues,
   }
 }
 
@@ -156,6 +173,7 @@ function isInfoColumn(column: GridColumn<GridRow>): boolean {
 }
 
 type EnumGridColumn = GridColumn<GridRow> & { enumValues: string[]; editorType: 'enum' }
+type SetGridColumn = GridColumn<GridRow> & { setValues: string[]; editorType: 'set' }
 
 function isEnumColumn(column: GridColumn<GridRow> | undefined): column is EnumGridColumn {
   return (
@@ -163,6 +181,20 @@ function isEnumColumn(column: GridColumn<GridRow> | undefined): column is EnumGr
     Array.isArray(column.enumValues) &&
     column.enumValues.length > 0
   )
+}
+
+function isSetColumn(column: GridColumn<GridRow> | undefined): column is SetGridColumn {
+  return (
+    column?.editorType === 'set' &&
+    Array.isArray(column.setValues) &&
+    column.setValues.length > 0
+  )
+}
+
+function isListSelectionColumn(
+  column: GridColumn<GridRow> | undefined
+): column is EnumGridColumn | SetGridColumn {
+  return isEnumColumn(column) || isSetColumn(column)
 }
 
 function isEditableColumn(
@@ -189,6 +221,59 @@ function isDropdownCustomCell(cell: EditableGridCell): cell is DropdownCellType 
   )
 }
 
+function isMultiSelectCustomCell(cell: EditableGridCell): cell is MultiSelectCellType {
+  return (
+    cell.kind === GridCellKind.Custom &&
+    typeof cell.data === 'object' &&
+    cell.data !== null &&
+    'kind' in cell.data &&
+    cell.data.kind === 'multi-select-cell'
+  )
+}
+
+function buildEnumDropdownCell(
+  column: EnumGridColumn,
+  value: string | null,
+  editable: boolean
+): DropdownCellType {
+  const allowedValues = buildEnumAllowedValues(column)
+  const nullSentinel = getDropdownOptionValue(allowedValues[0])
+
+  return {
+    kind: GridCellKind.Custom,
+    allowOverlay: editable,
+    readonly: !editable,
+    copyData: value ?? 'NULL',
+    ...(value == null ? { themeOverride: NULL_CELL_THEME_OVERRIDE } : {}),
+    data: {
+      kind: 'dropdown-cell',
+      value: value ?? nullSentinel,
+      allowedValues,
+    },
+  }
+}
+
+function buildSetMultiSelectCell(
+  column: SetGridColumn,
+  value: string | null,
+  editable: boolean
+): MultiSelectCellType {
+  return {
+    kind: GridCellKind.Custom,
+    allowOverlay: editable,
+    readonly: !editable,
+    copyData: value ?? 'NULL',
+    ...(value == null ? { themeOverride: NULL_CELL_THEME_OVERRIDE } : {}),
+    data: {
+      kind: 'multi-select-cell',
+      values: parseSetCellValue(value) ?? null,
+      options: column.setValues,
+      allowCreation: false,
+      allowDuplicates: false,
+    },
+  }
+}
+
 function clampScrollCell(scrollCell: ScrollCell, maxRow: number, maxCol: number): ScrollCell {
   return {
     scrollRow: Math.max(0, Math.min(maxRow, Math.floor(scrollCell.scrollRow))),
@@ -201,7 +286,10 @@ function isSameScrollCell(a: ScrollCell | null, b: ScrollCell): boolean {
 }
 
 const INFO_AFFORDANCE_GUTTER_PX = 28
-const CUSTOM_RENDERERS: CustomRenderer[] = [DropdownCell as unknown as CustomRenderer]
+const CUSTOM_RENDERERS: CustomRenderer[] = [
+  DropdownCellRenderer as unknown as CustomRenderer,
+  MultiSelectCellRenderer as unknown as CustomRenderer,
+]
 
 function resolveEditorBaselineValue(
   row: GridRow,
@@ -264,7 +352,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   const [gridSelection, setGridSelection] = useState<GridSelection | undefined>(undefined)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const lastInteractedCellRef = useRef<{ rowIdx: number; idx: number } | null>(null)
-  const lastSelectedEnumCellRef = useRef<{ rowIdx: number; idx: number } | null>(null)
+  const lastSelectedListCellRef = useRef<{ rowIdx: number; idx: number } | null>(null)
   const lastAppliedInitialScrollRef = useRef<{ scrollRow: number; scrollCol: number } | null>(null)
   const lastReportedScrollCellRef = useRef<ScrollCell | null>(null)
   const pendingInitialScrollRestoreRef = useRef<ScrollCell | null>(null)
@@ -272,15 +360,15 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   const isEditingCellRef = useRef(false)
   const editorSessionBaselineRef = useRef<EditorSessionBaseline | null>(null)
   const pendingTypingActivationRef = useRef<PendingTypingActivation | null>(null)
-  const enumEditorOpeningRef = useRef(false)
+  const listEditorOpeningRef = useRef(false)
   const activeSelectedRowIndex = selectedRowIndex ?? internalSelectedRowIndex
 
-  const openEnumEditor = useCallback((cell: { rowIdx: number; idx: number }): void => {
-    if (enumEditorOpeningRef.current) return
-    enumEditorOpeningRef.current = true
+  const openListEditor = useCallback((cell: { rowIdx: number; idx: number }): void => {
+    if (listEditorOpeningRef.current) return
+    listEditorOpeningRef.current = true
     gridRef.current?.selectCell(cell, { shouldFocusCell: true, enableEditor: true })
     requestAnimationFrame(() => {
-      enumEditorOpeningRef.current = false
+      listEditorOpeningRef.current = false
     })
   }, [])
 
@@ -448,20 +536,11 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       if (flags.isNull && !editable) return buildNullCell(flags.copyValue)
       if (isEnumColumn(column)) {
         const enumValue = rawValue == null ? null : String(rawValue)
-        const allowedValues = buildEnumAllowedValues(column)
-        const nullSentinel = getDropdownOptionValue(allowedValues[0])
-        return {
-          kind: GridCellKind.Custom,
-          allowOverlay: editable,
-          readonly: !editable,
-          copyData: enumValue ?? 'NULL',
-          ...(enumValue == null ? { themeOverride: NULL_CELL_THEME_OVERRIDE } : {}),
-          data: {
-            kind: 'dropdown-cell',
-            value: enumValue ?? nullSentinel,
-            allowedValues,
-          },
-        } satisfies DropdownCellType
+        return buildEnumDropdownCell(column, enumValue, editable)
+      }
+      if (isSetColumn(column)) {
+        const setValue = rawValue == null ? null : String(rawValue)
+        return buildSetMultiSelectCell(column, setValue, editable)
       }
       if (editable) {
         const baseCell = flags.isNull
@@ -534,7 +613,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       lastInteractedCellRef.current = { rowIdx: rowIndex, idx: colIndex }
 
       const isFkAffordanceClick =
-        !isEnumColumn(column) &&
+        !isListSelectionColumn(column) &&
         column.foreignKey != null &&
         event.bounds != null &&
         (event.localEventX ?? 0) >= event.bounds.width - 28
@@ -603,7 +682,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
             })
           }
           if (guard.enableEditor) {
-            openEnumEditor({ rowIdx: guard.targetRowIdx, idx: guard.targetColIdx })
+            openListEditor({ rowIdx: guard.targetRowIdx, idx: guard.targetColIdx })
           }
         }
       }
@@ -632,7 +711,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       onFkCellAction,
       onInfoCellClick,
       onRowClick,
-      openEnumEditor,
+      openListEditor,
       rows,
       selectRow,
     ]
@@ -647,7 +726,11 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         ? isEnumColumn(column) && isDropdownNullSelection(column, newValue.data.value)
           ? null
           : (newValue.data.value ?? null)
-        : newValue.kind === GridCellKind.Boolean
+        : isMultiSelectCustomCell(newValue)
+          ? isSetColumn(column)
+            ? serializeSetCellValue(newValue.data.values ?? null)
+            : (newValue.data.values ?? null)
+          : newValue.kind === GridCellKind.Boolean
           ? newValue.data === true
           : newValue.kind === GridCellKind.Text
             ? newValue.data === '' && newValue.copyData === 'NULL'
@@ -667,7 +750,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       const isActiveEditorSession =
         baseline?.rowIndex === rowIndex && baseline.columnKey === column.key
       const isNoOpCommit =
-        !isPendingTypingActivation && isActiveEditorSession && Object.is(baseline.value, next)
+        !isPendingTypingActivation &&
+        isActiveEditorSession &&
+        areEditorValuesEqual(baseline.value, next)
       if (!isNoOpCommit) {
         onCellValueChange?.(rowIndex, column.key, next)
       }
@@ -686,7 +771,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       const row = rows[rowIndex]
       const text = values[0]?.[0]
       if (!column || !row || text == null) return false
-      if (isEnumColumn(column)) return false
+      if (isListSelectionColumn(column)) return false
       void onCellClipboardEdit?.({
         rowIdx: rowIndex,
         rowData: row,
@@ -713,6 +798,10 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
             ? column.isNullable === true
               ? null
               : (column.enumValues[0] ?? '')
+            : isSetColumn(column)
+              ? column.isNullable === true
+                ? null
+                : ''
             : column.isNullable === true
               ? null
               : ''
@@ -723,20 +812,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           )
           if (baseClearedCell.kind !== GridCellKind.Text) continue
           const clearedCell: EditableGridCell = isEnumColumn(column)
-            ? ({
-                kind: GridCellKind.Custom,
-                allowOverlay: true,
-                readonly: false,
-                copyData: next == null ? 'NULL' : String(next),
-                data: {
-                  kind: 'dropdown-cell',
-                  value:
-                    next == null
-                      ? getDropdownOptionValue(buildEnumAllowedValues(column)[0])
-                      : String(next),
-                  allowedValues: buildEnumAllowedValues(column),
-                },
-              } satisfies DropdownCellType)
+            ? buildEnumDropdownCell(column, next == null ? null : String(next), true)
+            : isSetColumn(column)
+              ? buildSetMultiSelectCell(column, next == null ? null : String(next), true)
             : {
                 ...baseClearedCell,
                 readonly: false,
@@ -839,7 +917,14 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       return (
         getGlideEditor(
           column as GridColumn<unknown>,
-          (column.editorType as 'text' | 'enum' | 'datetime' | 'fk' | 'none' | undefined) ?? 'text'
+          (column.editorType as
+            | 'text'
+            | 'enum'
+            | 'set'
+            | 'datetime'
+            | 'fk'
+            | 'none'
+            | undefined) ?? 'text'
         ) ?? undefined
       )
     },
@@ -939,7 +1024,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       if (!pos) return false
       const row = rows[pos.rowIdx]
       const column = gridColumns[pos.idx]
-      if (!row || !column?.foreignKey || isEnumColumn(column)) return false
+      if (!row || !column?.foreignKey || isListSelectionColumn(column)) return false
       event.preventDefault()
       void onFkCellAction?.({
         rowIdx: pos.rowIdx,
@@ -1093,7 +1178,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         const currentRow = rows[currentCell.rowIdx]
         const currentColumn = gridColumns[currentCell.idx]
         if (!currentRow || !currentColumn) return
-        if (isEnumColumn(currentColumn)) {
+        if (isListSelectionColumn(currentColumn)) {
           event.preventDefault?.()
           event.cancel?.()
           return
@@ -1160,12 +1245,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       if (event.key === 'Enter' && currentCell) {
         const currentColumn = gridColumns[currentCell.idx]
         if (
-          isEnumColumn(currentColumn) &&
+          isListSelectionColumn(currentColumn) &&
           isEditableColumn(currentColumn, isEditMode, editableColumnKeys)
         ) {
           event.preventDefault()
           event.cancel?.()
-          openEnumEditor(currentCell)
+          openListEditor(currentCell)
           return
         }
       }
@@ -1199,7 +1284,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       gridSelectionCell,
       isActive,
       triggerFkLookupFromSelection,
-      openEnumEditor,
+      openListEditor,
     ]
   )
 
@@ -1225,9 +1310,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           : lastInteractedCellRef.current)
       if (event.key === 'Enter' && currentDocumentCell) {
         const column = gridColumns[currentDocumentCell.idx]
-        if (isEnumColumn(column) && isEditableColumn(column, isEditMode, editableColumnKeys)) {
+        if (
+          isListSelectionColumn(column) &&
+          isEditableColumn(column, isEditMode, editableColumnKeys)
+        ) {
           event.preventDefault()
-          openEnumEditor(currentDocumentCell)
+          openListEditor(currentDocumentCell)
           return
         }
       }
@@ -1248,7 +1336,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     gridSelection,
     isActive,
     isEditMode,
-    openEnumEditor,
+    openListEditor,
     selectedCellPosition,
     triggerFkLookupFromSelection,
   ])
@@ -1262,7 +1350,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
           rowIdx: selection.current.cell[1],
         }
         const column = gridColumns[selection.current.cell[0]]
-        lastSelectedEnumCellRef.current = isEnumColumn(column)
+        lastSelectedListCellRef.current = isListSelectionColumn(column)
           ? { idx: selection.current.cell[0], rowIdx: selection.current.cell[1] }
           : null
       }
@@ -1350,7 +1438,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
       if (hasInfoAffordance) {
         drawInfoAffordance(args.ctx, args.rect, args.theme.linkColor)
       }
-      if (column?.foreignKey && row && !isEnumColumn(column)) {
+      if (column?.foreignKey && row && !isListSelectionColumn(column)) {
         drawFkEllipsis(args.ctx, args.rect, args.theme.linkColor)
       }
     },
@@ -1378,7 +1466,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
         {
           sortDirection: sortColumns.find((sort) => sort.columnKey === column.key)?.direction,
           isReadOnly: column.editable !== true,
-          hasFkLink: column.foreignKey != null && !isEnumColumn(column),
+          hasFkLink: column.foreignKey != null && !isListSelectionColumn(column),
           isHighlighted: highlightColumnKey === column.key,
         },
         args.theme

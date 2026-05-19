@@ -161,6 +161,41 @@ describe('fetchTableData', () => {
 
     expect(result.columns[0].enumValues).toEqual(['active', 'disabled'])
   })
+
+  it('preserves setValues from fetch_table_data responses', async () => {
+    ipc.override('fetch_table_data', () => ({
+      columns: [
+        {
+          name: 'flags',
+          dataType: 'SET',
+          isBooleanAlias: false,
+          setValues: ['alpha', 'beta', 'gamma'],
+          isNullable: true,
+          isPrimaryKey: false,
+          isUniqueKey: false,
+          hasDefault: false,
+          columnDefault: null,
+          isBinary: false,
+          isAutoIncrement: false,
+        },
+      ],
+      rows: [['alpha,gamma']],
+      currentPage: 1,
+      pageSize: 1000,
+      primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
+      executionTimeMs: 10,
+    }))
+
+    const result = await fetchTableData({
+      connectionId: 'conn-1',
+      database: 'mydb',
+      table: 'users',
+      page: 1,
+      pageSize: 1000,
+    })
+
+    expect(result.columns[0].setValues).toEqual(['alpha', 'beta', 'gamma'])
+  })
 })
 
 describe('updateTableRow', () => {

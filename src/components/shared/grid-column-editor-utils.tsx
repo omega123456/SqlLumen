@@ -9,7 +9,7 @@ import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/sche
 import type { CellEditorBaseProps, CellEditorCallbackProps } from './grid-cell-editors'
 import { EnumCellEditor, NullableCellEditor } from './grid-cell-editors'
 
-export type GridEditorType = 'text' | 'enum' | 'datetime' | 'fk' | 'none'
+export type GridEditorType = 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'none'
 
 export interface CellEditorConfig {
   renderEditCell: (props: CellEditorBaseProps) => React.ReactElement

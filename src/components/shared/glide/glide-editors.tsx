@@ -249,7 +249,7 @@ export function getGlideEditor(
   editorType: GridEditorType
 ): ProvideEditorCallbackResult<GridCell> | null {
   if (editorType === 'none') return null
-  if (editorType === 'enum') return null
+  if (editorType === 'enum' || editorType === 'set') return null
 
   if (shouldUseMultilineTextEditor(column, editorType)) {
     return {
