@@ -600,11 +600,13 @@ describe('useTableDesignerStore — loadSchema', () => {
     initAlterTab('load-tab')
     await useTableDesignerStore.getState().loadSchema('load-tab')
 
-    expect(ipc.calls('load_table_for_designer')).toEqual([{
-      connectionId: 'conn-1',
-      database: 'app_db',
-      tableName: 'users',
-    }])
+    expect(ipc.calls('load_table_for_designer')).toEqual([
+      {
+        connectionId: 'conn-1',
+        database: 'app_db',
+        tableName: 'users',
+      },
+    ])
   })
 
   it('loadSchema on success sets originalSchema and currentSchema', async () => {
@@ -658,20 +660,22 @@ describe('useTableDesignerStore — regenerateDdl', () => {
     useTableDesignerStore.getState().updateTableName('tab-1', 'users')
     await useTableDesignerStore.getState().regenerateDdl('tab-1')
 
-    expect(getGenerateDdlCalls()).toEqual([{
-      request: {
-        originalSchema: null,
-        currentSchema: {
-          tableName: 'users',
-          columns: [],
-          indexes: [],
-          foreignKeys: [],
-          properties: defaultProperties(),
+    expect(getGenerateDdlCalls()).toEqual([
+      {
+        request: {
+          originalSchema: null,
+          currentSchema: {
+            tableName: 'users',
+            columns: [],
+            indexes: [],
+            foreignKeys: [],
+            properties: defaultProperties(),
+          },
+          database: 'app_db',
+          mode: 'create',
         },
-        database: 'app_db',
-        mode: 'create',
       },
-    }])
+    ])
   })
 
   it('regenerateDdl sets ddl on success', async () => {

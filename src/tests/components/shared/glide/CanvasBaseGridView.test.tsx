@@ -58,7 +58,11 @@ beforeEach(() => {
         scrollToCell: mockScrollToCell,
         element: null,
       }))
-      return React.createElement('div', { 'data-testid': props['data-testid'] as string | undefined }, 'glide')
+      return React.createElement(
+        'div',
+        { 'data-testid': props['data-testid'] as string | undefined },
+        'glide'
+      )
     }),
     writable: true,
     configurable: true,

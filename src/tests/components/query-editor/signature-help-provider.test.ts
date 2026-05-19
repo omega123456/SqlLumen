@@ -93,18 +93,14 @@ function mockGetSelectedDatabase() {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  vi.spyOn(RoutineParameterCacheModule, 'getRoutineParameters')
-    .mockReset()
-    .mockResolvedValue(null)
+  vi.spyOn(RoutineParameterCacheModule, 'getRoutineParameters').mockReset().mockResolvedValue(null)
   vi.spyOn(SchemaMetadataCacheModule, 'getCache')
     .mockReset()
     .mockReturnValue({ status: 'ready', routines: {} } as never)
   vi.spyOn(SchemaMetadataCacheModule, 'getPendingLoad').mockReset().mockReturnValue(null)
   vi.spyOn(SchemaMetadataCacheModule, 'loadCache').mockReset().mockResolvedValue(undefined)
   vi.spyOn(SchemaCacheBootstrapModule, 'getPendingBootstrap').mockReset().mockReturnValue(null)
-  vi.spyOn(CompletionServiceModule, 'getModelConnectionId')
-    .mockReset()
-    .mockReturnValue(undefined)
+  vi.spyOn(CompletionServiceModule, 'getModelConnectionId').mockReset().mockReturnValue(undefined)
   vi.spyOn(CompletionServiceModule, 'getSelectedDatabase').mockReset().mockReturnValue(null)
 
   // Reset connection store to empty state
@@ -1038,7 +1034,12 @@ describe('provideSignatureHelp — qualified CALL should look up procedure', () 
     expect(result!.value.signatures[0].label).toContain('my_proc')
     expect(result!.value.signatures[0].parameters).toHaveLength(2)
     // Must have called with procedure type (not function)
-    expect(mockGetRoutineParameters()).toHaveBeenCalledWith('conn-1', 'mydb', 'my_proc', 'PROCEDURE')
+    expect(mockGetRoutineParameters()).toHaveBeenCalledWith(
+      'conn-1',
+      'mydb',
+      'my_proc',
+      'PROCEDURE'
+    )
   })
 })
 

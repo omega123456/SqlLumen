@@ -201,6 +201,23 @@ function appendDraftRow(
 // saveCurrentRow helpers (pure functions)
 // ---------------------------------------------------------------------------
 
+/**
+ * Coerce a cell value to the correct JS type for a given column data type.
+ * BIT columns edited via the grid arrive as strings (e.g. "128") because
+ * the cell editor always stores strings. MySQL needs a numeric bind for BIT
+ * columns — a string bind triggers an incorrect binary-string conversion.
+ */
+function coerceValueForColumn(value: unknown, dataType: string): unknown {
+  if (typeof value === 'string' && dataType.toUpperCase() === 'BIT') {
+    const parsed = parseInt(value, 10)
+    if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= Number.MAX_SAFE_INTEGER) {
+      return parsed
+    }
+    // Out-of-range or non-numeric: keep as string (MySQL handles string->BIT for large values)
+  }
+  return value
+}
+
 /** Build the values map for an INSERT operation. */
 function buildInsertPayload(
   columns: TableDataColumnMeta[],
@@ -212,7 +229,7 @@ function buildInsertPayload(
       continue
     }
     if (editState.currentValues[col.name] !== undefined) {
-      values[col.name] = editState.currentValues[col.name]
+      values[col.name] = coerceValueForColumn(editState.currentValues[col.name], col.dataType)
     }
   }
   return values
@@ -261,14 +278,19 @@ function getInitialValueForNewRow(column: TableDataColumnMeta): unknown {
 /** Build the payload for an UPDATE operation. */
 function buildUpdatePayload(
   editState: RowEditState,
-  pkColumns: string[]
+  pkColumns: string[],
+  columns: TableDataColumnMeta[]
 ): {
   originalPkValues: Record<string, unknown>
   updatedValues: Record<string, unknown>
 } {
+  const columnsByName = new Map(columns.map((c) => [c.name, c]))
+
   const updatedValues: Record<string, unknown> = {}
   for (const col of editState.modifiedColumns) {
-    updatedValues[col] = editState.currentValues[col]
+    const colMeta = columnsByName.get(col)
+    const rawValue = editState.currentValues[col]
+    updatedValues[col] = colMeta ? coerceValueForColumn(rawValue, colMeta.dataType) : rawValue
   }
 
   const originalPkValues: Record<string, unknown> = {}
@@ -334,7 +356,13 @@ function applyUpdatedRow(
 }
 
 // Exported for testing
-export { buildInsertPayload, buildUpdatePayload, applyInsertedRow, applyUpdatedRow }
+export {
+  coerceValueForColumn,
+  buildInsertPayload,
+  buildUpdatePayload,
+  applyInsertedRow,
+  applyUpdatedRow,
+}
 
 // ---------------------------------------------------------------------------
 // Default state factory
@@ -724,7 +752,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
           const { originalPkValues, updatedValues } = buildUpdatePayload(
             editState,
-            primaryKey.keyColumns
+            primaryKey.keyColumns,
+            columns
           )
 
           await updateTableRowCmd({

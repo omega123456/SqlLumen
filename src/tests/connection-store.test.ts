@@ -62,17 +62,21 @@ beforeEach(() => {
   useToastStore.setState({ toasts: [] })
   _resetToastTimeoutsForTests()
   _resetListenersSetup()
-  const tauriInternals = (window as unknown as Window & {
-    __TAURI_INTERNALS__?: {
-      transformCallback?: (cb: unknown, once?: boolean) => string
-    }
-  }).__TAURI_INTERNALS__
-  if (!tauriInternals?.transformCallback) {
-    ;(window as unknown as Window & {
+  const tauriInternals = (
+    window as unknown as Window & {
       __TAURI_INTERNALS__?: {
         transformCallback?: (cb: unknown, once?: boolean) => string
       }
-    }).__TAURI_INTERNALS__ = {
+    }
+  ).__TAURI_INTERNALS__
+  if (!tauriInternals?.transformCallback) {
+    ;(
+      window as unknown as Window & {
+        __TAURI_INTERNALS__?: {
+          transformCallback?: (cb: unknown, once?: boolean) => string
+        }
+      }
+    ).__TAURI_INTERNALS__ = {
       ...tauriInternals,
       transformCallback: () => 'mock-callback-id',
     }
@@ -494,9 +498,9 @@ describe('useConnectionStore — setupEventListeners', () => {
     await useConnectionStore.getState().setupEventListeners()
 
     await ipc.emit('connection-status-changed', {
-        connectionId: 'sess-1',
-        status: 'disconnected',
-        message: 'Lost connection',
+      connectionId: 'sess-1',
+      status: 'disconnected',
+      message: 'Lost connection',
     })
 
     expect(useConnectionStore.getState().activeConnections['sess-1'].status).toBe('disconnected')

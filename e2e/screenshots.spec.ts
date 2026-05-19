@@ -644,6 +644,36 @@ async function openViewDataTab(page: Page) {
   })
 }
 
+/** Open a table data tab for the `bit_test` table and wait for data to load. */
+async function openBitTestTableDataTab(page: Page) {
+  await connectToSample(page)
+
+  // Programmatically open a table-data tab via the workspace store
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-data',
+      label: 'bit_test',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'bit_test',
+      objectType: 'table',
+    })
+  })
+
+  // Wait for the table data tab to mount and data to load
+  await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
+    timeout: APP_READY_MS,
+  })
+  await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+}
+
 /** Open a table data tab for the `orders` table and wait for data to load. */
 async function openOrdersTableDataTab(page: Page) {
   await connectToSample(page)
@@ -1705,6 +1735,18 @@ for (const theme of themes) {
       await resetChromeScrollPositions(page)
       await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
         `table-data-grid-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('TableDataGrid — BIT column values display as readable numbers', async ({ page }) => {
+      await openBitTestTableDataTab(page)
+      const grid = page.getByTestId('table-data-grid')
+      await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
+      await resetChromeScrollPositions(page)
+      await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
+        `table-data-grid-bit-columns-${theme}.png`,
         { animations: 'disabled' }
       )
     })

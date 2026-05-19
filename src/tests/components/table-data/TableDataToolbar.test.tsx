@@ -571,7 +571,9 @@ describe('TableDataToolbar', () => {
     render(<TableDataToolbar tabId="tab-1" />)
     fireEvent.click(screen.getByTestId('pagination-next'))
     await waitFor(() => {
-      expect(ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 2)).toBe(true)
+      expect(
+        ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 2)
+      ).toBe(true)
     })
   })
 
@@ -586,7 +588,9 @@ describe('TableDataToolbar', () => {
     await user.type(pageInput, '7{Enter}')
 
     await waitFor(() => {
-      expect(ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 7)).toBe(true)
+      expect(
+        ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 7)
+      ).toBe(true)
     })
   })
 
@@ -596,7 +600,9 @@ describe('TableDataToolbar', () => {
     render(<TableDataToolbar tabId="tab-1" />)
     fireEvent.click(screen.getByTestId('pagination-prev'))
     await waitFor(() => {
-      expect(ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 1)).toBe(true)
+      expect(
+        ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 1)
+      ).toBe(true)
     })
   })
 

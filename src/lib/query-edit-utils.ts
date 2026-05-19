@@ -5,6 +5,7 @@ import type {
   RowEditState,
 } from '../types/schema'
 import { stripLeadingSqlComments } from './sql-utils'
+import { coerceValueForColumn } from '../stores/table-data-store'
 
 export type QueryEditColumnBindings = Map<number, string>
 
@@ -713,12 +714,15 @@ export function buildRowEditState(
  */
 export function buildUpdatePayload(
   editState: RowEditState,
-  pkColumnNames: string[]
+  pkColumnNames: string[],
+  columns?: TableDataColumnMeta[]
 ): {
   pkColumns: string[]
   originalPkValues: Record<string, unknown>
   updatedValues: Record<string, unknown>
 } {
+  const columnsByName = columns ? new Map(columns.map((c) => [c.name, c])) : undefined
+
   const originalPkValues: Record<string, unknown> = {}
   for (const pk of pkColumnNames) {
     originalPkValues[pk] = editState.rowKey[pk]
@@ -726,7 +730,9 @@ export function buildUpdatePayload(
 
   const updatedValues: Record<string, unknown> = {}
   for (const col of editState.modifiedColumns) {
-    updatedValues[col] = editState.currentValues[col]
+    const rawValue = editState.currentValues[col]
+    const colMeta = columnsByName?.get(col)
+    updatedValues[col] = colMeta ? coerceValueForColumn(rawValue, colMeta.dataType) : rawValue
   }
 
   return {
@@ -759,7 +765,10 @@ export function buildInsertPayload(
     }
 
     if (editState.currentValues[column.name] !== undefined) {
-      values[column.name] = editState.currentValues[column.name]
+      values[column.name] = coerceValueForColumn(
+        editState.currentValues[column.name],
+        column.dataType
+      )
     }
   }
 

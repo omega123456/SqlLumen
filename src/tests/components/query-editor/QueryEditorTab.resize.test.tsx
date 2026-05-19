@@ -133,7 +133,6 @@ beforeEach(() => {
   // The onResize-based tests below verify editor.layout() is called via the AI panel state change.
 })
 
-
 describe('QueryEditorTab — AI sidebar open state (Monaco layout)', () => {
   beforeEach(() => {
     useSettingsStore.setState({

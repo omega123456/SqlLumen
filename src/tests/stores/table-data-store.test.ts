@@ -7,7 +7,11 @@ import type {
   TableDataColumnMeta,
   ForeignKeyInfo,
 } from '../../types/schema'
-import { useTableDataStore } from '../../stores/table-data-store'
+import {
+  useTableDataStore,
+  buildInsertPayload,
+  buildUpdatePayload,
+} from '../../stores/table-data-store'
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -1440,5 +1444,190 @@ describe('useTableDataStore — TINYINT boolean normalization', () => {
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.rows[0][1]).toBe(1)
     expect(tab.rows[1][1]).toBe(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// BIT column value coercion tests
+// ---------------------------------------------------------------------------
+
+describe('BIT column value coercion in buildUpdatePayload', () => {
+  const bitColumns: TableDataColumnMeta[] = [
+    {
+      name: 'id',
+      dataType: 'INT',
+      isBooleanAlias: false,
+      isNullable: false,
+      isPrimaryKey: true,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: true,
+    },
+    {
+      name: 'col_bit',
+      dataType: 'BIT',
+      isBooleanAlias: false,
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+    },
+  ]
+
+  it('coerces string "128" to number 128 for BIT columns', () => {
+    const result = buildUpdatePayload(
+      {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, col_bit: 0 },
+        currentValues: { id: 1, col_bit: '128' },
+        modifiedColumns: new Set(['col_bit']),
+        isNewRow: false,
+      },
+      ['id'],
+      bitColumns
+    )
+    expect(result.updatedValues.col_bit).toBe(128)
+  })
+
+  it('coerces string "0" to number 0 for BIT columns', () => {
+    const result = buildUpdatePayload(
+      {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, col_bit: 1 },
+        currentValues: { id: 1, col_bit: '0' },
+        modifiedColumns: new Set(['col_bit']),
+        isNewRow: false,
+      },
+      ['id'],
+      bitColumns
+    )
+    expect(result.updatedValues.col_bit).toBe(0)
+  })
+
+  it('passes null through unchanged for BIT columns', () => {
+    const result = buildUpdatePayload(
+      {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, col_bit: 1 },
+        currentValues: { id: 1, col_bit: null },
+        modifiedColumns: new Set(['col_bit']),
+        isNewRow: false,
+      },
+      ['id'],
+      bitColumns
+    )
+    expect(result.updatedValues.col_bit).toBeNull()
+  })
+
+  it('passes already-numeric values unchanged for BIT columns', () => {
+    const result = buildUpdatePayload(
+      {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, col_bit: 0 },
+        currentValues: { id: 1, col_bit: 128 },
+        modifiedColumns: new Set(['col_bit']),
+        isNewRow: false,
+      },
+      ['id'],
+      bitColumns
+    )
+    expect(result.updatedValues.col_bit).toBe(128)
+  })
+
+  it('does not coerce string values for non-BIT columns', () => {
+    const result = buildUpdatePayload(
+      {
+        rowKey: { id: 1 },
+        originalValues: { id: 1, col_bit: 'old' },
+        currentValues: { id: 1, col_bit: '128' },
+        modifiedColumns: new Set(['col_bit']),
+        isNewRow: false,
+      },
+      ['id'],
+      [bitColumns[0], { ...bitColumns[1], dataType: 'VARCHAR' }]
+    )
+    expect(result.updatedValues.col_bit).toBe('128')
+  })
+})
+
+describe('BIT column value coercion in buildInsertPayload', () => {
+  const bitColumns: TableDataColumnMeta[] = [
+    {
+      name: 'id',
+      dataType: 'INT',
+      isBooleanAlias: false,
+      isNullable: false,
+      isPrimaryKey: true,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: true,
+    },
+    {
+      name: 'col_bit',
+      dataType: 'BIT',
+      isBooleanAlias: false,
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+    },
+  ]
+
+  it('coerces string "128" to number 128 for BIT columns on insert', () => {
+    const result = buildInsertPayload(bitColumns, {
+      rowKey: { __tempId: 'tmp-1' },
+      originalValues: {},
+      currentValues: { col_bit: '128' },
+      modifiedColumns: new Set(['col_bit']),
+      isNewRow: true,
+      tempId: 'tmp-1',
+    })
+    expect(result.col_bit).toBe(128)
+  })
+
+  it('coerces string "0" to number 0 for BIT columns on insert', () => {
+    const result = buildInsertPayload(bitColumns, {
+      rowKey: { __tempId: 'tmp-1' },
+      originalValues: {},
+      currentValues: { col_bit: '0' },
+      modifiedColumns: new Set(['col_bit']),
+      isNewRow: true,
+      tempId: 'tmp-1',
+    })
+    expect(result.col_bit).toBe(0)
+  })
+
+  it('passes null through unchanged for BIT columns on insert', () => {
+    const result = buildInsertPayload(bitColumns, {
+      rowKey: { __tempId: 'tmp-1' },
+      originalValues: {},
+      currentValues: { col_bit: null },
+      modifiedColumns: new Set(['col_bit']),
+      isNewRow: true,
+      tempId: 'tmp-1',
+    })
+    expect(result.col_bit).toBeNull()
+  })
+
+  it('does not coerce string values for non-BIT columns on insert', () => {
+    const result = buildInsertPayload([bitColumns[0], { ...bitColumns[1], dataType: 'VARCHAR' }], {
+      rowKey: { __tempId: 'tmp-1' },
+      originalValues: {},
+      currentValues: { col_bit: '128' },
+      modifiedColumns: new Set(['col_bit']),
+      isNewRow: true,
+      tempId: 'tmp-1',
+    })
+    expect(result.col_bit).toBe('128')
   })
 })

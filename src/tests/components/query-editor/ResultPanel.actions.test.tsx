@@ -78,59 +78,55 @@ beforeEach(() => {
     ) as unknown as React.ReactElement
   })
 
-  vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation(
-    (props) => {
-      capturedGridProps = props as unknown as Record<string, unknown>
-      const fkLookup = useFkLookup()
-      const defaultForeignKey: ForeignKeyColumnInfo = {
-        columnName: 'role_id',
-        referencedDatabase: 'appdb',
-        referencedTable: 'roles',
-        referencedColumn: 'id',
-        constraintName: 'fk_users_role',
-      }
-
-      return React.createElement(
-        'div',
-        { 'data-testid': 'result-grid-view' },
-        React.createElement(
-          'button',
-          {
-            'data-testid': 'grid-trigger-fk',
-            onClick: () =>
-              fkLookup?.onFkLookup({
-                columnKey: 'col_1',
-                currentValue: 5,
-                foreignKey: defaultForeignKey,
-                rowData: { __rowIdx: 0, col_0: 1, col_1: 5 },
-              }),
-          },
-          'FK'
-        ),
-        React.createElement(
-          'button',
-          {
-            'data-testid': 'grid-trigger-unresolved-fk',
-            onClick: () =>
-              fkLookup?.onFkLookup({
-                columnKey: 'col_99',
-                currentValue: 5,
-                foreignKey: defaultForeignKey,
-                rowData: { __rowIdx: 0, col_99: 5 },
-              }),
-          },
-          'Unresolved FK'
-        )
-      ) as unknown as React.ReactElement
+  vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation((props) => {
+    capturedGridProps = props as unknown as Record<string, unknown>
+    const fkLookup = useFkLookup()
+    const defaultForeignKey: ForeignKeyColumnInfo = {
+      columnName: 'role_id',
+      referencedDatabase: 'appdb',
+      referencedTable: 'roles',
+      referencedColumn: 'id',
+      constraintName: 'fk_users_role',
     }
-  )
 
-  vi.spyOn(ResultFormViewModule, 'ResultFormView').mockImplementation(
-    (props) => {
-      capturedFormProps = props as unknown as Record<string, unknown>
-      return (<div data-testid="result-form-view">Form View</div>) as unknown as React.ReactElement
-    }
-  )
+    return React.createElement(
+      'div',
+      { 'data-testid': 'result-grid-view' },
+      React.createElement(
+        'button',
+        {
+          'data-testid': 'grid-trigger-fk',
+          onClick: () =>
+            fkLookup?.onFkLookup({
+              columnKey: 'col_1',
+              currentValue: 5,
+              foreignKey: defaultForeignKey,
+              rowData: { __rowIdx: 0, col_0: 1, col_1: 5 },
+            }),
+        },
+        'FK'
+      ),
+      React.createElement(
+        'button',
+        {
+          'data-testid': 'grid-trigger-unresolved-fk',
+          onClick: () =>
+            fkLookup?.onFkLookup({
+              columnKey: 'col_99',
+              currentValue: 5,
+              foreignKey: defaultForeignKey,
+              rowData: { __rowIdx: 0, col_99: 5 },
+            }),
+        },
+        'Unresolved FK'
+      )
+    ) as unknown as React.ReactElement
+  })
+
+  vi.spyOn(ResultFormViewModule, 'ResultFormView').mockImplementation((props) => {
+    capturedFormProps = props as unknown as Record<string, unknown>
+    return (<div data-testid="result-form-view">Form View</div>) as unknown as React.ReactElement
+  })
 
   vi.spyOn(ResultTextViewModule, 'ResultTextView').mockImplementation(
     ({ rows }: { rows: unknown[][] }) =>

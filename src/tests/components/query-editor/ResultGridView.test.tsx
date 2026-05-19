@@ -71,13 +71,18 @@ beforeEach(() => {
   mockCanvasBaseGridView = vi.fn(
     (props: Record<string, unknown>) =>
       (
-        <div data-testid="mock-result-grid" data-row-count={(props.rows as unknown[])?.length ?? 0} />
+        <div
+          data-testid="mock-result-grid"
+          data-row-count={(props.rows as unknown[])?.length ?? 0}
+        />
       ) as unknown as React.ReactElement
   )
-  const mockFn = mockCanvasBaseGridView as unknown as (props: Record<string, unknown>) => React.ReactElement
+  const mockFn = mockCanvasBaseGridView as unknown as (
+    props: Record<string, unknown>
+  ) => React.ReactElement
   Object.defineProperty(CanvasBaseGridViewModule, 'CanvasBaseGridView', {
-    value: React.forwardRef(
-      (props: Record<string, unknown>, ref: React.Ref<unknown>) => mockFn({ ...props, ref })
+    value: React.forwardRef((props: Record<string, unknown>, ref: React.Ref<unknown>) =>
+      mockFn({ ...props, ref })
     ),
     writable: true,
     configurable: true,

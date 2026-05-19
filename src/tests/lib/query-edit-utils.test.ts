@@ -8,6 +8,7 @@ import {
   validateKeyColumnsPresent,
   buildRowEditState,
   buildUpdatePayload,
+  buildInsertPayload,
 } from '../../lib/query-edit-utils'
 
 // ---------------------------------------------------------------------------
@@ -851,5 +852,119 @@ describe('buildUpdatePayload', () => {
     const payload = buildUpdatePayload(editState, ['id'])
     expect(payload.originalPkValues).toEqual({ id: 1 }) // original, not current
     expect(payload.updatedValues).toEqual({ id: 99 })
+  })
+
+  it('coerces BIT string values to numbers when columns are provided', () => {
+    const columns = [tableCol('id', { dataType: 'INT' }), tableCol('flags', { dataType: 'BIT' })]
+    const editState: RowEditState = {
+      rowKey: { id: 1 },
+      originalValues: { id: 1, flags: 0 },
+      currentValues: { id: 1, flags: '128' },
+      modifiedColumns: new Set(['flags']),
+      isNewRow: false,
+    }
+
+    const payload = buildUpdatePayload(editState, ['id'], columns)
+    expect(payload.updatedValues).toEqual({ flags: 128 })
+  })
+
+  it('keeps BIT string as-is when value exceeds MAX_SAFE_INTEGER', () => {
+    const columns = [
+      tableCol('id', { dataType: 'INT' }),
+      tableCol('big_flags', { dataType: 'BIT' }),
+    ]
+    const editState: RowEditState = {
+      rowKey: { id: 1 },
+      originalValues: { id: 1, big_flags: 0 },
+      currentValues: { id: 1, big_flags: '18446744073709551615' },
+      modifiedColumns: new Set(['big_flags']),
+      isNewRow: false,
+    }
+
+    const payload = buildUpdatePayload(editState, ['id'], columns)
+    expect(payload.updatedValues).toEqual({ big_flags: '18446744073709551615' })
+  })
+
+  it('does not coerce when columns parameter is omitted', () => {
+    const editState: RowEditState = {
+      rowKey: { id: 1 },
+      originalValues: { id: 1, flags: 0 },
+      currentValues: { id: 1, flags: '128' },
+      modifiedColumns: new Set(['flags']),
+      isNewRow: false,
+    }
+
+    const payload = buildUpdatePayload(editState, ['id'])
+    expect(payload.updatedValues).toEqual({ flags: '128' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// buildInsertPayload
+// ---------------------------------------------------------------------------
+
+describe('buildInsertPayload', () => {
+  it('includes only modified columns in values', () => {
+    const columns = [tableCol('id', { isAutoIncrement: true }), tableCol('name'), tableCol('email')]
+    const editState: RowEditState = {
+      rowKey: {},
+      originalValues: { name: undefined, email: undefined },
+      currentValues: { name: 'Alice', email: 'alice@test.com' },
+      modifiedColumns: new Set(['name', 'email']),
+      isNewRow: true,
+    }
+
+    const values = buildInsertPayload(editState, columns)
+    expect(values).toEqual({ name: 'Alice', email: 'alice@test.com' })
+    expect(values).not.toHaveProperty('id')
+  })
+
+  it('skips auto-increment columns', () => {
+    const columns = [tableCol('id', { isAutoIncrement: true }), tableCol('name')]
+    const editState: RowEditState = {
+      rowKey: {},
+      originalValues: {},
+      currentValues: { id: 99, name: 'Bob' },
+      modifiedColumns: new Set(['id', 'name']),
+      isNewRow: true,
+    }
+
+    const values = buildInsertPayload(editState, columns)
+    expect(values).not.toHaveProperty('id')
+    expect(values).toEqual({ name: 'Bob' })
+  })
+
+  it('coerces BIT string values to numbers', () => {
+    const columns = [
+      tableCol('id', { isAutoIncrement: true }),
+      tableCol('flags', { dataType: 'BIT' }),
+    ]
+    const editState: RowEditState = {
+      rowKey: {},
+      originalValues: {},
+      currentValues: { flags: '42' },
+      modifiedColumns: new Set(['flags']),
+      isNewRow: true,
+    }
+
+    const values = buildInsertPayload(editState, columns)
+    expect(values).toEqual({ flags: 42 })
+  })
+
+  it('keeps BIT string as-is when value exceeds MAX_SAFE_INTEGER', () => {
+    const columns = [
+      tableCol('id', { isAutoIncrement: true }),
+      tableCol('big_flags', { dataType: 'BIT' }),
+    ]
+    const editState: RowEditState = {
+      rowKey: {},
+      originalValues: {},
+      currentValues: { big_flags: '18446744073709551615' },
+      modifiedColumns: new Set(['big_flags']),
+      isNewRow: true,
+    }
+
+    const values = buildInsertPayload(editState, columns)
+    expect(values).toEqual({ big_flags: '18446744073709551615' })
   })
 })

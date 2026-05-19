@@ -26,7 +26,9 @@ beforeEach(() => {
   vi.spyOn(ObjectEditorCommandsModule, 'getRoutineParametersWithReturnType')
     .mockReset()
     .mockResolvedValue(foundResponse([]))
-  vi.spyOn(AppLogCommandsModule, 'logFrontend').mockReset().mockImplementation(() => {})
+  vi.spyOn(AppLogCommandsModule, 'logFrontend')
+    .mockReset()
+    .mockImplementation(() => {})
 })
 
 function mockGetRoutineParams() {

@@ -45,22 +45,26 @@ describe('saveConnection', () => {
   it('calls invoke with correct command and args', async () => {
     ipc.override('save_connection', () => 'new-uuid-123')
     const result = await saveConnection(sampleFormData)
-    expect(ipc.calls('save_connection')).toEqual([{
-      data: {
-        ...sampleFormData,
-        password: 'secret',
-        sortOrder: 0,
+    expect(ipc.calls('save_connection')).toEqual([
+      {
+        data: {
+          ...sampleFormData,
+          password: 'secret',
+          sortOrder: 0,
+        },
       },
-    }])
+    ])
     expect(result).toBe('new-uuid-123')
   })
 
   it('converts empty password to null', async () => {
     ipc.override('save_connection', () => 'new-uuid-456')
     await saveConnection({ ...sampleFormData, password: '' })
-    expect(ipc.calls('save_connection')).toEqual([{
-      data: expect.objectContaining({ password: null }),
-    }])
+    expect(ipc.calls('save_connection')).toEqual([
+      {
+        data: expect.objectContaining({ password: null }),
+      },
+    ])
   })
 
   it('propagates errors from invoke', async () => {
@@ -109,31 +113,37 @@ describe('listConnections', () => {
 describe('updateConnection', () => {
   it('calls invoke with correct command and args', async () => {
     await updateConnection('abc', sampleFormData)
-    expect(ipc.calls('update_connection')).toEqual([{
-      id: 'abc',
-      data: {
-        ...sampleFormData,
-        password: 'secret',
-        clearPassword: false,
-        sortOrder: 0,
+    expect(ipc.calls('update_connection')).toEqual([
+      {
+        id: 'abc',
+        data: {
+          ...sampleFormData,
+          password: 'secret',
+          clearPassword: false,
+          sortOrder: 0,
+        },
       },
-    }])
+    ])
   })
 
   it('converts empty password to null for update', async () => {
     await updateConnection('abc', { ...sampleFormData, password: '' })
-    expect(ipc.calls('update_connection')).toEqual([{
-      id: 'abc',
-      data: expect.objectContaining({ password: null, clearPassword: false }),
-    }])
+    expect(ipc.calls('update_connection')).toEqual([
+      {
+        id: 'abc',
+        data: expect.objectContaining({ password: null, clearPassword: false }),
+      },
+    ])
   })
 
   it('passes clearPassword when requested', async () => {
     await updateConnection('abc', { ...sampleFormData, password: '' }, { clearPassword: true })
-    expect(ipc.calls('update_connection')).toEqual([{
-      id: 'abc',
-      data: expect.objectContaining({ password: null, clearPassword: true }),
-    }])
+    expect(ipc.calls('update_connection')).toEqual([
+      {
+        id: 'abc',
+        data: expect.objectContaining({ password: null, clearPassword: true }),
+      },
+    ])
   })
 
   it('propagates errors from invoke', async () => {
@@ -194,10 +204,12 @@ describe('listConnectionGroups', () => {
 describe('updateConnectionGroup', () => {
   it('calls invoke with correct command and args', async () => {
     await updateConnectionGroup('grp-1', 'New Name')
-    expect(ipc.calls('update_connection_group')).toEqual([{
-      id: 'grp-1',
-      name: 'New Name',
-    }])
+    expect(ipc.calls('update_connection_group')).toEqual([
+      {
+        id: 'grp-1',
+        name: 'New Name',
+      },
+    ])
   })
 
   it('propagates errors from invoke', async () => {
@@ -237,20 +249,22 @@ describe('testConnection', () => {
     ipc.override('test_connection', () => mockResult)
     const result = await testConnection(sampleFormData)
 
-    expect(ipc.calls('test_connection')).toEqual([{
-      input: {
-        host: 'localhost',
-        port: 3306,
-        username: 'root',
-        password: 'secret',
-        defaultDatabase: 'mydb',
-        sslEnabled: false,
-        sslCaPath: null,
-        sslCertPath: null,
-        sslKeyPath: null,
-        connectTimeoutSecs: 10,
+    expect(ipc.calls('test_connection')).toEqual([
+      {
+        input: {
+          host: 'localhost',
+          port: 3306,
+          username: 'root',
+          password: 'secret',
+          defaultDatabase: 'mydb',
+          sslEnabled: false,
+          sslCaPath: null,
+          sslCertPath: null,
+          sslKeyPath: null,
+          connectTimeoutSecs: 10,
+        },
       },
-    }])
+    ])
     expect(result).toEqual(mockResult)
   })
 

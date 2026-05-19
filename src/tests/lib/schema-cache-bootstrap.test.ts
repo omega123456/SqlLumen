@@ -2,10 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { waitFor } from '@testing-library/react'
 
 import { ipc } from '../ipc-mock'
-import {
-  _clearAllCaches,
-  getCache,
-} from '../../components/query-editor/schema-metadata-cache'
+import { _clearAllCaches, getCache } from '../../components/query-editor/schema-metadata-cache'
 
 const EMPTY_SCHEMA_OBJECTS = {
   tables: {},
@@ -35,9 +32,8 @@ describe('bootstrapSchemaCache', () => {
   })
 
   it('exposes a pending bootstrap promise while in-flight', async () => {
-    const { bootstrapSchemaCache, getPendingBootstrap, _clearPendingBootstraps } = await import(
-      '../../lib/schema-cache-bootstrap'
-    )
+    const { bootstrapSchemaCache, getPendingBootstrap, _clearPendingBootstraps } =
+      await import('../../lib/schema-cache-bootstrap')
     _clearPendingBootstraps()
 
     expect(getPendingBootstrap('session-1')).toBeNull()
@@ -61,13 +57,9 @@ describe('bootstrapSchemaCache', () => {
   })
 
   it('hydrates from a persisted snapshot and uses background refresh (not rebuild)', async () => {
-    const { bootstrapSchemaCache, getPendingBootstrap } = await import(
-      '../../lib/schema-cache-bootstrap'
-    )
-    ipc.override(
-      'load_schema_cache_snapshot',
-      () => buildSnapshotJson(['cached'])
-    )
+    const { bootstrapSchemaCache, getPendingBootstrap } =
+      await import('../../lib/schema-cache-bootstrap')
+    ipc.override('load_schema_cache_snapshot', () => buildSnapshotJson(['cached']))
     let resolveRefresh!: () => void
     ipc.override(
       'fetch_schema_metadata_full',
@@ -99,9 +91,8 @@ describe('bootstrapSchemaCache', () => {
   })
 
   it('uses full rebuild when no persisted snapshot exists', async () => {
-    const { bootstrapSchemaCache, getPendingBootstrap } = await import(
-      '../../lib/schema-cache-bootstrap'
-    )
+    const { bootstrapSchemaCache, getPendingBootstrap } =
+      await import('../../lib/schema-cache-bootstrap')
     let resolveRebuild!: () => void
     ipc.override(
       'fetch_schema_metadata_full',
@@ -152,10 +143,7 @@ describe('bootstrapSchemaCache', () => {
 
   it('logs background refresh failures without throwing', async () => {
     const { bootstrapSchemaCache } = await import('../../lib/schema-cache-bootstrap')
-    ipc.override(
-      'load_schema_cache_snapshot',
-      () => buildSnapshotJson(['cached'])
-    )
+    ipc.override('load_schema_cache_snapshot', () => buildSnapshotJson(['cached']))
     ipc.override('fetch_schema_metadata_full', () => {
       throw new Error('refresh failed')
     })
@@ -175,9 +163,8 @@ describe('bootstrapSchemaCache', () => {
   })
 
   it('keeps rebuild fetch failures in the real cache error state without throwing', async () => {
-    const { bootstrapSchemaCache, getPendingBootstrap } = await import(
-      '../../lib/schema-cache-bootstrap'
-    )
+    const { bootstrapSchemaCache, getPendingBootstrap } =
+      await import('../../lib/schema-cache-bootstrap')
     ipc.override('fetch_schema_metadata_full', () => {
       throw new Error('rebuild failed')
     })

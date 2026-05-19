@@ -275,7 +275,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       const objectType = (args as Record<string, unknown>)?.objectType
       switch (objectType) {
         case 'table':
-          return ['users', 'orders', 'products']
+          return ['users', 'orders', 'products', 'bit_test']
         case 'view':
           return ['user_stats_view']
         case 'procedure':
@@ -351,6 +351,46 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             defaultValue: "'pending'",
             extra: '',
             ordinalPosition: 3,
+          },
+        ]
+      }
+      if (table === 'bit_test') {
+        return [
+          {
+            name: 'id',
+            dataType: 'int',
+            nullable: false,
+            columnKey: 'PRI',
+            defaultValue: null,
+            extra: 'auto_increment',
+            ordinalPosition: 1,
+          },
+          {
+            name: 'is_active',
+            dataType: 'bit',
+            nullable: false,
+            columnKey: '',
+            defaultValue: null,
+            extra: '',
+            ordinalPosition: 2,
+          },
+          {
+            name: 'flags',
+            dataType: 'bit',
+            nullable: true,
+            columnKey: '',
+            defaultValue: null,
+            extra: '',
+            ordinalPosition: 3,
+          },
+          {
+            name: 'label',
+            dataType: 'varchar',
+            nullable: true,
+            columnKey: '',
+            defaultValue: null,
+            extra: '',
+            ordinalPosition: 4,
           },
         ]
       }
@@ -973,6 +1013,13 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
                 rowCount: 200,
                 dataSize: 524288,
               },
+              {
+                name: 'bit_test',
+                engine: 'InnoDB',
+                charset: 'utf8mb4',
+                rowCount: 4,
+                dataSize: 16384,
+              },
             ],
             analytics_db: [
               {
@@ -997,6 +1044,12 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
               { name: 'user_id', dataType: 'BIGINT' },
               { name: 'status', dataType: 'VARCHAR' },
               { name: 'total', dataType: 'DECIMAL' },
+            ],
+            'ecommerce_db.bit_test': [
+              { name: 'id', dataType: 'INT' },
+              { name: 'is_active', dataType: 'BIT' },
+              { name: 'flags', dataType: 'BIT' },
+              { name: 'label', dataType: 'VARCHAR' },
             ],
             'analytics_db.events': [
               { name: 'id', dataType: 'BIGINT' },
@@ -1041,6 +1094,13 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
               rowCount: 200,
               dataSize: 524288,
             },
+            {
+              name: 'bit_test',
+              engine: 'InnoDB',
+              charset: 'utf8mb4',
+              rowCount: 4,
+              dataSize: 16384,
+            },
           ],
           analytics_db: [
             {
@@ -1065,6 +1125,12 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             { name: 'user_id', dataType: 'BIGINT' },
             { name: 'status', dataType: 'VARCHAR' },
             { name: 'total', dataType: 'DECIMAL' },
+          ],
+          'ecommerce_db.bit_test': [
+            { name: 'id', dataType: 'INT' },
+            { name: 'is_active', dataType: 'BIT' },
+            { name: 'flags', dataType: 'BIT' },
+            { name: 'label', dataType: 'VARCHAR' },
           ],
           'analytics_db.events': [
             { name: 'id', dataType: 'BIGINT' },
@@ -1199,6 +1265,75 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             isUniqueKeyFallback: false,
           },
           executionTimeMs: 12,
+        }
+      }
+
+      if (table === 'bit_test') {
+        return {
+          columns: [
+            {
+              name: 'id',
+              dataType: 'INT',
+              isBooleanAlias: false,
+              isNullable: false,
+              isPrimaryKey: true,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: true,
+            },
+            {
+              name: 'is_active',
+              dataType: 'BIT',
+              isBooleanAlias: false,
+              isNullable: false,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+            {
+              name: 'flags',
+              dataType: 'BIT',
+              isBooleanAlias: false,
+              isNullable: true,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+            {
+              name: 'label',
+              dataType: 'VARCHAR',
+              isBooleanAlias: false,
+              isNullable: true,
+              isPrimaryKey: false,
+              isUniqueKey: false,
+              hasDefault: false,
+              columnDefault: null,
+              isBinary: false,
+              isAutoIncrement: false,
+            },
+          ],
+          rows: [
+            [1, 1, 255, 'All flags on'],
+            [2, 0, 0, 'All flags off'],
+            [3, 1, 42, 'Some flags'],
+            [4, 0, null, 'Null flags'],
+          ],
+          currentPage: 1,
+          pageSize: 1000,
+          primaryKey: {
+            keyColumns: ['id'],
+            hasAutoIncrement: true,
+            isUniqueKeyFallback: false,
+          },
+          executionTimeMs: 5,
         }
       }
 
@@ -1564,6 +1699,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
             { name: 'users', objectType: 'table', estimatedRows: 1000 },
             { name: 'orders', objectType: 'table', estimatedRows: 5000 },
             { name: 'products', objectType: 'table', estimatedRows: 200 },
+            { name: 'bit_test', objectType: 'table', estimatedRows: 4 },
             { name: 'user_stats_view', objectType: 'view', estimatedRows: 0 },
           ],
         },

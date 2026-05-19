@@ -24,15 +24,18 @@ beforeEach(() => {
     ) as unknown as React.ReactElement
   })
 
-  vi.spyOn(TableDataTabModule, 'TableDataTab').mockImplementation((props) => (
-    <div
-      data-testid={`table-data-tab-mock-${props.tab.id}`}
-      data-render-mode={String(props.renderMode)}
-      data-active={String(props.isActive)}
-    >
-      {props.tab.label}
-    </div>
-  ) as unknown as React.ReactElement)
+  vi.spyOn(TableDataTabModule, 'TableDataTab').mockImplementation(
+    (props) =>
+      (
+        <div
+          data-testid={`table-data-tab-mock-${props.tab.id}`}
+          data-render-mode={String(props.renderMode)}
+          data-active={String(props.isActive)}
+        >
+          {props.tab.label}
+        </div>
+      ) as unknown as React.ReactElement
+  )
 })
 
 describe('QueryBottomPanel', () => {

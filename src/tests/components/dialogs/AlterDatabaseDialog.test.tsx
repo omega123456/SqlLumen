@@ -254,9 +254,17 @@ describe('AlterDatabaseDialog', () => {
     ipc.override('get_database_details', () => {
       callCount++
       if (callCount === 1) {
-        return { name: 'test_db', defaultCharacterSet: 'utf8mb4', defaultCollation: 'utf8mb4_general_ci' }
+        return {
+          name: 'test_db',
+          defaultCharacterSet: 'utf8mb4',
+          defaultCollation: 'utf8mb4_general_ci',
+        }
       }
-      return { name: 'other_db', defaultCharacterSet: 'latin1', defaultCollation: 'latin1_swedish_ci' }
+      return {
+        name: 'other_db',
+        defaultCharacterSet: 'latin1',
+        defaultCollation: 'latin1_swedish_ci',
+      }
     })
     ipc.override('alter_database', () => {
       throw new Error('Permission denied')

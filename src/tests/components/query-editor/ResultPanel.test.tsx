@@ -22,9 +22,7 @@ beforeEach(() => {
   )
   vi.spyOn(ResultFormViewModule, 'ResultFormView').mockImplementation(
     ({ totalRows }: { totalRows: number }) =>
-      (
-        <div data-testid="form-view">Form rows: {totalRows}</div>
-      ) as unknown as React.ReactElement
+      (<div data-testid="form-view">Form rows: {totalRows}</div>) as unknown as React.ReactElement
   )
   vi.spyOn(ResultTextViewModule, 'ResultTextView').mockImplementation(
     ({ rows }: { rows: unknown[][] }) =>

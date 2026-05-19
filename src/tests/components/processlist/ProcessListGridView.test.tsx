@@ -49,7 +49,8 @@ describe('ProcessListGridView', () => {
 
     // Spy on InfoCellPopover (plain function — vi.spyOn works)
     vi.spyOn(InfoCellPopoverModule, 'InfoCellPopover').mockImplementation(
-      ({ sql }: { sql: string | null }) => (sql ? <div data-testid="info-popover">{sql}</div> : null)
+      ({ sql }: { sql: string | null }) =>
+        sql ? <div data-testid="info-popover">{sql}</div> : null
     )
 
     act(() => {

@@ -3100,4 +3100,3 @@ describe('backtick quoting (editor.autocompleteBackticks)', () => {
     expect((tableItem as AnyItem).filterText).toBeUndefined()
   })
 })
-

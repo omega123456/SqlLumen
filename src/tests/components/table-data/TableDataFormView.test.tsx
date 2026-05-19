@@ -473,9 +473,9 @@ describe('TableDataFormView', () => {
       expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
     })
     expect(
-      ipc.calls('fetch_table_data').some(
-        (call) => (call as Record<string, unknown>)?.database === 'mydb'
-      )
+      ipc
+        .calls('fetch_table_data')
+        .some((call) => (call as Record<string, unknown>)?.database === 'mydb')
     ).toBe(true)
   })
 
@@ -526,9 +526,9 @@ describe('TableDataFormView', () => {
       expect(screen.getByTestId('fk-lookup-dialog')).toBeInTheDocument()
     })
     expect(
-      ipc.calls('fetch_table_data').some(
-        (call) => (call as Record<string, unknown>)?.database === 'accounts_db'
-      )
+      ipc
+        .calls('fetch_table_data')
+        .some((call) => (call as Record<string, unknown>)?.database === 'accounts_db')
     ).toBe(true)
   })
 
@@ -1041,7 +1041,9 @@ describe('TableDataFormView', () => {
     expect(nextBtn).not.toBeDisabled()
     fireEvent.click(nextBtn)
     await waitFor(() => {
-      expect(ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 2)).toBe(true)
+      expect(
+        ipc.calls('fetch_table_data').some((c) => (c as Record<string, unknown>)?.page === 2)
+      ).toBe(true)
     })
   })
 

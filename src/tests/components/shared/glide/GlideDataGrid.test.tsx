@@ -168,7 +168,10 @@ describe('GlideDataGrid', () => {
     )
 
     act(() => {
-      ref.current?.selectCell({ idx: 0, rowIdx: 0 }, { enableEditor: false, shouldFocusCell: false })
+      ref.current?.selectCell(
+        { idx: 0, rowIdx: 0 },
+        { enableEditor: false, shouldFocusCell: false }
+      )
       vi.runAllTimers()
     })
 

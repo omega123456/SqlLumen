@@ -58,16 +58,13 @@ const tabsByRealTestId: Array<[WorkspaceTab, string]> = [
 ]
 
 describe('WorkspaceTabPanel', () => {
-  it.each(tabsByRealTestId)(
-    'renders the correct child component for %s',
-    async (tab, testId) => {
-      render(<WorkspaceTabPanel tab={tab} connectionId="connection-1" sessionId="session-1" />)
+  it.each(tabsByRealTestId)('renders the correct child component for %s', async (tab, testId) => {
+    render(<WorkspaceTabPanel tab={tab} connectionId="connection-1" sessionId="session-1" />)
 
-      await waitFor(() => {
-        expect(screen.getByTestId(testId)).toBeInTheDocument()
-      })
-    }
-  )
+    await waitFor(() => {
+      expect(screen.getByTestId(testId)).toBeInTheDocument()
+    })
+  })
 
   it('marks an active panel as active and visible', () => {
     render(

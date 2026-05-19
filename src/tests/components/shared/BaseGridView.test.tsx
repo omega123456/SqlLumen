@@ -27,7 +27,12 @@ const columns = [
 describe('BaseGridView', () => {
   it('renders CanvasBaseGridView with the provided testId', () => {
     render(
-      <BaseGridView rows={[{ name: 'Ada' }]} columns={columns} editState={null} testId="base-grid" />
+      <BaseGridView
+        rows={[{ name: 'Ada' }]}
+        columns={columns}
+        editState={null}
+        testId="base-grid"
+      />
     )
     // CanvasBaseGridView renders a host div with data-testid={testId}
     expect(screen.getByTestId('base-grid')).toBeInTheDocument()

@@ -225,7 +225,10 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
       comment: '',
     },
   }),
-  generate_table_ddl: () => ({ ddl: 'CREATE TABLE `mock_table` (`id` INT NOT NULL);', warnings: [] }),
+  generate_table_ddl: () => ({
+    ddl: 'CREATE TABLE `mock_table` (`id` INT NOT NULL);',
+    warnings: [],
+  }),
   apply_table_ddl: () => undefined,
 
   // --- Object editor ---

@@ -453,9 +453,7 @@ describe('processlist-store', () => {
       await fetchPromise
 
       expect(useProcessListStore.getState().fetchErrorByConnection[CONN]).toBeUndefined()
-      expect(
-        useToastStore.getState().toasts.some((t) => t.variant === 'error')
-      ).toBe(false)
+      expect(useToastStore.getState().toasts.some((t) => t.variant === 'error')).toBe(false)
     })
   })
 })

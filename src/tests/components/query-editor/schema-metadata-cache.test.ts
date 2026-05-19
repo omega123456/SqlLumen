@@ -37,7 +37,9 @@ function mockFetchSchema() {
 
 beforeEach(() => {
   _clearAllCaches()
-  vi.spyOn(QueryCommandsModule, 'fetchSchemaMetadataFull').mockReset().mockResolvedValue(mockMetadata({}))
+  vi.spyOn(QueryCommandsModule, 'fetchSchemaMetadataFull')
+    .mockReset()
+    .mockResolvedValue(mockMetadata({}))
 })
 
 describe('schema-metadata-cache', () => {

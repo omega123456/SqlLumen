@@ -37,14 +37,10 @@ beforeEach(() => {
   ipc.override('export_results', () => ({ bytesWritten: 1024, rowsExported: 5 }))
   ipc.override('update_table_row', () => undefined)
 
-  vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation(
-    (props) => {
-      capturedGridProps = props as unknown as Record<string, unknown>
-      return (
-        <div data-testid="result-grid-view">Grid Mock</div>
-      ) as unknown as React.ReactElement
-    }
-  )
+  vi.spyOn(ResultGridViewModule, 'ResultGridView').mockImplementation((props) => {
+    capturedGridProps = props as unknown as Record<string, unknown>
+    return (<div data-testid="result-grid-view">Grid Mock</div>) as unknown as React.ReactElement
+  })
 })
 
 describe('ResultPanel edit mode callbacks', () => {

@@ -32,19 +32,21 @@ describe('sendAiChat', () => {
 
     await sendAiChat(params)
 
-    expect(ipc.calls('ai_chat')).toEqual([{
-      request: {
-        messages: params.messages,
-        endpoint: params.endpoint,
-        model: params.model,
-        temperature: params.temperature,
-        maxTokens: params.maxTokens,
-        streamId: params.streamId,
-        previousResponseId: 'resp_prev',
-        preferResponsesApi: true,
-        enableReasoning: true,
+    expect(ipc.calls('ai_chat')).toEqual([
+      {
+        request: {
+          messages: params.messages,
+          endpoint: params.endpoint,
+          model: params.model,
+          temperature: params.temperature,
+          maxTokens: params.maxTokens,
+          streamId: params.streamId,
+          previousResponseId: 'resp_prev',
+          preferResponsesApi: true,
+          enableReasoning: true,
+        },
       },
-    }])
+    ])
   })
 
   it('propagates errors from the backend', async () => {
@@ -74,12 +76,14 @@ describe('sendAiChat', () => {
       streamId: 'stream-defaults',
     })
 
-    expect(ipc.calls('ai_chat')).toEqual([{
-      request: expect.objectContaining({
-        preferResponsesApi: false,
-        enableReasoning: true,
-      }),
-    }])
+    expect(ipc.calls('ai_chat')).toEqual([
+      {
+        request: expect.objectContaining({
+          preferResponsesApi: false,
+          enableReasoning: true,
+        }),
+      },
+    ])
   })
 })
 
@@ -147,9 +151,11 @@ describe('listAiModels', () => {
 
     const result = await listAiModels('http://localhost:11434/v1')
 
-    expect(ipc.calls('list_ai_models')).toEqual([{
-      endpoint: 'http://localhost:11434/v1',
-    }])
+    expect(ipc.calls('list_ai_models')).toEqual([
+      {
+        endpoint: 'http://localhost:11434/v1',
+      },
+    ])
     expect(result.models).toEqual([
       { id: 'codellama', name: null, category: 'chat' },
       { id: 'deepseek-coder', name: null, category: 'chat' },

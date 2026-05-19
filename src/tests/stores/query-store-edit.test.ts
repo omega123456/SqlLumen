@@ -1,10 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { overrideNamedIpcCommands } from '../ipc-mock'
-import {
-  useQueryStore,
-  isEditableSelectSql,
-  DEFAULT_RESULT_STATE,
-} from '../../stores/query-store'
+import { useQueryStore, isEditableSelectSql, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
 import type { QueryTableEditInfo, TableDataColumnMeta, PrimaryKeyInfo } from '../../types/schema'
 import { flat } from '../helpers/query-test-utils'

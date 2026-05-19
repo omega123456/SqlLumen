@@ -2264,7 +2264,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       const { pkColumns, originalPkValues, updatedValues } = buildUpdatePayload(
         result.editState,
-        tableInfo.primaryKey.keyColumns
+        tableInfo.primaryKey.keyColumns,
+        tableInfo.columns
       )
 
       try {

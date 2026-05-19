@@ -97,7 +97,9 @@ function resetStores(): void {
   })
 }
 
-function captureWindowProperty<K extends keyof TauriTestWindow>(property: K): WindowPropertySnapshot {
+function captureWindowProperty<K extends keyof TauriTestWindow>(
+  property: K
+): WindowPropertySnapshot {
   return {
     hadValue: property in window,
     value: (window as TauriTestWindow)[property],
@@ -208,7 +210,9 @@ describe('useUpdateStore', () => {
   })
 
   it('ignores overlapping checks while already checking', async () => {
-    let resolveCheck: ((value: ReturnType<typeof makeAvailableUpdateMetadata> | null) => void) | undefined
+    let resolveCheck:
+      | ((value: ReturnType<typeof makeAvailableUpdateMetadata> | null) => void)
+      | undefined
     ipc.override(
       'plugin:updater|check',
       () =>

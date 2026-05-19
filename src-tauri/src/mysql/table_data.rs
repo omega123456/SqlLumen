@@ -534,6 +534,24 @@ fn serialize_table_value(
         }
     }
 
+    // BIT: sqlx u64 decoder has an explicit ColumnType::Bit path that reads raw big-endian bytes
+    if type_name == "BIT" {
+        return match row.try_get::<Option<u64>, _>(i) {
+            Ok(Some(val)) => {
+                if val > JS_SAFE_INTEGER_MAX as u64 {
+                    serde_json::Value::String(val.to_string())
+                } else {
+                    serde_json::Value::from(val)
+                }
+            }
+            Ok(None) => serde_json::Value::Null,
+            Err(e) => {
+                tracing::warn!(column_index = i, error = ?e, "Failed to decode BIT column as u64");
+                serde_json::Value::Null
+            }
+        };
+    }
+
     // Integer types
     if matches!(
         type_name.as_str(),
@@ -625,6 +643,24 @@ fn serialize_export_value(row: &sqlx::mysql::MySqlRow, i: usize) -> serde_json::
     }
 
     let type_name = raw_value.type_info().name().to_uppercase();
+
+    // BIT: sqlx u64 decoder has an explicit ColumnType::Bit path that reads raw big-endian bytes
+    if type_name == "BIT" {
+        return match row.try_get::<Option<u64>, _>(i) {
+            Ok(Some(val)) => {
+                if val > JS_SAFE_INTEGER_MAX as u64 {
+                    serde_json::Value::String(val.to_string())
+                } else {
+                    serde_json::Value::from(val)
+                }
+            }
+            Ok(None) => serde_json::Value::Null,
+            Err(e) => {
+                tracing::warn!(column_index = i, error = ?e, "Failed to decode BIT column as u64");
+                serde_json::Value::Null
+            }
+        };
+    }
 
     // Binary types → base64
     if type_name.contains("BLOB") || type_name == "BINARY" || type_name == "VARBINARY" {

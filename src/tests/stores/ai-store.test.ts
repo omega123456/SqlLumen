@@ -70,12 +70,7 @@ function setSchemaIndexStatus(sessionId: string, status: typeof mockIndexStatus)
   useSchemaIndexStore.setState({
     connections: {
       [sessionId]: {
-        status: status.status as
-          | 'ready'
-          | 'building'
-          | 'stale'
-          | 'not_configured'
-          | 'error',
+        status: status.status as 'ready' | 'building' | 'stale' | 'not_configured' | 'error',
         phase: status.status === 'building' ? 'embedding' : null,
         tablesDone: status.tablesDone,
         tablesTotal: status.tablesTotal,
@@ -150,7 +145,9 @@ beforeEach(() => {
   ipc.override('ai_chat', (args) =>
     mockSendAiChat((args as Record<string, unknown>).request as Record<string, unknown>)
   )
-  ipc.override('ai_cancel', (args) => mockCancelAiStream((args as Record<string, unknown>).streamId))
+  ipc.override('ai_cancel', (args) =>
+    mockCancelAiStream((args as Record<string, unknown>).streamId)
+  )
   ipc.override('ai_query_expand', (args) =>
     mockAiQueryExpand((args as Record<string, unknown>).req as Record<string, unknown>)
   )
@@ -158,9 +155,7 @@ beforeEach(() => {
     const payload = args as Record<string, unknown>
     return mockSemanticSearch(payload.sessionId, payload.queries, payload.hints)
   })
-  ipc.override('search_memories', (args) =>
-    mockSearchMemories(args as Record<string, unknown>)
-  )
+  ipc.override('search_memories', (args) => mockSearchMemories(args as Record<string, unknown>))
   ipc.override('get_all_settings', () => ({ ...mockSettings }))
   ipc.override('get_setting', (args) => {
     const key = (args as Record<string, unknown>).key as string
@@ -461,8 +456,7 @@ describe('useAiStore', () => {
         ipc.calls('log_frontend').some((call) => {
           const payload = call as Record<string, unknown>
           return (
-            payload.level === 'debug' &&
-            String(payload.message ?? '').includes('"dbName":"testdb"')
+            payload.level === 'debug' && String(payload.message ?? '').includes('"dbName":"testdb"')
           )
         })
       ).toBe(true)
@@ -1579,9 +1573,7 @@ describe('useAiStore', () => {
             const payload = call as Record<string, unknown>
             return (
               payload.level === 'warn' &&
-              String(payload.message ?? '').includes(
-                'AI cancel during clearConversation failed:'
-              )
+              String(payload.message ?? '').includes('AI cancel during clearConversation failed:')
             )
           })
         ).toBe(true)
