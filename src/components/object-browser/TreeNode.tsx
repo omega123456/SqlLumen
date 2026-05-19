@@ -257,7 +257,7 @@ export function TreeNode({
       return false
     }
     return hasMatchingDescendantInFilter(nodeId, effectiveFilterMatchIds, nodesMap)
-  }, [effectiveFilterMatchIds, filterScopeRootId, nodeId, nodesMap])
+  }, [effectiveFilterMatchIds, nodeId, nodesMap])
 
   // Use childIdsByParentId index instead of scanning the full nodes map (Simplification 4)
   const indexedChildIds = useSchemaStore(

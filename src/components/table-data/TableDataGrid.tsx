@@ -568,7 +568,6 @@ export function TableDataGrid({ tabId, isReadOnly, isActive = true }: TableDataG
     [
       pkColumns,
       tabId,
-      columns,
       resolveTargetColumn,
       validateAndCommitCurrentEdit,
       findCurrentRowIndex,

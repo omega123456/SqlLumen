@@ -4,7 +4,8 @@ import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { ObjectEditorTab as ObjectEditorTabType } from '../../types/schema'
 import { MonacoEditorWrapper } from '../query-editor/MonacoEditorWrapper'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
-import { ObjectEditorToolbar, OBJECT_TYPE_LABELS } from './ObjectEditorToolbar'
+import { ObjectEditorToolbar } from './ObjectEditorToolbar'
+import { OBJECT_TYPE_LABELS } from './object-editor-constants'
 import styles from './ObjectEditorTab.module.css'
 
 interface ObjectEditorTabProps {

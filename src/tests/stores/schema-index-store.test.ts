@@ -415,7 +415,6 @@ describe('useSchemaIndexStore', () => {
     it('handles non-Error rejection in triggerBuild', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       ipc.override('build_schema_index', () => {
-        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw 'string error'
       })
 
@@ -437,7 +436,6 @@ describe('useSchemaIndexStore', () => {
     it('handles non-Error rejection in triggerInvalidation', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       ipc.override('invalidate_schema_index', () => {
-        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw 'string error'
       })
 
@@ -490,7 +488,6 @@ describe('useSchemaIndexStore', () => {
     it('handles non-Error rejection in forceRebuild', async () => {
       consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       ipc.override('force_rebuild_schema_index', () => {
-        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw 'string error'
       })
 

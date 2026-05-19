@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { DiffOverlay, applyHunkToOriginal } from '../../../components/query-editor/DiffOverlay'
-import type { LineChange } from '../../../components/query-editor/DiffOverlay'
+import { DiffOverlay } from '../../../components/query-editor/DiffOverlay'
+import {
+  applyHunkToOriginal,
+  type LineChange,
+} from '../../../components/query-editor/diff-overlay-utils'
 import type * as monaco from 'monaco-editor'
 
 const DEFAULT_RANGE = {

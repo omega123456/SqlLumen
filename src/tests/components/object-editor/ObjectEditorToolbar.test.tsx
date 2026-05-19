@@ -1,10 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import {
-  ObjectEditorToolbar,
-  OBJECT_TYPE_LABELS,
-} from '../../../components/object-editor/ObjectEditorToolbar'
+import { ObjectEditorToolbar } from '../../../components/object-editor/ObjectEditorToolbar'
+import { OBJECT_TYPE_LABELS } from '../../../components/object-editor/object-editor-constants'
 import type { EditableObjectType } from '../../../types/schema'
 
 function renderToolbar(overrides: Partial<Parameters<typeof ObjectEditorToolbar>[0]> = {}) {

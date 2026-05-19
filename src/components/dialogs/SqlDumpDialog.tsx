@@ -144,7 +144,7 @@ export default function SqlDumpDialog({
         pollRef.current = null
       }
     }
-  }, [jobId, onClose])
+  }, [filePath, jobId, onClose])
 
   // Toggle a single table
   const toggleTable = useCallback((dbName: string, tableName: string) => {

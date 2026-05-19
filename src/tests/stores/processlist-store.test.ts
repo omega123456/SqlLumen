@@ -188,7 +188,6 @@ describe('processlist-store', () => {
 
     it('normalizes non-Error throw values on manual fetch failure', async () => {
       ipc.override('get_processlist', () => {
-        // eslint-disable-next-line @typescript-eslint/only-throw-error
         throw 'plain-error'
       })
 

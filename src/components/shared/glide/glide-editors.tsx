@@ -102,7 +102,7 @@ function getViewportHeight(): number {
   return window.innerHeight > 0 ? window.innerHeight : 800
 }
 
-function getPreferredMultilineOverlayHeight(_target: Rectangle): number {
+function getPreferredMultilineOverlayHeight(_: Rectangle): number {
   const viewportHeight = getViewportHeight()
   return Math.max(132, Math.min(500, Math.floor(viewportHeight * 0.5)))
 }
@@ -126,25 +126,7 @@ export function wrapEditorAsGlideOverlay(
       [onFinishedEditing]
     )
     const editorData = extractEditorData(value)
-    if (!editorData) return null
-
-    const {
-      row,
-      columnKey,
-      columnLabel,
-      columnMeta,
-      isNullable,
-      foreignKey,
-      initialInputValue,
-      cancelRestoreValue,
-      selectAllOnFocus,
-    } = editorData
-    const targetWidth = getEditorTargetWidth(target)
-    const markerCount = reserveMarkerWidth ? getMarkerCount(editorData, columnMeta) : 0
-    const expandedWidth = getExpandedEditorWidth(targetWidth, markerCount)
-    const requestedOverlayWidth = expandedWidth + overlayExtraWidth
-    const resolvedOverlayHeight =
-      typeof overlayHeight === 'function' ? overlayHeight(target) : overlayHeight
+    const initialInputValue = editorData?.initialInputValue
 
     useEffect(() => {
       if (initialInputValue == null) {
@@ -160,6 +142,25 @@ export function wrapEditorAsGlideOverlay(
       }
       currentValueRef.current = seededCell
     }, [initialInputValue, value])
+
+    if (!editorData) return null
+
+    const {
+      row,
+      columnKey,
+      columnLabel,
+      columnMeta,
+      isNullable,
+      foreignKey,
+      cancelRestoreValue,
+      selectAllOnFocus,
+    } = editorData
+    const targetWidth = getEditorTargetWidth(target)
+    const markerCount = reserveMarkerWidth ? getMarkerCount(editorData, columnMeta) : 0
+    const expandedWidth = getExpandedEditorWidth(targetWidth, markerCount)
+    const requestedOverlayWidth = expandedWidth + overlayExtraWidth
+    const resolvedOverlayHeight =
+      typeof overlayHeight === 'function' ? overlayHeight(target) : overlayHeight
 
     return (
       <div

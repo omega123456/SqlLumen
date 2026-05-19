@@ -1,6 +1,7 @@
 import { Gear, MathOperations, Lightning, CalendarBlank, Eye } from '@phosphor-icons/react'
 import type { EditableObjectType } from '../../types/schema'
 import { Button } from '../common/Button'
+import { OBJECT_TYPE_LABELS } from './object-editor-constants'
 import styles from './ObjectEditorToolbar.module.css'
 
 export interface ObjectEditorToolbarProps {
@@ -11,14 +12,6 @@ export interface ObjectEditorToolbarProps {
   isSaving: boolean
   isDirty: boolean
   onSave: () => void
-}
-
-export const OBJECT_TYPE_LABELS: Record<EditableObjectType, string> = {
-  procedure: 'Stored Procedure',
-  function: 'Function',
-  trigger: 'Trigger',
-  event: 'Event',
-  view: 'View',
 }
 
 function getObjectTypeIcon(type: EditableObjectType) {

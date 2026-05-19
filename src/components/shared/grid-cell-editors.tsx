@@ -421,7 +421,6 @@ export function NullableMultilineCellEditor(props: CellEditorBaseProps) {
 
 export function EnumCellEditor(props: EnumCellEditorProps) {
   const { row, column, onRowChange, onClose } = props
-  const enumValues = props.columnMeta?.enumValues ?? []
   const isNullable = props.isNullable ?? false
   const fieldName = column.key
   const foreignKey = props.foreignKey
@@ -495,15 +494,16 @@ export function EnumCellEditor(props: EnumCellEditorProps) {
   }, [props.columnMeta, initialValue, isNull, onRowChange, row, fieldName, syncToStore])
 
   const enumOptions: DropdownOption[] = useMemo(() => {
+    const ev = props.columnMeta?.enumValues ?? []
     const out: DropdownOption[] = []
     if (isNullable) {
       out.push({ value: ENUM_NULL_SENTINEL, label: 'NULL' })
     }
-    for (const ev of enumValues) {
-      out.push({ value: ev, label: ev })
+    for (const enumVal of ev) {
+      out.push({ value: enumVal, label: enumVal })
     }
     return out
-  }, [enumValues, isNullable])
+  }, [props.columnMeta?.enumValues, isNullable])
 
   const handleCommitKeys = useCallback(
     (e: ReactKeyboardEvent) => {

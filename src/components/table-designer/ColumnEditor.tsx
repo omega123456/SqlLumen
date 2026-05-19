@@ -7,6 +7,7 @@ import {
   Trash,
 } from '@phosphor-icons/react'
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -252,13 +253,19 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     []
   )
 
-  const getCellSelector = (rowIndex: number, cellKey: EditableCellKey) =>
-    `[data-row-index="${rowIndex}"][data-cell-key="${cellKey}"]`
+  const getCellSelector = useCallback(
+    (rowIndex: number, cellKey: EditableCellKey) =>
+      `[data-row-index="${rowIndex}"][data-cell-key="${cellKey}"]`,
+    []
+  )
 
-  const getCellElement = (rowIndex: number, cellKey: EditableCellKey) =>
-    containerRef.current?.querySelector<HTMLElement>(getCellSelector(rowIndex, cellKey)) ?? null
+  const getCellElement = useCallback(
+    (rowIndex: number, cellKey: EditableCellKey) =>
+      containerRef.current?.querySelector<HTMLElement>(getCellSelector(rowIndex, cellKey)) ?? null,
+    [getCellSelector]
+  )
 
-  const isCellFocusable = (rowIndex: number, cellKey: EditableCellKey) => {
+  const isCellFocusable = useCallback((rowIndex: number, cellKey: EditableCellKey) => {
     const element = getCellElement(rowIndex, cellKey)
     if (!element) {
       return false
@@ -274,9 +281,9 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     }
 
     return true
-  }
+  }, [getCellElement])
 
-  const focusCell = (target: ActiveCell) => {
+  const focusCell = useCallback((target: ActiveCell) => {
     const element = getCellElement(target.rowIndex, target.cellKey)
     if (!element) {
       setPendingFocusCell(target)
@@ -287,13 +294,10 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     if (element instanceof HTMLInputElement && element.type !== 'checkbox') {
       element.select()
     }
-  }
+  }, [getCellElement])
 
-  const findAdjacentCell = (
-    rowIndex: number,
-    cellKey: EditableCellKey,
-    direction: -1 | 1
-  ): ActiveCell | null => {
+  const findAdjacentCell = useCallback(
+    (rowIndex: number, cellKey: EditableCellKey, direction: -1 | 1): ActiveCell | null => {
     const currentCellIndex = EDITABLE_CELL_ORDER.indexOf(cellKey)
     if (currentCellIndex === -1) {
       return null
@@ -322,9 +326,10 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     }
 
     return null
-  }
+  }, [columns.length, isCellFocusable])
 
-  const findSameCellInNextRow = (rowIndex: number, cellKey: EditableCellKey): ActiveCell | null => {
+  const findSameCellInNextRow = useCallback(
+    (rowIndex: number, cellKey: EditableCellKey): ActiveCell | null => {
     for (let nextRowIndex = rowIndex + 1; nextRowIndex < columns.length; nextRowIndex += 1) {
       if (isCellFocusable(nextRowIndex, cellKey)) {
         return { rowIndex: nextRowIndex, cellKey }
@@ -332,7 +337,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     }
 
     return null
-  }
+  }, [columns.length, isCellFocusable])
 
   const setEditStartValue = (rowIndex: number, cellKey: EditableCellKey, value: string) => {
     editStartValuesRef.current[`${rowIndex}:${cellKey}`] = value
@@ -447,7 +452,7 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     return () => {
       cancelAnimationFrame(handle)
     }
-  }, [columns.length, pendingFocusCell])
+  }, [columns.length, focusCell, pendingFocusCell])
 
   useEffect(() => {
     if (defaultModeOverrideIndex !== null) {

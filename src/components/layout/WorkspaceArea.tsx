@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '../common/Button'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { useConnectionStore } from '../../stores/connection-store'
@@ -43,19 +43,23 @@ export function WorkspaceArea() {
 
   const activeTab = tabs.find((t) => t.id === activeWorkspaceTabId) ?? null
   const previousActiveWorkspaceTabIdRef = useRef<string | null>(null)
-  const panelOrderRef = useRef<string[]>([])
 
-  const nextPanelOrder = panelOrderRef.current.filter((tabId) =>
-    tabs.some((tab) => tab.id === tabId)
-  )
-  const seenPanelIds = new Set(nextPanelOrder)
-  for (const tab of tabs) {
-    if (!seenPanelIds.has(tab.id)) {
-      nextPanelOrder.push(tab.id)
-      seenPanelIds.add(tab.id)
+  const [panelOrder, setPanelOrder] = useState<string[]>(() => tabs.map((t) => t.id))
+  const [prevTabs, setPrevTabs] = useState(tabs)
+
+  let nextPanelOrder = panelOrder
+  if (prevTabs !== tabs) {
+    nextPanelOrder = panelOrder.filter((tabId) => tabs.some((tab) => tab.id === tabId))
+    const seenIds = new Set(nextPanelOrder)
+    for (const tab of tabs) {
+      if (!seenIds.has(tab.id)) {
+        nextPanelOrder = [...nextPanelOrder, tab.id]
+        seenIds.add(tab.id)
+      }
     }
+    setPanelOrder(nextPanelOrder)
+    setPrevTabs(tabs)
   }
-  panelOrderRef.current = nextPanelOrder
 
   const panelTabs = nextPanelOrder
     .map((tabId) => tabs.find((tab) => tab.id === tabId) ?? null)

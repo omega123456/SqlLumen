@@ -21,18 +21,12 @@ import type { MutableRefObject } from 'react'
 import { DiffEditor } from '@monaco-editor/react'
 import type { DiffOnMount } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
+import { LineChange, applyHunkToOriginal } from './diff-overlay-utils'
+export type { LineChange }
 import { useThemeStore } from '../../stores/theme-store'
 import { getMonacoThemeName } from './monaco-theme'
 import { Button } from '../common/Button'
 import styles from './DiffOverlay.module.css'
-
-/** Minimal subset of monaco.editor.ILineChange used by hunk logic. */
-export interface LineChange {
-  originalStartLineNumber: number
-  originalEndLineNumber: number
-  modifiedStartLineNumber: number
-  modifiedEndLineNumber: number
-}
 
 export interface DiffOverlayProps {
   originalSql: string
@@ -45,100 +39,6 @@ export interface DiffOverlayProps {
   }
   onAccept: (finalSql: string) => void
   onReject: () => void
-}
-
-/**
- * Apply a single hunk from the modified model into the original model.
- * After applying, the diff editor will update to reflect the remaining differences.
- */
-export function applyHunkToOriginal(
-  change: LineChange,
-  origModel: monaco.editor.ITextModel,
-  modModel: monaco.editor.ITextModel
-): void {
-  const {
-    modifiedStartLineNumber,
-    modifiedEndLineNumber,
-    originalStartLineNumber,
-    originalEndLineNumber,
-  } = change
-
-  let newText: string
-  if (modifiedEndLineNumber === 0) {
-    // Pure deletion — remove the original lines entirely
-    newText = ''
-  } else {
-    newText = modModel.getValueInRange({
-      startLineNumber: modifiedStartLineNumber,
-      startColumn: 1,
-      endLineNumber: modifiedEndLineNumber,
-      endColumn: modModel.getLineMaxColumn(modifiedEndLineNumber),
-    })
-  }
-
-  let targetRange: monaco.IRange
-  if (originalEndLineNumber === 0) {
-    // Pure insertion — insert after originalStartLineNumber
-    const lineCount = origModel.getLineCount()
-    if (originalStartLineNumber >= lineCount) {
-      // Append after last line
-      const lastCol = origModel.getLineMaxColumn(lineCount)
-      targetRange = {
-        startLineNumber: lineCount,
-        startColumn: lastCol,
-        endLineNumber: lineCount,
-        endColumn: lastCol,
-      }
-      newText = '\n' + newText
-    } else {
-      // Insert before the next line
-      targetRange = {
-        startLineNumber: originalStartLineNumber + 1,
-        startColumn: 1,
-        endLineNumber: originalStartLineNumber + 1,
-        endColumn: 1,
-      }
-      newText = newText + '\n'
-    }
-  } else if (modifiedEndLineNumber === 0) {
-    // Pure deletion — remove original lines including trailing newline
-    const lineCount = origModel.getLineCount()
-    if (originalEndLineNumber < lineCount) {
-      targetRange = {
-        startLineNumber: originalStartLineNumber,
-        startColumn: 1,
-        endLineNumber: originalEndLineNumber + 1,
-        endColumn: 1,
-      }
-    } else if (originalStartLineNumber > 1) {
-      // Last lines in file — remove including preceding newline
-      const prevLineMaxCol = origModel.getLineMaxColumn(originalStartLineNumber - 1)
-      targetRange = {
-        startLineNumber: originalStartLineNumber - 1,
-        startColumn: prevLineMaxCol,
-        endLineNumber: originalEndLineNumber,
-        endColumn: origModel.getLineMaxColumn(originalEndLineNumber),
-      }
-    } else {
-      // Entire file content
-      targetRange = {
-        startLineNumber: originalStartLineNumber,
-        startColumn: 1,
-        endLineNumber: originalEndLineNumber,
-        endColumn: origModel.getLineMaxColumn(originalEndLineNumber),
-      }
-    }
-  } else {
-    // Replacement — swap original lines with modified lines
-    targetRange = {
-      startLineNumber: originalStartLineNumber,
-      startColumn: 1,
-      endLineNumber: originalEndLineNumber,
-      endColumn: origModel.getLineMaxColumn(originalEndLineNumber),
-    }
-  }
-
-  origModel.pushEditOperations([], [{ range: targetRange, text: newText }], () => null)
 }
 
 /** `afterLineNumber` for a view zone directly above the modified hunk’s first line. */

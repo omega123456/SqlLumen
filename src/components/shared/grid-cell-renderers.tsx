@@ -28,7 +28,7 @@ function isNullish(value: unknown): value is null | undefined {
  * - string starting with "[BLOB" → `<span class="td-cell-value td-blob-value">{value}</span>`
  * - anything else → `<span class="td-cell-value">{String(value)}</span>`
  */
-export function renderCellValue(value: unknown): React.ReactNode {
+function renderCellValue(value: unknown): React.ReactNode {
   if (isNullish(value)) {
     const nullDisplay = useSettingsStore.getState().getSetting('results.nullDisplay')
     return <span className="td-cell-value td-null-value">{nullDisplay}</span>

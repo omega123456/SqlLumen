@@ -36,7 +36,7 @@ function getResultTabIcon(result: SingleResultState) {
 
 export function BottomPanelTabs({ queryTabId, connectionId }: BottomPanelTabsProps) {
   const queryTabState = useQueryStore((state) => state.tabs[queryTabId])
-  const results = queryTabState?.results ?? []
+  const results = useMemo(() => queryTabState?.results ?? [], [queryTabState?.results])
   const activeResultIndex = queryTabState?.activeResultIndex ?? 0
   const activeBottomPanelItem =
     queryTabState?.activeBottomPanelItem ?? DEFAULT_ACTIVE_BOTTOM_PANEL_ITEM

@@ -611,7 +611,6 @@ describe('useTableDataStore — saveCurrentRow (INSERT path)', () => {
   it('sets saveError with actual message when invoke rejects with plain string (real Tauri behavior)', async () => {
     // Real Tauri invoke rejects with a plain string (not an Error object) for Result<T, String> commands
     ipc.override('insert_table_row', () => {
-      // eslint-disable-next-line @typescript-eslint/only-throw-error
       throw "Duplicate entry '1' for key 'PRIMARY'"
     })
 

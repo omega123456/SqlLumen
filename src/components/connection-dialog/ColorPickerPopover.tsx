@@ -19,6 +19,7 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
   const swatchRef = useRef<HTMLButtonElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({})
+  const [portalContainer, setPortalContainer] = useState<Element>(() => document.body)
 
   // Close popover on outside click — check both wrapper and portal
   useEffect(() => {
@@ -44,6 +45,7 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
     } else {
       setHexInput(color ?? '')
       if (swatchRef.current) {
+        setPortalContainer(swatchRef.current.closest('dialog') ?? document.body)
         const rect = swatchRef.current.getBoundingClientRect()
         const spaceBelow = window.innerHeight - rect.bottom
         const flipUp = spaceBelow < POPOVER_HEIGHT
@@ -118,7 +120,7 @@ export function ColorPickerPopover({ color, onChange }: ColorPickerPopoverProps)
               Clear Color
             </button>
           </div>,
-          swatchRef.current?.closest('dialog') ?? document.body
+          portalContainer
         )}
     </div>
   )

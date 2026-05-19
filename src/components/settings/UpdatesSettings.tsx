@@ -119,6 +119,7 @@ export function UpdatesSettings() {
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const pendingWork = buildPendingWorkSummary()

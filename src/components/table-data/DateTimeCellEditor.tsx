@@ -42,6 +42,7 @@ import styles from '../shared/BaseGridView.module.css'
 // ---------------------------------------------------------------------------
 
 export default function DateTimeCellEditor(props: CellEditorParams & CellEditorCallbacks) {
+  const { onClose } = props
   const col = props.columnMeta
   const temporalType: TemporalColumnType = getTemporalColumnType(col.dataType)
 
@@ -173,9 +174,9 @@ export default function DateTimeCellEditor(props: CellEditorParams & CellEditorC
     (val: string) => {
       handleChange(val)
       setPickerOpen(false)
-      props.onClose(true, false)
+      onClose(true, false)
     },
-    [handleChange, props.onClose]
+    [handleChange, onClose]
   )
 
   const handlePickerCancel = useCallback(() => {

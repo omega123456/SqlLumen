@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { dispatchAuxClick } from '../../helpers/dispatch-aux-click'
@@ -177,8 +178,7 @@ describe('UnderlineTabs', () => {
   })
 
   it('should use overflow-x: auto with a reserved scrollbar lane', () => {
-    const fs = require('fs')
-    const css = fs.readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
+    const css = readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
     expect(css).toContain('overflow-x: auto')
     expect(css).toContain('--underline-tab-scrollbar-reserve: var(--grid-scrollbar-size)')
     expect(css).toContain(
@@ -188,14 +188,12 @@ describe('UnderlineTabs', () => {
   })
 
   it('should have custom scrollbar styling for the tab bar', () => {
-    const fs = require('fs')
-    const css = fs.readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
+    const css = readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
     expect(css).toContain('::-webkit-scrollbar')
   })
 
   it('should hide scrollbar buttons to prevent floating arrow icons', () => {
-    const fs = require('fs')
-    const css = fs.readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
+    const css = readFileSync('src/components/common/UnderlineTabs.module.css', 'utf8')
     expect(css).toContain('::-webkit-scrollbar-button')
     expect(css).toMatch(/scrollbar-button[^}]*display:\s*none/)
   })

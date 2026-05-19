@@ -43,6 +43,8 @@ pnpm format             # Prettier on src/
 pnpm typecheck          # tsc --noEmit
 ```
 
+**Lint rule (always apply):** `pnpm lint` must be clean after every change. Fix all lint warnings and errors, whether they are newly introduced or already existed in the touched code, before finishing.
+
 **Agent rule (always apply):** Before finishing a session where any code was changed, run targeted tests that cover the changed functionality and ensure they are passing.
 
 ---

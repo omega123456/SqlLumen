@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom'
 import 'jest-canvas-mock'
 import { act, cleanup } from '@testing-library/react'
+import { useEffect } from 'react'
 import { afterEach, vi } from 'vitest'
 
 import { setupIpc } from './ipc-mock'
@@ -249,27 +250,35 @@ vi.mock('@monaco-editor/react', async () => {
         }),
       }
 
-      const editorRef: {
+      type EditorRef = {
         _model: MockModel
         setModel: (model: MockModel) => void
         onDidUpdateDiff: (cb: () => void) => { dispose: () => void }
         getLineChanges: () => null
         getOriginalEditor: () => typeof mockOriginalEditor
         getModifiedEditor: () => typeof mockModifiedEditor
-      } = {
-        _model: null,
-        setModel(model: MockModel) {
-          editorRef._model = model
-        },
-        onDidUpdateDiff: vi.fn(() => ({ dispose: vi.fn() })),
-        getLineChanges: vi.fn(() => null),
-        getOriginalEditor: vi.fn(() => mockOriginalEditor),
-        getModifiedEditor: vi.fn(() => mockModifiedEditor),
       }
 
-      React.useEffect(() => {
-        if (onMount) {
-          onMount(editorRef)
+      const editorRef = React.useRef<EditorRef | null>(null)
+
+      if (editorRef.current === null) {
+        const ref: EditorRef = {
+          _model: null,
+          setModel(model: MockModel) {
+            ref._model = model
+          },
+          onDidUpdateDiff: vi.fn(() => ({ dispose: vi.fn() })),
+          getLineChanges: vi.fn(() => null),
+          getOriginalEditor: vi.fn(() => mockOriginalEditor),
+          getModifiedEditor: vi.fn(() => mockModifiedEditor),
+        }
+
+        editorRef.current = ref
+      }
+
+      useEffect(() => {
+        if (onMount && editorRef.current) {
+          onMount(editorRef.current)
         }
       }, [onMount])
 
