@@ -714,4 +714,26 @@ describe('getCellEditorForColumn', () => {
 
     expect(document.querySelector('.td-cell-editor-input')).toBeTruthy()
   })
+
+  it('returns the JSON editor config for JSON columns', () => {
+    const column = makeColumnMeta({ name: 'payload', dataType: 'JSON' })
+    const config = getCellEditorForColumn(column, callbacks)
+
+    expect(config.editorType).toBe('json')
+    expect(config.editorOptions).toEqual({
+      closeOnExternalRowChange: false,
+      commitOnOutsideClick: false,
+    })
+
+    render(
+      config.renderEditCell({
+        row: { payload: '{"ok":true}' },
+        column: { key: 'payload' },
+        onRowChange: vi.fn(),
+        onClose: vi.fn(),
+      })
+    )
+
+    expect(screen.getByTestId('json-cell-editor')).toBeInTheDocument()
+  })
 })

@@ -27,7 +27,6 @@ import type * as Monaco from 'monaco-editor'
 export type MonacoThemeName = 'precision-studio-dark' | 'precision-studio-light'
 
 export function registerMonacoThemes(monaco: typeof Monaco): void {
-  // Dark theme
   monaco.editor.defineTheme('precision-studio-dark', {
     base: 'vs-dark',
     inherit: true,
@@ -81,7 +80,6 @@ export function registerMonacoThemes(monaco: typeof Monaco): void {
     },
   })
 
-  // Light theme
   monaco.editor.defineTheme('precision-studio-light', {
     base: 'vs',
     inherit: true,

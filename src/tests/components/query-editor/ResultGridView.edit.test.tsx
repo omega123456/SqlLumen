@@ -237,6 +237,43 @@ describe('ResultGridView editing', () => {
     expect(getGridProps().columns[0].editorType).toBe('enum')
   })
 
+  it('marks editable JSON result columns for the json editor type', () => {
+    const jsonColumns: ColumnMeta[] = [{ name: 'payload', dataType: 'JSON' }]
+    const jsonTableColumns: TableDataColumnMeta[] = [
+      {
+        name: 'payload',
+        dataType: 'JSON',
+        isBooleanAlias: false,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+    ]
+
+    render(
+      <ResultGridView
+        {...props}
+        columns={jsonColumns}
+        rows={[[`{"name":"Ada"}`]]}
+        editState={{
+          rowKey: { payload: `{"name":"Ada"}` },
+          originalValues: { payload: `{"name":"Ada"}` },
+          currentValues: { payload: `{"name":"Ada"}` },
+          modifiedColumns: new Set(),
+          isNewRow: false,
+        }}
+        editTableColumns={jsonTableColumns}
+        editColumnBindings={new Map([[0, 'payload']])}
+      />
+    )
+
+    expect(getGridProps().columns[0].editorType).toBe('json')
+  })
+
   it('overlays current edit values onto the editing row data', () => {
     const editedState: RowEditState = {
       ...editState,

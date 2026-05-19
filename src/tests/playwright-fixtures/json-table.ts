@@ -1,0 +1,92 @@
+import type { PlaywrightListColumn, PlaywrightTableDataResult } from './types'
+
+export const JSON_TABLE_LIST_COLUMNS: PlaywrightListColumn[] = [
+  {
+    name: 'id',
+    dataType: 'bigint',
+    nullable: false,
+    columnKey: 'PRI',
+    defaultValue: null,
+    extra: 'auto_increment',
+    ordinalPosition: 1,
+  },
+  {
+    name: 'profile',
+    dataType: 'json',
+    nullable: true,
+    columnKey: '',
+    defaultValue: null,
+    extra: '',
+    ordinalPosition: 2,
+  },
+  {
+    name: 'updated_at',
+    dataType: 'datetime',
+    nullable: true,
+    columnKey: '',
+    defaultValue: null,
+    extra: '',
+    ordinalPosition: 3,
+  },
+]
+
+export const JSON_TABLE_DATA: PlaywrightTableDataResult = {
+  columns: [
+    {
+      name: 'id',
+      dataType: 'BIGINT',
+      isBooleanAlias: false,
+      isNullable: false,
+      isPrimaryKey: true,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: true,
+    },
+    {
+      name: 'profile',
+      dataType: 'JSON',
+      isBooleanAlias: false,
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+    },
+    {
+      name: 'updated_at',
+      dataType: 'DATETIME',
+      isBooleanAlias: false,
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isAutoIncrement: false,
+    },
+  ],
+  rows: [
+    [
+      1,
+      '{"name":"Ada Lovelace","roles":["admin","analyst"],"flags":{"beta":true,"score":42},"theme":null}',
+      '2025-01-15 10:30:00',
+    ],
+    [
+      2,
+      '{"name":"Linus Torvalds","roles":["maintainer"],"flags":{"beta":false,"score":7},"theme":"light"}',
+      '2025-02-01 08:15:00',
+    ],
+  ],
+  currentPage: 1,
+  pageSize: 1000,
+  primaryKey: {
+    keyColumns: ['id'],
+    hasAutoIncrement: true,
+    isUniqueKeyFallback: false,
+  },
+  executionTimeMs: 18,
+}

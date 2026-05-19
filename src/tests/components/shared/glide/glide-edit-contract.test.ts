@@ -18,7 +18,7 @@ describe('glide-edit-contract', () => {
     const eligibility: EditEligibilityCheck = {
       isEditable: true,
       requiresAutosaveGuard: true,
-      editorType: 'text',
+      editorType: 'json',
     }
     const event: EditLifecycleEvent = {
       type: 'commit',
@@ -31,7 +31,7 @@ describe('glide-edit-contract', () => {
       type: 'paste',
       cells: [{ rowIdx: 0, columnKey: 'name', value: null }],
     }
-    expect(eligibility.editorType).toBe('text')
+    expect(eligibility.editorType).toBe('json')
     expect(event.type).toBe('commit')
     expect(action.type).toBe('paste')
   })

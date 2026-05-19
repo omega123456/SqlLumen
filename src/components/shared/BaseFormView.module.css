@@ -240,6 +240,10 @@
   gap: 8px;
 }
 
+.fieldValueRowTall {
+  align-items: flex-start;
+}
+
 /* Select appearance (shared with TextInput formField variant from TextInput.module.css) */
 .fieldSelect {
   appearance: auto;

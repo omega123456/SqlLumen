@@ -48,7 +48,7 @@ export interface GridColumn<TRow> {
   /** Full table-data column metadata used by cell editors. */
   tableColumnMeta?: unknown
   /** Vendor-neutral editor type used by grid adapters. */
-  editorType?: 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'none'
+  editorType?: 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'json' | 'none'
   /** Enum options for enum editors. */
   enumValues?: string[]
   /** SET options for multi-select editors. */

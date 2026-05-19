@@ -1,5 +1,6 @@
 import { BIT_TEST_LIST_COLUMNS, BIT_TEST_TABLE_DATA } from './bit-test'
 import { DEFAULT_TABLE_DATA, DEFAULT_TABLE_LIST_COLUMNS } from './default-table'
+import { JSON_TABLE_DATA, JSON_TABLE_LIST_COLUMNS } from './json-table'
 import {
   DEFAULT_OBJECT_BODY,
   DEFAULT_ROUTINE_PARAMETERS_WITH_RETURN_TYPE,
@@ -10,6 +11,7 @@ import { ORDERS_FOREIGN_KEYS, ORDERS_LIST_COLUMNS, ORDERS_TABLE_DATA } from './o
 import {
   createCurrentDatabaseQueryResult,
   DEFAULT_EXECUTE_QUERY_RESULT,
+  JSON_QUERY_RESULT,
   SCROLL_TEST_QUERY_RESULT,
 } from './query-results'
 import { DEFAULT_SCHEMA_INFO, SCHEMA_INFO_BY_OBJECT_TYPE } from './schema-info'
@@ -81,6 +83,7 @@ const DEFAULT_TABLE_DATA_BY_TABLE: Record<string, PlaywrightTableDataResult> = {
   scroll_test: SCROLL_TEST_TABLE_DATA,
   users: USERS_TABLE_DATA,
   bit_test: BIT_TEST_TABLE_DATA,
+  json_sample: JSON_TABLE_DATA,
   orders: ORDERS_TABLE_DATA,
   user_stats_view: USER_STATS_VIEW_TABLE_DATA,
 }
@@ -89,6 +92,7 @@ const DEFAULT_COLUMNS_BY_TABLE: Record<string, PlaywrightListColumn[]> = {
   users: USERS_LIST_COLUMNS,
   orders: ORDERS_LIST_COLUMNS,
   bit_test: BIT_TEST_LIST_COLUMNS,
+  json_sample: JSON_TABLE_LIST_COLUMNS,
 }
 
 const DEFAULT_FOREIGN_KEYS_BY_TABLE: Record<string, PlaywrightForeignKey[]> = {
@@ -99,6 +103,7 @@ const DEFAULT_FOREIGN_KEYS_BY_TABLE: Record<string, PlaywrightForeignKey[]> = {
 const DEFAULT_QUERY_RESULT_BY_KEY: Record<string, QueryResultFixtureFactory> = {
   current_database: (activeMockDb) => createCurrentDatabaseQueryResult(activeMockDb),
   scroll_test: () => SCROLL_TEST_QUERY_RESULT,
+  json_sample: () => JSON_QUERY_RESULT,
   default: () => DEFAULT_EXECUTE_QUERY_RESULT,
 }
 
@@ -125,6 +130,10 @@ function getQueryResultLookupKey(sql: string | null | undefined): string {
 
   if (/scroll_test/i.test(normalizedSql)) {
     return 'scroll_test'
+  }
+
+  if (/json_sample/i.test(normalizedSql)) {
+    return 'json_sample'
   }
 
   return 'default'

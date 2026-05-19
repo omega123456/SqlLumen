@@ -40,6 +40,10 @@ export function isWrappableTextSqlType(dataType: string): boolean {
   return WRAPPABLE_TEXT_TYPE_PREFIXES.some((prefix) => u.startsWith(prefix))
 }
 
+export function isJsonSqlType(dataType: string): boolean {
+  return normalizedUpperType(dataType) === 'JSON'
+}
+
 export function isStringishPrimarySqlType(dataType: string): boolean {
   const u = normalizedUpperType(dataType)
   return u.startsWith('VARCHAR') || u.startsWith('CHAR') || isWrappableTextSqlType(u)
@@ -62,6 +66,9 @@ export function getGridCellClass(
   }
   if (getTemporalColumnType(dataType)) {
     return 'td-cell-mono'
+  }
+  if (isJsonSqlType(dataType)) {
+    return 'td-cell-body td-cell-json'
   }
   if (isStringishPrimarySqlType(dataType)) {
     return 'td-cell-body td-cell-primary'
@@ -156,6 +163,15 @@ function getColumnWidthSizing(dataType: string, isNullable = false): ColumnWidth
     return {
       defaultWidth: 200,
       autoMinWidth: 180,
+      autoCharPx: 10,
+      autoPaddingPx: 40,
+    }
+  }
+
+  if (isJsonSqlType(upperType)) {
+    return {
+      defaultWidth: 200,
+      autoMinWidth: 200,
       autoCharPx: 10,
       autoPaddingPx: 40,
     }

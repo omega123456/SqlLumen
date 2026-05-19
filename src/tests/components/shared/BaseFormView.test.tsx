@@ -120,6 +120,29 @@ const enumColumns: GridColumnDescriptor[] = [
   },
 ]
 
+const jsonColumns: GridColumnDescriptor[] = [
+  {
+    key: 'id',
+    displayName: 'id',
+    dataType: 'INT',
+    editable: false,
+    isBinary: false,
+    isNullable: false,
+    isPrimaryKey: true,
+    isUniqueKey: false,
+  },
+  {
+    key: 'payload',
+    displayName: 'payload',
+    dataType: 'JSON',
+    editable: true,
+    isBinary: false,
+    isNullable: true,
+    isPrimaryKey: false,
+    isUniqueKey: false,
+  },
+]
+
 const fkColumns: GridColumnDescriptor[] = [
   {
     key: 'user_id',
@@ -529,6 +552,26 @@ describe('BaseFormView — NULL toggle', () => {
     })
     fireEvent.click(screen.getByTestId('btn-null-status'))
     expect(onUpdateCell).toHaveBeenCalledWith('status', 'active')
+  })
+
+  it('clicking NULL toggle on null JSON field restores a valid JSON default', () => {
+    const onUpdateCell = vi.fn()
+    const editState: RowEditState = {
+      rowKey: '1',
+      currentValues: { id: 1, payload: null },
+      originalValues: { id: 1, payload: null },
+    }
+    renderForm({
+      columns: jsonColumns,
+      currentRow: [1, null],
+      onSave: vi.fn(),
+      onUpdateCell,
+      editState,
+    })
+
+    fireEvent.click(screen.getByTestId('btn-null-payload'))
+
+    expect(onUpdateCell).toHaveBeenCalledWith('payload', '{}')
   })
 })
 
