@@ -182,7 +182,7 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
 - **Do not increase Playwright screenshot pixel tolerance** (or any visual diff threshold) to make tests pass; fix the UI/regression or intentionally update baselines instead.
 - **Do not change screenshot threshold values in `playwright.config.mjs` (`expect.toHaveScreenshot`, including the value at `playwright.config.mjs:52`) unless the user gives explicit permission in the current request.**
 - Add `data-testid` attributes on new layout surfaces when CSS modules prevent reliable selectors.
-- Update `playwright-ipc-mock.ts` for any new IPC command called from the UI (`VITE_PLAYWRIGHT=true` build).
+- Update `playwright-ipc-mock.ts` for any new IPC command called from the UI (`VITE_PLAYWRIGHT=true` build). When doing so, **never embed inline SQL-matching logic or fixture data directly in the `switch` cases** — all fixture data belongs in `src/tests/playwright-fixtures/` (one file per domain, e.g. `json-table.ts`, `users.ts`) and must be wired through the `FixtureRegistryApi` in `src/tests/playwright-fixtures/index.ts` so the data can be looked up and overridden per-test without touching the mock router.
 - After intentional visual changes, regenerate baselines: `pnpm test:e2e -- --update-snapshots` and commit the updated snapshot files. This rebuilds all snapshots (not just `screenshots.spec.ts`).
 - **Skip screenshots** only when the change is non-visual plumbing or DOM/CSS is identical (pure refactor). When in doubt, add a baseline.
 

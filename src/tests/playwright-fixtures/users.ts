@@ -1,4 +1,9 @@
-import type { PlaywrightForeignKey, PlaywrightListColumn, PlaywrightTableDataResult } from './types'
+import type {
+  PlaywrightAnalyzeQueryResult,
+  PlaywrightForeignKey,
+  PlaywrightListColumn,
+  PlaywrightTableDataResult,
+} from './types'
 
 export const USERS_LIST_COLUMNS: PlaywrightListColumn[] = [
   {
@@ -85,3 +90,80 @@ export const USERS_TABLE_DATA: PlaywrightTableDataResult = {
 }
 
 export const USERS_FOREIGN_KEYS: PlaywrightForeignKey[] = []
+
+export const USERS_ANALYZE_QUERY_RESULT: PlaywrightAnalyzeQueryResult = [
+  {
+    database: 'ecommerce_db',
+    table: 'users',
+    columns: [
+      {
+        name: 'id',
+        dataType: 'INT',
+        isBooleanAlias: false,
+        enumValues: null,
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: true,
+      },
+      {
+        name: 'name',
+        dataType: 'VARCHAR',
+        isBooleanAlias: false,
+        enumValues: null,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+      {
+        name: 'email',
+        dataType: 'VARCHAR',
+        isBooleanAlias: false,
+        enumValues: null,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+      {
+        name: 'status',
+        dataType: 'ENUM',
+        isBooleanAlias: false,
+        enumValues: ['active', 'inactive'],
+        isNullable: false,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+    ],
+    primaryKey: {
+      keyColumns: ['id'],
+      hasAutoIncrement: true,
+      isUniqueKeyFallback: false,
+    },
+    foreignKeys: [
+      {
+        name: 'fk_users_email',
+        columnName: 'email',
+        referencedDatabase: 'ecommerce_db',
+        referencedTable: 'users',
+        referencedColumn: 'id',
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE',
+      },
+    ],
+  },
+]

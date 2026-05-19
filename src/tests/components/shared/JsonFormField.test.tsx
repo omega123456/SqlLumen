@@ -52,12 +52,14 @@ function createMonacoEditorMock() {
                 valueRef.current = nextValue
                 setValue(nextValue)
               },
+              addCommand: vi.fn(),
             },
             {
               editor: {
                 defineTheme: mockDefineTheme,
                 setTheme: mockSetTheme,
               },
+              KeyCode: { F1: 59 },
             }
           )
         }}

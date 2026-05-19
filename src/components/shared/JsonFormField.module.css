@@ -3,6 +3,10 @@
   min-width: 0;
 }
 
+.readOnly {
+  opacity: 0.6;
+}
+
 .readPanel {
   min-width: 0;
 }

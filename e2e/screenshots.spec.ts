@@ -2063,28 +2063,34 @@ for (const theme of themes) {
     })
 
     test('ResultFormView — JSON field in read mode', async ({ page }) => {
+      // Use a taller viewport so the 300px JSON panel fits within the form content area.
+      await page.setViewportSize({ width: 1280, height: 1400 })
       await openQueryEditorWithJsonResults(page)
       await page.getByTestId('view-mode-form').click()
       await expect(page.getByTestId('result-form-view')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('form-input-profile')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('form-input-profile')).toHaveScreenshot(
-        `result-form-view-json-readonly-${theme}.png`,
-        { animations: 'disabled' }
-      )
+      const panelLocator = page.getByTestId('form-input-profile-panel')
+      await expect(panelLocator).toBeVisible({ timeout: APP_READY_MS })
+      await panelLocator.scrollIntoViewIfNeeded()
+      await expect(panelLocator).toHaveScreenshot(`result-form-view-json-readonly-${theme}.png`, {
+        animations: 'disabled',
+      })
     })
 
     test('ResultFormView — JSON field in edit mode', async ({ page }) => {
+      // Use a taller viewport so the 300px JSON editor fits within the form content area.
+      await page.setViewportSize({ width: 1280, height: 1400 })
       await openQueryEditorWithJsonResults(page)
       await enableQueryResultEditMode(page)
       await page.getByTestId('view-mode-form').click()
       await expect(page.getByTestId('result-form-view')).toBeVisible({ timeout: APP_READY_MS })
       await expect(page.getByTestId('form-input-profile')).toBeVisible({ timeout: APP_READY_MS })
-      await page.getByTestId('form-input-profile').click()
       await expect(page.getByTestId('btn-form-save')).toBeVisible({ timeout: APP_READY_MS })
-      await expect(page.getByTestId('form-input-profile')).toHaveScreenshot(
-        `result-form-view-json-editor-${theme}.png`,
-        { animations: 'disabled' }
-      )
+      const editorLocator = page.getByTestId('form-input-profile-editor')
+      await expect(editorLocator).toBeVisible({ timeout: APP_READY_MS })
+      await editorLocator.scrollIntoViewIfNeeded()
+      await expect(editorLocator).toHaveScreenshot(`result-form-view-json-editor-${theme}.png`, {
+        animations: 'disabled',
+      })
     })
 
     test('full app layout — table data grid', async ({ page }) => {

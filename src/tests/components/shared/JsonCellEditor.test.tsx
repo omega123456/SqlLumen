@@ -35,6 +35,7 @@ vi.mock('@monaco-editor/react', async () => {
 
       const editor = {
         focus: mockFocus,
+        addCommand: vi.fn(),
         onDidBlurEditorWidget: (cb: () => void) => {
           blurHandler = cb
           return {
@@ -47,6 +48,7 @@ vi.mock('@monaco-editor/react', async () => {
           defineTheme: mockDefineTheme,
           setTheme: mockSetTheme,
         },
+        KeyCode: { F1: 59 },
       }
 
       onMount(editor, monaco)

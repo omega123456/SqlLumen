@@ -1,4 +1,8 @@
-import type { PlaywrightListColumn, PlaywrightTableDataResult } from './types'
+import type {
+  PlaywrightAnalyzeQueryResult,
+  PlaywrightListColumn,
+  PlaywrightTableDataResult,
+} from './types'
 
 export const JSON_TABLE_LIST_COLUMNS: PlaywrightListColumn[] = [
   {
@@ -90,3 +94,57 @@ export const JSON_TABLE_DATA: PlaywrightTableDataResult = {
   },
   executionTimeMs: 18,
 }
+
+export const JSON_ANALYZE_QUERY_RESULT: PlaywrightAnalyzeQueryResult = [
+  {
+    database: 'ecommerce_db',
+    table: 'json_sample',
+    columns: [
+      {
+        name: 'id',
+        dataType: 'BIGINT',
+        isBooleanAlias: false,
+        enumValues: null,
+        isNullable: false,
+        isPrimaryKey: true,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: true,
+      },
+      {
+        name: 'profile',
+        dataType: 'JSON',
+        isBooleanAlias: false,
+        enumValues: null,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+      {
+        name: 'updated_at',
+        dataType: 'DATETIME',
+        isBooleanAlias: false,
+        enumValues: null,
+        isNullable: true,
+        isPrimaryKey: false,
+        isUniqueKey: false,
+        hasDefault: false,
+        columnDefault: null,
+        isBinary: false,
+        isAutoIncrement: false,
+      },
+    ],
+    primaryKey: {
+      keyColumns: ['id'],
+      hasAutoIncrement: true,
+      isUniqueKeyFallback: false,
+    },
+    foreignKeys: [],
+  },
+]
