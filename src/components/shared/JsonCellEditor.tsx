@@ -180,7 +180,16 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
     onRowChange({ ...row, [fieldName]: restoreValue }, false)
     syncToStore(restoreValue)
     onClose(false, false)
-  }, [fieldName, initialNull, onClose, onRowChange, prettyPrintedOriginal, restoreValue, row, syncToStore])
+  }, [
+    fieldName,
+    initialNull,
+    onClose,
+    onRowChange,
+    prettyPrintedOriginal,
+    restoreValue,
+    row,
+    syncToStore,
+  ])
 
   const handleToggleNull = useCallback(() => {
     if (isNull) {
@@ -225,18 +234,21 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
     [commitValue]
   )
 
-  const handleEditorMount: OnMount = useCallback((editor, monaco) => {
-    editorRef.current = editor
-    monacoRef.current = monaco
-    registerMonacoThemes(monaco)
-    monaco.editor.setTheme(monacoThemeName)
-    blurListenerDisposeRef.current?.()
-    const blurListener = editor.onDidBlurEditorWidget(() => {
-      handleBlur(document.activeElement)
-    })
-    blurListenerDisposeRef.current = () => blurListener.dispose()
-    editor.focus()
-  }, [handleBlur, monacoThemeName])
+  const handleEditorMount: OnMount = useCallback(
+    (editor, monaco) => {
+      editorRef.current = editor
+      monacoRef.current = monaco
+      registerMonacoThemes(monaco)
+      monaco.editor.setTheme(monacoThemeName)
+      blurListenerDisposeRef.current?.()
+      const blurListener = editor.onDidBlurEditorWidget(() => {
+        handleBlur(document.activeElement)
+      })
+      blurListenerDisposeRef.current = () => blurListener.dispose()
+      editor.focus()
+    },
+    [handleBlur, monacoThemeName]
+  )
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {

@@ -270,11 +270,7 @@ describe('JsonCellEditor', () => {
     await waitFor(() => {
       expect(props.onRowChange).toHaveBeenLastCalledWith({ payload: '{\n  "alpha": 1\n}' })
     })
-    expect(props.updateCellValue).toHaveBeenLastCalledWith(
-      'tab-1',
-      'payload',
-      '{\n  "alpha": 1\n}'
-    )
+    expect(props.updateCellValue).toHaveBeenLastCalledWith('tab-1', 'payload', '{\n  "alpha": 1\n}')
   })
 
   it('toggles null JSON values back to a valid default object', async () => {

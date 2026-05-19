@@ -108,11 +108,33 @@ export function ResultGridView({
   isActive = true,
 }: ResultGridViewProps) {
   const storeSetSelectedCell = useQueryStore((state) => state.setSelectedCell)
+  const storeSetResultScrollCell = useQueryStore((state) => state.setResultScrollCell)
   const selectedCell = useQueryStore((state) => {
     const tab = state.tabs[tabId]
     const activeResultIndex = tab?.activeResultIndex ?? 0
     return tab?.results[activeResultIndex]?.selectedCell ?? null
   })
+  const storeScrollRow = useQueryStore((state) => {
+    const tab = state.tabs[tabId]
+    const activeResultIndex = tab?.activeResultIndex ?? 0
+    return tab?.results[activeResultIndex]?.scrollRow ?? 0
+  })
+  const storeScrollCol = useQueryStore((state) => {
+    const tab = state.tabs[tabId]
+    const activeResultIndex = tab?.activeResultIndex ?? 0
+    return tab?.results[activeResultIndex]?.scrollCol ?? 0
+  })
+  const initialScrollCell = useMemo(
+    () => ({ scrollRow: storeScrollRow, scrollCol: storeScrollCol }),
+    [storeScrollRow, storeScrollCol]
+  )
+
+  const handleScrollCellChange = useCallback(
+    (scrollRow: number, scrollCol: number) => {
+      storeSetResultScrollCell(tabId, scrollRow, scrollCol)
+    },
+    [storeSetResultScrollCell, tabId]
+  )
 
   // Refs for stable access in callbacks without re-creating them
   const editStateRef = useRef(editState)
@@ -710,6 +732,8 @@ export function ResultGridView({
         autoSizeConfig={autoSizeConfig}
         showReadOnlyHeaders={!!editMode}
         isActive={isActive}
+        onScrollCellChange={handleScrollCellChange}
+        initialScrollCell={initialScrollCell}
         testId="result-grid"
       />
     </EditorCallbacksContext.Provider>

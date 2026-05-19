@@ -137,13 +137,7 @@ describe('UnsavedChangesDialog', () => {
   it('prefers the external error over the internal error state', async () => {
     const onSave = vi.fn().mockRejectedValue(new Error('Internal error'))
 
-    render(
-      <UnsavedChangesDialog
-        {...defaultProps}
-        onSave={onSave}
-        error="External error"
-      />
-    )
+    render(<UnsavedChangesDialog {...defaultProps} onSave={onSave} error="External error" />)
 
     await clickSave()
 
@@ -156,7 +150,11 @@ describe('UnsavedChangesDialog', () => {
     render(
       <UnsavedChangesDialog
         {...defaultProps}
-        message={<span>You have <strong>unsaved</strong> edits.</span>}
+        message={
+          <span>
+            You have <strong>unsaved</strong> edits.
+          </span>
+        }
       />
     )
 

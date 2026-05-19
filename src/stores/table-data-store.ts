@@ -602,7 +602,6 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     refreshData: async (tabId) => {
       const tab = get().tabs[tabId]
       if (!tab) return
-      patchTab(tabId, RESET_SCROLL_CELL)
       await get().fetchPage(tabId, tab.currentPage)
     },
 

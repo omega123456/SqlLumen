@@ -113,6 +113,8 @@ const RESULT_KEYS = new Set<string>([
   'saveError',
   'editConnectionId',
   'editingRowIndex',
+  'scrollRow',
+  'scrollCol',
 ])
 
 /**

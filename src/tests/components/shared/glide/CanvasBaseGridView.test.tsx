@@ -1798,13 +1798,10 @@ describe('CanvasBaseGridView', () => {
     })
 
     expect(onCellValueChange).toHaveBeenCalledWith(0, 'name', 'alpha,beta')
-    expect(onRowsChange).toHaveBeenCalledWith(
-      [{ ...multiSelectRows[0], name: 'alpha,beta' }],
-      {
-        indexes: [0],
-        column: expect.objectContaining({ key: 'name' }),
-      }
-    )
+    expect(onRowsChange).toHaveBeenCalledWith([{ ...multiSelectRows[0], name: 'alpha,beta' }], {
+      indexes: [0],
+      column: expect.objectContaining({ key: 'name' }),
+    })
   })
 
   it('guards cell clicks and restores focus when navigation is denied', async () => {
@@ -2335,6 +2332,79 @@ describe('CanvasBaseGridView', () => {
 
       act(() => firstProps.onVisibleRegionChanged({ x: 3, y: 9, width: 10, height: 5 }, 0, 0))
       expect(onScrollCellChange).toHaveBeenCalledWith(9, 3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('retries scroll restoration when initial rAF fires before DataEditor is ready', async () => {
+    vi.useFakeTimers()
+    const manyRows = Array.from({ length: 20 }, (_, index) => ({
+      id: index + 1,
+      name: `row-${index + 1}`,
+      info: 'SELECT 1',
+    }))
+    const onScrollCellChange = vi.fn()
+
+    try {
+      // Simulate the scrollToCell call being a no-op on the first rAF
+      // (DataEditor not mounted yet due to ResizeObserver timing).
+      mockScrollToCell.mockImplementationOnce(() => {
+        // no-op: DataEditor is not ready
+      })
+
+      render(
+        <CanvasBaseGridView
+          rows={manyRows}
+          columns={columns}
+          editState={null}
+          initialScrollCell={{ scrollRow: 7, scrollCol: 0 }}
+          onScrollCellChange={onScrollCellChange}
+        />
+      )
+
+      // Run the first rAF (scrollToCell is a no-op) and the second rAF
+      await act(async () => {
+        vi.runAllTimers()
+        await Promise.resolve()
+      })
+
+      // scrollToCell was called but was a no-op
+      expect(mockScrollToCell).toHaveBeenCalledWith({ rowIdx: 7, idx: 0 })
+
+      // Now simulate the DataEditor becoming ready — it fires onVisibleRegionChanged
+      // at position (0,0) since it just rendered fresh
+      const props = mockGlideDataGrid.mock.lastCall?.[0] as {
+        onVisibleRegionChanged: (
+          range: { x: number; y: number; width: number; height: number },
+          tx: number,
+          ty: number
+        ) => void
+      }
+
+      act(() => props.onVisibleRegionChanged({ x: 0, y: 0, width: 10, height: 5 }, 0, 0))
+
+      // The (0,0) position must NOT be persisted to the store
+      expect(onScrollCellChange).not.toHaveBeenCalled()
+
+      // The retry rAF should now fire and scroll to the correct position
+      await act(async () => {
+        vi.runAllTimers()
+        await Promise.resolve()
+      })
+
+      expect(mockScrollToCell).toHaveBeenCalledTimes(2)
+      expect(mockScrollToCell).toHaveBeenLastCalledWith({ rowIdx: 7, idx: 0 })
+
+      // Simulate the grid reaching the target position
+      act(() => props.onVisibleRegionChanged({ x: 0, y: 7, width: 10, height: 5 }, 0, 0))
+
+      // The target position should still not be persisted (it was a restore, not user scroll)
+      expect(onScrollCellChange).not.toHaveBeenCalled()
+
+      // Now a user-initiated scroll should be persisted normally
+      act(() => props.onVisibleRegionChanged({ x: 2, y: 10, width: 10, height: 5 }, 0, 0))
+      expect(onScrollCellChange).toHaveBeenCalledWith(10, 2)
     } finally {
       vi.useRealTimers()
     }

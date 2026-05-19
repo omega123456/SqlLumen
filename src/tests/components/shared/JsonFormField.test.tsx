@@ -14,7 +14,7 @@ function createMonacoEditorMock() {
   return (props: Record<string, unknown>) => {
     mockEditorComponent(props)
     const [value, setValue] = useState(
-      ((props.value as string | undefined) ?? (props.defaultValue as string | undefined) ?? '')
+      (props.value as string | undefined) ?? (props.defaultValue as string | undefined) ?? ''
     )
     const valueRef = useRef(value)
 
@@ -75,7 +75,14 @@ describe('JsonFormField', () => {
   })
 
   it('renders pretty-printed syntax-highlighted JSON in read mode', () => {
-    render(<JsonFormField value='{"name":"Ada","age":42}' isEditable={false} isNull={false} onChange={vi.fn()} />)
+    render(
+      <JsonFormField
+        value='{"name":"Ada","age":42}'
+        isEditable={false}
+        isNull={false}
+        onChange={vi.fn()}
+      />
+    )
 
     const field = screen.getByTestId('json-form-field')
     expect(screen.getByTestId('json-form-field-panel')).toHaveClass('ui-elevated-surface')
@@ -132,9 +139,7 @@ describe('JsonFormField', () => {
   it('does not remount or reset during debounced parent echoes while typing', async () => {
     function Harness() {
       const [value, setValue] = useState('{"a":1}')
-      return (
-        <JsonFormField value={value} isEditable={true} isNull={false} onChange={setValue} />
-      )
+      return <JsonFormField value={value} isEditable={true} isNull={false} onChange={setValue} />
     }
 
     render(<Harness />)
@@ -153,9 +158,7 @@ describe('JsonFormField', () => {
   it('handles controlled parent echoes without triggering an update loop', async () => {
     function Harness() {
       const [value, setValue] = useState('{"a":1}')
-      return (
-        <JsonFormField value={value} isEditable={true} isNull={false} onChange={setValue} />
-      )
+      return <JsonFormField value={value} isEditable={true} isNull={false} onChange={setValue} />
     }
 
     render(<Harness />)

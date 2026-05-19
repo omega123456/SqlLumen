@@ -265,79 +265,89 @@ export function ColumnEditor({ tabId }: ColumnEditorProps) {
     [getCellSelector]
   )
 
-  const isCellFocusable = useCallback((rowIndex: number, cellKey: EditableCellKey) => {
-    const element = getCellElement(rowIndex, cellKey)
-    if (!element) {
-      return false
-    }
+  const isCellFocusable = useCallback(
+    (rowIndex: number, cellKey: EditableCellKey) => {
+      const element = getCellElement(rowIndex, cellKey)
+      if (!element) {
+        return false
+      }
 
-    if (
-      (element instanceof HTMLInputElement ||
-        element instanceof HTMLButtonElement ||
-        element instanceof HTMLSelectElement) &&
-      element.disabled
-    ) {
-      return false
-    }
+      if (
+        (element instanceof HTMLInputElement ||
+          element instanceof HTMLButtonElement ||
+          element instanceof HTMLSelectElement) &&
+        element.disabled
+      ) {
+        return false
+      }
 
-    return true
-  }, [getCellElement])
+      return true
+    },
+    [getCellElement]
+  )
 
-  const focusCell = useCallback((target: ActiveCell) => {
-    const element = getCellElement(target.rowIndex, target.cellKey)
-    if (!element) {
-      setPendingFocusCell(target)
-      return
-    }
+  const focusCell = useCallback(
+    (target: ActiveCell) => {
+      const element = getCellElement(target.rowIndex, target.cellKey)
+      if (!element) {
+        setPendingFocusCell(target)
+        return
+      }
 
-    element.focus()
-    if (element instanceof HTMLInputElement && element.type !== 'checkbox') {
-      element.select()
-    }
-  }, [getCellElement])
+      element.focus()
+      if (element instanceof HTMLInputElement && element.type !== 'checkbox') {
+        element.select()
+      }
+    },
+    [getCellElement]
+  )
 
   const findAdjacentCell = useCallback(
     (rowIndex: number, cellKey: EditableCellKey, direction: -1 | 1): ActiveCell | null => {
-    const currentCellIndex = EDITABLE_CELL_ORDER.indexOf(cellKey)
-    if (currentCellIndex === -1) {
+      const currentCellIndex = EDITABLE_CELL_ORDER.indexOf(cellKey)
+      if (currentCellIndex === -1) {
+        return null
+      }
+
+      for (
+        let absoluteIndex = rowIndex * EDITABLE_CELL_ORDER.length + currentCellIndex + direction;
+        absoluteIndex >= 0;
+        absoluteIndex += direction
+      ) {
+        const nextRowIndex = Math.floor(absoluteIndex / EDITABLE_CELL_ORDER.length)
+        const nextCellIndex = absoluteIndex % EDITABLE_CELL_ORDER.length
+
+        if (nextRowIndex < 0 || nextRowIndex >= columns.length) {
+          break
+        }
+
+        const nextCellKey = EDITABLE_CELL_ORDER[nextCellIndex]
+        if (!nextCellKey) {
+          continue
+        }
+
+        if (isCellFocusable(nextRowIndex, nextCellKey)) {
+          return { rowIndex: nextRowIndex, cellKey: nextCellKey }
+        }
+      }
+
       return null
-    }
-
-    for (
-      let absoluteIndex = rowIndex * EDITABLE_CELL_ORDER.length + currentCellIndex + direction;
-      absoluteIndex >= 0;
-      absoluteIndex += direction
-    ) {
-      const nextRowIndex = Math.floor(absoluteIndex / EDITABLE_CELL_ORDER.length)
-      const nextCellIndex = absoluteIndex % EDITABLE_CELL_ORDER.length
-
-      if (nextRowIndex < 0 || nextRowIndex >= columns.length) {
-        break
-      }
-
-      const nextCellKey = EDITABLE_CELL_ORDER[nextCellIndex]
-      if (!nextCellKey) {
-        continue
-      }
-
-      if (isCellFocusable(nextRowIndex, nextCellKey)) {
-        return { rowIndex: nextRowIndex, cellKey: nextCellKey }
-      }
-    }
-
-    return null
-  }, [columns.length, isCellFocusable])
+    },
+    [columns.length, isCellFocusable]
+  )
 
   const findSameCellInNextRow = useCallback(
     (rowIndex: number, cellKey: EditableCellKey): ActiveCell | null => {
-    for (let nextRowIndex = rowIndex + 1; nextRowIndex < columns.length; nextRowIndex += 1) {
-      if (isCellFocusable(nextRowIndex, cellKey)) {
-        return { rowIndex: nextRowIndex, cellKey }
+      for (let nextRowIndex = rowIndex + 1; nextRowIndex < columns.length; nextRowIndex += 1) {
+        if (isCellFocusable(nextRowIndex, cellKey)) {
+          return { rowIndex: nextRowIndex, cellKey }
+        }
       }
-    }
 
-    return null
-  }, [columns.length, isCellFocusable])
+      return null
+    },
+    [columns.length, isCellFocusable]
+  )
 
   const setEditStartValue = (rowIndex: number, cellKey: EditableCellKey, value: string) => {
     editStartValuesRef.current[`${rowIndex}:${cellKey}`] = value

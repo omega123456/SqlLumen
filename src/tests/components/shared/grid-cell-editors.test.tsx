@@ -555,9 +555,7 @@ describe('getCellEditorForColumn', () => {
     syncCellValue: vi.fn(),
   }
 
-  function makeColumnMeta(
-    overrides: Partial<TableDataColumnMeta> = {}
-  ): TableDataColumnMeta {
+  function makeColumnMeta(overrides: Partial<TableDataColumnMeta> = {}): TableDataColumnMeta {
     return {
       name: 'name',
       dataType: 'VARCHAR',

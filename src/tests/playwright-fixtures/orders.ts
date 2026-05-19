@@ -1,8 +1,4 @@
-import type {
-  PlaywrightForeignKey,
-  PlaywrightListColumn,
-  PlaywrightTableDataResult,
-} from './types'
+import type { PlaywrightForeignKey, PlaywrightListColumn, PlaywrightTableDataResult } from './types'
 
 export const ORDERS_LIST_COLUMNS: PlaywrightListColumn[] = [
   {

@@ -1593,3 +1593,38 @@ describe('useQueryStore — setTabStatus', () => {
     expect(useQueryStore.getState().tabs['nonexistent']).toBeUndefined()
   })
 })
+
+describe('useQueryStore — setResultScrollCell', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    useQueryStore.setState({ tabs: {} })
+    useQueryStore.getState().setContent('tab-1', 'SELECT 1')
+    patchResult('tab-1', { resultStatus: 'success' })
+  })
+
+  it('persists scroll position on the active result', () => {
+    useQueryStore.getState().setResultScrollCell('tab-1', 10, 5)
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    expect(result.scrollRow).toBe(10)
+    expect(result.scrollCol).toBe(5)
+  })
+
+  it('does not create a new state reference when values are unchanged', () => {
+    useQueryStore.getState().setResultScrollCell('tab-1', 10, 5)
+    const before = useQueryStore.getState().tabs['tab-1']!.results[0]
+    useQueryStore.getState().setResultScrollCell('tab-1', 10, 5)
+    const after = useQueryStore.getState().tabs['tab-1']!.results[0]
+    expect(before).toBe(after)
+  })
+
+  it('no-ops for non-existent tab', () => {
+    useQueryStore.getState().setResultScrollCell('nonexistent', 10, 5)
+    expect(useQueryStore.getState().tabs['nonexistent']).toBeUndefined()
+  })
+
+  it('defaults scroll position to zero', () => {
+    const result = useQueryStore.getState().tabs['tab-1']!.results[0]
+    expect(result.scrollRow).toBe(0)
+    expect(result.scrollCol).toBe(0)
+  })
+})

@@ -118,7 +118,9 @@ const overrides: FixtureOverrides = {
 }
 
 function normalizeLookupKey(value: string | null | undefined): string {
-  return String(value ?? '').trim().toLowerCase()
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
 }
 
 function getQueryResultLookupKey(sql: string | null | undefined): string {
@@ -176,9 +178,7 @@ export function getForeignKeysFixture(table: string | null | undefined): Playwri
   return getOverrideOrDefault(overrides.foreignKeys, DEFAULT_FOREIGN_KEYS_BY_TABLE, tableKey, [])
 }
 
-export function getSchemaInfoFixture(
-  objectType: string | null | undefined
-): PlaywrightSchemaInfo {
+export function getSchemaInfoFixture(objectType: string | null | undefined): PlaywrightSchemaInfo {
   const objectTypeKey = normalizeLookupKey(objectType)
 
   return getOverrideOrDefault(

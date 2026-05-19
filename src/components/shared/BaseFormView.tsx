@@ -419,7 +419,9 @@ function FormField({
           </div>
         ) : isJsonColumn ? (
           <JsonFormField
-            value={typeof rawValue === 'string' || rawValue === null ? rawValue : displayValue(rawValue)}
+            value={
+              typeof rawValue === 'string' || rawValue === null ? rawValue : displayValue(rawValue)
+            }
             isEditable={isEditable}
             isNull={isNull}
             onChange={(nextValue) => onInputChange(col.key, nextValue)}

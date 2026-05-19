@@ -480,10 +480,14 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     const restoreFrameId = requestAnimationFrame(() => {
       gridRef.current?.scrollToCell({ rowIdx: normalized.scrollRow, idx: normalized.scrollCol })
       releaseSuppressionFrameId = requestAnimationFrame(() => {
-        if (isSameScrollCell(pendingInitialScrollRestoreRef.current, normalized)) {
-          pendingInitialScrollRestoreRef.current = null
+        // Only release suppression if the pending restore already resolved
+        // (handleVisibleRegionChanged saw the target position). When the
+        // DataEditor was not yet mounted during the scrollToCell call above,
+        // pendingInitialScrollRestoreRef is still set and suppression must stay
+        // active so handleVisibleRegionChanged can retry the scroll.
+        if (pendingInitialScrollRestoreRef.current === null) {
+          suppressScrollPersistenceRef.current = false
         }
-        suppressScrollPersistenceRef.current = false
       })
     })
 
@@ -963,10 +967,21 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
 
       if (isSameScrollCell(pendingInitialScrollRestoreRef.current, scrollCell)) {
         pendingInitialScrollRestoreRef.current = null
+        suppressScrollPersistenceRef.current = false
         return
       }
 
       if (suppressScrollPersistenceRef.current) {
+        // The grid rendered at a different position than the pending restore target.
+        // This happens when the initial rAF scroll fired before the DataEditor was
+        // ready (e.g. ResizeObserver had not yet reported a size). Retry now that
+        // the grid is actually rendering visible content.
+        const pending = pendingInitialScrollRestoreRef.current
+        if (pending) {
+          requestAnimationFrame(() => {
+            gridRef.current?.scrollToCell({ rowIdx: pending.scrollRow, idx: pending.scrollCol })
+          })
+        }
         return
       }
 

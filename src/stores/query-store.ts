@@ -188,6 +188,13 @@ export interface SingleResultState {
   editConnectionId: string | null
   /** Index of the row being edited in the current page's rows array. */
   editingRowIndex: number | null
+
+  // --- Scroll position ---
+
+  /** Persisted vertical scroll cell index (row). */
+  scrollRow: number
+  /** Persisted horizontal scroll cell index (column). */
+  scrollCol: number
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +270,8 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   isStale: false,
   editConnectionId: null,
   editingRowIndex: null,
+  scrollRow: 0,
+  scrollCol: 0,
 }
 
 const DEFAULT_TAB_STATE: TabQueryState = {
@@ -603,6 +612,9 @@ interface QueryState {
 
   /** Set the selected cell info (column + value) for filter dialog auto-population. */
   setSelectedCell: (tabId: string, cell: SelectedCellInfo | null) => void
+
+  /** Persist the scroll position (cell indices) for the active result. */
+  setResultScrollCell: (tabId: string, scrollRow: number, scrollCol: number) => void
 
   /** Apply client-side filter conditions to a query result. */
   applyQueryFilters: (tabId: string, resultIndex: number, conditions: FilterCondition[]) => void
@@ -1465,6 +1477,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         return
       }
       patchResultByIndex(tabId, resultIndex, { selectedCell: cell })
+    },
+
+    setResultScrollCell: (tabId: string, scrollRow: number, scrollCol: number) => {
+      const resultIndex = getActiveIndex(tabId)
+      const result = get().tabs[tabId]?.results[resultIndex]
+      if (!result) return
+      if (result.scrollRow === scrollRow && result.scrollCol === scrollCol) return
+      patchResultByIndex(tabId, resultIndex, { scrollRow, scrollCol })
     },
 
     applyQueryFilters: (tabId: string, resultIndex: number, conditions: FilterCondition[]) => {
