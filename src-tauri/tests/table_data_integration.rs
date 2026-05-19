@@ -1,7 +1,6 @@
 //! Integration tests for table data operations — filter translation and coverage stubs.
 
 use sqllumen_lib::commands::table_data::interpolate_sql_params;
-#[cfg(not(coverage))]
 use sqllumen_lib::mysql::table_data::{parse_enum_values, parse_set_values};
 use sqllumen_lib::mysql::table_data::{
     translate_filter_model, translate_filter_model_with_columns, ExportTableOptions,
@@ -2135,7 +2134,6 @@ fn translate_filter_model_with_columns_json_is_not_null_only() {
     assert!(!clause.sql.contains("`profile` != ''"));
 }
 
-#[cfg(not(coverage))]
 #[test]
 fn parse_enum_values_extracts_options_and_escaped_quotes() {
     let values = parse_enum_values("enum('active','it''s ok','disabled')")
@@ -2144,7 +2142,6 @@ fn parse_enum_values_extracts_options_and_escaped_quotes() {
     assert_eq!(values, vec!["active", "it's ok", "disabled"]);
 }
 
-#[cfg(not(coverage))]
 #[test]
 fn parse_enum_values_returns_none_for_non_enum_types() {
     assert!(parse_enum_values("varchar(255)").is_none());

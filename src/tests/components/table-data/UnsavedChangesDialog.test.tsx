@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { UnsavedChangesDialog } from '../../../components/shared/UnsavedChangesDialog'
 import { UnsavedChangesDialog as ReExportedDialog } from '../../../components/table-data/UnsavedChangesDialog'
 
@@ -15,6 +16,11 @@ describe('UnsavedChangesDialog', () => {
     onCancel: vi.fn(),
   }
 
+  async function clickSave(): Promise<void> {
+    const user = userEvent.setup()
+    await user.click(await screen.findByTestId('btn-save-changes'))
+  }
+
   it('renders title and message', () => {
     render(<UnsavedChangesDialog {...defaultProps} />)
     expect(screen.getByText('Unsaved Changes')).toBeInTheDocument()
@@ -24,23 +30,25 @@ describe('UnsavedChangesDialog', () => {
   it('Save button triggers onSave', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined)
     render(<UnsavedChangesDialog {...defaultProps} onSave={onSave} />)
-    fireEvent.click(screen.getByTestId('btn-save-changes'))
+    await clickSave()
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledTimes(1)
     })
   })
 
-  it('Discard button triggers onDiscard', () => {
+  it('Discard button triggers onDiscard', async () => {
+    const user = userEvent.setup()
     const onDiscard = vi.fn()
     render(<UnsavedChangesDialog {...defaultProps} onDiscard={onDiscard} />)
-    fireEvent.click(screen.getByTestId('btn-discard-changes'))
+    await user.click(await screen.findByTestId('btn-discard-changes'))
     expect(onDiscard).toHaveBeenCalledTimes(1)
   })
 
-  it('Cancel button triggers onCancel', () => {
+  it('Cancel button triggers onCancel', async () => {
+    const user = userEvent.setup()
     const onCancel = vi.fn()
     render(<UnsavedChangesDialog {...defaultProps} onCancel={onCancel} />)
-    fireEvent.click(screen.getByTestId('btn-cancel-changes'))
+    await user.click(await screen.findByTestId('btn-cancel-changes'))
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
@@ -99,5 +107,60 @@ describe('UnsavedChangesDialog', () => {
     render(<ReExportedDialog {...defaultProps} />)
     expect(screen.getByTestId('unsaved-changes-dialog')).toBeInTheDocument()
     expect(screen.getByText('Unsaved Changes')).toBeInTheDocument()
+  })
+
+  it('shows an internal error when onSave rejects', async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error('Save failed hard'))
+
+    render(<UnsavedChangesDialog {...defaultProps} onSave={onSave} />)
+
+    await clickSave()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('unsaved-changes-error')).toHaveTextContent('Save failed hard')
+    })
+    expect(screen.getByTestId('btn-save-changes')).not.toBeDisabled()
+  })
+
+  it('stringifies non-Error save failures for the internal error message', async () => {
+    const onSave = vi.fn().mockRejectedValue('Plain failure')
+
+    render(<UnsavedChangesDialog {...defaultProps} onSave={onSave} />)
+
+    await clickSave()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('unsaved-changes-error')).toHaveTextContent('Plain failure')
+    })
+  })
+
+  it('prefers the external error over the internal error state', async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error('Internal error'))
+
+    render(
+      <UnsavedChangesDialog
+        {...defaultProps}
+        onSave={onSave}
+        error="External error"
+      />
+    )
+
+    await clickSave()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('unsaved-changes-error')).toHaveTextContent('External error')
+    })
+  })
+
+  it('renders custom ReactNode messages', () => {
+    render(
+      <UnsavedChangesDialog
+        {...defaultProps}
+        message={<span>You have <strong>unsaved</strong> edits.</span>}
+      />
+    )
+
+    expect(screen.getByText('unsaved')).toBeInTheDocument()
+    expect(screen.getByText('You have', { exact: false })).toBeInTheDocument()
   })
 })

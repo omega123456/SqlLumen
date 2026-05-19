@@ -339,17 +339,14 @@ fn is_binary_data_type(data_type: &str) -> bool {
     )
 }
 
-#[cfg(not(coverage))]
 pub fn parse_enum_values(column_type: &str) -> Option<Vec<String>> {
     parse_quoted_type_values(column_type, "enum")
 }
 
-#[cfg(not(coverage))]
 pub fn parse_set_values(column_type: &str) -> Option<Vec<String>> {
     parse_quoted_type_values(column_type, "set")
 }
 
-#[cfg(not(coverage))]
 fn parse_quoted_type_values(column_type: &str, type_name: &str) -> Option<Vec<String>> {
     let trimmed = column_type.trim();
     let lower = trimmed.to_ascii_lowercase();

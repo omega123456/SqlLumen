@@ -158,6 +158,7 @@ Keep every test in a dedicated file under the appropriate test root (`src/tests/
 
 - Test files mirror source: `src/components/Foo.tsx` → `src/tests/components/Foo.test.tsx`.
 - Setup file `src/tests/setup.ts` provides Monaco mocks and jsdom polyfills (`ResizeObserver`, `matchMedia`, `HTMLDialogElement`) and wires Vitest IPC through the shared `src/tests/ipc-mock.ts` harness. A missing IPC fixture throws `[vitest] Unmocked Tauri IPC command: <cmd>`.
+- Do **not** add ad hoc module mocks just to hit coverage on production code paths that can be exercised directly. **ALWAYS** test real behavior through the public API with the shared test harness and existing setup utilities. If a dependency is already globally mocked in `src/tests/setup.ts`, use that shared mock contract rather than overriding it locally unless there is no other practical option.
 - Vitest IPC tests must always go through the shared `src/tests/ipc-mock.ts` harness. Use `ipc.override(...)` for per-test behavior and `ipc.emit(...)` for events. Do not bypass the harness with inline `mockIPC(...)`, ad hoc `vi.mock()` stubs, per-test IPC handlers, or direct wrapper mocks. If a test needs a new IPC response, extend `src/tests/fixtures.ts` or override only the specific command in that test.
 - After `render`, use `waitFor` / `findBy*` for async-mounted state; do not assert synchronously right after render.
 - Avoid React `act(...)` warnings in every test run:

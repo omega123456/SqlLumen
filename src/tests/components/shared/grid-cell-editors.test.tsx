@@ -14,6 +14,7 @@ import { NullableCellEditor, EnumCellEditor } from '../../../components/shared/g
 import type { CellEditorBaseProps } from '../../../components/shared/grid-cell-editors'
 import { getCellEditorForColumn } from '../../../components/shared/grid-column-editor-utils'
 import { FkLookupProvider } from '../../../components/shared/fk-lookup-context'
+import type { TableDataColumnMeta } from '../../../types/schema'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -554,40 +555,46 @@ describe('getCellEditorForColumn', () => {
     syncCellValue: vi.fn(),
   }
 
+  function makeColumnMeta(
+    overrides: Partial<TableDataColumnMeta> = {}
+  ): TableDataColumnMeta {
+    return {
+      name: 'name',
+      dataType: 'VARCHAR',
+      isNullable: true,
+      isPrimaryKey: false,
+      isUniqueKey: false,
+      hasDefault: false,
+      columnDefault: null,
+      isBinary: false,
+      isBooleanAlias: false,
+      isAutoIncrement: false,
+      ...overrides,
+    }
+  }
+
+  function makeForeignKey(
+    overrides: Partial<NonNullable<CellEditorBaseProps['foreignKey']>> = {}
+  ): NonNullable<CellEditorBaseProps['foreignKey']> {
+    return {
+      columnName: 'owner_id',
+      referencedDatabase: 'app',
+      referencedTable: 'users',
+      referencedColumn: 'id',
+      constraintName: 'fk_owner',
+      ...overrides,
+    }
+  }
+
   it('disables closeOnExternalRowChange for nullable editors', () => {
-    const config = getCellEditorForColumn(
-      {
-        name: 'name',
-        dataType: 'VARCHAR',
-        isNullable: true,
-        isPrimaryKey: false,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isBooleanAlias: false,
-        isAutoIncrement: false,
-      },
-      callbacks
-    )
+    const config = getCellEditorForColumn(makeColumnMeta(), callbacks)
 
     expect(config.editorOptions).toEqual({ closeOnExternalRowChange: false })
   })
 
   it('disables closeOnExternalRowChange and outside-click commit for temporal editors', () => {
     const config = getCellEditorForColumn(
-      {
-        name: 'created_at',
-        dataType: 'DATETIME',
-        isNullable: true,
-        isPrimaryKey: false,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isBooleanAlias: false,
-        isAutoIncrement: false,
-      },
+      makeColumnMeta({ name: 'created_at', dataType: 'DATETIME' }),
       callbacks
     )
 
@@ -599,19 +606,11 @@ describe('getCellEditorForColumn', () => {
 
   it('disables closeOnExternalRowChange for enum editors', () => {
     const config = getCellEditorForColumn(
-      {
+      makeColumnMeta({
         name: 'status',
         dataType: 'ENUM',
         enumValues: ['active', 'inactive'],
-        isNullable: true,
-        isPrimaryKey: false,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isBooleanAlias: false,
-        isAutoIncrement: false,
-      },
+      }),
       callbacks
     )
 
@@ -619,5 +618,100 @@ describe('getCellEditorForColumn', () => {
       closeOnExternalRowChange: false,
       commitOnOutsideClick: false,
     })
+  })
+
+  it('returns text editor type when no column metadata is provided', () => {
+    const config = getCellEditorForColumn(undefined, callbacks)
+
+    expect(config.editorType).toBe('text')
+    expect(config.editorOptions).toEqual({ closeOnExternalRowChange: false })
+  })
+
+  it('returns fk editor type for enum foreign-key columns', () => {
+    const config = getCellEditorForColumn(
+      makeColumnMeta({
+        name: 'status_id',
+        dataType: 'ENUM',
+        enumValues: ['active', 'inactive'],
+      }),
+      callbacks,
+      makeForeignKey({
+        columnName: 'status_id',
+        referencedTable: 'status_lookup',
+        constraintName: 'fk_status_lookup',
+      })
+    )
+
+    expect(config.editorType).toBe('fk')
+    expect(config.editorOptions).toEqual({
+      closeOnExternalRowChange: false,
+      commitOnOutsideClick: false,
+    })
+  })
+
+  it('returns fk editor type for non-enum foreign-key columns', () => {
+    const config = getCellEditorForColumn(
+      makeColumnMeta({ name: 'owner_id', dataType: 'INT', isNullable: false }),
+      callbacks,
+      makeForeignKey()
+    )
+
+    expect(config.editorType).toBe('fk')
+  })
+
+  it('renders the datetime editor for temporal columns', () => {
+    const config = getCellEditorForColumn(
+      makeColumnMeta({ name: 'created_at', dataType: 'DATETIME' }),
+      callbacks
+    )
+
+    render(
+      config.renderEditCell({
+        row: { created_at: '2026-01-01 12:00:00' },
+        column: { key: 'created_at' },
+        onRowChange: vi.fn(),
+        onClose: vi.fn(),
+      })
+    )
+
+    expect(screen.getByTestId('datetime-cell-editor')).toBeInTheDocument()
+  })
+
+  it('renders the enum editor for enum columns', () => {
+    const config = getCellEditorForColumn(
+      makeColumnMeta({
+        name: 'status',
+        dataType: 'ENUM',
+        enumValues: ['active', 'inactive'],
+      }),
+      callbacks
+    )
+
+    render(
+      config.renderEditCell({
+        row: { status: 'active' },
+        column: { key: 'status' },
+        onRowChange: vi.fn(),
+        onClose: vi.fn(),
+      })
+    )
+
+    expect(document.querySelector('.td-cell-editor-select')).toBeTruthy()
+  })
+
+  it('renders the nullable text editor for text columns', () => {
+    const column = makeColumnMeta({ name: 'title', dataType: 'VARCHAR' })
+    const config = getCellEditorForColumn(column, callbacks)
+
+    render(
+      config.renderEditCell({
+        row: { title: 'Draft' },
+        column: { key: 'title' },
+        onRowChange: vi.fn(),
+        onClose: vi.fn(),
+      })
+    )
+
+    expect(document.querySelector('.td-cell-editor-input')).toBeTruthy()
   })
 })
