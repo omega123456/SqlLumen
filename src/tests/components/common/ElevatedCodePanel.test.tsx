@@ -35,4 +35,17 @@ describe('ElevatedCodePanel', () => {
 
     expect(container.querySelector('.ui-elevated-panel-header__actions')).toBeNull()
   })
+
+  it('can reuse the shared code shell without rendering a header row', () => {
+    render(
+      <ElevatedCodePanel data-testid="code-panel" hideHeader={true}>
+        <span>SELECT 1</span>
+      </ElevatedCodePanel>
+    )
+
+    const root = screen.getByTestId('code-panel')
+    expect(root).toHaveClass('ui-elevated-surface')
+    expect(root.querySelector('.ui-elevated-panel-header')).toBeNull()
+    expect(root.querySelector('pre code')?.textContent).toContain('SELECT 1')
+  })
 })

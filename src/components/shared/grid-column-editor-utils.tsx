@@ -1,5 +1,6 @@
 import DateTimeCellEditor from '../table-data/DateTimeCellEditor'
 import { getTemporalColumnType } from '../../lib/date-utils'
+import JsonCellEditor from './JsonCellEditor'
 import {
   ENUM_NULL_SENTINEL,
   getEnumFallbackValue,
@@ -9,7 +10,7 @@ import type { TableDataColumnMeta, ForeignKeyColumnInfo } from '../../types/sche
 import type { CellEditorBaseProps, CellEditorCallbackProps } from './grid-cell-editors'
 import { EnumCellEditor, NullableCellEditor } from './grid-cell-editors'
 
-export type GridEditorType = 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'none'
+export type GridEditorType = 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'json' | 'none'
 
 export interface CellEditorConfig {
   renderEditCell: (props: CellEditorBaseProps) => React.ReactElement
@@ -56,6 +57,27 @@ export function getCellEditorForColumn(
       editorType: foreignKey ? 'fk' : 'enum',
       renderEditCell: (props: CellEditorBaseProps) => (
         <EnumCellEditor
+          {...props}
+          isNullable={col.isNullable}
+          columnMeta={col}
+          foreignKey={foreignKey}
+          tabId={callbacks.tabId}
+          updateCellValue={callbacks.updateCellValue}
+          syncCellValue={callbacks.syncCellValue}
+        />
+      ),
+      editorOptions: {
+        ...sharedEditorOptions,
+        commitOnOutsideClick: false,
+      },
+    }
+  }
+
+  if (col?.dataType.trim().toUpperCase() === 'JSON') {
+    return {
+      editorType: 'json',
+      renderEditCell: (props: CellEditorBaseProps) => (
+        <JsonCellEditor
           {...props}
           isNullable={col.isNullable}
           columnMeta={col}

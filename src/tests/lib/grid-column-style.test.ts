@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest'
 import {
   getGridCellClass,
   getAutoSizedColumnWidth,
+  isJsonSqlType,
   isNumericSqlType,
   isStringishPrimarySqlType,
   isWrappableTextSqlType,
@@ -85,13 +86,17 @@ describe('getGridCellClass', () => {
   })
 
   describe('other types → td-cell-body', () => {
-    const otherTypes = ['BLOB', 'BINARY', 'ENUM', 'SET', 'JSON', 'BIT', 'GEOMETRY']
+    const otherTypes = ['BLOB', 'BINARY', 'ENUM', 'SET', 'BIT', 'GEOMETRY']
 
     for (const type of otherTypes) {
       it(`returns td-cell-body for ${type}`, () => {
         expect(getGridCellClass('col', type)).toBe('td-cell-body')
       })
     }
+  })
+
+  it('returns the JSON cell class for JSON columns', () => {
+    expect(getGridCellClass('payload', 'JSON')).toBe('td-cell-body td-cell-json')
   })
 
   it('handles empty dataType gracefully', () => {
@@ -166,6 +171,15 @@ describe('isWrappableTextSqlType', () => {
     expect(isWrappableTextSqlType('VARCHAR(255)')).toBe(false)
     expect(isWrappableTextSqlType('CHAR(10)')).toBe(false)
     expect(isWrappableTextSqlType('JSON')).toBe(false)
+  })
+})
+
+describe('isJsonSqlType', () => {
+  it('returns true only for the MySQL JSON type', () => {
+    expect(isJsonSqlType('JSON')).toBe(true)
+    expect(isJsonSqlType(' json ')).toBe(true)
+    expect(isJsonSqlType('LONGTEXT')).toBe(false)
+    expect(isJsonSqlType('VARCHAR(255)')).toBe(false)
   })
 })
 

@@ -1,5 +1,6 @@
 import { BIT_TEST_LIST_COLUMNS, BIT_TEST_TABLE_DATA } from './bit-test'
 import { DEFAULT_TABLE_DATA, DEFAULT_TABLE_LIST_COLUMNS } from './default-table'
+import { JSON_ANALYZE_QUERY_RESULT, JSON_TABLE_DATA, JSON_TABLE_LIST_COLUMNS } from './json-table'
 import {
   DEFAULT_OBJECT_BODY,
   DEFAULT_ROUTINE_PARAMETERS_WITH_RETURN_TYPE,
@@ -10,11 +11,13 @@ import { ORDERS_FOREIGN_KEYS, ORDERS_LIST_COLUMNS, ORDERS_TABLE_DATA } from './o
 import {
   createCurrentDatabaseQueryResult,
   DEFAULT_EXECUTE_QUERY_RESULT,
+  JSON_QUERY_RESULT,
   SCROLL_TEST_QUERY_RESULT,
 } from './query-results'
 import { DEFAULT_SCHEMA_INFO, SCHEMA_INFO_BY_OBJECT_TYPE } from './schema-info'
 import { SCROLL_TEST_TABLE_DATA } from './scroll-test'
 import type {
+  PlaywrightAnalyzeQueryResult,
   PlaywrightForeignKey,
   PlaywrightListColumn,
   PlaywrightQueryResult,
@@ -22,7 +25,7 @@ import type {
   PlaywrightSchemaInfo,
   PlaywrightTableDataResult,
 } from './types'
-import { USERS_FOREIGN_KEYS, USERS_LIST_COLUMNS, USERS_TABLE_DATA } from './users'
+import { USERS_ANALYZE_QUERY_RESULT, USERS_FOREIGN_KEYS, USERS_LIST_COLUMNS, USERS_TABLE_DATA } from './users'
 import { USER_STATS_VIEW_TABLE_DATA } from './user-stats-view'
 
 type FixtureOverrideDomain =
@@ -31,6 +34,7 @@ type FixtureOverrideDomain =
   | 'foreignKeys'
   | 'schemaInfo'
   | 'queryResult'
+  | 'analyzeQueryForEdit'
   | 'objectBody'
   | 'routineParams'
 
@@ -42,6 +46,7 @@ type FixtureOverrides = {
   foreignKeys: Record<string, PlaywrightForeignKey[]>
   schemaInfo: Record<string, PlaywrightSchemaInfo>
   queryResult: Record<string, QueryResultFixtureFactory>
+  analyzeQueryForEdit: Record<string, PlaywrightAnalyzeQueryResult>
   objectBody: Record<string, string>
   routineParams: Record<string, PlaywrightRoutineParametersResponse>
 }
@@ -52,6 +57,7 @@ type FixtureOverrideValueMap = {
   foreignKeys: PlaywrightForeignKey[]
   schemaInfo: PlaywrightSchemaInfo
   queryResult: PlaywrightQueryResult
+  analyzeQueryForEdit: PlaywrightAnalyzeQueryResult
   objectBody: string
   routineParams: PlaywrightRoutineParametersResponse
 }
@@ -65,6 +71,7 @@ type FixtureRegistryApi = {
     sql: string | null | undefined,
     activeMockDb: string | null
   ) => PlaywrightQueryResult
+  getAnalyzeQueryForEditFixture: (sql: string | null | undefined) => PlaywrightAnalyzeQueryResult
   getObjectBodyFixture: (objectType: string | null | undefined) => string
   getRoutineParamsFixture: (
     routineType: string | null | undefined
@@ -81,6 +88,7 @@ const DEFAULT_TABLE_DATA_BY_TABLE: Record<string, PlaywrightTableDataResult> = {
   scroll_test: SCROLL_TEST_TABLE_DATA,
   users: USERS_TABLE_DATA,
   bit_test: BIT_TEST_TABLE_DATA,
+  json_sample: JSON_TABLE_DATA,
   orders: ORDERS_TABLE_DATA,
   user_stats_view: USER_STATS_VIEW_TABLE_DATA,
 }
@@ -89,6 +97,7 @@ const DEFAULT_COLUMNS_BY_TABLE: Record<string, PlaywrightListColumn[]> = {
   users: USERS_LIST_COLUMNS,
   orders: ORDERS_LIST_COLUMNS,
   bit_test: BIT_TEST_LIST_COLUMNS,
+  json_sample: JSON_TABLE_LIST_COLUMNS,
 }
 
 const DEFAULT_FOREIGN_KEYS_BY_TABLE: Record<string, PlaywrightForeignKey[]> = {
@@ -99,7 +108,13 @@ const DEFAULT_FOREIGN_KEYS_BY_TABLE: Record<string, PlaywrightForeignKey[]> = {
 const DEFAULT_QUERY_RESULT_BY_KEY: Record<string, QueryResultFixtureFactory> = {
   current_database: (activeMockDb) => createCurrentDatabaseQueryResult(activeMockDb),
   scroll_test: () => SCROLL_TEST_QUERY_RESULT,
+  json_sample: () => JSON_QUERY_RESULT,
   default: () => DEFAULT_EXECUTE_QUERY_RESULT,
+}
+
+const DEFAULT_ANALYZE_QUERY_FOR_EDIT_BY_KEY: Record<string, PlaywrightAnalyzeQueryResult> = {
+  json_sample: JSON_ANALYZE_QUERY_RESULT,
+  default: USERS_ANALYZE_QUERY_RESULT,
 }
 
 const overrides: FixtureOverrides = {
@@ -108,6 +123,7 @@ const overrides: FixtureOverrides = {
   foreignKeys: {},
   schemaInfo: {},
   queryResult: {},
+  analyzeQueryForEdit: {},
   objectBody: {},
   routineParams: {},
 }
@@ -125,6 +141,10 @@ function getQueryResultLookupKey(sql: string | null | undefined): string {
 
   if (/scroll_test/i.test(normalizedSql)) {
     return 'scroll_test'
+  }
+
+  if (/json_sample/i.test(normalizedSql)) {
+    return 'json_sample'
   }
 
   return 'default'
@@ -192,6 +212,17 @@ export function getQueryResultFixture(
   return (overrideFactory ?? defaultFactory)(activeMockDb)
 }
 
+export function getAnalyzeQueryForEditFixture(
+  sql: string | null | undefined
+): PlaywrightAnalyzeQueryResult {
+  const queryKey = getQueryResultLookupKey(sql)
+  return (
+    overrides.analyzeQueryForEdit[queryKey] ??
+    DEFAULT_ANALYZE_QUERY_FOR_EDIT_BY_KEY[queryKey] ??
+    DEFAULT_ANALYZE_QUERY_FOR_EDIT_BY_KEY.default
+  )
+}
+
 export function getObjectBodyFixture(objectType: string | null | undefined): string {
   const objectTypeKey = normalizeLookupKey(objectType)
 
@@ -243,6 +274,7 @@ export function resetFixtureOverrides(): void {
   overrides.foreignKeys = {}
   overrides.schemaInfo = {}
   overrides.queryResult = {}
+  overrides.analyzeQueryForEdit = {}
   overrides.objectBody = {}
   overrides.routineParams = {}
 }
@@ -253,6 +285,7 @@ const fixtureRegistry: FixtureRegistryApi = {
   getForeignKeysFixture,
   getSchemaInfoFixture,
   getQueryResultFixture,
+  getAnalyzeQueryForEditFixture,
   getObjectBodyFixture,
   getRoutineParamsFixture,
   overrideFixture,

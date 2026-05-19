@@ -19,6 +19,7 @@ import {
 } from '../shared/editor-callbacks-context'
 import { colKey, colIndexFromKey } from '../../lib/col-key-utils'
 import { getAutoSizedColumnWidth } from '../../lib/grid-column-style'
+import { isJsonSqlType } from '../../lib/grid-column-style'
 import { resolveQueryResultColumns } from '../../lib/query-result-column-utils'
 import type { ColumnMeta, TableDataColumnMeta, RowEditState } from '../../types/schema'
 import { useQueryStore } from '../../stores/query-store'
@@ -338,11 +339,13 @@ export function ResultGridView({
       foreignKey: column.foreignKey,
       editorType: column.tableColumnMeta?.enumValues?.length
         ? 'enum'
-        : column.tableColumnMeta?.setValues?.length
-          ? 'set'
-        : column.tableColumnMeta
-          ? 'text'
-          : 'none',
+        : column.tableColumnMeta && isJsonSqlType(column.tableColumnMeta.dataType)
+          ? 'json'
+          : column.tableColumnMeta?.setValues?.length
+            ? 'set'
+            : column.tableColumnMeta
+              ? 'text'
+              : 'none',
     }))
   }, [resolvedColumns])
 

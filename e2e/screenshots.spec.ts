@@ -366,6 +366,48 @@ async function openQueryEditorWithResults(page: Page) {
   await expect(page.getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
 }
 
+async function openQueryEditorWithJsonResults(page: Page) {
+  await openQueryEditorTab(page)
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__queryStore__ as {
+      getState: () => { tabs: Record<string, { content: string }> }
+      setState: (fn: (state: Record<string, unknown>) => Record<string, unknown>) => void
+    }
+    const tabIds = Object.keys(store.getState().tabs)
+    if (tabIds.length === 0) {
+      const wsStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+        getState: () => {
+          activeTabByConnection: Record<string, string | null>
+          tabsByConnection: Record<string, { id: string; type: string }[]>
+        }
+      }
+      const activeTabs = wsStore.getState().tabsByConnection['session-playwright-1'] ?? []
+      const queryTab = activeTabs.find((t) => t.type === 'query-editor')
+      if (queryTab) {
+        const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+          getState: () => { setContent: (id: string, c: string) => void }
+        }
+        qStore
+          .getState()
+          .setContent(queryTab.id, 'SELECT id, profile, updated_at FROM json_sample;')
+      }
+    } else {
+      const qStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+        getState: () => { setContent: (id: string, c: string) => void }
+      }
+      qStore
+        .getState()
+        .setContent(tabIds[0], 'SELECT id, profile, updated_at FROM json_sample;')
+    }
+  })
+
+  await page.waitForTimeout(300)
+  await page.keyboard.press('F9')
+  await expect(page.getByTestId('result-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('result-grid')).toBeVisible({ timeout: APP_READY_MS })
+}
+
 async function enableQueryResultEditMode(page: Page) {
   await expect(page.getByTestId('edit-mode-dropdown')).toBeVisible({ timeout: APP_READY_MS })
   await page.getByTestId('edit-mode-dropdown').click()
@@ -694,6 +736,33 @@ async function openOrdersTableDataTab(page: Page) {
   })
 
   // Wait for the table data tab to mount and data to load
+  await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
+  await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
+    timeout: APP_READY_MS,
+  })
+  await expect(page.getByTestId('table-data-grid').locator('canvas').first()).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+}
+
+async function openJsonTableDataTab(page: Page) {
+  await connectToSample(page)
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-data',
+      label: 'json_sample',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'json_sample',
+      objectType: 'table',
+    })
+  })
+
   await expect(page.getByTestId('table-data-tab')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('table-data-toolbar')).toBeVisible({ timeout: APP_READY_MS })
   await expect(page.getByTestId('pagination-page-input')).toHaveValue('1', {
@@ -1812,7 +1881,11 @@ for (const theme of themes) {
       page: Page,
       columnName: string,
       rowIdx: number,
-      editorTestId: 'glide-text-editor' | 'glide-datetime-editor' | 'glide-dropdown-cell',
+      editorTestId:
+        | 'glide-text-editor'
+        | 'glide-datetime-editor'
+        | 'glide-dropdown-cell'
+        | 'glide-json-editor',
       screenshotName: string
     ) {
       await openTableDataTab(page)
@@ -1967,6 +2040,57 @@ for (const theme of themes) {
         `table-data-form-fk-trigger-${theme}.png`,
         { animations: 'disabled' }
       )
+    })
+
+    test('TableDataGrid — cell editor overlay: JSON field (profile column, row 1)', async ({
+      page,
+    }) => {
+      await openJsonTableDataTab(page)
+      const grid = page.getByTestId('table-data-grid')
+      await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+      await expect(grid.locator('canvas').first()).toBeVisible({ timeout: APP_READY_MS })
+
+      const colIdx = await getColumnIndexByName(grid, 'profile')
+      const geometry = await getGlideGridGeometry(page, 'table-data-grid')
+      await clickGlideCell(page, 'table-data-grid', colIdx, 0, geometry)
+      await dblClickGlideCell(page, 'table-data-grid', colIdx, 0, geometry)
+
+      const editorLocator = page.getByTestId('glide-json-editor')
+      await expect(editorLocator).toBeVisible({ timeout: APP_READY_MS })
+      await expect(editorLocator).toHaveScreenshot(`table-data-overlay-json-${theme}.png`, {
+        animations: 'disabled',
+      })
+    })
+
+    test('ResultFormView — JSON field in read mode', async ({ page }) => {
+      // Use a taller viewport so the 300px JSON panel fits within the form content area.
+      await page.setViewportSize({ width: 1280, height: 1400 })
+      await openQueryEditorWithJsonResults(page)
+      await page.getByTestId('view-mode-form').click()
+      await expect(page.getByTestId('result-form-view')).toBeVisible({ timeout: APP_READY_MS })
+      const panelLocator = page.getByTestId('form-input-profile-panel')
+      await expect(panelLocator).toBeVisible({ timeout: APP_READY_MS })
+      await panelLocator.scrollIntoViewIfNeeded()
+      await expect(panelLocator).toHaveScreenshot(`result-form-view-json-readonly-${theme}.png`, {
+        animations: 'disabled',
+      })
+    })
+
+    test('ResultFormView — JSON field in edit mode', async ({ page }) => {
+      // Use a taller viewport so the 300px JSON editor fits within the form content area.
+      await page.setViewportSize({ width: 1280, height: 1400 })
+      await openQueryEditorWithJsonResults(page)
+      await enableQueryResultEditMode(page)
+      await page.getByTestId('view-mode-form').click()
+      await expect(page.getByTestId('result-form-view')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('form-input-profile')).toBeVisible({ timeout: APP_READY_MS })
+      await expect(page.getByTestId('btn-form-save')).toBeVisible({ timeout: APP_READY_MS })
+      const editorLocator = page.getByTestId('form-input-profile-editor')
+      await expect(editorLocator).toBeVisible({ timeout: APP_READY_MS })
+      await editorLocator.scrollIntoViewIfNeeded()
+      await expect(editorLocator).toHaveScreenshot(`result-form-view-json-editor-${theme}.png`, {
+        animations: 'disabled',
+      })
     })
 
     test('full app layout — table data grid', async ({ page }) => {

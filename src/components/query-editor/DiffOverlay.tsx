@@ -24,7 +24,7 @@ import * as monaco from 'monaco-editor'
 import { LineChange, applyHunkToOriginal } from './diff-overlay-utils'
 export type { LineChange }
 import { useThemeStore } from '../../stores/theme-store'
-import { getMonacoThemeName } from './monaco-theme'
+import { getMonacoThemeName } from '../../lib/monaco-theme'
 import { Button } from '../common/Button'
 import styles from './DiffOverlay.module.css'
 

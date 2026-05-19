@@ -56,3 +56,29 @@ export const DEFAULT_EXECUTE_QUERY_RESULT: PlaywrightQueryResult = {
   totalPages: 1,
   autoLimitApplied: true,
 }
+
+export const JSON_QUERY_RESULT: PlaywrightQueryResult = {
+  queryId: 'mock-query-json',
+  columns: [
+    { name: 'id', dataType: 'BIGINT' },
+    { name: 'profile', dataType: 'JSON' },
+    { name: 'updated_at', dataType: 'DATETIME' },
+  ],
+  totalRows: 2,
+  executionTimeMs: 18,
+  affectedRows: 0,
+  firstPage: [
+    [
+      1,
+      '{"name":"Ada Lovelace","roles":["admin","analyst"],"flags":{"beta":true,"score":42},"theme":null}',
+      '2025-01-15 10:30:00',
+    ],
+    [
+      2,
+      '{"name":"Linus Torvalds","roles":["maintainer"],"flags":{"beta":false,"score":7},"theme":"light"}',
+      '2025-02-01 08:15:00',
+    ],
+  ],
+  totalPages: 1,
+  autoLimitApplied: false,
+}

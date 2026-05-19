@@ -1,6 +1,7 @@
 import type { SavedConnection } from '../types/connection'
 import type { SchemaMetadataResponse, SchemaMetadataFull } from '../types/schema'
 import {
+  getAnalyzeQueryForEditFixture,
   getColumnsFixture,
   getForeignKeysFixture,
   getObjectBodyFixture,
@@ -643,82 +644,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
       }
 
     case 'analyze_query_for_edit':
-      return [
-        {
-          database: 'ecommerce_db',
-          table: 'users',
-          columns: [
-            {
-              name: 'id',
-              dataType: 'INT',
-              isBooleanAlias: false,
-              enumValues: null,
-              isNullable: false,
-              isPrimaryKey: true,
-              isUniqueKey: false,
-              hasDefault: false,
-              columnDefault: null,
-              isBinary: false,
-              isAutoIncrement: true,
-            },
-            {
-              name: 'name',
-              dataType: 'VARCHAR',
-              isBooleanAlias: false,
-              enumValues: null,
-              isNullable: true,
-              isPrimaryKey: false,
-              isUniqueKey: false,
-              hasDefault: false,
-              columnDefault: null,
-              isBinary: false,
-              isAutoIncrement: false,
-            },
-            {
-              name: 'email',
-              dataType: 'VARCHAR',
-              isBooleanAlias: false,
-              enumValues: null,
-              isNullable: true,
-              isPrimaryKey: false,
-              isUniqueKey: false,
-              hasDefault: false,
-              columnDefault: null,
-              isBinary: false,
-              isAutoIncrement: false,
-            },
-            {
-              name: 'status',
-              dataType: 'ENUM',
-              isBooleanAlias: false,
-              enumValues: ['active', 'inactive'],
-              isNullable: false,
-              isPrimaryKey: false,
-              isUniqueKey: false,
-              hasDefault: false,
-              columnDefault: null,
-              isBinary: false,
-              isAutoIncrement: false,
-            },
-          ],
-          primaryKey: {
-            keyColumns: ['id'],
-            hasAutoIncrement: true,
-            isUniqueKeyFallback: false,
-          },
-          foreignKeys: [
-            {
-              name: 'fk_users_email',
-              columnName: 'email',
-              referencedDatabase: 'ecommerce_db',
-              referencedTable: 'users',
-              referencedColumn: 'id',
-              onDelete: 'CASCADE',
-              onUpdate: 'CASCADE',
-            },
-          ],
-        },
-      ]
+      return getAnalyzeQueryForEditFixture(args?.sql as string | null | undefined)
 
     case 'update_result_cell':
       return null

@@ -1,8 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import {
-  getMonacoThemeName,
-  registerMonacoThemes,
-} from '../../../components/query-editor/monaco-theme'
+import { getMonacoThemeName, registerMonacoThemes } from '../../../lib/monaco-theme'
 
 describe('getMonacoThemeName', () => {
   it('returns dark theme for dark preference', () => {

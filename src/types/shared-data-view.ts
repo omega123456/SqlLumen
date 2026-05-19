@@ -51,7 +51,7 @@ export interface GridColumnDescriptor {
   /** FK metadata for this column (set when the column is an FK source). */
   foreignKey?: ForeignKeyColumnInfo
   /** Vendor-neutral editor type used by grid adapters. */
-  editorType?: 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'none'
+  editorType?: 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'json' | 'none'
   /** Preferred column width in pixels. */
   width?: number
 }

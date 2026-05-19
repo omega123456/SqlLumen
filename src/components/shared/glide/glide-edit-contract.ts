@@ -3,7 +3,7 @@ export type EditActivationSource = 'click' | 'dblclick' | 'enter' | 'tab' | 'key
 export interface EditEligibilityCheck {
   isEditable: boolean
   requiresAutosaveGuard: boolean
-  editorType: 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'none'
+  editorType: 'text' | 'enum' | 'set' | 'datetime' | 'fk' | 'json' | 'none'
 }
 
 export type EditLifecycleEvent =

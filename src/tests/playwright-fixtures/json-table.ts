@@ -1,11 +1,10 @@
 import type {
   PlaywrightAnalyzeQueryResult,
-  PlaywrightForeignKey,
   PlaywrightListColumn,
   PlaywrightTableDataResult,
 } from './types'
 
-export const USERS_LIST_COLUMNS: PlaywrightListColumn[] = [
+export const JSON_TABLE_LIST_COLUMNS: PlaywrightListColumn[] = [
   {
     name: 'id',
     dataType: 'bigint',
@@ -16,30 +15,30 @@ export const USERS_LIST_COLUMNS: PlaywrightListColumn[] = [
     ordinalPosition: 1,
   },
   {
-    name: 'name',
-    dataType: 'varchar',
-    nullable: false,
+    name: 'profile',
+    dataType: 'json',
+    nullable: true,
     columnKey: '',
     defaultValue: null,
     extra: '',
     ordinalPosition: 2,
   },
   {
-    name: 'email',
-    dataType: 'varchar',
+    name: 'updated_at',
+    dataType: 'datetime',
     nullable: true,
-    columnKey: 'UNI',
+    columnKey: '',
     defaultValue: null,
     extra: '',
     ordinalPosition: 3,
   },
 ]
 
-export const USERS_TABLE_DATA: PlaywrightTableDataResult = {
+export const JSON_TABLE_DATA: PlaywrightTableDataResult = {
   columns: [
     {
       name: 'id',
-      dataType: 'INT',
+      dataType: 'BIGINT',
       isBooleanAlias: false,
       isNullable: false,
       isPrimaryKey: true,
@@ -50,8 +49,8 @@ export const USERS_TABLE_DATA: PlaywrightTableDataResult = {
       isAutoIncrement: true,
     },
     {
-      name: 'name',
-      dataType: 'VARCHAR',
+      name: 'profile',
+      dataType: 'JSON',
       isBooleanAlias: false,
       isNullable: true,
       isPrimaryKey: false,
@@ -62,8 +61,8 @@ export const USERS_TABLE_DATA: PlaywrightTableDataResult = {
       isAutoIncrement: false,
     },
     {
-      name: 'email',
-      dataType: 'VARCHAR',
+      name: 'updated_at',
+      dataType: 'DATETIME',
       isBooleanAlias: false,
       isNullable: true,
       isPrimaryKey: false,
@@ -75,30 +74,35 @@ export const USERS_TABLE_DATA: PlaywrightTableDataResult = {
     },
   ],
   rows: [
-    [1, 'Alice', 'alice@example.com'],
-    [2, 'Bob', 'bob@example.com'],
-    [3, 'Charlie', 'charlie@example.com'],
+    [
+      1,
+      '{"name":"Ada Lovelace","roles":["admin","analyst"],"flags":{"beta":true,"score":42},"theme":null}',
+      '2025-01-15 10:30:00',
+    ],
+    [
+      2,
+      '{"name":"Linus Torvalds","roles":["maintainer"],"flags":{"beta":false,"score":7},"theme":"light"}',
+      '2025-02-01 08:15:00',
+    ],
   ],
   currentPage: 1,
-  pageSize: 100,
+  pageSize: 1000,
   primaryKey: {
     keyColumns: ['id'],
     hasAutoIncrement: true,
     isUniqueKeyFallback: false,
   },
-  executionTimeMs: 12,
+  executionTimeMs: 18,
 }
 
-export const USERS_FOREIGN_KEYS: PlaywrightForeignKey[] = []
-
-export const USERS_ANALYZE_QUERY_RESULT: PlaywrightAnalyzeQueryResult = [
+export const JSON_ANALYZE_QUERY_RESULT: PlaywrightAnalyzeQueryResult = [
   {
     database: 'ecommerce_db',
-    table: 'users',
+    table: 'json_sample',
     columns: [
       {
         name: 'id',
-        dataType: 'INT',
+        dataType: 'BIGINT',
         isBooleanAlias: false,
         enumValues: null,
         isNullable: false,
@@ -110,8 +114,8 @@ export const USERS_ANALYZE_QUERY_RESULT: PlaywrightAnalyzeQueryResult = [
         isAutoIncrement: true,
       },
       {
-        name: 'name',
-        dataType: 'VARCHAR',
+        name: 'profile',
+        dataType: 'JSON',
         isBooleanAlias: false,
         enumValues: null,
         isNullable: true,
@@ -123,24 +127,11 @@ export const USERS_ANALYZE_QUERY_RESULT: PlaywrightAnalyzeQueryResult = [
         isAutoIncrement: false,
       },
       {
-        name: 'email',
-        dataType: 'VARCHAR',
+        name: 'updated_at',
+        dataType: 'DATETIME',
         isBooleanAlias: false,
         enumValues: null,
         isNullable: true,
-        isPrimaryKey: false,
-        isUniqueKey: false,
-        hasDefault: false,
-        columnDefault: null,
-        isBinary: false,
-        isAutoIncrement: false,
-      },
-      {
-        name: 'status',
-        dataType: 'ENUM',
-        isBooleanAlias: false,
-        enumValues: ['active', 'inactive'],
-        isNullable: false,
         isPrimaryKey: false,
         isUniqueKey: false,
         hasDefault: false,
@@ -154,16 +145,6 @@ export const USERS_ANALYZE_QUERY_RESULT: PlaywrightAnalyzeQueryResult = [
       hasAutoIncrement: true,
       isUniqueKeyFallback: false,
     },
-    foreignKeys: [
-      {
-        name: 'fk_users_email',
-        columnName: 'email',
-        referencedDatabase: 'ecommerce_db',
-        referencedTable: 'users',
-        referencedColumn: 'id',
-        onDelete: 'CASCADE',
-        onUpdate: 'CASCADE',
-      },
-    ],
+    foreignKeys: [],
   },
 ]

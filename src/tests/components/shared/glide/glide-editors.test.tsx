@@ -173,6 +173,41 @@ describe('wrapEditorAsGlideOverlay', () => {
     expect(getByTestId('test-editor')).toHaveAttribute('data-sqllumen-editor-width', '80')
   })
 
+  it('applies a minimum overlay width when configured', () => {
+    const Editor = wrapEditorAsGlideOverlay(() => null, {
+      testId: 'test-editor',
+      overlayExtraWidth: 20,
+      overlayMinWidth: 380,
+      reserveMarkerWidth: false,
+    })
+
+    render(
+      <Editor
+        target={{ x: 0, y: 0, width: 120, height: 32 }}
+        value={
+          {
+            kind: GridCellKind.Text,
+            data: '{"ok":true}',
+            displayData: '{"ok":true}',
+            copyData: '{"ok":true}',
+            allowOverlay: true,
+            readonly: false,
+            glideEditorData: {
+              row: { payload: '{"ok":true}' },
+              columnKey: 'payload',
+              isNullable: true,
+            },
+          } as TextCell & { glideEditorData: Record<string, unknown> }
+        }
+        onChange={vi.fn()}
+        onFinishedEditing={vi.fn()}
+      />
+    )
+
+    expect(screen.getByTestId('test-editor')).toHaveStyle({ width: '380px', maxWidth: '380px' })
+    expect(screen.getByTestId('test-editor')).toHaveAttribute('data-sqllumen-editor-width', '400')
+  })
+
   it('uses a taller textarea overlay for MySQL long-text columns', () => {
     vi.stubGlobal('innerHeight', 900)
     const editorConfig = getGlideEditor(
@@ -246,6 +281,44 @@ describe('wrapEditorAsGlideOverlay', () => {
     )
 
     expect(screen.getByTestId('glide-textarea-editor')).toHaveStyle({ height: '500px' })
+  })
+
+  it('routes json editor types to the dedicated overlay shell', () => {
+    vi.stubGlobal('innerHeight', 1200)
+    const editorConfig = getGlideEditor(
+      { key: 'payload', name: 'Payload', dataType: 'JSON' },
+      'json'
+    )
+    const Editor = (editorConfig as EditorConfig)!.editor!
+
+    render(
+      <Editor
+        target={{ x: 0, y: 0, width: 120, height: 32 }}
+        value={
+          {
+            kind: GridCellKind.Text,
+            data: '{"ok":true}',
+            displayData: '{"ok":true}',
+            copyData: '{"ok":true}',
+            allowOverlay: true,
+            readonly: false,
+            glideEditorData: {
+              row: { payload: '{"ok":true}' },
+              columnKey: 'payload',
+              isNullable: true,
+            },
+          } as TextCell & { glideEditorData: Record<string, unknown> }
+        }
+        onChange={vi.fn()}
+        onFinishedEditing={vi.fn()}
+      />
+    )
+
+    expect(screen.getByTestId('glide-json-editor')).toBeInTheDocument()
+    expect(screen.getByTestId('glide-json-editor')).toHaveStyle({
+      width: '380px',
+      height: '400px',
+    })
   })
 
   it('commits multiline editors on Enter and keeps Shift+Enter for new lines', () => {

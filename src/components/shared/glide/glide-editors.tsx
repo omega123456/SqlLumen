@@ -9,6 +9,7 @@ import {
 import { isWrappableTextSqlType } from '../../../lib/grid-column-style'
 import type { GridColumn } from './glide-grid-types'
 import DateTimeCellEditor from '../../table-data/DateTimeCellEditor'
+import JsonCellEditor from '../JsonCellEditor'
 import {
   NullableCellEditor,
   NullableMultilineCellEditor,
@@ -51,6 +52,7 @@ interface GlideOverlayConfig {
   testId?: string
   reserveMarkerWidth?: boolean
   overlayExtraWidth?: number
+  overlayMinWidth?: number
   overlayHeight?: number | ((target: Rectangle) => number)
 }
 
@@ -107,6 +109,11 @@ function getPreferredMultilineOverlayHeight(_: Rectangle): number {
   return Math.max(132, Math.min(500, Math.floor(viewportHeight * 0.5)))
 }
 
+function getPreferredJsonOverlayHeight(_: Rectangle): number {
+  const viewportHeight = getViewportHeight()
+  return Math.max(200, Math.min(400, Math.floor(viewportHeight * 0.45)))
+}
+
 function applyInitialInputValue(value: GridCell, initialInputValue: string | undefined): GridCell {
   if (initialInputValue == null || value.kind !== GridCellKind.Text) {
     return value
@@ -130,7 +137,13 @@ export function wrapEditorAsGlideOverlay(
     onChange,
     onFinishedEditing,
   }: CustomEditorProps) {
-    const { testId, reserveMarkerWidth = true, overlayExtraWidth = 20, overlayHeight } = config
+    const {
+      testId,
+      reserveMarkerWidth = true,
+      overlayExtraWidth = 20,
+      overlayMinWidth,
+      overlayHeight,
+    } = config
     const editorData = extractEditorData(value)
     const initialInputValue = editorData?.initialInputValue
     const currentValueRef = useRef(applyInitialInputValue(value, initialInputValue))
@@ -169,7 +182,10 @@ export function wrapEditorAsGlideOverlay(
     } = editorData
     const targetWidth = getEditorTargetWidth(target)
     const markerCount = reserveMarkerWidth ? getMarkerCount(editorData, columnMeta) : 0
-    const expandedWidth = getExpandedEditorWidth(targetWidth, markerCount)
+    const expandedWidth = Math.max(
+      overlayMinWidth ?? 0,
+      getExpandedEditorWidth(targetWidth, markerCount)
+    )
     const requestedOverlayWidth = expandedWidth + overlayExtraWidth
     const resolvedOverlayHeight =
       typeof overlayHeight === 'function' ? overlayHeight(target) : overlayHeight
@@ -234,6 +250,11 @@ const wrappedDateTimeEditor = wrapEditorAsGlideOverlay(
     testId: 'glide-datetime-editor',
   }
 )
+const wrappedJsonEditor = wrapEditorAsGlideOverlay(JsonCellEditor, {
+  testId: 'glide-json-editor',
+  overlayMinWidth: 380,
+  overlayHeight: getPreferredJsonOverlayHeight,
+})
 
 function shouldUseMultilineTextEditor(
   column: GridColumn<unknown>,
@@ -259,6 +280,7 @@ export function getGlideEditor(
 
   const editorByType: Partial<Record<GridEditorType, FunctionComponent<CustomEditorProps>>> = {
     datetime: wrappedDateTimeEditor,
+    json: wrappedJsonEditor,
     text: wrappedNullableEditor,
     fk: wrappedNullableEditor,
   }

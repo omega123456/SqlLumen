@@ -1,0 +1,102 @@
+.field {
+  flex: 1;
+  min-width: 0;
+}
+
+.readOnly {
+  opacity: 0.6;
+}
+
+.readPanel {
+  min-width: 0;
+}
+
+.readPanelBody {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.readPanelPre {
+  padding: 14px 16px;
+}
+
+.readPanelCode {
+  display: block;
+}
+
+.editorShell {
+  max-height: 300px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+}
+
+.editorViewport {
+  height: 300px;
+}
+
+.nullValue {
+  background: var(--background);
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.2);
+  color: var(--on-surface-variant);
+  font-size: var(--type-size-md);
+  font-family: var(--font-mono);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.key {
+  color: var(--primary);
+}
+
+.string {
+  color: var(--tertiary);
+}
+
+.number {
+  color: var(--warning);
+}
+
+.boolean {
+  color: var(--secondary);
+}
+
+.null {
+  color: var(--error);
+}
+
+.punctuation {
+  color: var(--on-surface-variant);
+}
+
+[data-theme='light'] .editorShell {
+  background: #ffffff;
+  border-color: #d8dce8;
+}
+
+[data-theme='light'] .key {
+  color: #0066cc;
+}
+
+[data-theme='light'] .string {
+  color: #2e7d32;
+}
+
+[data-theme='light'] .number {
+  color: #c65d00;
+}
+
+[data-theme='light'] .boolean {
+  color: #7c3aed;
+}
+
+[data-theme='light'] .null {
+  color: #b42318;
+}
+
+[data-theme='light'] .punctuation {
+  color: #475467;
+}

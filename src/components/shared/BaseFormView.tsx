@@ -25,10 +25,12 @@ import {
 import { formatCellValue } from '../../lib/result-cell-utils'
 import { writeClipboardText } from '../../lib/context-menu-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../../lib/date-utils'
+import { isJsonSqlType } from '../../lib/grid-column-style'
 import { Dropdown, type DropdownOption } from '../common/Dropdown'
 import { DateTimePicker } from '../table-data/DateTimePicker'
 import { TextInput } from '../common/TextInput'
 import { FkLookupTriggerButton } from './FkLookupTriggerButton'
+import { JsonFormField } from './JsonFormField'
 import tiStyles from '../common/TextInput.module.css'
 import { ENUM_NULL_SENTINEL } from '../table-data/enum-field-utils'
 import type {
@@ -60,6 +62,14 @@ function displayValue(value: unknown): string {
 
 function isNullish(value: unknown): value is null | undefined {
   return value === null || value === undefined
+}
+
+function getJsonFormDefaultValue(currentValue: unknown): string {
+  if (typeof currentValue === 'string' && currentValue.trim() !== '') {
+    return currentValue
+  }
+
+  return '{}'
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +169,8 @@ export function BaseFormView({
           onUpdateCell?.(col.key, getTodayMysqlString(temporalType))
         } else if (col.enumValues && col.enumValues.length > 0) {
           onUpdateCell?.(col.key, col.enumValues[0])
+        } else if (isJsonSqlType(col.dataType)) {
+          onUpdateCell?.(col.key, getJsonFormDefaultValue(currentRow[colIdx]))
         } else {
           onUpdateCell?.(col.key, '')
         }
@@ -341,6 +353,7 @@ function FormField({
   const isEditable = col.editable && hasEditCapability && !isBlobField
   const isTemporalEditable = temporalType !== null && isEditable
   const isEnumEditable = !!(col.enumValues && col.enumValues.length > 0) && isEditable
+  const isJsonColumn = isJsonSqlType(col.dataType)
 
   const enumDropdownOptions: DropdownOption[] = useMemo(() => {
     const out: DropdownOption[] = []
@@ -395,11 +408,23 @@ function FormField({
       </div>
 
       {/* Value row */}
-      <div className={styles.fieldValueRow}>
+      <div
+        className={[styles.fieldValueRow, isJsonColumn ? styles.fieldValueRowTall : '']
+          .filter(Boolean)
+          .join(' ')}
+      >
         {isBlobField ? (
           <div className={styles.fieldBlobReadonly} data-testid={`form-input-${col.displayName}`}>
             {rawValue != null ? String(rawValue) : '(BLOB data)'}
           </div>
+        ) : isJsonColumn ? (
+          <JsonFormField
+            value={typeof rawValue === 'string' || rawValue === null ? rawValue : displayValue(rawValue)}
+            isEditable={isEditable}
+            isNull={isNull}
+            onChange={(nextValue) => onInputChange(col.key, nextValue)}
+            testId={`form-input-${col.displayName}`}
+          />
         ) : isFieldReadonly ? (
           <div className={styles.fieldInputReadonly} data-testid={`form-input-${col.displayName}`}>
             {formatCellValue(rawValue).displayValue}

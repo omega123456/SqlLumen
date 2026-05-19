@@ -185,9 +185,7 @@ function isEnumColumn(column: GridColumn<GridRow> | undefined): column is EnumGr
 
 function isSetColumn(column: GridColumn<GridRow> | undefined): column is SetGridColumn {
   return (
-    column?.editorType === 'set' &&
-    Array.isArray(column.setValues) &&
-    column.setValues.length > 0
+    column?.editorType === 'set' && Array.isArray(column.setValues) && column.setValues.length > 0
   )
 }
 
@@ -731,12 +729,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
             ? serializeSetCellValue(newValue.data.values ?? null)
             : (newValue.data.values ?? null)
           : newValue.kind === GridCellKind.Boolean
-          ? newValue.data === true
-          : newValue.kind === GridCellKind.Text
-            ? newValue.data === '' && newValue.copyData === 'NULL'
-              ? null
-              : newValue.data
-            : undefined
+            ? newValue.data === true
+            : newValue.kind === GridCellKind.Text
+              ? newValue.data === '' && newValue.copyData === 'NULL'
+                ? null
+                : newValue.data
+              : undefined
       if (next === undefined) return
       const pendingTypingActivation = pendingTypingActivationRef.current
       const isPendingTypingActivation =
@@ -802,9 +800,9 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
               ? column.isNullable === true
                 ? null
                 : ''
-            : column.isNullable === true
-              ? null
-              : ''
+              : column.isNullable === true
+                ? null
+                : ''
           const baseClearedCell = buildTextCell(
             next == null ? '' : String(next),
             classifyCellValue(next, column.key),
@@ -815,12 +813,12 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
             ? buildEnumDropdownCell(column, next == null ? null : String(next), true)
             : isSetColumn(column)
               ? buildSetMultiSelectCell(column, next == null ? null : String(next), true)
-            : {
-                ...baseClearedCell,
-                readonly: false,
-                allowOverlay: true,
-                data: next == null ? '' : String(next),
-              }
+              : {
+                  ...baseClearedCell,
+                  readonly: false,
+                  allowOverlay: true,
+                  data: next == null ? '' : String(next),
+                }
           handleCellEdited([colIndex, rowIndex], clearedCell)
           nextRows[rowIndex] = { ...nextRows[rowIndex], [column.key]: next }
           changedIndexes.add(rowIndex)
@@ -923,6 +921,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
             | 'set'
             | 'datetime'
             | 'fk'
+            | 'json'
             | 'none'
             | undefined) ?? 'text'
         ) ?? undefined
