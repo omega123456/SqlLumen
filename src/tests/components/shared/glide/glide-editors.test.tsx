@@ -118,7 +118,7 @@ describe('wrapEditorAsGlideOverlay', () => {
       />
     )
 
-    changeRow?.('1234')
+    changeRow!('1234')
     rerender(
       <Editor
         target={{ x: 0, y: 0, width: 80, height: 32 }}
@@ -127,7 +127,7 @@ describe('wrapEditorAsGlideOverlay', () => {
         onFinishedEditing={onFinishedEditing}
       />
     )
-    closeEditor?.()
+    closeEditor!()
 
     expect(onFinishedEditing).toHaveBeenCalledWith(
       expect.objectContaining({ data: '1234', displayData: '1234', copyData: '1234' })
