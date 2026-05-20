@@ -1,1 +1,1 @@
-added json column support 
+See release assets for platform installers.
