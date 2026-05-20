@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
-  type MouseEvent,
+  type MouseEvent as ReactMouseEvent,
 } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
@@ -174,7 +174,7 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
   }, [])
 
   useEffect(() => {
-    const handleDocumentMouseDownCapture = (event: MouseEvent) => {
+    const handleDocumentMouseDownCapture = (event: globalThis.MouseEvent) => {
       if (!isNullToggleTarget(event.target, wrapperRef.current)) {
         return
       }
@@ -308,7 +308,7 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
     [cancelEdit, commitValue]
   )
 
-  const handleInternalControlMouseDown = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+  const handleInternalControlMouseDown = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
     ignoreNextBlurRef.current = true
     event.preventDefault()
     event.stopPropagation()
