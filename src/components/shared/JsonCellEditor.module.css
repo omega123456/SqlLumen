@@ -37,6 +37,7 @@
 
 .editorMarkerGroup {
   display: flex;
+  align-self: flex-start;
   align-items: flex-start;
   justify-content: flex-end;
   flex: 0 0 auto;
@@ -44,4 +45,8 @@
   gap: 4px;
   margin-right: 1px;
   margin-left: auto;
+}
+
+.editorMarkerGroup :global(.td-null-toggle) {
+  align-self: flex-start;
 }

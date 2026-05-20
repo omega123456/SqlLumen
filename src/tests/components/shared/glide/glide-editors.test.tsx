@@ -134,6 +134,48 @@ describe('wrapEditorAsGlideOverlay', () => {
     )
   })
 
+  it('passes the data column key to wrapped editors when the display label differs', () => {
+    let setNull: (() => void) | null = null
+    const onChange = vi.fn()
+    const Editor = wrapEditorAsGlideOverlay(
+      ({ row, column, onRowChange }) => {
+        setNull = () => onRowChange({ ...row, [column.key]: null })
+        return <button onClick={setNull}>NULL</button>
+      },
+      { testId: 'test-editor' }
+    )
+
+    render(
+      <Editor
+        target={{ x: 0, y: 0, width: 80, height: 32 }}
+        value={
+          {
+            kind: GridCellKind.Text,
+            data: '{"ok":true}',
+            displayData: '{"ok":true}',
+            copyData: '{"ok":true}',
+            allowOverlay: true,
+            readonly: false,
+            glideEditorData: {
+              row: { col_0: '{"ok":true}' },
+              columnKey: 'col_0',
+              columnLabel: 'profile',
+              isNullable: true,
+            },
+          } as TextCell & { glideEditorData: Record<string, unknown> }
+        }
+        onChange={onChange}
+        onFinishedEditing={vi.fn()}
+      />
+    )
+
+    setNull!()
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ data: '', displayData: 'NULL', copyData: 'NULL' })
+    )
+  })
+
   it('writes overlay padding metadata when configured', () => {
     const Editor = wrapEditorAsGlideOverlay(() => null, {
       testId: 'test-editor',

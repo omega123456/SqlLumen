@@ -275,6 +275,73 @@ describe('JsonCellEditor', () => {
     expect(props.updateCellValue).toHaveBeenLastCalledWith('tab-1', 'payload', '{\n  "alpha": 1\n}')
   })
 
+  it('does not close from Monaco blur before a NULL marker click can toggle the value', async () => {
+    const props = renderEditor()
+    const nullButton = screen.getByRole('button', { name: 'NULL' })
+
+    fireEvent.mouseDown(nullButton)
+    blurHandler?.()
+    fireEvent.click(nullButton)
+
+    await waitFor(() => {
+      expect(props.onRowChange).toHaveBeenCalledWith({ payload: null })
+    })
+    expect(props.updateCellValue).toHaveBeenCalledWith('tab-1', 'payload', null)
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('keeps capture-phase outside-click dismissal from closing before the NULL click', async () => {
+    const props = renderEditor()
+    const nullButton = screen.getByRole('button', { name: 'NULL' })
+    const outsideDismiss = vi.fn()
+    const handleCaptureMouseDown = (event: MouseEvent) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('.click-outside-ignore')) {
+        return
+      }
+      outsideDismiss()
+      props.onClose(true, false)
+    }
+
+    document.addEventListener('mousedown', handleCaptureMouseDown, true)
+    try {
+      fireEvent.mouseDown(nullButton)
+      fireEvent.click(nullButton)
+    } finally {
+      document.removeEventListener('mousedown', handleCaptureMouseDown, true)
+    }
+
+    expect(outsideDismiss).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(props.onRowChange).toHaveBeenCalledWith({ payload: null })
+    })
+    expect(props.updateCellValue).toHaveBeenCalledWith('tab-1', 'payload', null)
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('ignores a Monaco blur raised during document-capture mousedown on the NULL toggle', async () => {
+    const props = renderEditor()
+    const nullButton = screen.getByRole('button', { name: 'NULL' })
+
+    const triggerBlurDuringCapture = () => {
+      blurHandler?.()
+    }
+
+    document.addEventListener('mousedown', triggerBlurDuringCapture, true)
+    try {
+      fireEvent.mouseDown(nullButton)
+      fireEvent.click(nullButton)
+    } finally {
+      document.removeEventListener('mousedown', triggerBlurDuringCapture, true)
+    }
+
+    await waitFor(() => {
+      expect(props.onRowChange).toHaveBeenCalledWith({ payload: null })
+    })
+    expect(props.updateCellValue).toHaveBeenCalledWith('tab-1', 'payload', null)
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
   it('toggles null JSON values back to a valid default object', async () => {
     const props = renderEditor({
       row: { payload: null },
