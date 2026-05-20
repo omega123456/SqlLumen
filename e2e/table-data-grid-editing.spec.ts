@@ -212,6 +212,34 @@ async function openTableDataTab(page: Page) {
   })
 }
 
+async function openJsonTableDataTab(page: Page) {
+  await connectToSample(page)
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+      getState: () => { openTab: (tab: Record<string, unknown>) => void }
+    }
+    store.getState().openTab({
+      type: 'table-data',
+      label: 'json_sample',
+      connectionId: 'session-playwright-1',
+      databaseName: 'ecommerce_db',
+      objectName: 'json_sample',
+      objectType: 'table',
+    })
+  })
+
+  await expect(activePanel(page).getByTestId('table-data-tab')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+  await expect(activePanel(page).getByTestId('pagination-page-input')).toHaveValue('1', {
+    timeout: APP_READY_MS,
+  })
+  await expect(activePanel(page).getByTestId('table-data-grid')).toBeVisible({
+    timeout: APP_READY_MS,
+  })
+}
+
 async function openQueryEditorWithResults(page: Page) {
   await connectToSample(page)
   await page.getByTestId('new-query-tab-button').click()
@@ -565,6 +593,29 @@ test('table data datetime editor applies a clicked calendar date', async ({ page
 
   await expect(popup).toBeHidden({ timeout: APP_READY_MS })
   await expectCellValue(page, 'table-data-grid', 'created_at', 0, '2023-11-15 14:30:00')
+})
+
+test('table data JSON editor NULL marker sets null without outside-click dismissal', async ({
+  page,
+}) => {
+  await waitForApp(page)
+  await openJsonTableDataTab(page)
+
+  const grid = page.getByTestId('table-data-grid')
+  await expect(grid).toBeVisible({ timeout: APP_READY_MS })
+
+  await clickCellByColumnName(grid, 0, 'profile')
+  await activateCellEditorByColumnName(grid, 0, 'profile')
+
+  const editor = page.getByTestId('glide-json-editor')
+  await expect(editor).toBeVisible({ timeout: APP_READY_MS })
+
+  await editor.getByRole('button', { name: 'NULL' }).click()
+
+  await expect(editor).toBeVisible({ timeout: APP_READY_MS })
+  await expect(editor.getByTestId('json-cell-editor-surface')).toHaveText('NULL', {
+    timeout: APP_READY_MS,
+  })
 })
 
 test('table data enum editor fills the cell height and gives options comfortable sizing', async ({

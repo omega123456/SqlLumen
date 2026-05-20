@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import { getMonacoThemeName, registerMonacoThemes } from '../../lib/monaco-theme'
@@ -74,6 +82,15 @@ function isMonacoInternalMouseTarget(target: EventTarget | null): boolean {
   )
 }
 
+function isNullToggleTarget(target: EventTarget | null, wrapper: HTMLDivElement | null): boolean {
+  if (!(target instanceof HTMLElement) || wrapper == null) {
+    return false
+  }
+
+  const toggle = target.closest('.td-null-toggle')
+  return toggle != null && wrapper.contains(toggle)
+}
+
 export default function JsonCellEditor(props: CellEditorBaseProps) {
   const { row, column, onRowChange, onClose } = props
   const fieldName = column.key
@@ -103,6 +120,7 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
   const monacoRef = useRef<typeof Monaco | null>(null)
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
   const isCancellingRef = useRef(false)
+  const ignoreNextBlurRef = useRef(false)
   const blurListenerDisposeRef = useRef<(() => void) | null>(null)
 
   const contextCallbacks = useEditorCallbacks()
@@ -152,6 +170,21 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
   useEffect(() => {
     return () => {
       blurListenerDisposeRef.current?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleDocumentMouseDownCapture = (event: MouseEvent) => {
+      if (!isNullToggleTarget(event.target, wrapperRef.current)) {
+        return
+      }
+
+      ignoreNextBlurRef.current = true
+    }
+
+    document.addEventListener('mousedown', handleDocumentMouseDownCapture, true)
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentMouseDownCapture, true)
     }
   }, [])
 
@@ -216,6 +249,11 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
         return
       }
 
+      if (ignoreNextBlurRef.current) {
+        ignoreNextBlurRef.current = false
+        return
+      }
+
       if (relatedTarget instanceof Node && wrapperRef.current?.contains(relatedTarget)) {
         return
       }
@@ -258,10 +296,16 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
     [cancelEdit, commitValue]
   )
 
+  const handleInternalControlMouseDown = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    ignoreNextBlurRef.current = true
+    event.preventDefault()
+    event.stopPropagation()
+  }, [])
+
   return (
     <div
       ref={wrapperRef}
-      className={styles.editorWrapper}
+      className={`${styles.editorWrapper} click-outside-ignore`}
       data-testid="json-cell-editor"
       onKeyDownCapture={handleKeyDown}
       onMouseDownCapture={(event) => {
@@ -305,9 +349,16 @@ export default function JsonCellEditor(props: CellEditorBaseProps) {
         {isNullable ? (
           <button
             type="button"
-            className={`td-null-toggle ${isNull ? 'td-null-active' : ''}`}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={handleToggleNull}
+            className={`td-null-toggle click-outside-ignore ${isNull ? 'td-null-active' : ''}`}
+            onMouseDown={handleInternalControlMouseDown}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              handleToggleNull()
+              queueMicrotask(() => {
+                ignoreNextBlurRef.current = false
+              })
+            }}
             tabIndex={-1}
           >
             NULL

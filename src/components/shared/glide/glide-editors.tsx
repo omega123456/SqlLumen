@@ -173,7 +173,6 @@ export function wrapEditorAsGlideOverlay(
     const {
       row,
       columnKey,
-      columnLabel,
       columnMeta,
       isNullable,
       foreignKey,
@@ -209,7 +208,7 @@ export function wrapEditorAsGlideOverlay(
       >
         <EditorComponent
           row={row}
-          column={{ key: columnLabel ?? columnKey }}
+          column={{ key: columnKey }}
           isNullable={isNullable}
           columnMeta={columnMeta}
           foreignKey={foreignKey}
