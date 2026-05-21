@@ -154,6 +154,23 @@ describe('CanvasBaseGridView', () => {
     expect(onColumnResize).toHaveBeenCalledWith('name', 222)
   })
 
+  it('keeps columns resizable when no consumer resize callback is supplied', () => {
+    render(<CanvasBaseGridView rows={rows} columns={columns} editState={null} />)
+    const initialProps = mockGlideDataGrid.mock.lastCall?.[0] as {
+      columns: Array<{ width: number }>
+      onColumnResize: (columnIndex: number, width: number) => void
+    }
+
+    expect(initialProps.columns[0].width).not.toBe(222)
+
+    act(() => initialProps.onColumnResize(0, 222))
+
+    const updatedProps = mockGlideDataGrid.mock.lastCall?.[0] as {
+      columns: Array<{ width: number }>
+    }
+    expect(updatedProps.columns[0].width).toBe(222)
+  })
+
   it('provides the multiline Glide editor for editable long-text columns', () => {
     render(
       <CanvasBaseGridView

@@ -348,6 +348,7 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   useImperativeHandle(ref, () => gridRef.current as GridHandle, [])
   const [internalSelectedRowIndex, setInternalSelectedRowIndex] = useState<number | null>(null)
   const [gridSelection, setGridSelection] = useState<GridSelection | undefined>(undefined)
+  const [internalColumnWidths, setInternalColumnWidths] = useState<Record<string, number>>({})
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const lastInteractedCellRef = useRef<{ rowIdx: number; idx: number } | null>(null)
   const lastSelectedListCellRef = useRef<{ rowIdx: number; idx: number } | null>(null)
@@ -387,14 +388,23 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
     const infoColumns: GridColumn<GridRow>[] = showInfoColumn
       ? [{ key: 'info', name: 'Info', width: 260, resizable: true, sortable: true }]
       : []
-    return [
+    const nextColumns = [
       ...(props.prefixColumns ?? []),
       ...dataColumns,
       ...infoColumns,
       ...(props.suffixColumns ?? []),
     ]
+
+    if (onColumnResize) return nextColumns
+
+    return nextColumns.map((column) => {
+      const width = internalColumnWidths[column.key]
+      return typeof width === 'number' ? { ...column, width } : column
+    })
   }, [
     columns,
+    internalColumnWidths,
+    onColumnResize,
     props.autoSizeConfig,
     props.prefixColumns,
     props.suffixColumns,
@@ -1406,7 +1416,13 @@ function CanvasBaseGridViewInner(props: CanvasBaseGridViewProps, ref: React.Ref<
   const handleColumnResize = useCallback(
     (columnIndex: number, width: number) => {
       const column = gridColumns[columnIndex]
-      if (column) onColumnResize?.(column.key, width)
+      if (!column) return
+      if (!onColumnResize) {
+        setInternalColumnWidths((current) =>
+          current[column.key] === width ? current : { ...current, [column.key]: width }
+        )
+      }
+      onColumnResize?.(column.key, width)
     },
     [gridColumns, onColumnResize]
   )
