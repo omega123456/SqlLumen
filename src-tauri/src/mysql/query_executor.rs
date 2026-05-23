@@ -1235,24 +1235,11 @@ pub async fn fetch_schema_metadata_impl(
 
     const SYSTEM_DBS: &str = "'information_schema','performance_schema','sys','mysql'";
 
-    // Fetch databases
+    // Build all 4 SQL strings up front
     let db_sql = format!(
         "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA \
          WHERE SCHEMA_NAME NOT IN ({SYSTEM_DBS}) ORDER BY SCHEMA_NAME"
     );
-    crate::mysql::query_log::log_outgoing_sql(&db_sql);
-    let db_rows = sqlx::query(&db_sql)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| format!("Failed to fetch databases: {e}"))?;
-    crate::mysql::query_log::log_mysql_rows(&db_rows);
-
-    let databases: Vec<String> = db_rows
-        .iter()
-        .filter_map(|row| decode_required_identifier(row, 0))
-        .collect();
-
-    // Fetch tables
     let table_sql = format!(
         "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, COALESCE(t.ENGINE,''), \
          COALESCE(c.CHARACTER_SET_NAME,''), COALESCE(t.TABLE_ROWS,0), COALESCE(t.DATA_LENGTH,0) \
@@ -1262,13 +1249,66 @@ pub async fn fetch_schema_metadata_impl(
          WHERE t.TABLE_SCHEMA NOT IN ({SYSTEM_DBS}) \
          ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME"
     );
-    crate::mysql::query_log::log_outgoing_sql(&table_sql);
-    let table_rows = sqlx::query(&table_sql)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| format!("Failed to fetch tables: {e}"))?;
-    crate::mysql::query_log::log_mysql_rows(&table_rows);
+    let col_sql = format!(
+        "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE \
+         FROM information_schema.COLUMNS \
+         WHERE TABLE_SCHEMA NOT IN ({SYSTEM_DBS}) \
+         ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION"
+    );
+    let routine_sql = format!(
+        "SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE \
+         FROM information_schema.ROUTINES \
+         WHERE ROUTINE_SCHEMA NOT IN ({SYSTEM_DBS}) \
+         ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME"
+    );
 
+    // Fire all 4 queries concurrently
+    let (db_rows, table_rows, col_rows, routine_rows) = tokio::try_join!(
+        async {
+            crate::mysql::query_log::log_outgoing_sql(&db_sql);
+            let rows = sqlx::query(&db_sql)
+                .fetch_all(&pool)
+                .await
+                .map_err(|e| format!("Failed to fetch databases: {e}"))?;
+            crate::mysql::query_log::log_mysql_rows(&rows);
+            Ok::<_, String>(rows)
+        },
+        async {
+            crate::mysql::query_log::log_outgoing_sql(&table_sql);
+            let rows = sqlx::query(&table_sql)
+                .fetch_all(&pool)
+                .await
+                .map_err(|e| format!("Failed to fetch tables: {e}"))?;
+            crate::mysql::query_log::log_mysql_rows(&rows);
+            Ok::<_, String>(rows)
+        },
+        async {
+            crate::mysql::query_log::log_outgoing_sql(&col_sql);
+            let rows = sqlx::query(&col_sql)
+                .fetch_all(&pool)
+                .await
+                .map_err(|e| format!("Failed to fetch columns: {e}"))?;
+            crate::mysql::query_log::log_mysql_rows(&rows);
+            Ok::<_, String>(rows)
+        },
+        async {
+            crate::mysql::query_log::log_outgoing_sql(&routine_sql);
+            let rows = sqlx::query(&routine_sql)
+                .fetch_all(&pool)
+                .await
+                .map_err(|e| format!("Failed to fetch routines: {e}"))?;
+            crate::mysql::query_log::log_mysql_rows(&rows);
+            Ok::<_, String>(rows)
+        },
+    )?;
+
+    // Decode databases
+    let databases: Vec<String> = db_rows
+        .iter()
+        .filter_map(|row| decode_required_identifier(row, 0))
+        .collect();
+
+    // Decode tables
     let mut tables: std::collections::HashMap<String, Vec<TableInfo>> =
         std::collections::HashMap::new();
     for row in &table_rows {
@@ -1299,20 +1339,7 @@ pub async fn fetch_schema_metadata_impl(
         });
     }
 
-    // Fetch columns
-    let col_sql = format!(
-        "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE \
-         FROM information_schema.COLUMNS \
-         WHERE TABLE_SCHEMA NOT IN ({SYSTEM_DBS}) \
-         ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION"
-    );
-    crate::mysql::query_log::log_outgoing_sql(&col_sql);
-    let col_rows = sqlx::query(&col_sql)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| format!("Failed to fetch columns: {e}"))?;
-    crate::mysql::query_log::log_mysql_rows(&col_rows);
-
+    // Decode columns
     let mut columns: std::collections::HashMap<String, Vec<ColumnMeta>> =
         std::collections::HashMap::new();
     for row in &col_rows {
@@ -1333,20 +1360,7 @@ pub async fn fetch_schema_metadata_impl(
         });
     }
 
-    // Fetch routines
-    let routine_sql = format!(
-        "SELECT ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE \
-         FROM information_schema.ROUTINES \
-         WHERE ROUTINE_SCHEMA NOT IN ({SYSTEM_DBS}) \
-         ORDER BY ROUTINE_SCHEMA, ROUTINE_NAME"
-    );
-    crate::mysql::query_log::log_outgoing_sql(&routine_sql);
-    let routine_rows = sqlx::query(&routine_sql)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| format!("Failed to fetch routines: {e}"))?;
-    crate::mysql::query_log::log_mysql_rows(&routine_rows);
-
+    // Decode routines
     let mut routines: std::collections::HashMap<String, Vec<RoutineMeta>> =
         std::collections::HashMap::new();
     for row in &routine_rows {
@@ -1428,7 +1442,9 @@ pub async fn fetch_schema_metadata_full_impl(
     state: &AppState,
     connection_id: &str,
 ) -> Result<SchemaMetadataFull, String> {
-    use crate::mysql::schema_queries::{query_all_foreign_keys, query_all_indexes};
+    use crate::mysql::schema_queries::{
+        query_all_foreign_keys_batch, query_all_indexes_batch,
+    };
 
     // First get the base metadata (databases, tables, columns, routines)
     let base = fetch_schema_metadata_impl(state, connection_id).await?;
@@ -1438,40 +1454,34 @@ pub async fn fetch_schema_metadata_full_impl(
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
 
-    let mut foreign_keys: HashMap<String, Vec<crate::mysql::schema_queries::ForeignKeyInfo>> =
-        HashMap::new();
-    let mut indexes: HashMap<String, Vec<crate::mysql::schema_queries::IndexInfo>> = HashMap::new();
+    // Extract database names for batch queries
+    let db_names: Vec<String> = base.databases.clone();
 
-    // For each database, fetch all FKs and indexes
-    for db_name in &base.databases {
-        let db_fks = query_all_foreign_keys(&pool, db_name)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(
-                    database = db_name,
-                    error = %e,
-                    "failed to fetch foreign keys for database"
-                );
-                HashMap::new()
-            });
-        for (table_name, fk_list) in db_fks {
-            let key = format!("{db_name}.{table_name}");
-            foreign_keys.entry(key).or_default().extend(fk_list);
-        }
-
-        let db_indexes = query_all_indexes(&pool, db_name).await.unwrap_or_else(|e| {
-            tracing::warn!(
-                database = db_name,
-                error = %e,
-                "failed to fetch indexes for database"
-            );
-            HashMap::new()
-        });
-        for (table_name, idx_list) in db_indexes {
-            let key = format!("{db_name}.{table_name}");
-            indexes.entry(key).or_default().extend(idx_list);
-        }
-    }
+    // Run both batch queries concurrently
+    let (foreign_keys, indexes) = tokio::join!(
+        async {
+            query_all_foreign_keys_batch(&pool, &db_names)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        error = %e,
+                        "failed to fetch foreign keys batch"
+                    );
+                    HashMap::new()
+                })
+        },
+        async {
+            query_all_indexes_batch(&pool, &db_names)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!(
+                        error = %e,
+                        "failed to fetch indexes batch"
+                    );
+                    HashMap::new()
+                })
+        },
+    );
 
     Ok(SchemaMetadataFull {
         databases: base.databases,

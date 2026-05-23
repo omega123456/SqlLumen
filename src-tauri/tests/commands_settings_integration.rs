@@ -3,6 +3,9 @@
 mod common;
 
 use sqllumen_lib::commands::settings::{get_all_settings_impl, get_setting_impl, set_setting_impl};
+use sqllumen_lib::mysql::registry::ConnectionRegistry;
+use sqllumen_lib::state::AppState;
+use std::sync::{Arc, Mutex};
 
 #[test]
 fn test_get_setting_impl_returns_none_for_missing() {
@@ -44,4 +47,104 @@ fn test_get_all_settings_impl_with_values() {
     assert_eq!(all.len(), 2);
     assert_eq!(all.get("theme"), Some(&"dark".to_string()));
     assert_eq!(all.get("font"), Some(&"mono".to_string()));
+}
+
+#[test]
+fn test_set_setting_impl_handles_log_level_key() {
+    let state = common::test_app_state();
+
+    set_setting_impl(
+        &state,
+        sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY,
+        "debug",
+    )
+    .expect("should set log level");
+
+    let result = get_setting_impl(&state, sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY)
+        .expect("should get log level");
+    assert_eq!(result, Some("debug".to_string()));
+}
+
+#[test]
+fn test_settings_impls_surface_poisoned_db_lock_errors() {
+    common::ensure_fake_backend_once();
+    let poisoned_db = Arc::new(Mutex::new(common::test_db()));
+    let poison_handle = Arc::clone(&poisoned_db);
+
+    let join = std::thread::spawn(move || {
+        let _guard = poison_handle.lock().expect("poison lock should succeed");
+        panic!("poison sqlite mutex");
+    });
+    assert!(join.join().is_err(), "thread should panic to poison mutex");
+
+    let state = AppState {
+        db: poisoned_db,
+        registry: ConnectionRegistry::new(),
+        app_handle: None,
+        results: std::sync::RwLock::new(std::collections::HashMap::new()),
+        log_filter_reload: Mutex::new(None),
+        running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+        dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        http_client: reqwest::Client::new(),
+        embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
+    };
+
+    let get_error = get_setting_impl(&state, "theme").expect_err("get should fail");
+    assert!(
+        get_error.contains("poison"),
+        "unexpected error: {get_error}"
+    );
+
+    let set_error = set_setting_impl(&state, "theme", "dark").expect_err("set should fail");
+    assert!(
+        set_error.contains("poison"),
+        "unexpected error: {set_error}"
+    );
+
+    let get_all_error = get_all_settings_impl(&state).expect_err("get_all should fail");
+    assert!(
+        get_all_error.contains("poison"),
+        "unexpected error: {get_all_error}"
+    );
+}
+
+#[test]
+fn test_set_setting_impl_ignores_poisoned_log_reload_mutex() {
+    common::ensure_fake_backend_once();
+    let state = AppState {
+        db: Arc::new(Mutex::new(common::test_db())),
+        registry: ConnectionRegistry::new(),
+        app_handle: None,
+        results: std::sync::RwLock::new(std::collections::HashMap::new()),
+        log_filter_reload: Mutex::new(None),
+        running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
+        dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        import_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
+        ai_requests: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        index_build_tokens: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        http_client: reqwest::Client::new(),
+        embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
+    };
+
+    std::thread::scope(|scope| {
+        let reload_mutex = &state.log_filter_reload;
+        let handle = scope.spawn(move || {
+            let _guard = reload_mutex.lock().expect("poison lock should succeed");
+            panic!("poison log reload mutex");
+        });
+        assert!(
+            handle.join().is_err(),
+            "thread should panic to poison mutex"
+        );
+    });
+
+    let result = set_setting_impl(&state, sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY, "info");
+    assert!(result.is_ok(), "set should ignore poisoned reload path");
 }

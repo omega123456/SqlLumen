@@ -83,3 +83,18 @@ fn test_open_database_returns_error_when_parent_path_is_a_file() {
 
     let _ = std::fs::remove_dir_all(blocker_parent);
 }
+
+#[test]
+fn test_open_database_returns_error_when_db_path_is_a_directory() {
+    let db_dir = unique_temp_path("db_open_dir_target", "dbdir");
+    std::fs::create_dir_all(&db_dir).expect("should create directory target");
+
+    let result = open_database(db_dir.clone());
+
+    assert!(
+        result.is_err(),
+        "should fail when the database path points at a directory"
+    );
+
+    let _ = std::fs::remove_dir_all(db_dir);
+}
