@@ -1,4 +1,5 @@
 .container {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -34,6 +35,21 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.restoringOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--result-grid-bg);
+  opacity: 0.85;
+  z-index: 10;
+  color: var(--on-surface-variant);
+  font-size: 13px;
 }
 
 .errorBody {

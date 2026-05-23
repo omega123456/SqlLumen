@@ -156,7 +156,7 @@ export function QueryEditorTab({ tab, isActive = true }: QueryEditorTabProps) {
     <div className={styles.container} data-testid="query-editor-tab">
       <EditorToolbar connectionId={tab.connectionId} tabId={tab.id} />
       <div className={styles.contentArea}>
-        {status === 'running' && <QueryExecutionOverlay />}
+        {(status === 'running' || status === 'restoring') && <QueryExecutionOverlay />}
         <Group orientation="vertical" className={styles.panelGroup}>
           <Panel
             defaultSize="60%"

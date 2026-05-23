@@ -111,7 +111,7 @@ function parseResultPagePayload(value: unknown): {
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
 
 /** Tab-level status extends ExecutionStatus with AI-specific states. */
-export type TabStatus = ExecutionStatus | 'ai-pending' | 'ai-reviewing'
+export type TabStatus = ExecutionStatus | 'ai-pending' | 'ai-reviewing' | 'restoring'
 export type ActiveBottomPanelItem = { type: 'result' } | { type: 'table-data'; tabId: string }
 
 // ---------------------------------------------------------------------------
@@ -2558,7 +2558,8 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         tab.tabStatus === 'idle' ||
         tab.tabStatus === 'running' ||
         tab.tabStatus === 'success' ||
-        tab.tabStatus === 'error'
+        tab.tabStatus === 'error' ||
+        tab.tabStatus === 'restoring'
 
       if (isAiLock && currentIsExecution) {
         patchTab(tabId, {
@@ -2580,14 +2581,19 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const connectionId = tab.connectionId
       if (!connectionId) return
 
+      const prevStatus = tab.tabStatus
+      patchTab(tabId, { tabStatus: 'restoring' })
+
       touchResultsCmd(connectionId, tabId)
         .then((response) => {
           if (!get().tabs[tabId]) return
           if (response.status === 'expired') {
             markTabResultsExpired(tabId)
           }
+          patchTab(tabId, { tabStatus: prevStatus })
         })
         .catch((err) => {
+          patchTab(tabId, { tabStatus: prevStatus })
           logFrontend(
             'warn',
             ['[query-store] validateActiveTabResults failed:', err].map(String).join(' ')

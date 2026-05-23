@@ -375,7 +375,13 @@ export function ResultPanel({
   // Determine which status to show for the result area
   // Tab-level 'running' takes precedence; otherwise use active result's status
   const displayStatus =
-    tabStatus === 'running' ? 'running' : tabStatus === 'idle' ? 'idle' : resultStatus
+    tabStatus === 'running'
+      ? 'running'
+      : tabStatus === 'restoring'
+        ? 'restoring'
+        : tabStatus === 'idle'
+          ? 'idle'
+          : resultStatus
   const cloneVisible = editMode !== null
   const selectedRowExists =
     selectedRowIndex !== null && selectedRowIndex >= 0 && selectedRowIndex < rows.length
@@ -547,7 +553,7 @@ export function ResultPanel({
             <Button
               variant="secondary"
               onClick={handleRetryExpired}
-              disabled={displayStatus === 'running'}
+              disabled={displayStatus === 'restoring'}
               style={{ marginTop: 8 }}
               data-testid="retry-expired-button"
             >
@@ -569,6 +575,17 @@ export function ResultPanel({
           <div className={styles.spinner} />
           <span>Executing query...</span>
         </div>
+      )}
+
+      {!isExpired && displayStatus === 'restoring' && (
+        <>
+          {!hideSubTabs && results.length > 1 && <ResultSubTabs tabId={tabId} />}
+          {renderResultBody(gridTabPanelClassName)}
+          <div className={styles.restoringOverlay}>
+            <div className={styles.spinner} />
+            <span>Restoring cached results…</span>
+          </div>
+        </>
       )}
 
       {!isExpired && displayStatus === 'success' && (
