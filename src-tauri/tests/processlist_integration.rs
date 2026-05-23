@@ -134,6 +134,65 @@ fn processlist_steps_with_kill_error() -> Vec<MockQueryStep> {
     steps
 }
 
+fn processlist_steps_with_signed_id_and_null_fields() -> Vec<MockQueryStep> {
+    vec![MockQueryStep {
+        query: "SHOW FULL PROCESSLIST",
+        columns: vec![
+            MockColumnDef {
+                name: "Id",
+                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "User",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "Host",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "db",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "Command",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "Time",
+                coltype: ColumnType::MYSQL_TYPE_LONGLONG,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "State",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+            MockColumnDef {
+                name: "Info",
+                coltype: ColumnType::MYSQL_TYPE_VAR_STRING,
+                colflags: ColumnFlags::empty(),
+            },
+        ],
+        rows: vec![vec![
+            MockCell::I64(7),
+            MockCell::Null,
+            MockCell::Null,
+            MockCell::Null,
+            MockCell::Bytes(b"Sleep"),
+            MockCell::Null,
+            MockCell::Null,
+            MockCell::Null,
+        ]],
+        error: None,
+    }]
+}
+
 fn register_mock_session(state: &AppState, session_id: &str, port: u16, read_only: bool) {
     let pool = MySqlPoolOptions::new().connect_lazy_with(
         MySqlConnectOptions::new()
@@ -219,6 +278,30 @@ async fn test_get_processlist_returns_rows_with_registered_mock_session() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].id, 42);
     assert_eq!(rows[0].state.as_deref(), Some("executing"));
+}
+
+#[tokio::test]
+async fn test_get_processlist_handles_signed_ids_and_null_fields() {
+    common::ensure_fake_backend_once();
+    let state = common::test_app_state();
+
+    let server = MockMySqlServer::start_script(processlist_steps_with_signed_id_and_null_fields())
+        .await;
+    register_mock_session(&state, "sess-processlist-null", server.port, false);
+
+    let rows = get_processlist_impl(&state, "sess-processlist-null")
+        .await
+        .expect("should get processlist");
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, 7);
+    assert_eq!(rows[0].user, "");
+    assert_eq!(rows[0].host, "");
+    assert_eq!(rows[0].db, None);
+    assert_eq!(rows[0].command, "Sleep");
+    assert_eq!(rows[0].time, 0);
+    assert_eq!(rows[0].state, None);
+    assert_eq!(rows[0].info, None);
 }
 
 #[cfg(not(coverage))]

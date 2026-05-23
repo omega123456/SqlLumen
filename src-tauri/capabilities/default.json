@@ -107,6 +107,7 @@
     "allow-list-memories",
     "allow-delete-memory",
     "allow-search-memories",
-    "allow-reembed-memories"
+    "allow-reembed-memories",
+    "allow-touch-results"
   ]
 }

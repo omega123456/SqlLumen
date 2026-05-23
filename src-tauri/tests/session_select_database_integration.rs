@@ -63,11 +63,7 @@ fn register_connection(state: &AppState, connection_id: &str) {
     );
 }
 
-fn register_connection_with_password(
-    state: &AppState,
-    connection_id: &str,
-    profile_id: &str,
-) {
+fn register_connection_with_password(state: &AppState, connection_id: &str, profile_id: &str) {
     state.registry.insert(
         connection_id.to_string(),
         RegistryEntry {

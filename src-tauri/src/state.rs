@@ -6,8 +6,8 @@ use tauri::AppHandle;
 use tokio::sync::RwLock as TokioRwLock;
 
 use crate::logging::LogFilterReloadHandle;
-use crate::mysql::query_executor::StoredResult;
 use crate::mysql::registry::ConnectionRegistry;
+use crate::mysql::result_cache::ResultCache;
 use tokio_util::sync::CancellationToken;
 
 /// Status of a SQL dump export job.
@@ -83,9 +83,8 @@ pub struct AppState {
     pub registry: ConnectionRegistry,
     /// Tauri app handle (None only in unit tests where AppHandle is unavailable).
     pub app_handle: Option<AppHandle>,
-    /// In-memory query results keyed by (connection_id, tab_id).
-    /// Each entry is a vector of results to support multi-query execution.
-    pub results: RwLock<HashMap<(String, String), Vec<StoredResult>>>,
+    /// In-memory query results with time-to-idle eviction, backed by moka.
+    pub result_cache: Arc<ResultCache>,
     /// Reload handle for `EnvFilter` when `log.level` changes (None in tests).
     pub log_filter_reload: Mutex<Option<LogFilterReloadHandle>>,
     /// MySQL thread IDs for currently running queries, keyed by (connection_id, tab_id).

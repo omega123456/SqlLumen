@@ -1,0 +1,198 @@
+//! Integration tests for `ResultCache` core operations:
+//! insert/get/remove, TTL, LRU tracking, multiple entries.
+
+mod common;
+
+use sqllumen_lib::mysql::query_executor::StoredResult;
+use sqllumen_lib::mysql::result_cache::ResultCache;
+use std::thread;
+use std::time::Duration;
+
+/// Helper: build a minimal `StoredResult` for testing.
+fn stub_result(query_id: &str) -> StoredResult {
+    StoredResult {
+        query_id: query_id.to_string(),
+        columns: vec![],
+        rows: vec![],
+        execution_time_ms: 0,
+        affected_rows: 0,
+        auto_limit_applied: false,
+        page_size: 500,
+    }
+}
+
+#[test]
+fn insert_and_get() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+
+    let entry = cache
+        .get("conn1", "tab1")
+        .into_entry()
+        .expect("should find entry");
+    assert_eq!(entry.rows.len(), 1);
+    assert_eq!(entry.rows[0].query_id, "q1");
+}
+
+#[test]
+fn cache_miss_returns_never_stored() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    assert!(!cache.get("conn1", "tab1").is_available());
+    assert!(matches!(
+        cache.get("conn1", "tab1"),
+        sqllumen_lib::mysql::result_cache::ResultCacheGet::NeverStored
+    ));
+}
+
+#[test]
+fn remove_invalidates_entry() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.remove("conn1", "tab1");
+    cache.run_pending_tasks();
+
+    assert!(!cache.get("conn1", "tab1").is_available());
+}
+
+#[test]
+fn set_ttl_updates_atomic() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    assert_eq!(cache.ttl_seconds(), 1800);
+    cache.set_ttl(900);
+    assert_eq!(cache.ttl_seconds(), 900);
+}
+
+#[test]
+fn short_ttl_evicts_entry() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1, tmp.path().to_path_buf());
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    assert!(cache.get("conn1", "tab1").is_available());
+
+    // Wait for TTL to expire and run maintenance.
+    thread::sleep(Duration::from_millis(1500));
+    cache.run_pending_tasks();
+    cache.flush_spill_jobs();
+
+    // After TTL expiry, result should be spilled to disk and re-warmable,
+    // so get() returns ReWarmed (still available).
+    // The entry_count in moka may be 0, but get() re-warms from disk.
+    let result = cache.get("conn1", "tab1");
+    assert!(result.is_available());
+}
+
+#[test]
+fn lru_ordering_reflects_access() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert("conn1", "tab2", vec![stub_result("q2")]);
+    cache.insert("conn1", "tab3", vec![stub_result("q3")]);
+
+    // LRU order: tab1 (least recent), tab2, tab3 (most recent)
+    let lru = cache.lru_snapshot();
+    assert_eq!(lru.len(), 3);
+    assert_eq!(lru[0], ("conn1".to_string(), "tab1".to_string()));
+    assert_eq!(lru[2], ("conn1".to_string(), "tab3".to_string()));
+
+    // Access tab1 — it should move to the back.
+    cache.get("conn1", "tab1");
+    let lru = cache.lru_snapshot();
+    assert_eq!(lru[0], ("conn1".to_string(), "tab2".to_string()));
+    assert_eq!(lru[2], ("conn1".to_string(), "tab1".to_string()));
+}
+
+#[test]
+fn lru_remove_cleans_up() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert("conn1", "tab2", vec![stub_result("q2")]);
+
+    cache.remove("conn1", "tab1");
+
+    let lru = cache.lru_snapshot();
+    assert_eq!(lru.len(), 1);
+    assert_eq!(lru[0], ("conn1".to_string(), "tab2".to_string()));
+}
+
+#[test]
+fn multiple_entries_tracked_independently() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert("conn2", "tab1", vec![stub_result("q2")]);
+
+    let e1 = cache.get("conn1", "tab1").into_entry().expect("entry 1");
+    let e2 = cache.get("conn2", "tab1").into_entry().expect("entry 2");
+    assert_eq!(e1.rows[0].query_id, "q1");
+    assert_eq!(e2.rows[0].query_id, "q2");
+
+    // Remove one; the other survives.
+    cache.remove("conn1", "tab1");
+    cache.run_pending_tasks();
+    assert!(!cache.get("conn1", "tab1").is_available());
+    assert!(cache.get("conn2", "tab1").is_available());
+}
+
+#[test]
+fn session_id_is_uuid_v4() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    let id = cache.session_id();
+    assert_eq!(id.len(), 36); // UUID v4 standard format
+    assert!(uuid::Uuid::parse_str(id).is_ok());
+}
+
+#[test]
+fn spill_dir_returns_configured_path() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let expected = tmp.path().to_path_buf();
+    let cache = ResultCache::new_for_test(1800, expected.clone());
+
+    assert_eq!(cache.spill_dir(), &expected);
+}
+
+#[test]
+fn insert_replaces_existing_entry() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert("conn1", "tab1", vec![stub_result("q2")]);
+
+    let entry = cache
+        .get("conn1", "tab1")
+        .into_entry()
+        .expect("should find entry");
+    assert_eq!(entry.rows[0].query_id, "q2");
+    cache.run_pending_tasks();
+    assert_eq!(cache.entry_count(), 1);
+}
+
+#[test]
+fn generation_increments_on_insert() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(1800, tmp.path().to_path_buf());
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    let g1 = cache.get("conn1", "tab1").into_entry().unwrap().generation;
+
+    cache.insert("conn1", "tab1", vec![stub_result("q2")]);
+    let g2 = cache.get("conn1", "tab1").into_entry().unwrap().generation;
+
+    assert!(g2 > g1);
+}

@@ -81,7 +81,12 @@ fn test_settings_impls_surface_poisoned_db_lock_errors() {
         db: poisoned_db,
         registry: ConnectionRegistry::new(),
         app_handle: None,
-        results: std::sync::RwLock::new(std::collections::HashMap::new()),
+        result_cache: std::sync::Arc::new(
+            sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+                1800,
+                std::env::temp_dir().join("sqllumen-test-settings"),
+            ),
+        ),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
@@ -120,7 +125,12 @@ fn test_set_setting_impl_ignores_poisoned_log_reload_mutex() {
         db: Arc::new(Mutex::new(common::test_db())),
         registry: ConnectionRegistry::new(),
         app_handle: None,
-        results: std::sync::RwLock::new(std::collections::HashMap::new()),
+        result_cache: std::sync::Arc::new(
+            sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+                1800,
+                std::env::temp_dir().join("sqllumen-test-settings"),
+            ),
+        ),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
@@ -147,4 +157,31 @@ fn test_set_setting_impl_ignores_poisoned_log_reload_mutex() {
 
     let result = set_setting_impl(&state, sqllumen_lib::logging::LOG_LEVEL_SETTING_KEY, "info");
     assert!(result.is_ok(), "set should ignore poisoned reload path");
+}
+
+#[test]
+fn test_set_setting_impl_updates_result_cache_ttl() {
+    let state = common::test_app_state();
+
+    assert_eq!(state.result_cache.ttl_seconds(), 1800);
+
+    set_setting_impl(&state, "results.cacheTTL", "900").expect("should set ttl");
+
+    assert_eq!(state.result_cache.ttl_seconds(), 900);
+    let persisted = get_setting_impl(&state, "results.cacheTTL").expect("should get ttl");
+    assert_eq!(persisted, Some("900".to_string()));
+}
+
+#[test]
+fn test_set_setting_impl_ignores_unparseable_result_cache_ttl() {
+    let state = common::test_app_state();
+
+    assert_eq!(state.result_cache.ttl_seconds(), 1800);
+
+    set_setting_impl(&state, "results.cacheTTL", "not-a-number")
+        .expect("should persist invalid ttl string");
+
+    assert_eq!(state.result_cache.ttl_seconds(), 1800);
+    let persisted = get_setting_impl(&state, "results.cacheTTL").expect("should get ttl");
+    assert_eq!(persisted, Some("not-a-number".to_string()));
 }

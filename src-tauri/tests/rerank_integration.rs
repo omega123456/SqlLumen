@@ -45,10 +45,7 @@ async fn test_rerank_timeout_fallback() {
         .build()
         .unwrap();
 
-    let candidates = vec![
-        make_result(1, "users", 0.9),
-        make_result(2, "orders", 0.8),
-    ];
+    let candidates = vec![make_result(1, "users", 0.9), make_result(2, "orders", 0.8)];
 
     let results = sqllumen_lib::schema_index::rerank::rerank_with_llm(
         candidates.clone(),
@@ -115,10 +112,7 @@ async fn test_rerank_disables_reasoning_on_request() {
         .await;
 
     let client = reqwest::Client::new();
-    let candidates = vec![
-        make_result(1, "users", 0.9),
-        make_result(2, "orders", 0.8),
-    ];
+    let candidates = vec![make_result(1, "users", 0.9), make_result(2, "orders", 0.8)];
 
     let results = sqllumen_lib::schema_index::rerank::rerank_with_llm(
         candidates,
@@ -240,9 +234,7 @@ fn reorder_partial_ids_appends_remainder() {
 
 #[test]
 fn reorder_unknown_ids_ignored() {
-    let candidates = vec![
-        make_result(1, "users", 0.9),
-    ];
+    let candidates = vec![make_result(1, "users", 0.9)];
     let reordered = reorder_by_ids(candidates, &[999, 1]);
     assert_eq!(reordered.len(), 1);
     assert_eq!(reordered[0].chunk_id, 1);
@@ -256,10 +248,7 @@ fn reorder_empty_candidates() {
 
 #[test]
 fn reorder_empty_ids_preserves_score_order() {
-    let candidates = vec![
-        make_result(1, "users", 0.5),
-        make_result(2, "orders", 0.9),
-    ];
+    let candidates = vec![make_result(1, "users", 0.5), make_result(2, "orders", 0.9)];
     let reordered = reorder_by_ids(candidates, &[]);
     assert_eq!(reordered[0].chunk_id, 2); // higher score first
     assert_eq!(reordered[1].chunk_id, 1);

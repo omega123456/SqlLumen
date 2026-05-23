@@ -148,3 +148,13 @@ export async function updateResultCell(
 export async function cancelQuery(connectionId: string, tabId: string): Promise<boolean> {
   return invoke<boolean>('cancel_query', { connectionId, tabId })
 }
+
+export async function touchResults(
+  connectionId: string,
+  tabId: string
+): Promise<{ status: 'available' | 'expired' | 'missing' }> {
+  return invoke<{ status: 'available' | 'expired' | 'missing' }>('touch_results', {
+    connectionId,
+    tabId,
+  })
+}

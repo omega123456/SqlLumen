@@ -40,7 +40,11 @@ pub async fn rerank_with_llm(
         .map(|r| {
             // Truncate text_for_embedding / ddl_text to ~200 chars for the summary
             let summary = if r.ddl_text.len() > 200 {
-                let truncated = r.ddl_text.char_indices().nth(200).map_or(r.ddl_text.as_str(), |(i, _)| &r.ddl_text[..i]);
+                let truncated = r
+                    .ddl_text
+                    .char_indices()
+                    .nth(200)
+                    .map_or(r.ddl_text.as_str(), |(i, _)| &r.ddl_text[..i]);
                 format!("{}…", truncated)
             } else {
                 r.ddl_text.clone()
@@ -60,9 +64,7 @@ pub async fn rerank_with_llm(
         Return JSON {\"ranked\":[chunkId,...]} containing a subset of the input ids \
         in best-first order.";
 
-    let user_prompt = format!(
-        "Question: \"{question}\"\nCandidates: {candidates_json}"
-    );
+    let user_prompt = format!("Question: \"{question}\"\nCandidates: {candidates_json}");
 
     let mut request_body_obj = serde_json::json!({
         "model": model,
@@ -79,10 +81,7 @@ pub async fn rerank_with_llm(
     crate::ai::client::apply_reasoning_off_compatibility(&mut request_body_obj);
     let request_body = serde_json::Value::Object(request_body_obj);
 
-    let url = format!(
-        "{}/chat/completions",
-        endpoint.trim_end_matches('/')
-    );
+    let url = format!("{}/chat/completions", endpoint.trim_end_matches('/'));
 
     // 6 second timeout
     let result = tokio::time::timeout(
@@ -98,7 +97,9 @@ pub async fn rerank_with_llm(
             return candidates;
         }
         Err(_) => {
-            tracing::warn!("rerank_with_llm: request timed out (6s), falling back to original order");
+            tracing::warn!(
+                "rerank_with_llm: request timed out (6s), falling back to original order"
+            );
             return candidates;
         }
     };
@@ -115,9 +116,7 @@ pub async fn rerank_with_llm(
     let ranked_ids = parse_rerank_response(&body);
 
     match ranked_ids {
-        Some(ids) if !ids.is_empty() => {
-            reorder_by_ids(candidates, &ids)
-        }
+        Some(ids) if !ids.is_empty() => reorder_by_ids(candidates, &ids),
         _ => {
             tracing::warn!(
                 body_preview = %body.chars().take(200).collect::<String>(),

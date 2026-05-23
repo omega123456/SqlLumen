@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Play, CheckCircle } from '@phosphor-icons/react'
+import { Play, CheckCircle, ClockCountdown } from '@phosphor-icons/react'
 import { useQueryStore, getActiveResult } from '../../stores/query-store'
 import { useToastStore } from '../../stores/toast-store'
 import { FkLookupProvider, type FkLookupArgs } from '../shared/fk-lookup-context'
@@ -25,6 +25,7 @@ import { ResultGridView } from './ResultGridView'
 import { ResultFormView } from './ResultFormView'
 import { ResultTextView } from './ResultTextView'
 import { UnsavedChangesDialog } from '../shared/UnsavedChangesDialog'
+import { Button } from '../common/Button'
 import ExportDialog from '../dialogs/ExportDialog'
 import { FilterDialog } from '../dialogs/FilterDialog'
 import type {
@@ -82,6 +83,7 @@ export function ResultPanel({
   const discardCurrentRow = useQueryStore((s) => s.discardCurrentRow)
   const closeExportDialog = useQueryStore((s) => s.closeExportDialog)
   const applyQueryFilters = useQueryStore((s) => s.applyQueryFilters)
+  const retryExpiredResult = useQueryStore((s) => s.retryExpiredResult)
 
   // Read from active result
   const resultStatus = activeResult.resultStatus
@@ -94,6 +96,7 @@ export function ResultPanel({
   const selectedRowIndex = activeResult.selectedRowIndex ?? null
   const exportDialogOpen = activeResult.exportDialogOpen ?? false
   const totalRows = activeResult.totalRows ?? 0
+  const isExpired = activeResult.isExpired ?? false
 
   // Edit mode state from active result
   const editMode = activeResult.editMode ?? null
@@ -505,30 +508,77 @@ export function ResultPanel({
     </div>
   )
 
+  const handleRetryExpired = useCallback(() => {
+    void retryExpiredResult(tabId)
+  }, [retryExpiredResult, tabId])
+
   return (
     <div className={styles.container} data-testid="result-panel">
-      {displayStatus === 'idle' && (
+      <div role="status" data-testid="expired-status">
+        {isExpired && displayStatus !== 'running' && (
+          <div className={styles.emptyState} style={{ height: '100%' }}>
+            <ClockCountdown
+              weight="duotone"
+              size={32}
+              aria-hidden="true"
+              style={{ opacity: 0.35, color: 'var(--on-surface-variant)' }}
+            />
+            <div style={{ maxWidth: 320, textAlign: 'center' }}>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 600,
+                  color: 'var(--on-surface)',
+                }}
+              >
+                Results expired
+              </div>
+              <div
+                style={{
+                  fontSize: 12,
+                  opacity: 0.6,
+                  color: 'var(--on-surface-variant)',
+                  marginTop: 4,
+                }}
+              >
+                Cached results are no longer available.
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              onClick={handleRetryExpired}
+              disabled={displayStatus === 'running'}
+              style={{ marginTop: 8 }}
+              data-testid="retry-expired-button"
+            >
+              Re-run query
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {!isExpired && displayStatus === 'idle' && (
         <div className={styles.emptyState}>
           <Play size={32} weight="duotone" className={styles.emptyIcon} />
           <span>Run a query to see results</span>
         </div>
       )}
 
-      {displayStatus === 'running' && (
+      {!isExpired && displayStatus === 'running' && (
         <div className={styles.emptyState}>
           <div className={styles.spinner} />
           <span>Executing query...</span>
         </div>
       )}
 
-      {displayStatus === 'success' && (
+      {!isExpired && displayStatus === 'success' && (
         <>
           {!hideSubTabs && results.length > 1 && <ResultSubTabs tabId={tabId} />}
           {renderResultBody(gridTabPanelClassName)}
         </>
       )}
 
-      {displayStatus === 'error' && (
+      {!isExpired && displayStatus === 'error' && (
         <>
           {!hideSubTabs && results.length > 1 && <ResultSubTabs tabId={tabId} />}
           {renderErrorBody()}

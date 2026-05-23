@@ -192,6 +192,7 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   write_file: () => undefined,
   analyze_query_for_edit: () => [],
   update_result_cell: () => undefined,
+  touch_results: () => ({ status: 'available' }),
 
   // --- Export ---
   export_results: () => ({ bytesWritten: 0, rowsExported: 0 }),

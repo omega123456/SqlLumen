@@ -15,8 +15,8 @@ use crate::db::history::NewHistoryEntry;
 use crate::mysql::query_executor::{
     analyze_query_for_edit_impl, cancel_query_impl, evict_results_impl, fetch_result_page_impl,
     fetch_schema_metadata_full_impl, fetch_schema_metadata_impl, read_file_impl,
-    reexecute_single_result_impl, sort_results_impl, update_result_cell_impl, write_file_impl,
-    ExecuteQueryResult, FetchPageResult, MultiQueryResult, MultiQueryResultItem,
+    reexecute_single_result_impl, sort_results_impl, touch_results_impl, update_result_cell_impl,
+    write_file_impl, ExecuteQueryResult, FetchPageResult, MultiQueryResult, MultiQueryResultItem,
     QueryTableEditInfo, SchemaMetadata, SchemaMetadataFull,
 };
 #[cfg(not(coverage))]
@@ -287,4 +287,16 @@ pub async fn execute_call_query(
         page_size.unwrap_or(1000),
     )
     .await
+}
+
+// ── touch_results ────────────────────────────────────────────────────────
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub fn touch_results(
+    connection_id: String,
+    tab_id: String,
+    state: tauri::State<'_, AppState>,
+) -> serde_json::Value {
+    touch_results_impl(&state, &connection_id, &tab_id)
 }

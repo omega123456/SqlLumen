@@ -64,7 +64,9 @@ fn reasoning_off_fields() -> (&'static str, bool, ChatTemplateKwargs) {
     )
 }
 
-fn chat_reasoning_compat_fields(enable_reasoning: bool) -> (Option<bool>, Option<ChatTemplateKwargs>) {
+fn chat_reasoning_compat_fields(
+    enable_reasoning: bool,
+) -> (Option<bool>, Option<ChatTemplateKwargs>) {
     if enable_reasoning {
         return (None, None);
     }
@@ -79,7 +81,10 @@ pub fn apply_reasoning_off_compatibility(body: &mut serde_json::Map<String, serd
         "reasoning_effort".to_string(),
         serde_json::Value::String(effort.to_string()),
     );
-    body.insert("enable_thinking".to_string(), serde_json::Value::Bool(enable_thinking));
+    body.insert(
+        "enable_thinking".to_string(),
+        serde_json::Value::Bool(enable_thinking),
+    );
     body.insert(
         "chat_template_kwargs".to_string(),
         serde_json::json!({ "enable_thinking": enable_thinking }),
@@ -260,8 +265,10 @@ pub fn extract_reasoning_text_from_item(item: &serde_json::Value) -> String {
     if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
         for part in content {
             let part_type = part.get("type").and_then(|v| v.as_str());
-            if matches!(part_type, Some("summary_text") | Some("reasoning_text") | Some("text"))
-            {
+            if matches!(
+                part_type,
+                Some("summary_text") | Some("reasoning_text") | Some("text")
+            ) {
                 if let Some(value) = part.get("text").and_then(|v| v.as_str()) {
                     text.push_str(value);
                 }
@@ -344,7 +351,10 @@ fn extract_text_from_message_item(item: &serde_json::Value) -> String {
                 continue;
             }
 
-            text.push_str(&extract_text_from_response_part(part, &["output_text", "text"]));
+            text.push_str(&extract_text_from_response_part(
+                part,
+                &["output_text", "text"],
+            ));
         }
     }
 
@@ -377,7 +387,9 @@ pub fn extract_responses_reasoning_text_for_event(
         Some("response.reasoning_summary_part.done")
         | Some("response.content_part.done")
         | Some("response.output_item.done")
-        | Some("response.completed") if !already_streamed_reasoning => {
+        | Some("response.completed")
+            if !already_streamed_reasoning =>
+        {
             extract_responses_reasoning_text(json)
         }
         _ => String::new(),
@@ -391,10 +403,11 @@ pub fn extract_responses_content_text_for_event(
 ) -> String {
     match event_type {
         Some("response.output_text.delta") => extract_responses_delta_text(json),
-        Some("response.content_part.added") if should_treat_content_part_as_visible_text(json) => json
-            .get("part")
-            .map(|part| extract_text_from_response_part(part, &["output_text", "text"]))
-            .unwrap_or_default(),
+        Some("response.content_part.added") if should_treat_content_part_as_visible_text(json) => {
+            json.get("part")
+                .map(|part| extract_text_from_response_part(part, &["output_text", "text"]))
+                .unwrap_or_default()
+        }
         Some("response.output_text.done") if !already_streamed_output => json
             .get("text")
             .and_then(|v| v.as_str())
@@ -411,7 +424,9 @@ pub fn extract_responses_content_text_for_event(
             .get("item")
             .map(extract_text_from_message_item)
             .unwrap_or_default(),
-        Some("response.completed") if !already_streamed_output => extract_responses_final_text(json),
+        Some("response.completed") if !already_streamed_output => {
+            extract_responses_final_text(json)
+        }
         _ => String::new(),
     }
 }
@@ -680,7 +695,12 @@ async fn stream_chat_inner<R: Runtime>(
         max_tokens: request.max_tokens,
         stream: true,
         reasoning_effort: Some(
-            if request.enable_reasoning { "medium" } else { "none" }.to_string(),
+            if request.enable_reasoning {
+                "medium"
+            } else {
+                "none"
+            }
+            .to_string(),
         ),
         enable_thinking,
         chat_template_kwargs,
@@ -720,7 +740,8 @@ async fn stream_chat_inner<R: Runtime>(
     }
 
     // Send the request, racing against cancellation
-    let mut response = send_chat_request(&client, &chat_url, &api_request, cancellation_token).await?;
+    let mut response =
+        send_chat_request(&client, &chat_url, &api_request, cancellation_token).await?;
 
     // Check HTTP status
     let status = response.status();
@@ -730,7 +751,9 @@ async fn stream_chat_inner<R: Runtime>(
             Err(_) => "<failed to read body>".to_string(),
         };
 
-        if api_request.reasoning_effort.is_some() && should_retry_chat_without_reasoning(status, &body) {
+        if api_request.reasoning_effort.is_some()
+            && should_retry_chat_without_reasoning(status, &body)
+        {
             if !request.enable_reasoning {
                 return Err(format!(
                     "Provider rejected reasoning disable parameter reasoning_effort=none; cannot safely disable thinking for this endpoint/model. HTTP {status}: {body}"
@@ -748,7 +771,8 @@ async fn stream_chat_inner<R: Runtime>(
                 reasoning_effort: None,
                 ..api_request.clone()
             };
-            response = send_chat_request(&client, &chat_url, &retry_request, cancellation_token).await?;
+            response =
+                send_chat_request(&client, &chat_url, &retry_request, cancellation_token).await?;
 
             let retry_status = response.status();
             if !retry_status.is_success() {
@@ -812,7 +836,11 @@ async fn stream_chat_inner<R: Runtime>(
 
                     match parse_sse_line(&line) {
                         Ok(SseParsed::Chunk(chunk)) => {
-                            accumulate_thinking(&chunk, &mut thinking_buffer, request.enable_reasoning);
+                            accumulate_thinking(
+                                &chunk,
+                                &mut thinking_buffer,
+                                request.enable_reasoning,
+                            );
                             for choice in &chunk.choices {
                                 if let Some(content) = &choice.delta.content {
                                     let reasoning_text = choice
@@ -830,13 +858,28 @@ async fn stream_chat_inner<R: Runtime>(
 
                             // Flush buffers at ~50ms intervals
                             if last_flush.elapsed() >= FLUSH_INTERVAL {
-                                flush_buffer(app_handle, stream_id, &mut thinking_buffer, ChunkKind::Thinking);
-                                flush_buffer(app_handle, stream_id, &mut buffer, ChunkKind::Content);
+                                flush_buffer(
+                                    app_handle,
+                                    stream_id,
+                                    &mut thinking_buffer,
+                                    ChunkKind::Thinking,
+                                );
+                                flush_buffer(
+                                    app_handle,
+                                    stream_id,
+                                    &mut buffer,
+                                    ChunkKind::Content,
+                                );
                                 last_flush = Instant::now();
                             }
                         }
                         Ok(SseParsed::Done) => {
-                            flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
+                            flush_both_buffers(
+                                app_handle,
+                                stream_id,
+                                &mut thinking_buffer,
+                                &mut buffer,
+                            );
                             let _ = app_handle.emit(
                                 "ai-stream-done",
                                 StreamDoneEvent {
@@ -852,7 +895,12 @@ async fn stream_chat_inner<R: Runtime>(
                         }
                         Err(e) => {
                             tracing::error!(stream_id = %stream_id, error = %e, "SSE parse error");
-                            flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
+                            flush_both_buffers(
+                                app_handle,
+                                stream_id,
+                                &mut thinking_buffer,
+                                &mut buffer,
+                            );
                             return Err(e);
                         }
                     }
@@ -868,7 +916,11 @@ async fn stream_chat_inner<R: Runtime>(
                     let remaining = std::mem::take(&mut line_buffer);
                     match parse_sse_line(&remaining) {
                         Ok(SseParsed::Chunk(chunk)) => {
-                            accumulate_thinking(&chunk, &mut thinking_buffer, request.enable_reasoning);
+                            accumulate_thinking(
+                                &chunk,
+                                &mut thinking_buffer,
+                                request.enable_reasoning,
+                            );
                             for choice in &chunk.choices {
                                 if let Some(content) = &choice.delta.content {
                                     let reasoning_text = choice
@@ -885,7 +937,12 @@ async fn stream_chat_inner<R: Runtime>(
                             }
                         }
                         Ok(SseParsed::Done) => {
-                            flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
+                            flush_both_buffers(
+                                app_handle,
+                                stream_id,
+                                &mut thinking_buffer,
+                                &mut buffer,
+                            );
                             let _ = app_handle.emit(
                                 "ai-stream-done",
                                 StreamDoneEvent {
@@ -901,7 +958,12 @@ async fn stream_chat_inner<R: Runtime>(
                         }
                         Err(e) => {
                             tracing::error!(stream_id = %stream_id, error = %e, "SSE parse error on residual buffer");
-                            flush_both_buffers(app_handle, stream_id, &mut thinking_buffer, &mut buffer);
+                            flush_both_buffers(
+                                app_handle,
+                                stream_id,
+                                &mut thinking_buffer,
+                                &mut buffer,
+                            );
                             return Err(e);
                         }
                     }
@@ -1013,11 +1075,8 @@ fn process_responses_payload<R: Runtime>(
         flush_buffer(app_handle, stream_id, thinking_buffer, ChunkKind::Thinking);
     }
 
-    let text_to_append = extract_responses_content_text_for_event(
-        event_type,
-        json,
-        state.saw_streamed_output_text,
-    );
+    let text_to_append =
+        extract_responses_content_text_for_event(event_type, json, state.saw_streamed_output_text);
 
     if !text_to_append.is_empty() {
         state.saw_streamed_output_text = true;
@@ -1100,7 +1159,8 @@ async fn stream_responses_completion<R: Runtime>(
 
     let responses_url = crate::ai::url::normalise_to_responses_url(&request.endpoint);
 
-    let mut response = send_responses_request(&client, &responses_url, &api_request, cancellation_token).await?;
+    let mut response =
+        send_responses_request(&client, &responses_url, &api_request, cancellation_token).await?;
 
     let status = response.status();
     if !status.is_success() {
@@ -1122,7 +1182,9 @@ async fn stream_responses_completion<R: Runtime>(
                 ..api_request.clone()
             };
 
-            response = send_responses_request(&client, &responses_url, &retry_request, cancellation_token).await?;
+            response =
+                send_responses_request(&client, &responses_url, &retry_request, cancellation_token)
+                    .await?;
             let retry_status = response.status();
             if !retry_status.is_success() {
                 let retry_body = match response.text().await {
@@ -1131,7 +1193,8 @@ async fn stream_responses_completion<R: Runtime>(
                 };
                 return Err(ResponsesStreamError::new(
                     format!("HTTP {retry_status}: {retry_body}"),
-                    retry_status.is_server_error() || should_fallback_from_responses_status(retry_status, &retry_body),
+                    retry_status.is_server_error()
+                        || should_fallback_from_responses_status(retry_status, &retry_body),
                 ));
             }
         } else {
@@ -1186,8 +1249,8 @@ async fn stream_responses_completion<R: Runtime>(
                     }
 
                     if let Some(data) = trimmed.strip_prefix("data:") {
-                        let json: serde_json::Value = serde_json::from_str(data.trim())
-                            .map_err(|e| {
+                        let json: serde_json::Value =
+                            serde_json::from_str(data.trim()).map_err(|e| {
                                 ResponsesStreamError::new(
                                     format!("Failed to parse SSE JSON: {e}"),
                                     !stream_state.saw_valid_responses_payload,
@@ -1206,7 +1269,11 @@ async fn stream_responses_completion<R: Runtime>(
                             &mut stream_state,
                         )? {
                             ResponsesPayloadOutcome::Done => {
-                                emit_responses_done(app_handle, stream_id, stream_state.response_id.clone());
+                                emit_responses_done(
+                                    app_handle,
+                                    stream_id,
+                                    stream_state.response_id.clone(),
+                                );
                                 return Ok(());
                             }
                             ResponsesPayloadOutcome::Continue => {}
@@ -1221,13 +1288,13 @@ async fn stream_responses_completion<R: Runtime>(
                 return Err(ResponsesStreamError::new(
                     format!("Stream read error: {e}"),
                     !stream_state.saw_valid_responses_payload,
-                ))
+                ));
             }
             None => {
                 let trimmed = line_buffer.trim();
                 if let Some(data) = trimmed.strip_prefix("data:") {
-                    let json: serde_json::Value = serde_json::from_str(data.trim())
-                        .map_err(|e| {
+                    let json: serde_json::Value =
+                        serde_json::from_str(data.trim()).map_err(|e| {
                             ResponsesStreamError::new(
                                 format!("Failed to parse SSE JSON: {e}"),
                                 !stream_state.saw_valid_responses_payload,

@@ -438,11 +438,15 @@ async fn schema_queries_cover_success_and_error_paths() {
         .expect("list events");
     assert_eq!(events, vec!["nightly_cleanup".to_string()]);
 
-    let columns = query_list_columns(&pool, "app", "users").await.expect("columns");
+    let columns = query_list_columns(&pool, "app", "users")
+        .await
+        .expect("columns");
     assert_eq!(columns.len(), 2);
     assert_eq!(columns[1].name, "email");
 
-    let details = query_database_details(&pool, "app").await.expect("database details");
+    let details = query_database_details(&pool, "app")
+        .await
+        .expect("database details");
     assert_eq!(details.default_character_set, "utf8mb4");
 
     let charsets = query_list_charsets(&pool).await.expect("charsets");
@@ -454,7 +458,10 @@ async fn schema_queries_cover_success_and_error_paths() {
     let full_columns = query_full_columns(&pool, "app", "users")
         .await
         .expect("full columns");
-    assert_eq!(full_columns[1].default_value.as_deref(), Some("guest@example.com"));
+    assert_eq!(
+        full_columns[1].default_value.as_deref(),
+        Some("guest@example.com")
+    );
 
     let indexes = query_indexes(&pool, "app", "users").await.expect("indexes");
     assert_eq!(indexes.len(), 2);
@@ -484,7 +491,9 @@ async fn schema_queries_cover_success_and_error_paths() {
     assert!(proc_info.columns.is_empty());
     assert!(proc_info.ddl.contains("CREATE PROCEDURE"));
 
-    validate_charset(&pool, "utf8mb4").await.expect("valid charset");
+    validate_charset(&pool, "utf8mb4")
+        .await
+        .expect("valid charset");
     validate_collation(&pool, "utf8mb4_general_ci", Some("utf8mb4"))
         .await
         .expect("valid collation");
@@ -529,7 +538,9 @@ async fn schema_queries_cover_error_paths() {
     .await;
     let pool = pool_for(server.port);
 
-    let err = query_list_databases(&pool).await.expect_err("query should fail");
+    let err = query_list_databases(&pool)
+        .await
+        .expect_err("query should fail");
     assert!(err.contains("Failed to list databases"));
 
     let unknown_object_err = query_list_schema_objects(&pool, "app", "unknown")

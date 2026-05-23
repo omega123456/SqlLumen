@@ -242,6 +242,48 @@ describe('useWorkspaceStore — openTab', () => {
   })
 })
 
+describe('useWorkspaceStore — query result validation on activation', () => {
+  it('touches active query results when a query tab becomes active', () => {
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    const queryTab = useWorkspaceStore.getState().tabsByConnection['conn-1'][0]
+
+    useQueryStore.setState({
+      tabs: {
+        [queryTab.id]: {
+          content: 'SELECT * FROM users',
+          selectedText: '',
+          filePath: null,
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
+          cursorPosition: null,
+          connectionId: 'conn-1',
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'q-validate-1',
+            },
+          ],
+          activeResultIndex: 0,
+          activeBottomPanelItem: { type: 'result' },
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+        },
+      },
+    })
+
+    useWorkspaceStore.getState().setActiveTab('conn-1', queryTab.id)
+
+    expect(ipc.calls('touch_results')).toHaveLength(1)
+    expect(ipc.calls('touch_results')[0]).toMatchObject({
+      connectionId: 'conn-1',
+      tabId: queryTab.id,
+    })
+  })
+})
+
 describe('useWorkspaceStore — openTab (object-editor)', () => {
   it('creates a new object-editor tab and sets it active', () => {
     useWorkspaceStore.getState().openTab(makeObjectEditorTab())

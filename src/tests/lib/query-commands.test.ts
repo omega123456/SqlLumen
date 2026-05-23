@@ -14,6 +14,7 @@ import {
   executeMultiQuery,
   executeCallQuery,
   reexecuteSingleResult,
+  touchResults,
 } from '../../lib/query-commands'
 
 const mockExecuteQueryFn = vi.fn(() => ({
@@ -111,6 +112,7 @@ const mockReexecuteSingleResultFn = vi.fn(() => ({
   error: null,
   reExecutable: true,
 }))
+const mockTouchResultsFn = vi.fn(() => ({ status: 'available' as const }))
 
 beforeEach(() => {
   mockExecuteQueryFn.mockClear()
@@ -126,6 +128,7 @@ beforeEach(() => {
   mockExecuteMultiQueryFn.mockClear()
   mockExecuteCallQueryFn.mockClear()
   mockReexecuteSingleResultFn.mockClear()
+  mockTouchResultsFn.mockClear()
   ipc.override('execute_query', () => mockExecuteQueryFn())
   ipc.override('fetch_result_page', () => mockFetchResultPageFn())
   ipc.override('evict_results', () => mockEvictResultsFn())
@@ -139,6 +142,7 @@ beforeEach(() => {
   ipc.override('execute_multi_query', () => mockExecuteMultiQueryFn())
   ipc.override('execute_call_query', () => mockExecuteCallQueryFn())
   ipc.override('reexecute_single_result', () => mockReexecuteSingleResultFn())
+  ipc.override('touch_results', () => mockTouchResultsFn())
 })
 
 describe('query-commands', () => {
@@ -229,6 +233,12 @@ describe('query-commands', () => {
     expect(result.sourceSql).toBe('SELECT 1')
     expect(result.reExecutable).toBe(true)
     expect(mockReexecuteSingleResultFn).toHaveBeenCalled()
+  })
+
+  it('touchResults invokes touch_results command', async () => {
+    const result = await touchResults('conn-1', 'tab-1')
+    expect(result).toEqual({ status: 'available' })
+    expect(mockTouchResultsFn).toHaveBeenCalled()
   })
 
   // --- resultIndex optional parameter tests ---

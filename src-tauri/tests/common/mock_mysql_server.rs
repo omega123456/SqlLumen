@@ -10,8 +10,8 @@ use std::io;
 use std::io::Write;
 use std::sync::Arc;
 use tokio::io::BufWriter;
-use tokio::net::TcpListener;
 use tokio::net::tcp::OwnedWriteHalf;
+use tokio::net::TcpListener;
 
 #[derive(Debug, Clone)]
 pub struct MockColumnDef {

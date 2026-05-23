@@ -111,6 +111,7 @@ fn prevent_default_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 #[cfg(not(any(test, coverage)))]
 pub fn run() {
     use mysql::registry::ConnectionRegistry;
+    use mysql::result_cache::ResultCache;
     use state::AppState;
     use std::sync::{Arc, Mutex};
     use tauri::Manager;
@@ -156,6 +157,54 @@ pub fn run() {
                 crate::logging::apply_log_level_from_settings(&conn, &logging_init.filter_reload);
             }
 
+            // Read cached TTL from settings (default 30 minutes = 1800 seconds)
+            let cache_ttl_secs: u64 = crate::db::settings::get_setting(&conn, "results.cacheTTL")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(1800);
+
+            let spill_dir = resolved_app_data_dir(&base).join("sqllumen-spill");
+
+            // Startup cleanup: wipe leftover spill files from previous sessions
+            if spill_dir.exists() {
+                if let Err(e) = std::fs::remove_dir_all(&spill_dir) {
+                    tracing::warn!(
+                        error = %e,
+                        path = %spill_dir.display(),
+                        "failed to clean up spill directory on startup"
+                    );
+                }
+            }
+
+            let result_cache = Arc::new(ResultCache::new(cache_ttl_secs, spill_dir));
+
+            // Spawn background maintenance task for cache eviction and RAM pressure.
+            {
+                let cache_for_task = Arc::clone(&result_cache);
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                        let cache_for_blocking = Arc::clone(&cache_for_task);
+                        let join_result = tauri::async_runtime::spawn_blocking(move || {
+                            use mysql::result_cache::SysinfoMemorySnapshot;
+
+                            let mut snapshot = SysinfoMemorySnapshot::new();
+                            snapshot.refresh();
+                            cache_for_blocking.run_maintenance(&snapshot);
+                        })
+                        .await;
+
+                        if let Err(e) = join_result {
+                            tracing::warn!(
+                                error = %e,
+                                "result cache maintenance task failed"
+                            );
+                        }
+                    }
+                });
+            }
+
             tracing::info!(
                 target: "sqllumen_lib",
                 rust_log_env_set = logging_init.rust_log_env_set,
@@ -167,7 +216,7 @@ pub fn run() {
                 db: Arc::new(Mutex::new(conn)),
                 registry: ConnectionRegistry::new(),
                 app_handle: Some(app.handle().clone()),
-                results: std::sync::RwLock::new(std::collections::HashMap::new()),
+                result_cache,
                 log_filter_reload: Mutex::new(Some(logging_init.filter_reload)),
                 running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
                 dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
@@ -276,6 +325,7 @@ pub fn run() {
             commands::query::reexecute_single_result,
             commands::query::execute_multi_query,
             commands::query::execute_call_query,
+            commands::query::touch_results,
             commands::export::export_results,
             commands::table_data::fetch_table_data,
             commands::table_data::update_table_row,

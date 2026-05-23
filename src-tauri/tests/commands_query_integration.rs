@@ -9,7 +9,7 @@ use sqllumen_lib::mysql::query_executor::{
     calculate_total_pages, evict_results_impl, fetch_result_page_impl, find_with_main_keyword,
     get_first_keyword, get_page_rows, has_top_level_limit, inject_limit_into_select,
     is_read_only_allowed, is_select_like, needs_auto_limit, read_file_impl,
-    strip_non_executable_comments, write_file_impl,
+    strip_non_executable_comments, touch_results_impl, write_file_impl,
 };
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::state::AppState;
@@ -25,7 +25,12 @@ fn test_state() -> AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),
         app_handle: None,
-        results: std::sync::RwLock::new(std::collections::HashMap::new()),
+        result_cache: std::sync::Arc::new(
+            sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+                1800,
+                std::env::temp_dir().join("sqllumen-test-cmdquery"),
+            ),
+        ),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
@@ -470,39 +475,31 @@ fn evict_results_removes_stored_result() {
     let state = test_state();
 
     // Insert a result manually
-    {
-        let mut results = state.results.write().expect("lock ok");
-        results.insert(
-            ("conn-1".to_string(), "tab-1".to_string()),
-            vec![StoredResult {
-                query_id: "qid-1".to_string(),
-                columns: vec![ColumnMeta {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                }],
-                rows: vec![vec![serde_json::json!(1)]],
-                execution_time_ms: 5,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
+    state.result_cache.insert(
+        "conn-1",
+        "tab-1",
+        vec![StoredResult {
+            query_id: "qid-1".to_string(),
+            columns: vec![ColumnMeta {
+                name: "id".to_string(),
+                data_type: "INT".to_string(),
             }],
-        );
-    }
+            rows: vec![vec![serde_json::json!(1)]],
+            execution_time_ms: 5,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     // Verify it exists
-    {
-        let results = state.results.read().expect("lock ok");
-        assert!(results.contains_key(&("conn-1".to_string(), "tab-1".to_string())));
-    }
+    assert!(state.result_cache.get("conn-1", "tab-1").is_available());
 
     // Evict
     evict_results_impl(&state, "conn-1", "tab-1");
 
     // Verify gone
-    {
-        let results = state.results.read().expect("lock ok");
-        assert!(!results.contains_key(&("conn-1".to_string(), "tab-1".to_string())));
-    }
+    assert!(!state.result_cache.get("conn-1", "tab-1").is_available());
 }
 
 #[test]
@@ -510,6 +507,103 @@ fn evict_results_no_op_when_not_found() {
     let state = test_state();
     // Should not panic
     evict_results_impl(&state, "conn-missing", "tab-missing");
+}
+
+#[test]
+fn touch_results_reports_available_for_cached_entry() {
+    let state = test_state();
+
+    state.result_cache.insert(
+        "conn-1",
+        "tab-1",
+        vec![StoredResult {
+            query_id: "qid-1".to_string(),
+            columns: vec![ColumnMeta {
+                name: "id".to_string(),
+                data_type: "INT".to_string(),
+            }],
+            rows: vec![vec![serde_json::json!(1)]],
+            execution_time_ms: 5,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
+
+    let status = touch_results_impl(&state, "conn-1", "tab-1");
+
+    assert_eq!(status, serde_json::json!({ "status": "available" }));
+}
+
+#[test]
+fn touch_results_reports_missing_for_unknown_entry() {
+    let state = test_state();
+
+    let status = touch_results_impl(&state, "conn-1", "tab-missing");
+
+    assert_eq!(status, serde_json::json!({ "status": "missing" }));
+}
+
+#[test]
+fn touch_results_reports_expired_for_removed_entry() {
+    let state = test_state();
+
+    state.result_cache.insert(
+        "conn-1",
+        "tab-1",
+        vec![StoredResult {
+            query_id: "qid-1".to_string(),
+            columns: vec![],
+            rows: vec![],
+            execution_time_ms: 5,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
+    state.result_cache.remove("conn-1", "tab-1");
+    state.result_cache.run_pending_tasks();
+
+    let status = touch_results_impl(&state, "conn-1", "tab-1");
+
+    assert_eq!(status, serde_json::json!({ "status": "expired" }));
+}
+
+#[test]
+fn touch_results_reports_available_after_spill_rewarm() {
+    let state = test_state();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+        1,
+        tmp.path().to_path_buf(),
+    );
+
+    cache.insert(
+        "conn-1",
+        "tab-1",
+        vec![StoredResult {
+            query_id: "qid-1".to_string(),
+            columns: vec![],
+            rows: vec![vec![serde_json::json!(1)]],
+            execution_time_ms: 5,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
+
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    cache.run_pending_tasks();
+    cache.flush_spill_jobs();
+
+    let state = AppState {
+        result_cache: std::sync::Arc::new(cache),
+        ..state
+    };
+
+    let status = touch_results_impl(&state, "conn-1", "tab-1");
+
+    assert_eq!(status, serde_json::json!({ "status": "available" }));
 }
 
 // ── Fetch result page ─────────────────────────────────────────────────────────
@@ -521,24 +615,22 @@ fn fetch_result_page_returns_correct_slice() {
     let rows: Vec<Vec<serde_json::Value>> =
         (1i64..=25).map(|i| vec![serde_json::json!(i)]).collect();
 
-    {
-        let mut results = state.results.write().expect("lock ok");
-        results.insert(
-            ("c1".to_string(), "t1".to_string()),
-            vec![StoredResult {
-                query_id: "q1".to_string(),
-                columns: vec![ColumnMeta {
-                    name: "n".to_string(),
-                    data_type: "INT".to_string(),
-                }],
-                rows,
-                execution_time_ms: 1,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 10,
+    state.result_cache.insert(
+        "c1",
+        "t1",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![ColumnMeta {
+                name: "n".to_string(),
+                data_type: "INT".to_string(),
             }],
-        );
-    }
+            rows,
+            execution_time_ms: 1,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 10,
+        }],
+    );
 
     let page1 = fetch_result_page_impl(&state, "c1", "t1", "q1", 1, None).expect("page 1 ok");
     assert_eq!(page1.rows.len(), 10);
@@ -553,21 +645,19 @@ fn fetch_result_page_returns_correct_slice() {
 fn fetch_result_page_errors_on_wrong_query_id() {
     let state = test_state();
 
-    {
-        let mut results = state.results.write().expect("lock ok");
-        results.insert(
-            ("c1".to_string(), "t1".to_string()),
-            vec![StoredResult {
-                query_id: "q1".to_string(),
-                columns: vec![],
-                rows: vec![],
-                execution_time_ms: 1,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
-            }],
-        );
-    }
+    state.result_cache.insert(
+        "c1",
+        "t1",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![],
+            rows: vec![],
+            execution_time_ms: 1,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     let err = fetch_result_page_impl(&state, "c1", "t1", "wrong-id", 1, None)
         .expect_err("wrong query_id should error");
@@ -586,21 +676,19 @@ fn fetch_result_page_errors_when_not_found() {
 fn fetch_result_page_errors_on_page_zero() {
     let state = test_state();
 
-    {
-        let mut results = state.results.write().expect("lock ok");
-        results.insert(
-            ("c1".to_string(), "t1".to_string()),
-            vec![StoredResult {
-                query_id: "q1".to_string(),
-                columns: vec![],
-                rows: vec![vec![serde_json::json!(1)]],
-                execution_time_ms: 1,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
-            }],
-        );
-    }
+    state.result_cache.insert(
+        "c1",
+        "t1",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![],
+            rows: vec![vec![serde_json::json!(1)]],
+            execution_time_ms: 1,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     let err =
         fetch_result_page_impl(&state, "c1", "t1", "q1", 0, None).expect_err("page 0 should error");
@@ -611,21 +699,19 @@ fn fetch_result_page_errors_on_page_zero() {
 fn fetch_result_page_errors_on_page_beyond_total() {
     let state = test_state();
 
-    {
-        let mut results = state.results.write().expect("lock ok");
-        results.insert(
-            ("c1".to_string(), "t1".to_string()),
-            vec![StoredResult {
-                query_id: "q1".to_string(),
-                columns: vec![],
-                rows: vec![vec![serde_json::json!(1)]],
-                execution_time_ms: 1,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
-            }],
-        );
-    }
+    state.result_cache.insert(
+        "c1",
+        "t1",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![],
+            rows: vec![vec![serde_json::json!(1)]],
+            execution_time_ms: 1,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     let err = fetch_result_page_impl(&state, "c1", "t1", "q1", 2, None)
         .expect_err("page beyond total should error");
@@ -636,24 +722,22 @@ fn fetch_result_page_errors_on_page_beyond_total() {
 fn fetch_result_page_empty_result_set() {
     let state = test_state();
 
-    {
-        let mut results = state.results.write().expect("lock ok");
-        results.insert(
-            ("c1".to_string(), "t1".to_string()),
-            vec![StoredResult {
-                query_id: "q1".to_string(),
-                columns: vec![ColumnMeta {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                }],
-                rows: vec![],
-                execution_time_ms: 1,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
+    state.result_cache.insert(
+        "c1",
+        "t1",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![ColumnMeta {
+                name: "id".to_string(),
+                data_type: "INT".to_string(),
             }],
-        );
-    }
+            rows: vec![],
+            execution_time_ms: 1,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     // Empty result sets have 1 total page; page 1 returns 0 rows
     let page1 = fetch_result_page_impl(&state, "c1", "t1", "q1", 1, None).expect("page 1 ok");

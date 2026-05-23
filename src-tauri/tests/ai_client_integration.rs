@@ -1,20 +1,18 @@
 //! Integration tests for AI types serialization/deserialization and SSE line parsing.
 
-use sqllumen_lib::ai::types::{
-    parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiResponsesRequest,
-    ApiStreamChunk, ChunkKind, IpcMessage, ReasoningConfig, SseParsed,
-    StreamChunkEvent, StreamDoneEvent, StreamErrorEvent,
-};
 use sqllumen_lib::ai::client::{
-    append_no_think_directive, apply_reasoning_off_compatibility,
-    extract_responses_content_text_for_event,
-    extract_reasoning_text_from_item, extract_reasoning_text_from_parts,
+    append_no_think_directive, apply_reasoning_off_compatibility, extract_reasoning_text_from_item,
+    extract_reasoning_text_from_parts, extract_responses_content_text_for_event,
     extract_responses_delta_text, extract_responses_error_message, extract_responses_final_text,
     extract_responses_reasoning_text, extract_responses_reasoning_text_for_event,
-    is_chat_completions_style_payload,
-    is_responses_completion_event, is_responses_failure_event, merge_responses_event_type,
-    responses_input_items, should_fallback_from_responses_status,
+    is_chat_completions_style_payload, is_responses_completion_event, is_responses_failure_event,
+    merge_responses_event_type, responses_input_items, should_fallback_from_responses_status,
     should_retry_chat_without_reasoning, should_use_responses_api,
+};
+use sqllumen_lib::ai::types::{
+    parse_sse_line, AiChatRequest, AiTransport, ApiChatRequest, ApiMessage, ApiResponsesRequest,
+    ApiStreamChunk, ChunkKind, IpcMessage, ReasoningConfig, SseParsed, StreamChunkEvent,
+    StreamDoneEvent, StreamErrorEvent,
 };
 
 // ── IPC type serialization (camelCase) ────────────────────────────────────
@@ -53,10 +51,10 @@ fn ai_chat_request_serializes_to_camel_case() {
         temperature: 0.7,
         max_tokens: 1024,
         stream_id: "abc-123".to_string(),
-            previous_response_id: Some("resp_prev".to_string()),
-            prefer_responses_api: true,
-            enable_reasoning: true,
-        };
+        previous_response_id: Some("resp_prev".to_string()),
+        prefer_responses_api: true,
+        enable_reasoning: true,
+    };
     let json = serde_json::to_value(&req).unwrap();
     assert!(
         json["maxTokens"].is_number(),
@@ -1126,11 +1124,17 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let request = sample_request("stream-responses", &format!("{}/v1/responses", server.uri()));
+        let request = sample_request(
+            "stream-responses",
+            &format!("{}/v1/responses", server.uri()),
+        );
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "responses stream should complete successfully");
+        assert!(
+            result.is_ok(),
+            "responses stream should complete successfully"
+        );
     }
 
     #[tokio::test]
@@ -1199,7 +1203,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_err(), "invalid residual JSON should return an error");
+        assert!(
+            result.is_err(),
+            "invalid residual JSON should return an error"
+        );
         assert!(
             result
                 .expect_err("responses stream should fail")
@@ -1238,7 +1245,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_err(), "EOF before response.completed should error");
+        assert!(
+            result.is_err(),
+            "EOF before response.completed should error"
+        );
         assert!(
             result
                 .expect_err("responses stream should fail")
@@ -1284,10 +1294,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-404", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-404",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "missing responses endpoint should fall back to chat completions");
+        assert!(
+            result.is_ok(),
+            "missing responses endpoint should fall back to chat completions"
+        );
     }
 
     #[tokio::test]
@@ -1372,7 +1388,8 @@ mod stream_integration {
     }
 
     #[tokio::test]
-    async fn falls_back_to_chat_completions_when_responses_stream_uses_chat_completions_payload_shape() {
+    async fn falls_back_to_chat_completions_when_responses_stream_uses_chat_completions_payload_shape(
+    ) {
         let server = MockServer::start().await;
 
         Mock::given(method("POST"))
@@ -1412,7 +1429,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-shape", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-shape",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(
@@ -1485,10 +1505,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-event-name", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-event-name",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "event-name-only responses streams should succeed");
+        assert!(
+            result.is_ok(),
+            "event-name-only responses streams should succeed"
+        );
     }
 
     #[tokio::test]
@@ -1518,7 +1544,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-done-text", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-done-text",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(result.is_ok(), "done-text responses streams should succeed");
@@ -1551,10 +1580,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-done-once", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-done-once",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "done text should not be duplicated by completed payloads");
+        assert!(
+            result.is_ok(),
+            "done text should not be duplicated by completed payloads"
+        );
     }
 
     #[tokio::test]
@@ -1775,7 +1810,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-bad-request", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-bad-request",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(result.is_err());
@@ -1817,10 +1855,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-role", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-role",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "role validation failures should fall back to chat completions");
+        assert!(
+            result.is_ok(),
+            "role validation failures should fall back to chat completions"
+        );
     }
 
     #[tokio::test]
@@ -1854,10 +1898,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-input", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-input",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "unknown input field failures should fall back to chat completions");
+        assert!(
+            result.is_ok(),
+            "unknown input field failures should fall back to chat completions"
+        );
     }
 
     #[tokio::test]
@@ -1891,10 +1941,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-reasoning", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-reasoning",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "reasoning validation failures should fall back to chat completions");
+        assert!(
+            result.is_ok(),
+            "reasoning validation failures should fall back to chat completions"
+        );
     }
 
     #[tokio::test]
@@ -1907,8 +1963,7 @@ mod stream_integration {
                 "reasoning_effort": "medium"
             })))
             .respond_with(
-                ResponseTemplate::new(400)
-                    .set_body_string("unknown parameter: reasoning_effort"),
+                ResponseTemplate::new(400).set_body_string("unknown parameter: reasoning_effort"),
             )
             .expect(1)
             .mount(&server)
@@ -1940,7 +1995,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "chat completions should retry without reasoning_effort");
+        assert!(
+            result.is_ok(),
+            "chat completions should retry without reasoning_effort"
+        );
     }
 
     #[tokio::test]
@@ -1968,12 +2026,18 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let mut request = sample_request("stream-responses-content-part-text", &format!("{}/v1", server.uri()));
+        let mut request = sample_request(
+            "stream-responses-content-part-text",
+            &format!("{}/v1", server.uri()),
+        );
         request.enable_reasoning = true;
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "generic content-part text should not be treated as reasoning");
+        assert!(
+            result.is_ok(),
+            "generic content-part text should not be treated as reasoning"
+        );
     }
 
     #[tokio::test]
@@ -2007,10 +2071,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-fallback-500", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-fallback-500",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "server errors should fall back to chat completions");
+        assert!(
+            result.is_ok(),
+            "server errors should fall back to chat completions"
+        );
     }
 
     #[tokio::test]
@@ -2040,10 +2110,16 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-output-array", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-output-array",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "nested response.output text should be accepted");
+        assert!(
+            result.is_ok(),
+            "nested response.output text should be accepted"
+        );
     }
 
     #[tokio::test]
@@ -2073,7 +2149,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-top-output-array", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-top-output-array",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert!(result.is_ok(), "top-level output text should be accepted");
@@ -2103,7 +2182,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-message-failure", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-message-failure",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert_eq!(
@@ -2142,7 +2224,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "stream with reasoning_content should complete successfully");
+        assert!(
+            result.is_ok(),
+            "stream with reasoning_content should complete successfully"
+        );
     }
 
     #[tokio::test]
@@ -2175,7 +2260,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "stream with thinking field should complete successfully");
+        assert!(
+            result.is_ok(),
+            "stream with thinking field should complete successfully"
+        );
     }
 
     #[tokio::test]
@@ -2208,7 +2296,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "stream with reasoning disabled should complete without thinking chunks");
+        assert!(
+            result.is_ok(),
+            "stream with reasoning disabled should complete without thinking chunks"
+        );
     }
 
     #[tokio::test]
@@ -2241,12 +2332,18 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let mut request = sample_request("stream-responses-reasoning", &format!("{}/v1", server.uri()));
+        let mut request = sample_request(
+            "stream-responses-reasoning",
+            &format!("{}/v1", server.uri()),
+        );
         request.enable_reasoning = true;
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "responses stream with reasoning summary should complete successfully");
+        assert!(
+            result.is_ok(),
+            "responses stream with reasoning summary should complete successfully"
+        );
     }
 
     #[tokio::test]
@@ -2279,12 +2376,18 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let mut request = sample_request("stream-responses-reasoning-text", &format!("{}/v1", server.uri()));
+        let mut request = sample_request(
+            "stream-responses-reasoning-text",
+            &format!("{}/v1", server.uri()),
+        );
         request.enable_reasoning = true;
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "responses stream with reasoning text should complete successfully");
+        assert!(
+            result.is_ok(),
+            "responses stream with reasoning text should complete successfully"
+        );
     }
 
     #[tokio::test]
@@ -2325,12 +2428,18 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let mut request = sample_request("stream-responses-no-reasoning", &format!("{}/v1", server.uri()));
+        let mut request = sample_request(
+            "stream-responses-no-reasoning",
+            &format!("{}/v1", server.uri()),
+        );
         request.enable_reasoning = false;
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "reasoning disabled should use chat completions without thinking");
+        assert!(
+            result.is_ok(),
+            "reasoning disabled should use chat completions without thinking"
+        );
     }
 
     #[tokio::test]
@@ -2371,12 +2480,18 @@ mod stream_integration {
             .await;
 
         let app = mock_app();
-        let mut request = sample_request("stream-responses-retry-disable", &format!("{}/v1", server.uri()));
+        let mut request = sample_request(
+            "stream-responses-retry-disable",
+            &format!("{}/v1", server.uri()),
+        );
         request.enable_reasoning = false;
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "reasoning disabled should avoid responses and use chat completions directly");
+        assert!(
+            result.is_ok(),
+            "reasoning disabled should avoid responses and use chat completions directly"
+        );
     }
 
     #[tokio::test]
@@ -2401,8 +2516,7 @@ mod stream_integration {
                 ]
             })))
             .respond_with(
-                ResponseTemplate::new(400)
-                    .set_body_string("unknown parameter: reasoning_effort"),
+                ResponseTemplate::new(400).set_body_string("unknown parameter: reasoning_effort"),
             )
             .expect(1)
             .mount(&server)
@@ -2465,7 +2579,10 @@ mod stream_integration {
         let token = CancellationToken::new();
 
         let result = stream_chat_completion(app.handle(), request, token).await;
-        assert!(result.is_ok(), "reasoning enabled should not append /no_think");
+        assert!(
+            result.is_ok(),
+            "reasoning enabled should not append /no_think"
+        );
     }
 
     #[tokio::test]
@@ -2492,7 +2609,10 @@ mod stream_integration {
 
         let app = mock_app();
         let token = CancellationToken::new();
-        let request = sample_request("stream-responses-string-error", &format!("{}/v1", server.uri()));
+        let request = sample_request(
+            "stream-responses-string-error",
+            &format!("{}/v1", server.uri()),
+        );
 
         let result = stream_chat_completion(app.handle(), request, token).await;
         assert_eq!(
@@ -2762,15 +2882,24 @@ fn chat_retry_without_reasoning_matches_supported_errors() {
 #[test]
 fn responses_error_message_extracts_nested_and_top_level_messages() {
     let nested = serde_json::json!({ "error": { "message": "nested" } });
-    assert_eq!(extract_responses_error_message(&nested).as_deref(), Some("nested"));
+    assert_eq!(
+        extract_responses_error_message(&nested).as_deref(),
+        Some("nested")
+    );
 
     let top_level = serde_json::json!({ "message": "top" });
-    assert_eq!(extract_responses_error_message(&top_level).as_deref(), Some("top"));
+    assert_eq!(
+        extract_responses_error_message(&top_level).as_deref(),
+        Some("top")
+    );
 }
 
 #[test]
 fn responses_delta_text_defaults_to_empty() {
-    assert_eq!(extract_responses_delta_text(&serde_json::json!({ "delta": "hi" })), "hi");
+    assert_eq!(
+        extract_responses_delta_text(&serde_json::json!({ "delta": "hi" })),
+        "hi"
+    );
     assert_eq!(extract_responses_delta_text(&serde_json::json!({})), "");
 }
 
@@ -2791,7 +2920,10 @@ fn reasoning_text_helpers_extract_only_reasoning_content() {
             { "type": "reasoning_text", "text": "detail" }
         ]
     });
-    assert_eq!(extract_reasoning_text_from_item(&reasoning_item), "summarycontentdetail");
+    assert_eq!(
+        extract_reasoning_text_from_item(&reasoning_item),
+        "summarycontentdetail"
+    );
 
     let non_reasoning_item = serde_json::json!({
         "type": "message",
@@ -3002,13 +3134,20 @@ fn responses_final_text_skips_reasoning_items_and_collects_text() {
         }
     });
 
-    assert_eq!(extract_responses_final_text(&json), "contenttopresponseoutput");
+    assert_eq!(
+        extract_responses_final_text(&json),
+        "contenttopresponseoutput"
+    );
 }
 
 #[test]
 fn responses_event_helpers_classify_events() {
-    assert!(is_responses_completion_event(Some("response.reasoning_text.delta")));
-    assert!(is_responses_completion_event(Some("response.output_item.done")));
+    assert!(is_responses_completion_event(Some(
+        "response.reasoning_text.delta"
+    )));
+    assert!(is_responses_completion_event(Some(
+        "response.output_item.done"
+    )));
     assert!(!is_responses_completion_event(Some("response.failed")));
 
     assert!(is_responses_failure_event(Some("response.failed")));

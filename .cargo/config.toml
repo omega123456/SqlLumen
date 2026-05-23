@@ -139,6 +139,10 @@ sqllumen-test-integration = [
   "ai_memory_integration",
   "--test",
   "schema_cache_integration",
+  "--test",
+  "result_cache_integration",
+  "--test",
+  "result_cache_spill_integration",
 ]
 
 sqllumen-llvm-cov = [
@@ -279,6 +283,10 @@ sqllumen-llvm-cov = [
   "ai_memory_integration",
   "--test",
   "schema_cache_integration",
+  "--test",
+  "result_cache_integration",
+  "--test",
+  "result_cache_spill_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",

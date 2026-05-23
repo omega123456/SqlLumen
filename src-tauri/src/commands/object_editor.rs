@@ -689,8 +689,7 @@ pub async fn save_object(
         Ok(response) => {
             // Log the DROP IF EXISTS as a separate history entry when it was executed
             if response.drop_succeeded {
-                let type_keyword =
-                    object_type_keyword(&object_type_for_log).unwrap_or("UNKNOWN");
+                let type_keyword = object_type_keyword(&object_type_for_log).unwrap_or("UNKNOWN");
                 let drop_sql = format!(
                     "DROP {} IF EXISTS `{}`.`{}`",
                     type_keyword, database_for_log, object_name_for_log

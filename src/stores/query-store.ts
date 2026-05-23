@@ -19,6 +19,7 @@ import {
   analyzeQueryForEdit as analyzeQueryForEditCmd,
   updateResultCell as updateResultCellCmd,
   cancelQuery as cancelQueryCmd,
+  touchResults as touchResultsCmd,
 } from '../lib/query-commands'
 import {
   insertTableRow as insertTableRowCmd,
@@ -42,6 +43,10 @@ import { useSettingsStore } from './settings-store'
 import { useHistoryStore } from './history-store'
 
 import { logFrontend } from '../lib/app-log-commands'
+import {
+  buildExecuteQueryPlan,
+  executeQueryPlan,
+} from '../lib/query-execution-plan'
 // Re-export for backward compatibility (used by tests and other modules)
 export { stripLeadingSqlComments } from '../lib/sql-utils'
 
@@ -195,6 +200,8 @@ export interface SingleResultState {
   scrollRow: number
   /** Persisted horizontal scroll cell index (column). */
   scrollCol: number
+  /** True when cached results have expired and are unrecoverable. */
+  isExpired: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -272,6 +279,7 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   editingRowIndex: null,
   scrollRow: 0,
   scrollCol: 0,
+  isExpired: false,
 }
 
 const DEFAULT_TAB_STATE: TabQueryState = {
@@ -680,6 +688,12 @@ interface QueryState {
    * tabStatus is saved into prevTabStatus for later restoration.
    */
   setTabStatus: (tabId: string, status: TabStatus) => void
+
+  /** Validate active tab results via touch_results IPC. Marks expired when backend reports expiration. */
+  validateActiveTabResults: (tabId: string) => void
+
+  /** Retry an expired result by re-executing the query using the shared execution planner. */
+    retryExpiredResult: (tabId: string) => Promise<void>
 }
 
 export const useQueryStore = create<QueryState>()((set, get) => {
@@ -727,6 +741,50 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       executionStartedAt: Date.now(),
       isCancelling: false,
       wasCancelled: false,
+    })
+  }
+
+  const clearExpiredFlags = (tabId: string) => {
+    set((state) => {
+      const tab = state.tabs[tabId]
+      if (!tab || tab.results.length === 0) return state
+
+      const nextResults = tab.results.map((result) =>
+        result.isExpired ? { ...result, isExpired: false } : result
+      )
+
+      if (nextResults.every((result, index) => result === tab.results[index])) {
+        return state
+      }
+
+      return {
+        tabs: {
+          ...state.tabs,
+          [tabId]: { ...tab, results: nextResults },
+        },
+      }
+    })
+  }
+
+  const markTabResultsExpired = (tabId: string) => {
+    set((state) => {
+      const tab = state.tabs[tabId]
+      if (!tab || tab.results.length === 0) return state
+
+      const nextResults = tab.results.map((result) =>
+        result.isExpired ? result : { ...result, isExpired: true }
+      )
+
+      if (nextResults.every((result, index) => result === tab.results[index])) {
+        return state
+      }
+
+      return {
+        tabs: {
+          ...state.tabs,
+          [tabId]: { ...tab, results: nextResults },
+        },
+      }
     })
   }
 
@@ -829,11 +887,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     )
       return
 
-    // Clear edit state
-    get().clearEditState(tabId)
+      // Clear edit state
+      get().clearEditState(tabId)
 
-    patchTab(tabId, { wasCancelled: false, connectionId })
-    beginExecution(tabId)
+      patchTab(tabId, { wasCancelled: false, connectionId })
+      clearExpiredFlags(tabId)
+      beginExecution(tabId)
 
     try {
       const multiResult = await ipcCall()
@@ -1141,6 +1200,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       // Reset cancel flags at start
       patchTab(tabId, { wasCancelled: false, connectionId })
+      clearExpiredFlags(tabId)
 
       // Set running status
       beginExecution(tabId)
@@ -1375,6 +1435,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         })
       } catch (err) {
         logFrontend('error', ['[query-store] fetchPage failed:', err].map(String).join(' '))
+        const errMsg = err instanceof Error ? err.message : String(err)
+        if (errMsg.includes('results_expired')) {
+          markTabResultsExpired(tabId)
+        }
       }
     },
 
@@ -1683,6 +1747,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         })
       } catch (error) {
         logFrontend('error', ['[query-store] sortResults failed:', error].map(String).join(' '))
+        const errMsg = error instanceof Error ? error.message : String(error)
+        if (errMsg.includes('results_expired')) {
+          markTabResultsExpired(tabId)
+        }
       }
     },
 
@@ -1717,6 +1785,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         editingRowIndex: null,
         pageSize: size,
       })
+      clearExpiredFlags(tabId)
 
       // For multi-result tabs, use reexecuteSingleResult (no tab-level running status)
       if ((tab?.results.length ?? 0) > 1) {
@@ -1745,6 +1814,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             return
           }
           const errorMessage = error instanceof Error ? error.message : String(error)
+          if (errorMessage.includes('results_expired')) {
+            markTabResultsExpired(tabId)
+            return
+          }
           patchResultByIndex(tabId, resultIndex, {
             resultStatus: 'error',
             errorMessage,
@@ -1811,6 +1884,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             : error instanceof Error
               ? error.message
               : String(error)
+          if (errorMessage.includes('results_expired')) {
+            markTabResultsExpired(tabId)
+          }
 
           patchResultByIndex(tabId, 0, {
             resultStatus: 'error',
@@ -2334,6 +2410,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             'warn',
             ['[query-store] Result cache sync failed:', cacheErr].map(String).join(' ')
           )
+          const cacheErrorMessage =
+            cacheErr instanceof Error ? cacheErr.message : String(cacheErr)
+          if (cacheErrorMessage.includes('results_expired')) {
+            markTabResultsExpired(tabId)
+          }
           showWarningToast(
             'Cache sync warning',
             'Row saved successfully, but the result cache may be stale. Re-run the query to refresh pagination/sort/export.'
@@ -2486,6 +2567,102 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         })
       } else {
         patchTab(tabId, { tabStatus: newStatus })
+      }
+    },
+
+    validateActiveTabResults: (tabId: string) => {
+      const tab = get().tabs[tabId]
+      if (!tab) return
+      const resultIndex = getActiveIndex(tabId)
+      const result = tab.results[resultIndex]
+      if (!result?.queryId) return
+
+      const connectionId = tab.connectionId
+      if (!connectionId) return
+
+      touchResultsCmd(connectionId, tabId)
+        .then((response) => {
+          if (!get().tabs[tabId]) return
+          if (response.status === 'expired') {
+            markTabResultsExpired(tabId)
+          }
+        })
+        .catch((err) => {
+          logFrontend(
+            'warn',
+            ['[query-store] validateActiveTabResults failed:', err].map(String).join(' ')
+          )
+        })
+    },
+
+    retryExpiredResult: async (tabId: string) => {
+      const tab = get().tabs[tabId]
+      if (!tab) return
+
+      const connectionId = tab.connectionId
+      if (!connectionId) return
+
+      const result = getActiveResult(tab)
+      if (!result.isExpired || !result.reExecutable) {
+        return
+      }
+
+      const plan = buildExecuteQueryPlan(tab.content, tab.selectedText ?? '', tab.cursorPosition)
+      if (!plan) {
+        return
+      }
+
+      if (tab.results.length > 1 && plan.kind === 'multi') {
+        return
+      }
+
+      clearExpiredFlags(tabId)
+
+      if (tab.results.length > 1) {
+        const activeResultIndex = getActiveIndex(tabId)
+        beginExecution(tabId)
+        try {
+          await reexecuteAndPatchResult(
+            connectionId,
+            tabId,
+            activeResultIndex,
+            plan.payload,
+            result.pageSize,
+            result.queryId,
+            { isExpired: false, errorMessage: null }
+          )
+          if (!get().tabs[tabId]) return
+          patchTab(tabId, { tabStatus: 'success' })
+          finalizeExecution(tabId)
+        } catch (err) {
+          logFrontend(
+            'warn',
+            ['[query-store] retryExpiredResult re-execution failed:', err].map(String).join(' ')
+          )
+          if (get().tabs[tabId]) {
+            patchTab(tabId, { tabStatus: 'error' })
+            finalizeExecution(tabId)
+          }
+          markTabResultsExpired(tabId)
+        }
+        return
+      }
+
+      try {
+        await executeQueryPlan(get(), connectionId, tabId, plan)
+      } catch (err) {
+        logFrontend(
+          'warn',
+          ['[query-store] retryExpiredResult re-execution failed:', err].map(String).join(' ')
+        )
+      }
+
+      const postRetryTab = get().tabs[tabId]
+      if (!postRetryTab) return
+
+      const postRetryResult = postRetryTab.results[getActiveIndex(tabId)]
+      if (postRetryTab.tabStatus !== 'success' || postRetryResult?.resultStatus !== 'success') {
+        markTabResultsExpired(tabId)
       }
     },
   }

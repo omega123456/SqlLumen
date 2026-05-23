@@ -1270,7 +1270,12 @@ mod command_wrapper_integration {
             db: Arc::new(Mutex::new(conn)),
             registry: ConnectionRegistry::new(),
             app_handle: None,
-            results: std::sync::RwLock::new(std::collections::HashMap::new()),
+            result_cache: std::sync::Arc::new(
+                sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+                    1800,
+                    std::env::temp_dir().join("sqllumen-test-tbldesign"),
+                ),
+            ),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
             dump_jobs: std::sync::Arc::new(
@@ -1284,7 +1289,7 @@ mod command_wrapper_integration {
             session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
             session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
             http_client: reqwest::Client::new(),
-        embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
+            embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
         }
     }
 

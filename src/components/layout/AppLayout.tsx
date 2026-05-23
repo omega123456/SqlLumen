@@ -14,7 +14,7 @@ import { useShortcut } from '../../hooks/useShortcut'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import { useConnectionStore } from '../../stores/connection-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
-import { useQueryStore, isCallSql } from '../../stores/query-store'
+import { useQueryStore } from '../../stores/query-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useImportDialogStore } from '../../stores/import-dialog-store'
 import { useSettingsStore } from '../../stores/settings-store'
@@ -24,73 +24,16 @@ import {
   findStatementAtCursor,
   cursorToOffset,
 } from '../query-editor/sql-parser-utils'
+import { buildExecuteQueryPlan, runExecuteQueryPlan } from '../../lib/query-execution-plan'
 import styles from './AppLayout.module.css'
 
 import { logFrontend } from '../../lib/app-log-commands'
-type ExecuteQueryPlan =
-  | { kind: 'single'; payload: string }
-  | { kind: 'call'; payload: string }
-  | { kind: 'multi'; payload: string[] }
 
 function getExecutableStatements(sql: string): string[] {
   return splitStatements(sql)
     .map((statement) => statement.sql.trim())
     .filter((statement) => statement.length > 0)
     .filter((statement) => !/^DELIMITER\s/i.test(statement))
-}
-
-function buildExecuteQueryPlan(
-  content: string,
-  selectedText: string,
-  cursorPosition: { lineNumber: number; column: number } | null
-): ExecuteQueryPlan | null {
-  if (selectedText.length > 0) {
-    const selectedStatements = getExecutableStatements(selectedText)
-
-    if (selectedStatements.length === 0) {
-      return null
-    }
-
-    if (selectedStatements.length > 1) {
-      return { kind: 'multi', payload: selectedStatements }
-    }
-
-    const [statement] = selectedStatements
-    return { kind: isCallSql(statement) ? 'call' : 'single', payload: statement }
-  }
-
-  const cursor = cursorPosition ?? { lineNumber: 1, column: 1 }
-  const offset = cursorToOffset(content, cursor.lineNumber, cursor.column)
-  const statements = splitStatements(content)
-  const statementAtCursor = findStatementAtCursor(statements, offset)
-  const sql = statementAtCursor?.sql ?? content.trim()
-
-  if (!sql) {
-    return null
-  }
-
-  return { kind: isCallSql(sql) ? 'call' : 'single', payload: sql }
-}
-
-function runExecuteQueryPlan(
-  queryState: ReturnType<typeof useQueryStore.getState>,
-  connectionId: string,
-  tabId: string,
-  plan: ExecuteQueryPlan
-): void {
-  queryState.requestNavigationAction(tabId, () => {
-    if (plan.kind === 'multi') {
-      queryState.executeMultiQuery(connectionId, tabId, plan.payload)
-      return
-    }
-
-    if (plan.kind === 'call') {
-      queryState.executeCallQuery(connectionId, tabId, plan.payload)
-      return
-    }
-
-    queryState.executeQuery(connectionId, tabId, plan.payload)
-  })
 }
 
 export function AppLayout() {

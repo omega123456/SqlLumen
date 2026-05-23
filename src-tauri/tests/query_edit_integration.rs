@@ -15,45 +15,43 @@ fn update_result_cell_successful() {
     let state = test_app_state();
 
     // Insert a stored result
-    {
-        let mut results = state.results.write().unwrap();
-        results.insert(
-            ("conn-1".to_string(), "tab-1".to_string()),
-            vec![StoredResult {
-                query_id: "q1".to_string(),
-                columns: vec![
-                    ColumnMeta {
-                        name: "id".to_string(),
-                        data_type: "INT".to_string(),
-                    },
-                    ColumnMeta {
-                        name: "name".to_string(),
-                        data_type: "VARCHAR".to_string(),
-                    },
-                    ColumnMeta {
-                        name: "email".to_string(),
-                        data_type: "VARCHAR".to_string(),
-                    },
+    state.result_cache.insert(
+        "conn-1",
+        "tab-1",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![
+                ColumnMeta {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                },
+                ColumnMeta {
+                    name: "name".to_string(),
+                    data_type: "VARCHAR".to_string(),
+                },
+                ColumnMeta {
+                    name: "email".to_string(),
+                    data_type: "VARCHAR".to_string(),
+                },
+            ],
+            rows: vec![
+                vec![
+                    serde_json::json!(1),
+                    serde_json::json!("Alice"),
+                    serde_json::json!("alice@example.com"),
                 ],
-                rows: vec![
-                    vec![
-                        serde_json::json!(1),
-                        serde_json::json!("Alice"),
-                        serde_json::json!("alice@example.com"),
-                    ],
-                    vec![
-                        serde_json::json!(2),
-                        serde_json::json!("Bob"),
-                        serde_json::json!("bob@example.com"),
-                    ],
+                vec![
+                    serde_json::json!(2),
+                    serde_json::json!("Bob"),
+                    serde_json::json!("bob@example.com"),
                 ],
-                execution_time_ms: 10,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
-            }],
-        );
-    }
+            ],
+            execution_time_ms: 10,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     // Update name in row 0
     let mut updates = HashMap::new();
@@ -63,11 +61,12 @@ fn update_result_cell_successful() {
     assert!(result.is_ok());
 
     // Verify the update
-    let results = state.results.read().unwrap();
-    let result_vec = results
-        .get(&("conn-1".to_string(), "tab-1".to_string()))
+    let entry = state
+        .result_cache
+        .get("conn-1", "tab-1")
+        .into_entry()
         .unwrap();
-    let stored = &result_vec[0];
+    let stored = &entry.rows[0];
     assert_eq!(stored.rows[0][1], serde_json::json!("Alice Updated"));
     // Other cells should be unchanged
     assert_eq!(stored.rows[0][0], serde_json::json!(1));
@@ -93,24 +92,22 @@ fn update_result_cell_row_index_out_of_bounds() {
     let state = test_app_state();
 
     // Insert a stored result with 1 row
-    {
-        let mut results = state.results.write().unwrap();
-        results.insert(
-            ("conn-1".to_string(), "tab-1".to_string()),
-            vec![StoredResult {
-                query_id: "q1".to_string(),
-                columns: vec![ColumnMeta {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                }],
-                rows: vec![vec![serde_json::json!(1)]],
-                execution_time_ms: 5,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
+    state.result_cache.insert(
+        "conn-1",
+        "tab-1",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![ColumnMeta {
+                name: "id".to_string(),
+                data_type: "INT".to_string(),
             }],
-        );
-    }
+            rows: vec![vec![serde_json::json!(1)]],
+            execution_time_ms: 5,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     let updates = HashMap::new();
     let result = update_result_cell_impl(&state, "conn-1", "tab-1", 5, updates, None);
@@ -123,38 +120,36 @@ fn update_result_cell_multiple_columns() {
     let state = test_app_state();
 
     // Insert a stored result
-    {
-        let mut results = state.results.write().unwrap();
-        results.insert(
-            ("conn-1".to_string(), "tab-1".to_string()),
-            vec![StoredResult {
-                query_id: "q1".to_string(),
-                columns: vec![
-                    ColumnMeta {
-                        name: "id".to_string(),
-                        data_type: "INT".to_string(),
-                    },
-                    ColumnMeta {
-                        name: "name".to_string(),
-                        data_type: "VARCHAR".to_string(),
-                    },
-                    ColumnMeta {
-                        name: "email".to_string(),
-                        data_type: "VARCHAR".to_string(),
-                    },
-                ],
-                rows: vec![vec![
-                    serde_json::json!(1),
-                    serde_json::json!("Alice"),
-                    serde_json::json!("alice@example.com"),
-                ]],
-                execution_time_ms: 10,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
-            }],
-        );
-    }
+    state.result_cache.insert(
+        "conn-1",
+        "tab-1",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![
+                ColumnMeta {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                },
+                ColumnMeta {
+                    name: "name".to_string(),
+                    data_type: "VARCHAR".to_string(),
+                },
+                ColumnMeta {
+                    name: "email".to_string(),
+                    data_type: "VARCHAR".to_string(),
+                },
+            ],
+            rows: vec![vec![
+                serde_json::json!(1),
+                serde_json::json!("Alice"),
+                serde_json::json!("alice@example.com"),
+            ]],
+            execution_time_ms: 10,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     // Update both name and email at once
     let mut updates = HashMap::new();
@@ -165,11 +160,12 @@ fn update_result_cell_multiple_columns() {
     assert!(result.is_ok());
 
     // Verify both updates
-    let results = state.results.read().unwrap();
-    let result_vec = results
-        .get(&("conn-1".to_string(), "tab-1".to_string()))
+    let entry = state
+        .result_cache
+        .get("conn-1", "tab-1")
+        .into_entry()
         .unwrap();
-    let stored = &result_vec[0];
+    let stored = &entry.rows[0];
     assert_eq!(stored.rows[0][0], serde_json::json!(1)); // id unchanged
     assert_eq!(stored.rows[0][1], serde_json::json!("Alice New"));
     assert_eq!(

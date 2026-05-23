@@ -19,10 +19,17 @@ pub fn export_results_impl(
     row_indices: Option<&[usize]>,
 ) -> Result<ExportResult, String> {
     let (columns, rows) = {
-        let results = state.results.read().map_err(|e| e.to_string())?;
-        let result_vec = results
-            .get(&(connection_id.to_string(), tab_id.to_string()))
+        let cache_result = state.result_cache.get(connection_id, tab_id);
+        if cache_result.is_expired() {
+            return Err(
+                "results_expired: Results for this tab have expired. Re-run the query to see results."
+                    .to_string(),
+            );
+        }
+        let entry = cache_result
+            .into_entry()
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+        let result_vec = &entry.rows;
         let idx = result_index.unwrap_or(0);
         let stored = result_vec.get(idx).ok_or_else(|| {
             format!(
@@ -53,12 +60,19 @@ pub async fn export_results(
     result_index: Option<usize>,
     row_indices: Option<Vec<usize>>,
 ) -> Result<ExportResult, String> {
-    // Clone data under brief lock, then release the lock before writing
+    // Clone data from cache, then release before writing
     let (columns, rows) = {
-        let results = state.results.read().map_err(|e| e.to_string())?;
-        let result_vec = results
-            .get(&(connection_id.clone(), tab_id.clone()))
+        let cache_result = state.result_cache.get(&connection_id, &tab_id);
+        if cache_result.is_expired() {
+            return Err(
+                "results_expired: Results for this tab have expired. Re-run the query to see results."
+                    .to_string(),
+            );
+        }
+        let entry = cache_result
+            .into_entry()
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+        let result_vec = &entry.rows;
         let idx = result_index.unwrap_or(0);
         let stored = result_vec.get(idx).ok_or_else(|| {
             format!(

@@ -649,6 +649,9 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'update_result_cell':
       return null
 
+    case 'touch_results':
+      return { status: 'available' }
+
     case 'export_results':
       return { bytesWritten: 1024, rowsExported: 5 }
 

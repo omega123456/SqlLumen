@@ -1,8 +1,8 @@
 //! Tauri commands for schema index operations — build, search, status, invalidation, listing.
 
 use crate::db::settings;
-use crate::schema_index::storage;
 use crate::schema_index::search::RetrievalHints;
+use crate::schema_index::storage;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -10,13 +10,13 @@ use std::sync::Mutex;
 #[cfg(not(coverage))]
 use crate::schema_index::search;
 #[cfg(not(coverage))]
+use crate::schema_index::search::SearchConfigExt;
+#[cfg(not(coverage))]
 use crate::schema_index::{builder, embeddings, rerank, types::BuildConfig};
 #[cfg(not(coverage))]
 use chrono::Utc;
 #[cfg(not(coverage))]
 use tokio_util::sync::CancellationToken;
-#[cfg(not(coverage))]
-use crate::schema_index::search::SearchConfigExt;
 
 #[cfg(not(coverage))]
 use tauri::{Emitter, State};
@@ -643,7 +643,11 @@ pub async fn semantic_search_impl(
 
         for (j, idx) in uncached_indices.iter().enumerate() {
             query_vectors[*idx] = new_embeddings[j].clone();
-            state.embedding_cache.insert(&embedding_model, &queries[*idx], new_embeddings[j].clone());
+            state.embedding_cache.insert(
+                &embedding_model,
+                &queries[*idx],
+                new_embeddings[j].clone(),
+            );
         }
     }
 

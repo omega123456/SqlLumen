@@ -21,7 +21,12 @@ fn test_state() -> AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),
         app_handle: None,
-        results: std::sync::RwLock::new(std::collections::HashMap::new()),
+        result_cache: std::sync::Arc::new(
+            sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+                1800,
+                std::env::temp_dir().join("sqllumen-test-sort"),
+            ),
+        ),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
@@ -44,9 +49,9 @@ fn insert_result(
     rows: Vec<Vec<serde_json::Value>>,
     page_size: usize,
 ) {
-    let mut results = state.results.write().expect("lock ok");
-    results.insert(
-        (conn_id.to_string(), tab_id.to_string()),
+    state.result_cache.insert(
+        conn_id,
+        tab_id,
         vec![StoredResult {
             query_id: "q-sort-test".to_string(),
             columns,

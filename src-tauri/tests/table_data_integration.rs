@@ -14,7 +14,7 @@ mod type_aware_filter_integration {
     use super::*;
     use chrono::NaiveDate;
     use common::mock_mysql_server::{MockCell, MockColumnDef, MockMySqlServer, MockQueryStep};
-use opensrv_mysql::{ColumnFlags, ColumnType};
+    use opensrv_mysql::{ColumnFlags, ColumnType};
     use rusqlite::Connection;
     use serde::de::DeserializeOwned;
     use serde_json::json;
@@ -37,7 +37,12 @@ use opensrv_mysql::{ColumnFlags, ColumnType};
             db: Arc::new(Mutex::new(conn)),
             registry: ConnectionRegistry::new(),
             app_handle: None,
-            results: std::sync::RwLock::new(std::collections::HashMap::new()),
+            result_cache: std::sync::Arc::new(
+                sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+                    1800,
+                    std::env::temp_dir().join("sqllumen-test-tbldata"),
+                ),
+            ),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
             dump_jobs: std::sync::Arc::new(
@@ -51,7 +56,7 @@ use opensrv_mysql::{ColumnFlags, ColumnType};
             session_profile_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
             session_ref_counts: Arc::new(Mutex::new(std::collections::HashMap::new())),
             http_client: reqwest::Client::new(),
-        embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
+            embedding_cache: sqllumen_lib::schema_index::embeddings_cache::EmbeddingCache::new(),
         }
     }
 
@@ -2246,16 +2251,8 @@ mod coverage_stubs {
     #[tokio::test]
     async fn fetch_table_data_impl_stub_returns_default() {
         let pool = dummy_lazy_pool();
-        let result = fetch_table_data_impl(
-            &pool,
-            "test_db",
-            "test_table",
-            1,
-            100,
-            None,
-            vec![],
-        )
-        .await;
+        let result =
+            fetch_table_data_impl(&pool, "test_db", "test_table", 1, 100, None, vec![]).await;
 
         assert!(result.is_ok());
         let response = result.unwrap();

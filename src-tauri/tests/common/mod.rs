@@ -10,6 +10,7 @@ use rusqlite::Connection;
 use sqllumen_lib::commands::connections::SaveConnectionInput;
 use sqllumen_lib::db::migrations;
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
+use sqllumen_lib::mysql::result_cache::ResultCache;
 use sqllumen_lib::state::AppState;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -30,11 +31,12 @@ pub fn ensure_fake_backend_once() {
 pub fn test_app_state() -> AppState {
     ensure_fake_backend_once();
     let conn = test_db();
+    let (spill_dir, _) = unique_temp_dir("sqllumen-test-spill");
     AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),
         app_handle: None,
-        results: std::sync::RwLock::new(std::collections::HashMap::new()),
+        result_cache: Arc::new(ResultCache::new_for_test(1800, spill_dir)),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),

@@ -72,6 +72,11 @@ describe('playwrightIpcMockHandler', () => {
     expect(result).toBeNull()
   })
 
+  it('returns available status for touch_results', () => {
+    expect(playwrightIpcMockHandler('touch_results', { connectionId: 'conn-1', tabId: 'tab-1' }))
+      .toEqual({ status: 'available' })
+  })
+
   it('returns fetch_table_data results without removed total fields', () => {
     const result = playwrightIpcMockHandler('fetch_table_data', {
       connectionId: 'conn-1',

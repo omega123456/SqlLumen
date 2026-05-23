@@ -914,6 +914,23 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         [connectionId]: tabId,
       },
     }))
+
+    // Validate result availability for query-editor tabs
+    const tabs = get().tabsByConnection[connectionId] || []
+    const tab = tabs.find((t) => t.id === tabId)
+    if (tab?.type === 'query-editor') {
+      const queryTab = useQueryStore.getState().tabs[tabId]
+      if (queryTab) {
+        const activeIdx = Math.min(
+          queryTab.activeResultIndex,
+          Math.max(0, queryTab.results.length - 1)
+        )
+        const activeResult = queryTab.results[activeIdx]
+        if (activeResult?.queryId) {
+          useQueryStore.getState().validateActiveTabResults(tabId)
+        }
+      }
+    }
   },
 
   requestActivateTab: (tabId: string) => {
@@ -935,6 +952,23 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         [connectionId]: tabId,
       },
     }))
+
+    // Validate result availability for query-editor tabs
+    const tabs = get().tabsByConnection[connectionId] || []
+    const tab = tabs.find((t) => t.id === tabId)
+    if (tab?.type === 'query-editor') {
+      const queryTab = useQueryStore.getState().tabs[tabId]
+      if (queryTab) {
+        const activeIdx = Math.min(
+          queryTab.activeResultIndex,
+          Math.max(0, queryTab.results.length - 1)
+        )
+        const activeResult = queryTab.results[activeIdx]
+        if (activeResult?.queryId) {
+          useQueryStore.getState().validateActiveTabResults(tabId)
+        }
+      }
+    }
   },
 
   setLastFocusedSurface: (tabId: string, surface: WorkspaceFocusSurface) => {

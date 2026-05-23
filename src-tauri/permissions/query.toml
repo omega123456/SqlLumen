@@ -81,3 +81,9 @@ identifier = "allow-execute-call-query"
 description = "Enables the execute_call_query command without any pre-configured scope."
 commands.allow = ["execute_call_query"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-touch-results"
+description = "Enables the touch_results command without any pre-configured scope."
+commands.allow = ["touch_results"]
+commands.deny = []

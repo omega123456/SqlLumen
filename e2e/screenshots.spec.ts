@@ -2799,6 +2799,62 @@ for (const theme of themes) {
       )
     })
 
+    test('QueryEditorTab — results expired empty state', async ({ page }) => {
+      await openQueryEditorTab(page)
+
+      await page.evaluate(() => {
+        const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            activeTabByConnection: Record<string, string | null>
+          }
+        }
+        const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+          setState: (
+            updater: (state: {
+              tabs: Record<string, { results: Array<Record<string, unknown>> }>
+            }) => Record<string, unknown>
+          ) => void
+        }
+        const tabId =
+          workspaceStore.getState().activeTabByConnection['session-playwright-1'] ?? null
+        if (!tabId) {
+          throw new Error('Missing active query tab for expired-result screenshot')
+        }
+
+        queryStore.setState((state) => ({
+          tabs: {
+            ...state.tabs,
+            [tabId]: {
+              ...state.tabs[tabId],
+              tabStatus: 'success',
+              results: [
+                {
+                  ...state.tabs[tabId].results[0],
+                  resultStatus: 'success',
+                  queryId: 'mock-expired-q1',
+                  columns: [{ name: 'id', dataType: 'BIGINT' }],
+                  rows: [[1]],
+                  totalRows: 1,
+                  lastExecutedSql: 'SELECT id FROM users',
+                  reExecutable: true,
+                  isExpired: true,
+                },
+              ],
+              activeResultIndex: 0,
+            },
+          },
+        }))
+      })
+
+      await expect(page.getByTestId('retry-expired-button')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await expect(page.getByTestId('result-panel')).toHaveScreenshot(
+        `query-editor-result-panel-expired-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('QueryEditorTab — combined bottom panel with results and scoped table-data tabs', async ({
       page,
     }) => {

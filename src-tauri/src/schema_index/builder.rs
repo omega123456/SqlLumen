@@ -10,11 +10,11 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 #[cfg(not(coverage))]
+use chrono::Utc;
+#[cfg(not(coverage))]
 use std::sync::Mutex;
 #[cfg(not(coverage))]
 use std::time::Instant;
-#[cfg(not(coverage))]
-use chrono::Utc;
 #[cfg(not(coverage))]
 use tokio_util::sync::CancellationToken;
 
@@ -22,14 +22,12 @@ use tokio_util::sync::CancellationToken;
 use super::embeddings;
 #[cfg(not(coverage))]
 use super::storage;
-use super::types::{
-    FkEdge, FkInput, TableDdlInput,
-};
 #[cfg(not(coverage))]
 use super::types::{
     BuildConfig, BuildPhase, BuildProgress, BuildResult, ChunkInsert, ChunkType, IndexMeta,
     IndexStatus, ProgressCallback,
 };
+use super::types::{FkEdge, FkInput, TableDdlInput};
 
 /// Maximum number of texts per embedding batch.
 #[cfg(not(coverage))]
@@ -108,29 +106,24 @@ pub fn compact_ddl_for_llm(create_table_sql: &str) -> String {
     });
     let text = re_row_count.replace_all(create_table_sql, "");
 
-    let re_auto_inc = AUTO_INCREMENT_REGEX.get_or_init(|| {
-        Regex::new(r"(?i)\s*AUTO_INCREMENT\s*=\s*\d+").expect("valid regex")
-    });
+    let re_auto_inc = AUTO_INCREMENT_REGEX
+        .get_or_init(|| Regex::new(r"(?i)\s*AUTO_INCREMENT\s*=\s*\d+").expect("valid regex"));
     let text = re_auto_inc.replace_all(&text, "");
 
-    let re_engine = ENGINE_REGEX.get_or_init(|| {
-        Regex::new(r"(?i)\bENGINE\s*=\s*\S+").expect("valid regex")
-    });
+    let re_engine =
+        ENGINE_REGEX.get_or_init(|| Regex::new(r"(?i)\bENGINE\s*=\s*\S+").expect("valid regex"));
     let text = re_engine.replace_all(&text, "");
 
-    let re_row_format = ROW_FORMAT_REGEX.get_or_init(|| {
-        Regex::new(r"(?i)\bROW_FORMAT\s*=\s*\S+").expect("valid regex")
-    });
+    let re_row_format = ROW_FORMAT_REGEX
+        .get_or_init(|| Regex::new(r"(?i)\bROW_FORMAT\s*=\s*\S+").expect("valid regex"));
     let text = re_row_format.replace_all(&text, "");
 
-    let re_charset = CHARSET_REGEX.get_or_init(|| {
-        Regex::new(r"(?i)\bDEFAULT\s+CHARSET\s*=\s*\S+").expect("valid regex")
-    });
+    let re_charset = CHARSET_REGEX
+        .get_or_init(|| Regex::new(r"(?i)\bDEFAULT\s+CHARSET\s*=\s*\S+").expect("valid regex"));
     let text = re_charset.replace_all(&text, "");
 
-    let re_collate = COLLATE_REGEX.get_or_init(|| {
-        Regex::new(r"(?i)\bCOLLATE\s*=\s*\S+").expect("valid regex")
-    });
+    let re_collate =
+        COLLATE_REGEX.get_or_init(|| Regex::new(r"(?i)\bCOLLATE\s*=\s*\S+").expect("valid regex"));
     let text = re_collate.replace_all(&text, "");
 
     let re_ws = WHITESPACE_REGEX2.get_or_init(|| Regex::new(r"\s+").expect("valid regex"));
@@ -735,7 +728,8 @@ pub async fn build_index(
     );
 
     // 4. Generate chunk data (table + FK chunks)
-    let (table_chunks, fk_chunks) = generate_all_chunks_with_row_counts(&all_ddl_inputs, &row_counts);
+    let (table_chunks, fk_chunks) =
+        generate_all_chunks_with_row_counts(&all_ddl_inputs, &row_counts);
     tracing::debug!(
         profile_id = %config.connection_id,
         table_chunk_rows = table_chunks.len(),
@@ -748,18 +742,21 @@ pub async fn build_index(
         let all_fk_edges: Vec<FkEdge> = fk_chunks
             .iter()
             .flat_map(|(_, _, _, fk)| {
-                fk.columns.iter().zip(fk.ref_columns.iter()).map(|(src_col, dst_col)| FkEdge {
-                    connection_id: config.connection_id.clone(),
-                    src_db: fk.db_name.clone(),
-                    src_tbl: fk.table_name.clone(),
-                    src_col: src_col.clone(),
-                    dst_db: fk.ref_db_name.clone(),
-                    dst_tbl: fk.ref_table_name.clone(),
-                    dst_col: dst_col.clone(),
-                    constraint_name: fk.constraint_name.clone(),
-                    on_delete: Some(fk.on_delete.clone()),
-                    on_update: Some(fk.on_update.clone()),
-                })
+                fk.columns
+                    .iter()
+                    .zip(fk.ref_columns.iter())
+                    .map(|(src_col, dst_col)| FkEdge {
+                        connection_id: config.connection_id.clone(),
+                        src_db: fk.db_name.clone(),
+                        src_tbl: fk.table_name.clone(),
+                        src_col: src_col.clone(),
+                        dst_db: fk.ref_db_name.clone(),
+                        dst_tbl: fk.ref_table_name.clone(),
+                        dst_col: dst_col.clone(),
+                        constraint_name: fk.constraint_name.clone(),
+                        on_delete: Some(fk.on_delete.clone()),
+                        on_update: Some(fk.on_update.clone()),
+                    })
             })
             .collect();
         let conn = sqlite_conn
@@ -810,7 +807,10 @@ pub async fn build_index(
     for (db, view_name, create_view_ddl) in &all_views {
         let key = format!("view:{db}.{view_name}");
         let hash = compute_hash(create_view_ddl);
-        let truncated = create_view_ddl.char_indices().nth(500).map_or(create_view_ddl.as_str(), |(i, _)| &create_view_ddl[..i]);
+        let truncated = create_view_ddl
+            .char_indices()
+            .nth(500)
+            .map_or(create_view_ddl.as_str(), |(i, _)| &create_view_ddl[..i]);
         let text_for_emb = format!("View `{db}`.`{view_name}`: {truncated}");
         all_new.push(PendingChunk {
             chunk_key: key,
@@ -836,10 +836,11 @@ pub async fn build_index(
         let type_lower = chunk_type.as_str();
         let key = format!("{type_lower}:{db}.{routine_name}");
         let hash = compute_hash(create_ddl);
-        let truncated = create_ddl.char_indices().nth(500).map_or(create_ddl.as_str(), |(i, _)| &create_ddl[..i]);
-        let text_for_emb = format!(
-            "{routine_type} `{db}`.`{routine_name}`: {truncated}"
-        );
+        let truncated = create_ddl
+            .char_indices()
+            .nth(500)
+            .map_or(create_ddl.as_str(), |(i, _)| &create_ddl[..i]);
+        let text_for_emb = format!("{routine_type} `{db}`.`{routine_name}`: {truncated}");
         all_new.push(PendingChunk {
             chunk_key: key,
             ddl_text: create_ddl.clone(),
@@ -999,9 +1000,7 @@ pub async fn build_index(
         // Use text_for_embedding when available, falling back to ddl_text
         let texts: Vec<String> = batch
             .iter()
-            .map(|c| {
-                c.text_for_embedding.as_ref().unwrap_or(&c.ddl_text).clone()
-            })
+            .map(|c| c.text_for_embedding.as_ref().unwrap_or(&c.ddl_text).clone())
             .collect();
 
         let batch_keys: Vec<&str> = batch.iter().map(|c| c.chunk_key.as_str()).collect();
@@ -1042,14 +1041,13 @@ pub async fn build_index(
             conn.execute_batch("BEGIN")
                 .map_err(|e| format!("BEGIN: {e}"))?;
 
-            for (i, chunk) in
-                batch.iter().enumerate()
-            {
+            for (i, chunk) in batch.iter().enumerate() {
                 let embedding = &embeddings[i];
 
                 // Check if chunk already exists (update vs insert)
-                let existing = storage::get_chunk_by_key(&conn, &config.connection_id, &chunk.chunk_key)
-                    .map_err(|e| format!("Failed to lookup chunk: {e}"))?;
+                let existing =
+                    storage::get_chunk_by_key(&conn, &config.connection_id, &chunk.chunk_key)
+                        .map_err(|e| format!("Failed to lookup chunk: {e}"))?;
 
                 if let Some(existing_chunk) = existing {
                     storage::update_chunk_embedding(
@@ -1320,18 +1318,21 @@ pub async fn rebuild_tables(
                 .iter()
                 .filter(|(_, _, _, fk)| fk.db_name == tc.db_name && fk.table_name == tc.table_name)
                 .flat_map(|(_, _, _, fk)| {
-                    fk.columns.iter().zip(fk.ref_columns.iter()).map(|(src_col, dst_col)| FkEdge {
-                        connection_id: config.connection_id.clone(),
-                        src_db: fk.db_name.clone(),
-                        src_tbl: fk.table_name.clone(),
-                        src_col: src_col.clone(),
-                        dst_db: fk.ref_db_name.clone(),
-                        dst_tbl: fk.ref_table_name.clone(),
-                        dst_col: dst_col.clone(),
-                        constraint_name: fk.constraint_name.clone(),
-                        on_delete: Some(fk.on_delete.clone()),
-                        on_update: Some(fk.on_update.clone()),
-                    })
+                    fk.columns
+                        .iter()
+                        .zip(fk.ref_columns.iter())
+                        .map(|(src_col, dst_col)| FkEdge {
+                            connection_id: config.connection_id.clone(),
+                            src_db: fk.db_name.clone(),
+                            src_tbl: fk.table_name.clone(),
+                            src_col: src_col.clone(),
+                            dst_db: fk.ref_db_name.clone(),
+                            dst_tbl: fk.ref_table_name.clone(),
+                            dst_col: dst_col.clone(),
+                            constraint_name: fk.constraint_name.clone(),
+                            on_delete: Some(fk.on_delete.clone()),
+                            on_update: Some(fk.on_update.clone()),
+                        })
                 })
                 .collect();
             storage::replace_fk_edges_for_table(
@@ -1341,7 +1342,12 @@ pub async fn rebuild_tables(
                 &tc.table_name,
                 &edges,
             )
-            .map_err(|e| format!("Failed to store FK edges for {}.{}: {e}", tc.db_name, tc.table_name))?;
+            .map_err(|e| {
+                format!(
+                    "Failed to store FK edges for {}.{}: {e}",
+                    tc.db_name, tc.table_name
+                )
+            })?;
         }
     }
 
@@ -1394,9 +1400,7 @@ pub async fn rebuild_tables(
         // Use text_for_embedding when available, falling back to ddl_text
         let texts: Vec<String> = batch
             .iter()
-            .map(|c| {
-                c.text_for_embedding.as_ref().unwrap_or(&c.ddl_text).clone()
-            })
+            .map(|c| c.text_for_embedding.as_ref().unwrap_or(&c.ddl_text).clone())
             .collect();
         let batch_keys: Vec<&str> = batch.iter().map(|c| c.chunk_key.as_str()).collect();
         tracing::info!(
@@ -1432,9 +1436,7 @@ pub async fn rebuild_tables(
         conn.execute_batch("BEGIN")
             .map_err(|e| format!("BEGIN: {e}"))?;
 
-        for (i, chunk) in
-            batch.iter().enumerate()
-        {
+        for (i, chunk) in batch.iter().enumerate() {
             let insert = ChunkInsert {
                 connection_id: config.connection_id.clone(),
                 chunk_key: chunk.chunk_key.clone(),
@@ -1676,9 +1678,7 @@ pub fn parse_columns_from_ddl(ddl: &str) -> Vec<(String, String, Option<String>)
         if let Some(cap) = re.captures(trimmed) {
             let name = cap[1].to_string();
             let typ = cap[2].to_string();
-            let comment = re_comment
-                .captures(trimmed)
-                .map(|c| c[1].to_string());
+            let comment = re_comment.captures(trimmed).map(|c| c[1].to_string());
             cols.push((name, typ, comment));
         }
     }
@@ -1688,9 +1688,8 @@ pub fn parse_columns_from_ddl(ddl: &str) -> Vec<(String, String, Option<String>)
 /// Parse primary key column names from a `CREATE TABLE` DDL.
 pub fn parse_pk_from_ddl(ddl: &str) -> Vec<String> {
     static PK_REGEX: OnceLock<Regex> = OnceLock::new();
-    let re = PK_REGEX.get_or_init(|| {
-        Regex::new(r"(?i)PRIMARY\s+KEY\s+\(([^)]+)\)").expect("valid PK regex")
-    });
+    let re = PK_REGEX
+        .get_or_init(|| Regex::new(r"(?i)PRIMARY\s+KEY\s+\(([^)]+)\)").expect("valid PK regex"));
     match re.captures(ddl) {
         Some(cap) => parse_backtick_list(&cap[1]),
         None => Vec::new(),
@@ -1703,9 +1702,7 @@ pub fn parse_unique_indexes_from_ddl(ddl: &str) -> Vec<String> {
     let re = UNIQUE_REGEX.get_or_init(|| {
         Regex::new(r"(?i)UNIQUE\s+(?:KEY|INDEX)\s+`([^`]+)`").expect("valid unique index regex")
     });
-    re.captures_iter(ddl)
-        .map(|c| c[1].to_string())
-        .collect()
+    re.captures_iter(ddl).map(|c| c[1].to_string()).collect()
 }
 
 /// Generate table + FK chunks from DDL inputs, enriched with `text_for_embedding`.
@@ -1828,9 +1825,7 @@ pub const SHOW_CREATE_TABLE_CONCURRENCY: usize = 8;
 /// Enumerate every user (non-system) base table in one `information_schema`
 /// round-trip. Returns `(schema, table)` pairs sorted by `(schema, table)`.
 #[cfg(not(coverage))]
-async fn fetch_all_user_tables(
-    pool: &sqlx::MySqlPool,
-) -> Result<Vec<(String, String)>, String> {
+async fn fetch_all_user_tables(pool: &sqlx::MySqlPool) -> Result<Vec<(String, String)>, String> {
     let rows = sqlx::query(
         "SELECT TABLE_SCHEMA, TABLE_NAME \
          FROM information_schema.TABLES \
@@ -1881,7 +1876,8 @@ async fn fetch_all_table_signatures(
 ) -> Result<HashMap<(String, String), String>, String> {
     use sqlx::Row;
 
-    let system_filter = "TABLE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys')";
+    let system_filter =
+        "TABLE_SCHEMA NOT IN ('information_schema','mysql','performance_schema','sys')";
 
     let cols_sql = format!(
         "SELECT TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION, COLUMN_NAME, COLUMN_TYPE, \
@@ -2141,8 +2137,8 @@ async fn fetch_all_user_views(
         }
         let view_name = decode_string(row, 1).map_err(|e| format!("view: {e}"))?;
 
-        let safe_db = safe_identifier(&schema)
-            .map_err(|e| format!("Invalid db name {schema}: {e}"))?;
+        let safe_db =
+            safe_identifier(&schema).map_err(|e| format!("Invalid db name {schema}: {e}"))?;
         let safe_view = safe_identifier(&view_name)
             .map_err(|e| format!("Invalid view name {view_name}: {e}"))?;
         let sql = format!("SHOW CREATE VIEW {safe_db}.{safe_view}");
@@ -2201,8 +2197,8 @@ async fn fetch_all_user_routines(
         let routine_name = decode_string(row, 1).map_err(|e| format!("routine: {e}"))?;
         let routine_type = decode_string(row, 2).map_err(|e| format!("type: {e}"))?;
 
-        let safe_db = safe_identifier(&schema)
-            .map_err(|e| format!("Invalid db name {schema}: {e}"))?;
+        let safe_db =
+            safe_identifier(&schema).map_err(|e| format!("Invalid db name {schema}: {e}"))?;
         let safe_name = safe_identifier(&routine_name)
             .map_err(|e| format!("Invalid routine name {routine_name}: {e}"))?;
 

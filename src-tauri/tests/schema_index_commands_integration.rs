@@ -26,7 +26,12 @@ fn test_state() -> AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: sqllumen_lib::mysql::registry::ConnectionRegistry::new(),
         app_handle: None,
-        results: std::sync::RwLock::new(HashMap::new()),
+        result_cache: std::sync::Arc::new(
+            sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+                1800,
+                std::env::temp_dir().join("sqllumen-test-schidx"),
+            ),
+        ),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
@@ -49,7 +54,12 @@ fn test_state_with_vec() -> AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: sqllumen_lib::mysql::registry::ConnectionRegistry::new(),
         app_handle: None,
-        results: std::sync::RwLock::new(HashMap::new()),
+        result_cache: std::sync::Arc::new(
+            sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+                1800,
+                std::env::temp_dir().join("sqllumen-test-schidx"),
+            ),
+        ),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),

@@ -32,6 +32,19 @@ pub fn set_setting_impl(state: &AppState, key: &str, value: &str) -> Result<(), 
                     crate::logging::reload_log_level_from_setting_value(guard.as_ref(), value);
                 }
             }
+            if key == "results.cacheTTL" {
+                match value.parse::<u64>() {
+                    Ok(secs) => state.result_cache.set_ttl(secs),
+                    Err(e) => {
+                        tracing::warn!(
+                            key,
+                            value,
+                            error = %e,
+                            "ignoring unparseable results.cacheTTL value"
+                        );
+                    }
+                }
+            }
             Ok(())
         }
         Err(error) => Err(error.to_string()),

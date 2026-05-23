@@ -23,7 +23,12 @@ fn test_state() -> AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),
         app_handle: None,
-        results: std::sync::RwLock::new(std::collections::HashMap::new()),
+        result_cache: std::sync::Arc::new(
+            sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+                1800,
+                std::env::temp_dir().join("sqllumen-test-export"),
+            ),
+        ),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
@@ -849,38 +854,36 @@ fn test_export_results_impl_with_query_id() {
     let path_str = path.to_string_lossy().to_string();
 
     // Insert two stored results
-    {
-        let mut results = state.results.write().expect("lock ok");
-        results.insert(
-            ("conn-m".to_string(), "tab-m".to_string()),
-            vec![
-                StoredResult {
-                    query_id: "first-q".to_string(),
-                    columns: vec![ColumnMeta {
-                        name: "a".to_string(),
-                        data_type: "INT".to_string(),
-                    }],
-                    rows: vec![vec![serde_json::json!(10)]],
-                    execution_time_ms: 1,
-                    affected_rows: 0,
-                    auto_limit_applied: false,
-                    page_size: 1000,
-                },
-                StoredResult {
-                    query_id: "second-q".to_string(),
-                    columns: vec![ColumnMeta {
-                        name: "b".to_string(),
-                        data_type: "INT".to_string(),
-                    }],
-                    rows: vec![vec![serde_json::json!(20)]],
-                    execution_time_ms: 2,
-                    affected_rows: 0,
-                    auto_limit_applied: false,
-                    page_size: 1000,
-                },
-            ],
-        );
-    }
+    state.result_cache.insert(
+        "conn-m",
+        "tab-m",
+        vec![
+            StoredResult {
+                query_id: "first-q".to_string(),
+                columns: vec![ColumnMeta {
+                    name: "a".to_string(),
+                    data_type: "INT".to_string(),
+                }],
+                rows: vec![vec![serde_json::json!(10)]],
+                execution_time_ms: 1,
+                affected_rows: 0,
+                auto_limit_applied: false,
+                page_size: 1000,
+            },
+            StoredResult {
+                query_id: "second-q".to_string(),
+                columns: vec![ColumnMeta {
+                    name: "b".to_string(),
+                    data_type: "INT".to_string(),
+                }],
+                rows: vec![vec![serde_json::json!(20)]],
+                execution_time_ms: 2,
+                affected_rows: 0,
+                auto_limit_applied: false,
+                page_size: 1000,
+            },
+        ],
+    );
 
     let options = ExportOptions {
         format: ExportFormat::Csv,
@@ -907,24 +910,22 @@ fn test_export_results_impl_with_query_id() {
 fn test_export_results_impl_invalid_query_id() {
     let state = test_state();
 
-    {
-        let mut results = state.results.write().expect("lock ok");
-        results.insert(
-            ("cx".to_string(), "tx".to_string()),
-            vec![StoredResult {
-                query_id: "real-q".to_string(),
-                columns: vec![ColumnMeta {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                }],
-                rows: vec![vec![serde_json::json!(1)]],
-                execution_time_ms: 1,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
+    state.result_cache.insert(
+        "cx",
+        "tx",
+        vec![StoredResult {
+            query_id: "real-q".to_string(),
+            columns: vec![ColumnMeta {
+                name: "id".to_string(),
+                data_type: "INT".to_string(),
             }],
-        );
-    }
+            rows: vec![vec![serde_json::json!(1)]],
+            execution_time_ms: 1,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     let options = ExportOptions {
         format: ExportFormat::Csv,
@@ -1011,24 +1012,22 @@ fn test_export_results_impl_sql_default_table_name() {
     let path = dir.join(format!("test_impl_sql_{}.sql", std::process::id()));
     let path_str = path.to_string_lossy().to_string();
 
-    {
-        let mut results = state.results.write().expect("lock ok");
-        results.insert(
-            ("c1".to_string(), "t1".to_string()),
-            vec![StoredResult {
-                query_id: "q1".to_string(),
-                columns: vec![ColumnMeta {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                }],
-                rows: vec![vec![serde_json::json!(42)]],
-                execution_time_ms: 1,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
+    state.result_cache.insert(
+        "c1",
+        "t1",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![ColumnMeta {
+                name: "id".to_string(),
+                data_type: "INT".to_string(),
             }],
-        );
-    }
+            rows: vec![vec![serde_json::json!(42)]],
+            execution_time_ms: 1,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     let options = ExportOptions {
         format: ExportFormat::SqlInsert,
@@ -1037,8 +1036,8 @@ fn test_export_results_impl_sql_default_table_name() {
         table_name: None, // should default to "exported_results"
     };
 
-    let result =
-        export_results_impl(&state, "c1", "t1", options, None, None).expect("export should succeed");
+    let result = export_results_impl(&state, "c1", "t1", options, None, None)
+        .expect("export should succeed");
     assert_eq!(result.rows_exported, 1);
 
     let content = std::fs::read_to_string(&path).expect("read file");
@@ -1056,29 +1055,27 @@ fn test_export_results_impl_with_row_indices() {
     let path = dir.join(format!("test_impl_row_indices_{}.csv", std::process::id()));
     let path_str = path.to_string_lossy().to_string();
 
-    {
-        let mut results = state.results.write().expect("lock ok");
-        results.insert(
-            ("cx".to_string(), "tx".to_string()),
-            vec![StoredResult {
-                query_id: "q1".to_string(),
-                columns: vec![ColumnMeta {
-                    name: "name".to_string(),
-                    data_type: "VARCHAR".to_string(),
-                }],
-                rows: vec![
-                    vec![serde_json::json!("Alice")],
-                    vec![serde_json::json!("Bob")],
-                    vec![serde_json::json!("Charlie")],
-                    vec![serde_json::json!("Diana")],
-                ],
-                execution_time_ms: 1,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
+    state.result_cache.insert(
+        "cx",
+        "tx",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![ColumnMeta {
+                name: "name".to_string(),
+                data_type: "VARCHAR".to_string(),
             }],
-        );
-    }
+            rows: vec![
+                vec![serde_json::json!("Alice")],
+                vec![serde_json::json!("Bob")],
+                vec![serde_json::json!("Charlie")],
+                vec![serde_json::json!("Diana")],
+            ],
+            execution_time_ms: 1,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     let options = ExportOptions {
         format: ExportFormat::Csv,
@@ -1108,27 +1105,22 @@ fn test_export_results_impl_with_row_indices_out_of_bounds_skipped() {
     let path = dir.join(format!("test_impl_row_idx_oob_{}.csv", std::process::id()));
     let path_str = path.to_string_lossy().to_string();
 
-    {
-        let mut results = state.results.write().expect("lock ok");
-        results.insert(
-            ("cx".to_string(), "tx".to_string()),
-            vec![StoredResult {
-                query_id: "q1".to_string(),
-                columns: vec![ColumnMeta {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                }],
-                rows: vec![
-                    vec![serde_json::json!(1)],
-                    vec![serde_json::json!(2)],
-                ],
-                execution_time_ms: 1,
-                affected_rows: 0,
-                auto_limit_applied: false,
-                page_size: 1000,
+    state.result_cache.insert(
+        "cx",
+        "tx",
+        vec![StoredResult {
+            query_id: "q1".to_string(),
+            columns: vec![ColumnMeta {
+                name: "id".to_string(),
+                data_type: "INT".to_string(),
             }],
-        );
-    }
+            rows: vec![vec![serde_json::json!(1)], vec![serde_json::json!(2)]],
+            execution_time_ms: 1,
+            affected_rows: 0,
+            auto_limit_applied: false,
+            page_size: 1000,
+        }],
+    );
 
     let options = ExportOptions {
         format: ExportFormat::Csv,

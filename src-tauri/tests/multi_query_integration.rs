@@ -22,8 +22,7 @@ fn insert_multi_results(
     tab_id: &str,
     result_vec: Vec<StoredResult>,
 ) {
-    let mut results = state.results.write().expect("lock ok");
-    results.insert((conn_id.to_string(), tab_id.to_string()), result_vec);
+    state.result_cache.insert(conn_id, tab_id, result_vec);
 }
 
 /// Create two sample StoredResults with distinguishable data.
@@ -128,8 +127,8 @@ fn sort_results_with_result_index_one() {
     assert_eq!(page.rows[1][0], serde_json::json!("Alice"));
 
     // Verify the first result is untouched
-    let results = state.results.read().expect("lock ok");
-    let result_vec = results.get(&("c1".to_string(), "t1".to_string())).unwrap();
+    let entry = state.result_cache.get("c1", "t1").into_entry().unwrap();
+    let result_vec = &entry.rows;
     assert_eq!(result_vec[0].rows[0][0], serde_json::json!(10));
     assert_eq!(result_vec[0].rows[1][0], serde_json::json!(20));
     assert_eq!(result_vec[0].rows[2][0], serde_json::json!(30));
@@ -159,8 +158,8 @@ fn update_result_cell_with_result_index_one() {
     assert!(result.is_ok());
 
     // Verify the second result was updated
-    let results = state.results.read().expect("lock ok");
-    let result_vec = results.get(&("c1".to_string(), "t1".to_string())).unwrap();
+    let entry = state.result_cache.get("c1", "t1").into_entry().unwrap();
+    let result_vec = &entry.rows;
     assert_eq!(result_vec[1].rows[0][0], serde_json::json!("Charlie"));
 
     // Verify the first result is untouched
@@ -314,10 +313,12 @@ mod coverage_reexecute {
 
         // Verify initial state: two results
         {
-            let results = state.results.read().expect("lock ok");
-            let result_vec = results
-                .get(&("conn-re".to_string(), "tab-re".to_string()))
+            let entry = state
+                .result_cache
+                .get("conn-re", "tab-re")
+                .into_entry()
                 .unwrap();
+            let result_vec = &entry.rows;
             assert_eq!(result_vec.len(), 2);
             assert_eq!(result_vec[0].query_id, "q-first");
             assert_eq!(result_vec[1].query_id, "q-second");
@@ -340,10 +341,12 @@ mod coverage_reexecute {
         assert!(item.re_executable);
 
         // Verify only index 1 was replaced; index 0 remains unchanged
-        let results = state.results.read().expect("lock ok");
-        let result_vec = results
-            .get(&("conn-re".to_string(), "tab-re".to_string()))
+        let entry = state
+            .result_cache
+            .get("conn-re", "tab-re")
+            .into_entry()
             .unwrap();
+        let result_vec = &entry.rows;
         assert_eq!(result_vec.len(), 2);
         assert_eq!(
             result_vec[0].query_id, "q-first",
@@ -497,11 +500,12 @@ mod coverage_multi_query {
         assert!(result.results[2].re_executable);
 
         // Verify results were stored in state
-        let results = state.results.read().expect("lock ok");
-        let stored = results
-            .get(&("mq-conn".to_string(), "mq-tab".to_string()))
+        let entry = state
+            .result_cache
+            .get("mq-conn", "mq-tab")
+            .into_entry()
             .expect("results should be stored");
-        assert_eq!(stored.len(), 3);
+        assert_eq!(entry.rows.len(), 3);
     }
 
     #[tokio::test]
@@ -651,10 +655,12 @@ mod coverage_multi_query {
         );
 
         // Verify all results were stored in state
-        let results = state.results.read().expect("lock ok");
-        let stored = results
-            .get(&("mq-call-batch".to_string(), "mq-tab-batch".to_string()))
+        let entry = state
+            .result_cache
+            .get("mq-call-batch", "mq-tab-batch")
+            .into_entry()
             .expect("results should be stored");
+        let stored = &entry.rows;
         assert_eq!(stored.len(), 3);
 
         // Verify unique query IDs
@@ -1007,11 +1013,12 @@ mod coverage_call_query {
         assert!(!result.results[0].re_executable);
 
         // Verify result was stored
-        let results = state.results.read().expect("lock ok");
-        let stored = results
-            .get(&("call-conn".to_string(), "call-tab".to_string()))
+        let entry = state
+            .result_cache
+            .get("call-conn", "call-tab")
+            .into_entry()
             .expect("results should be stored");
-        assert_eq!(stored.len(), 1);
+        assert_eq!(entry.rows.len(), 1);
     }
 
     #[tokio::test]

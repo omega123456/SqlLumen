@@ -123,16 +123,9 @@ pub async fn fetch_table_data(
         });
     let sql_text = interpolate_sql_params(&raw_sql, &filter_clause.params);
 
-    let result = table_data::fetch_table_data_impl(
-        &pool,
-        &database,
-        &table,
-        page,
-        page_size,
-        sort,
-        filter,
-    )
-    .await;
+    let result =
+        table_data::fetch_table_data_impl(&pool, &database, &table, page, page_size, sort, filter)
+            .await;
 
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
 
@@ -386,8 +379,8 @@ pub async fn export_table_data(
         _ => None,
     };
     let filter_clause = table_data::translate_filter_model(&filter);
-    let raw_sql =
-        build_select_sql(&database, &table, &filter, &sort, limit_for_sql).unwrap_or_else(|| {
+    let raw_sql = build_select_sql(&database, &table, &filter, &sort, limit_for_sql)
+        .unwrap_or_else(|| {
             format!("SELECT * FROM `{database}`.`{table}` /* export to {format} */")
         });
     let sql_text = interpolate_sql_params(&raw_sql, &filter_clause.params);

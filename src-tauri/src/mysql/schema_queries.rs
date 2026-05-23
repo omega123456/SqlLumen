@@ -1056,7 +1056,11 @@ pub async fn query_all_indexes(
     Ok(aggregate_index_rows(
         &rows,
         |row| decode_mysql_text_cell(row, 0).unwrap_or_default(),
-        1, 2, 3, 4, 5,
+        1,
+        2,
+        3,
+        4,
+        5,
     ))
 }
 
@@ -1174,9 +1178,7 @@ pub async fn query_all_indexes_batch(
     for db in databases {
         sep.push_bind(db.as_str());
     }
-    sep.push_unseparated(
-        ") ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX",
-    );
+    sep.push_unseparated(") ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX");
 
     let sql = qb.sql();
     query_log::log_outgoing_sql_bound(sql, databases);
@@ -1195,7 +1197,11 @@ pub async fn query_all_indexes_batch(
             let table_name = decode_mysql_text_cell(row, 1).unwrap_or_default();
             format!("{schema}.{table_name}")
         },
-        2, 3, 4, 5, 6,
+        2,
+        3,
+        4,
+        5,
+        6,
     ))
 }
 

@@ -4,6 +4,7 @@ import { TextInput } from '../common/TextInput'
 import { Checkbox } from '../common/Checkbox'
 import { DialogShell } from './DialogShell'
 import { exportResults } from '../../lib/export-commands'
+import { useQueryStore } from '../../stores/query-store'
 import type { ExportFormat } from '../../types/schema'
 import styles from './ExportDialog.module.css'
 
@@ -152,7 +153,30 @@ export default function ExportDialog({
       }
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const errMsg = err instanceof Error ? err.message : String(err)
+      if (errMsg.includes('results_expired')) {
+        const tab = useQueryStore.getState().tabs[tabId]
+        if (tab) {
+          const expiredResultIndex =
+            resultIndex ?? Math.min(tab.activeResultIndex, Math.max(0, tab.results.length - 1))
+          useQueryStore.setState((state) => {
+            const t = state.tabs[tabId]
+            if (!t || expiredResultIndex >= t.results.length) return state
+            const newResults = [...t.results]
+            newResults[expiredResultIndex] = {
+              ...newResults[expiredResultIndex],
+              isExpired: true,
+            }
+            return {
+              tabs: {
+                ...state.tabs,
+                [tabId]: { ...t, results: newResults },
+              },
+            }
+          })
+        }
+      }
+      setError(errMsg)
     } finally {
       setIsExporting(false)
     }

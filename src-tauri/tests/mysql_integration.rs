@@ -325,7 +325,10 @@ fn test_credential_retrieve_nonexistent() {
     common::ensure_fake_backend_once();
     let test_id = format!("test-cred-none-{}", uuid::Uuid::new_v4());
     let result = credentials::get_password(&test_id).expect("lookup should succeed");
-    assert!(result.is_none(), "should return none for nonexistent credential");
+    assert!(
+        result.is_none(),
+        "should return none for nonexistent credential"
+    );
 }
 
 // --- Pool Creation Tests (require live MySQL) ---

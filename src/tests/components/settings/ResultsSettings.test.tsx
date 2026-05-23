@@ -28,6 +28,7 @@ describe('ResultsSettings', () => {
       pendingChanges: {
         'results.pageSize': '250',
         'results.nullDisplay': '<null>',
+        'results.cacheTTL': '7200',
       },
       isDirty: true,
     })
@@ -36,6 +37,7 @@ describe('ResultsSettings', () => {
 
     expect(screen.getByTestId('settings-page-size')).toHaveValue(250)
     expect(screen.getByTestId('settings-null-display')).toHaveValue('<null>')
+    expect(screen.getByTestId('settings-cache-ttl')).toHaveTextContent('2 hours')
   })
 
   it('updates page size and null display pending changes', async () => {
@@ -52,6 +54,25 @@ describe('ResultsSettings', () => {
 
     expect(useSettingsStore.getState().pendingChanges['results.pageSize']).toBe('750')
     expect(useSettingsStore.getState().pendingChanges['results.nullDisplay']).toBe('(null)')
+  })
+
+  it('renders the result cache section with the default cache duration', () => {
+    render(<ResultsSettings />)
+
+    expect(screen.getByText('Result Cache')).toBeInTheDocument()
+    expect(screen.getByText('Cache duration')).toBeInTheDocument()
+    expect(screen.getByTestId('settings-cache-ttl')).toHaveTextContent('30 minutes')
+  })
+
+  it('updates the cache duration pending change from the dropdown', async () => {
+    const user = userEvent.setup()
+    render(<ResultsSettings />)
+
+    await user.click(screen.getByTestId('settings-cache-ttl'))
+    await user.click(screen.getByRole('option', { name: /4 hours/i }))
+
+    expect(useSettingsStore.getState().pendingChanges['results.cacheTTL']).toBe('14400')
+    expect(screen.getByTestId('settings-cache-ttl')).toHaveTextContent('4 hours')
   })
 
   describe('tableTabsInBottomPanel toggle', () => {

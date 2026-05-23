@@ -2,12 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ExportDialog from '../../../components/dialogs/ExportDialog'
+import { useQueryStore, DEFAULT_RESULT_STATE } from '../../../stores/query-store'
 import { ipc } from '../../ipc-mock'
 
 beforeEach(() => {
   // Default: export_results returns success; plugin:dialog|save returns a path
   ipc.override('export_results', () => ({ bytesWritten: 1024, rowsExported: 5 }))
   ipc.override('plugin:dialog|save', () => '/mock/path/export.csv')
+  useQueryStore.setState({ tabs: {} })
 })
 
 const EXPORT_FORMAT_REGEX: Record<'csv' | 'json' | 'xlsx' | 'sql-insert', RegExp> = {
@@ -230,6 +232,55 @@ describe('ExportDialog', () => {
       { timeout: 5000 }
     )
   }, 15000)
+
+  it('marks the targeted result expired when export returns results_expired', async () => {
+    ipc.override('export_results', () => {
+      throw new Error('results_expired: Cached results are no longer available.')
+    })
+    useQueryStore.setState({
+      tabs: {
+        'tab-1': {
+          content: 'SELECT 1; SELECT 2;',
+          selectedText: '',
+          filePath: null,
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
+          cursorPosition: null,
+          connectionId: 'conn-1',
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'q-1',
+              lastExecutedSql: 'SELECT 1',
+            },
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'q-2',
+              lastExecutedSql: 'SELECT 2',
+            },
+          ],
+          activeResultIndex: 0,
+          activeBottomPanelItem: { type: 'result' },
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+        },
+      },
+    })
+    const user = userEvent.setup()
+    render(<ExportDialog {...defaultProps} resultIndex={1} />)
+
+    setExportDestinationPath('/tmp/export.csv')
+    await user.click(screen.getByTestId('export-submit-button'))
+
+    await waitFor(() => {
+      expect(useQueryStore.getState().tabs['tab-1']?.results[0]?.isExpired).toBe(false)
+      expect(useQueryStore.getState().tabs['tab-1']?.results[1]?.isExpired).toBe(true)
+    })
+  })
 
   it('export button is disabled during export (loading state)', async () => {
     // Make export_results hang indefinitely

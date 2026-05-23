@@ -476,13 +476,17 @@ fn test_clear_password_delete_failure_returns_error_and_preserves_sqlite_marker(
         keepalive_interval_secs: None,
     };
 
-    let error = update_connection_impl(&state, &id, update).expect_err("should surface delete failure");
+    let error =
+        update_connection_impl(&state, &id, update).expect_err("should surface delete failure");
     assert!(error.starts_with(&delete_password_prefix()));
 
     let record = get_connection_impl(&state, &id)
         .expect("should not error")
         .expect("should find");
-    assert!(record.has_password, "sqlite marker should remain set on failure");
+    assert!(
+        record.has_password,
+        "sqlite marker should remain set on failure"
+    );
 }
 
 #[test]
@@ -501,7 +505,10 @@ fn test_delete_connection_credential_failure_returns_error_and_preserves_sqlite_
     let record = get_connection_impl(&state, &id)
         .expect("should not error")
         .expect("should find");
-    assert!(record.has_password, "row should remain when credential deletion fails");
+    assert!(
+        record.has_password,
+        "row should remain when credential deletion fails"
+    );
 }
 
 #[test]

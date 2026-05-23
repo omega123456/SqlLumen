@@ -1,7 +1,16 @@
+import { Dropdown } from '../common/Dropdown'
 import { TextInput } from '../common/TextInput'
 import { SettingsSection } from './SettingsSection'
 import { SettingsToggle } from './SettingsToggle'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
+
+const CACHE_TTL_OPTIONS = [
+  { label: '15 minutes', value: '900' },
+  { label: '30 minutes', value: '1800' },
+  { label: '1 hour', value: '3600' },
+  { label: '2 hours', value: '7200' },
+  { label: '4 hours', value: '14400' },
+]
 
 export function ResultsSettings() {
   const setPendingChange = useSettingsStore((s) => s.setPendingChange)
@@ -9,6 +18,7 @@ export function ResultsSettings() {
   const pageSize = useSettingValue('results.pageSize')
   const nullDisplay = useSettingValue('results.nullDisplay')
   const tableTabsInBottomPanel = useSettingValue('results.tableTabsInBottomPanel')
+  const cacheTTL = useSettingValue('results.cacheTTL')
 
   return (
     <div data-testid="settings-results">
@@ -45,6 +55,29 @@ export function ResultsSettings() {
             data-testid="settings-null-display"
             style={{ width: 200 }}
           />
+        </div>
+      </SettingsSection>
+      <SettingsSection
+        title="Result Cache"
+        description="Control how long query results are kept in memory before being discarded."
+      >
+        <div>
+          <label
+            id="cache-ttl-label"
+            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
+          >
+            Cache duration
+          </label>
+          <div style={{ width: 200 }}>
+            <Dropdown
+              id="settings-cache-ttl"
+              labelledBy="cache-ttl-label"
+              options={CACHE_TTL_OPTIONS}
+              value={cacheTTL}
+              onChange={(value) => setPendingChange('results.cacheTTL', value)}
+              data-testid="settings-cache-ttl"
+            />
+          </div>
         </div>
       </SettingsSection>
       <SettingsSection

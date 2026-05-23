@@ -18,7 +18,12 @@ fn test_state() -> AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: sqllumen_lib::mysql::registry::ConnectionRegistry::new(),
         app_handle: None,
-        results: std::sync::RwLock::new(HashMap::new()),
+        result_cache: std::sync::Arc::new(
+            sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
+                1800,
+                std::env::temp_dir().join("sqllumen-test-ai"),
+            ),
+        ),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),
@@ -171,10 +176,7 @@ async fn chat_impl_returns_error_when_request_map_lock_is_poisoned() {
         panic!("poison ai_requests mutex");
     });
 
-    let request = sample_request(
-        "stream-poisoned-chat",
-        "http://127.0.0.1:1/v1",
-    );
+    let request = sample_request("stream-poisoned-chat", "http://127.0.0.1:1/v1");
     let result = ai_chat_impl(&state, app.handle().clone(), request).await;
 
     assert!(result.is_err());
@@ -749,7 +751,10 @@ async fn query_expand_disables_reasoning_on_request() {
     };
 
     let result = ai_query_expand_impl(&state, req).await;
-    assert!(result.is_ok(), "query expansion should send reasoning_effort none");
+    assert!(
+        result.is_ok(),
+        "query expansion should send reasoning_effort none"
+    );
     assert_eq!(result.unwrap().text, "ok");
 
     // Verify the actual request body contained /no_think in the last user message
@@ -779,7 +784,10 @@ async fn query_expand_disables_reasoning_on_request() {
 
     // Check captured requests
     let requests = server2.received_requests().await.unwrap();
-    assert!(!requests.is_empty(), "should have received at least one request");
+    assert!(
+        !requests.is_empty(),
+        "should have received at least one request"
+    );
     let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
     let messages = body["messages"].as_array().unwrap();
 
@@ -837,7 +845,10 @@ async fn query_expand_prepends_non_empty_conversation_context() {
     };
 
     let result = ai_query_expand_impl(&state, req).await;
-    assert!(result.is_ok(), "should include conversation context: {result:?}");
+    assert!(
+        result.is_ok(),
+        "should include conversation context: {result:?}"
+    );
     assert_eq!(result.unwrap().text, "ok");
 }
 

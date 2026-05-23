@@ -39,6 +39,7 @@ pub struct ColumnMeta {
 }
 
 /// A stored result set in memory, keyed by (connection_id, tab_id).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredResult {
     pub query_id: String,
     pub columns: Vec<ColumnMeta>,
@@ -992,13 +993,9 @@ pub async fn execute_query_impl(
     let (stored, item) = result?;
 
     // Store result set in state — execute_query replaces the WHOLE tab result vector
-    {
-        let mut results = state.results.write().expect("results lock poisoned");
-        results.insert(
-            (connection_id.to_string(), tab_id.to_string()),
-            vec![stored],
-        );
-    }
+    state
+        .result_cache
+        .insert(connection_id, tab_id, vec![stored]);
 
     Ok(ExecuteQueryResult {
         query_id: item.query_id,
@@ -1059,22 +1056,20 @@ pub async fn execute_query_impl(
         .await
         .insert(key.clone(), 42u64);
 
-    // Store empty result in state (exercises the results lock path)
-    {
-        let mut results = state.results.write().expect("results lock poisoned");
-        results.insert(
-            (connection_id.to_string(), tab_id.to_string()),
-            vec![StoredResult {
-                query_id: query_id.clone(),
-                columns: vec![],
-                rows: vec![],
-                execution_time_ms: 0,
-                affected_rows: 0,
-                auto_limit_applied,
-                page_size: page_size_used,
-            }],
-        );
-    }
+    // Store empty result in state (exercises the result_cache path)
+    state.result_cache.insert(
+        connection_id,
+        tab_id,
+        vec![StoredResult {
+            query_id: query_id.clone(),
+            columns: vec![],
+            rows: vec![],
+            execution_time_ms: 0,
+            affected_rows: 0,
+            auto_limit_applied,
+            page_size: page_size_used,
+        }],
+    );
 
     // Remove dummy thread ID
     state.running_queries.write().await.remove(&key);
@@ -1099,10 +1094,17 @@ pub fn fetch_result_page_impl(
     page: usize,
     result_index: Option<usize>,
 ) -> Result<FetchPageResult, String> {
-    let results = state.results.read().expect("results lock poisoned");
-    let result_vec = results
-        .get(&(connection_id.to_string(), tab_id.to_string()))
+    let cache_result = state.result_cache.get(connection_id, tab_id);
+    if cache_result.is_expired() {
+        return Err(
+            "results_expired: Results for this tab have expired. Re-run the query to see results."
+                .to_string(),
+        );
+    }
+    let entry = cache_result
+        .into_entry()
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+    let result_vec = &entry.rows;
 
     let idx = result_index.unwrap_or(0);
     let stored = result_vec.get(idx).ok_or_else(|| {
@@ -1136,8 +1138,9 @@ pub fn fetch_result_page_impl(
 }
 
 pub fn evict_results_impl(state: &AppState, connection_id: &str, tab_id: &str) {
-    let mut results = state.results.write().expect("results lock poisoned");
-    results.remove(&(connection_id.to_string(), tab_id.to_string()));
+    state
+        .result_cache
+        .remove_with_spill_cleanup(connection_id, tab_id);
 }
 
 /// Cancel a running query by issuing `KILL QUERY <thread_id>` on the MySQL server.
@@ -1442,9 +1445,7 @@ pub async fn fetch_schema_metadata_full_impl(
     state: &AppState,
     connection_id: &str,
 ) -> Result<SchemaMetadataFull, String> {
-    use crate::mysql::schema_queries::{
-        query_all_foreign_keys_batch, query_all_indexes_batch,
-    };
+    use crate::mysql::schema_queries::{query_all_foreign_keys_batch, query_all_indexes_batch};
 
     // First get the base metadata (databases, tables, columns, routines)
     let base = fetch_schema_metadata_impl(state, connection_id).await?;
@@ -1568,10 +1569,10 @@ pub fn compare_json_values(a: &serde_json::Value, b: &serde_json::Value) -> std:
     }
 }
 
-/// Sort a stored result set in-place by a named column and return the first page.
+/// Sort a stored result set by a named column and return the first page.
 ///
-/// The sort is performed under a write lock on `state.results`. After sorting
-/// the rows are re-paginated starting from page 1.
+/// Uses clone-on-write: clones the result vec from the cache, sorts the
+/// targeted entry, and re-inserts the updated vec.
 pub fn sort_results_impl(
     state: &AppState,
     connection_id: &str,
@@ -1580,10 +1581,18 @@ pub fn sort_results_impl(
     direction: &str, // "asc" or "desc"
     result_index: Option<usize>,
 ) -> Result<FetchPageResult, String> {
-    let mut results = state.results.write().expect("results lock poisoned");
-    let result_vec = results
-        .get_mut(&(connection_id.to_string(), tab_id.to_string()))
+    let cache_result = state.result_cache.get(connection_id, tab_id);
+    if cache_result.is_expired() {
+        return Err(
+            "results_expired: Results for this tab have expired. Re-run the query to see results."
+                .to_string(),
+        );
+    }
+    let entry = cache_result
+        .into_entry()
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+
+    let mut result_vec = entry.rows.clone();
 
     let idx = result_index.unwrap_or(0);
     if idx >= result_vec.len() {
@@ -1603,7 +1612,7 @@ pub fn sort_results_impl(
 
     let is_asc = direction == "asc";
 
-    // Sort rows in-place (stable sort preserves relative order for equal values)
+    // Sort rows (stable sort preserves relative order for equal values)
     stored.rows.sort_by(|a, b| {
         let va = a.get(col_idx).unwrap_or(&serde_json::Value::Null);
         let vb = b.get(col_idx).unwrap_or(&serde_json::Value::Null);
@@ -1621,6 +1630,9 @@ pub fn sort_results_impl(
     let total_pages = calculate_total_pages(total_rows, page_size);
 
     let rows = get_page_rows(&stored.rows, 1, page_size).to_vec();
+
+    // Re-insert the modified result vec
+    state.result_cache.insert(connection_id, tab_id, result_vec);
 
     Ok(FetchPageResult {
         rows,
@@ -1795,8 +1807,8 @@ pub async fn analyze_query_for_edit_impl(
 
 /// Update specific cells in a cached result set after a save operation.
 ///
-/// Acquires a write lock on `state.results`, finds the stored result by
-/// `(connection_id, tab_id)`, and sets each specified cell to its new value.
+/// Uses clone-on-write: clones the result vec from the cache, applies
+/// updates, and re-inserts.
 pub fn update_result_cell_impl(
     state: &AppState,
     connection_id: &str,
@@ -1805,10 +1817,18 @@ pub fn update_result_cell_impl(
     updates: HashMap<usize, serde_json::Value>,
     result_index: Option<usize>,
 ) -> Result<(), String> {
-    let mut results = state.results.write().expect("results lock poisoned");
-    let result_vec = results
-        .get_mut(&(connection_id.to_string(), tab_id.to_string()))
+    let cache_result = state.result_cache.get(connection_id, tab_id);
+    if cache_result.is_expired() {
+        return Err(
+            "results_expired: Results for this tab have expired. Re-run the query to see results."
+                .to_string(),
+        );
+    }
+    let entry = cache_result
+        .into_entry()
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+
+    let mut result_vec = entry.rows.clone();
 
     let idx = result_index.unwrap_or(0);
     if idx >= result_vec.len() {
@@ -1831,6 +1851,8 @@ pub fn update_result_cell_impl(
             stored.rows[row_index][col_index] = new_value;
         }
     }
+
+    state.result_cache.insert(connection_id, tab_id, result_vec);
 
     Ok(())
 }
@@ -1889,10 +1911,17 @@ pub async fn reexecute_single_result_impl(
     // post-await staleness detection.
     let expected_query_id: Option<String>;
     {
-        let results = state.results.read().expect("results lock poisoned");
-        let result_vec = results
-            .get(&(connection_id.to_string(), tab_id.to_string()))
+        let cache_result = state.result_cache.get(connection_id, tab_id);
+        if cache_result.is_expired() {
+            return Err(
+                "results_expired: Results for this tab have expired. Re-run the query to see results."
+                    .to_string(),
+            );
+        }
+        let entry = cache_result
+            .into_entry()
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+        let result_vec = &entry.rows;
         if result_index >= result_vec.len() {
             return Err(format!(
                 "Result index {result_index} out of range (total: {})",
@@ -1931,9 +1960,8 @@ pub async fn reexecute_single_result_impl(
     // prevent out-of-bounds panics or stale overwrites if the tab's results
     // were replaced by a newer query while this re-execution was in flight.
     {
-        let mut results = state.results.write().expect("results lock poisoned");
-        let result_vec = match results.get_mut(&(connection_id.to_string(), tab_id.to_string())) {
-            Some(v) => v,
+        let entry = match state.result_cache.get(connection_id, tab_id).into_entry() {
+            Some(e) => e,
             None => {
                 tracing::warn!(
                     tab_id,
@@ -1946,6 +1974,7 @@ pub async fn reexecute_single_result_impl(
                 );
             }
         };
+        let mut result_vec = entry.rows.clone();
         if result_index >= result_vec.len() {
             tracing::warn!(
                 tab_id,
@@ -1974,6 +2003,7 @@ pub async fn reexecute_single_result_impl(
             }
         }
         result_vec[result_index] = stored;
+        state.result_cache.insert(connection_id, tab_id, result_vec);
     }
 
     Ok(item)
@@ -2022,10 +2052,17 @@ pub async fn reexecute_single_result_impl(
     // Verify result index exists and capture expected_query_id for staleness detection
     let expected_query_id: Option<String>;
     {
-        let results = state.results.read().expect("results lock poisoned");
-        let result_vec = results
-            .get(&(connection_id.to_string(), tab_id.to_string()))
+        let cache_result = state.result_cache.get(connection_id, tab_id);
+        if cache_result.is_expired() {
+            return Err(
+                "results_expired: Results for this tab have expired. Re-run the query to see results."
+                    .to_string(),
+            );
+        }
+        let entry = cache_result
+            .into_entry()
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
+        let result_vec = &entry.rows;
         if result_index >= result_vec.len() {
             return Err(format!(
                 "Result index {result_index} out of range (total: {})",
@@ -2038,9 +2075,8 @@ pub async fn reexecute_single_result_impl(
     // Re-validate after (simulated) await — check tab still exists, index in range,
     // and query_id hasn't changed (prevents overwriting newer results).
     {
-        let mut results = state.results.write().expect("results lock poisoned");
-        let result_vec = match results.get_mut(&(connection_id.to_string(), tab_id.to_string())) {
-            Some(v) => v,
+        let entry = match state.result_cache.get(connection_id, tab_id).into_entry() {
+            Some(e) => e,
             None => {
                 return Err(
                     "Tab results no longer exist — a newer query may have replaced them"
@@ -2048,6 +2084,7 @@ pub async fn reexecute_single_result_impl(
                 );
             }
         };
+        let mut result_vec = entry.rows.clone();
         if result_index >= result_vec.len() {
             return Err(format!(
                 "Result index {result_index} out of range after re-execution (total: {}) — a newer query may have replaced the results",
@@ -2068,6 +2105,7 @@ pub async fn reexecute_single_result_impl(
             auto_limit_applied,
             page_size: page_size_used,
         };
+        state.result_cache.insert(connection_id, tab_id, result_vec);
     }
 
     Ok(MultiQueryResultItem {
@@ -2119,13 +2157,9 @@ pub async fn execute_multi_query_impl(
     .await?;
 
     // Store all results in state
-    {
-        let mut results = state.results.write().expect("results lock poisoned");
-        results.insert(
-            (connection_id.to_string(), tab_id.to_string()),
-            stored_results,
-        );
-    }
+    state
+        .result_cache
+        .insert(connection_id, tab_id, stored_results);
 
     Ok(MultiQueryResult {
         results: result_items,
@@ -2240,13 +2274,9 @@ pub async fn execute_multi_query_impl(
     state.running_queries.write().await.remove(&key);
 
     // Store results in state
-    {
-        let mut results = state.results.write().expect("results lock poisoned");
-        results.insert(
-            (connection_id.to_string(), tab_id.to_string()),
-            stored_results,
-        );
-    }
+    state
+        .result_cache
+        .insert(connection_id, tab_id, stored_results);
 
     Ok(MultiQueryResult {
         results: result_items,
@@ -2290,13 +2320,9 @@ pub async fn execute_call_query_impl(
     .await?;
 
     // Store all results in state
-    {
-        let mut results = state.results.write().expect("results lock poisoned");
-        results.insert(
-            (connection_id.to_string(), tab_id.to_string()),
-            stored_results,
-        );
-    }
+    state
+        .result_cache
+        .insert(connection_id, tab_id, stored_results);
 
     Ok(MultiQueryResult {
         results: result_items,
@@ -2352,13 +2378,9 @@ pub async fn execute_call_query_impl(
     };
 
     // Store result in state
-    {
-        let mut results = state.results.write().expect("results lock poisoned");
-        results.insert(
-            (connection_id.to_string(), tab_id.to_string()),
-            vec![stored],
-        );
-    }
+    state
+        .result_cache
+        .insert(connection_id, tab_id, vec![stored]);
 
     Ok(MultiQueryResult {
         results: vec![MultiQueryResultItem {
@@ -2375,6 +2397,27 @@ pub async fn execute_call_query_impl(
             re_executable: false,
         }],
     })
+}
+
+// ── Touch results (availability check) ────────────────────────────────────
+
+/// Check whether a cached result is still available for a given tab.
+///
+/// Returns a JSON object with `{ "status": "available" | "missing" }`.
+/// A successful lookup also refreshes the cache's idle timer for that entry.
+pub fn touch_results_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+) -> serde_json::Value {
+    use crate::mysql::result_cache::ResultCacheGet;
+    match state.result_cache.get(connection_id, tab_id) {
+        ResultCacheGet::Found(_) | ResultCacheGet::ReWarmed(_) => {
+            serde_json::json!({ "status": "available" })
+        }
+        ResultCacheGet::Expired => serde_json::json!({ "status": "expired" }),
+        ResultCacheGet::NeverStored => serde_json::json!({ "status": "missing" }),
+    }
 }
 
 // ── Unit tests ─────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ pub mod pool;
 pub mod query_executor;
 pub mod query_log;
 pub mod registry;
+pub mod result_cache;
 pub mod schema_queries;
 pub mod sql_table_parser;
 pub mod table_data;
