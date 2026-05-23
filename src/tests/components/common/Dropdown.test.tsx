@@ -567,6 +567,43 @@ describe('Dropdown', () => {
     })
   })
 
+  it('caches scroll parents across open/close cycles', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <div>
+        <span id="lb-cache">Pick</span>
+        <Dropdown id="d-cache" labelledBy="lb-cache" options={options} value="" onChange={vi.fn()} />
+      </div>
+    )
+
+    const combobox = screen.getByRole('combobox', { name: 'Pick' })
+    const wrapper = combobox.closest('div')!
+
+    let ancestorWalkCount = 0
+    const realGetComputedStyle = window.getComputedStyle
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((...args) => {
+      const el = args[0]
+      if (el instanceof HTMLElement && wrapper.contains(el) && el !== combobox) {
+        ancestorWalkCount++
+      }
+      return realGetComputedStyle(...args)
+    })
+
+    await user.click(combobox)
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    const walksOnFirstOpen = ancestorWalkCount
+    expect(walksOnFirstOpen).toBeGreaterThan(0)
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    ancestorWalkCount = 0
+
+    await user.click(combobox)
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+    expect(ancestorWalkCount).toBe(0)
+  })
+
   it('ignores workspace tab deactivation events for other tabs', async () => {
     const user = userEvent.setup()
 

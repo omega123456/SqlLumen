@@ -231,6 +231,7 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
     const [isPortalInDialog, setIsPortalInDialog] = useState(false)
     const typeaheadRef = useRef('')
     const typeaheadResetTimeoutRef = useRef<number | null>(null)
+    const scrollParentsRef = useRef<Set<EventTarget> | null>(null)
 
     const setTriggerRef = useCallback(
       (node: HTMLButtonElement | null) => {
@@ -488,7 +489,11 @@ export const Dropdown = forwardRef<HTMLButtonElement, DropdownProps>(
 
       updatePlacement()
 
-      const scrollParents = new Set<EventTarget>(getScrollParents(trigger))
+      if (!scrollParentsRef.current) {
+        scrollParentsRef.current = new Set<EventTarget>(getScrollParents(trigger))
+      }
+      const scrollParents = scrollParentsRef.current
+
       scrollParents.forEach((target) => {
         target.addEventListener('scroll', updatePlacement, { passive: true })
       })
