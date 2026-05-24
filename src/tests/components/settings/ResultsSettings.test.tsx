@@ -60,6 +60,11 @@ describe('ResultsSettings', () => {
     render(<ResultsSettings />)
 
     expect(screen.getByText('Result Cache')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Control how long query results and table data are kept in memory before being discarded.'
+      )
+    ).toBeInTheDocument()
     expect(screen.getByText('Cache duration')).toBeInTheDocument()
     expect(screen.getByTestId('settings-cache-ttl')).toHaveTextContent('30 minutes')
   })

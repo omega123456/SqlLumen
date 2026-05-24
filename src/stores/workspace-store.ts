@@ -16,6 +16,8 @@ import { useTableDesignerStore } from './table-designer-store'
 import { useObjectEditorStore } from './object-editor-store'
 import { useAiStore } from './ai-store'
 import { useSettingsStore } from './settings-store'
+import { touchTableData } from '../lib/table-data-commands'
+import { logFrontend } from '../lib/app-log-commands'
 
 export type WorkspaceFocusSurface = 'editor' | 'ai-input'
 
@@ -320,6 +322,58 @@ function cleanupRemovedTableTabs(tabIds: string[]) {
   }
 }
 
+function touchTableDataForTab(tab: TableDataTab): void {
+  touchTableData({
+    connectionId: tab.connectionId,
+    tabId: tab.id,
+  }).catch((error: unknown) => {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logFrontend('warn', `Table data cache touch failed for tab ${tab.id}: ${errorMessage}`)
+  })
+}
+
+function runPostActivationEffects(connectionId: string, tabId: string): void {
+  const tabs = useWorkspaceStore.getState().tabsByConnection[connectionId] || []
+  const tab = tabs.find((candidate) => candidate.id === tabId)
+
+  if (tab?.type === 'query-editor') {
+    const queryTab = useQueryStore.getState().tabs[tabId]
+    if (queryTab) {
+      const activeIdx = Math.min(
+        queryTab.activeResultIndex,
+        Math.max(0, queryTab.results.length - 1)
+      )
+      const activeResult = queryTab.results[activeIdx]
+      if (activeResult?.queryId) {
+        useQueryStore.getState().validateActiveTabResults(tabId)
+      }
+    }
+  }
+
+  if (tab?.type === 'table-data') {
+    touchTableDataForTab(tab)
+    return
+  }
+
+  if (tab?.type === 'query-editor') {
+    const activeBottomPanelItem = useQueryStore.getState().getTabState(tabId).activeBottomPanelItem
+    if (activeBottomPanelItem.type !== 'table-data') {
+      return
+    }
+
+    const scopedTableTab = tabs.find(
+      (candidate): candidate is TableDataTab =>
+        candidate.type === 'table-data' &&
+        candidate.id === activeBottomPanelItem.tabId &&
+        candidate.parentQueryTabId === tabId
+    )
+
+    if (scopedTableTab) {
+      touchTableDataForTab(scopedTableTab)
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -411,6 +465,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
           type: 'table-data',
           tabId: existing.id,
         })
+      } else {
+        runPostActivationEffects(connectionId, existing.id)
       }
       return
     }
@@ -914,23 +970,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         [connectionId]: tabId,
       },
     }))
-
-    // Validate result availability for query-editor tabs
-    const tabs = get().tabsByConnection[connectionId] || []
-    const tab = tabs.find((t) => t.id === tabId)
-    if (tab?.type === 'query-editor') {
-      const queryTab = useQueryStore.getState().tabs[tabId]
-      if (queryTab) {
-        const activeIdx = Math.min(
-          queryTab.activeResultIndex,
-          Math.max(0, queryTab.results.length - 1)
-        )
-        const activeResult = queryTab.results[activeIdx]
-        if (activeResult?.queryId) {
-          useQueryStore.getState().validateActiveTabResults(tabId)
-        }
-      }
-    }
+    runPostActivationEffects(connectionId, tabId)
   },
 
   requestActivateTab: (tabId: string) => {
@@ -952,23 +992,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         [connectionId]: tabId,
       },
     }))
-
-    // Validate result availability for query-editor tabs
-    const tabs = get().tabsByConnection[connectionId] || []
-    const tab = tabs.find((t) => t.id === tabId)
-    if (tab?.type === 'query-editor') {
-      const queryTab = useQueryStore.getState().tabs[tabId]
-      if (queryTab) {
-        const activeIdx = Math.min(
-          queryTab.activeResultIndex,
-          Math.max(0, queryTab.results.length - 1)
-        )
-        const activeResult = queryTab.results[activeIdx]
-        if (activeResult?.queryId) {
-          useQueryStore.getState().validateActiveTabResults(tabId)
-        }
-      }
-    }
+    runPostActivationEffects(connectionId, tabId)
   },
 
   setLastFocusedSurface: (tabId: string, surface: WorkspaceFocusSurface) => {

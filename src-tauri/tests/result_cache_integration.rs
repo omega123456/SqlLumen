@@ -32,8 +32,8 @@ fn insert_and_get() {
         .get("conn1", "tab1")
         .into_entry()
         .expect("should find entry");
-    assert_eq!(entry.rows.len(), 1);
-    assert_eq!(entry.rows[0].query_id, "q1");
+    assert_eq!(entry.value.len(), 1);
+    assert_eq!(entry.value[0].query_id, "q1");
 }
 
 #[test]
@@ -137,8 +137,8 @@ fn multiple_entries_tracked_independently() {
 
     let e1 = cache.get("conn1", "tab1").into_entry().expect("entry 1");
     let e2 = cache.get("conn2", "tab1").into_entry().expect("entry 2");
-    assert_eq!(e1.rows[0].query_id, "q1");
-    assert_eq!(e2.rows[0].query_id, "q2");
+    assert_eq!(e1.value[0].query_id, "q1");
+    assert_eq!(e2.value[0].query_id, "q2");
 
     // Remove one; the other survives.
     cache.remove("conn1", "tab1");
@@ -178,7 +178,7 @@ fn insert_replaces_existing_entry() {
         .get("conn1", "tab1")
         .into_entry()
         .expect("should find entry");
-    assert_eq!(entry.rows[0].query_id, "q2");
+    assert_eq!(entry.value[0].query_id, "q2");
     cache.run_pending_tasks();
     assert_eq!(cache.entry_count(), 1);
 }

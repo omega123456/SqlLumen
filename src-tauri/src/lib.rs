@@ -111,9 +111,11 @@ fn prevent_default_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 #[cfg(not(any(test, coverage)))]
 pub fn run() {
     use mysql::registry::ConnectionRegistry;
-    use mysql::result_cache::ResultCache;
+    use mysql::result_cache::{ResultCache, SysinfoMemorySnapshot};
+    use mysql::table_data_cache::TableDataCache;
     use state::AppState;
     use std::sync::{Arc, Mutex};
+    use std::sync::atomic::AtomicU64;
     use tauri::Manager;
 
     let mut builder = tauri::Builder::default();
@@ -177,28 +179,37 @@ pub fn run() {
                 }
             }
 
-            let result_cache = Arc::new(ResultCache::new(cache_ttl_secs, spill_dir));
+            let shared_cache_ttl = Arc::new(AtomicU64::new(cache_ttl_secs));
+            let result_cache = Arc::new(ResultCache::new_with_shared_ttl(
+                Arc::clone(&shared_cache_ttl),
+                spill_dir.clone(),
+            ));
+            let table_data_cache = Arc::new(TableDataCache::new_with_shared_ttl(
+                Arc::clone(&shared_cache_ttl),
+                spill_dir.clone(),
+            ));
 
             // Spawn background maintenance task for cache eviction and RAM pressure.
             {
-                let cache_for_task = Arc::clone(&result_cache);
+                let result_cache_for_task = Arc::clone(&result_cache);
+                let table_data_cache_for_task = Arc::clone(&table_data_cache);
                 tauri::async_runtime::spawn(async move {
                     loop {
                         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-                        let cache_for_blocking = Arc::clone(&cache_for_task);
+                        let result_cache_for_blocking = Arc::clone(&result_cache_for_task);
+                        let table_data_cache_for_blocking =
+                            Arc::clone(&table_data_cache_for_task);
                         let join_result = tauri::async_runtime::spawn_blocking(move || {
-                            use mysql::result_cache::SysinfoMemorySnapshot;
-
                             let mut snapshot = SysinfoMemorySnapshot::new();
-                            snapshot.refresh();
-                            cache_for_blocking.run_maintenance(&snapshot);
+                            result_cache_for_blocking.run_maintenance(&mut snapshot);
+                            table_data_cache_for_blocking.run_maintenance(&mut snapshot);
                         })
                         .await;
 
                         if let Err(e) = join_result {
                             tracing::warn!(
                                 error = %e,
-                                "result cache maintenance task failed"
+                                "cache maintenance task failed"
                             );
                         }
                     }
@@ -217,6 +228,7 @@ pub fn run() {
                 registry: ConnectionRegistry::new(),
                 app_handle: Some(app.handle().clone()),
                 result_cache,
+                table_data_cache,
                 log_filter_reload: Mutex::new(Some(logging_init.filter_reload)),
                 running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
                 dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
@@ -328,6 +340,8 @@ pub fn run() {
             commands::query::touch_results,
             commands::export::export_results,
             commands::table_data::fetch_table_data,
+            commands::table_data::touch_table_data,
+            commands::table_data::evict_table_data,
             commands::table_data::update_table_row,
             commands::table_data::insert_table_row,
             commands::table_data::delete_table_row,

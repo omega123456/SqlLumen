@@ -6,6 +6,7 @@ use sqllumen_lib::ai::types::{AiChatRequest, AiQueryExpandRequest, IpcMessage};
 use sqllumen_lib::commands::ai::{
     ai_cancel_impl, ai_chat_impl, ai_query_expand_impl, categorise_model, list_ai_models_impl,
 };
+use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -21,9 +22,13 @@ fn test_state() -> AppState {
         result_cache: std::sync::Arc::new(
             sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
                 1800,
-                std::env::temp_dir().join("sqllumen-test-ai"),
+                std::env::temp_dir().join("sqllumen-test-ai-results"),
             ),
         ),
+        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
+            1800,
+            std::env::temp_dir().join("sqllumen-test-ai-table-data"),
+        )),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),

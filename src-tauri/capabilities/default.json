@@ -66,6 +66,8 @@
     "allow-select-database",
     "allow-export-results",
     "allow-fetch-table-data",
+    "allow-touch-table-data",
+    "allow-evict-table-data",
     "allow-update-table-row",
     "allow-insert-table-row",
     "allow-delete-table-row",

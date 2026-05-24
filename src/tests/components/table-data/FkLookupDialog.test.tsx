@@ -61,6 +61,7 @@ const canvasCalls: unknown[] = []
 describe('FkLookupDialog', () => {
   beforeEach(() => {
     ipc.override('fetch_table_data', () => response)
+    ipc.override('evict_table_data', () => undefined)
     canvasCalls.length = 0
     Object.defineProperty(canvasGridModule, 'CanvasBaseGridView', {
       configurable: true,
@@ -151,6 +152,21 @@ describe('FkLookupDialog', () => {
           filterModel: [expect.objectContaining({ value: 'One' })],
         })
       )
+    })
+  })
+
+  it('evicts the synthetic table-data cache entry on close', async () => {
+    const { rerender } = render(<FkLookupDialog {...props} />)
+
+    await waitFor(() => expect(screen.getByTestId('fk-lookup-grid')).toBeInTheDocument())
+
+    rerender(<FkLookupDialog {...props} isOpen={false} />)
+
+    await waitFor(() => {
+      expect(ipc.calls('evict_table_data')).toContainEqual({
+        connectionId: 'c1',
+        tabId: 'fk-lookup-c1-app-customers',
+      })
     })
   })
 })

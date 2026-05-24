@@ -66,7 +66,7 @@ fn update_result_cell_successful() {
         .get("conn-1", "tab-1")
         .into_entry()
         .unwrap();
-    let stored = &entry.rows[0];
+    let stored = &entry.value[0];
     assert_eq!(stored.rows[0][1], serde_json::json!("Alice Updated"));
     // Other cells should be unchanged
     assert_eq!(stored.rows[0][0], serde_json::json!(1));
@@ -165,7 +165,7 @@ fn update_result_cell_multiple_columns() {
         .get("conn-1", "tab-1")
         .into_entry()
         .unwrap();
-    let stored = &entry.rows[0];
+    let stored = &entry.value[0];
     assert_eq!(stored.rows[0][0], serde_json::json!(1)); // id unchanged
     assert_eq!(stored.rows[0][1], serde_json::json!("Alice New"));
     assert_eq!(

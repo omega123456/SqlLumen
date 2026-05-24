@@ -4,6 +4,7 @@
 //! and editing table data. Each function takes a `MySqlPool` directly (the
 //! command wrappers in `commands::table_data` extract the pool from `AppState`).
 
+use crate::state::AppState;
 use crate::mysql::schema_queries::safe_identifier;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -109,6 +110,26 @@ pub struct ExportTableOptions {
     /// When set, limits the export to a single page of results (current visible rows).
     pub page: Option<u32>,
     pub page_size: Option<u32>,
+}
+
+pub fn touch_table_data_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+) -> serde_json::Value {
+    use crate::mysql::result_cache::CacheGet;
+
+    match state.table_data_cache.get(connection_id, tab_id) {
+        CacheGet::Found(_) | CacheGet::ReWarmed(_) => serde_json::json!({ "status": "available" }),
+        CacheGet::Expired => serde_json::json!({ "status": "expired" }),
+        CacheGet::NeverStored => serde_json::json!({ "status": "missing" }),
+    }
+}
+
+pub fn evict_table_data_impl(state: &AppState, connection_id: &str, tab_id: &str) {
+    state
+        .table_data_cache
+        .remove_with_spill_cleanup(connection_id, tab_id);
 }
 
 // ── Pure functions (always available) ──────────────────────────────────────────

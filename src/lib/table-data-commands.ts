@@ -1,6 +1,12 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { TableDataResponse, PrimaryKeyInfo, FilterCondition } from '../types/schema'
 
+export type TableDataTouchStatus = 'available' | 'expired' | 'missing'
+
+export interface TableDataTouchResult {
+  status: TableDataTouchStatus
+}
+
 /** Backend filter condition — matches the Rust `FilterCondition` struct. */
 type BackendFilterCondition = {
   column: string
@@ -23,6 +29,7 @@ function mapFilterConditions(conditions: FilterCondition[]): BackendFilterCondit
 
 export async function fetchTableData(params: {
   connectionId: string
+  tabId: string
   database: string
   table: string
   page: number
@@ -33,6 +40,7 @@ export async function fetchTableData(params: {
 }): Promise<TableDataResponse> {
   return invoke<TableDataResponse>('fetch_table_data', {
     connectionId: params.connectionId,
+    tabId: params.tabId,
     database: params.database,
     table: params.table,
     page: params.page,
@@ -40,6 +48,26 @@ export async function fetchTableData(params: {
     sortColumn: params.sortColumn ?? null,
     sortDirection: params.sortDirection ?? null,
     filterModel: params.filterModel ? mapFilterConditions(params.filterModel) : null,
+  })
+}
+
+export async function touchTableData(params: {
+  connectionId: string
+  tabId: string
+}): Promise<TableDataTouchResult> {
+  return invoke<TableDataTouchResult>('touch_table_data', {
+    connectionId: params.connectionId,
+    tabId: params.tabId,
+  })
+}
+
+export async function evictTableData(params: {
+  connectionId: string
+  tabId: string
+}): Promise<void> {
+  return invoke<void>('evict_table_data', {
+    connectionId: params.connectionId,
+    tabId: params.tabId,
   })
 }
 

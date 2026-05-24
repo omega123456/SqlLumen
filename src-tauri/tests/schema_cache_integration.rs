@@ -7,6 +7,7 @@ use sqllumen_lib::commands::schema_cache::{
 };
 use sqllumen_lib::db::schema_cache;
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
+use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::sync::{Arc, Mutex};
 
@@ -143,9 +144,13 @@ fn schema_cache_impls_surface_poisoned_db_lock_errors() {
         result_cache: std::sync::Arc::new(
             sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
                 1800,
-                std::env::temp_dir().join("sqllumen-test-schcache"),
+                std::env::temp_dir().join("sqllumen-test-schcache-results"),
             ),
         ),
+        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
+            1800,
+            std::env::temp_dir().join("sqllumen-test-schcache-table-data"),
+        )),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),

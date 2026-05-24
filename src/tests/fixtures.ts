@@ -206,6 +206,8 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
     primaryKey: null,
     executionTimeMs: 5,
   }),
+  touch_table_data: () => ({ status: 'available' }),
+  evict_table_data: () => undefined,
   update_table_row: () => undefined,
   insert_table_row: () => [],
   delete_table_row: () => undefined,

@@ -130,6 +130,10 @@ describe('useWorkspaceStore — openTab', () => {
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(2)
     expect(state.activeTabByConnection['conn-1']).toBe(firstTabId)
+    expect(ipc.calls('touch_table_data')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: firstTabId,
+    })
   })
 
   it('creates a new tab when same object but different type', () => {
@@ -280,6 +284,69 @@ describe('useWorkspaceStore — query result validation on activation', () => {
     expect(ipc.calls('touch_results')[0]).toMatchObject({
       connectionId: 'conn-1',
       tabId: queryTab.id,
+    })
+  })
+
+  it('touches active table data cache when a table-data tab becomes active', () => {
+    useWorkspaceStore.getState().openTab(makeTab())
+    const tableTab = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1'].find((tab): tab is TableDataTab => tab.type === 'table-data')
+
+    if (!tableTab) {
+      throw new Error('Expected table-data tab')
+    }
+
+    useWorkspaceStore.getState().setActiveTab('conn-1', tableTab.id)
+
+    expect(ipc.calls('touch_table_data')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: tableTab.id,
+    })
+  })
+
+  it('logs when table data touch fails during activation', async () => {
+    ipc.override('touch_table_data', () => {
+      throw new Error('touch failed')
+    })
+    useWorkspaceStore.getState().openTab(makeTab())
+    const tableTab = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1'].find((tab): tab is TableDataTab => tab.type === 'table-data')
+
+    if (!tableTab) {
+      throw new Error('Expected table-data tab')
+    }
+
+    useWorkspaceStore.getState().setActiveTab('conn-1', tableTab.id)
+
+    await vi.waitFor(() => {
+      expect(ipc.calls('log_frontend')).toContainEqual({
+        level: 'warn',
+        message: `Table data cache touch failed for tab ${tableTab.id}: touch failed`,
+      })
+    })
+  })
+
+  it('touches the active bottom-panel table-data tab when reactivating its parent query tab', () => {
+    setBottomPanelEnabled(true)
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+    useWorkspaceStore.getState().openTab(makeTab())
+
+    const tableTab = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1'].find((tab): tab is TableDataTab => tab.type === 'table-data')
+
+    if (!tableTab) {
+      throw new Error('Expected scoped table-data tab')
+    }
+
+    ipc.calls('touch_table_data').length = 0
+    useWorkspaceStore.getState().setActiveTab('conn-1', queryTabId)
+
+    expect(ipc.calls('touch_table_data')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: tableTab.id,
     })
   })
 })

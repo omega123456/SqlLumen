@@ -1104,7 +1104,7 @@ pub fn fetch_result_page_impl(
     let entry = cache_result
         .into_entry()
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
-    let result_vec = &entry.rows;
+    let result_vec = &entry.value;
 
     let idx = result_index.unwrap_or(0);
     let stored = result_vec.get(idx).ok_or_else(|| {
@@ -1592,7 +1592,7 @@ pub fn sort_results_impl(
         .into_entry()
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
 
-    let mut result_vec = entry.rows.clone();
+    let mut result_vec = entry.value.clone();
 
     let idx = result_index.unwrap_or(0);
     if idx >= result_vec.len() {
@@ -1828,7 +1828,7 @@ pub fn update_result_cell_impl(
         .into_entry()
         .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
 
-    let mut result_vec = entry.rows.clone();
+    let mut result_vec = entry.value.clone();
 
     let idx = result_index.unwrap_or(0);
     if idx >= result_vec.len() {
@@ -1921,7 +1921,7 @@ pub async fn reexecute_single_result_impl(
         let entry = cache_result
             .into_entry()
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
-        let result_vec = &entry.rows;
+        let result_vec = &entry.value;
         if result_index >= result_vec.len() {
             return Err(format!(
                 "Result index {result_index} out of range (total: {})",
@@ -1974,7 +1974,7 @@ pub async fn reexecute_single_result_impl(
                 );
             }
         };
-        let mut result_vec = entry.rows.clone();
+        let mut result_vec = entry.value.clone();
         if result_index >= result_vec.len() {
             tracing::warn!(
                 tab_id,
@@ -2062,7 +2062,7 @@ pub async fn reexecute_single_result_impl(
         let entry = cache_result
             .into_entry()
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
-        let result_vec = &entry.rows;
+        let result_vec = &entry.value;
         if result_index >= result_vec.len() {
             return Err(format!(
                 "Result index {result_index} out of range (total: {})",
@@ -2084,7 +2084,7 @@ pub async fn reexecute_single_result_impl(
                 );
             }
         };
-        let mut result_vec = entry.rows.clone();
+        let mut result_vec = entry.value.clone();
         if result_index >= result_vec.len() {
             return Err(format!(
                 "Result index {result_index} out of range after re-execution (total: {}) — a newer query may have replaced the results",

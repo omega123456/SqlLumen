@@ -823,8 +823,15 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     // --- Table data browser/editor ---
     case 'fetch_table_data': {
       const table = (args as Record<string, unknown>)?.table
+      void (args as Record<string, unknown>)?.tabId
       return getTableDataFixture(String(table))
     }
+
+    case 'touch_table_data':
+      return { status: 'available' }
+
+    case 'evict_table_data':
+      return null
 
     case 'get_table_foreign_keys': {
       const table = (args as Record<string, unknown>)?.table

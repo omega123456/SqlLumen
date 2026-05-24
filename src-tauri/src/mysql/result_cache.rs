@@ -13,39 +13,41 @@ use std::time::Duration;
 use moka::notification::RemovalCause;
 use moka::sync::Cache;
 use moka::Expiry;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use super::query_executor::StoredResult;
 
-/// Wrapper stored in the moka cache. Holds the result rows plus a
+/// Wrapper stored in the moka cache. Holds the cached value plus a
 /// monotonically increasing generation token used for stale-listener
 /// protection.
 #[derive(Debug, Clone)]
-pub struct CachedResultEntry {
-    pub rows: Vec<StoredResult>,
+pub struct CachedEntry<V> {
+    pub value: V,
     pub generation: u64,
 }
 
-struct SpillWriteJob {
+struct SpillWriteJob<V> {
     connection_id: String,
     tab_id: String,
     generation: u64,
-    rows: Vec<StoredResult>,
+    value: V,
 }
 
-enum SpillWorkerMessage {
-    Write(SpillWriteJob),
+enum SpillWorkerMessage<V> {
+    Write(SpillWriteJob<V>),
     Flush(Sender<()>),
     Shutdown,
 }
 
-/// Result of a `ResultCache::get()` call.
+/// Result of a `GenericCache::get()` call.
 #[derive(Debug)]
-pub enum ResultCacheGet {
+pub enum CacheGet<V> {
     /// Entry was found in the in-memory cache.
-    Found(Arc<CachedResultEntry>),
+    Found(Arc<CachedEntry<V>>),
     /// Entry was re-warmed from a spill file on disk.
-    ReWarmed(Arc<CachedResultEntry>),
+    ReWarmed(Arc<CachedEntry<V>>),
     /// Key was never stored in this session.
     NeverStored,
     /// Key was previously stored but is no longer available (neither in
@@ -53,9 +55,9 @@ pub enum ResultCacheGet {
     Expired,
 }
 
-impl ResultCacheGet {
+impl<V> CacheGet<V> {
     /// Convenience: extract the entry if `Found` or `ReWarmed`, else `None`.
-    pub fn into_entry(self) -> Option<Arc<CachedResultEntry>> {
+    pub fn into_entry(self) -> Option<Arc<CachedEntry<V>>> {
         match self {
             Self::Found(e) | Self::ReWarmed(e) => Some(e),
             _ => None,
@@ -75,6 +77,7 @@ impl ResultCacheGet {
 
 /// Abstraction over system memory for testability.
 pub trait MemorySnapshot: Send + Sync {
+    fn refresh(&mut self) {}
     fn available_bytes(&self) -> u64;
     fn total_bytes(&self) -> u64;
 }
@@ -98,6 +101,10 @@ impl SysinfoMemorySnapshot {
 }
 
 impl MemorySnapshot for SysinfoMemorySnapshot {
+    fn refresh(&mut self) {
+        self.sys.refresh_memory();
+    }
+
     fn available_bytes(&self) -> u64 {
         self.sys.available_memory()
     }
@@ -114,11 +121,14 @@ struct DynamicTtlExpiry {
     ttl_secs: Arc<AtomicU64>,
 }
 
-impl Expiry<(String, String), Arc<CachedResultEntry>> for DynamicTtlExpiry {
+impl<V> Expiry<(String, String), Arc<CachedEntry<V>>> for DynamicTtlExpiry
+where
+    V: Clone + Send + Sync + Serialize + DeserializeOwned + std::fmt::Debug + 'static,
+{
     fn expire_after_create(
         &self,
         _key: &(String, String),
-        _value: &Arc<CachedResultEntry>,
+        _value: &Arc<CachedEntry<V>>,
         _current_time: std::time::Instant,
     ) -> Option<Duration> {
         Some(Duration::from_secs(self.ttl_secs.load(Ordering::Relaxed)))
@@ -127,7 +137,7 @@ impl Expiry<(String, String), Arc<CachedResultEntry>> for DynamicTtlExpiry {
     fn expire_after_read(
         &self,
         _key: &(String, String),
-        _value: &Arc<CachedResultEntry>,
+        _value: &Arc<CachedEntry<V>>,
         _current_time: std::time::Instant,
         _current_duration: Option<Duration>,
         _last_modified_at: std::time::Instant,
@@ -138,7 +148,7 @@ impl Expiry<(String, String), Arc<CachedResultEntry>> for DynamicTtlExpiry {
     fn expire_after_update(
         &self,
         _key: &(String, String),
-        _value: &Arc<CachedResultEntry>,
+        _value: &Arc<CachedEntry<V>>,
         _current_time: std::time::Instant,
         _current_duration: Option<Duration>,
     ) -> Option<Duration> {
@@ -146,10 +156,13 @@ impl Expiry<(String, String), Arc<CachedResultEntry>> for DynamicTtlExpiry {
     }
 }
 
-/// Thread-safe result cache with time-to-idle eviction, disk spill,
+/// Thread-safe cache with time-to-idle eviction, disk spill,
 /// re-warm, and RAM-pressure eviction.
-pub struct ResultCache {
-    cache: Cache<(String, String), Arc<CachedResultEntry>>,
+pub struct GenericCache<V>
+where
+    V: Clone + Send + Sync + Serialize + DeserializeOwned + std::fmt::Debug + 'static,
+{
+    cache: Cache<(String, String), Arc<CachedEntry<V>>>,
     spill_dir: PathBuf,
     session_id: String,
     ttl_secs: Arc<AtomicU64>,
@@ -163,23 +176,33 @@ pub struct ResultCache {
     generations: Arc<RwLock<HashMap<(String, String), u64>>>,
     /// Keys+generations pre-approved for spill by RAM-pressure eviction.
     spillable_removals: Arc<RwLock<HashSet<(String, String, u64)>>>,
+    /// Per-key invalidation version used to drop late writes after explicit cleanup.
+    invalidation_versions: Arc<RwLock<HashMap<(String, String), u64>>>,
     /// Keys that have been explicitly cleaned up (tab close). The eviction
     /// listener must not write spill files for these keys.
     cleaned_keys: Arc<RwLock<HashSet<(String, String)>>>,
-    spill_worker_tx: Sender<SpillWorkerMessage>,
+    spill_worker_tx: Sender<SpillWorkerMessage<V>>,
     spill_worker_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
-impl ResultCache {
-    /// Create a new `ResultCache`.
+impl<V> GenericCache<V>
+where
+    V: Clone + Send + Sync + Serialize + DeserializeOwned + std::fmt::Debug + 'static,
+{
+    /// Create a new `GenericCache`.
     ///
     /// - `ttl_seconds`: initial time-to-idle in seconds
     /// - `spill_dir`: base directory for spill files (created lazily)
     pub fn new(ttl_seconds: u64, spill_dir: PathBuf) -> Self {
-        let ttl_secs = Arc::new(AtomicU64::new(ttl_seconds));
+        Self::new_with_shared_ttl(Arc::new(AtomicU64::new(ttl_seconds)), spill_dir)
+    }
+
+    /// Create a cache that reads TTL from a shared atomic source.
+    pub fn new_with_shared_ttl(ttl: Arc<AtomicU64>, spill_dir: PathBuf) -> Self {
         let session_id = uuid::Uuid::new_v4().to_string();
         let spillable_removals: Arc<RwLock<HashSet<(String, String, u64)>>> =
             Arc::new(RwLock::new(HashSet::new()));
+        let invalidation_versions = Arc::new(RwLock::new(HashMap::new()));
         let cleaned_keys: Arc<RwLock<HashSet<(String, String)>>> =
             Arc::new(RwLock::new(HashSet::new()));
         let generations = Arc::new(RwLock::new(HashMap::new()));
@@ -190,7 +213,7 @@ impl ResultCache {
         let spillable_for_listener = Arc::clone(&spillable_removals);
         let cleaned_for_listener = Arc::clone(&cleaned_keys);
         let generations_for_worker_thread = Arc::clone(&generations);
-        let (spill_worker_tx, spill_worker_rx) = mpsc::channel::<SpillWorkerMessage>();
+        let (spill_worker_tx, spill_worker_rx) = mpsc::channel::<SpillWorkerMessage<V>>();
         let spill_worker_tx_for_listener = spill_worker_tx.clone();
 
         let spill_worker_handle = std::thread::spawn(move || {
@@ -210,7 +233,7 @@ impl ResultCache {
                                 connection_id = %job.connection_id,
                                 tab_id = %job.tab_id,
                                 generation = job.generation,
-                                "result cache spill write skipped: no longer spillable"
+                                "cache spill write skipped: no longer spillable"
                             );
                             continue;
                         }
@@ -228,7 +251,7 @@ impl ResultCache {
                                 tab_id = %job.tab_id,
                                 generation = job.generation,
                                 current_generation = ?current_generation,
-                                "result cache spill write skipped: stale generation"
+                                "cache spill write skipped: stale generation"
                             );
                             let mut spillable = spillable_for_worker
                                 .write()
@@ -252,7 +275,7 @@ impl ResultCache {
                         let safe_name = safe_spill_filename(&job.connection_id, &job.tab_id);
                         let path = session_dir.join(format!("{safe_name}.msgpack"));
 
-                        match rmp_serde::to_vec_named(&job.rows) {
+                        match rmp_serde::to_vec_named(&job.value) {
                             Ok(bytes) => {
                                 if let Err(e) = fs::write(&path, &bytes) {
                                     tracing::warn!(
@@ -267,8 +290,7 @@ impl ResultCache {
                                         generation = job.generation,
                                         path = %path.display(),
                                         spill_bytes = bytes.len(),
-                                        result_set_count = job.rows.len(),
-                                        "result cache spill written to disk"
+                                        "cache spill written to disk"
                                     );
                                 }
                             }
@@ -278,7 +300,7 @@ impl ResultCache {
                                     connection_id = %job.connection_id,
                                     tab_id = %job.tab_id,
                                     generation = job.generation,
-                                    "failed to serialize result for spill"
+                                    "failed to serialize value for spill"
                                 );
                             }
                         }
@@ -296,17 +318,17 @@ impl ResultCache {
             }
         });
 
+        let ttl_secs = Arc::clone(&ttl);
         let cache = Cache::builder()
             .max_capacity(10_000)
             .expire_after(DynamicTtlExpiry {
-                ttl_secs: Arc::clone(&ttl_secs),
+                ttl_secs: Arc::clone(&ttl),
             })
             .eviction_listener(move |key, value, cause| {
                 let key: &(String, String) = &key;
-                let entry: &Arc<CachedResultEntry> = &value;
+                let entry: &Arc<CachedEntry<V>> = &value;
                 let generation = entry.generation;
 
-                // Never spill for keys that have been explicitly cleaned up
                 {
                     let cleaned = cleaned_for_listener
                         .read()
@@ -337,14 +359,14 @@ impl ResultCache {
                 if !should_spill {
                     return;
                 }
-                let result_set_count = entry.rows.len();
-                let rows = entry.rows.clone();
+
+                let value = entry.value.clone();
                 let send_result =
                     spill_worker_tx_for_listener.send(SpillWorkerMessage::Write(SpillWriteJob {
                         connection_id: key.0.clone(),
                         tab_id: key.1.clone(),
                         generation,
-                        rows,
+                        value,
                     }));
                 if let Err(e) = send_result {
                     let mut spillable = spillable_for_listener
@@ -363,8 +385,7 @@ impl ResultCache {
                         tab_id = %key.1,
                         generation,
                         cause = %removal_cause_label(cause),
-                        result_set_count,
-                        "result cache eviction: enqueueing spill write"
+                        "cache eviction: enqueueing spill write"
                     );
                 }
             })
@@ -380,6 +401,7 @@ impl ResultCache {
             known_keys: RwLock::new(HashSet::new()),
             generations,
             spillable_removals,
+            invalidation_versions,
             cleaned_keys,
             spill_worker_tx,
             spill_worker_handle: Mutex::new(Some(spill_worker_handle)),
@@ -391,48 +413,41 @@ impl ResultCache {
         Self::new(ttl_seconds, spill_dir)
     }
 
-    /// Retrieve a cached result by connection and tab ID.
+    /// Retrieve a cached value by connection and tab ID.
     /// On cache miss, attempts to re-warm from a spill file.
-    pub fn get(&self, connection_id: &str, tab_id: &str) -> ResultCacheGet {
+    pub fn get(&self, connection_id: &str, tab_id: &str) -> CacheGet<V> {
         let key = (connection_id.to_string(), tab_id.to_string());
 
-        // Try in-memory first
         if let Some(entry) = self.cache.get(&key) {
             self.touch_lru(&key);
-            return ResultCacheGet::Found(entry);
+            return CacheGet::Found(entry);
         }
 
-        // Check if key was ever stored
         let known = {
             let kk = self.known_keys.read().expect("known_keys lock poisoned");
             kk.contains(&key)
         };
 
         if !known {
-            return ResultCacheGet::NeverStored;
+            return CacheGet::NeverStored;
         }
 
-        // Try to re-warm from spill file
         let spill_path = self.spill_file_path(connection_id, tab_id);
         if spill_path.exists() {
             tracing::debug!(
                 connection_id = %connection_id,
                 tab_id = %tab_id,
                 path = %spill_path.display(),
-                "result cache attempting spill restore"
+                "cache attempting spill restore"
             );
             match fs::read(&spill_path) {
-                Ok(bytes) => match rmp_serde::from_slice::<Vec<StoredResult>>(&bytes) {
-                    Ok(rows) => {
+                Ok(bytes) => match rmp_serde::from_slice::<V>(&bytes) {
+                    Ok(value) => {
                         let spill_bytes = bytes.len();
-                        let result_set_count = rows.len();
-
-                        // Delete spill file after successful read
                         let _ = fs::remove_file(&spill_path);
 
-                        // Re-insert with a fresh generation
                         let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
-                        let entry = Arc::new(CachedResultEntry { rows, generation });
+                        let entry = Arc::new(CachedEntry { value, generation });
                         self.cache.insert(key.clone(), Arc::clone(&entry));
                         self.touch_lru(&key);
                         {
@@ -446,10 +461,9 @@ impl ResultCache {
                             generation,
                             path = %spill_path.display(),
                             spill_bytes,
-                            result_set_count,
-                            "result cache spill restored from disk"
+                            "cache spill restored from disk"
                         );
-                        return ResultCacheGet::ReWarmed(entry);
+                        return CacheGet::ReWarmed(entry);
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -472,23 +486,54 @@ impl ResultCache {
                 connection_id = %connection_id,
                 tab_id = %tab_id,
                 path = %spill_path.display(),
-                "result cache spill restore missed: spill file not found"
+                "cache spill restore missed: spill file not found"
             );
         }
 
-        ResultCacheGet::Expired
+        CacheGet::Expired
     }
 
-    /// Insert or replace results for a connection/tab pair.
-    pub fn insert(&self, connection_id: &str, tab_id: &str, results: Vec<StoredResult>) {
+    /// Insert or replace a value for a connection/tab pair.
+    pub fn insert(&self, connection_id: &str, tab_id: &str, value: V) {
+        let expected_invalidation_version =
+            self.current_invalidation_version(connection_id, tab_id);
+        let _ = self.insert_if_current(
+            connection_id,
+            tab_id,
+            expected_invalidation_version,
+            value,
+        );
+    }
+
+    /// Returns the current invalidation version for the key.
+    pub fn current_invalidation_version(&self, connection_id: &str, tab_id: &str) -> u64 {
         let key = (connection_id.to_string(), tab_id.to_string());
+        let versions = self
+            .invalidation_versions
+            .read()
+            .expect("invalidation_versions lock poisoned");
+        versions.get(&key).copied().unwrap_or(0)
+    }
+
+    /// Insert or replace a value when the invalidation version still matches.
+    pub fn insert_if_current(
+        &self,
+        connection_id: &str,
+        tab_id: &str,
+        expected_invalidation_version: u64,
+        value: V,
+    ) -> bool {
+        let key = (connection_id.to_string(), tab_id.to_string());
+        if self.current_invalidation_version(connection_id, tab_id) != expected_invalidation_version
+        {
+            return false;
+        }
+
         let generation = self.next_generation.fetch_add(1, Ordering::Relaxed);
 
-        // Clean up stale spill file for this key
         let spill_path = self.spill_file_path(connection_id, tab_id);
         let _ = fs::remove_file(&spill_path);
 
-        // Clear old spill-permission markers for this key (any generation)
         {
             let mut spillable = self
                 .spillable_removals
@@ -497,7 +542,6 @@ impl ResultCache {
             spillable.retain(|&(ref c, ref t, _)| !(c == &key.0 && t == &key.1));
         }
 
-        // Remove from cleaned_keys since we're inserting fresh data
         {
             let mut cleaned = self
                 .cleaned_keys
@@ -506,13 +550,9 @@ impl ResultCache {
             cleaned.remove(&key);
         }
 
-        let entry = Arc::new(CachedResultEntry {
-            rows: results,
-            generation,
-        });
+        let entry = Arc::new(CachedEntry { value, generation });
         self.cache.insert(key.clone(), entry);
 
-        // Track in known_keys, generations, and LRU
         {
             let mut kk = self.known_keys.write().expect("known_keys lock poisoned");
             kk.insert(key.clone());
@@ -522,25 +562,29 @@ impl ResultCache {
             gens.insert(key.clone(), generation);
         }
         self.touch_lru(&key);
+        true
     }
 
-    /// Remove (invalidate) a cached result without spill cleanup.
-    /// Kept for backward compatibility; prefer `remove_with_spill_cleanup`
-    /// for tab-close paths.
+    /// Remove (invalidate) a cached value without spill cleanup.
     pub fn remove(&self, connection_id: &str, tab_id: &str) {
         let key = (connection_id.to_string(), tab_id.to_string());
         self.cache.invalidate(&key);
         self.remove_from_lru(&key);
     }
 
-    /// Remove a cached result AND clean up any associated spill file,
-    /// known_keys entry, generation record, and spill-permission markers.
-    /// Also marks the key as cleaned so the async eviction listener cannot
-    /// recreate the spill file.
+    /// Remove a cached value and any associated spill artifacts.
     pub fn remove_with_spill_cleanup(&self, connection_id: &str, tab_id: &str) {
         let key = (connection_id.to_string(), tab_id.to_string());
+        let invalidation_version = self.next_generation.fetch_add(1, Ordering::Relaxed);
 
-        // Mark as cleaned BEFORE invalidation so the listener sees it
+        {
+            let mut versions = self
+                .invalidation_versions
+                .write()
+                .expect("invalidation_versions lock poisoned");
+            versions.insert(key.clone(), invalidation_version);
+        }
+
         {
             let mut cleaned = self
                 .cleaned_keys
@@ -551,11 +595,9 @@ impl ResultCache {
 
         self.cache.invalidate(&key);
 
-        // Delete spill file
         let spill_path = self.spill_file_path(connection_id, tab_id);
         let _ = fs::remove_file(&spill_path);
 
-        // Remove from all tracking structures
         self.remove_from_lru(&key);
         {
             let mut kk = self.known_keys.write().expect("known_keys lock poisoned");
@@ -625,13 +667,7 @@ impl ResultCache {
     }
 
     /// Run cache maintenance and RAM-pressure eviction.
-    ///
-    /// - Runs pending moka tasks first.
-    /// - Reads the memory snapshot and compares against threshold.
-    /// - Evicts up to 3 LRU entries per pass, up to 5 passes per cycle.
-    /// - Re-samples memory after each pass and stops as soon as memory recovers.
-    /// - Sleeps briefly between passes so the OS/runtime can settle.
-    pub fn run_maintenance(&self, snapshot: &dyn MemorySnapshot) {
+    pub fn run_maintenance(&self, snapshot: &mut dyn MemorySnapshot) {
         self.cache.run_pending_tasks();
 
         let total = snapshot.total_bytes();
@@ -641,6 +677,7 @@ impl ResultCache {
         const SETTLE_DELAY_MS: u64 = 100;
 
         for pass in 0..MAX_PASSES {
+            snapshot.refresh();
             let available = snapshot.available_bytes();
             if available >= threshold {
                 break;
@@ -662,14 +699,12 @@ impl ResultCache {
             }
 
             for key in &keys_to_evict {
-                // Get current generation for this key to mark as spillable
-                let gen = {
+                let generation = {
                     let gens = self.generations.read().expect("generations lock poisoned");
                     gens.get(key).copied()
                 };
 
-                if let Some(g) = gen {
-                    // Pre-mark as spillable so eviction listener writes spill file
+                if let Some(g) = generation {
                     {
                         let mut spillable = self
                             .spillable_removals
@@ -690,7 +725,6 @@ impl ResultCache {
                 }
             }
 
-            // Run pending tasks so the eviction listener fires
             self.cache.run_pending_tasks();
 
             if pass + 1 < MAX_PASSES {
@@ -707,24 +741,22 @@ impl ResultCache {
             .join(format!("{safe_name}.msgpack"))
     }
 
-    // ── LRU helpers ──────────────────────────────────────────────────────
-
-    /// Move `key` to the back (most recently used) of the LRU deque,
-    /// removing any prior occurrence.
     fn touch_lru(&self, key: &(String, String)) {
         let mut lru = self.lru_order.write().expect("lru_order lock poisoned");
         lru.retain(|k| k != key);
         lru.push_back(key.clone());
     }
 
-    /// Remove `key` from the LRU deque entirely.
     fn remove_from_lru(&self, key: &(String, String)) {
         let mut lru = self.lru_order.write().expect("lru_order lock poisoned");
         lru.retain(|k| k != key);
     }
 }
 
-impl Drop for ResultCache {
+impl<V> Drop for GenericCache<V>
+where
+    V: Clone + Send + Sync + Serialize + DeserializeOwned + std::fmt::Debug + 'static,
+{
     fn drop(&mut self) {
         let _ = self.spill_worker_tx.send(SpillWorkerMessage::Shutdown);
 
@@ -749,6 +781,10 @@ impl Drop for ResultCache {
         }
     }
 }
+
+pub type ResultCache = GenericCache<Vec<StoredResult>>;
+pub type CachedResultEntry = CachedEntry<Vec<StoredResult>>;
+pub type ResultCacheGet = CacheGet<Vec<StoredResult>>;
 
 fn removal_cause_label(cause: RemovalCause) -> &'static str {
     match cause {

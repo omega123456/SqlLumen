@@ -128,7 +128,7 @@ fn sort_results_with_result_index_one() {
 
     // Verify the first result is untouched
     let entry = state.result_cache.get("c1", "t1").into_entry().unwrap();
-    let result_vec = &entry.rows;
+    let result_vec = &entry.value;
     assert_eq!(result_vec[0].rows[0][0], serde_json::json!(10));
     assert_eq!(result_vec[0].rows[1][0], serde_json::json!(20));
     assert_eq!(result_vec[0].rows[2][0], serde_json::json!(30));
@@ -159,7 +159,7 @@ fn update_result_cell_with_result_index_one() {
 
     // Verify the second result was updated
     let entry = state.result_cache.get("c1", "t1").into_entry().unwrap();
-    let result_vec = &entry.rows;
+    let result_vec = &entry.value;
     assert_eq!(result_vec[1].rows[0][0], serde_json::json!("Charlie"));
 
     // Verify the first result is untouched
@@ -318,7 +318,7 @@ mod coverage_reexecute {
                 .get("conn-re", "tab-re")
                 .into_entry()
                 .unwrap();
-            let result_vec = &entry.rows;
+            let result_vec = &entry.value;
             assert_eq!(result_vec.len(), 2);
             assert_eq!(result_vec[0].query_id, "q-first");
             assert_eq!(result_vec[1].query_id, "q-second");
@@ -346,7 +346,7 @@ mod coverage_reexecute {
             .get("conn-re", "tab-re")
             .into_entry()
             .unwrap();
-        let result_vec = &entry.rows;
+        let result_vec = &entry.value;
         assert_eq!(result_vec.len(), 2);
         assert_eq!(
             result_vec[0].query_id, "q-first",
@@ -505,7 +505,7 @@ mod coverage_multi_query {
             .get("mq-conn", "mq-tab")
             .into_entry()
             .expect("results should be stored");
-        assert_eq!(entry.rows.len(), 3);
+        assert_eq!(entry.value.len(), 3);
     }
 
     #[tokio::test]
@@ -660,7 +660,7 @@ mod coverage_multi_query {
             .get("mq-call-batch", "mq-tab-batch")
             .into_entry()
             .expect("results should be stored");
-        let stored = &entry.rows;
+        let stored = &entry.value;
         assert_eq!(stored.len(), 3);
 
         // Verify unique query IDs
@@ -1018,7 +1018,7 @@ mod coverage_call_query {
             .get("call-conn", "call-tab")
             .into_entry()
             .expect("results should be stored");
-        assert_eq!(entry.rows.len(), 1);
+        assert_eq!(entry.value.len(), 1);
     }
 
     #[tokio::test]

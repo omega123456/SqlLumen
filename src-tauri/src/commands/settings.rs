@@ -34,7 +34,10 @@ pub fn set_setting_impl(state: &AppState, key: &str, value: &str) -> Result<(), 
             }
             if key == "results.cacheTTL" {
                 match value.parse::<u64>() {
-                    Ok(secs) => state.result_cache.set_ttl(secs),
+                    Ok(secs) => {
+                        state.result_cache.set_ttl(secs);
+                        state.table_data_cache.set_ttl(secs);
+                    }
                     Err(e) => {
                         tracing::warn!(
                             key,

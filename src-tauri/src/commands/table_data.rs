@@ -8,6 +8,8 @@ use crate::commands::query_history_bridge::{log_single_entry, resolve_connection
 use crate::db::history::NewHistoryEntry;
 use crate::mysql::schema_queries::safe_identifier;
 use crate::mysql::table_data;
+#[cfg(not(coverage))]
+use crate::mysql::table_data::{evict_table_data_impl, touch_table_data_impl};
 use crate::state::AppState;
 use std::collections::HashMap;
 
@@ -90,6 +92,7 @@ pub fn build_select_sql(
 pub async fn fetch_table_data(
     state: tauri::State<'_, AppState>,
     connection_id: String,
+    tab_id: String,
     database: String,
     table: String,
     page: u32,
@@ -113,6 +116,9 @@ pub async fn fetch_table_data(
     };
 
     let filter = filter_model.unwrap_or_default();
+    let expected_invalidation_version = state
+        .table_data_cache
+        .current_invalidation_version(&connection_id, &tab_id);
 
     let page_clamped = if page < 1 { 1 } else { page };
     let offset = (page_clamped - 1) as u64 * page_size as u64;
@@ -126,6 +132,22 @@ pub async fn fetch_table_data(
     let result =
         table_data::fetch_table_data_impl(&pool, &database, &table, page, page_size, sort, filter)
             .await;
+
+    if let Ok(response) = &result {
+        let inserted = state.table_data_cache.insert_if_current(
+            &connection_id,
+            &tab_id,
+            expected_invalidation_version,
+            response.clone(),
+        );
+        if !inserted {
+            tracing::debug!(
+                connection_id = %connection_id,
+                tab_id = %tab_id,
+                "skipped table-data cache insert after explicit cleanup"
+            );
+        }
+    }
 
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
 
@@ -149,6 +171,26 @@ pub async fn fetch_table_data(
     );
 
     result
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub fn touch_table_data(
+    connection_id: String,
+    tab_id: String,
+    state: tauri::State<'_, AppState>,
+) -> serde_json::Value {
+    touch_table_data_impl(&state, &connection_id, &tab_id)
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub fn evict_table_data(
+    connection_id: String,
+    tab_id: String,
+    state: tauri::State<'_, AppState>,
+) {
+    evict_table_data_impl(&state, &connection_id, &tab_id);
 }
 
 #[tauri::command]

@@ -24,6 +24,7 @@ import {
 import {
   insertTableRow as insertTableRowCmd,
   updateTableRow as updateTableRowCmd,
+  touchTableData as touchTableDataCmd,
 } from '../lib/table-data-commands'
 import { showErrorToast, showSuccessToast, showWarningToast } from './toast-store'
 import {
@@ -1392,6 +1393,26 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
     setActiveBottomPanelItem: (tabId: string, item: ActiveBottomPanelItem) => {
       patchTab(tabId, { activeBottomPanelItem: item })
+
+      if (item.type !== 'table-data') {
+        return
+      }
+
+      const tab = get().tabs[tabId]
+      if (!tab?.connectionId) {
+        return
+      }
+
+      touchTableDataCmd({
+        connectionId: tab.connectionId,
+        tabId: item.tabId,
+      }).catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        logFrontend(
+          'warn',
+          `Table data cache touch failed for bottom panel item ${item.tabId}: ${errorMessage}`
+        )
+      })
     },
 
     fetchPage: async (connectionId: string, tabId: string, page: number) => {
@@ -2582,7 +2603,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       if (!connectionId) return
 
       const prevStatus = tab.tabStatus
-      patchTab(tabId, { tabStatus: 'restoring' })
+      const shouldShowRestoringState = prevStatus !== 'success'
+      if (shouldShowRestoringState) {
+        patchTab(tabId, { tabStatus: 'restoring' })
+      }
 
       touchResultsCmd(connectionId, tabId)
         .then((response) => {
@@ -2590,10 +2614,14 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           if (response.status === 'expired') {
             markTabResultsExpired(tabId)
           }
-          patchTab(tabId, { tabStatus: prevStatus })
+          if (shouldShowRestoringState) {
+            patchTab(tabId, { tabStatus: prevStatus })
+          }
         })
         .catch((err) => {
-          patchTab(tabId, { tabStatus: prevStatus })
+          if (shouldShowRestoringState) {
+            patchTab(tabId, { tabStatus: prevStatus })
+          }
           logFrontend(
             'warn',
             ['[query-store] validateActiveTabResults failed:', err].map(String).join(' ')

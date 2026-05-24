@@ -8,6 +8,7 @@ import type {
 } from '../types/schema'
 import {
   fetchTableData as fetchTableDataCmd,
+  evictTableData as evictTableDataCmd,
   updateTableRow as updateTableRowCmd,
   insertTableRow as insertTableRowCmd,
   deleteTableRow as deleteTableRowCmd,
@@ -194,6 +195,24 @@ function appendDraftRow(
       tempId,
       modifiedColumns,
     },
+  })
+}
+
+function evictTableDataWithWarning(
+  connectionId: string,
+  tabId: string,
+  failureContext?: string
+): void {
+  evictTableDataCmd({
+    connectionId,
+    tabId,
+  }).catch((error: unknown) => {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const contextSuffix = failureContext ? ` ${failureContext}` : ''
+    logFrontend(
+      'warn',
+      `Table data cache eviction failed${contextSuffix} for tab ${tabId}: ${errorMessage}`
+    )
   })
 }
 
@@ -492,6 +511,11 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     // ------ cleanupTab ------
 
     cleanupTab: (tabId) => {
+      const tab = get().tabs[tabId]
+      if (tab) {
+        evictTableDataWithWarning(tab.connectionId, tabId)
+      }
+
       set((state) => {
         const newTabs = { ...state.tabs }
         delete newTabs[tabId]
@@ -547,6 +571,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       try {
         const result = await fetchTableDataCmd({
           connectionId: tab.connectionId,
+          tabId,
           database: tab.database,
           table: tab.table,
           page,
@@ -729,6 +754,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             primaryKey.keyColumns
           )
 
+          evictTableDataWithWarning(tab.connectionId, tabId, 'after insert')
+
           patchTab(tabId, {
             rows: newRows,
             editState: null,
@@ -765,6 +792,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           })
 
           if (!get().tabs[tabId]) return true
+
+          evictTableDataWithWarning(tab.connectionId, tabId, 'after update')
 
           const newRows = applyUpdatedRow(tab.rows, columns, editState)
           patchTab(tabId, {
@@ -909,6 +938,8 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         })
 
         if (!get().tabs[tabId]) return
+
+        evictTableDataWithWarning(tab.connectionId, tabId, 'after delete')
 
         const rowIdx = findRowIndexByKey(tab.rows, tab.columns, rowKey)
         if (rowIdx !== -1) {

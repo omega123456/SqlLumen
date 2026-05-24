@@ -8,6 +8,7 @@ use tokio::sync::RwLock as TokioRwLock;
 use crate::logging::LogFilterReloadHandle;
 use crate::mysql::registry::ConnectionRegistry;
 use crate::mysql::result_cache::ResultCache;
+use crate::mysql::table_data_cache::TableDataCache;
 use tokio_util::sync::CancellationToken;
 
 /// Status of a SQL dump export job.
@@ -85,6 +86,8 @@ pub struct AppState {
     pub app_handle: Option<AppHandle>,
     /// In-memory query results with time-to-idle eviction, backed by moka.
     pub result_cache: Arc<ResultCache>,
+    /// In-memory table-data responses with the same eviction/spill behavior as result cache.
+    pub table_data_cache: Arc<TableDataCache>,
     /// Reload handle for `EnvFilter` when `log.level` changes (None in tests).
     pub log_filter_reload: Mutex<Option<LogFilterReloadHandle>>,
     /// MySQL thread IDs for currently running queries, keyed by (connection_id, tab_id).

@@ -11,6 +11,7 @@ use sqllumen_lib::commands::connections::SaveConnectionInput;
 use sqllumen_lib::db::migrations;
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
 use sqllumen_lib::mysql::result_cache::ResultCache;
+use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -32,11 +33,14 @@ pub fn test_app_state() -> AppState {
     ensure_fake_backend_once();
     let conn = test_db();
     let (spill_dir, _) = unique_temp_dir("sqllumen-test-spill");
+    let result_spill_dir = spill_dir.join("results");
+    let table_data_spill_dir = spill_dir.join("table-data");
     AppState {
         db: Arc::new(Mutex::new(conn)),
         registry: ConnectionRegistry::new(),
         app_handle: None,
-        result_cache: Arc::new(ResultCache::new_for_test(1800, spill_dir)),
+        result_cache: Arc::new(ResultCache::new_for_test(1800, result_spill_dir)),
+        table_data_cache: Arc::new(TableDataCache::new_for_test(1800, table_data_spill_dir)),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),

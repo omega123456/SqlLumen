@@ -18,9 +18,10 @@ import { FilterToolbarButton } from '../shared/FilterToolbarButton'
 import { PaginationGroup } from '../shared/toolbar/PaginationGroup'
 import { StatusArea } from '../shared/toolbar/StatusArea'
 import { Button } from '../common/Button'
-import { fetchTableData } from '../../lib/table-data-commands'
+import { evictTableData, fetchTableData } from '../../lib/table-data-commands'
 import { buildColumnDescriptors } from './table-data-grid-columns'
 import type { TableDataColumnMeta, PrimaryKeyInfo, FilterCondition } from '../../types/schema'
+import { logFrontend } from '../../lib/app-log-commands'
 import styles from './FkLookupDialog.module.css'
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,8 @@ export function FkLookupDialog({
   referencedColumn,
   isReadOnly,
 }: FkLookupDialogProps) {
+  const cacheTabId = `fk-lookup-${connectionId}-${database}-${referencedTable}`
+
   // ---------------------------------------------------------------------------
   // Internal state
   // ---------------------------------------------------------------------------
@@ -104,6 +107,7 @@ export function FkLookupDialog({
       try {
         const response = await fetchTableData({
           connectionId,
+          tabId: cacheTabId,
           database,
           table: referencedTable,
           page,
@@ -144,8 +148,27 @@ export function FkLookupDialog({
         }
       }
     },
-    [connectionId, database, referencedTable]
+    [cacheTabId, connectionId, database, referencedTable]
   )
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    return () => {
+      evictTableData({
+        connectionId,
+        tabId: cacheTabId,
+      }).catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        logFrontend(
+          'warn',
+          `FK lookup cache cleanup failed for ${cacheTabId}: ${errorMessage}`
+        )
+      })
+    }
+  }, [cacheTabId, connectionId, isOpen])
 
   // ---------------------------------------------------------------------------
   // Initial load on open (with optional pre-filter)

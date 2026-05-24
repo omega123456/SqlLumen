@@ -143,6 +143,8 @@ sqllumen-test-integration = [
   "result_cache_integration",
   "--test",
   "result_cache_spill_integration",
+  "--test",
+  "table_data_cache_integration",
 ]
 
 sqllumen-llvm-cov = [
@@ -287,6 +289,8 @@ sqllumen-llvm-cov = [
   "result_cache_integration",
   "--test",
   "result_cache_spill_integration",
+  "--test",
+  "table_data_cache_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",

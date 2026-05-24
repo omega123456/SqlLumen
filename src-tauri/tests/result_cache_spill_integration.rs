@@ -94,8 +94,12 @@ impl StepMemorySnapshot {
 }
 
 impl MemorySnapshot for StepMemorySnapshot {
+    fn refresh(&mut self) {
+        self.index.fetch_add(1, Ordering::Relaxed);
+    }
+
     fn available_bytes(&self) -> u64 {
-        let current = self.index.fetch_add(1, Ordering::Relaxed) as usize;
+        let current = self.index.load(Ordering::Relaxed).saturating_sub(1) as usize;
         let capped = current.min(self.readings.len().saturating_sub(1));
         self.readings[capped]
     }
@@ -155,7 +159,7 @@ fn cache_miss_rewarms_from_spill_file() {
     );
 
     let entry = result.into_entry().unwrap();
-    assert_eq!(entry.rows[0].query_id, "q1");
+    assert_eq!(entry.value[0].query_id, "q1");
 
     // Spill file should be deleted after re-warm
     let spill_path = cache.spill_file_path("conn1", "tab1");
@@ -184,7 +188,7 @@ fn rewarmed_data_preserves_number_types() {
         .get("conn1", "tab1")
         .into_entry()
         .expect("should re-warm");
-    let row = &entry.rows[0].rows[0];
+    let row = &entry.value[0].rows[0];
 
     // u64
     assert!(row[0].is_u64(), "u64 value should be preserved as u64");
@@ -309,7 +313,8 @@ fn ram_pressure_eviction_triggers_spill() {
     // 100 MB < 800 MB = under pressure
     let snapshot = FakeMemorySnapshot::new(100 * 1024 * 1024, 8 * 1024 * 1024 * 1024);
 
-    cache.run_maintenance(&snapshot);
+    let mut snapshot = snapshot;
+    cache.run_maintenance(&mut snapshot);
     cache.flush_spill_jobs();
 
     // At least one spill file should exist
@@ -332,15 +337,12 @@ fn ram_pressure_stops_after_memory_recovers() {
     cache.insert("conn1", "tab4", vec![stub_result("q4")]);
 
     let snapshot = StepMemorySnapshot::new(
-        vec![
-            100 * 1024 * 1024,
-            900 * 1024 * 1024,
-            900 * 1024 * 1024,
-        ],
+        vec![100 * 1024 * 1024, 900 * 1024 * 1024, 900 * 1024 * 1024],
         8 * 1024 * 1024 * 1024,
     );
 
-    cache.run_maintenance(&snapshot);
+    let mut snapshot = snapshot;
+    cache.run_maintenance(&mut snapshot);
     cache.flush_spill_jobs();
 
     assert_eq!(
@@ -409,7 +411,8 @@ fn stale_eviction_notification_does_not_write_outdated_spill_file() {
     cache.insert("conn1", "tab1", vec![stub_result("q1")]);
 
     let low_memory = FakeMemorySnapshot::new(100 * 1024 * 1024, 8 * 1024 * 1024 * 1024);
-    cache.run_maintenance(&low_memory);
+    let mut low_memory = low_memory;
+    cache.run_maintenance(&mut low_memory);
 
     cache.insert("conn1", "tab1", vec![stub_result("q2")]);
     cache.flush_spill_jobs();
@@ -418,6 +421,31 @@ fn stale_eviction_notification_does_not_write_outdated_spill_file() {
     assert!(
         !spill_path.exists(),
         "stale RAM-pressure eviction should not spill outdated rows after replacement"
+    );
+}
+
+#[test]
+fn maintenance_refreshes_memory_between_passes() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = ResultCache::new_for_test(3600, tmp.path().to_path_buf());
+
+    cache.insert("conn1", "tab1", vec![stub_result("q1")]);
+    cache.insert("conn1", "tab2", vec![stub_result("q2")]);
+    cache.insert("conn1", "tab3", vec![stub_result("q3")]);
+    cache.insert("conn1", "tab4", vec![stub_result("q4")]);
+
+    let mut snapshot = StepMemorySnapshot::new(
+        vec![100 * 1024 * 1024, 900 * 1024 * 1024, 900 * 1024 * 1024],
+        8 * 1024 * 1024 * 1024,
+    );
+
+    cache.run_maintenance(&mut snapshot);
+    cache.flush_spill_jobs();
+
+    assert_eq!(
+        cache.entry_count(),
+        1,
+        "maintenance should stop after one eviction batch once refreshed memory recovers"
     );
 }
 
@@ -473,7 +501,10 @@ fn drop_cleans_up_current_session_spill_directory() {
         thread::sleep(Duration::from_millis(1500));
         cache.run_pending_tasks();
         cache.flush_spill_jobs();
-        assert!(session_dir.exists(), "session spill directory should exist before drop");
+        assert!(
+            session_dir.exists(),
+            "session spill directory should exist before drop"
+        );
         session_dir
     };
 

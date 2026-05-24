@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { ipc } from '../ipc-mock'
 import {
   fetchTableData,
+  touchTableData,
+  evictTableData,
   updateTableRow,
   insertTableRow,
   deleteTableRow,
@@ -38,6 +40,8 @@ const DEFAULT_INSERT_RESPONSE = [
 
 beforeEach(() => {
   ipc.override('fetch_table_data', () => DEFAULT_FETCH_RESPONSE)
+  ipc.override('touch_table_data', () => ({ status: 'available' }))
+  ipc.override('evict_table_data', () => null)
   ipc.override('update_table_row', () => null)
   ipc.override('insert_table_row', () => DEFAULT_INSERT_RESPONSE)
   ipc.override('delete_table_row', () => null)
@@ -48,6 +52,7 @@ describe('fetchTableData', () => {
   it('invokes fetch_table_data and returns response', async () => {
     const result = await fetchTableData({
       connectionId: 'conn-1',
+      tabId: 'tab-1',
       database: 'mydb',
       table: 'users',
       page: 1,
@@ -64,6 +69,7 @@ describe('fetchTableData', () => {
 
     await fetchTableData({
       connectionId: 'conn-1',
+      tabId: 'tab-1',
       database: 'mydb',
       table: 'users',
       page: 1,
@@ -80,6 +86,7 @@ describe('fetchTableData', () => {
 
     await fetchTableData({
       connectionId: 'conn-1',
+      tabId: 'tab-1',
       database: 'mydb',
       table: 'users',
       page: 1,
@@ -90,6 +97,7 @@ describe('fetchTableData', () => {
     const calls = ipc.calls('fetch_table_data')
     expect(calls).toHaveLength(1)
     const capturedArgs = calls[0] as Record<string, unknown>
+    expect(capturedArgs.tabId).toBe('tab-1')
     const sentFilter = capturedArgs.filterModel as {
       column: string
       operator: string
@@ -109,6 +117,7 @@ describe('fetchTableData', () => {
 
     await fetchTableData({
       connectionId: 'conn-1',
+      tabId: 'tab-1',
       database: 'mydb',
       table: 'events',
       page: 1,
@@ -153,6 +162,7 @@ describe('fetchTableData', () => {
 
     const result = await fetchTableData({
       connectionId: 'conn-1',
+      tabId: 'tab-1',
       database: 'mydb',
       table: 'users',
       page: 1,
@@ -188,6 +198,7 @@ describe('fetchTableData', () => {
 
     const result = await fetchTableData({
       connectionId: 'conn-1',
+      tabId: 'tab-1',
       database: 'mydb',
       table: 'users',
       page: 1,
@@ -195,6 +206,33 @@ describe('fetchTableData', () => {
     })
 
     expect(result.columns[0].setValues).toEqual(['alpha', 'beta', 'gamma'])
+  })
+})
+
+describe('table data cache lifecycle commands', () => {
+  it('touchTableData invokes touch_table_data', async () => {
+    const result = await touchTableData({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+    })
+
+    expect(result).toEqual({ status: 'available' })
+    expect(ipc.calls('touch_table_data')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+    })
+  })
+
+  it('evictTableData invokes evict_table_data', async () => {
+    await evictTableData({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+    })
+
+    expect(ipc.calls('evict_table_data')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+    })
   })
 })
 
@@ -355,6 +393,7 @@ describe('error propagation', () => {
     await expect(
       fetchTableData({
         connectionId: 'conn-1',
+        tabId: 'tab-1',
         database: 'mydb',
         table: 'users',
         page: 1,

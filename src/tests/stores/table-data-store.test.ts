@@ -99,6 +99,8 @@ beforeEach(() => {
   _resetToastTimeoutsForTests()
   // Default IPC overrides
   ipc.override('fetch_table_data', () => mockResponse)
+  ipc.override('touch_table_data', () => ({ status: 'available' }))
+  ipc.override('evict_table_data', () => undefined)
   ipc.override('update_table_row', () => undefined)
   ipc.override('insert_table_row', () => [
     ['id', 3],
@@ -275,6 +277,11 @@ describe('useTableDataStore — fetchPage', () => {
     ])
     expect(tab.currentPage).toBe(2)
     expect(ipc.calls('fetch_table_data').length).toBe(2)
+    expect(ipc.calls('fetch_table_data')[1]).toMatchObject({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      page: 2,
+    })
   })
 
   it('clears selectedRowKey after a successful page fetch', async () => {
@@ -335,6 +342,75 @@ describe('useTableDataStore — fetchPage', () => {
     await useTableDataStore.getState().fetchPage('tab-bool', 1)
 
     expect(useTableDataStore.getState().tabs['tab-bool'].rows).toEqual([[1, 1]])
+  })
+})
+
+describe('useTableDataStore — backend cache lifecycle', () => {
+  it('evicts backend cache when cleaning up a tab', async () => {
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+
+    useTableDataStore.getState().cleanupTab('tab-1')
+
+    expect(ipc.calls('evict_table_data')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+    })
+    expect(useTableDataStore.getState().tabs['tab-1']).toBeUndefined()
+  })
+
+  it('logs a warning when cleanup cache eviction fails', async () => {
+    ipc.override('evict_table_data', () => {
+      throw new Error('evict failed')
+    })
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+
+    useTableDataStore.getState().cleanupTab('tab-1')
+
+    await vi.waitFor(() => {
+      expect(ipc.calls('log_frontend')).toContainEqual({
+        level: 'warn',
+        message: 'Table data cache eviction failed for tab tab-1: evict failed',
+      })
+    })
+  })
+
+  it('evicts backend cache after a successful insert', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().insertNewRow('tab-1')
+    useTableDataStore.getState().updateCellValue('tab-1', 'name', 'Charlie')
+
+    const result = await useTableDataStore.getState().saveCurrentRow('tab-1')
+
+    expect(result).toBe(true)
+    expect(ipc.calls('evict_table_data')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+    })
+  })
+
+  it('evicts backend cache after a successful update', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
+    useTableDataStore.getState().updateCellValue('tab-1', 'name', 'Updated')
+
+    const result = await useTableDataStore.getState().saveCurrentRow('tab-1')
+
+    expect(result).toBe(true)
+    expect(ipc.calls('evict_table_data')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+    })
+  })
+
+  it('evicts backend cache after a successful delete', async () => {
+    await setupTabWithData()
+
+    await useTableDataStore.getState().deleteRow('tab-1', { id: 1 })
+
+    expect(ipc.calls('evict_table_data')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+    })
   })
 })
 

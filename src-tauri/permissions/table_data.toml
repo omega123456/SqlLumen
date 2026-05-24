@@ -11,6 +11,18 @@ commands.allow = ["update_table_row"]
 commands.deny = []
 
 [[permission]]
+identifier = "allow-touch-table-data"
+description = "Enables the touch_table_data command without any pre-configured scope."
+commands.allow = ["touch_table_data"]
+commands.deny = []
+
+[[permission]]
+identifier = "allow-evict-table-data"
+description = "Enables the evict_table_data command without any pre-configured scope."
+commands.allow = ["evict_table_data"]
+commands.deny = []
+
+[[permission]]
 identifier = "allow-insert-table-row"
 description = "Enables the insert_table_row command without any pre-configured scope."
 commands.allow = ["insert_table_row"]

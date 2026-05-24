@@ -85,6 +85,15 @@ describe('useQueryStore — getTabState', () => {
 describe('useQueryStore — activeBottomPanelItem', () => {
   it('sets the active bottom panel item for a tab', () => {
     useQueryStore.getState().setContent('tab-bottom-panel', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-bottom-panel': {
+          ...prev.tabs['tab-bottom-panel']!,
+          connectionId: 'conn-1',
+        },
+      },
+    }))
 
     useQueryStore
       .getState()
@@ -93,6 +102,38 @@ describe('useQueryStore — activeBottomPanelItem', () => {
     expect(useQueryStore.getState().getTabState('tab-bottom-panel').activeBottomPanelItem).toEqual({
       type: 'table-data',
       tabId: 'table-tab-1',
+    })
+    expect(ipc.calls('touch_table_data')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: 'table-tab-1',
+    })
+  })
+
+  it('logs when touching a bottom-panel table-data item fails', async () => {
+    ipc.override('touch_table_data', () => {
+      throw new Error('touch failed')
+    })
+
+    useQueryStore.getState().setContent('tab-bottom-panel', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-bottom-panel': {
+          ...prev.tabs['tab-bottom-panel']!,
+          connectionId: 'conn-1',
+        },
+      },
+    }))
+
+    useQueryStore
+      .getState()
+      .setActiveBottomPanelItem('tab-bottom-panel', { type: 'table-data', tabId: 'table-tab-1' })
+
+    await vi.waitFor(() => {
+      expect(ipc.calls('log_frontend')).toContainEqual({
+        level: 'warn',
+        message: 'Table data cache touch failed for bottom panel item table-tab-1: touch failed',
+      })
     })
   })
 })

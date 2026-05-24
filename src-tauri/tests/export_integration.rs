@@ -9,6 +9,7 @@ use sqllumen_lib::export::xlsx_writer::write_xlsx;
 use sqllumen_lib::export::{ExportFormat, ExportOptions};
 use sqllumen_lib::mysql::query_executor::{ColumnMeta, StoredResult};
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
+use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
@@ -26,9 +27,13 @@ fn test_state() -> AppState {
         result_cache: std::sync::Arc::new(
             sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
                 1800,
-                std::env::temp_dir().join("sqllumen-test-export"),
+                std::env::temp_dir().join("sqllumen-test-export-results"),
             ),
         ),
+        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
+            1800,
+            std::env::temp_dir().join("sqllumen-test-export-table-data"),
+        )),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),

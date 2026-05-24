@@ -29,7 +29,7 @@ pub fn export_results_impl(
         let entry = cache_result
             .into_entry()
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
-        let result_vec = &entry.rows;
+        let result_vec = &entry.value;
         let idx = result_index.unwrap_or(0);
         let stored = result_vec.get(idx).ok_or_else(|| {
             format!(
@@ -72,7 +72,7 @@ pub async fn export_results(
         let entry = cache_result
             .into_entry()
             .ok_or_else(|| format!("No results found for tab '{tab_id}'"))?;
-        let result_vec = &entry.rows;
+        let result_vec = &entry.value;
         let idx = result_index.unwrap_or(0);
         let stored = result_vec.get(idx).ok_or_else(|| {
             format!(

@@ -23,6 +23,7 @@ mod type_aware_filter_integration {
     use sqllumen_lib::commands::table_data as table_data_commands;
     use sqllumen_lib::mysql::pool::set_test_pool_factory;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;
+    use sqllumen_lib::mysql::table_data_cache::TableDataCache;
     use sqllumen_lib::state::AppState;
     use std::sync::{Arc, Mutex};
     use tauri::ipc::{CallbackFn, InvokeBody};
@@ -40,9 +41,13 @@ mod type_aware_filter_integration {
             result_cache: std::sync::Arc::new(
                 sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
                     1800,
-                    std::env::temp_dir().join("sqllumen-test-tbldata"),
+                    std::env::temp_dir().join("sqllumen-test-tbldata-results"),
                 ),
             ),
+            table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
+                1800,
+                std::env::temp_dir().join("sqllumen-test-tbldata-table-data"),
+            )),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
             dump_jobs: std::sync::Arc::new(
@@ -105,6 +110,7 @@ mod type_aware_filter_integration {
     async fn fetch_table_data(
         state: tauri::State<'_, AppState>,
         connection_id: String,
+        tab_id: String,
         database: String,
         table: String,
         page: u32,
@@ -116,6 +122,7 @@ mod type_aware_filter_integration {
         table_data_commands::fetch_table_data(
             state,
             connection_id,
+            tab_id,
             database,
             table,
             page,
@@ -292,6 +299,7 @@ mod type_aware_filter_integration {
             "fetch_table_data",
             json!({
                 "connectionId": open_result.session_id,
+                "tabId": "table-data-tab-1",
                 "database": "pi_management",
                 "table": "users",
                 "page": 1,
@@ -419,6 +427,7 @@ mod type_aware_filter_integration {
             "fetch_table_data",
             json!({
                 "connectionId": open_result.session_id,
+                "tabId": "table-data-tab-1",
                 "database": "pi_management",
                 "table": "users",
                 "page": 1,
@@ -524,6 +533,7 @@ mod type_aware_filter_integration {
             "fetch_table_data",
             json!({
                 "connectionId": open_result.session_id,
+                "tabId": "table-data-tab-1",
                 "database": "pi_management",
                 "table": "users",
                 "page": 1,
@@ -624,6 +634,7 @@ mod type_aware_filter_integration {
             "fetch_table_data",
             json!({
                 "connectionId": open_result.session_id,
+                "tabId": "table-data-tab-1",
                 "database": "pi_management",
                 "table": "users",
                 "page": 1,
@@ -724,6 +735,7 @@ mod type_aware_filter_integration {
             "fetch_table_data",
             json!({
                 "connectionId": open_result.session_id,
+                "tabId": "table-data-tab-1",
                 "database": "pi_management",
                 "table": "users",
                 "page": 1,
@@ -848,6 +860,7 @@ mod command_wrapper_coverage {
     async fn fetch_table_data(
         state: tauri::State<'_, AppState>,
         connection_id: String,
+        tab_id: String,
         database: String,
         table: String,
         page: u32,
@@ -859,6 +872,7 @@ mod command_wrapper_coverage {
         table_data_commands::fetch_table_data(
             state,
             connection_id,
+            tab_id,
             database,
             table,
             page,
@@ -978,6 +992,7 @@ mod command_wrapper_coverage {
                 "fetch_table_data",
                 json!({
                     "connectionId": "conn-1",
+                    "tabId": "table-data-tab-1",
                     "database": "test_db",
                     "table": "users",
                     "page": 1,
@@ -998,6 +1013,7 @@ mod command_wrapper_coverage {
                 "fetch_table_data",
                 json!({
                     "connectionId": "missing",
+                    "tabId": "table-data-tab-1",
                     "database": "test_db",
                     "table": "users",
                     "page": 1,
@@ -1015,6 +1031,7 @@ mod command_wrapper_coverage {
             "fetch_table_data",
             json!({
                 "connectionId": "conn-1",
+                "tabId": "table-data-tab-1",
                 "database": "test_db",
                 "table": "users",
                 "page": 2,
@@ -1171,6 +1188,7 @@ mod command_wrapper_coverage {
             "fetch_table_data",
             json!({
                 "connectionId": "hist-conn",
+                "tabId": "table-data-tab-1",
                 "database": "test_db",
                 "table": "users",
                 "page": 1,
@@ -1212,6 +1230,7 @@ mod command_wrapper_coverage {
             "fetch_table_data",
             json!({
                 "connectionId": "hist-sf",
+                "tabId": "table-data-tab-1",
                 "database": "mydb",
                 "table": "products",
                 "page": 2,
@@ -1267,6 +1286,7 @@ mod command_wrapper_coverage {
             "fetch_table_data",
             json!({
                 "connectionId": "missing-conn",
+                "tabId": "table-data-tab-1",
                 "database": "test_db",
                 "table": "users",
                 "page": 1,

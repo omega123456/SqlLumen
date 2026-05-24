@@ -12,6 +12,7 @@ use sqllumen_lib::mysql::query_executor::{
     strip_non_executable_comments, touch_results_impl, write_file_impl,
 };
 use sqllumen_lib::mysql::registry::ConnectionRegistry;
+use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::sync::{Arc, Mutex};
 
@@ -28,9 +29,13 @@ fn test_state() -> AppState {
         result_cache: std::sync::Arc::new(
             sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
                 1800,
-                std::env::temp_dir().join("sqllumen-test-cmdquery"),
+                std::env::temp_dir().join("sqllumen-test-cmdquery-results"),
             ),
         ),
+        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
+            1800,
+            std::env::temp_dir().join("sqllumen-test-cmdquery-table-data"),
+        )),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
@@ -598,6 +603,10 @@ fn touch_results_reports_available_after_spill_rewarm() {
 
     let state = AppState {
         result_cache: std::sync::Arc::new(cache),
+        table_data_cache: std::sync::Arc::new(TableDataCache::new_for_test(
+            1800,
+            std::env::temp_dir().join("sqllumen-test-cmdquery-table-data"),
+        )),
         ..state
     };
 

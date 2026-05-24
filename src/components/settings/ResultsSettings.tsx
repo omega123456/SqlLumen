@@ -59,7 +59,7 @@ export function ResultsSettings() {
       </SettingsSection>
       <SettingsSection
         title="Result Cache"
-        description="Control how long query results are kept in memory before being discarded."
+        description="Control how long query results and table data are kept in memory before being discarded."
       >
         <div>
           <label
