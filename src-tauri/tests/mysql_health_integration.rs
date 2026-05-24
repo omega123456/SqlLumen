@@ -1,8 +1,15 @@
 //! Health monitor helpers: backoff schedule, cancellation token behavior, status payload JSON.
 
-use sqllumen_lib::mysql::health::{backoff_duration, ConnectionStatusChangedPayload};
+use sqllumen_lib::mysql::health::{
+    backoff_duration, ConnectionStatusChangedPayload,
+};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
+
+#[cfg(coverage)]
+use sqllumen_lib::mysql::health::spawn_health_monitor;
+#[cfg(coverage)]
+use tauri::test::{mock_builder, mock_context, noop_assets};
 
 #[test]
 fn test_backoff_duration_first_attempt() {
@@ -116,4 +123,18 @@ async fn test_cancellation_token_wakes_sleep() {
 #[test]
 fn test_backoff_resets_after_reconnection() {
     assert_eq!(backoff_duration(0), Duration::from_secs(5));
+}
+
+#[cfg(coverage)]
+#[test]
+fn test_spawn_health_monitor_coverage_stub_returns_live_token() {
+    let app = mock_builder()
+        .build(mock_context(noop_assets()))
+        .expect("should build mock app");
+
+    let token = spawn_health_monitor("conn-1".to_string(), 15, app.handle().clone());
+    assert!(!token.is_cancelled(), "stub should return a live token");
+
+    token.cancel();
+    assert!(token.is_cancelled(), "returned token should remain usable");
 }

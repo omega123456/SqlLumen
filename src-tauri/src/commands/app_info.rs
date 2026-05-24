@@ -8,7 +8,7 @@ pub struct AppInfo {
     pub app_version: String,
 }
 
-pub fn get_app_info_impl(app_handle: &Option<tauri::AppHandle>) -> AppInfo {
+pub fn get_app_info_impl<R: tauri::Runtime>(app_handle: &Option<tauri::AppHandle<R>>) -> AppInfo {
     // Check RUST_LOG env var
     let rust_log_override = std::env::var("RUST_LOG").is_ok();
 

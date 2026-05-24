@@ -6,6 +6,7 @@ use sqllumen_lib::commands::history::{
     clear_history_impl, delete_history_entry_impl, list_history_impl,
 };
 use sqllumen_lib::db::history::{self, NewHistoryEntry};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 fn insert_sample_entries(state: &sqllumen_lib::state::AppState, connection_id: &str, count: usize) {
     let conn = state.db.lock().expect("db lock");
@@ -258,6 +259,24 @@ fn test_list_history_search_no_matches() {
     let page = list_history_impl(&state, "p1", 1, 50, Some("NONEXISTENT_KEYWORD")).expect("search");
     assert_eq!(page.entries.len(), 0);
     assert_eq!(page.total, 0);
+}
+
+#[test]
+fn test_list_history_returns_error_when_db_lock_is_poisoned() {
+    let state = common::test_app_state();
+    let db = state.db.clone();
+
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        let _guard = db.lock().expect("db lock should succeed before poisoning");
+        panic!("poison the db mutex");
+    }));
+
+    let error =
+        list_history_impl(&state, "p1", 1, 10, None).expect_err("poisoned db lock should fail");
+    assert!(
+        error.contains("poison") || error.contains("Poison"),
+        "expected poison-lock error, got: {error}"
+    );
 }
 
 // ── Batch insert and verify fields ───────────────────────────────────────
