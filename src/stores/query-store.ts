@@ -563,34 +563,32 @@ function normalizeQueryRows(columns: ColumnMeta[], rows: unknown[][]): unknown[]
     return rows
   }
 
-  const booleanAliasIndexes = columns.reduce<Set<number>>((indexes, column, index) => {
-    if (isTinyIntBooleanAlias(column.dataType)) {
-      indexes.add(index)
-    }
-    return indexes
-  }, new Set())
+  const booleanAliasIndexes = columns
+    .map((column, index) => (isTinyIntBooleanAlias(column.dataType) ? index : -1))
+    .filter((index) => index !== -1)
 
-  if (booleanAliasIndexes.size === 0) {
+  if (booleanAliasIndexes.length === 0) {
     return rows
   }
 
-  return rows.map((row) => {
-    let changed = false
+  const mappedRows = rows.map((row) => {
+    let copy: unknown[] | null = null
 
-    const normalizedRow = row.map((value, index) => {
-      if (booleanAliasIndexes.has(index)) {
-        const normalizedValue = normalizeTinyIntDisplayValue(value)
-        if (normalizedValue !== value) {
-          changed = true
+    for (const colIndex of booleanAliasIndexes) {
+      const value = row[colIndex]
+      const normalizedValue = normalizeTinyIntDisplayValue(value)
+      if (normalizedValue !== value) {
+        if (copy === null) {
+          copy = [...row]
         }
-        return normalizedValue
+        copy[colIndex] = normalizedValue
       }
+    }
 
-      return value
-    })
-
-    return changed ? normalizedRow : row
+    return copy !== null ? copy : row
   })
+
+  return mappedRows.some((r, i) => r !== rows[i]) ? mappedRows : rows
 }
 
 /** Build a SingleResultState from a MultiQueryResultItem. */
