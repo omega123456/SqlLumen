@@ -168,8 +168,8 @@ fn compare_booleans_as_mixed() {
 
 // ── sort_results_impl integration tests ───────────────────────────────────────
 
-#[test]
-fn sort_string_column_asc() {
+#[tokio::test]
+async fn sort_string_column_asc() {
     let state = test_state();
     insert_result(
         &state,
@@ -184,15 +184,17 @@ fn sort_string_column_asc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "name", "asc", None).expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "name", "asc", None)
+        .await
+        .expect("sort ok");
     assert_eq!(result.rows[0][0], serde_json::json!("Alice"));
     assert_eq!(result.rows[1][0], serde_json::json!("Bob"));
     assert_eq!(result.rows[2][0], serde_json::json!("Charlie"));
     assert_eq!(result.page, 1);
 }
 
-#[test]
-fn sort_string_column_desc() {
+#[tokio::test]
+async fn sort_string_column_desc() {
     let state = test_state();
     insert_result(
         &state,
@@ -207,14 +209,16 @@ fn sort_string_column_desc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "name", "desc", None).expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "name", "desc", None)
+        .await
+        .expect("sort ok");
     assert_eq!(result.rows[0][0], serde_json::json!("Charlie"));
     assert_eq!(result.rows[1][0], serde_json::json!("Bob"));
     assert_eq!(result.rows[2][0], serde_json::json!("Alice"));
 }
 
-#[test]
-fn sort_numeric_column_asc() {
+#[tokio::test]
+async fn sort_numeric_column_asc() {
     let state = test_state();
     insert_result(
         &state,
@@ -229,14 +233,16 @@ fn sort_numeric_column_asc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "id", "asc", None).expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "id", "asc", None)
+        .await
+        .expect("sort ok");
     assert_eq!(result.rows[0][0], serde_json::json!(10));
     assert_eq!(result.rows[1][0], serde_json::json!(20));
     assert_eq!(result.rows[2][0], serde_json::json!(30));
 }
 
-#[test]
-fn sort_numeric_column_desc() {
+#[tokio::test]
+async fn sort_numeric_column_desc() {
     let state = test_state();
     insert_result(
         &state,
@@ -251,14 +257,16 @@ fn sort_numeric_column_desc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "id", "desc", None).expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "id", "desc", None)
+        .await
+        .expect("sort ok");
     assert_eq!(result.rows[0][0], serde_json::json!(30));
     assert_eq!(result.rows[1][0], serde_json::json!(20));
     assert_eq!(result.rows[2][0], serde_json::json!(10));
 }
 
-#[test]
-fn sort_nulls_last_asc() {
+#[tokio::test]
+async fn sort_nulls_last_asc() {
     let state = test_state();
     insert_result(
         &state,
@@ -274,7 +282,9 @@ fn sort_nulls_last_asc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "name", "asc", None).expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "name", "asc", None)
+        .await
+        .expect("sort ok");
     // Non-nulls first, then nulls
     assert_eq!(result.rows[0][0], serde_json::json!("Alice"));
     assert_eq!(result.rows[1][0], serde_json::json!("Bob"));
@@ -282,8 +292,8 @@ fn sort_nulls_last_asc() {
     assert_eq!(result.rows[3][0], serde_json::Value::Null);
 }
 
-#[test]
-fn sort_nulls_first_desc() {
+#[tokio::test]
+async fn sort_nulls_first_desc() {
     let state = test_state();
     insert_result(
         &state,
@@ -299,7 +309,9 @@ fn sort_nulls_first_desc() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "name", "desc", None).expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "name", "desc", None)
+        .await
+        .expect("sort ok");
     // NULLs first in DESC
     assert_eq!(result.rows[0][0], serde_json::Value::Null);
     assert_eq!(result.rows[1][0], serde_json::Value::Null);
@@ -308,8 +320,8 @@ fn sort_nulls_first_desc() {
     assert_eq!(result.rows[3][0], serde_json::json!("Alice"));
 }
 
-#[test]
-fn sort_mixed_types() {
+#[tokio::test]
+async fn sort_mixed_types() {
     let state = test_state();
     insert_result(
         &state,
@@ -329,12 +341,14 @@ fn sort_mixed_types() {
     );
 
     // Should not panic — mixed types compare gracefully as strings
-    let result = sort_results_impl(&state, "c1", "t1", "val", "asc", None).expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "val", "asc", None)
+        .await
+        .expect("sort ok");
     assert_eq!(result.rows.len(), 4);
 }
 
-#[test]
-fn sort_nonexistent_column_returns_error() {
+#[tokio::test]
+async fn sort_nonexistent_column_returns_error() {
     let state = test_state();
     insert_result(
         &state,
@@ -346,21 +360,37 @@ fn sort_nonexistent_column_returns_error() {
     );
 
     let err = sort_results_impl(&state, "c1", "t1", "nonexistent", "asc", None)
+        .await
         .expect_err("should error for missing column");
     assert!(err.contains("not found"), "error was: {err}");
 }
 
-#[test]
-fn sort_missing_result_returns_error() {
+#[tokio::test]
+async fn sort_missing_result_returns_error() {
     let state = test_state();
 
     let err = sort_results_impl(&state, "c-missing", "t-missing", "id", "asc", None)
+        .await
         .expect_err("should error for missing result");
     assert!(err.contains("No results found"), "error was: {err}");
 }
 
-#[test]
-fn sort_returns_first_page_with_correct_pagination() {
+#[tokio::test]
+async fn sort_missing_entry_returns_error() {
+    let state = test_state();
+
+    // Do NOT insert any result — the key was never stored
+    let err = sort_results_impl(&state, "c-never", "t-never", "id", "asc", None)
+        .await
+        .expect_err("should error for never-stored entry");
+    assert!(
+        err.contains("No results found"),
+        "expected 'No results found' error, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn sort_returns_first_page_with_correct_pagination() {
     let state = test_state();
 
     // Create 25 rows with page_size = 10
@@ -369,7 +399,9 @@ fn sort_returns_first_page_with_correct_pagination() {
 
     insert_result(&state, "c1", "t1", id_col(), rows, 10);
 
-    let result = sort_results_impl(&state, "c1", "t1", "id", "desc", None).expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "id", "desc", None)
+        .await
+        .expect("sort ok");
 
     // First page should have 10 rows
     assert_eq!(result.rows.len(), 10);
@@ -383,8 +415,8 @@ fn sort_returns_first_page_with_correct_pagination() {
     assert_eq!(result.rows[9][0], serde_json::json!(16));
 }
 
-#[test]
-fn sort_with_multiple_columns_sorts_by_specified() {
+#[tokio::test]
+async fn sort_with_multiple_columns_sorts_by_specified() {
     let state = test_state();
     insert_result(
         &state,
@@ -400,7 +432,9 @@ fn sort_with_multiple_columns_sorts_by_specified() {
     );
 
     // Sort by name column
-    let result = sort_results_impl(&state, "c1", "t1", "name", "asc", None).expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "name", "asc", None)
+        .await
+        .expect("sort ok");
     assert_eq!(result.rows[0][1], serde_json::json!("Alice"));
     assert_eq!(result.rows[1][1], serde_json::json!("Bob"));
     assert_eq!(result.rows[2][1], serde_json::json!("Charlie"));
@@ -411,19 +445,21 @@ fn sort_with_multiple_columns_sorts_by_specified() {
     assert_eq!(result.rows[2][0], serde_json::json!(3));
 }
 
-#[test]
-fn sort_empty_result_set() {
+#[tokio::test]
+async fn sort_empty_result_set() {
     let state = test_state();
     insert_result(&state, "c1", "t1", id_col(), vec![], 1000);
 
-    let result = sort_results_impl(&state, "c1", "t1", "id", "asc", None).expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "id", "asc", None)
+        .await
+        .expect("sort ok");
     assert_eq!(result.rows.len(), 0);
     assert_eq!(result.total_pages, 1);
     assert_eq!(result.page, 1);
 }
 
-#[test]
-fn sort_numeric_not_lexicographic() {
+#[tokio::test]
+async fn sort_numeric_not_lexicographic() {
     // Ensure numeric sort doesn't compare as strings (e.g. "9" > "10" lexicographically)
     let state = test_state();
     insert_result(
@@ -440,7 +476,9 @@ fn sort_numeric_not_lexicographic() {
         1000,
     );
 
-    let result = sort_results_impl(&state, "c1", "t1", "id", "asc", None).expect("sort ok");
+    let result = sort_results_impl(&state, "c1", "t1", "id", "asc", None)
+        .await
+        .expect("sort ok");
     assert_eq!(result.rows[0][0], serde_json::json!(2));
     assert_eq!(result.rows[1][0], serde_json::json!(9));
     assert_eq!(result.rows[2][0], serde_json::json!(10));

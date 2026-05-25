@@ -114,13 +114,14 @@ fn fetch_result_page_with_out_of_range_index_errors() {
 
 // ── sort_results with result_index ───────────────────────────────────────────
 
-#[test]
-fn sort_results_with_result_index_one() {
+#[tokio::test]
+async fn sort_results_with_result_index_one() {
     let state = test_app_state();
     insert_multi_results(&state, "c1", "t1", two_results());
 
     // Sort the second result by "name" descending
     let page = sort_results_impl(&state, "c1", "t1", "name", "desc", Some(1))
+        .await
         .expect("sort at index 1 should succeed");
     assert_eq!(page.rows.len(), 2);
     assert_eq!(page.rows[0][0], serde_json::json!("Bob"));
@@ -134,12 +135,13 @@ fn sort_results_with_result_index_one() {
     assert_eq!(result_vec[0].rows[2][0], serde_json::json!(30));
 }
 
-#[test]
-fn sort_results_with_out_of_range_index_errors() {
+#[tokio::test]
+async fn sort_results_with_out_of_range_index_errors() {
     let state = test_app_state();
     insert_multi_results(&state, "c1", "t1", two_results());
 
     let err = sort_results_impl(&state, "c1", "t1", "id", "asc", Some(99))
+        .await
         .expect_err("out-of-range result_index should error");
     assert!(err.contains("Result index 99 out of range"));
 }

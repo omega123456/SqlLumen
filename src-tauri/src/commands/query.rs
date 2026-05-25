@@ -123,7 +123,7 @@ pub fn write_file(
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn sort_results(
+pub async fn sort_results(
     connection_id: String,
     tab_id: String,
     column_name: String,
@@ -139,6 +139,7 @@ pub fn sort_results(
         &direction,
         result_index,
     )
+    .await
 }
 
 // ── analyze_query_for_edit ────────────────────────────────────────────────────

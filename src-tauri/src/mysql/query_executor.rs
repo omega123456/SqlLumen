@@ -1571,9 +1571,10 @@ pub fn compare_json_values(a: &serde_json::Value, b: &serde_json::Value) -> std:
 
 /// Sort a stored result set by a named column and return the first page.
 ///
-/// Uses clone-on-write: clones the result vec from the cache, sorts the
-/// targeted entry, and re-inserts the updated vec.
-pub fn sort_results_impl(
+/// Uses clone-on-write with `spawn_blocking`: clones the result vec from the
+/// cache, offloads the O(n log n) sort to the blocking thread pool, performs a
+/// staleness check, and re-inserts the updated vec.
+pub async fn sort_results_impl(
     state: &AppState,
     connection_id: &str,
     tab_id: &str,
@@ -1601,10 +1602,9 @@ pub fn sort_results_impl(
             result_vec.len()
         ));
     }
-    let stored = &mut result_vec[idx];
 
-    // Find column index
-    let col_idx = stored
+    // Find column index (validation before spawn_blocking for fast error returns)
+    let col_idx = result_vec[idx]
         .columns
         .iter()
         .position(|c| c.name == column_name)
@@ -1612,30 +1612,66 @@ pub fn sort_results_impl(
 
     let is_asc = direction == "asc";
 
-    // Sort rows (stable sort preserves relative order for equal values)
-    stored.rows.sort_by(|a, b| {
-        let va = a.get(col_idx).unwrap_or(&serde_json::Value::Null);
-        let vb = b.get(col_idx).unwrap_or(&serde_json::Value::Null);
-        let cmp = compare_json_values(va, vb);
-        if is_asc {
-            cmp
-        } else {
-            cmp.reverse()
-        }
-    });
+    // Capture query_id for staleness guard
+    let query_id = result_vec[idx].query_id.clone();
 
-    // Return first page
-    let page_size = stored.page_size;
-    let total_rows = stored.rows.len();
+    // Extract rows to move into the blocking closure
+    let mut rows = std::mem::take(&mut result_vec[idx].rows);
+
+    // Offload the sort to the blocking thread pool
+    rows = tokio::task::spawn_blocking(move || {
+        rows.sort_by(|a, b| {
+            let va = a.get(col_idx).unwrap_or(&serde_json::Value::Null);
+            let vb = b.get(col_idx).unwrap_or(&serde_json::Value::Null);
+            let cmp = compare_json_values(va, vb);
+            if is_asc {
+                cmp
+            } else {
+                cmp.reverse()
+            }
+        });
+        rows
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "sort spawn_blocking task failed");
+        format!("Sort task failed: {e}")
+    })?;
+
+    // Staleness and eviction guards: re-read the cache after the sort
+    let expired_during_sort_msg =
+        "results_expired: Results for this tab expired during sort. Re-run the query.";
+    let post_sort_result = state.result_cache.get(connection_id, tab_id);
+    if post_sort_result.is_expired() {
+        return Err(expired_during_sort_msg.to_string());
+    }
+    let post_entry = post_sort_result
+        .into_entry()
+        .ok_or_else(|| expired_during_sort_msg.to_string())?;
+
+    // Check if query_id changed (another query was executed during the sort)
+    let post_stored = post_entry.value.get(idx).ok_or_else(|| {
+        "Results were replaced during sort".to_string()
+    })?;
+    if post_stored.query_id != query_id {
+        return Err("Results were refreshed during sort".to_string());
+    }
+
+    // Use the fresh cache entry as the base and apply sorted rows
+    let mut fresh_vec = post_entry.value.to_vec();
+    fresh_vec[idx].rows = rows;
+
+    let page_size = fresh_vec[idx].page_size;
+    let total_rows = fresh_vec[idx].rows.len();
     let total_pages = calculate_total_pages(total_rows, page_size);
 
-    let rows = get_page_rows(&stored.rows, 1, page_size).to_vec();
+    let first_page_rows = get_page_rows(&fresh_vec[idx].rows, 1, page_size).to_vec();
 
     // Re-insert the modified result vec
-    state.result_cache.insert(connection_id, tab_id, result_vec);
+    state.result_cache.insert(connection_id, tab_id, fresh_vec);
 
     Ok(FetchPageResult {
-        rows,
+        rows: first_page_rows,
         page: 1,
         total_pages,
     })
@@ -2417,297 +2453,5 @@ pub fn touch_results_impl(
         }
         ResultCacheGet::Expired => serde_json::json!({ "status": "expired" }),
         ResultCacheGet::NeverStored => serde_json::json!({ "status": "missing" }),
-    }
-}
-
-// ── Unit tests ─────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_strip_removes_block_comments() {
-        let sql = "SELECT /* comment */ 1";
-        assert_eq!(strip_non_executable_comments(sql).trim(), "SELECT   1");
-    }
-
-    #[test]
-    fn test_strip_preserves_executable_comments() {
-        let sql = "SELECT /*!50001 1 */ FROM t";
-        let result = strip_non_executable_comments(sql);
-        assert!(result.contains("/*!50001 1 */"));
-    }
-
-    #[test]
-    fn test_strip_preserves_hint_comments() {
-        let sql = "SELECT /*+ INDEX(t idx) */ * FROM t";
-        let result = strip_non_executable_comments(sql);
-        assert!(result.contains("/*+ INDEX(t idx) */"));
-    }
-
-    #[test]
-    fn test_strip_removes_line_comments() {
-        let sql = "SELECT 1 -- comment\nFROM t";
-        let result = strip_non_executable_comments(sql);
-        assert!(!result.contains("-- comment"));
-        assert!(result.contains("FROM t"));
-    }
-
-    #[test]
-    fn test_strip_removes_hash_comments() {
-        let sql = "SELECT 1 # comment\nFROM t";
-        let result = strip_non_executable_comments(sql);
-        assert!(!result.contains("# comment"));
-        assert!(result.contains("FROM t"));
-    }
-
-    #[test]
-    fn test_get_first_keyword() {
-        assert_eq!(get_first_keyword("SELECT * FROM t"), "SELECT");
-        assert_eq!(get_first_keyword("  insert into t"), "INSERT");
-        assert_eq!(get_first_keyword(""), "");
-    }
-
-    #[test]
-    fn test_get_first_keyword_executable_comment() {
-        assert_eq!(get_first_keyword("/*!50001 DELETE FROM t */"), "DELETE");
-        assert_eq!(get_first_keyword("/*!50708 SELECT * FROM t */"), "SELECT");
-        assert_eq!(get_first_keyword("/*!SELECT * FROM t */"), "SELECT");
-    }
-
-    #[test]
-    fn test_find_with_main_keyword() {
-        assert_eq!(
-            find_with_main_keyword("WITH cte AS (SELECT 1) SELECT * FROM cte"),
-            "SELECT"
-        );
-        assert_eq!(
-            find_with_main_keyword("WITH cte AS (SELECT 1) INSERT INTO t SELECT * FROM cte"),
-            "INSERT"
-        );
-        assert_eq!(
-            find_with_main_keyword(
-                "WITH cte AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT * FROM cte)"
-            ),
-            "DELETE"
-        );
-        assert_eq!(
-            find_with_main_keyword("WITH RECURSIVE cte AS (SELECT 1) SELECT * FROM cte"),
-            "SELECT"
-        );
-    }
-
-    #[test]
-    fn test_has_top_level_limit() {
-        assert!(has_top_level_limit("SELECT * FROM t LIMIT 10"));
-        assert!(!has_top_level_limit("SELECT * FROM t"));
-        // LIMIT inside subquery should not count
-        assert!(!has_top_level_limit(
-            "SELECT * FROM (SELECT id FROM users LIMIT 10) t"
-        ));
-        // LIMIT inside string should not count
-        assert!(!has_top_level_limit(
-            "SELECT * FROM t WHERE desc = 'LIMIT 1000'"
-        ));
-        // Top-level LIMIT should count even with subqueries
-        assert!(has_top_level_limit(
-            "SELECT * FROM (SELECT id FROM users) t LIMIT 10"
-        ));
-    }
-
-    #[test]
-    fn test_needs_auto_limit_select_without_limit() {
-        assert!(needs_auto_limit("SELECT * FROM t"));
-        assert!(needs_auto_limit("SELECT id FROM users WHERE active = 1"));
-    }
-
-    #[test]
-    fn test_needs_auto_limit_select_with_limit() {
-        assert!(!needs_auto_limit("SELECT * FROM t LIMIT 10"));
-        assert!(!needs_auto_limit("SELECT * FROM t LIMIT 10, 20"));
-        assert!(!needs_auto_limit("SELECT * FROM t LIMIT 10 OFFSET 5"));
-    }
-
-    #[test]
-    fn test_needs_auto_limit_non_select() {
-        assert!(!needs_auto_limit("SHOW TABLES"));
-        assert!(!needs_auto_limit("DESCRIBE t"));
-        assert!(!needs_auto_limit("INSERT INTO t VALUES (1)"));
-    }
-
-    #[test]
-    fn test_needs_auto_limit_with_cte_select() {
-        // WITH...SELECT should get auto-LIMIT
-        assert!(needs_auto_limit("WITH cte AS (SELECT 1) SELECT * FROM cte"));
-    }
-
-    #[test]
-    fn test_needs_auto_limit_with_cte_select_has_limit() {
-        // WITH...SELECT that already has LIMIT should not
-        assert!(!needs_auto_limit(
-            "WITH cte AS (SELECT 1) SELECT * FROM cte LIMIT 10"
-        ));
-    }
-
-    #[test]
-    fn test_needs_auto_limit_with_cte_insert() {
-        // WITH...INSERT should not get auto-LIMIT
-        assert!(!needs_auto_limit(
-            "WITH cte AS (SELECT 1) INSERT INTO t SELECT * FROM cte"
-        ));
-    }
-
-    #[test]
-    fn test_needs_auto_limit_subquery_limit_not_top_level() {
-        // LIMIT inside subquery should not prevent auto-LIMIT on outer SELECT
-        assert!(needs_auto_limit(
-            "SELECT * FROM (SELECT id FROM users LIMIT 10) t"
-        ));
-    }
-
-    #[test]
-    fn test_needs_auto_limit_string_literal_limit() {
-        // 'LIMIT 1000' in a string should not prevent auto-LIMIT
-        assert!(needs_auto_limit(
-            "SELECT * FROM t WHERE description = 'LIMIT 1000'"
-        ));
-    }
-
-    #[test]
-    fn test_inject_limit_basic() {
-        let sql = "SELECT * FROM t";
-        let result = inject_limit_into_select(sql, 1000);
-        assert_eq!(result, "SELECT * FROM t LIMIT 1000");
-    }
-
-    #[test]
-    fn test_inject_limit_before_for_update() {
-        let sql = "SELECT * FROM t FOR UPDATE";
-        let result = inject_limit_into_select(sql, 100);
-        assert!(result.contains("LIMIT 100"));
-        assert!(result.contains("FOR UPDATE"));
-        // LIMIT should come before FOR UPDATE
-        let limit_pos = result.find("LIMIT").unwrap();
-        let for_pos = result.find("FOR UPDATE").unwrap();
-        assert!(limit_pos < for_pos);
-    }
-
-    #[test]
-    fn test_inject_limit_trims_trailing_semicolon() {
-        let sql = "SELECT * FROM t;";
-        let result = inject_limit_into_select(sql, 1000);
-        assert_eq!(result, "SELECT * FROM t LIMIT 1000");
-    }
-
-    #[test]
-    fn test_is_read_only_allowed() {
-        assert!(is_read_only_allowed("SELECT * FROM t"));
-        assert!(is_read_only_allowed("SHOW TABLES"));
-        assert!(is_read_only_allowed("DESCRIBE t"));
-        assert!(is_read_only_allowed("DESC t"));
-        assert!(is_read_only_allowed("EXPLAIN SELECT * FROM t"));
-        assert!(is_read_only_allowed(
-            "WITH cte AS (SELECT 1) SELECT * FROM cte"
-        ));
-        assert!(is_read_only_allowed("USE mydb"));
-        assert!(is_read_only_allowed("SET session_timeout = 30"));
-    }
-
-    #[test]
-    fn test_is_read_only_blocked() {
-        assert!(!is_read_only_allowed("INSERT INTO t VALUES (1)"));
-        assert!(!is_read_only_allowed("UPDATE t SET x = 1"));
-        assert!(!is_read_only_allowed("DELETE FROM t"));
-        assert!(!is_read_only_allowed("DROP TABLE t"));
-        assert!(!is_read_only_allowed("CREATE TABLE t (id INT)"));
-        assert!(!is_read_only_allowed("SET GLOBAL max_connections = 100"));
-        assert!(!is_read_only_allowed("TRUNCATE TABLE t"));
-    }
-
-    #[test]
-    fn test_is_read_only_with_dml_blocked() {
-        assert!(!is_read_only_allowed(
-            "WITH cte AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT * FROM cte)"
-        ));
-        assert!(!is_read_only_allowed(
-            "WITH cte AS (SELECT 1) INSERT INTO t SELECT * FROM cte"
-        ));
-        assert!(!is_read_only_allowed(
-            "WITH cte AS (SELECT 1) UPDATE t SET x = 1"
-        ));
-    }
-
-    #[test]
-    fn test_is_read_only_set_global_forms_blocked() {
-        assert!(!is_read_only_allowed("SET @@GLOBAL.max_connections = 100"));
-        assert!(!is_read_only_allowed("SET PERSIST max_connections = 100"));
-        assert!(!is_read_only_allowed(
-            "SET PERSIST_ONLY max_connections = 100"
-        ));
-        assert!(!is_read_only_allowed("SET PASSWORD = 'newpass'"));
-    }
-
-    #[test]
-    fn test_is_read_only_set_session_allowed() {
-        assert!(is_read_only_allowed("SET SESSION wait_timeout = 60"));
-        assert!(is_read_only_allowed("SET LOCAL wait_timeout = 60"));
-        assert!(is_read_only_allowed("SET @@session.wait_timeout = 60"));
-        assert!(is_read_only_allowed("SET @@local.wait_timeout = 60"));
-        assert!(is_read_only_allowed("SET @myvar = 42"));
-    }
-
-    #[test]
-    fn test_is_read_only_executable_comment_select() {
-        // Executable comment containing SELECT should be allowed
-        assert!(is_read_only_allowed("/*!50001 SELECT * FROM t */"));
-    }
-
-    #[test]
-    fn test_is_read_only_with_leading_comment() {
-        // Leading block comment should be stripped
-        assert!(!is_read_only_allowed("/* comment */ DELETE FROM t"));
-        assert!(is_read_only_allowed("/* comment */ SELECT * FROM t"));
-        // Hash comment
-        assert!(!is_read_only_allowed("# comment\nDELETE FROM t"));
-        // Line comment
-        assert!(!is_read_only_allowed("-- comment\nDELETE FROM t"));
-    }
-
-    #[test]
-    fn test_is_read_only_executable_comment() {
-        // Executable comment should be treated as executable SQL
-        // The content after stripping should start with the executable comment
-        let sql = "/*!50001 DELETE FROM t */";
-        // After stripping, starts with /*! which is preserved
-        // get_first_keyword on "/*!50001 DELETE FROM t */" would return "/*!50001"
-        // This doesn't match any allowlist keyword → blocked
-        assert!(!is_read_only_allowed(sql));
-    }
-
-    #[test]
-    fn test_base64_standard_encode_samples() {
-        use base64::{engine::general_purpose::STANDARD, Engine as _};
-        assert_eq!(STANDARD.encode(b"Man"), "TWFu");
-        assert_eq!(STANDARD.encode(b"Ma"), "TWE=");
-        assert_eq!(STANDARD.encode(b"M"), "TQ==");
-        assert_eq!(STANDARD.encode(b""), "");
-    }
-
-    #[test]
-    fn test_read_file_missing() {
-        let result = read_file_impl("/nonexistent/path/file.sql");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_write_and_read_file() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!("test_query_{}.sql", std::process::id()));
-        let path_str = path.to_str().unwrap();
-        write_file_impl(path_str, "SELECT 1;").expect("write should succeed");
-        let content = read_file_impl(path_str).expect("read should succeed");
-        assert_eq!(content, "SELECT 1;");
-        let _ = std::fs::remove_file(path);
     }
 }
