@@ -11,6 +11,7 @@ import { useSettingsStore } from './settings-store'
 import { hasTauriApis } from '../lib/tauri-env'
 
 import { logFrontend } from '../lib/app-log-commands'
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -53,6 +54,16 @@ interface SchemaIndexStore {
   ) => void
   _handleComplete: (profileId: string) => void
   _handleError: (profileId: string, error: string) => void
+}
+
+// Module-level subscription handle: guards against double-subscription and
+// provides cleanup when all sessions are unregistered.
+let settingsUnsub: (() => void) | null = null
+
+/** Test-only: tear down the settings subscription so each test starts clean. */
+export function _resetSchemaIndexStoreForTest(): void {
+  settingsUnsub?.()
+  settingsUnsub = null
 }
 
 // ---------------------------------------------------------------------------
@@ -152,16 +163,13 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
 
   // ------ Settings change subscription ------
 
-  let settingsUnsubscribed = false
-
   function initSettingsSubscription(): void {
-    if (settingsUnsubscribed) return
-    settingsUnsubscribed = true
+    if (settingsUnsub) return
 
     // Subscribe to settings store for ai.embeddingModel changes
     let prevEmbeddingModel = useSettingsStore.getState().getSetting('ai.embeddingModel')
 
-    useSettingsStore.subscribe((state) => {
+    settingsUnsub = useSettingsStore.subscribe((state) => {
       const currentModel = state.getSetting('ai.embeddingModel')
       if (currentModel !== prevEmbeddingModel) {
         prevEmbeddingModel = currentModel
@@ -266,6 +274,12 @@ export const useSchemaIndexStore = create<SchemaIndexStore>()((set, get) => {
           sessionToProfile: newSessionToProfile,
         }
       })
+
+      // Clean up the settings subscription when all sessions are gone
+      if (Object.keys(get().sessionToProfile).length === 0 && settingsUnsub) {
+        settingsUnsub()
+        settingsUnsub = null
+      }
     },
 
     triggerBuild: async (sessionId) => {

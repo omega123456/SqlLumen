@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { ipc } from '../ipc-mock'
-import { useSchemaIndexStore } from '../../stores/schema-index-store'
+import {
+  useSchemaIndexStore,
+  _resetSchemaIndexStoreForTest,
+} from '../../stores/schema-index-store'
 import { useSettingsStore } from '../../stores/settings-store'
 
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
-
-let consoleSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   // Reset the store state
@@ -24,7 +25,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  consoleSpy?.mockRestore()
+  _resetSchemaIndexStoreForTest()
 })
 
 // ---------------------------------------------------------------------------
@@ -218,7 +219,7 @@ describe('useSchemaIndexStore', () => {
     })
 
     it('sets error status when build fails', async () => {
-      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       ipc.override('build_schema_index', () => {
         throw new Error('Build failed')
       })
@@ -234,6 +235,7 @@ describe('useSchemaIndexStore', () => {
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].status).toBe('error')
       expect(state.connections['session-1'].error).toBe('Build failed')
+      consoleSpy.mockRestore()
     })
 
     it('updates status to not_configured when backend returns not_configured', async () => {
@@ -297,13 +299,14 @@ describe('useSchemaIndexStore', () => {
     })
 
     it('handles invalidation failure gracefully', async () => {
-      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       ipc.override('invalidate_schema_index', () => {
         throw new Error('Invalidation failed')
       })
 
       await useSchemaIndexStore.getState().triggerInvalidation('session-1', ['db.users'])
       expect(consoleSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
     })
   })
 
@@ -374,7 +377,7 @@ describe('useSchemaIndexStore', () => {
         expect(ipc.calls('get_index_status').length).toBeGreaterThanOrEqual(2)
       })
 
-      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
       const buildCallsBefore = ipc.calls('build_schema_index').length
 
@@ -386,10 +389,66 @@ describe('useSchemaIndexStore', () => {
         // Both sessions should have triggered a build
         expect(ipc.calls('build_schema_index').length).toBeGreaterThanOrEqual(buildCallsBefore + 2)
       })
+      consoleSpy.mockRestore()
+    })
+
+    it('cleans up subscription on last unregister and re-establishes on next register', async () => {
+      useSettingsStore.setState({ settings: { 'ai.embeddingModel': '' } } as never)
+
+      // Register and then unregister — subscription should be cleaned up
+      useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
+      await vi.waitFor(() => {
+        expect(ipc.calls('get_index_status').length).toBeGreaterThan(0)
+      })
+      useSchemaIndexStore.getState().unregisterSession('session-1')
+
+      // A model change now should NOT trigger a build (no subscription)
+      const buildCallsBefore = ipc.calls('build_schema_index').length
+      useSettingsStore.setState({ settings: { 'ai.embeddingModel': 'model-a' } } as never)
+      await new Promise((r) => setTimeout(r, 20))
+      expect(ipc.calls('build_schema_index').length).toBe(buildCallsBefore)
+
+      // Re-register — subscription should be re-established
+      useSchemaIndexStore.getState().registerSession('session-2', 'profile-2')
+      await vi.waitFor(() => {
+        expect(ipc.calls('get_index_status').length).toBeGreaterThanOrEqual(2)
+      })
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      // Now a model change SHOULD trigger a build
+      const buildCallsBefore2 = ipc.calls('build_schema_index').length
+      useSettingsStore.setState({ settings: { 'ai.embeddingModel': 'model-b' } } as never)
+      await vi.waitFor(() => {
+        expect(ipc.calls('build_schema_index').length).toBeGreaterThan(buildCallsBefore2)
+      })
+      consoleSpy.mockRestore()
+    })
+
+    it('keeps subscription active when sessions remain after partial unregister', async () => {
+      useSettingsStore.setState({ settings: { 'ai.embeddingModel': '' } } as never)
+
+      useSchemaIndexStore.getState().registerSession('session-1', 'profile-1')
+      useSchemaIndexStore.getState().registerSession('session-2', 'profile-2')
+      await vi.waitFor(() => {
+        expect(ipc.calls('get_index_status').length).toBeGreaterThanOrEqual(2)
+      })
+
+      // Unregister one — subscription should still be alive
+      useSchemaIndexStore.getState().unregisterSession('session-1')
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const buildCallsBefore = ipc.calls('build_schema_index').length
+      useSettingsStore.setState({ settings: { 'ai.embeddingModel': 'changed-model' } } as never)
+      await vi.waitFor(() => {
+        expect(ipc.calls('build_schema_index').length).toBeGreaterThan(buildCallsBefore)
+      })
+      consoleSpy.mockRestore()
     })
 
     it('handles rebuild failure during model change gracefully', async () => {
-      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       ipc.override('build_schema_index', () => {
         throw new Error('Rebuild failed')
       })
@@ -408,12 +467,13 @@ describe('useSchemaIndexStore', () => {
       // Wait for async calls to settle (error should be caught)
       await new Promise((r) => setTimeout(r, 50))
       expect(consoleSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
     })
   })
 
   describe('triggerBuild error with non-Error object', () => {
     it('handles non-Error rejection in triggerBuild', async () => {
-      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       ipc.override('build_schema_index', () => {
         throw 'string error'
       })
@@ -429,18 +489,20 @@ describe('useSchemaIndexStore', () => {
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].status).toBe('error')
       expect(state.connections['session-1'].error).toBe('string error')
+      consoleSpy.mockRestore()
     })
   })
 
   describe('triggerInvalidation with non-Error object', () => {
     it('handles non-Error rejection in triggerInvalidation', async () => {
-      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       ipc.override('invalidate_schema_index', () => {
         throw 'string error'
       })
 
       await useSchemaIndexStore.getState().triggerInvalidation('session-1', ['db.users'])
       expect(consoleSpy).not.toHaveBeenCalled()
+      consoleSpy.mockRestore()
     })
   })
 
@@ -467,7 +529,7 @@ describe('useSchemaIndexStore', () => {
     })
 
     it('sets error status when force rebuild fails', async () => {
-      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       ipc.override('force_rebuild_schema_index', () => {
         throw new Error('Force rebuild failed')
       })
@@ -483,10 +545,11 @@ describe('useSchemaIndexStore', () => {
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].status).toBe('error')
       expect(state.connections['session-1'].error).toBe('Force rebuild failed')
+      consoleSpy.mockRestore()
     })
 
     it('handles non-Error rejection in forceRebuild', async () => {
-      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       ipc.override('force_rebuild_schema_index', () => {
         throw 'string error'
       })
@@ -502,6 +565,7 @@ describe('useSchemaIndexStore', () => {
       const state = useSchemaIndexStore.getState()
       expect(state.connections['session-1'].status).toBe('error')
       expect(state.connections['session-1'].error).toBe('string error')
+      consoleSpy.mockRestore()
     })
 
     it('updates status to not_configured when backend returns not_configured', async () => {
