@@ -296,33 +296,12 @@ async fn schema_queries_cover_success_and_error_paths() {
             error: None,
         },
         MockQueryStep {
-            query: "SELECT COUNT(*) FROM information_schema.VIEWS WHERE TABLE_SCHEMA = ?",
-            columns: vec![int_col("COUNT(*)")],
-            rows: vec![vec![MockCell::I64(0)]],
-            error: None,
-        },
-        MockQueryStep {
-            query: "SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'PROCEDURE'",
-            columns: vec![int_col("COUNT(*)")],
-            rows: vec![vec![MockCell::I64(1)]],
-            error: None,
-        },
-        MockQueryStep {
-            query: "SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'FUNCTION'",
-            columns: vec![int_col("COUNT(*)")],
-            rows: vec![vec![MockCell::I64(0)]],
-            error: None,
-        },
-        MockQueryStep {
-            query: "SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?",
-            columns: vec![int_col("COUNT(*)")],
-            rows: vec![vec![MockCell::I64(0)]],
-            error: None,
-        },
-        MockQueryStep {
-            query: "SELECT COUNT(*) FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ?",
-            columns: vec![int_col("COUNT(*)")],
-            rows: vec![vec![MockCell::I64(0)]],
+            query: "SELECT object_type FROM ((SELECT 'view' AS object_type FROM information_schema.VIEWS WHERE TABLE_SCHEMA = ? LIMIT 1) UNION ALL (SELECT 'procedure' FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'PROCEDURE' LIMIT 1) UNION ALL (SELECT 'function' FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'FUNCTION' LIMIT 1) UNION ALL (SELECT 'trigger' FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ? LIMIT 1) UNION ALL (SELECT 'event' FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? LIMIT 1) ) blockers",
+            columns: vec![text_col("object_type")],
+            rows: vec![
+                vec![MockCell::Bytes(b"view")],
+                vec![MockCell::Bytes(b"procedure")],
+            ],
             error: None,
         },
         MockQueryStep {
@@ -500,8 +479,9 @@ async fn schema_queries_cover_success_and_error_paths() {
 
     let rename_err = check_rename_safe(&pool, "app")
         .await
-        .expect_err("procedures should block rename");
-    assert!(rename_err.contains("1 procedure(s)"));
+        .expect_err("views and procedures should block rename");
+    assert!(rename_err.contains("views"));
+    assert!(rename_err.contains("procedures"));
 
     let routine_params = query_routine_parameters(&pool, "app", "sync_users", "PROCEDURE")
         .await

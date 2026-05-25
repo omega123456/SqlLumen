@@ -688,85 +688,53 @@ pub async fn validate_collation(
 // Rename database preflight check
 // ---------------------------------------------------------------------------
 
-/// Check if a database has non-table objects (views, routines, triggers, events).
-/// Returns Ok(()) if safe to rename (only tables), or Err with details.
 #[cfg(not(coverage))]
 pub async fn check_rename_safe(pool: &MySqlPool, database: &str) -> Result<(), String> {
-    let view_count = count_query(
-        pool,
-        "SELECT COUNT(*) FROM information_schema.VIEWS WHERE TABLE_SCHEMA = ?",
-        database,
-    )
-    .await?;
+    let sql = "\
+        SELECT object_type FROM (\
+          (SELECT 'view'      AS object_type FROM information_schema.VIEWS \
+           WHERE TABLE_SCHEMA = ? LIMIT 1) \
+          UNION ALL \
+          (SELECT 'procedure' FROM information_schema.ROUTINES \
+           WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'PROCEDURE' LIMIT 1) \
+          UNION ALL \
+          (SELECT 'function'  FROM information_schema.ROUTINES \
+           WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'FUNCTION'  LIMIT 1) \
+          UNION ALL \
+          (SELECT 'trigger'   FROM information_schema.TRIGGERS \
+           WHERE TRIGGER_SCHEMA = ? LIMIT 1) \
+          UNION ALL \
+          (SELECT 'event'     FROM information_schema.EVENTS \
+           WHERE EVENT_SCHEMA = ? LIMIT 1) \
+        ) blockers";
 
-    let proc_count = count_query(
-        pool,
-        "SELECT COUNT(*) FROM information_schema.ROUTINES \
-         WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'PROCEDURE'",
-        database,
-    )
-    .await?;
+    query_log::log_outgoing_sql_bound(sql, &vec![database.to_string(); 5]);
+    let rows = sqlx::query(sql)
+        .bind(database)
+        .bind(database)
+        .bind(database)
+        .bind(database)
+        .bind(database)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Query failed: {e}"))?;
+    query_log::log_mysql_rows(&rows);
 
-    let func_count = count_query(
-        pool,
-        "SELECT COUNT(*) FROM information_schema.ROUTINES \
-         WHERE ROUTINE_SCHEMA = ? AND ROUTINE_TYPE = 'FUNCTION'",
-        database,
-    )
-    .await?;
+    let blockers: Vec<String> = rows
+        .iter()
+        .filter_map(|r| r.try_get::<String, _>(0).ok())
+        .map(|t| format!("{t}s"))
+        .collect();
 
-    let trigger_count = count_query(
-        pool,
-        "SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ?",
-        database,
-    )
-    .await?;
-
-    let event_count = count_query(
-        pool,
-        "SELECT COUNT(*) FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ?",
-        database,
-    )
-    .await?;
-
-    let mut issues = Vec::new();
-    if view_count > 0 {
-        issues.push(format!("{view_count} view(s)"));
-    }
-    if proc_count > 0 {
-        issues.push(format!("{proc_count} procedure(s)"));
-    }
-    if func_count > 0 {
-        issues.push(format!("{func_count} function(s)"));
-    }
-    if trigger_count > 0 {
-        issues.push(format!("{trigger_count} trigger(s)"));
-    }
-    if event_count > 0 {
-        issues.push(format!("{event_count} event(s)"));
-    }
-
-    if !issues.is_empty() {
+    if !blockers.is_empty() {
         return Err(format!(
             "Cannot rename database '{database}': contains {}. \
              Only databases with exclusively base tables can be renamed.",
-            issues.join(", ")
+            blockers.join(", ")
         ));
     }
 
     Ok(())
-}
-
-#[cfg(not(coverage))]
-async fn count_query(pool: &MySqlPool, sql: &str, bind: &str) -> Result<i64, String> {
-    query_log::log_outgoing_sql_bound(sql, &[bind.to_string()]);
-    let row = sqlx::query(sql)
-        .bind(bind)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| format!("Query failed: {e}"))?;
-    query_log::log_mysql_rows(std::slice::from_ref(&row));
-    Ok(row.try_get::<i64, _>(0).unwrap_or(0))
 }
 
 /// Get list of base table names in a database.
