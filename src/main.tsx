@@ -72,6 +72,9 @@ async function init() {
     const { useProcessListStore } = await import('./stores/processlist-store')
     const { useAiMemoryStore } = await import('./stores/ai-memory-store')
     const { useUpdateStore } = await import('./stores/update-store')
+    const { buildExecuteQueryPlanFromSql, runExecuteQueryPlan } = await import(
+      './lib/query-execution-plan'
+    )
     ;(window as unknown as Record<string, unknown>).__workspaceStore__ = useWorkspaceStore
     ;(window as unknown as Record<string, unknown>).__toastStore__ = useToastStore
     ;(window as unknown as Record<string, unknown>).__connectionStore__ = useConnectionStore
@@ -86,6 +89,21 @@ async function init() {
     ;(window as unknown as Record<string, unknown>).__settingsStore__ = useSettingsStore
     ;(window as unknown as Record<string, unknown>).__aiMemoryStore__ = useAiMemoryStore
     ;(window as unknown as Record<string, unknown>).__updateStore__ = useUpdateStore
+    ;(window as unknown as Record<string, unknown>).__executeActiveQueryPlan__ = (
+      connectionId: string,
+      tabId: string
+    ) => {
+      const queryState = useQueryStore.getState()
+      const tab = queryState.tabs[tabId]
+      if (!tab?.content?.trim()) {
+        return
+      }
+      const plan = buildExecuteQueryPlanFromSql(tab.content)
+      if (!plan) {
+        return
+      }
+      runExecuteQueryPlan(queryState, connectionId, tabId, plan)
+    }
   }
 
   // Load all settings before rendering so stores/components can read them

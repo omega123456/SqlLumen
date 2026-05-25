@@ -273,6 +273,17 @@ export interface TabQueryState {
   wasCancelled: boolean
 }
 
+// ---------------------------------------------------------------------------
+// Frozen singleton constants for edit-state resets.
+// Using module-level singletons ensures Zustand's reference-equality check
+// correctly identifies "no change" when edit state is cleared, avoiding
+// unnecessary React re-renders.
+// ---------------------------------------------------------------------------
+
+const EMPTY_MAP = Object.freeze(new Map()) as Map<never, never>
+const EMPTY_ARRAY = Object.freeze([]) as never[]
+const EMPTY_OBJECT = Object.freeze({}) as Record<string, QueryTableEditInfo>
+
 export const DEFAULT_RESULT_STATE: SingleResultState = {
   resultStatus: 'idle',
   columns: [],
@@ -300,13 +311,13 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
 
   // Edit mode defaults
   editMode: null,
-  editTableMetadata: {},
-  editForeignKeys: [],
+  editTableMetadata: EMPTY_OBJECT,
+  editForeignKeys: EMPTY_ARRAY as unknown as ForeignKeyColumnInfo[],
   editState: null,
   isAnalyzingQuery: false,
-  editableColumnMap: new Map(),
-  editColumnBindings: new Map(),
-  editBoundColumnIndexMap: new Map(),
+  editableColumnMap: EMPTY_MAP as unknown as Map<number, boolean>,
+  editColumnBindings: EMPTY_MAP as unknown as Map<number, string>,
+  editBoundColumnIndexMap: EMPTY_MAP as unknown as Map<string, number>,
   saveError: null,
   isStale: false,
   editConnectionId: null,
@@ -342,13 +353,13 @@ const DEFAULT_TAB_STATE: TabQueryState = {
 /** Default values for all edit-related fields on a SingleResultState (used by clearEditState). */
 const EDIT_STATE_DEFAULTS: Partial<SingleResultState> = {
   editMode: null,
-  editTableMetadata: {},
-  editForeignKeys: [],
+  editTableMetadata: EMPTY_OBJECT,
+  editForeignKeys: EMPTY_ARRAY as unknown as ForeignKeyColumnInfo[],
   editState: null,
   isAnalyzingQuery: false,
-  editableColumnMap: new Map(),
-  editColumnBindings: new Map(),
-  editBoundColumnIndexMap: new Map(),
+  editableColumnMap: EMPTY_MAP as unknown as Map<number, boolean>,
+  editColumnBindings: EMPTY_MAP as unknown as Map<number, string>,
+  editBoundColumnIndexMap: EMPTY_MAP as unknown as Map<string, number>,
   saveError: null,
   isStale: false,
   editConnectionId: null,
@@ -1980,16 +1991,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             const capturedQueryId = result.queryId
 
             // Clear edit state before re-execution
-            patchResultByIndex(tabId, resultIndex, {
-              editMode: null,
-              editableColumnMap: new Map(),
-              editColumnBindings: new Map(),
-              editBoundColumnIndexMap: new Map(),
-              editForeignKeys: [],
-              editTableMetadata: {},
-              editState: null,
-              editingRowIndex: null,
-            })
+            patchResultByIndex(tabId, resultIndex, { ...EDIT_STATE_DEFAULTS })
 
             // Use reexecuteSingleResult for multi-result tabs
             if ((tab?.results.length ?? 0) > 1) {
@@ -2147,17 +2149,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       const capturedQueryId = result.queryId
 
       // Clear edit state before re-execution
-      patchResultByIndex(tabId, resultIndex, {
-        editMode: null,
-        editableColumnMap: new Map(),
-        editColumnBindings: new Map(),
-        editBoundColumnIndexMap: new Map(),
-        editForeignKeys: [],
-        editTableMetadata: {},
-        editState: null,
-        editingRowIndex: null,
-        pageSize: size,
-      })
+      patchResultByIndex(tabId, resultIndex, { ...EDIT_STATE_DEFAULTS, pageSize: size })
       clearExpiredFlags(tabId)
 
       // For multi-result tabs, use reexecuteSingleResult (no tab-level running status)
@@ -2319,16 +2311,11 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       // Disable edit mode
       if (tableName === null) {
+        const tab = get().tabs[tabId]
+        const currentResult = tab?.results[resultIndex]
         patchResultByIndex(tabId, resultIndex, {
-          editMode: null,
-          editableColumnMap: new Map(),
-          editColumnBindings: new Map(),
-          editBoundColumnIndexMap: new Map(),
-          editForeignKeys: [],
-          editState: null,
-          editConnectionId: null,
-          editingRowIndex: null,
-          saveError: null,
+          ...EDIT_STATE_DEFAULTS,
+          editTableMetadata: currentResult?.editTableMetadata ?? EMPTY_OBJECT,
         })
         return
       }
