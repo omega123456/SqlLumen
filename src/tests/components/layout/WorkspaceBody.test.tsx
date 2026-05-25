@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { WorkspaceBody } from '../../../components/layout/WorkspaceBody'
 import { WORKSPACE_LAYOUT_EVENT } from '../../../lib/workspace-layout-events'
 import { useAiStore } from '../../../stores/ai-store'
@@ -96,11 +96,13 @@ describe('WorkspaceBody', () => {
     expect(screen.getByTestId('tab-stack-slot')).toBeInTheDocument()
   })
 
-  it('renders one AiPanel instance for each query tab', () => {
+  it('renders one AiPanel instance for each query tab', async () => {
     renderWorkspaceBody('query-1')
     // Real AiPanel renders with data-testid="ai-panel"
-    const panels = screen.getAllByTestId('ai-panel')
-    expect(panels).toHaveLength(2)
+    await waitFor(() => {
+      const panels = screen.getAllByTestId('ai-panel')
+      expect(panels).toHaveLength(2)
+    })
   })
 
   it('renders the query AI rail only for the active query tab when AI is enabled', () => {
@@ -109,25 +111,33 @@ describe('WorkspaceBody', () => {
     expect(screen.getByTestId('ai-workspace-rail')).toBeInTheDocument()
   })
 
-  it('does not render the query AI rail for non-query tabs', () => {
+  it('does not render the query AI rail for non-query tabs', async () => {
     renderWorkspaceBody('table-1')
     expect(screen.queryByTestId('ai-workspace-rail')).not.toBeInTheDocument()
-    expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    await waitFor(() => {
+      expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    })
     expectAllAiHostsHidden()
   })
 
-  it('only leaves the active query tab AiPanel visible', () => {
+  it('only leaves the active query tab AiPanel visible', async () => {
     renderWorkspaceBody('query-1')
+    await waitFor(() => {
+      expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    })
     const hosts = screen.getAllByTestId('workspace-ai-panel-host')
     expect(hosts[0]).not.toHaveStyle({ visibility: 'hidden' })
-    expect(hosts[0]).toHaveAttribute('aria-hidden', 'false')
+    expect(hosts[0]).not.toHaveAttribute('aria-hidden')
     expect(hosts[1]).toHaveStyle({ visibility: 'hidden' })
     expect(hosts[1]).toHaveStyle({ pointerEvents: 'none' })
     expect(hosts[1]).toHaveAttribute('aria-hidden', 'true')
   })
 
-  it('keeps query AiPanel instances mounted after switching to a non-query tab', () => {
+  it('keeps query AiPanel instances mounted after switching to a non-query tab', async () => {
     const { rerender } = renderWorkspaceBody('query-1')
+    await waitFor(() => {
+      expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    })
 
     rerender(
       <WorkspaceBody
@@ -138,7 +148,9 @@ describe('WorkspaceBody', () => {
       />
     )
 
-    expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    await waitFor(() => {
+      expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    })
     expectAllAiHostsHidden()
   })
 
@@ -176,7 +188,7 @@ describe('WorkspaceBody', () => {
     }
   })
 
-  it('keeps the AI rail and active query AI panel visible when a scoped table tab is active', () => {
+  it('keeps the AI rail and active query AI panel visible when a scoped table tab is active', async () => {
     act(() => {
       useQueryStore.setState({
         tabs: {
@@ -193,12 +205,14 @@ describe('WorkspaceBody', () => {
 
     expect(screen.getByTestId('ai-workspace-rail')).toBeInTheDocument()
     const hosts = screen.getAllByTestId('workspace-ai-panel-host')
-    expect(hosts[0]).toHaveAttribute('aria-hidden', 'false')
+    expect(hosts[0]).not.toHaveAttribute('aria-hidden')
     expect(hosts[1]).toHaveAttribute('aria-hidden', 'true')
-    expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    await waitFor(() => {
+      expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    })
   })
 
-  it('does not unmount the active query AI panel when switching between query results and scoped table data', () => {
+  it('does not unmount the active query AI panel when switching between query results and scoped table data', async () => {
     act(() => {
       useQueryStore.setState({
         tabs: {
@@ -214,7 +228,9 @@ describe('WorkspaceBody', () => {
     const tabs = [queryTabOne, queryTabTwo, scopedTableTab]
     const { rerender } = renderWorkspaceBodyWithTabs(tabs, 'query-1')
 
-    expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    await waitFor(() => {
+      expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    })
     expect(screen.getByTestId('ai-workspace-rail')).toBeInTheDocument()
 
     act(() => {
@@ -238,9 +254,11 @@ describe('WorkspaceBody', () => {
       />
     )
 
-    expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    await waitFor(() => {
+      expect(screen.getAllByTestId('ai-panel')).toHaveLength(2)
+    })
     const hosts = screen.getAllByTestId('workspace-ai-panel-host')
-    expect(hosts[0]).toHaveAttribute('aria-hidden', 'false')
+    expect(hosts[0]).not.toHaveAttribute('aria-hidden')
     expect(hosts[1]).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByTestId('ai-workspace-rail')).toBeInTheDocument()
   })

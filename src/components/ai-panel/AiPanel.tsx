@@ -115,3 +115,5 @@ export function AiPanel({ tabId, connectionId, onTriggerDiff }: AiPanelProps) {
     </div>
   )
 }
+
+export default AiPanel

@@ -173,3 +173,5 @@ export function ObjectEditorTab({ tab, isActive = true }: ObjectEditorTabProps) 
     </div>
   )
 }
+
+export default ObjectEditorTab

@@ -77,12 +77,12 @@ describe('QueryEditorTab — diff overlay', () => {
     expect(screen.queryByTestId('diff-overlay')).not.toBeInTheDocument()
   })
 
-  it('renders AI panel with proper testid when AI is enabled and panel is open', () => {
+  it('renders AI panel with proper testid when AI is enabled and panel is open', async () => {
     useAiStore.setState({
       tabs: { 'tab-1': emptyAiTabState({ isPanelOpen: true }) },
     })
     renderQueryTabWithAiWorkspace()
-    expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
+    expect(await screen.findByTestId('ai-panel')).toBeInTheDocument()
   })
 
   it('does not show diff overlay when AI is disabled', () => {
@@ -93,14 +93,14 @@ describe('QueryEditorTab — diff overlay', () => {
     expect(screen.queryByTestId('diff-overlay')).not.toBeInTheDocument()
   })
 
-  it('editor area renders alongside AI panel and result panel', () => {
+  it('editor area renders alongside AI panel and result panel', async () => {
     useAiStore.setState({
       tabs: { 'tab-1': emptyAiTabState() },
     })
     renderQueryTabWithAiWorkspace()
     expect(screen.getByTestId('query-editor-tab')).toBeInTheDocument()
-    expect(screen.getByTestId('monaco-editor-wrapper')).toBeInTheDocument()
+    expect(await screen.findByTestId('monaco-editor-wrapper')).toBeInTheDocument()
     expect(screen.getByTestId('result-panel')).toBeInTheDocument()
-    expect(screen.getByTestId('ai-panel')).toBeInTheDocument()
+    expect(await screen.findByTestId('ai-panel')).toBeInTheDocument()
   })
 })

@@ -4,6 +4,7 @@
 @import './hljs-theme.css';
 @import './monaco-suggest-widget.css';
 @import './monaco-parameter-hints.css';
+@import './skeleton.css';
 
 html {
   -webkit-font-smoothing: antialiased;

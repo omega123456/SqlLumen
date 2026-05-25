@@ -9,14 +9,14 @@
  * unmounts this component. Eviction is handled by workspace-store.closeTab.
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import type { QueryEditorTab as QueryEditorTabType } from '../../types/schema'
 import { useQueryStore } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
-import { MonacoEditorWrapper } from './MonacoEditorWrapper'
+import MonacoEditorSkeleton from '../skeletons/MonacoEditorSkeleton'
 import { EditorToolbar } from './EditorToolbar'
 import { BottomPanelTabs } from './BottomPanelTabs'
 import { QueryBottomPanel } from './QueryBottomPanel'
@@ -34,6 +34,8 @@ import {
 import type { DiffOverlayState, PlainRange } from './diff-overlay-utils'
 import type * as MonacoType from 'monaco-editor'
 import styles from './QueryEditorTab.module.css'
+
+const LazyMonacoEditorWrapper = lazy(() => import('./MonacoEditorWrapper'))
 
 interface QueryEditorTabProps {
   tab: QueryEditorTabType
@@ -145,11 +147,13 @@ export function QueryEditorTab({ tab, isActive = true }: QueryEditorTabProps) {
   }, [isActive])
 
   const editorContent = (
-    <MonacoEditorWrapper
-      tabId={tab.id}
-      connectionId={tab.connectionId}
-      onMount={handleEditorMount}
-    />
+    <Suspense fallback={<MonacoEditorSkeleton />}>
+      <LazyMonacoEditorWrapper
+        tabId={tab.id}
+        connectionId={tab.connectionId}
+        onMount={handleEditorMount}
+      />
+    </Suspense>
   )
 
   return (

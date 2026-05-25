@@ -1,0 +1,48 @@
+/* ============================================================
+   Skeleton / Shimmer Animation System
+   Shared wave-shimmer for lazy-loading Suspense fallbacks.
+   ============================================================ */
+
+@keyframes shimmer-wave {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes skeleton-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.shimmerBlock {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--skeleton-base);
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  animation: skeleton-fade-in 0.15s ease-out 0.15s forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmerBlock {
+    opacity: 1;
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .shimmerBlock::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, var(--skeleton-highlight), transparent);
+    animation: shimmer-wave 1.6s ease-in-out infinite;
+  }
+}

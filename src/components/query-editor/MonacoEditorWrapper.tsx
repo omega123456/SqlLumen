@@ -408,3 +408,5 @@ export function MonacoEditorWrapper({
     </div>
   )
 }
+
+export default MonacoEditorWrapper

@@ -1,10 +1,11 @@
+import { lazy, Suspense } from 'react'
 import { TableDataTab } from '../table-data/TableDataTab'
 import { SchemaInfoTab } from '../schema-info/SchemaInfoTab'
 import { QueryEditorTab } from '../query-editor/QueryEditorTab'
-import { TableDesignerTab as TableDesignerTabComponent } from '../table-designer/TableDesignerTab'
-import { ObjectEditorTab as ObjectEditorTabComponent } from '../object-editor/ObjectEditorTab'
 import { HistoryTab as HistoryTabComponent } from '../history/HistoryTab'
 import ProcessListTabComponent from '../processlist/ProcessListTab'
+import TableDesignerSkeleton from '../skeletons/TableDesignerSkeleton'
+import MonacoEditorSkeleton from '../skeletons/MonacoEditorSkeleton'
 import type {
   HistoryTab as HistoryTabType,
   ObjectEditorTab as ObjectEditorTabType,
@@ -14,6 +15,9 @@ import type {
   WorkspaceTab,
 } from '../../types/schema'
 import styles from './WorkspaceTabPanel.module.css'
+
+const LazyTableDesignerTab = lazy(() => import('../table-designer/TableDesignerTab'))
+const LazyObjectEditorTab = lazy(() => import('../object-editor/ObjectEditorTab'))
 
 export interface WorkspaceTabPanelProps {
   tab: WorkspaceTab
@@ -47,10 +51,14 @@ export function WorkspaceTabPanel({
         <QueryEditorTab tab={tab as QueryEditorTabType} isActive={isActive} />
       )}
       {tab.type === 'table-designer' && (
-        <TableDesignerTabComponent tab={tab as TableDesignerTabType} isActive={isActive} />
+        <Suspense fallback={<TableDesignerSkeleton />}>
+          <LazyTableDesignerTab tab={tab as TableDesignerTabType} isActive={isActive} />
+        </Suspense>
       )}
       {tab.type === 'object-editor' && (
-        <ObjectEditorTabComponent tab={tab as ObjectEditorTabType} isActive={isActive} />
+        <Suspense fallback={<MonacoEditorSkeleton />}>
+          <LazyObjectEditorTab tab={tab as ObjectEditorTabType} isActive={isActive} />
+        </Suspense>
       )}
       {tab.type === 'history' && (
         <HistoryTabComponent tab={tab as HistoryTabType} isActive={isActive} />

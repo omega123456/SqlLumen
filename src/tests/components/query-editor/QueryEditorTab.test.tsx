@@ -46,9 +46,9 @@ describe('QueryEditorTab', () => {
     expect(screen.getByTestId('editor-toolbar')).toBeInTheDocument()
   })
 
-  it('renders Monaco editor wrapper', () => {
+  it('renders Monaco editor wrapper', async () => {
     render(<QueryEditorTab tab={mockTab} />)
-    expect(screen.getByTestId('monaco-editor-wrapper')).toBeInTheDocument()
+    expect(await screen.findByTestId('monaco-editor-wrapper')).toBeInTheDocument()
   })
 
   it('renders result panel when no query has been run', () => {
@@ -100,12 +100,12 @@ describe('QueryEditorTab', () => {
     expect(screen.queryByTestId('toolbar-ai-toggle')).not.toBeInTheDocument()
   })
 
-  it('still renders editor and result panel when AI is enabled in settings', () => {
+  it('still renders editor and result panel when AI is enabled in settings', async () => {
     useSettingsStore.setState({
       settings: { ...useSettingsStore.getState().settings, 'ai.enabled': 'true' },
     })
     render(<QueryEditorTab tab={mockTab} />)
-    expect(screen.getByTestId('monaco-editor-wrapper')).toBeInTheDocument()
+    expect(await screen.findByTestId('monaco-editor-wrapper')).toBeInTheDocument()
     expect(screen.getByTestId('result-panel')).toBeInTheDocument()
   })
 })

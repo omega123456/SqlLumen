@@ -1,0 +1,89 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: var(--space-lg) var(--space-xl);
+  gap: var(--space-lg);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.headerIcon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.headerName {
+  width: 200px;
+  height: 24px;
+}
+
+.headerSpacer {
+  flex: 1;
+}
+
+.headerButton {
+  width: 80px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.tabBar {
+  display: flex;
+  gap: var(--space-sm);
+  overflow: hidden;
+}
+
+.tabPill {
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.gridHeaderRow {
+  width: 100%;
+  height: 32px;
+}
+
+.gridRow {
+  display: flex;
+  height: 32px;
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.gridCell {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-sm);
+}
+
+.cellName {
+  width: 35%;
+}
+
+.cellType {
+  width: 25%;
+}
+
+.cellNull {
+  width: 15%;
+}
+
+.cellDefault {
+  width: 15%;
+}
+
+.cellBlock {
+  height: 14px;
+}

@@ -322,7 +322,7 @@ describe('WorkspaceArea', () => {
     })
   })
 
-  it('renders QueryEditorTab for query-editor tab type', () => {
+  it('renders QueryEditorTab for query-editor tab type', async () => {
     const conn = makeActiveConnection()
     useConnectionStore.setState({
       activeConnections: { 'conn-1': conn },
@@ -335,7 +335,7 @@ describe('WorkspaceArea', () => {
 
     expect(screen.getByTestId('query-editor-tab')).toBeInTheDocument()
     expect(screen.getByTestId('editor-toolbar')).toBeInTheDocument()
-    expect(screen.getByTestId('monaco-editor-wrapper')).toBeInTheDocument()
+    expect(await screen.findByTestId('monaco-editor-wrapper')).toBeInTheDocument()
     expect(screen.getByTestId('result-panel')).toBeInTheDocument()
   })
 

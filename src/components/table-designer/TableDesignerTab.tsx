@@ -365,3 +365,5 @@ export function TableDesignerTab({ tab, isActive = true }: TableDesignerTabProps
     </div>
   )
 }
+
+export default TableDesignerTab

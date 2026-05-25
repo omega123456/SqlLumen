@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { act, render, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { useQueryStore } from '../../../stores/query-store'
 import { useSettingsStore } from '../../../stores/settings-store'
 import { useAiStore } from '../../../stores/ai-store'
@@ -146,8 +146,9 @@ describe('QueryEditorTab — AI sidebar open state (Monaco layout)', () => {
     })
     render(<QueryEditorTab tab={mockTab} />)
 
+    // Wait for the lazy-loaded MonacoEditorWrapper to mount and fire onMount
     await waitFor(() => {
-      expect(mockLayout).toHaveBeenCalled()
+      expect(screen.getByTestId('monaco-editor')).toBeInTheDocument()
     })
     mockLayout.mockClear()
 

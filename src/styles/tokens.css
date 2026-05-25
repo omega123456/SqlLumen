@@ -430,6 +430,10 @@
   --token-number: #f78c6c;
   --token-operator: #89ddff;
   --token-type: #ffcb6b;
+
+  /* Skeleton / shimmer */
+  --skeleton-base: #2d3449;
+  --skeleton-highlight: rgba(74, 90, 112, 0.6);
 }
 
 /* Light Theme — query_slate_light (applied via [data-theme="light"] on <html>) */
@@ -728,4 +732,8 @@
   --token-number: #e65100;
   --token-operator: #0277bd;
   --token-type: #bf360c;
+
+  /* Skeleton / shimmer */
+  --skeleton-base: #e6e8ea;
+  --skeleton-highlight: rgba(255, 255, 255, 0.7);
 }

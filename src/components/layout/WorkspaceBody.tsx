@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import { Group, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 import { dispatchWorkspaceLayoutResize } from '../../lib/workspace-layout-events'
@@ -6,10 +6,12 @@ import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useWorkspaceStore } from '../../stores/workspace-store'
 import type { QueryEditorTab, WorkspaceTab } from '../../types/schema'
-import { AiPanel } from '../ai-panel/AiPanel'
+import AiPanelSkeleton from '../skeletons/AiPanelSkeleton'
 import { QueryWorkspaceAiRail } from '../ai-panel/QueryWorkspaceAiRail'
 import { useAiDiffTrigger } from '../query-editor/ai-diff-bridge-context'
 import styles from './WorkspaceBody.module.css'
+
+const LazyAiPanel = lazy(() => import('../ai-panel/AiPanel'))
 
 export interface WorkspaceBodyProps {
   tabs: WorkspaceTab[]
@@ -110,18 +112,20 @@ export function WorkspaceBody({
                   key={tab.id}
                   className={styles.aiPanelHost}
                   style={isActive ? undefined : { visibility: 'hidden', pointerEvents: 'none' }}
-                  aria-hidden={!isActive}
+                  aria-hidden={isActive ? undefined : true}
                   data-testid="workspace-ai-panel-host"
                   data-tab-id={tab.id}
                   onFocusCapture={() => setLastFocusedSurface(tab.id, 'ai-input')}
                 >
-                  <AiPanel
-                    tabId={tab.id}
-                    connectionId={tab.connectionId}
-                    onTriggerDiff={(sql, range) => {
-                      triggerDiff(tab.id, sql, range)
-                    }}
-                  />
+                  <Suspense fallback={<AiPanelSkeleton />}>
+                    <LazyAiPanel
+                      tabId={tab.id}
+                      connectionId={tab.connectionId}
+                      onTriggerDiff={(sql, range) => {
+                        triggerDiff(tab.id, sql, range)
+                      }}
+                    />
+                  </Suspense>
                 </div>
               )
             })}

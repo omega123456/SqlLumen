@@ -1,0 +1,90 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--ai-panel-bg);
+  border-left: 1px solid var(--ai-panel-border);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0 var(--space-sm);
+  background: var(--ai-panel-header-bg);
+  gap: var(--space-sm);
+}
+
+.headerTitle {
+  width: 100px;
+  height: 16px;
+}
+
+.headerSpacer {
+  flex: 1;
+}
+
+.headerIcon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.chatArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: var(--space-lg) var(--space-sm);
+}
+
+.assistantMsg {
+  border-left: 2px solid rgba(var(--primary-rgb), 0.35);
+  padding-left: var(--space-sm);
+}
+
+.assistantMsg1 {
+  width: 90%;
+  height: 32px;
+}
+
+.assistantMsg2 {
+  width: 70%;
+  height: 20px;
+}
+
+.userMsg {
+  align-self: flex-end;
+  max-width: 85%;
+  width: 75%;
+  height: 32px;
+  border-radius: 8px 8px 4px 8px;
+}
+
+.assistantMsg3 {
+  width: 80%;
+  height: 28px;
+}
+
+.inputArea {
+  display: flex;
+  align-items: center;
+  height: 56px;
+  flex-shrink: 0;
+  padding: 0 var(--space-sm);
+  gap: var(--space-sm);
+  border-top: 1px solid var(--ai-panel-border);
+}
+
+.inputRect {
+  flex: 1;
+  height: 36px;
+  border-radius: var(--radius-md);
+}
+
+.sendButton {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}

@@ -1,7 +1,5 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import * as monaco from 'monaco-editor'
-import { loader } from '@monaco-editor/react'
 import { mockIPC } from '@tauri-apps/api/mocks'
 
 import './lib/monaco-worker-setup'
@@ -12,44 +10,48 @@ import { useSettingsStore } from './stores/settings-store'
 import { useConnectionStore } from './stores/connection-store'
 import { initAiMemoryStore } from './stores/ai-memory-store'
 
-// Use locally-installed monaco-editor instead of CDN.
-// This ensures our MonacoEnvironment.getWorker setup is used and the
-// mysql worker (with dt-sql-parser) is bundled by Vite.
-loader.config({ monaco })
+// ---------------------------------------------------------------------------
+// Dynamic Monaco import — non-blocking so app renders immediately
+// ---------------------------------------------------------------------------
+// Uses locally-installed monaco-editor instead of CDN.
+// The eager `./lib/monaco-worker-setup` import above sets
+// self.MonacoEnvironment.getWorker before Monaco initialises.
+// ---------------------------------------------------------------------------
+import('monaco-editor')
+  .then((monaco) => {
+    return import('@monaco-editor/react').then(({ loader }) => {
+      loader.config({ monaco })
 
-// ---------------------------------------------------------------------------
-// Patch editor.createWebWorker
-// ---------------------------------------------------------------------------
-// monaco-sql-languages' WorkerManager calls
-//   editor.createWebWorker({ moduleId, label, createData })
-// but Monaco ≥ 0.55 expects `opts.worker` (a Worker instance)
-// to be set. When it is missing the internal WebWorker constructor
-// fails and Monaco falls back to a synchronous EditorWorker with
-// no foreign module.
-//
-// We intercept `createWebWorker` and inject a `worker` property
-// created from our MonacoEnvironment.getWorker so the real web
-// worker (with dt-sql-parser) is used.
-// ---------------------------------------------------------------------------
-const origCreateWebWorker = monaco.editor.createWebWorker.bind(monaco.editor)
+      // Patch editor.createWebWorker — see comment below for rationale.
+      // monaco-sql-languages' WorkerManager calls
+      //   editor.createWebWorker({ moduleId, label, createData })
+      // but Monaco >= 0.55 expects `opts.worker` (a Worker instance).
+      // We inject it from our MonacoEnvironment.getWorker.
+      const origCreateWebWorker = monaco.editor.createWebWorker.bind(monaco.editor)
 
-monaco.editor.createWebWorker = function patchedCreateWebWorker<T extends object>(
-  opts: Parameters<typeof origCreateWebWorker>[0]
-): monaco.editor.MonacoWebWorker<T> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const o = opts as any
-  if (!o.worker && o.label) {
-    const env = self.MonacoEnvironment
-    if (env?.getWorker) {
-      try {
-        o.worker = env.getWorker('workerMain.js', o.label)
-      } catch {
-        // fall through — let Monaco handle it
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(monaco.editor as any).createWebWorker = function patchedCreateWebWorker(
+        opts: Parameters<typeof origCreateWebWorker>[0]
+      ) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const o = opts as any
+        if (!o.worker && o.label) {
+          const env = self.MonacoEnvironment
+          if (env?.getWorker) {
+            try {
+              o.worker = env.getWorker('workerMain.js', o.label)
+            } catch {
+              // fall through — let Monaco handle it
+            }
+          }
+        }
+        return origCreateWebWorker(opts)
       }
-    }
-  }
-  return origCreateWebWorker(opts)
-}
+    })
+  })
+  // Deliberate console.error: logFrontend relies on Tauri IPC which is
+  // unavailable at module-evaluation time before ReactDOM.createRoot.
+  .catch(console.error)
 
 async function init() {
   // Install Playwright mocks FIRST (before any invoke calls)
