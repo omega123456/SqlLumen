@@ -53,6 +53,7 @@ function tab(overrides: Partial<TableDataTabState> = {}): TableDataTabState {
     pageSize: 100,
     primaryKey: { keyColumns: ['id'], hasAutoIncrement: false, isUniqueKeyFallback: false },
     executionTimeMs: 1,
+    rowsEvictedAt: null,
     connectionId: 'c1',
     database: 'app',
     table: 'people',

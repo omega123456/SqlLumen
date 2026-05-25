@@ -833,9 +833,25 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'evict_table_data':
       return null
 
+    case 'restore_table_data_cache': {
+      const table = (args as Record<string, unknown>)?.table
+      return {
+        status: 'available',
+        data: getTableDataFixture(String(table)),
+      }
+    }
+
     case 'get_table_foreign_keys': {
       const table = (args as Record<string, unknown>)?.table
       return getForeignKeysFixture(String(table))
+    }
+
+    case 'sync_table_data_cache_after_insert':
+    case 'sync_table_data_cache_after_update':
+    case 'sync_table_data_cache_after_delete': {
+      const table = (args as Record<string, unknown>)?.table
+      void getTableDataFixture(String(table))
+      return { status: 'synced' }
     }
 
     case 'update_table_row':

@@ -126,6 +126,8 @@ export function TableDataTab({
   const pendingNavigationAction = tabState?.pendingNavigationAction ?? null
   const saveError = tabState?.saveError ?? null
   const columns = tabState?.columns ?? []
+  const rowResidencyStatus = tabState?.rowResidency?.status ?? 'resident'
+  const isRestoring = rowResidencyStatus === 'restoring'
 
   // Show no-PK warning only for actual tables, not views (views never have PKs)
   const showNoPkWarning =
@@ -189,7 +191,11 @@ export function TableDataTab({
 
       {/* Content area */}
       {!error && columns.length > 0 && (
-        <div className={styles.content}>
+        <div
+          className={styles.content}
+          aria-busy={isRestoring}
+          data-testid="table-data-content"
+        >
           {viewMode === 'grid' && (
             <TableDataGrid
               tabId={tabId}
@@ -199,6 +205,18 @@ export function TableDataTab({
           )}
           {viewMode === 'form' && (
             <TableDataFormView tabId={tabId} isView={isViewObject} isActive={isActive} />
+          )}
+          {isRestoring && (
+            <div
+              className={styles.restoringOverlay}
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              data-testid="table-data-restore-overlay"
+            >
+              <div className={styles.spinner} aria-hidden="true" />
+              <span>Restoring cached table data...</span>
+            </div>
           )}
         </div>
       )}

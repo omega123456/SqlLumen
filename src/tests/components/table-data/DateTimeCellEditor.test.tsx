@@ -64,6 +64,7 @@ function setupStore() {
         pageSize: 1000,
         primaryKey: { keyColumns: ['id'], hasAutoIncrement: true, isUniqueKeyFallback: false },
         executionTimeMs: 10,
+        rowsEvictedAt: null,
         connectionId: 'conn-1',
         database: 'mydb',
         table: 'users',

@@ -578,10 +578,8 @@ fn touch_results_reports_expired_for_removed_entry() {
 fn touch_results_reports_available_after_spill_rewarm() {
     let state = test_state();
     let tmp = tempfile::tempdir().expect("tempdir");
-    let cache = sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(
-        1,
-        tmp.path().to_path_buf(),
-    );
+    let cache =
+        sqllumen_lib::mysql::result_cache::ResultCache::new_for_test(1, tmp.path().to_path_buf());
 
     cache.insert(
         "conn-1",

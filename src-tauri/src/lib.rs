@@ -114,8 +114,8 @@ pub fn run() {
     use mysql::result_cache::{ResultCache, SysinfoMemorySnapshot};
     use mysql::table_data_cache::TableDataCache;
     use state::AppState;
-    use std::sync::{Arc, Mutex};
     use std::sync::atomic::AtomicU64;
+    use std::sync::{Arc, Mutex};
     use tauri::Manager;
 
     let mut builder = tauri::Builder::default();
@@ -197,8 +197,7 @@ pub fn run() {
                     loop {
                         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
                         let result_cache_for_blocking = Arc::clone(&result_cache_for_task);
-                        let table_data_cache_for_blocking =
-                            Arc::clone(&table_data_cache_for_task);
+                        let table_data_cache_for_blocking = Arc::clone(&table_data_cache_for_task);
                         let join_result = tauri::async_runtime::spawn_blocking(move || {
                             let mut snapshot = SysinfoMemorySnapshot::new();
                             result_cache_for_blocking.run_maintenance(&mut snapshot);
@@ -342,6 +341,10 @@ pub fn run() {
             commands::table_data::fetch_table_data,
             commands::table_data::touch_table_data,
             commands::table_data::evict_table_data,
+            commands::table_data::restore_table_data_cache,
+            commands::table_data::sync_table_data_cache_after_insert,
+            commands::table_data::sync_table_data_cache_after_update,
+            commands::table_data::sync_table_data_cache_after_delete,
             commands::table_data::update_table_row,
             commands::table_data::insert_table_row,
             commands::table_data::delete_table_row,

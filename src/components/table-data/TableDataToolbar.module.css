@@ -35,6 +35,12 @@
   flex-shrink: 0;
 }
 
+.statusHint {
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* Badges */
 .viewBadge {
   display: flex;

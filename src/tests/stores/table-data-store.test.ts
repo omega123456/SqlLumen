@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ipc, expectToast } from '../ipc-mock'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
+import { frontendCacheLifecycle } from '../../lib/frontend-cache-lifecycle'
+import { useWorkspaceStore } from '../../stores/workspace-store'
 import type {
   TableDataResponse,
   PrimaryKeyInfo,
@@ -94,7 +96,16 @@ const booleanAliasColumns: TableDataColumnMeta[] = [
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
+  vi.useRealTimers()
+  frontendCacheLifecycle.cleanup()
   useTableDataStore.setState({ tabs: {} })
+  useWorkspaceStore.setState({
+    tabsByConnection: {},
+    activeTabByConnection: {},
+    lastFocusedSurfaceByTab: {},
+    blockingNavigationByTab: {},
+    pendingCascadeClose: null,
+  })
   useToastStore.setState({ toasts: [] })
   _resetToastTimeoutsForTests()
   // Default IPC overrides
@@ -139,6 +150,7 @@ describe('useTableDataStore — initTab', () => {
     expect(tab.executionTimeMs).toBe(0)
     expect(tab.editState).toBeNull()
     expect(tab.viewMode).toBe('grid')
+    expect(tab.rowsEvictedAt).toBeNull()
     expect(tab.selectedRowKey).toBeNull()
     expect(tab.filterModel).toEqual([])
     expect(tab.sort).toBeNull()
@@ -293,6 +305,29 @@ describe('useTableDataStore — fetchPage', () => {
     expect(useTableDataStore.getState().tabs['tab-1'].selectedRowKey).toBeNull()
   })
 
+  it('resets rowsEvictedAt after a successful page fetch', async () => {
+    await setupTabWithData()
+    useTableDataStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        'tab-1': {
+          ...state.tabs['tab-1'],
+          rows: [],
+          rowsEvictedAt: 1234,
+          rowResidency: {
+            status: 'evicted',
+            isActive: false,
+            inactiveSince: 1234,
+          },
+        },
+      },
+    }))
+
+    await useTableDataStore.getState().fetchPage('tab-1', 1)
+
+    expect(useTableDataStore.getState().tabs['tab-1'].rowsEvictedAt).toBeNull()
+  })
+
   it('sets error on IPC failure', async () => {
     ipc.override('fetch_table_data', () => {
       throw new Error('Fetch failed')
@@ -304,6 +339,16 @@ describe('useTableDataStore — fetchPage', () => {
     const tab = useTableDataStore.getState().tabs['tab-1']
     expect(tab.error).toBe('Fetch failed')
     expect(tab.isLoading).toBe(false)
+  })
+
+  it('records rowsEvictedAt when inactive rows are evicted', async () => {
+    await setupTabWithData()
+
+    useTableDataStore.getState().evictInactiveTableDataRows('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.rowResidency?.status).toBe('evicted')
+    expect(tab.rowsEvictedAt).toBeTypeOf('number')
   })
 
   it('skips state update if tab was cleaned up during fetch', async () => {
@@ -343,6 +388,34 @@ describe('useTableDataStore — fetchPage', () => {
 
     expect(useTableDataStore.getState().tabs['tab-bool'].rows).toEqual([[1, 1]])
   })
+
+  it('preserves the latest row residency visibility after an in-flight fetch completes', async () => {
+    const deferred: { resolve?: (value: TableDataResponse) => void } = {}
+    ipc.override(
+      'fetch_table_data',
+      () =>
+        new Promise<TableDataResponse>((resolve) => {
+          deferred.resolve = resolve
+        })
+    )
+
+    useTableDataStore.getState().initTab('tab-1', 'conn-1', 'mydb', 'users')
+
+    const fetchPromise = useTableDataStore.getState().fetchPage('tab-1', 1)
+    useTableDataStore.getState().markTableDataSurfaceActive('tab-1')
+    useTableDataStore.getState().markTableDataSurfaceInactive('tab-1')
+    if (!deferred.resolve) {
+      throw new Error('Expected fetch_table_data resolver')
+    }
+    deferred.resolve(mockResponse)
+    await fetchPromise
+
+    expect(useTableDataStore.getState().tabs['tab-1'].rowResidency).toEqual({
+      status: 'resident',
+      isActive: false,
+      inactiveSince: expect.any(Number),
+    })
+  })
 })
 
 describe('useTableDataStore — backend cache lifecycle', () => {
@@ -374,7 +447,7 @@ describe('useTableDataStore — backend cache lifecycle', () => {
     })
   })
 
-  it('evicts backend cache after a successful insert', async () => {
+  it('syncs backend cache after a successful insert', async () => {
     await setupTabWithData()
     useTableDataStore.getState().insertNewRow('tab-1')
     useTableDataStore.getState().updateCellValue('tab-1', 'name', 'Charlie')
@@ -382,13 +455,71 @@ describe('useTableDataStore — backend cache lifecycle', () => {
     const result = await useTableDataStore.getState().saveCurrentRow('tab-1')
 
     expect(result).toBe(true)
-    expect(ipc.calls('evict_table_data')).toContainEqual({
+    expect(ipc.calls('sync_table_data_cache_after_insert')).toContainEqual({
       connectionId: 'conn-1',
       tabId: 'tab-1',
+      database: 'mydb',
+      table: 'users',
+      columns: mockColumns,
+      rows: [
+        [1, 'Alice'],
+        [2, 'Bob'],
+        [3, 'Charlie'],
+      ],
+      currentPage: 1,
+      pageSize: 1000,
+      primaryKey: mockPrimaryKey,
+      executionTimeMs: 42,
     })
   })
 
-  it('evicts backend cache after a successful update', async () => {
+  it('syncs backend cache after a successful update', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
+    useTableDataStore.getState().updateCellValue('tab-1', 'name', 'Updated')
+
+    const result = await useTableDataStore.getState().saveCurrentRow('tab-1')
+
+    expect(result).toBe(true)
+    expect(ipc.calls('sync_table_data_cache_after_update')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      database: 'mydb',
+      table: 'users',
+      columns: mockColumns,
+      rows: [
+        [1, 'Updated'],
+        [2, 'Bob'],
+      ],
+      currentPage: 1,
+      pageSize: 1000,
+      primaryKey: mockPrimaryKey,
+      executionTimeMs: 42,
+    })
+  })
+
+  it('syncs backend cache after a successful delete', async () => {
+    await setupTabWithData()
+
+    await useTableDataStore.getState().deleteRow('tab-1', { id: 1 })
+
+    expect(ipc.calls('sync_table_data_cache_after_delete')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      database: 'mydb',
+      table: 'users',
+      columns: mockColumns,
+      rows: [[2, 'Bob']],
+      currentPage: 1,
+      pageSize: 1000,
+      primaryKey: mockPrimaryKey,
+      executionTimeMs: 42,
+    })
+  })
+
+  it('evicts backend cache when cache sync returns a non-synced status after save', async () => {
+    ipc.override('sync_table_data_cache_after_update', () => ({ status: 'missing' }))
+
     await setupTabWithData()
     useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
     useTableDataStore.getState().updateCellValue('tab-1', 'name', 'Updated')
@@ -402,7 +533,11 @@ describe('useTableDataStore — backend cache lifecycle', () => {
     })
   })
 
-  it('evicts backend cache after a successful delete', async () => {
+  it('evicts backend cache when cache sync throws after delete', async () => {
+    ipc.override('sync_table_data_cache_after_delete', () => {
+      throw new Error('sync failed')
+    })
+
     await setupTabWithData()
 
     await useTableDataStore.getState().deleteRow('tab-1', { id: 1 })
@@ -411,6 +546,212 @@ describe('useTableDataStore — backend cache lifecycle', () => {
       connectionId: 'conn-1',
       tabId: 'tab-1',
     })
+  })
+})
+
+describe('useTableDataStore — frontend row residency lifecycle', () => {
+  it('marks loaded rows as resident after fetches and refreshes', async () => {
+    await setupTabWithData()
+    let tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.rowResidency).toEqual({
+      status: 'resident',
+      isActive: false,
+      inactiveSince: expect.any(Number),
+    })
+
+    useTableDataStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        'tab-1': {
+          ...state.tabs['tab-1'],
+          rowResidency: {
+            status: 'evicted',
+            isActive: false,
+            inactiveSince: 123,
+          },
+          rows: [],
+        },
+      },
+    }))
+
+    await useTableDataStore.getState().refreshData('tab-1')
+
+    tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.rowResidency).toEqual({
+      status: 'resident',
+      isActive: false,
+      inactiveSince: expect.any(Number),
+    })
+    expect(tab.rows).toEqual([
+      [1, 'Alice'],
+      [2, 'Bob'],
+    ])
+  })
+
+  it('evicts inactive resident rows while preserving metadata and clearing clean edit state', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
+    useTableDataStore.getState().markTableDataSurfaceInactive('tab-1')
+
+    expect(frontendCacheLifecycle.hasInactiveTimer('table-data:tab-1')).toBe(true)
+
+    useTableDataStore.getState().evictInactiveTableDataRows('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.rows).toEqual([])
+    expect(tab.columns).toEqual(mockColumns)
+    expect(tab.primaryKey).toEqual(mockPrimaryKey)
+    expect(tab.editState).toBeNull()
+    expect(tab.selectedRowKey).toBeNull()
+    expect(tab.rowResidency).toMatchObject({
+      status: 'evicted',
+      isActive: false,
+    })
+    expect(frontendCacheLifecycle.hasInactiveTimer('table-data:tab-1')).toBe(false)
+  })
+
+  it('does not evict dirty edit state', async () => {
+    await setupTabWithData()
+    useTableDataStore.getState().startEditing('tab-1', { id: 1 }, { id: 1, name: 'Alice' })
+    useTableDataStore.getState().updateCellValue('tab-1', 'name', 'Updated')
+    useTableDataStore.getState().markTableDataSurfaceInactive('tab-1')
+    useTableDataStore.getState().evictInactiveTableDataRows('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.rows).toEqual([
+      [1, 'Alice'],
+      [2, 'Bob'],
+    ])
+    expect(tab.editState).not.toBeNull()
+    expect(tab.rowResidency?.status).toBe('resident')
+  })
+
+  it('restores evicted rows from table-data cache without calling fetch_table_data', async () => {
+    await setupTabWithData()
+    ipc.override('restore_table_data_cache', () => ({
+      status: 'available',
+      data: {
+        ...mockResponse,
+        rows: [[9, 'Restored']],
+      },
+    }))
+
+    useTableDataStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        'tab-1': {
+          ...state.tabs['tab-1'],
+          rows: [],
+          rowResidency: {
+            status: 'evicted',
+            isActive: false,
+            inactiveSince: 55,
+          },
+        },
+      },
+    }))
+
+    const fetchCallsBefore = ipc.calls('fetch_table_data').length
+    await useTableDataStore.getState().markTableDataSurfaceActive('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.rows).toEqual([[9, 'Restored']])
+    expect(tab.rowResidency).toEqual({
+      status: 'resident',
+      isActive: true,
+      inactiveSince: null,
+    })
+    expect(ipc.calls('restore_table_data_cache')).toContainEqual({
+      connectionId: 'conn-1',
+      tabId: 'tab-1',
+      database: 'mydb',
+      table: 'users',
+    })
+    expect(ipc.calls('fetch_table_data')).toHaveLength(fetchCallsBefore)
+  })
+
+  it('sets a retryable error when restore reports expired or missing', async () => {
+    await setupTabWithData()
+    ipc.override('restore_table_data_cache', () => ({
+      status: 'missing',
+      data: null,
+    }))
+
+    useTableDataStore.setState((state) => ({
+      tabs: {
+        ...state.tabs,
+        'tab-1': {
+          ...state.tabs['tab-1'],
+          rows: [],
+          rowResidency: {
+            status: 'evicted',
+            isActive: false,
+            inactiveSince: null,
+          },
+        },
+      },
+    }))
+
+    await useTableDataStore.getState().markTableDataSurfaceActive('tab-1')
+
+    const tab = useTableDataStore.getState().tabs['tab-1']
+    expect(tab.error).toBe('Cached table data is no longer available. Reload the table data to continue.')
+    expect(tab.rowResidency).toEqual({
+      status: 'evicted',
+      isActive: true,
+      inactiveSince: null,
+    })
+  })
+
+  it('keeps a hidden fetch completion inactive and immediately starts the TTL lifecycle', async () => {
+    vi.useFakeTimers()
+    useTableDataStore.getState().initTab('tab-hidden', 'conn-1', 'mydb', 'users')
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'conn-1': [
+          {
+            id: 'tab-hidden',
+            type: 'table-data',
+            label: 'users',
+            connectionId: 'conn-1',
+            databaseName: 'mydb',
+            objectName: 'users',
+            objectType: 'table',
+          },
+          {
+            id: 'tab-visible',
+            type: 'query-editor',
+            label: 'Query 1',
+            connectionId: 'conn-1',
+          },
+        ],
+      },
+      activeTabByConnection: {
+        'conn-1': 'tab-visible',
+      },
+      lastFocusedSurfaceByTab: {},
+      blockingNavigationByTab: {},
+      pendingCascadeClose: null,
+    })
+
+    await useTableDataStore.getState().fetchPage('tab-hidden', 1)
+
+    const tab = useTableDataStore.getState().tabs['tab-hidden']
+    expect(tab.rows).toEqual([
+      [1, 'Alice'],
+      [2, 'Bob'],
+    ])
+    expect(tab.rowResidency).toEqual({
+      status: 'resident',
+      isActive: false,
+      inactiveSince: expect.any(Number),
+    })
+    expect(frontendCacheLifecycle.hasInactiveTimer('table-data:tab-hidden')).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(30 * 60 * 1000)
+
+    expect(useTableDataStore.getState().tabs['tab-hidden'].rowResidency?.status).toBe('evicted')
+    vi.useRealTimers()
   })
 })
 

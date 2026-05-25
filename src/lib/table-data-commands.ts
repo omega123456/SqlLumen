@@ -1,5 +1,12 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { TableDataResponse, PrimaryKeyInfo, FilterCondition } from '../types/schema'
+import type {
+  TableDataResponse,
+  PrimaryKeyInfo,
+  FilterCondition,
+  TableDataColumnMeta,
+  TableDataCacheRestoreResult,
+  TableDataCacheSyncResult,
+} from '../types/schema'
 
 export type TableDataTouchStatus = 'available' | 'expired' | 'missing'
 
@@ -69,6 +76,69 @@ export async function evictTableData(params: {
     connectionId: params.connectionId,
     tabId: params.tabId,
   })
+}
+
+type SyncTableDataCacheParams = {
+  connectionId: string
+  tabId: string
+  database: string
+  table: string
+  columns: TableDataColumnMeta[]
+  rows: unknown[][]
+  currentPage: number
+  pageSize: number
+  primaryKey: PrimaryKeyInfo | null
+  executionTimeMs: number
+}
+
+export async function restoreTableDataCache(params: {
+  connectionId: string
+  tabId: string
+  database: string
+  table: string
+}): Promise<TableDataCacheRestoreResult> {
+  return invoke<TableDataCacheRestoreResult>('restore_table_data_cache', {
+    connectionId: params.connectionId,
+    tabId: params.tabId,
+    database: params.database,
+    table: params.table,
+  })
+}
+
+async function syncTableDataCache(
+  command: string,
+  params: SyncTableDataCacheParams
+): Promise<TableDataCacheSyncResult> {
+  return invoke<TableDataCacheSyncResult>(command, {
+    connectionId: params.connectionId,
+    tabId: params.tabId,
+    database: params.database,
+    table: params.table,
+    columns: params.columns,
+    rows: params.rows,
+    currentPage: params.currentPage,
+    pageSize: params.pageSize,
+    primaryKey: params.primaryKey,
+    executionTimeMs: params.executionTimeMs,
+  })
+}
+
+export async function syncTableDataCacheAfterInsert(
+  params: SyncTableDataCacheParams
+): Promise<TableDataCacheSyncResult> {
+  return syncTableDataCache('sync_table_data_cache_after_insert', params)
+}
+
+export async function syncTableDataCacheAfterUpdate(
+  params: SyncTableDataCacheParams
+): Promise<TableDataCacheSyncResult> {
+  return syncTableDataCache('sync_table_data_cache_after_update', params)
+}
+
+export async function syncTableDataCacheAfterDelete(
+  params: SyncTableDataCacheParams
+): Promise<TableDataCacheSyncResult> {
+  return syncTableDataCache('sync_table_data_cache_after_delete', params)
 }
 
 export async function updateTableRow(params: {

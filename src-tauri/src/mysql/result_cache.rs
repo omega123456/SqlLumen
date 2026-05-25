@@ -497,12 +497,7 @@ where
     pub fn insert(&self, connection_id: &str, tab_id: &str, value: V) {
         let expected_invalidation_version =
             self.current_invalidation_version(connection_id, tab_id);
-        let _ = self.insert_if_current(
-            connection_id,
-            tab_id,
-            expected_invalidation_version,
-            value,
-        );
+        let _ = self.insert_if_current(connection_id, tab_id, expected_invalidation_version, value);
     }
 
     /// Returns the current invalidation version for the key.

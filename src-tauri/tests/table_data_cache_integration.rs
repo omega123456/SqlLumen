@@ -2,12 +2,13 @@
 
 mod common;
 
-use sqllumen_lib::mysql::table_data::{
-    evict_table_data_impl, touch_table_data_impl, PrimaryKeyInfo, TableDataColumnMeta,
-    TableDataResponse,
-};
 use sqllumen_lib::mysql::query_executor::StoredResult;
 use sqllumen_lib::mysql::result_cache::{MemorySnapshot, ResultCache};
+use sqllumen_lib::mysql::table_data::{
+    evict_table_data_impl, restore_table_data_cache_impl, sync_table_data_cache_after_delete_impl,
+    sync_table_data_cache_after_insert_impl, sync_table_data_cache_after_update_impl,
+    touch_table_data_impl, PrimaryKeyInfo, TableDataColumnMeta, TableDataResponse,
+};
 use sqllumen_lib::mysql::table_data_cache::TableDataCache;
 use sqllumen_lib::state::AppState;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -184,6 +185,66 @@ fn touch_rewarms_spilled_entry_from_disk() {
 }
 
 #[test]
+fn restore_returns_memory_hit_data() {
+    let state = common::test_app_state();
+    let expected = sample_response(42);
+    state
+        .table_data_cache
+        .insert("conn-1", "tab-1", expected.clone());
+
+    let result = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users");
+
+    assert_eq!(result.status, "available");
+    assert_eq!(result.data, Some(expected));
+}
+
+#[test]
+fn restore_rewarms_spilled_entry_from_disk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cache = TableDataCache::new_for_test(1, tmp.path().to_path_buf());
+
+    cache.insert("conn-1", "tab-1", sample_response(88));
+    thread::sleep(Duration::from_millis(1500));
+    cache.run_pending_tasks();
+    cache.flush_spill_jobs();
+
+    let state = AppState {
+        table_data_cache: Arc::new(cache),
+        ..common::test_app_state()
+    };
+
+    let result = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users");
+
+    assert_eq!(result.status, "available");
+    assert_eq!(result.data, Some(sample_response(88)));
+}
+
+#[test]
+fn restore_reports_missing_when_key_was_never_cached() {
+    let state = common::test_app_state();
+
+    let result = restore_table_data_cache_impl(&state, "conn-1", "tab-missing", "app_db", "users");
+
+    assert_eq!(result.status, "missing");
+    assert_eq!(result.data, None);
+}
+
+#[test]
+fn restore_reports_expired_when_cached_entry_and_spill_are_gone() {
+    let state = common::test_app_state();
+    state
+        .table_data_cache
+        .insert("conn-1", "tab-1", sample_response(7));
+    state.table_data_cache.remove("conn-1", "tab-1");
+    state.table_data_cache.run_pending_tasks();
+
+    let result = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users");
+
+    assert_eq!(result.status, "expired");
+    assert_eq!(result.data, None);
+}
+
+#[test]
 fn evict_removes_entry_and_spill_file() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let cache = TableDataCache::new_for_test(1, tmp.path().to_path_buf());
@@ -205,7 +266,10 @@ fn evict_removes_entry_and_spill_file() {
         touch_table_data_impl(&state, "conn-1", "tab-1"),
         serde_json::json!({ "status": "missing" })
     );
-    assert!(!state.table_data_cache.spill_file_path("conn-1", "tab-1").exists());
+    assert!(!state
+        .table_data_cache
+        .spill_file_path("conn-1", "tab-1")
+        .exists());
 }
 
 #[test]
@@ -216,12 +280,54 @@ fn explicit_cleanup_blocks_late_table_data_reinsert() {
     let expected_version = cache.current_invalidation_version("conn-1", "tab-1");
     cache.remove_with_spill_cleanup("conn-1", "tab-1");
 
-    let inserted = cache.insert_if_current("conn-1", "tab-1", expected_version, sample_response(11));
+    let inserted =
+        cache.insert_if_current("conn-1", "tab-1", expected_version, sample_response(11));
 
-    assert!(!inserted, "late write should be dropped after explicit cleanup");
+    assert!(
+        !inserted,
+        "late write should be dropped after explicit cleanup"
+    );
     assert!(
         cache.get("conn-1", "tab-1").into_entry().is_none(),
         "no cache entry should be recreated after cleanup"
+    );
+}
+
+#[test]
+fn sync_after_cleanup_does_not_recreate_table_data_cache_entry() {
+    let state = common::test_app_state();
+    state
+        .table_data_cache
+        .insert("conn-1", "tab-1", sample_response(1));
+    state
+        .table_data_cache
+        .remove_with_spill_cleanup("conn-1", "tab-1");
+
+    let response = sample_response(9);
+    let synced = sync_table_data_cache_after_insert_impl(
+        &state,
+        "conn-1",
+        "tab-1",
+        "app_db",
+        "users",
+        response.columns.clone(),
+        response.rows.clone(),
+        response.current_page,
+        response.page_size,
+        response.primary_key.clone(),
+        response.execution_time_ms,
+    );
+
+    assert_eq!(synced.status, "missing");
+    assert_eq!(
+        touch_table_data_impl(&state, "conn-1", "tab-1"),
+        serde_json::json!({ "status": "missing" })
+    );
+    assert!(
+        restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users")
+            .data
+            .is_none(),
+        "late sync should not recreate table-data cache after cleanup"
     );
 }
 
@@ -258,4 +364,93 @@ fn shared_maintenance_refresh_can_spare_table_data_cache_after_result_eviction()
             .is_some(),
         "table-data cache entry should remain after refreshed memory recovers"
     );
+}
+
+#[test]
+fn cache_sync_updates_rows_after_insert_update_and_delete() {
+    let state = common::test_app_state();
+    state
+        .table_data_cache
+        .insert("conn-1", "tab-1", sample_response(1));
+
+    let columns = sample_response(1).columns;
+    let primary_key = sample_response(1).primary_key;
+
+    let inserted = sync_table_data_cache_after_insert_impl(
+        &state,
+        "conn-1",
+        "tab-1",
+        "app_db",
+        "users",
+        columns.clone(),
+        vec![
+            vec![serde_json::json!(1), serde_json::json!(3.14)],
+            vec![serde_json::json!(2), serde_json::json!(9.5)],
+        ],
+        1,
+        50,
+        primary_key.clone(),
+        20,
+    );
+    assert_eq!(inserted.status, "synced");
+
+    let after_insert = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users")
+        .data
+        .expect("insert sync should keep data available");
+    assert_eq!(after_insert.rows.len(), 2);
+    assert_eq!(
+        after_insert.rows[1],
+        vec![serde_json::json!(2), serde_json::json!(9.5)]
+    );
+
+    let updated = sync_table_data_cache_after_update_impl(
+        &state,
+        "conn-1",
+        "tab-1",
+        "app_db",
+        "users",
+        columns.clone(),
+        vec![
+            vec![serde_json::json!(1), serde_json::json!(4.2)],
+            vec![serde_json::json!(2), serde_json::json!(9.5)],
+        ],
+        1,
+        50,
+        primary_key.clone(),
+        25,
+    );
+    assert_eq!(updated.status, "synced");
+
+    let after_update = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users")
+        .data
+        .expect("update sync should keep data available");
+    assert_eq!(
+        after_update.rows[0],
+        vec![serde_json::json!(1), serde_json::json!(4.2)]
+    );
+    assert_eq!(after_update.execution_time_ms, 25);
+
+    let deleted = sync_table_data_cache_after_delete_impl(
+        &state,
+        "conn-1",
+        "tab-1",
+        "app_db",
+        "users",
+        columns,
+        vec![vec![serde_json::json!(2), serde_json::json!(9.5)]],
+        1,
+        50,
+        primary_key,
+        30,
+    );
+    assert_eq!(deleted.status, "synced");
+
+    let after_delete = restore_table_data_cache_impl(&state, "conn-1", "tab-1", "app_db", "users")
+        .data
+        .expect("delete sync should keep data available");
+    assert_eq!(
+        after_delete.rows,
+        vec![vec![serde_json::json!(2), serde_json::json!(9.5)]]
+    );
+    assert_eq!(after_delete.execution_time_ms, 30);
 }

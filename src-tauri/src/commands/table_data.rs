@@ -185,12 +185,106 @@ pub fn touch_table_data(
 
 #[cfg(not(coverage))]
 #[tauri::command]
-pub fn evict_table_data(
+pub fn evict_table_data(connection_id: String, tab_id: String, state: tauri::State<'_, AppState>) {
+    evict_table_data_impl(&state, &connection_id, &tab_id);
+}
+
+#[tauri::command]
+pub fn restore_table_data_cache(
+    state: tauri::State<'_, AppState>,
     connection_id: String,
     tab_id: String,
+    database: String,
+    table: String,
+) -> table_data::TableDataCacheRestoreResponse {
+    table_data::restore_table_data_cache_impl(&state, &connection_id, &tab_id, &database, &table)
+}
+
+#[tauri::command]
+pub fn sync_table_data_cache_after_insert(
     state: tauri::State<'_, AppState>,
-) {
-    evict_table_data_impl(&state, &connection_id, &tab_id);
+    connection_id: String,
+    tab_id: String,
+    database: String,
+    table: String,
+    columns: Vec<table_data::TableDataColumnMeta>,
+    rows: Vec<Vec<serde_json::Value>>,
+    current_page: u32,
+    page_size: u32,
+    primary_key: Option<table_data::PrimaryKeyInfo>,
+    execution_time_ms: u64,
+) -> table_data::TableDataCacheSyncResponse {
+    table_data::sync_table_data_cache_after_insert_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        &database,
+        &table,
+        columns,
+        rows,
+        current_page,
+        page_size,
+        primary_key,
+        execution_time_ms,
+    )
+}
+
+#[tauri::command]
+pub fn sync_table_data_cache_after_update(
+    state: tauri::State<'_, AppState>,
+    connection_id: String,
+    tab_id: String,
+    database: String,
+    table: String,
+    columns: Vec<table_data::TableDataColumnMeta>,
+    rows: Vec<Vec<serde_json::Value>>,
+    current_page: u32,
+    page_size: u32,
+    primary_key: Option<table_data::PrimaryKeyInfo>,
+    execution_time_ms: u64,
+) -> table_data::TableDataCacheSyncResponse {
+    table_data::sync_table_data_cache_after_update_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        &database,
+        &table,
+        columns,
+        rows,
+        current_page,
+        page_size,
+        primary_key,
+        execution_time_ms,
+    )
+}
+
+#[tauri::command]
+pub fn sync_table_data_cache_after_delete(
+    state: tauri::State<'_, AppState>,
+    connection_id: String,
+    tab_id: String,
+    database: String,
+    table: String,
+    columns: Vec<table_data::TableDataColumnMeta>,
+    rows: Vec<Vec<serde_json::Value>>,
+    current_page: u32,
+    page_size: u32,
+    primary_key: Option<table_data::PrimaryKeyInfo>,
+    execution_time_ms: u64,
+) -> table_data::TableDataCacheSyncResponse {
+    table_data::sync_table_data_cache_after_delete_impl(
+        &state,
+        &connection_id,
+        &tab_id,
+        &database,
+        &table,
+        columns,
+        rows,
+        current_page,
+        page_size,
+        primary_key,
+        execution_time_ms,
+    )
 }
 
 #[tauri::command]

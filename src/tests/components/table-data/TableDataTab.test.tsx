@@ -225,6 +225,88 @@ describe('TableDataTab', () => {
     expect(screen.queryByTestId('table-data-error')).not.toBeInTheDocument()
   })
 
+  it('renders a blocking restore overlay over loaded content without showing the retry error state', async () => {
+    setupConnection()
+
+    useTableDataStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          isLoading: true,
+          error: null,
+          rowResidency: {
+            status: 'restoring',
+            isActive: true,
+            inactiveSince: null,
+          },
+        }),
+      },
+    })
+
+    render(<TableDataTab tab={makeTab()} />)
+
+    expect(screen.getByTestId('table-data-grid')).toBeInTheDocument()
+    expect(screen.getByTestId('table-data-content')).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByTestId('table-data-restore-overlay')).toHaveAttribute('role', 'status')
+    expect(screen.getByTestId('table-data-restore-overlay')).toHaveAttribute('aria-live', 'polite')
+    expect(screen.getByText('Restoring cached table data...')).toBeInTheDocument()
+    expect(screen.queryByTestId('table-data-error')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-retry')).not.toBeInTheDocument()
+  })
+
+  it('keeps row-dependent toolbar actions disabled while restore is in flight', async () => {
+    setupConnection()
+
+    useTableDataStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          isLoading: true,
+          selectedRowKey: { id: 1 },
+          rowResidency: {
+            status: 'restoring',
+            isActive: true,
+            inactiveSince: null,
+          },
+        }),
+      },
+    })
+
+    render(<TableDataTab tab={makeTab()} />)
+
+    expect(screen.getByTestId('status-loading')).toBeInTheDocument()
+    expect(screen.getByTestId('table-data-restoring-status')).toHaveTextContent(
+      'Restoring cached rows...'
+    )
+    expect(screen.getByTestId('btn-add-row')).toBeDisabled()
+    expect(screen.getByTestId('btn-clone-row')).toBeDisabled()
+    expect(screen.getByTestId('btn-delete-row')).toBeDisabled()
+    expect(screen.getByTestId('btn-refresh')).toBeDisabled()
+  })
+
+  it('keeps retryable restore failure separate from restoring overlay state', async () => {
+    setupConnection()
+
+    useTableDataStore.setState({
+      tabs: {
+        'tab-1': makeTabState({
+          isLoading: false,
+          error: 'Cached table data could not be restored. Reload the table data to continue.',
+          rows: [],
+          rowResidency: {
+            status: 'evicted',
+            isActive: true,
+            inactiveSince: null,
+          },
+        }),
+      },
+    })
+
+    render(<TableDataTab tab={makeTab()} />)
+
+    expect(screen.getByTestId('table-data-error')).toBeInTheDocument()
+    expect(screen.getByTestId('btn-retry')).toBeInTheDocument()
+    expect(screen.queryByTestId('table-data-restore-overlay')).not.toBeInTheDocument()
+  })
+
   it('passes correct tab context to store initTab', async () => {
     setupConnection()
     const tab = makeTab({ connectionId: 'conn-1', databaseName: 'testdb', objectName: 'orders' })

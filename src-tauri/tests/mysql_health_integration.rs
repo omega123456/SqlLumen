@@ -1,8 +1,6 @@
 //! Health monitor helpers: backoff schedule, cancellation token behavior, status payload JSON.
 
-use sqllumen_lib::mysql::health::{
-    backoff_duration, ConnectionStatusChangedPayload,
-};
+use sqllumen_lib::mysql::health::{backoff_duration, ConnectionStatusChangedPayload};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 

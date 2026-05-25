@@ -7,10 +7,11 @@ import {
 import { useTableDataStore } from '../../stores/table-data-store'
 import { useTableDesignerStore } from '../../stores/table-designer-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
-import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
+import { useQueryStore, DEFAULT_RESULT_STATE, type TabQueryState } from '../../stores/query-store'
 import { useAiStore } from '../../stores/ai-store'
 import { useSettingsStore, SETTINGS_DEFAULTS } from '../../stores/settings-store'
 import { makeAiTabState } from '../helpers/ai-test-utils'
+import { makeTableDataTabState } from '../helpers/table-data-test-utils'
 import { ipc } from '../ipc-mock'
 import type {
   TableDataTab,
@@ -108,6 +109,32 @@ function makeObjectEditorTab(
   }
 }
 
+function makeQueryTabState(overrides: Partial<TabQueryState> = {}): TabQueryState {
+  return {
+    content: 'SELECT * FROM users',
+    selectedText: '',
+    filePath: null,
+    tabStatus: 'success',
+    prevTabStatus: 'idle',
+    cursorPosition: null,
+    connectionId: 'conn-1',
+    results: [
+      {
+        ...DEFAULT_RESULT_STATE,
+        resultStatus: 'success',
+        queryId: 'q-validate-1',
+      },
+    ],
+    activeResultIndex: 0,
+    activeBottomPanelItem: { type: 'result' as const },
+    pendingNavigationAction: null,
+    executionStartedAt: null,
+    isCancelling: false,
+    wasCancelled: false,
+    ...overrides,
+  }
+}
+
 describe('useWorkspaceStore — openTab', () => {
   it('creates a new tab and sets it active', () => {
     useWorkspaceStore.getState().openTab(makeTab())
@@ -130,10 +157,6 @@ describe('useWorkspaceStore — openTab', () => {
     const state = useWorkspaceStore.getState()
     expect(state.tabsByConnection['conn-1']).toHaveLength(2)
     expect(state.activeTabByConnection['conn-1']).toBe(firstTabId)
-    expect(ipc.calls('touch_table_data')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: firstTabId,
-    })
   })
 
   it('creates a new tab when same object but different type', () => {
@@ -253,28 +276,7 @@ describe('useWorkspaceStore — query result validation on activation', () => {
 
     useQueryStore.setState({
       tabs: {
-        [queryTab.id]: {
-          content: 'SELECT * FROM users',
-          selectedText: '',
-          filePath: null,
-          tabStatus: 'success',
-          prevTabStatus: 'idle',
-          cursorPosition: null,
-          connectionId: 'conn-1',
-          results: [
-            {
-              ...DEFAULT_RESULT_STATE,
-              resultStatus: 'success',
-              queryId: 'q-validate-1',
-            },
-          ],
-          activeResultIndex: 0,
-          activeBottomPanelItem: { type: 'result' },
-          pendingNavigationAction: null,
-          executionStartedAt: null,
-          isCancelling: false,
-          wasCancelled: false,
-        },
+        [queryTab.id]: makeQueryTabState(),
       },
     })
 
@@ -286,51 +288,176 @@ describe('useWorkspaceStore — query result validation on activation', () => {
       tabId: queryTab.id,
     })
   })
+})
 
-  it('touches active table data cache when a table-data tab becomes active', () => {
-    useWorkspaceStore.getState().openTab(makeTab())
-    const tableTab = useWorkspaceStore
-      .getState()
-      .tabsByConnection['conn-1'].find((tab): tab is TableDataTab => tab.type === 'table-data')
-
-    if (!tableTab) {
-      throw new Error('Expected table-data tab')
-    }
-
-    useWorkspaceStore.getState().setActiveTab('conn-1', tableTab.id)
-
-    expect(ipc.calls('touch_table_data')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: tableTab.id,
+describe('useWorkspaceStore — visible surface activation lifecycle', () => {
+  it('marks the previously visible query result inactive when opening a new query tab', async () => {
+    const firstQueryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    useQueryStore.setState({
+      tabs: {
+        [firstQueryTabId]: makeQueryTabState({
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'query-1',
+              rows: [[1, 'alice']],
+              rowResidency: {
+                status: 'resident',
+                isActive: true,
+                inactiveSince: null,
+              },
+            },
+          ],
+        }),
+      },
     })
-  })
 
-  it('logs when table data touch fails during activation', async () => {
-    ipc.override('touch_table_data', () => {
-      throw new Error('touch failed')
-    })
-    useWorkspaceStore.getState().openTab(makeTab())
-    const tableTab = useWorkspaceStore
-      .getState()
-      .tabsByConnection['conn-1'].find((tab): tab is TableDataTab => tab.type === 'table-data')
-
-    if (!tableTab) {
-      throw new Error('Expected table-data tab')
-    }
-
-    useWorkspaceStore.getState().setActiveTab('conn-1', tableTab.id)
+    const secondQueryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 2')
 
     await vi.waitFor(() => {
-      expect(ipc.calls('log_frontend')).toContainEqual({
-        level: 'warn',
-        message: `Table data cache touch failed for tab ${tableTab.id}: touch failed`,
+      expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(secondQueryTabId)
+      expect(useQueryStore.getState().tabs[firstQueryTabId]!.results[0]!.rowResidency).toEqual({
+        status: 'resident',
+        isActive: false,
+        inactiveSince: expect.any(Number),
       })
     })
   })
 
-  it('touches the active bottom-panel table-data tab when reactivating its parent query tab', () => {
+  it('marks a deduped standalone table-data surface active when openTab focuses it', async () => {
+    useWorkspaceStore.getState().openTab(makeTab())
+    useWorkspaceStore.getState().openTab(makeSchemaTab({ objectName: 'orders', label: 'orders' }))
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const tableTab = tabs.find((tab): tab is TableDataTab => tab.type === 'table-data')
+    if (!tableTab) {
+      throw new Error('Expected table tab')
+    }
+
+    useTableDataStore.setState({
+      tabs: {
+        [tableTab.id]: makeTableDataTabState({
+          rows: [[1, 'alice']],
+          rowResidency: {
+            status: 'resident',
+            isActive: false,
+            inactiveSince: 123,
+          },
+        }),
+      },
+    })
+
+    useWorkspaceStore.getState().openTab(makeTab())
+
+    await vi.waitFor(() => {
+      expect(useTableDataStore.getState().tabs[tableTab.id]!.rowResidency).toEqual({
+        status: 'resident',
+        isActive: true,
+        inactiveSince: null,
+      })
+    })
+  })
+
+  it('marks query result surfaces inactive and active when switching top-level tabs', () => {
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    useWorkspaceStore.getState().openTab(makeSchemaTab({ objectName: 'orders', label: 'orders' }))
+    const schemaTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'].find(
+      (tab) => tab.type === 'schema-info'
+    )?.id
+
+    if (!schemaTabId) {
+      throw new Error('Expected schema tab')
+    }
+
+    useQueryStore.setState({
+      tabs: {
+        [queryTabId]: makeQueryTabState({
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'query-1',
+              rows: [[1, 'alice']],
+              rowResidency: {
+                status: 'resident',
+                isActive: true,
+                inactiveSince: null,
+              },
+            },
+          ],
+        }),
+      },
+    })
+    useWorkspaceStore.getState().setActiveTab('conn-1', queryTabId)
+
+    useWorkspaceStore.getState().setActiveTab('conn-1', schemaTabId)
+
+    let result = useQueryStore.getState().tabs[queryTabId].results[0]
+    expect(result.rowResidency.isActive).toBe(false)
+    expect(result.rowResidency.inactiveSince).toBeTypeOf('number')
+
+    useWorkspaceStore.getState().setActiveTab('conn-1', queryTabId)
+
+    result = useQueryStore.getState().tabs[queryTabId].results[0]
+    expect(result.rowResidency.isActive).toBe(true)
+    expect(result.rowResidency.inactiveSince).toBeNull()
+  })
+
+  it('restores standalone table-data rows through table-data store activation', async () => {
+    useWorkspaceStore.getState().openTab(makeTab())
+    useWorkspaceStore.getState().openTab(makeSchemaTab({ objectName: 'orders', label: 'orders' }))
+
+    const tabs = useWorkspaceStore.getState().tabsByConnection['conn-1']
+    const tableTab = tabs.find((tab): tab is TableDataTab => tab.type === 'table-data')
+    const schemaTabId = tabs.find((tab) => tab.type === 'schema-info')?.id
+
+    if (!tableTab || !schemaTabId) {
+      throw new Error('Expected tabs')
+    }
+
+    useTableDataStore.setState({
+      tabs: {
+        [tableTab.id]: makeTableDataTabState({
+          rows: [],
+          rowResidency: {
+            status: 'evicted',
+            isActive: false,
+            inactiveSince: Date.now(),
+          },
+        }),
+      },
+    })
+
+    ipc.override('restore_table_data_cache', () => ({
+      status: 'available',
+      data: {
+        columns: [],
+        rows: [[1, 'alice']],
+        currentPage: 1,
+        pageSize: 1000,
+        primaryKey: null,
+        executionTimeMs: 5,
+      },
+    }))
+
+    useWorkspaceStore.getState().setActiveTab('conn-1', tableTab.id)
+    useWorkspaceStore.getState().setActiveTab('conn-1', schemaTabId)
+    useWorkspaceStore.getState().setActiveTab('conn-1', tableTab.id)
+
+    await vi.waitFor(() => {
+      expect(useTableDataStore.getState().tabs[tableTab.id].rows).toEqual([[1, 'alice']])
+      expect(useTableDataStore.getState().tabs[tableTab.id].rowResidency).toMatchObject({
+        status: 'resident',
+        isActive: true,
+        inactiveSince: null,
+      })
+    })
+  })
+
+  it('switches bottom-panel visibility between result and table-data surfaces', async () => {
     setBottomPanelEnabled(true)
-    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1')
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
     useWorkspaceStore.getState().openTab(makeTab())
 
     const tableTab = useWorkspaceStore
@@ -341,13 +468,125 @@ describe('useWorkspaceStore — query result validation on activation', () => {
       throw new Error('Expected scoped table-data tab')
     }
 
-    ipc.calls('touch_table_data').length = 0
-    useWorkspaceStore.getState().setActiveTab('conn-1', queryTabId)
+    useQueryStore.setState({
+      tabs: {
+        [queryTabId]: makeQueryTabState({
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'query-1',
+              rows: [[1, 'alice']],
+              rowResidency: {
+                status: 'resident',
+                isActive: true,
+                inactiveSince: null,
+              },
+            },
+          ],
+        }),
+      },
+    })
+    useTableDataStore.setState({
+      tabs: {
+        [tableTab.id]: makeTableDataTabState({
+          rows: [],
+          rowResidency: {
+            status: 'evicted',
+            isActive: false,
+            inactiveSince: Date.now(),
+          },
+        }),
+      },
+    })
+    ipc.override('restore_table_data_cache', () => ({
+      status: 'available',
+      data: {
+        columns: [],
+        rows: [[7, 'restored']],
+        currentPage: 1,
+        pageSize: 1000,
+        primaryKey: null,
+        executionTimeMs: 5,
+      },
+    }))
 
-    expect(ipc.calls('touch_table_data')).toContainEqual({
-      connectionId: 'conn-1',
+    useQueryStore.getState().setActiveBottomPanelItem(queryTabId, {
+      type: 'table-data',
       tabId: tableTab.id,
     })
+
+    await vi.waitFor(() => {
+      expect(useQueryStore.getState().tabs[queryTabId]!.results[0]!.rowResidency.isActive).toBe(
+        false
+      )
+      expect(useTableDataStore.getState().tabs[tableTab.id]!.rows).toEqual([[7, 'restored']])
+      expect(useTableDataStore.getState().tabs[tableTab.id]!.rowResidency!.isActive).toBe(true)
+    })
+
+    useQueryStore.getState().setActiveBottomPanelItem(queryTabId, { type: 'result' })
+
+    await vi.waitFor(() => {
+      expect(useTableDataStore.getState().tabs[tableTab.id]!.rowResidency!.isActive).toBe(false)
+      expect(useQueryStore.getState().tabs[queryTabId]!.results[0]!.rowResidency.isActive).toBe(
+        true
+      )
+    })
+  })
+
+  it('keeps hidden results inactive when changing active result index and activates the new visible result', async () => {
+    const queryTabId = useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+
+    useQueryStore.setState({
+      tabs: {
+        [queryTabId]: makeQueryTabState({
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'query-1',
+              rows: [[1, 'alice']],
+              rowResidency: {
+                status: 'resident',
+                isActive: true,
+                inactiveSince: null,
+              },
+            },
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'query-2',
+              rows: [[2, 'bob']],
+              rowResidency: {
+                status: 'resident',
+                isActive: false,
+                inactiveSince: null,
+              },
+            },
+          ],
+          activeResultIndex: 0,
+        }),
+      },
+    })
+
+    useQueryStore.getState().setActiveBottomPanelItem(queryTabId, { type: 'result' })
+    useQueryStore.getState().setActiveResultIndex(queryTabId, 1)
+
+    await vi.waitFor(() => {
+      const results = useQueryStore.getState().tabs[queryTabId].results
+      expect(results[0].rowResidency.isActive).toBe(false)
+      expect(results[1].rowResidency.isActive).toBe(true)
+    })
+
+    useQueryStore.getState().setActiveBottomPanelItem(queryTabId, {
+      type: 'table-data',
+      tabId: 'table-hidden',
+    })
+    useQueryStore.getState().setActiveResultIndex(queryTabId, 0)
+
+    const results = useQueryStore.getState().tabs[queryTabId].results
+    expect(results[0].rowResidency.isActive).toBe(false)
+    expect(results[1].rowResidency.isActive).toBe(false)
   })
 })
 
@@ -567,6 +806,54 @@ describe('useWorkspaceStore — closeTab', () => {
 
     const state = useWorkspaceStore.getState()
     expect(state.activeTabByConnection['conn-1']).toBe(tabs[1].id)
+  })
+
+  it('runs activation lifecycle for the tab revealed by closeTab', async () => {
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    const queryTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    useQueryStore.setState({
+      tabs: {
+        [queryTabId]: makeQueryTabState({
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'query-restore-on-close',
+              rows: [],
+              rowResidency: {
+                status: 'evicted',
+                isActive: false,
+                inactiveSince: 123,
+              },
+            },
+          ],
+        }),
+      },
+    })
+    ipc.override('touch_results', () => ({ status: 'available' }))
+    ipc.override('fetch_result_page', () => ({ rows: [[77]], page: 1, totalPages: 1 }))
+
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
+    const tableTabId = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1'].find((tab) => tab.type === 'table-data')!.id
+    useTableDataStore.setState({
+      tabs: {
+        [tableTabId]: makeTableDataTabState(),
+      },
+    })
+
+    useWorkspaceStore.getState().closeTab('conn-1', tableTabId)
+
+    await vi.waitFor(() => {
+      expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTabId)
+      expect(useQueryStore.getState().tabs[queryTabId].results[0].rowResidency).toEqual({
+        status: 'resident',
+        isActive: true,
+        inactiveSince: null,
+      })
+      expect(useQueryStore.getState().tabs[queryTabId].results[0].rows).toEqual([[77]])
+    })
   })
 
   it('closeTab with dirty table-designer tab calls requestNavigationAction instead of closing', () => {
@@ -1025,6 +1312,54 @@ describe('useWorkspaceStore — forceCloseTab', () => {
     expect(cleanupSpy).toHaveBeenCalledWith(tabId)
     expect(useWorkspaceStore.getState().tabsByConnection['conn-1']).toHaveLength(0)
   })
+
+  it('runs activation lifecycle for the tab revealed by forceCloseTab', async () => {
+    useWorkspaceStore.getState().openQueryTab('conn-1', 'Query 1')
+    const queryTabId = useWorkspaceStore.getState().tabsByConnection['conn-1'][0].id
+    useQueryStore.setState({
+      tabs: {
+        [queryTabId]: makeQueryTabState({
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'query-restore-on-force-close',
+              rows: [],
+              rowResidency: {
+                status: 'evicted',
+                isActive: false,
+                inactiveSince: 456,
+              },
+            },
+          ],
+        }),
+      },
+    })
+    ipc.override('touch_results', () => ({ status: 'available' }))
+    ipc.override('fetch_result_page', () => ({ rows: [[88]], page: 1, totalPages: 1 }))
+
+    useWorkspaceStore.getState().openTab(makeTab({ objectName: 'users', label: 'users' }))
+    const tableTabId = useWorkspaceStore
+      .getState()
+      .tabsByConnection['conn-1'].find((tab) => tab.type === 'table-data')!.id
+    useTableDataStore.setState({
+      tabs: {
+        [tableTabId]: makeTableDataTabState(),
+      },
+    })
+
+    useWorkspaceStore.getState().forceCloseTab('conn-1', tableTabId)
+
+    await vi.waitFor(() => {
+      expect(useWorkspaceStore.getState().activeTabByConnection['conn-1']).toBe(queryTabId)
+      expect(useQueryStore.getState().tabs[queryTabId].results[0].rowResidency).toEqual({
+        status: 'resident',
+        isActive: true,
+        inactiveSince: null,
+      })
+      expect(useQueryStore.getState().tabs[queryTabId].results[0].rows).toEqual([[88]])
+    })
+  })
 })
 
 describe('useWorkspaceStore — clearConnectionTabs', () => {
@@ -1079,11 +1414,21 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'q1',
+              rowResidency: {
+                status: 'resident',
+                isActive: true,
+                inactiveSince: null,
+              },
             },
             {
               ...DEFAULT_RESULT_STATE,
               resultStatus: 'success',
               queryId: 'q2',
+              rowResidency: {
+                status: 'resident',
+                isActive: false,
+                inactiveSince: null,
+              },
               editState: {
                 rowKey: { id: 1 },
                 originalValues: { name: 'Alice' },
@@ -1115,6 +1460,8 @@ describe('useWorkspaceStore — closeTab query-editor with dirty non-active resu
     // The query store should have switched activeResultIndex to the dirty result
     const queryTab = useQueryStore.getState().tabs[tabId]
     expect(queryTab?.activeResultIndex).toBe(1)
+    expect(queryTab?.results[0]?.rowResidency.isActive).toBe(false)
+    expect(queryTab?.results[1]?.rowResidency.isActive).toBe(true)
 
     // The query store should have a pendingNavigationAction set
     expect(queryTab?.pendingNavigationAction).not.toBeNull()

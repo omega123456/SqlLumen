@@ -44,6 +44,46 @@ function setTabWithExpiredResult() {
   })
 }
 
+function setTabWithRestoringRows() {
+  act(() => {
+    useQueryStore.setState({
+      tabs: {
+        [TAB_ID]: {
+          content: 'SELECT * FROM users',
+          selectedText: '',
+          filePath: null,
+          tabStatus: 'success',
+          prevTabStatus: 'idle',
+          cursorPosition: null,
+          connectionId: CONN_ID,
+          results: [
+            {
+              ...DEFAULT_RESULT_STATE,
+              resultStatus: 'success',
+              queryId: 'q-restoring-1',
+              lastExecutedSql: 'SELECT * FROM users',
+              columns: [{ name: 'id', dataType: 'INT' }],
+              rows: [],
+              totalRows: 1,
+              rowResidency: {
+                status: 'restoring',
+                isActive: true,
+                inactiveSince: null,
+              },
+            },
+          ],
+          activeResultIndex: 0,
+          activeBottomPanelItem: { type: 'result' },
+          pendingNavigationAction: null,
+          executionStartedAt: null,
+          isCancelling: false,
+          wasCancelled: false,
+        },
+      },
+    })
+  })
+}
+
 describe('ResultPanel — expired state', () => {
   beforeEach(() => {
     useQueryStore.setState({ tabs: {} })
@@ -106,7 +146,16 @@ describe('ResultPanel — expired state', () => {
     ipc.override(
       'execute_query',
       () =>
-        new Promise((resolve) => {
+        new Promise<{
+          queryId: string
+          columns: { name: string; dataType: string }[]
+          totalRows: number
+          executionTimeMs: number
+          affectedRows: number
+          firstPage: unknown[][]
+          totalPages: number
+          autoLimitApplied: boolean
+        }>((resolve) => {
           resolveExecute = resolve
         })
     )
@@ -121,7 +170,20 @@ describe('ResultPanel — expired state', () => {
     expect(screen.queryByText('Results expired')).not.toBeInTheDocument()
     expect(screen.queryByTestId('retry-expired-button')).not.toBeInTheDocument()
 
-    resolveExecute?.({
+    ;(
+      resolveExecute as
+        | ((value: {
+            queryId: string
+            columns: { name: string; dataType: string }[]
+            totalRows: number
+            executionTimeMs: number
+            affectedRows: number
+            firstPage: unknown[][]
+            totalPages: number
+            autoLimitApplied: boolean
+          }) => void)
+        | null
+    )?.({
       queryId: 'q-refreshed',
       columns: [{ name: 'id', dataType: 'INT' }],
       totalRows: 1,
@@ -177,5 +239,77 @@ describe('ResultPanel — expired state', () => {
     render(<ResultPanel tabId={TAB_ID} connectionId={CONN_ID} />)
 
     expect(screen.queryByText('Results expired')).not.toBeInTheDocument()
+  })
+
+  it('renders the restoring overlay for frontend row restore without showing expired UI', () => {
+    setTabWithRestoringRows()
+    render(<ResultPanel tabId={TAB_ID} connectionId={CONN_ID} />)
+
+    expect(screen.getByTestId('result-panel')).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByTestId('query-result-restore-overlay')).toHaveAttribute('role', 'status')
+    expect(screen.getByTestId('query-result-restore-overlay')).toHaveAttribute(
+      'aria-live',
+      'polite'
+    )
+    expect(screen.getByText('Restoring cached results…')).toBeInTheDocument()
+    expect(screen.queryByText('Results expired')).not.toBeInTheDocument()
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-busy', 'true')
+  })
+
+  it('does not block a resident active result when another result in the tab is restoring', () => {
+    act(() => {
+      useQueryStore.setState({
+        tabs: {
+          [TAB_ID]: {
+            content: 'SELECT 1; SELECT 2',
+            selectedText: '',
+            filePath: null,
+            tabStatus: 'restoring',
+            prevTabStatus: 'success',
+            cursorPosition: null,
+            connectionId: CONN_ID,
+            results: [
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q-active-1',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                rows: [[1]],
+                totalRows: 1,
+                rowResidency: {
+                  status: 'resident',
+                  isActive: true,
+                  inactiveSince: null,
+                },
+              },
+              {
+                ...DEFAULT_RESULT_STATE,
+                resultStatus: 'success',
+                queryId: 'q-restoring-2',
+                columns: [{ name: 'id', dataType: 'INT' }],
+                rows: [],
+                totalRows: 1,
+                rowResidency: {
+                  status: 'restoring',
+                  isActive: false,
+                  inactiveSince: 123,
+                },
+              },
+            ],
+            activeResultIndex: 0,
+            activeBottomPanelItem: { type: 'result' },
+            pendingNavigationAction: null,
+            executionStartedAt: null,
+            isCancelling: false,
+            wasCancelled: false,
+          },
+        },
+      })
+    })
+
+    render(<ResultPanel tabId={TAB_ID} connectionId={CONN_ID} />)
+
+    expect(screen.queryByTestId('query-result-restore-overlay')).not.toBeInTheDocument()
+    expect(screen.getByTestId('result-panel')).toHaveAttribute('aria-busy', 'false')
   })
 })

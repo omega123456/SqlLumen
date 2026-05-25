@@ -285,8 +285,8 @@ async fn test_get_processlist_handles_signed_ids_and_null_fields() {
     common::ensure_fake_backend_once();
     let state = common::test_app_state();
 
-    let server = MockMySqlServer::start_script(processlist_steps_with_signed_id_and_null_fields())
-        .await;
+    let server =
+        MockMySqlServer::start_script(processlist_steps_with_signed_id_and_null_fields()).await;
     register_mock_session(&state, "sess-processlist-null", server.port, false);
 
     let rows = get_processlist_impl(&state, "sess-processlist-null")

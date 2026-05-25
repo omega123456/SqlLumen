@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   ColumnMeta,
   FilterCondition,
+  FrontendRowResidencyState,
   MultiQueryResultItem,
   QueryTableEditInfo,
   RowEditState,
@@ -24,9 +25,9 @@ import {
 import {
   insertTableRow as insertTableRowCmd,
   updateTableRow as updateTableRowCmd,
-  touchTableData as touchTableDataCmd,
 } from '../lib/table-data-commands'
 import { showErrorToast, showSuccessToast, showWarningToast } from './toast-store'
+import { useTableDataStore } from './table-data-store'
 import {
   findAmbiguousColumns,
   buildBoundColumnIndexMap,
@@ -42,8 +43,10 @@ import type { ForeignKeyColumnInfo } from '../types/schema'
 import { getFirstSqlKeyword } from '../lib/sql-utils'
 import { useSettingsStore } from './settings-store'
 import { useHistoryStore } from './history-store'
+import { useWorkspaceStore } from './workspace-store'
 
 import { logFrontend } from '../lib/app-log-commands'
+import { frontendCacheLifecycle } from '../lib/frontend-cache-lifecycle'
 import {
   buildExecuteQueryPlan,
   executeQueryPlan,
@@ -107,6 +110,32 @@ function parseResultPagePayload(value: unknown): {
     return null
   }
   return { rows: o.rows, page: o.page, totalPages: o.totalPages }
+}
+
+function isQueryTabVisibleInWorkspace(tabId: string): boolean {
+  const workspaceState = useWorkspaceStore.getState()
+
+  for (const [connectionId, tabs] of Object.entries(workspaceState.tabsByConnection)) {
+    if (!tabs.some((tab) => tab.id === tabId)) {
+      continue
+    }
+
+    return workspaceState.activeTabByConnection[connectionId] === tabId
+  }
+
+  return false
+}
+
+function isQueryResultVisibleInWorkspace(tabId: string, resultIndex: number): boolean {
+  if (!isQueryTabVisibleInWorkspace(tabId)) {
+    return false
+  }
+
+  const tab = useQueryStore.getState().tabs[tabId]
+  return (
+    tab?.activeBottomPanelItem.type === 'result' &&
+    Math.min(tab.activeResultIndex, Math.max(0, tab.results.length - 1)) === resultIndex
+  )
 }
 
 export type ExecutionStatus = 'idle' | 'running' | 'success' | 'error'
@@ -203,6 +232,10 @@ export interface SingleResultState {
   scrollCol: number
   /** True when cached results have expired and are unrecoverable. */
   isExpired: boolean
+  /** Frontend row-payload residency separate from backend cache expiration. */
+  rowResidency: FrontendRowResidencyState
+  /** Timestamp recorded when frontend rows were evicted from memory. */
+  rowsEvictedAt: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -281,6 +314,12 @@ export const DEFAULT_RESULT_STATE: SingleResultState = {
   scrollRow: 0,
   scrollCol: 0,
   isExpired: false,
+  rowResidency: {
+    status: 'resident',
+    isActive: false,
+    inactiveSince: null,
+  },
+  rowsEvictedAt: null,
 }
 
 const DEFAULT_TAB_STATE: TabQueryState = {
@@ -546,7 +585,8 @@ function normalizeQueryRows(columns: ColumnMeta[], rows: unknown[][]): unknown[]
 /** Build a SingleResultState from a MultiQueryResultItem. */
 function buildSingleResultFromItem(
   item: MultiQueryResultItem,
-  defaultPageSize: number
+  defaultPageSize: number,
+  isActive = false
 ): SingleResultState {
   const normalizedRows = normalizeQueryRows(item.columns, item.firstPage)
   const resultStatus: ExecutionStatus = item.error ? 'error' : 'success'
@@ -567,6 +607,11 @@ function buildSingleResultFromItem(
     lastExecutedSql: item.sourceSql,
     reExecutable: item.reExecutable,
     isAnalyzed: false,
+    rowResidency: {
+      status: 'resident',
+      isActive,
+      inactiveSince: isActive ? null : Date.now(),
+    },
   }
 }
 
@@ -694,10 +739,30 @@ interface QueryState {
   validateActiveTabResults: (tabId: string) => void
 
   /** Retry an expired result by re-executing the query using the shared execution planner. */
-    retryExpiredResult: (tabId: string) => Promise<void>
+  retryExpiredResult: (tabId: string) => Promise<void>
+
+  /** Mark a query-result surface active and restore evicted frontend rows when needed. */
+  markResultSurfaceActive: (tabId: string, resultIndex?: number) => Promise<void>
+
+  /** Mark a query-result surface inactive and schedule frontend row eviction when safe. */
+  markResultSurfaceInactive: (tabId: string, resultIndex?: number) => void
+
+  /** Evict frontend rows for a hidden query result while preserving restore metadata. */
+  evictInactiveResultRows: (tabId: string, resultIndex: number) => void
+
+  /** Restore frontend rows for an evicted active query result from backend cache. */
+  restoreEvictedResultRows: (tabId: string, resultIndex?: number) => Promise<void>
 }
 
 export const useQueryStore = create<QueryState>()((set, get) => {
+  const getResultSurfaceKey = (tabId: string, resultIndex: number): string =>
+    `query-result:${tabId}:${resultIndex}`
+
+  const isDirtyResult = (result: SingleResultState | undefined): boolean => {
+    if (!result?.editState) return false
+    return result.editState.isNewRow || result.editState.modifiedColumns.size > 0
+  }
+
   /** Merge a partial update into a single tab's state. */
   const patchTab = (tabId: string, partial: Partial<TabQueryState>) => {
     set((state) => ({
@@ -723,6 +788,44 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         tabs: {
           ...state.tabs,
           [tabId]: { ...tab, results: newResults },
+        },
+      }
+    })
+  }
+
+  const cancelResultLifecycleTimer = (tabId: string, resultIndex: number) => {
+    frontendCacheLifecycle.cancel(getResultSurfaceKey(tabId, resultIndex))
+  }
+
+  const cancelAllResultLifecycleTimers = (tabId: string, resultCount: number) => {
+    for (let index = 0; index < resultCount; index++) {
+      cancelResultLifecycleTimer(tabId, index)
+    }
+  }
+
+  const patchResultResidency = (
+    tabId: string,
+    resultIndex: number,
+    partial: Partial<FrontendRowResidencyState>
+  ) => {
+    set((state) => {
+      const tab = state.tabs[tabId]
+      if (!tab || resultIndex < 0 || resultIndex >= tab.results.length) return state
+      const current = tab.results[resultIndex]
+      const nextResidency = {
+        ...current.rowResidency,
+        ...partial,
+      }
+      const nextResult = {
+        ...current,
+        rowResidency: nextResidency,
+      }
+      const nextResults = [...tab.results]
+      nextResults[resultIndex] = nextResult
+      return {
+        tabs: {
+          ...state.tabs,
+          [tabId]: { ...tab, results: nextResults },
         },
       }
     })
@@ -900,8 +1003,10 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       if (!get().tabs[tabId]) return
 
-      const results = multiResult.results.map((item) =>
-        buildSingleResultFromItem(item, getDefaultPageSize())
+      cancelAllResultLifecycleTimers(tabId, currentState?.results.length ?? 0)
+
+      const results = multiResult.results.map((item, index) =>
+        buildSingleResultFromItem(item, getDefaultPageSize(), index === 0)
       )
 
       // Tab-level status: 'success' if at least one result exists
@@ -1023,6 +1128,13 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       resultStatus: 'success',
       errorMessage: reResult.error ?? null,
       selectedRowIndex: null,
+      isExpired: false,
+      rowsEvictedAt: null,
+      rowResidency: {
+        ...(postResult?.rowResidency ?? DEFAULT_RESULT_STATE.rowResidency),
+        status: 'resident',
+        inactiveSince: postResult?.rowResidency.isActive ? null : postResult?.rowResidency.inactiveSince ?? null,
+      },
       ...extraPatch,
     })
 
@@ -1198,6 +1310,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
 
       // Clear edit state before the new query
       get().clearEditState(tabId)
+      cancelAllResultLifecycleTimers(tabId, currentState?.results.length ?? 0)
 
       // Reset cancel flags at start
       patchTab(tabId, { wasCancelled: false, connectionId })
@@ -1230,6 +1343,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           lastExecutedSql: sql,
           reExecutable: true,
           isAnalyzed: false,
+          rowResidency: {
+            status: 'resident',
+            isActive: true,
+            inactiveSince: null,
+          },
+          rowsEvictedAt: null,
         }
 
         patchTab(tabId, {
@@ -1310,6 +1429,179 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       )
     },
 
+    markResultSurfaceActive: async (tabId: string, resultIndex?: number) => {
+      const tab = get().tabs[tabId]
+      if (!tab) return
+
+      const targetIndex = resultIndex ?? getActiveIndex(tabId)
+      const result = tab.results[targetIndex]
+      if (!result) return
+
+      cancelResultLifecycleTimer(tabId, targetIndex)
+      patchResultResidency(tabId, targetIndex, {
+        isActive: true,
+        inactiveSince: null,
+      })
+
+      if (result.rowResidency.status === 'evicted' && !result.isExpired) {
+        await get().restoreEvictedResultRows(tabId, targetIndex)
+      }
+    },
+
+    markResultSurfaceInactive: (tabId: string, resultIndex?: number) => {
+      const tab = get().tabs[tabId]
+      if (!tab) return
+
+      const targetIndex = resultIndex ?? getActiveIndex(tabId)
+      const result = tab.results[targetIndex]
+      if (!result) return
+
+      patchResultResidency(tabId, targetIndex, {
+        isActive: false,
+        inactiveSince: Date.now(),
+      })
+
+      if (
+        result.rowResidency.status !== 'resident' ||
+        result.isExpired ||
+        isDirtyResult(result) ||
+        (result.rows.length === 0 && (result.unfilteredRows?.length ?? 0) === 0)
+      ) {
+        return
+      }
+
+      frontendCacheLifecycle.scheduleInactive(getResultSurfaceKey(tabId, targetIndex), () => {
+        get().evictInactiveResultRows(tabId, targetIndex)
+      })
+    },
+
+    evictInactiveResultRows: (tabId: string, resultIndex: number) => {
+      cancelResultLifecycleTimer(tabId, resultIndex)
+      set((state) => {
+        const tab = state.tabs[tabId]
+        if (!tab || resultIndex < 0 || resultIndex >= tab.results.length) return state
+
+        const result = tab.results[resultIndex]
+        if (
+          result.rowResidency.isActive ||
+          result.rowResidency.status !== 'resident' ||
+          result.isExpired ||
+          isDirtyResult(result)
+        ) {
+          return state
+        }
+
+        const nextResults = [...tab.results]
+        nextResults[resultIndex] = {
+          ...result,
+          rows: [],
+          unfilteredRows: null,
+          selectedRowIndex: null,
+          editingRowIndex: null,
+          editState: null,
+          rowsEvictedAt: Date.now(),
+          rowResidency: {
+            ...result.rowResidency,
+            status: 'evicted',
+          },
+        }
+
+        return {
+          tabs: {
+            ...state.tabs,
+            [tabId]: {
+              ...tab,
+              results: nextResults,
+            },
+          },
+        }
+      })
+    },
+
+    restoreEvictedResultRows: async (tabId: string, resultIndex?: number) => {
+      const tab = get().tabs[tabId]
+      if (!tab) return
+
+      const targetIndex = resultIndex ?? getActiveIndex(tabId)
+      const result = tab.results[targetIndex]
+      if (!result || result.rowResidency.status !== 'evicted' || result.isExpired) {
+        return
+      }
+
+      if (!tab.connectionId || !result.queryId) {
+        markTabResultsExpired(tabId)
+        return
+      }
+
+      const previousTabStatus = tab.tabStatus
+      patchTab(tabId, { tabStatus: 'restoring' })
+      patchResultResidency(tabId, targetIndex, { status: 'restoring' })
+
+      try {
+        const touchResponse = await touchResultsCmd(tab.connectionId, tabId)
+        if (!get().tabs[tabId]) return
+
+        if (touchResponse.status !== 'available') {
+          markTabResultsExpired(tabId)
+          patchResultResidency(tabId, targetIndex, { status: 'evicted' })
+          return
+        }
+
+        const raw = await fetchResultPageCmd(
+          tab.connectionId,
+          tabId,
+          result.queryId,
+          result.currentPage,
+          targetIndex
+        )
+        const parsed = parseResultPagePayload(raw)
+        if (!parsed) {
+          throw new Error('invalid fetch_result_page payload during frontend restore')
+        }
+
+        if (!get().tabs[tabId]) return
+
+        const latestResult = get().tabs[tabId]?.results[targetIndex] ?? result
+        const normalizedRows = normalizeQueryRows(result.columns, parsed.rows)
+        const filterPatch = reapplyFilterIfActive(latestResult, normalizedRows, result.columns)
+        const latestResidency = latestResult.rowResidency
+
+        patchResultByIndex(tabId, targetIndex, {
+          ...filterPatch,
+          currentPage: filterPatch.currentPage ?? parsed.page,
+          totalPages: filterPatch.totalPages ?? parsed.totalPages,
+          isExpired: false,
+          rowsEvictedAt: null,
+          rowResidency: {
+            ...latestResidency,
+            status: 'resident',
+            isActive: latestResidency.isActive,
+            inactiveSince: latestResidency.isActive ? null : latestResidency.inactiveSince,
+          },
+        })
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        if (get().tabs[tabId]) {
+          patchResultResidency(tabId, targetIndex, { status: 'evicted' })
+        }
+        if (errorMessage.includes('results_expired')) {
+          markTabResultsExpired(tabId)
+        } else {
+          logFrontend(
+            'warn',
+            `[query-store] restoreEvictedResultRows failed for ${tabId}/${targetIndex}: ${errorMessage}`
+          )
+        }
+      } finally {
+        const currentTab = get().tabs[tabId]
+        if (currentTab) {
+          patchTab(tabId, {
+            tabStatus: previousTabStatus === 'restoring' ? 'success' : previousTabStatus,
+          })
+        }
+      }
+    },
+
     setActiveResultIndex: (tabId: string, index: number) => {
       const tab = get().tabs[tabId]
       if (!tab) return
@@ -1323,7 +1615,15 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         // Defer via navigation guard
         const store = get()
         store.requestNavigationAction(tabId, () => {
+          const previousIndex = get().tabs[tabId]?.activeResultIndex ?? tab.activeResultIndex
+          const isVisible = isQueryTabVisibleInWorkspace(tabId)
+          if (isVisible && get().tabs[tabId]?.activeBottomPanelItem.type === 'result') {
+            store.markResultSurfaceInactive(tabId, previousIndex)
+          }
           patchTab(tabId, { activeResultIndex: index })
+          if (isVisible && get().tabs[tabId]?.activeBottomPanelItem.type === 'result') {
+            void store.markResultSurfaceActive(tabId, index)
+          }
           // Trigger deferred analysis if needed
           const afterSwitch = get().tabs[tabId]
           if (!afterSwitch) return
@@ -1362,7 +1662,15 @@ export const useQueryStore = create<QueryState>()((set, get) => {
         })
       }
 
+      const isVisible = isQueryTabVisibleInWorkspace(tabId)
+
+      if (isVisible && tab.activeBottomPanelItem.type === 'result') {
+        get().markResultSurfaceInactive(tabId, tab.activeResultIndex)
+      }
       patchTab(tabId, { activeResultIndex: index })
+      if (isVisible && get().tabs[tabId]?.activeBottomPanelItem.type === 'result') {
+        void get().markResultSurfaceActive(tabId, index)
+      }
 
       // Trigger deferred analysis if needed
       const afterSwitch = get().tabs[tabId]
@@ -1392,27 +1700,32 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     },
 
     setActiveBottomPanelItem: (tabId: string, item: ActiveBottomPanelItem) => {
+      const tabBeforePatch = get().tabs[tabId]
+      if (!tabBeforePatch) {
+        patchTab(tabId, { activeBottomPanelItem: item })
+        return
+      }
+
+      const isVisible = isQueryTabVisibleInWorkspace(tabId)
+      const previousItem = tabBeforePatch.activeBottomPanelItem
+      if (isVisible && previousItem.type === 'result') {
+        get().markResultSurfaceInactive(tabId, tabBeforePatch.activeResultIndex)
+      } else if (isVisible && previousItem.type === 'table-data') {
+        useTableDataStore.getState().markTableDataSurfaceInactive(previousItem.tabId)
+      }
+
       patchTab(tabId, { activeBottomPanelItem: item })
 
-      if (item.type !== 'table-data') {
+      if (item.type === 'result') {
+        if (isVisible) {
+          void get().markResultSurfaceActive(tabId, get().tabs[tabId]?.activeResultIndex)
+        }
         return
       }
 
-      const tab = get().tabs[tabId]
-      if (!tab?.connectionId) {
-        return
+      if (isVisible) {
+        void useTableDataStore.getState().markTableDataSurfaceActive(item.tabId)
       }
-
-      touchTableDataCmd({
-        connectionId: tab.connectionId,
-        tabId: item.tabId,
-      }).catch((error: unknown) => {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        logFrontend(
-          'warn',
-          `Table data cache touch failed for bottom panel item ${item.tabId}: ${errorMessage}`
-        )
-      })
     },
 
     fetchPage: async (connectionId: string, tabId: string, page: number) => {
@@ -1448,12 +1761,29 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           normalizedRows,
           result.columns
         )
+        const isStillVisible = isQueryResultVisibleInWorkspace(tabId, resultIndex)
 
         patchResultByIndex(tabId, resultIndex, {
           ...filterPatch,
           currentPage: filterPatch.currentPage ?? parsed.page,
           totalPages: filterPatch.totalPages ?? parsed.totalPages,
+          isExpired: false,
+          rowsEvictedAt: null,
+          rowResidency: {
+            ...(currentResultForFilter?.rowResidency ?? result.rowResidency),
+            status: 'resident',
+            isActive: isStillVisible,
+            inactiveSince: isStillVisible
+              ? null
+              : ((currentResultForFilter?.rowResidency.inactiveSince ??
+                  result.rowResidency.inactiveSince) ??
+                Date.now()),
+          },
         })
+
+        if (!isStillVisible) {
+          get().markResultSurfaceInactive(tabId, resultIndex)
+        }
       } catch (err) {
         logFrontend('error', ['[query-store] fetchPage failed:', err].map(String).join(' '))
         const errMsg = err instanceof Error ? err.message : String(err)
@@ -1464,6 +1794,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     },
 
     cleanupTab: (connectionId: string, tabId: string) => {
+      cancelAllResultLifecycleTimers(tabId, get().tabs[tabId]?.results.length ?? 0)
       // Fire-and-forget eviction
       evictResultsCmd(connectionId, tabId).catch((err) => {
         logFrontend(
@@ -1481,6 +1812,7 @@ export const useQueryStore = create<QueryState>()((set, get) => {
     cleanupConnection: (connectionId: string, tabIds: string[]) => {
       // Evict Rust-side results for each tab (fire-and-forget)
       for (const id of tabIds) {
+        cancelAllResultLifecycleTimers(id, get().tabs[id]?.results.length ?? 0)
         evictResultsCmd(connectionId, id).catch((err) => {
           logFrontend(
             'error',
@@ -1705,6 +2037,16 @@ export const useQueryStore = create<QueryState>()((set, get) => {
                 resultStatus: 'success',
                 errorMessage: null,
                 selectedRowIndex: null,
+                isExpired: false,
+                rowsEvictedAt: null,
+                rowResidency: {
+                  ...(currentResultForFilter?.rowResidency ?? DEFAULT_RESULT_STATE.rowResidency),
+                  status: 'resident',
+                  inactiveSince:
+                    currentResultForFilter?.rowResidency.isActive ?? false
+                      ? null
+                      : (currentResultForFilter?.rowResidency.inactiveSince ?? null),
+                },
               })
 
               if (execResult.columns.length > 0 && isEditableSelectSql(lastSql)) {
@@ -1765,6 +2107,16 @@ export const useQueryStore = create<QueryState>()((set, get) => {
           ...filterPatch,
           currentPage: filterPatch.currentPage ?? parsed.page,
           totalPages: filterPatch.totalPages ?? parsed.totalPages,
+          isExpired: false,
+          rowsEvictedAt: null,
+          rowResidency: {
+            ...(sortResult?.rowResidency ?? DEFAULT_RESULT_STATE.rowResidency),
+            status: 'resident',
+            inactiveSince:
+              sortResult?.rowResidency.isActive ?? false
+                ? null
+                : (sortResult?.rowResidency.inactiveSince ?? null),
+          },
         })
       } catch (error) {
         logFrontend('error', ['[query-store] sortResults failed:', error].map(String).join(' '))
@@ -1874,6 +2226,12 @@ export const useQueryStore = create<QueryState>()((set, get) => {
             autoLimitApplied: execResult.autoLimitApplied,
             lastExecutedSql: result.lastExecutedSql,
             reExecutable: true,
+            rowResidency: {
+              status: 'resident',
+              isActive: true,
+              inactiveSince: null,
+            },
+            rowsEvictedAt: null,
           }
 
           patchTab(tabId, {
@@ -2653,6 +3011,9 @@ export const useQueryStore = create<QueryState>()((set, get) => {
       clearExpiredFlags(tabId)
 
       if (tab.results.length > 1) {
+        if (plan.kind !== 'single') {
+          return
+        }
         const activeResultIndex = getActiveIndex(tabId)
         beginExecution(tabId)
         try {

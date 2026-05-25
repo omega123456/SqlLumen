@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ipc, overrideIpcCommands, overrideNamedIpcCommands } from '../ipc-mock'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { useToastStore, _resetToastTimeoutsForTests } from '../../stores/toast-store'
+import { useTableDataStore } from '../../stores/table-data-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
 import { flat } from '../helpers/query-test-utils'
+import { makeTableDataTabState } from '../helpers/table-data-test-utils'
 
 /**
  * Set result-level fields on an existing tab created by setContent().
@@ -40,6 +43,14 @@ const QUERY_STORE_COMMANDS = [
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
+  useWorkspaceStore.setState({
+    tabsByConnection: {},
+    activeTabByConnection: {},
+    lastFocusedSurfaceByTab: {},
+    blockingNavigationByTab: {},
+    pendingCascadeClose: null,
+  })
+  useTableDataStore.setState({ tabs: {} })
   overrideCommands({
     execute_query: () => ({
       queryId: 'q-mock',
@@ -94,6 +105,36 @@ describe('useQueryStore — activeBottomPanelItem', () => {
         },
       },
     }))
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'conn-1': [
+          {
+            id: 'tab-bottom-panel',
+            type: 'query-editor',
+            label: 'Query 1',
+            connectionId: 'conn-1',
+          },
+        ],
+      },
+      activeTabByConnection: {
+        'conn-1': 'tab-bottom-panel',
+      },
+      lastFocusedSurfaceByTab: {},
+      blockingNavigationByTab: {},
+      pendingCascadeClose: null,
+    })
+    useTableDataStore.setState({
+      tabs: {
+        'table-tab-1': makeTableDataTabState({
+          connectionId: 'conn-1',
+          rowResidency: {
+            status: 'resident',
+            isActive: false,
+            inactiveSince: 123,
+          },
+        }),
+      },
+    })
 
     useQueryStore
       .getState()
@@ -103,17 +144,14 @@ describe('useQueryStore — activeBottomPanelItem', () => {
       type: 'table-data',
       tabId: 'table-tab-1',
     })
-    expect(ipc.calls('touch_table_data')).toContainEqual({
-      connectionId: 'conn-1',
-      tabId: 'table-tab-1',
+    expect(useTableDataStore.getState().tabs['table-tab-1']?.rowResidency).toEqual({
+      status: 'resident',
+      isActive: true,
+      inactiveSince: null,
     })
   })
 
-  it('logs when touching a bottom-panel table-data item fails', async () => {
-    ipc.override('touch_table_data', () => {
-      throw new Error('touch failed')
-    })
-
+  it('does not touch a bottom-panel table-data item when the query tab is hidden', () => {
     useQueryStore.getState().setContent('tab-bottom-panel', 'SELECT 1')
     useQueryStore.setState((prev) => ({
       tabs: {
@@ -124,16 +162,141 @@ describe('useQueryStore — activeBottomPanelItem', () => {
         },
       },
     }))
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'conn-1': [
+          {
+            id: 'tab-bottom-panel',
+            type: 'query-editor',
+            label: 'Query 1',
+            connectionId: 'conn-1',
+          },
+          { id: 'tab-visible', type: 'query-editor', label: 'Query 2', connectionId: 'conn-1' },
+        ],
+      },
+      activeTabByConnection: {
+        'conn-1': 'tab-visible',
+      },
+      lastFocusedSurfaceByTab: {},
+      blockingNavigationByTab: {},
+      pendingCascadeClose: null,
+    })
 
     useQueryStore
       .getState()
       .setActiveBottomPanelItem('tab-bottom-panel', { type: 'table-data', tabId: 'table-tab-1' })
 
-    await vi.waitFor(() => {
-      expect(ipc.calls('log_frontend')).toContainEqual({
-        level: 'warn',
-        message: 'Table data cache touch failed for bottom panel item table-tab-1: touch failed',
-      })
+    expect(useQueryStore.getState().getTabState('tab-bottom-panel').activeBottomPanelItem).toEqual({
+      type: 'table-data',
+      tabId: 'table-tab-1',
+    })
+    expect(useTableDataStore.getState().tabs['table-tab-1']).toBeUndefined()
+  })
+
+  it('does not activate a hidden bottom-panel table-data item', () => {
+    useQueryStore.getState().setContent('tab-bottom-panel', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-bottom-panel': {
+          ...prev.tabs['tab-bottom-panel']!,
+          connectionId: 'conn-1',
+        },
+      },
+    }))
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'conn-1': [
+          {
+            id: 'tab-bottom-panel',
+            type: 'query-editor',
+            label: 'Query 1',
+            connectionId: 'conn-1',
+          },
+          { id: 'tab-visible', type: 'query-editor', label: 'Query 2', connectionId: 'conn-1' },
+        ],
+      },
+      activeTabByConnection: {
+        'conn-1': 'tab-visible',
+      },
+      lastFocusedSurfaceByTab: {},
+      blockingNavigationByTab: {},
+      pendingCascadeClose: null,
+    })
+    useTableDataStore.setState({
+      tabs: {
+        'table-tab-1': makeTableDataTabState({
+          connectionId: 'conn-1',
+          rowResidency: {
+            status: 'resident',
+            isActive: false,
+            inactiveSince: 123,
+          },
+        }),
+      },
+    })
+
+    useQueryStore
+      .getState()
+      .setActiveBottomPanelItem('tab-bottom-panel', { type: 'table-data', tabId: 'table-tab-1' })
+
+    expect(useTableDataStore.getState().tabs['table-tab-1']?.rowResidency).toEqual({
+      status: 'resident',
+      isActive: false,
+      inactiveSince: 123,
+    })
+  })
+
+  it('marks the previous visible table-data item inactive when switching back to results', () => {
+    useQueryStore.getState().setContent('tab-bottom-panel', 'SELECT 1')
+    useQueryStore.setState((prev) => ({
+      tabs: {
+        ...prev.tabs,
+        'tab-bottom-panel': {
+          ...prev.tabs['tab-bottom-panel']!,
+          connectionId: 'conn-1',
+          activeBottomPanelItem: { type: 'table-data', tabId: 'table-tab-1' },
+        },
+      },
+    }))
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'conn-1': [
+          {
+            id: 'tab-bottom-panel',
+            type: 'query-editor',
+            label: 'Query 1',
+            connectionId: 'conn-1',
+          },
+        ],
+      },
+      activeTabByConnection: {
+        'conn-1': 'tab-bottom-panel',
+      },
+      lastFocusedSurfaceByTab: {},
+      blockingNavigationByTab: {},
+      pendingCascadeClose: null,
+    })
+    useTableDataStore.setState({
+      tabs: {
+        'table-tab-1': makeTableDataTabState({
+          connectionId: 'conn-1',
+          rowResidency: {
+            status: 'resident',
+            isActive: true,
+            inactiveSince: null,
+          },
+          rows: [[1]],
+        }),
+      },
+    })
+
+    useQueryStore.getState().setActiveBottomPanelItem('tab-bottom-panel', { type: 'result' })
+
+    expect(useTableDataStore.getState().tabs['table-tab-1']?.rowResidency).toEqual({
+      status: 'resident',
+      isActive: false,
+      inactiveSince: expect.any(Number),
     })
   })
 })
@@ -437,6 +600,51 @@ describe('useQueryStore — fetchPage', () => {
     const f = flat('tab-bool-page')
     expect(f.rows).toEqual([[0, 1, 'page-2']])
     expect(f.currentPage).toBe(2)
+  })
+
+  it('keeps a hidden fetch completion inactive and immediately starts the TTL lifecycle', async () => {
+    vi.useFakeTimers()
+    useQueryStore.getState().setContent('tab-hidden-fetch', 'SELECT 1')
+    patchResult('tab-hidden-fetch', {
+      queryId: 'q-hidden-fetch',
+      columns: [{ name: 'id', dataType: 'INT' }],
+      rowResidency: {
+        status: 'resident',
+        isActive: false,
+        inactiveSince: 321,
+      },
+    })
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'conn-1': [
+          { id: 'tab-hidden-fetch', type: 'query-editor', label: 'Query 1', connectionId: 'conn-1' },
+          { id: 'tab-visible', type: 'query-editor', label: 'Query 2', connectionId: 'conn-1' },
+        ],
+      },
+      activeTabByConnection: {
+        'conn-1': 'tab-visible',
+      },
+      lastFocusedSurfaceByTab: {},
+      blockingNavigationByTab: {},
+      pendingCascadeClose: null,
+    })
+
+    await useQueryStore.getState().fetchPage('conn-1', 'tab-hidden-fetch', 2)
+
+    const result = useQueryStore.getState().tabs['tab-hidden-fetch'].results[0]
+    expect(result.rows).toEqual([[4], [5]])
+    expect(result.rowResidency).toEqual({
+      status: 'resident',
+      isActive: false,
+      inactiveSince: expect.any(Number),
+    })
+
+    await vi.advanceTimersByTimeAsync(30 * 60 * 1000)
+
+    expect(useQueryStore.getState().tabs['tab-hidden-fetch'].results[0].rowResidency.status).toBe(
+      'evicted'
+    )
+    vi.useRealTimers()
   })
 })
 

@@ -55,6 +55,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
 
   const executionTimeMs = tabState?.executionTimeMs ?? 0
   const isLoading = tabState?.isLoading ?? false
+  const rowResidencyStatus = tabState?.rowResidency?.status ?? 'resident'
   const primaryKey = tabState?.primaryKey ?? null
   const editState = tabState?.editState ?? null
   const viewMode = tabState?.viewMode ?? 'grid'
@@ -65,6 +66,8 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
   const filterModel = useMemo<FilterCondition[]>(() => tabState?.filterModel ?? [], [tabState])
   const selectedCell = tabState?.selectedCell ?? null
   const hasLoadedTableData = columns.length > 0
+  const isRestoring = rowResidencyStatus === 'restoring'
+  const isBusy = isLoading || isRestoring
 
   const showError = useToastStore((s) => s.showError)
   const showSuccess = useToastStore((s) => s.showSuccess)
@@ -236,8 +239,15 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
       <div className={styles.leftSection}>
         {/* Status — shared component */}
         <StatusArea
-          status={isLoading ? 'loading' : 'success'}
+          status={isBusy ? 'loading' : 'success'}
           executionTimeMs={executionTimeMs > 0 ? executionTimeMs : undefined}
+          customContent={
+            isRestoring ? (
+              <span className={styles.statusHint} data-testid="table-data-restoring-status">
+                Restoring cached rows...
+              </span>
+            ) : undefined
+          }
         />
 
         {/* View badge — for SQL view objects */}
@@ -270,7 +280,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             <button
               type="button"
               className={styles.toolbarButton}
-              disabled={isMutationDisabled || isEditingNewRow || isLoading}
+              disabled={isMutationDisabled || isEditingNewRow || isBusy}
               onClick={handleAddRow}
               title="Add row"
               data-testid="btn-add-row"
@@ -282,7 +292,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             <button
               type="button"
               className={styles.toolbarButton}
-              disabled={!canClone || isLoading}
+              disabled={!canClone || isBusy}
               onClick={handleCloneRow}
               title="Clone selected row; primary key fields are left blank."
               data-testid="btn-clone-row"
@@ -294,7 +304,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             <button
               type="button"
               className={styles.toolbarButton}
-              disabled={!canDelete || isLoading}
+              disabled={!canDelete || isBusy}
               onClick={handleDeleteRow}
               title="Delete row"
               data-testid="btn-delete-row"
@@ -306,7 +316,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             <button
               type="button"
               className={styles.toolbarButton}
-              disabled={!hasModifications || isLoading}
+              disabled={!hasModifications || isBusy}
               onClick={handleSave}
               title="Save changes"
               data-testid="btn-save"
@@ -318,7 +328,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
             <button
               type="button"
               className={styles.toolbarButton}
-              disabled={editState === null || isLoading}
+              disabled={editState === null || isBusy}
               onClick={handleDiscard}
               title="Discard changes"
               data-testid="btn-discard"
@@ -332,7 +342,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
           type="button"
           className={styles.iconButton}
           onClick={handleRefresh}
-          disabled={isLoading}
+          disabled={isBusy}
           title="Refresh data"
           data-testid="btn-refresh"
         >
@@ -348,7 +358,7 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
           activeCount={filterModel.length}
           onFilterClick={() => setIsFilterDialogOpen(true)}
           onClearClick={handleClearFilter}
-          isDisabled={columns.length === 0}
+          isDisabled={columns.length === 0 || isBusy}
         />
 
         {/* Divider */}
@@ -363,14 +373,14 @@ export function TableDataToolbar({ tabId, isView = false }: TableDataToolbarProp
         />
 
         {/* Export — shared component */}
-        <ExportButton disabled={isLoading || !hasLoadedTableData} onClick={handleExport} />
+        <ExportButton disabled={isBusy || !hasLoadedTableData} onClick={handleExport} />
 
         {/* Pagination — shared component */}
         <PaginationGroup
           currentPage={currentPage}
           paginationMode="unknown"
           pageSize={pageSize}
-          disabled={isLoading}
+          disabled={isBusy}
           onPageSizeChange={handlePageSizeChange}
           onPageSubmit={(page) => {
             withNavigationGuard(() => {

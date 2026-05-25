@@ -257,6 +257,14 @@ export interface ResultPage {
   totalPages: number
 }
 
+export type FrontendRowResidencyStatus = 'resident' | 'evicted' | 'restoring'
+
+export interface FrontendRowResidencyState {
+  status: FrontendRowResidencyStatus
+  isActive: boolean
+  inactiveSince: number | null
+}
+
 export interface TableInfo {
   name: string
   engine: string
@@ -338,6 +346,19 @@ export interface TableDataResponse {
   pageSize: number
   primaryKey: PrimaryKeyInfo | null
   executionTimeMs: number
+}
+
+export type TableDataCacheRestoreStatus = 'available' | 'expired' | 'missing'
+
+export interface TableDataCacheRestoreResult {
+  status: TableDataCacheRestoreStatus
+  data: TableDataResponse | null
+}
+
+export type TableDataCacheSyncStatus = 'synced' | 'expired' | 'missing'
+
+export interface TableDataCacheSyncResult {
+  status: TableDataCacheSyncStatus
 }
 
 // ---------------------------------------------------------------------------
@@ -474,6 +495,8 @@ export interface TableDataTabState {
   pageSize: number
   primaryKey: PrimaryKeyInfo | null
   executionTimeMs: number
+  rowResidency?: FrontendRowResidencyState
+  rowsEvictedAt: number | null
 
   // Table context
   connectionId: string

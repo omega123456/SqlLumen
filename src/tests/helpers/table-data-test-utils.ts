@@ -59,6 +59,12 @@ export function makeTableDataTabState(
     pageSize: 1000,
     primaryKey: null,
     executionTimeMs: 0,
+    rowResidency: {
+      status: 'resident',
+      isActive: false,
+      inactiveSince: null,
+    },
+    rowsEvictedAt: null,
     connectionId: 'conn-1',
     database: 'mydb',
     table: 'users',

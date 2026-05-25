@@ -3,9 +3,10 @@
  * setActiveResultIndex, and per-result isolation.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { overrideIpcCommands, overrideNamedIpcCommands } from '../ipc-mock'
+import { ipc, overrideIpcCommands, overrideNamedIpcCommands } from '../ipc-mock'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
 import { _resetToastTimeoutsForTests } from '../../stores/toast-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
 import { flat } from '../helpers/query-test-utils'
 
 const overrideCommands = overrideIpcCommands
@@ -69,6 +70,13 @@ const multiQueryResult = {
 
 beforeEach(() => {
   useQueryStore.setState({ tabs: {} })
+  useWorkspaceStore.setState({
+    tabsByConnection: {},
+    activeTabByConnection: {},
+    lastFocusedSurfaceByTab: {},
+    blockingNavigationByTab: {},
+    pendingCascadeClose: null,
+  })
   _resetToastTimeoutsForTests()
   overrideCommands({
     execute_multi_query: () => multiQueryResult,
@@ -299,6 +307,29 @@ describe('useQueryStore — setActiveResultIndex', () => {
     useQueryStore.getState().setActiveResultIndex('tab-1', 1)
     expect(flat('tab-1').queryId).toBe('q2')
     expect(flat('tab-1').columns).toEqual([{ name: 'name', dataType: 'VARCHAR' }])
+  })
+
+  it('does not touch result residency when switching results on a hidden query tab', () => {
+    setupMultiResult()
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        'conn-1': [
+          { id: 'tab-1', type: 'query-editor', label: 'Query 1', connectionId: 'conn-1' },
+          { id: 'tab-2', type: 'query-editor', label: 'Query 2', connectionId: 'conn-1' },
+        ],
+      },
+      activeTabByConnection: {
+        'conn-1': 'tab-2',
+      },
+      lastFocusedSurfaceByTab: {},
+      blockingNavigationByTab: {},
+      pendingCascadeClose: null,
+    })
+
+    useQueryStore.getState().setActiveResultIndex('tab-1', 1)
+
+    expect(useQueryStore.getState().tabs['tab-1']!.activeResultIndex).toBe(1)
+    expect(ipc.calls('touch_results')).toHaveLength(0)
   })
 })
 

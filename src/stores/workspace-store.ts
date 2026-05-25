@@ -16,8 +16,6 @@ import { useTableDesignerStore } from './table-designer-store'
 import { useObjectEditorStore } from './object-editor-store'
 import { useAiStore } from './ai-store'
 import { useSettingsStore } from './settings-store'
-import { touchTableData } from '../lib/table-data-commands'
-import { logFrontend } from '../lib/app-log-commands'
 
 export type WorkspaceFocusSurface = 'editor' | 'ai-input'
 
@@ -322,14 +320,69 @@ function cleanupRemovedTableTabs(tabIds: string[]) {
   }
 }
 
-function touchTableDataForTab(tab: TableDataTab): void {
-  touchTableData({
-    connectionId: tab.connectionId,
+type VisibleWorkspaceSurface =
+  | { kind: 'none' }
+  | { kind: 'query-result'; tabId: string; resultIndex: number }
+  | { kind: 'table-data'; tabId: string }
+
+function getVisibleWorkspaceSurface(
+  connectionId: string,
+  tabId: string | null
+): VisibleWorkspaceSurface {
+  if (!tabId) {
+    return { kind: 'none' }
+  }
+
+  const tabs = useWorkspaceStore.getState().tabsByConnection[connectionId] || []
+  const tab = tabs.find((candidate) => candidate.id === tabId)
+  if (!tab) {
+    return { kind: 'none' }
+  }
+
+  if (tab.type === 'table-data') {
+    return { kind: 'table-data', tabId: tab.id }
+  }
+
+  if (tab.type !== 'query-editor') {
+    return { kind: 'none' }
+  }
+
+  const queryTab = useQueryStore.getState().tabs[tab.id]
+  if (!queryTab) {
+    return { kind: 'none' }
+  }
+
+  if (queryTab.activeBottomPanelItem.type === 'table-data') {
+    return { kind: 'table-data', tabId: queryTab.activeBottomPanelItem.tabId }
+  }
+
+  return {
+    kind: 'query-result',
     tabId: tab.id,
-  }).catch((error: unknown) => {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    logFrontend('warn', `Table data cache touch failed for tab ${tab.id}: ${errorMessage}`)
-  })
+    resultIndex: Math.min(queryTab.activeResultIndex, Math.max(0, queryTab.results.length - 1)),
+  }
+}
+
+function markVisibleWorkspaceSurfaceInactive(surface: VisibleWorkspaceSurface): void {
+  if (surface.kind === 'query-result') {
+    useQueryStore.getState().markResultSurfaceInactive(surface.tabId, surface.resultIndex)
+    return
+  }
+
+  if (surface.kind === 'table-data') {
+    useTableDataStore.getState().markTableDataSurfaceInactive(surface.tabId)
+  }
+}
+
+function markVisibleWorkspaceSurfaceActive(surface: VisibleWorkspaceSurface): void {
+  if (surface.kind === 'query-result') {
+    void useQueryStore.getState().markResultSurfaceActive(surface.tabId, surface.resultIndex)
+    return
+  }
+
+  if (surface.kind === 'table-data') {
+    void useTableDataStore.getState().markTableDataSurfaceActive(surface.tabId)
+  }
 }
 
 function runPostActivationEffects(connectionId: string, tabId: string): void {
@@ -337,41 +390,49 @@ function runPostActivationEffects(connectionId: string, tabId: string): void {
   const tab = tabs.find((candidate) => candidate.id === tabId)
 
   if (tab?.type === 'query-editor') {
-    const queryTab = useQueryStore.getState().tabs[tabId]
-    if (queryTab) {
-      const activeIdx = Math.min(
-        queryTab.activeResultIndex,
-        Math.max(0, queryTab.results.length - 1)
-      )
-      const activeResult = queryTab.results[activeIdx]
+    const visibleSurface = getVisibleWorkspaceSurface(connectionId, tabId)
+    markVisibleWorkspaceSurfaceActive(visibleSurface)
+
+    if (visibleSurface.kind === 'query-result') {
+      const activeResult = useQueryStore.getState().tabs[tabId]?.results[visibleSurface.resultIndex]
       if (activeResult?.queryId) {
         useQueryStore.getState().validateActiveTabResults(tabId)
       }
     }
-  }
-
-  if (tab?.type === 'table-data') {
-    touchTableDataForTab(tab)
     return
   }
 
-  if (tab?.type === 'query-editor') {
-    const activeBottomPanelItem = useQueryStore.getState().getTabState(tabId).activeBottomPanelItem
-    if (activeBottomPanelItem.type !== 'table-data') {
-      return
-    }
-
-    const scopedTableTab = tabs.find(
-      (candidate): candidate is TableDataTab =>
-        candidate.type === 'table-data' &&
-        candidate.id === activeBottomPanelItem.tabId &&
-        candidate.parentQueryTabId === tabId
-    )
-
-    if (scopedTableTab) {
-      touchTableDataForTab(scopedTableTab)
-    }
+  if (tab?.type === 'table-data') {
+    void useTableDataStore.getState().markTableDataSurfaceActive(tab.id)
   }
+}
+
+function finalizeWorkspaceActivation(
+  connectionId: string,
+  previousSurface: VisibleWorkspaceSurface,
+  nextTabId: string | null
+): void {
+  markVisibleWorkspaceSurfaceInactive(previousSurface)
+
+  if (nextTabId) {
+    runPostActivationEffects(connectionId, nextTabId)
+  }
+}
+
+function activateWorkspaceTab(connectionId: string, tabId: string): void {
+  const previousSurface = getVisibleWorkspaceSurface(
+    connectionId,
+    useWorkspaceStore.getState().activeTabByConnection[connectionId] ?? null
+  )
+
+  useWorkspaceStore.setState((state) => ({
+    activeTabByConnection: {
+      ...state.activeTabByConnection,
+      [connectionId]: tabId,
+    },
+  }))
+
+  finalizeWorkspaceActivation(connectionId, previousSurface, tabId)
 }
 
 // ---------------------------------------------------------------------------
@@ -451,22 +512,16 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     })
 
     if (existing) {
-      set((state) => ({
-        activeTabByConnection: {
-          ...state.activeTabByConnection,
-          [connectionId]:
-            existing.type === 'table-data' && existing.parentQueryTabId
-              ? existing.parentQueryTabId
-              : existing.id,
-        },
-      }))
+      const activationTarget =
+        existing.type === 'table-data' && existing.parentQueryTabId
+          ? existing.parentQueryTabId
+          : existing.id
+      activateWorkspaceTab(connectionId, activationTarget)
       if (existing.type === 'table-data' && existing.parentQueryTabId) {
         useQueryStore.getState().setActiveBottomPanelItem(existing.parentQueryTabId, {
           type: 'table-data',
           tabId: existing.id,
         })
-      } else {
-        runPostActivationEffects(connectionId, existing.id)
       }
       return
     }
@@ -481,14 +536,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         ...state.tabsByConnection,
         [connectionId]: [...(state.tabsByConnection[connectionId] || []), newTab],
       },
-      activeTabByConnection: {
-        ...state.activeTabByConnection,
-        [connectionId]:
-          newTab.type === 'table-data' && newTab.parentQueryTabId
-            ? newTab.parentQueryTabId
-            : newTab.id,
-      },
     }))
+    activateWorkspaceTab(
+      connectionId,
+      newTab.type === 'table-data' && newTab.parentQueryTabId ? newTab.parentQueryTabId : newTab.id
+    )
     if (newTab.type === 'table-data' && newTab.parentQueryTabId) {
       useQueryStore
         .getState()
@@ -601,11 +653,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         ...state.tabsByConnection,
         [connectionId]: [...(state.tabsByConnection[connectionId] || []), newTab],
       },
-      activeTabByConnection: {
-        ...state.activeTabByConnection,
-        [connectionId]: newTab.id,
-      },
     }))
+    activateWorkspaceTab(connectionId, newTab.id)
     return newTab.id
   },
 
@@ -840,31 +889,8 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
 
           const currentActiveIdx = currentQueryTab.activeResultIndex ?? 0
           if (nextDirtyIndex !== currentActiveIdx) {
-            // Switch to the dirty result and set pendingNavigationAction
-            useQueryStore.setState((prev) => ({
-              tabs: {
-                ...prev.tabs,
-                [tabId]: {
-                  ...(prev.tabs[tabId] ?? {
-                    content: '',
-                    filePath: null,
-                    tabStatus: 'idle' as const,
-                    prevTabStatus: 'idle' as const,
-                    cursorPosition: null,
-                    connectionId: '',
-                    results: [],
-                    activeResultIndex: 0,
-                    activeBottomPanelItem: { type: 'result' },
-                    pendingNavigationAction: null,
-                    executionStartedAt: null,
-                    isCancelling: false,
-                    wasCancelled: false,
-                  }),
-                  activeResultIndex: nextDirtyIndex,
-                  pendingNavigationAction: checkAndCloseOrDefer,
-                },
-              },
-            }))
+            useQueryStore.getState().setActiveResultIndex(tabId, nextDirtyIndex)
+            useQueryStore.getState().requestNavigationAction(tabId, checkAndCloseOrDefer)
           } else {
             // Dirty result IS the active result — use requestNavigationAction
             useQueryStore.getState().requestNavigationAction(tabId, checkAndCloseOrDefer)
@@ -878,6 +904,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     }
 
     const remaining = tabs.filter((t) => t.id !== tabId)
+    const wasActive = state.activeTabByConnection[connectionId] === tabId
+    const previousSurface = wasActive
+      ? getVisibleWorkspaceSurface(connectionId, tabId)
+      : { kind: 'none' as const }
     let newActive = state.activeTabByConnection[connectionId]
 
     if (newActive === tabId) {
@@ -907,6 +937,14 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         [connectionId]: normalizeWorkspaceActiveTab(remaining, newActive),
       },
     }))
+
+    if (wasActive) {
+      finalizeWorkspaceActivation(
+        connectionId,
+        previousSurface,
+        normalizeWorkspaceActiveTab(remaining, newActive)
+      )
+    }
   },
 
   // ------ forceCloseTab (removes tab without unsaved-edit checks) ------
@@ -935,6 +973,10 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     useAiStore.getState().cleanupTab(tabId)
 
     const remaining = tabs.filter((t) => t.id !== tabId)
+    const wasActive = state.activeTabByConnection[connectionId] === tabId
+    const previousSurface = wasActive
+      ? getVisibleWorkspaceSurface(connectionId, tabId)
+      : { kind: 'none' as const }
     let newActive = state.activeTabByConnection[connectionId]
 
     if (newActive === tabId) {
@@ -959,18 +1001,20 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
         [connectionId]: normalizeWorkspaceActiveTab(remaining, newActive),
       },
     }))
+
+    if (wasActive) {
+      finalizeWorkspaceActivation(
+        connectionId,
+        previousSurface,
+        normalizeWorkspaceActiveTab(remaining, newActive)
+      )
+    }
   },
 
   // ------ setActiveTab ------
 
   setActiveTab: (connectionId: string, tabId: string) => {
-    set((state) => ({
-      activeTabByConnection: {
-        ...state.activeTabByConnection,
-        [connectionId]: tabId,
-      },
-    }))
-    runPostActivationEffects(connectionId, tabId)
+    activateWorkspaceTab(connectionId, tabId)
   },
 
   requestActivateTab: (tabId: string) => {
@@ -985,14 +1029,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     if (currentActiveTabId && state.blockingNavigationByTab[currentActiveTabId]) {
       return
     }
-
-    set((s) => ({
-      activeTabByConnection: {
-        ...s.activeTabByConnection,
-        [connectionId]: tabId,
-      },
-    }))
-    runPostActivationEffects(connectionId, tabId)
+    activateWorkspaceTab(connectionId, tabId)
   },
 
   setLastFocusedSurface: (tabId: string, surface: WorkspaceFocusSurface) => {

@@ -5,10 +5,15 @@ import type {
   FilterCondition,
   RowEditState,
   SelectedCellInfo,
+  FrontendRowResidencyState,
 } from '../types/schema'
 import {
   fetchTableData as fetchTableDataCmd,
   evictTableData as evictTableDataCmd,
+  restoreTableDataCache as restoreTableDataCacheCmd,
+  syncTableDataCacheAfterDelete as syncTableDataCacheAfterDeleteCmd,
+  syncTableDataCacheAfterInsert as syncTableDataCacheAfterInsertCmd,
+  syncTableDataCacheAfterUpdate as syncTableDataCacheAfterUpdateCmd,
   updateTableRow as updateTableRowCmd,
   insertTableRow as insertTableRowCmd,
   deleteTableRow as deleteTableRowCmd,
@@ -18,9 +23,11 @@ import { getTemporalValidationResult } from '../lib/table-data-save-utils'
 import { getTemporalColumnType, getTodayMysqlString } from '../lib/date-utils'
 import { showErrorToast, showSuccessToast } from './toast-store'
 import { mapSingleColumnForeignKeys } from '../lib/foreign-key-utils'
-import { getDefaultPageSize } from './query-store'
+import { getDefaultPageSize, useQueryStore } from './query-store'
+import { useWorkspaceStore } from './workspace-store'
 
 import { logFrontend } from '../lib/app-log-commands'
+import { frontendCacheLifecycle } from '../lib/frontend-cache-lifecycle'
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -216,6 +223,56 @@ function evictTableDataWithWarning(
   })
 }
 
+function isTableDataTabVisibleInWorkspace(tabId: string): boolean {
+  const workspaceState = useWorkspaceStore.getState()
+
+  for (const [connectionId, tabs] of Object.entries(workspaceState.tabsByConnection)) {
+    const targetTab = tabs.find((tab) => tab.id === tabId)
+    if (!targetTab) {
+      continue
+    }
+
+    if (workspaceState.activeTabByConnection[connectionId] === tabId) {
+      return true
+    }
+
+    if (targetTab.type !== 'table-data' || !targetTab.parentQueryTabId) {
+      return false
+    }
+
+    if (workspaceState.activeTabByConnection[connectionId] !== targetTab.parentQueryTabId) {
+      return false
+    }
+
+    const parentQueryTab = useQueryStore.getState().tabs[targetTab.parentQueryTabId]
+    return (
+      parentQueryTab?.activeBottomPanelItem.type === 'table-data' &&
+      parentQueryTab.activeBottomPanelItem.tabId === tabId
+    )
+  }
+
+  return false
+}
+
+function createResidentRowState(isActive = false): FrontendRowResidencyState {
+  return {
+    status: 'resident',
+    isActive,
+    inactiveSince: isActive ? null : null,
+  }
+}
+
+function getTableDataSurfaceKey(tabId: string): string {
+  return `table-data:${tabId}`
+}
+
+function isDirtyTableDataTab(tab: TableDataTabState): boolean {
+  return Boolean(
+    tab.editState &&
+      (tab.editState.modifiedColumns.size > 0 || tab.editState.isNewRow === true)
+  )
+}
+
 // ---------------------------------------------------------------------------
 // saveCurrentRow helpers (pure functions)
 // ---------------------------------------------------------------------------
@@ -399,6 +456,8 @@ function createDefaultTabState(
     pageSize: getDefaultPageSize(),
     primaryKey: null,
     executionTimeMs: 0,
+    rowResidency: createResidentRowState(false),
+    rowsEvictedAt: null,
     connectionId,
     database,
     table,
@@ -433,6 +492,10 @@ export interface TableDataStore {
   sortByColumn: (tabId: string, column: string, direction: 'asc' | 'desc' | null) => Promise<void>
   applyFilters: (tabId: string, conditions: FilterCondition[]) => Promise<void>
   refreshData: (tabId: string) => Promise<void>
+  markTableDataSurfaceActive: (tabId: string) => Promise<void>
+  markTableDataSurfaceInactive: (tabId: string) => void
+  evictInactiveTableDataRows: (tabId: string) => void
+  restoreEvictedTableDataRows: (tabId: string) => Promise<void>
 
   startEditing: (
     tabId: string,
@@ -494,6 +557,105 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     })
   }
 
+  const patchTabResidency = (tabId: string, partial: Partial<FrontendRowResidencyState>) => {
+    set((state) => {
+      const existing = state.tabs[tabId]
+      if (!existing) return state
+
+      return {
+        tabs: {
+          ...state.tabs,
+          [tabId]: {
+            ...existing,
+            rowResidency: {
+              ...(existing.rowResidency ?? createResidentRowState(false)),
+              ...partial,
+            },
+          },
+        },
+      }
+    })
+  }
+
+  const cancelTableDataLifecycleTimer = (tabId: string) => {
+    frontendCacheLifecycle.cancel(getTableDataSurfaceKey(tabId))
+  }
+
+  const markTableDataResident = (
+    tabId: string,
+    partial: Partial<TableDataTabState> = {},
+    options?: { preserveActiveState?: boolean }
+  ) => {
+    const current = get().tabs[tabId]
+    const currentResidency = current?.rowResidency ?? createResidentRowState(false)
+    patchTab(tabId, {
+      ...partial,
+      rowsEvictedAt: null,
+      rowResidency: {
+        status: 'resident',
+        isActive: options?.preserveActiveState ? currentResidency.isActive : false,
+        inactiveSince:
+          options?.preserveActiveState && !currentResidency.isActive
+            ? currentResidency.inactiveSince
+            : null,
+      },
+    })
+  }
+
+  const syncPatchedTableDataCache = async (
+    mode: 'insert' | 'update' | 'delete',
+    tabId: string,
+    rows: unknown[][]
+  ) => {
+    const latestTab = get().tabs[tabId]
+    if (!latestTab) return
+
+    const syncParams = {
+      connectionId: latestTab.connectionId,
+      tabId,
+      database: latestTab.database,
+      table: latestTab.table,
+      columns: latestTab.columns,
+      rows,
+      currentPage: latestTab.currentPage,
+      pageSize: latestTab.pageSize,
+      primaryKey: latestTab.primaryKey,
+      executionTimeMs: latestTab.executionTimeMs,
+    }
+
+    try {
+      const syncResult =
+        mode === 'insert'
+          ? await syncTableDataCacheAfterInsertCmd(syncParams)
+          : mode === 'update'
+            ? await syncTableDataCacheAfterUpdateCmd(syncParams)
+            : await syncTableDataCacheAfterDeleteCmd(syncParams)
+
+      if (syncResult.status !== 'synced') {
+        logFrontend(
+          'warn',
+          `[table-data-store] sync_table_data_cache_after_${mode} returned ${syncResult.status} for ${tabId}`
+        )
+        evictTableDataWithWarning(
+          latestTab.connectionId,
+          tabId,
+          `after sync_table_data_cache_after_${mode} returned ${syncResult.status}`
+        )
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      logFrontend(
+        'warn',
+        `[table-data-store] sync_table_data_cache_after_${mode} failed for ${tabId}: ${errorMessage}`
+      )
+      evictTableDataWithWarning(
+        latestTab.connectionId,
+        tabId,
+        `after sync_table_data_cache_after_${mode} failed`
+      )
+    }
+  }
+
   return {
     tabs: {},
 
@@ -513,6 +675,7 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
     cleanupTab: (tabId) => {
       const tab = get().tabs[tabId]
       if (tab) {
+        cancelTableDataLifecycleTimer(tabId)
         evictTableDataWithWarning(tab.connectionId, tabId)
       }
 
@@ -584,6 +747,11 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
         // Guard: tab may have been cleaned up during the async call
         if (!get().tabs[tabId]) return
 
+        const latestTab = get().tabs[tabId]
+        if (!latestTab) return
+        const latestResidency = latestTab.rowResidency ?? createResidentRowState(false)
+        const isStillVisible = isTableDataTabVisibleInWorkspace(tabId)
+
         patchTab(tabId, {
           columns: result.columns,
           rows: normalizeTableDataRows(result.columns, result.rows),
@@ -591,9 +759,21 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
           pageSize: result.pageSize,
           primaryKey: result.primaryKey,
           executionTimeMs: result.executionTimeMs,
+          rowsEvictedAt: null,
           selectedRowKey: null,
           isLoading: false,
+          rowResidency: {
+            status: 'resident',
+            isActive: isStillVisible,
+            inactiveSince: isStillVisible
+              ? null
+              : (latestResidency.inactiveSince ?? Date.now()),
+          },
         })
+
+        if (!isStillVisible) {
+          get().markTableDataSurfaceInactive(tabId)
+        }
       } catch (err) {
         if (!get().tabs[tabId]) return
 
@@ -628,6 +808,138 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
       const tab = get().tabs[tabId]
       if (!tab) return
       await get().fetchPage(tabId, tab.currentPage)
+    },
+
+    markTableDataSurfaceActive: async (tabId) => {
+      const tab = get().tabs[tabId]
+      if (!tab) return
+
+      cancelTableDataLifecycleTimer(tabId)
+      patchTabResidency(tabId, {
+        isActive: true,
+        inactiveSince: null,
+      })
+
+      if (tab.rowResidency?.status === 'evicted') {
+        await get().restoreEvictedTableDataRows(tabId)
+      }
+    },
+
+    markTableDataSurfaceInactive: (tabId) => {
+      const tab = get().tabs[tabId]
+      if (!tab) return
+
+      patchTabResidency(tabId, {
+        isActive: false,
+        inactiveSince: Date.now(),
+      })
+
+      const residency = tab.rowResidency ?? createResidentRowState(false)
+      if (residency.status !== 'resident' || tab.rows.length === 0 || isDirtyTableDataTab(tab)) {
+        return
+      }
+
+      frontendCacheLifecycle.scheduleInactive(getTableDataSurfaceKey(tabId), () => {
+        get().evictInactiveTableDataRows(tabId)
+      })
+    },
+
+    evictInactiveTableDataRows: (tabId) => {
+      cancelTableDataLifecycleTimer(tabId)
+      set((state) => {
+        const tab = state.tabs[tabId]
+        if (!tab) return state
+
+        const residency = tab.rowResidency ?? createResidentRowState(false)
+        if (residency.isActive || residency.status !== 'resident' || isDirtyTableDataTab(tab)) {
+          return state
+        }
+
+        return {
+          tabs: {
+            ...state.tabs,
+            [tabId]: {
+              ...tab,
+              rows: [],
+              rowsEvictedAt: Date.now(),
+              selectedRowKey: null,
+              selectedCell: null,
+              editState: null,
+              saveError: null,
+              rowResidency: {
+                ...residency,
+                status: 'evicted',
+              },
+            },
+          },
+        }
+      })
+    },
+
+    restoreEvictedTableDataRows: async (tabId) => {
+      const tab = get().tabs[tabId]
+      if (!tab) return
+
+      const residency = tab.rowResidency ?? createResidentRowState(false)
+      if (residency.status !== 'evicted') {
+        return
+      }
+
+      patchTab(tabId, {
+        isLoading: true,
+        error: null,
+      })
+      patchTabResidency(tabId, { status: 'restoring', isActive: true, inactiveSince: null })
+
+      try {
+        const restored = await restoreTableDataCacheCmd({
+          connectionId: tab.connectionId,
+          tabId,
+          database: tab.database,
+          table: tab.table,
+        })
+
+        if (!get().tabs[tabId]) return
+
+        if (restored.status !== 'available' || !restored.data) {
+          patchTab(tabId, {
+            isLoading: false,
+            error: 'Cached table data is no longer available. Reload the table data to continue.',
+          })
+          patchTabResidency(tabId, { status: 'evicted' })
+          return
+        }
+
+        markTableDataResident(
+          tabId,
+          {
+            columns: restored.data.columns,
+            rows: normalizeTableDataRows(restored.data.columns, restored.data.rows),
+            currentPage: restored.data.currentPage,
+            pageSize: restored.data.pageSize,
+            primaryKey: restored.data.primaryKey,
+            executionTimeMs: restored.data.executionTimeMs,
+            isLoading: false,
+            error: null,
+            saveError: null,
+          },
+          { preserveActiveState: true }
+        )
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        logFrontend(
+          'warn',
+          `[table-data-store] restoreEvictedTableDataRows failed for ${tabId}: ${errorMessage}`
+        )
+
+        if (!get().tabs[tabId]) return
+
+        patchTab(tabId, {
+          isLoading: false,
+          error: 'Cached table data could not be restored. Reload the table data to continue.',
+        })
+        patchTabResidency(tabId, { status: 'evicted' })
+      }
     },
 
     // ------ startEditing ------
@@ -753,15 +1065,18 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
             returnedData,
             primaryKey.keyColumns
           )
+          await syncPatchedTableDataCache('insert', tabId, newRows)
 
-          evictTableDataWithWarning(tab.connectionId, tabId, 'after insert')
-
-          patchTab(tabId, {
-            rows: newRows,
-            editState: null,
-            saveError: null,
-            selectedRowKey: persistedRowKey,
-          })
+          markTableDataResident(
+            tabId,
+            {
+              rows: newRows,
+              editState: null,
+              saveError: null,
+              selectedRowKey: persistedRowKey,
+            },
+            { preserveActiveState: true }
+          )
           return true
         } catch (err) {
           if (!get().tabs[tabId]) return false
@@ -793,14 +1108,17 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
           if (!get().tabs[tabId]) return true
 
-          evictTableDataWithWarning(tab.connectionId, tabId, 'after update')
-
           const newRows = applyUpdatedRow(tab.rows, columns, editState)
-          patchTab(tabId, {
-            rows: newRows,
-            editState: null,
-            saveError: null,
-          })
+          await syncPatchedTableDataCache('update', tabId, newRows)
+          markTableDataResident(
+            tabId,
+            {
+              rows: newRows,
+              editState: null,
+              saveError: null,
+            },
+            { preserveActiveState: true }
+          )
           return true
         } catch (err) {
           if (!get().tabs[tabId]) return false
@@ -939,17 +1257,20 @@ export const useTableDataStore = create<TableDataStore>()((set, get) => {
 
         if (!get().tabs[tabId]) return
 
-        evictTableDataWithWarning(tab.connectionId, tabId, 'after delete')
-
         const rowIdx = findRowIndexByKey(tab.rows, tab.columns, rowKey)
         if (rowIdx !== -1) {
           const newRows = [...tab.rows]
           newRows.splice(rowIdx, 1)
-          patchTab(tabId, {
-            rows: newRows,
-            editState: null,
-            saveError: null,
-          })
+          await syncPatchedTableDataCache('delete', tabId, newRows)
+          markTableDataResident(
+            tabId,
+            {
+              rows: newRows,
+              editState: null,
+              saveError: null,
+            },
+            { preserveActiveState: true }
+          )
         }
       } catch (err) {
         if (!get().tabs[tabId]) return

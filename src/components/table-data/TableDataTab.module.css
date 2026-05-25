@@ -1,6 +1,7 @@
 /* TableDataTab — main container for table data browser/editor */
 
 .container {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -107,6 +108,21 @@
   flex: 1;
   overflow: hidden;
   position: relative;
+}
+
+.restoringOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--result-grid-bg);
+  opacity: 0.85;
+  z-index: 10;
+  color: var(--on-surface-variant);
+  font-size: 13px;
 }
 
 /* Light: card chrome matches inline_editable_grid_light_mode_pro_sync_v2 */

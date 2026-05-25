@@ -48,7 +48,10 @@ fn test_get_app_info_with_app_handle_populates_log_directory() {
         "log_directory should point at the logs directory, got: {}",
         info.log_directory
     );
-    assert!(!info.app_version.is_empty(), "app_version should not be empty");
+    assert!(
+        !info.app_version.is_empty(),
+        "app_version should not be empty"
+    );
 }
 
 #[test]

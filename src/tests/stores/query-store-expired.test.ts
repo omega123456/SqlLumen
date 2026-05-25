@@ -1,10 +1,39 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, waitFor } from '@testing-library/react'
 import { useQueryStore, DEFAULT_RESULT_STATE } from '../../stores/query-store'
+import { useWorkspaceStore } from '../../stores/workspace-store'
 import { ipc } from '../ipc-mock'
+import { useSettingsStore } from '../../stores/settings-store'
+import type { FilterCondition, QueryTableEditInfo, TableDataColumnMeta } from '../../types/schema'
 
 const TAB_ID = 'tab-expired-test'
 const CONN_ID = 'conn-expired-test'
+const FILTER_EQ_ID_2: FilterCondition[] = [{ column: 'id', operator: '==', value: '2' }]
+const TEST_EDIT_TABLE_COLUMNS: TableDataColumnMeta[] = [
+  {
+    name: 'id',
+    dataType: 'INT',
+    isBooleanAlias: false,
+    isNullable: false,
+    isPrimaryKey: true,
+    isUniqueKey: true,
+    hasDefault: false,
+    columnDefault: null,
+    isBinary: false,
+    isAutoIncrement: false,
+  },
+]
+const TEST_EDIT_TABLE_INFO: QueryTableEditInfo = {
+  database: 'db',
+  table: 'users',
+  columns: TEST_EDIT_TABLE_COLUMNS,
+  primaryKey: {
+    keyColumns: ['id'],
+    hasAutoIncrement: false,
+    isUniqueKeyFallback: false,
+  },
+  foreignKeys: [],
+}
 
 function setupTabWithResult() {
   act(() => {
@@ -87,7 +116,36 @@ function setupMultiResultTab() {
 
 describe('query-store expired result handling', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     useQueryStore.setState({ tabs: {} })
+    useWorkspaceStore.setState({
+      tabsByConnection: {
+        [CONN_ID]: [
+          {
+            id: TAB_ID,
+            type: 'query-editor',
+            label: 'Query 1',
+            connectionId: CONN_ID,
+          },
+        ],
+      },
+      activeTabByConnection: {
+        [CONN_ID]: TAB_ID,
+      },
+      lastFocusedSurfaceByTab: {},
+      blockingNavigationByTab: {},
+      pendingCascadeClose: null,
+    })
+    useSettingsStore.setState({
+      settings: {
+        'results.cacheTTL': '1',
+      },
+    })
+  })
+
+  afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
   })
 
   it('fetchPage sets isExpired when error contains results_expired', async () => {
@@ -110,14 +168,14 @@ describe('query-store expired result handling', () => {
 
     ipc.override('touch_results', () => ({ status: 'expired' }))
 
-    await act(async () => {
+    act(() => {
       useQueryStore.getState().validateActiveTabResults(TAB_ID)
-      // Wait for async IPC
-      await new Promise((r) => setTimeout(r, 50))
     })
 
-    const tab = useQueryStore.getState().tabs[TAB_ID]
-    expect(tab?.results.every((result) => result.isExpired)).toBe(true)
+    await waitFor(() => {
+      const tab = useQueryStore.getState().tabs[TAB_ID]
+      expect(tab?.results.every((result) => result.isExpired)).toBe(true)
+    })
   })
 
   it('validateActiveTabResults does not mark expired when touch_results returns available', async () => {
@@ -125,13 +183,422 @@ describe('query-store expired result handling', () => {
 
     ipc.override('touch_results', () => ({ status: 'available' }))
 
-    await act(async () => {
+    act(() => {
       useQueryStore.getState().validateActiveTabResults(TAB_ID)
-      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    await waitFor(() => {
+      const tab = useQueryStore.getState().tabs[TAB_ID]
+      expect(tab?.results[0]?.isExpired).toBe(false)
+    })
+  })
+
+  it('evicts inactive result rows after the configured TTL', async () => {
+    setupTabWithResult()
+
+    act(() => {
+      useQueryStore.getState().markResultSurfaceInactive(TAB_ID, 0)
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+
+    const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+    expect(result?.rows).toEqual([])
+    expect(result?.rowResidency.status).toBe('evicted')
+    expect(result?.rowsEvictedAt).toBeTypeOf('number')
+    expect(result?.isExpired).toBe(false)
+  })
+
+  it('still evicts filtered results when visible rows are empty but unfiltered rows remain', async () => {
+    setupTabWithResult()
+
+    act(() => {
+      useQueryStore.setState((state) => {
+        const tab = state.tabs[TAB_ID]
+        if (!tab) return state
+        const result = {
+          ...tab.results[0],
+          rows: [],
+          unfilteredRows: [[1], [2]],
+        }
+        return {
+          tabs: {
+            ...state.tabs,
+            [TAB_ID]: {
+              ...tab,
+              results: [result],
+            },
+          },
+        }
+      })
+    })
+
+    act(() => {
+      useQueryStore.getState().markResultSurfaceInactive(TAB_ID, 0)
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+
+    const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+    expect(result?.rowResidency.status).toBe('evicted')
+    expect(result?.unfilteredRows).toBeNull()
+    expect(result?.rowsEvictedAt).toBeTypeOf('number')
+  })
+
+  it('restores evicted rows for an active result and reapplies client-side filters', async () => {
+    setupTabWithResult()
+
+    act(() => {
+      useQueryStore.setState((state) => {
+        const tab = state.tabs[TAB_ID]
+        if (!tab) return state
+        const result = {
+          ...tab.results[0],
+          rows: [],
+          rowsEvictedAt: 1234,
+          filterModel: FILTER_EQ_ID_2,
+          rowResidency: {
+            status: 'evicted' as const,
+            isActive: false,
+            inactiveSince: Date.now(),
+          },
+        }
+        return {
+          tabs: {
+            ...state.tabs,
+            [TAB_ID]: {
+              ...tab,
+              results: [result],
+            },
+          },
+        }
+      })
+    })
+
+    ipc.override('touch_results', () => ({ status: 'available' }))
+    ipc.override('fetch_result_page', () => ({
+      rows: [[1], [2]],
+      page: 1,
+      totalPages: 1,
+    }))
+
+    await act(async () => {
+      await useQueryStore.getState().markResultSurfaceActive(TAB_ID, 0)
+    })
+
+    const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+    expect(result?.rowResidency.status).toBe('resident')
+    expect(result?.rowResidency.isActive).toBe(true)
+    expect(result?.rowsEvictedAt).toBeNull()
+    expect(result?.rows).toEqual([[2]])
+    expect(result?.unfilteredRows).toEqual([[1], [2]])
+    expect(ipc.calls('touch_results')).toHaveLength(1)
+    expect(ipc.calls('fetch_result_page')[0]).toMatchObject({
+      connectionId: CONN_ID,
+      tabId: TAB_ID,
+      queryId: 'q-test-1',
+      page: 1,
+      resultIndex: 0,
+    })
+  })
+
+  it('preserves the latest inactive visibility state when restore finishes after switching away', async () => {
+    setupMultiResultTab()
+
+    act(() => {
+      useQueryStore.setState((state) => {
+        const tab = state.tabs[TAB_ID]
+        if (!tab) return state
+        const results = [...tab.results]
+        results[1] = {
+          ...results[1],
+          rows: [],
+          rowResidency: {
+            status: 'evicted',
+            isActive: false,
+            inactiveSince: 123,
+          },
+        }
+        return {
+          tabs: {
+            ...state.tabs,
+            [TAB_ID]: { ...tab, results, activeResultIndex: 1 },
+          },
+        }
+      })
+    })
+
+    const deferred: {
+      resolve?: (value: { rows: unknown[][]; page: number; totalPages: number }) => void
+    } = {}
+    ipc.override('touch_results', () => ({ status: 'available' }))
+    ipc.override(
+      'fetch_result_page',
+      () =>
+        new Promise((resolve) => {
+          deferred.resolve = resolve
+        })
+    )
+
+    const restorePromise = useQueryStore.getState().markResultSurfaceActive(TAB_ID, 1)
+    await waitFor(() => {
+      expect(ipc.calls('fetch_result_page')).toHaveLength(1)
+    })
+    act(() => {
+      useQueryStore.getState().markResultSurfaceInactive(TAB_ID, 1)
+    })
+    if (!deferred.resolve) {
+      throw new Error('Expected fetch_result_page resolver')
+    }
+    deferred.resolve({ rows: [[22]], page: 1, totalPages: 1 })
+    await restorePromise
+
+    const result = useQueryStore.getState().tabs[TAB_ID]?.results[1]
+    expect(result?.rows).toEqual([[22]])
+    expect(result?.rowResidency).toEqual({
+      status: 'resident',
+      isActive: false,
+      inactiveSince: expect.any(Number),
+    })
+  })
+
+  it('does not mark a resident active result as restoring while another result is being restored', async () => {
+    setupMultiResultTab()
+
+    act(() => {
+      useQueryStore.setState((state) => {
+        const tab = state.tabs[TAB_ID]
+        if (!tab) return state
+        const results = [...tab.results]
+        results[1] = {
+          ...results[1],
+          rows: [],
+          rowResidency: {
+            status: 'evicted',
+            isActive: false,
+            inactiveSince: 123,
+          },
+        }
+        return {
+          tabs: {
+            ...state.tabs,
+            [TAB_ID]: { ...tab, results, activeResultIndex: 1 },
+          },
+        }
+      })
+    })
+
+    const deferred: {
+      resolve?: (value: { rows: unknown[][]; page: number; totalPages: number }) => void
+    } = {}
+    ipc.override('touch_results', () => ({ status: 'available' }))
+    ipc.override(
+      'fetch_result_page',
+      () =>
+        new Promise((resolve) => {
+          deferred.resolve = resolve
+        })
+    )
+
+    const restorePromise = useQueryStore.getState().markResultSurfaceActive(TAB_ID, 1)
+    await waitFor(() => {
+      expect(ipc.calls('fetch_result_page')).toHaveLength(1)
+    })
+
+    act(() => {
+      useQueryStore.getState().setActiveResultIndex(TAB_ID, 0)
+    })
+
+    const activeResult = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+    expect(activeResult?.rowResidency.status).toBe('resident')
+    expect(useQueryStore.getState().tabs[TAB_ID]?.tabStatus).toBe('restoring')
+
+    if (!deferred.resolve) {
+      throw new Error('Expected fetch_result_page resolver')
+    }
+    deferred.resolve({ rows: [[22]], page: 1, totalPages: 1 })
+    await restorePromise
+  })
+
+  it('marks results expired when restore finds missing backend cache', async () => {
+    setupTabWithResult()
+
+    act(() => {
+      useQueryStore.setState((state) => {
+        const tab = state.tabs[TAB_ID]
+        if (!tab) return state
+        const result = {
+          ...tab.results[0],
+          rows: [],
+          rowResidency: {
+            status: 'evicted' as const,
+            isActive: false,
+            inactiveSince: Date.now(),
+          },
+        }
+        return {
+          tabs: {
+            ...state.tabs,
+            [TAB_ID]: {
+              ...tab,
+              results: [result],
+            },
+          },
+        }
+      })
+    })
+
+    ipc.override('touch_results', () => ({ status: 'missing' }))
+
+    await act(async () => {
+      await useQueryStore.getState().markResultSurfaceActive(TAB_ID, 0)
+    })
+
+    const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+    expect(result?.isExpired).toBe(true)
+    expect(result?.rowResidency.status).toBe('evicted')
+    expect(ipc.calls('fetch_result_page')).toHaveLength(0)
+  })
+
+  it('resets restoring status back to evicted when restore fetch throws', async () => {
+    setupTabWithResult()
+
+    act(() => {
+      useQueryStore.setState((state) => {
+        const tab = state.tabs[TAB_ID]
+        if (!tab) return state
+        return {
+          tabs: {
+            ...state.tabs,
+            [TAB_ID]: {
+              ...tab,
+              results: [
+                {
+                  ...tab.results[0],
+                  rows: [],
+                  rowResidency: {
+                    status: 'evicted',
+                    isActive: false,
+                    inactiveSince: 999,
+                  },
+                },
+              ],
+            },
+          },
+        }
+      })
+    })
+
+    ipc.override('touch_results', () => ({ status: 'available' }))
+    ipc.override('fetch_result_page', () => {
+      throw new Error('restore failed')
+    })
+
+    await act(async () => {
+      await useQueryStore.getState().markResultSurfaceActive(TAB_ID, 0)
+    })
+
+    const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+    expect(result?.rowResidency).toEqual({
+      status: 'evicted',
+      isActive: true,
+      inactiveSince: null,
+    })
+  })
+
+  it('does not evict rows for results with dirty edits', async () => {
+    setupTabWithResult()
+
+    act(() => {
+      useQueryStore.setState((state) => {
+        const tab = state.tabs[TAB_ID]
+        if (!tab) return state
+        const result = {
+          ...tab.results[0],
+          editState: {
+            rowKey: { id: 1 },
+            originalValues: { id: 1 },
+            currentValues: { id: 2 },
+            modifiedColumns: new Set(['id']),
+            isNewRow: false,
+            insertEligibleColumns: new Set<string>(),
+          },
+        }
+        return {
+          tabs: {
+            ...state.tabs,
+            [TAB_ID]: {
+              ...tab,
+              results: [result],
+            },
+          },
+        }
+      })
+    })
+
+    act(() => {
+      useQueryStore.getState().markResultSurfaceInactive(TAB_ID, 0)
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+
+    const result = useQueryStore.getState().tabs[TAB_ID]?.results[0]
+    expect(result?.rows).toEqual([[1]])
+    expect(result?.rowResidency.status).toBe('resident')
+  })
+
+  it('restores the newly active evicted result in a multi-result tab', async () => {
+    setupMultiResultTab()
+
+    act(() => {
+      useQueryStore.setState((state) => {
+        const tab = state.tabs[TAB_ID]
+        if (!tab) return state
+        const results = [...tab.results]
+        results[1] = {
+          ...results[1],
+          rows: [],
+          rowResidency: {
+            status: 'evicted',
+            isActive: false,
+            inactiveSince: Date.now(),
+          },
+        }
+        return {
+          tabs: {
+            ...state.tabs,
+            [TAB_ID]: { ...tab, results },
+          },
+        }
+      })
+    })
+
+    ipc.override('touch_results', () => ({ status: 'available' }))
+    ipc.override('fetch_result_page', () => ({
+      rows: [[22]],
+      page: 1,
+      totalPages: 1,
+    }))
+
+    await act(async () => {
+      useQueryStore.getState().setActiveResultIndex(TAB_ID, 1)
+      await waitFor(() => {
+        const result = useQueryStore.getState().tabs[TAB_ID]?.results[1]
+        expect(result?.rowResidency.status).toBe('resident')
+      })
     })
 
     const tab = useQueryStore.getState().tabs[TAB_ID]
-    expect(tab?.results[0]?.isExpired).toBe(false)
+    expect(tab?.activeResultIndex).toBe(1)
+    expect(tab?.results[1]?.rows).toEqual([[22]])
+    expect(tab?.results[0]?.rowResidency.isActive).toBe(false)
+    expect(tab?.results[1]?.rowResidency.isActive).toBe(true)
   })
 
   it('retryExpiredResult uses the shared editor execution plan from selected text', async () => {
@@ -351,17 +818,7 @@ describe('query-store expired result handling', () => {
             insertEligibleColumns: new Set<string>(),
           },
           editTableMetadata: {
-            'db.users': {
-              database: 'db',
-              table: 'users',
-              columns: [{ name: 'id', dataType: 'INT', isNullable: false, isPrimaryKey: true }],
-              primaryKey: {
-                constraintName: 'PRIMARY',
-                keyColumns: ['id'],
-                isUniqueKeyFallback: false,
-              },
-              foreignKeys: [],
-            },
+            'db.users': TEST_EDIT_TABLE_INFO,
           },
         }
         return {

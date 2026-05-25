@@ -4,8 +4,9 @@
 //! and editing table data. Each function takes a `MySqlPool` directly (the
 //! command wrappers in `commands::table_data` extract the pool from `AppState`).
 
-use crate::state::AppState;
+use crate::mysql::result_cache::CacheGet;
 use crate::mysql::schema_queries::safe_identifier;
+use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -33,7 +34,7 @@ const JS_SAFE_INTEGER_MIN: i64 = -JS_SAFE_INTEGER_MAX;
 // ── Data structures ────────────────────────────────────────────────────────────
 
 /// Column metadata for table data, including PK/UNIQUE and nullability info.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TableDataColumnMeta {
     pub name: String,
@@ -51,7 +52,7 @@ pub struct TableDataColumnMeta {
 }
 
 /// Primary / unique key info for a table.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PrimaryKeyInfo {
     pub key_columns: Vec<String>,
@@ -60,7 +61,7 @@ pub struct PrimaryKeyInfo {
 }
 
 /// Paginated response from `fetch_table_data`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TableDataResponse {
     pub columns: Vec<TableDataColumnMeta>,
@@ -69,6 +70,19 @@ pub struct TableDataResponse {
     pub page_size: u32,
     pub primary_key: Option<PrimaryKeyInfo>,
     pub execution_time_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TableDataCacheRestoreResponse {
+    pub status: String,
+    pub data: Option<TableDataResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TableDataCacheSyncResponse {
+    pub status: String,
 }
 
 /// Sort specification for a single column.
@@ -117,13 +131,200 @@ pub fn touch_table_data_impl(
     connection_id: &str,
     tab_id: &str,
 ) -> serde_json::Value {
-    use crate::mysql::result_cache::CacheGet;
-
     match state.table_data_cache.get(connection_id, tab_id) {
         CacheGet::Found(_) | CacheGet::ReWarmed(_) => serde_json::json!({ "status": "available" }),
         CacheGet::Expired => serde_json::json!({ "status": "expired" }),
         CacheGet::NeverStored => serde_json::json!({ "status": "missing" }),
     }
+}
+
+pub fn restore_table_data_cache_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    database: &str,
+    table: &str,
+) -> TableDataCacheRestoreResponse {
+    match state.table_data_cache.get(connection_id, tab_id) {
+        CacheGet::Found(entry) | CacheGet::ReWarmed(entry) => TableDataCacheRestoreResponse {
+            status: "available".to_string(),
+            data: Some(entry.value.clone()),
+        },
+        CacheGet::Expired => {
+            tracing::debug!(
+                connection_id = %connection_id,
+                tab_id = %tab_id,
+                database = %database,
+                table = %table,
+                "table-data cache restore missed: entry expired"
+            );
+            TableDataCacheRestoreResponse {
+                status: "expired".to_string(),
+                data: None,
+            }
+        }
+        CacheGet::NeverStored => {
+            tracing::debug!(
+                connection_id = %connection_id,
+                tab_id = %tab_id,
+                database = %database,
+                table = %table,
+                "table-data cache restore missed: entry missing"
+            );
+            TableDataCacheRestoreResponse {
+                status: "missing".to_string(),
+                data: None,
+            }
+        }
+    }
+}
+
+fn sync_table_data_cache_response(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    database: &str,
+    table: &str,
+    response: TableDataResponse,
+) -> TableDataCacheSyncResponse {
+    let expected_invalidation_version =
+        state.table_data_cache.current_invalidation_version(connection_id, tab_id);
+    match state.table_data_cache.get(connection_id, tab_id) {
+        CacheGet::Found(_) | CacheGet::ReWarmed(_) => {
+            if state.table_data_cache.insert_if_current(
+                connection_id,
+                tab_id,
+                expected_invalidation_version,
+                response,
+            ) {
+                TableDataCacheSyncResponse {
+                    status: "synced".to_string(),
+                }
+            } else {
+                tracing::debug!(
+                    connection_id = %connection_id,
+                    tab_id = %tab_id,
+                    database = %database,
+                    table = %table,
+                    expected_invalidation_version,
+                    "table-data cache sync skipped: entry invalidated before write"
+                );
+                TableDataCacheSyncResponse {
+                    status: "missing".to_string(),
+                }
+            }
+        }
+        CacheGet::Expired => {
+            tracing::debug!(
+                connection_id = %connection_id,
+                tab_id = %tab_id,
+                database = %database,
+                table = %table,
+                "table-data cache sync skipped: entry expired"
+            );
+            TableDataCacheSyncResponse {
+                status: "expired".to_string(),
+            }
+        }
+        CacheGet::NeverStored => {
+            tracing::debug!(
+                connection_id = %connection_id,
+                tab_id = %tab_id,
+                database = %database,
+                table = %table,
+                "table-data cache sync skipped: entry missing"
+            );
+            TableDataCacheSyncResponse {
+                status: "missing".to_string(),
+            }
+        }
+    }
+}
+
+pub fn sync_table_data_cache_after_insert_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    database: &str,
+    table: &str,
+    columns: Vec<TableDataColumnMeta>,
+    rows: Vec<Vec<serde_json::Value>>,
+    current_page: u32,
+    page_size: u32,
+    primary_key: Option<PrimaryKeyInfo>,
+    execution_time_ms: u64,
+) -> TableDataCacheSyncResponse {
+    sync_table_data_cache_response(
+        state,
+        connection_id,
+        tab_id,
+        database,
+        table,
+        TableDataResponse {
+            columns,
+            rows,
+            current_page,
+            page_size,
+            primary_key,
+            execution_time_ms,
+        },
+    )
+}
+
+pub fn sync_table_data_cache_after_update_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    database: &str,
+    table: &str,
+    columns: Vec<TableDataColumnMeta>,
+    rows: Vec<Vec<serde_json::Value>>,
+    current_page: u32,
+    page_size: u32,
+    primary_key: Option<PrimaryKeyInfo>,
+    execution_time_ms: u64,
+) -> TableDataCacheSyncResponse {
+    sync_table_data_cache_after_insert_impl(
+        state,
+        connection_id,
+        tab_id,
+        database,
+        table,
+        columns,
+        rows,
+        current_page,
+        page_size,
+        primary_key,
+        execution_time_ms,
+    )
+}
+
+pub fn sync_table_data_cache_after_delete_impl(
+    state: &AppState,
+    connection_id: &str,
+    tab_id: &str,
+    database: &str,
+    table: &str,
+    columns: Vec<TableDataColumnMeta>,
+    rows: Vec<Vec<serde_json::Value>>,
+    current_page: u32,
+    page_size: u32,
+    primary_key: Option<PrimaryKeyInfo>,
+    execution_time_ms: u64,
+) -> TableDataCacheSyncResponse {
+    sync_table_data_cache_after_insert_impl(
+        state,
+        connection_id,
+        tab_id,
+        database,
+        table,
+        columns,
+        rows,
+        current_page,
+        page_size,
+        primary_key,
+        execution_time_ms,
+    )
 }
 
 pub fn evict_table_data_impl(state: &AppState, connection_id: &str, tab_id: &str) {

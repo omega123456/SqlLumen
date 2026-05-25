@@ -97,6 +97,7 @@ export function ResultPanel({
   const exportDialogOpen = activeResult.exportDialogOpen ?? false
   const totalRows = activeResult.totalRows ?? 0
   const isExpired = activeResult.isExpired ?? false
+  const rowResidencyStatus = activeResult.rowResidency?.status ?? 'resident'
 
   // Edit mode state from active result
   const editMode = activeResult.editMode ?? null
@@ -377,7 +378,7 @@ export function ResultPanel({
   const displayStatus =
     tabStatus === 'running'
       ? 'running'
-      : tabStatus === 'restoring'
+      : rowResidencyStatus === 'restoring'
         ? 'restoring'
         : tabStatus === 'idle'
           ? 'idle'
@@ -418,6 +419,7 @@ export function ResultPanel({
       id={hideSubTabs ? undefined : resultPanelId}
       aria-labelledby={hideSubTabs ? undefined : resultPanelLabelledBy}
       className={className}
+      aria-busy={displayStatus === 'restoring'}
     >
       <ResultToolbar
         tabId={tabId}
@@ -519,8 +521,8 @@ export function ResultPanel({
   }, [retryExpiredResult, tabId])
 
   return (
-    <div className={styles.container} data-testid="result-panel">
-      <div role="status" data-testid="expired-status">
+    <div className={styles.container} data-testid="result-panel" aria-busy={displayStatus === 'restoring'}>
+      <div role="status" aria-live="polite" aria-atomic="true" data-testid="expired-status">
         {isExpired && displayStatus !== 'running' && (
           <div className={styles.emptyState} style={{ height: '100%' }}>
             <ClockCountdown
@@ -581,8 +583,14 @@ export function ResultPanel({
         <>
           {!hideSubTabs && results.length > 1 && <ResultSubTabs tabId={tabId} />}
           {renderResultBody(gridTabPanelClassName)}
-          <div className={styles.restoringOverlay}>
-            <div className={styles.spinner} />
+          <div
+            className={styles.restoringOverlay}
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            data-testid="query-result-restore-overlay"
+          >
+            <div className={styles.spinner} aria-hidden="true" />
             <span>Restoring cached results…</span>
           </div>
         </>

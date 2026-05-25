@@ -761,6 +761,7 @@ mod command_wrapper_coverage {
     use serde_json::json;
     use sqllumen_lib::commands::table_data as table_data_commands;
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
+    use sqllumen_lib::mysql::table_data::{PrimaryKeyInfo, TableDataColumnMeta, TableDataResponse};
     use sqllumen_lib::state::AppState;
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     use std::collections::HashMap;
@@ -813,6 +814,10 @@ mod command_wrapper_coverage {
             .manage(state)
             .invoke_handler(tauri::generate_handler![
                 fetch_table_data,
+                restore_table_data_cache,
+                sync_table_data_cache_after_insert,
+                sync_table_data_cache_after_update,
+                sync_table_data_cache_after_delete,
                 update_table_row,
                 insert_table_row,
                 delete_table_row,
@@ -882,6 +887,104 @@ mod command_wrapper_coverage {
             filter_model,
         )
         .await
+    }
+
+    #[tauri::command]
+    fn restore_table_data_cache(
+        state: tauri::State<'_, AppState>,
+        connection_id: String,
+        tab_id: String,
+        database: String,
+        table: String,
+    ) -> sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse {
+        table_data_commands::restore_table_data_cache(state, connection_id, tab_id, database, table)
+    }
+
+    #[tauri::command]
+    fn sync_table_data_cache_after_insert(
+        state: tauri::State<'_, AppState>,
+        connection_id: String,
+        tab_id: String,
+        database: String,
+        table: String,
+        columns: Vec<TableDataColumnMeta>,
+        rows: Vec<Vec<serde_json::Value>>,
+        current_page: u32,
+        page_size: u32,
+        primary_key: Option<PrimaryKeyInfo>,
+        execution_time_ms: u64,
+    ) -> sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse {
+        table_data_commands::sync_table_data_cache_after_insert(
+            state,
+            connection_id,
+            tab_id,
+            database,
+            table,
+            columns,
+            rows,
+            current_page,
+            page_size,
+            primary_key,
+            execution_time_ms,
+        )
+    }
+
+    #[tauri::command]
+    fn sync_table_data_cache_after_update(
+        state: tauri::State<'_, AppState>,
+        connection_id: String,
+        tab_id: String,
+        database: String,
+        table: String,
+        columns: Vec<TableDataColumnMeta>,
+        rows: Vec<Vec<serde_json::Value>>,
+        current_page: u32,
+        page_size: u32,
+        primary_key: Option<PrimaryKeyInfo>,
+        execution_time_ms: u64,
+    ) -> sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse {
+        table_data_commands::sync_table_data_cache_after_update(
+            state,
+            connection_id,
+            tab_id,
+            database,
+            table,
+            columns,
+            rows,
+            current_page,
+            page_size,
+            primary_key,
+            execution_time_ms,
+        )
+    }
+
+    #[tauri::command]
+    fn sync_table_data_cache_after_delete(
+        state: tauri::State<'_, AppState>,
+        connection_id: String,
+        tab_id: String,
+        database: String,
+        table: String,
+        columns: Vec<TableDataColumnMeta>,
+        rows: Vec<Vec<serde_json::Value>>,
+        current_page: u32,
+        page_size: u32,
+        primary_key: Option<PrimaryKeyInfo>,
+        execution_time_ms: u64,
+    ) -> sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse {
+        table_data_commands::sync_table_data_cache_after_delete(
+            state,
+            connection_id,
+            tab_id,
+            database,
+            table,
+            columns,
+            rows,
+            current_page,
+            page_size,
+            primary_key,
+            execution_time_ms,
+        )
     }
 
     #[tauri::command]
@@ -1169,6 +1272,220 @@ mod command_wrapper_coverage {
         .expect("export should succeed");
     }
 
+    fn sample_cached_response(id: i64) -> TableDataResponse {
+        TableDataResponse {
+            columns: vec![
+                TableDataColumnMeta {
+                    name: "id".to_string(),
+                    data_type: "BIGINT".to_string(),
+                    is_boolean_alias: false,
+                    enum_values: None,
+                    set_values: None,
+                    is_nullable: false,
+                    is_primary_key: true,
+                    is_unique_key: true,
+                    has_default: false,
+                    column_default: None,
+                    is_binary: false,
+                    is_auto_increment: true,
+                },
+                TableDataColumnMeta {
+                    name: "name".to_string(),
+                    data_type: "VARCHAR".to_string(),
+                    is_boolean_alias: false,
+                    enum_values: None,
+                    set_values: None,
+                    is_nullable: false,
+                    is_primary_key: false,
+                    is_unique_key: false,
+                    has_default: false,
+                    column_default: None,
+                    is_binary: false,
+                    is_auto_increment: false,
+                },
+            ],
+            rows: vec![vec![serde_json::json!(id), serde_json::json!("Alice")]],
+            current_page: 1,
+            page_size: 50,
+            primary_key: Some(PrimaryKeyInfo {
+                key_columns: vec!["id".to_string()],
+                has_auto_increment: true,
+                is_unique_key_fallback: false,
+            }),
+            execution_time_ms: 12,
+        }
+    }
+
+    #[tokio::test]
+    async fn table_data_cache_wrappers_restore_and_sync_expected_statuses() {
+        let state = common::test_app_state();
+        let cached = sample_cached_response(1);
+        state
+            .table_data_cache
+            .insert("conn-1", "tab-1", cached.clone());
+        let webview = build_app(state);
+
+        let restored =
+            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
+                &webview,
+                "restore_table_data_cache",
+                json!({
+                    "connectionId": "conn-1",
+                    "tabId": "tab-1",
+                    "database": "test_db",
+                    "table": "users"
+                }),
+            )
+            .expect("restore should return cached entry");
+        assert_eq!(restored.status, "available");
+        assert_eq!(restored.data, Some(cached.clone()));
+
+        let synced_insert =
+            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse>(
+                &webview,
+                "sync_table_data_cache_after_insert",
+                json!({
+                    "connectionId": "conn-1",
+                    "tabId": "tab-1",
+                    "database": "test_db",
+                    "table": "users",
+                    "columns": cached.columns.clone(),
+                    "rows": [
+                        [1, "Alice"],
+                        [2, "Bob"]
+                    ],
+                    "currentPage": 1,
+                    "pageSize": 50,
+                    "primaryKey": cached.primary_key.clone(),
+                    "executionTimeMs": 15
+                }),
+            )
+            .expect("insert sync should succeed");
+        assert_eq!(synced_insert.status, "synced");
+
+        let synced_update =
+            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse>(
+                &webview,
+                "sync_table_data_cache_after_update",
+                json!({
+                    "connectionId": "conn-1",
+                    "tabId": "tab-1",
+                    "database": "test_db",
+                    "table": "users",
+                    "columns": cached.columns.clone(),
+                    "rows": [
+                        [1, "Alicia"],
+                        [2, "Bob"]
+                    ],
+                    "currentPage": 1,
+                    "pageSize": 50,
+                    "primaryKey": cached.primary_key.clone(),
+                    "executionTimeMs": 18
+                }),
+            )
+            .expect("update sync should succeed");
+        assert_eq!(synced_update.status, "synced");
+
+        let after_update =
+            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
+                &webview,
+                "restore_table_data_cache",
+                json!({
+                    "connectionId": "conn-1",
+                    "tabId": "tab-1",
+                    "database": "test_db",
+                    "table": "users"
+                }),
+            )
+            .expect("restore after update should succeed");
+        let after_update_data = after_update.data.expect("updated cache should exist");
+        assert_eq!(
+            after_update_data.rows,
+            vec![
+                vec![serde_json::json!(1), serde_json::json!("Alicia")],
+                vec![serde_json::json!(2), serde_json::json!("Bob")]
+            ]
+        );
+
+        let synced_delete =
+            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse>(
+                &webview,
+                "sync_table_data_cache_after_delete",
+                json!({
+                    "connectionId": "conn-1",
+                    "tabId": "tab-1",
+                    "database": "test_db",
+                    "table": "users",
+                    "columns": after_update_data.columns.clone(),
+                    "rows": [
+                        [2, "Bob"]
+                    ],
+                    "currentPage": 1,
+                    "pageSize": 50,
+                    "primaryKey": after_update_data.primary_key.clone(),
+                    "executionTimeMs": 20
+                }),
+            )
+            .expect("delete sync should succeed");
+        assert_eq!(synced_delete.status, "synced");
+
+        let final_restore =
+            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
+                &webview,
+                "restore_table_data_cache",
+                json!({
+                    "connectionId": "conn-1",
+                    "tabId": "tab-1",
+                    "database": "test_db",
+                    "table": "users"
+                }),
+            )
+            .expect("restore after delete should succeed");
+        let final_data = final_restore.data.expect("deleted cache should still exist");
+        assert_eq!(final_restore.status, "available");
+        assert_eq!(
+            final_data.rows,
+            vec![vec![serde_json::json!(2), serde_json::json!("Bob")]]
+        );
+
+        let missing_sync =
+            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheSyncResponse>(
+                &webview,
+                "sync_table_data_cache_after_insert",
+                json!({
+                    "connectionId": "conn-1",
+                    "tabId": "missing-tab",
+                    "database": "test_db",
+                    "table": "users",
+                    "columns": final_data.columns.clone(),
+                    "rows": [
+                        [3, "Cara"]
+                    ],
+                    "currentPage": 1,
+                    "pageSize": 50,
+                    "primaryKey": final_data.primary_key.clone(),
+                    "executionTimeMs": 22
+                }),
+            )
+            .expect("missing sync should return status");
+        assert_eq!(missing_sync.status, "missing");
+
+        let missing_restore =
+            invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataCacheRestoreResponse>(
+                &webview,
+                "restore_table_data_cache",
+                json!({
+                    "connectionId": "conn-1",
+                    "tabId": "missing-tab",
+                    "database": "test_db",
+                    "table": "users"
+                }),
+            )
+            .expect("missing restore should return status");
+        assert_eq!(missing_restore.status, "missing");
+        assert_eq!(missing_restore.data, None);
+    }
+
     // ── History logging verification tests ──────────────────────────────────
 
     /// Helper: wait for fire-and-forget history logging spawned tasks to complete.
@@ -1272,6 +1589,53 @@ mod command_wrapper_coverage {
             "History SQL should contain interpolated filter value, got: {}",
             entry.sql_text
         );
+    }
+
+    #[tokio::test]
+    async fn fetch_table_data_logs_history_with_raw_sql_fallback_for_invalid_identifiers() {
+        let state = common::test_app_state();
+        let db = std::sync::Arc::clone(&state.db);
+        register_connection(&state, "hist-fallback", false);
+        let webview = build_app(state);
+        let invalid_database = "d".repeat(65);
+
+        let _response = invoke_tauri_command::<sqllumen_lib::mysql::table_data::TableDataResponse>(
+            &webview,
+            "fetch_table_data",
+            json!({
+                "connectionId": "hist-fallback",
+                "tabId": "table-data-tab-1",
+                "database": invalid_database,
+                "table": "users",
+                "page": 1,
+                "pageSize": 10,
+                "sortColumn": null,
+                "sortDirection": null,
+                "filterModel": null
+            }),
+        )
+        .expect("fetch should still succeed via coverage stub");
+
+        wait_for_history_logging().await;
+
+        let conn = db.lock().expect("db lock");
+        let page = sqllumen_lib::db::history::list_history(&conn, "hist-fallback", 1, 50, None)
+            .expect("list history");
+        assert_eq!(page.total, 1);
+
+        let entry = &page.entries[0];
+        assert!(entry.success);
+        assert!(
+            entry.sql_text.starts_with("SELECT * FROM `"),
+            "fallback should still log a SELECT statement, got: {}",
+            entry.sql_text
+        );
+        assert!(
+            entry.sql_text.contains(&invalid_database),
+            "fallback SQL should include the original identifier text, got: {}",
+            entry.sql_text
+        );
+        assert!(entry.sql_text.contains("LIMIT 10 OFFSET 0"));
     }
 
     #[tokio::test]
@@ -1722,6 +2086,18 @@ mod build_select_sql_tests {
         assert!(sql.contains("WHERE"));
         assert!(sql.contains("ORDER BY `name` ASC"));
         assert!(sql.contains("LIMIT 100 OFFSET 200"));
+    }
+
+    #[test]
+    fn build_select_sql_returns_none_for_empty_or_overlong_identifiers() {
+        let sort = Some(SortInfo {
+            column: "x".repeat(65),
+            direction: "asc".to_string(),
+        });
+
+        assert!(build_select_sql("", "users", &[], &None, Some((10, 0))).is_none());
+        assert!(build_select_sql("db", "", &[], &None, Some((10, 0))).is_none());
+        assert!(build_select_sql("db", "users", &[], &sort, Some((10, 0))).is_none());
     }
 }
 

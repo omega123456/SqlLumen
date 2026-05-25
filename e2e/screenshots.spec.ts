@@ -2855,6 +2855,110 @@ for (const theme of themes) {
       )
     })
 
+    test('QueryEditorTab — result restore overlay', async ({ page }) => {
+      await openQueryEditorWithResults(page)
+
+      await page.evaluate(() => {
+        const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            activeTabByConnection: Record<string, string | null>
+          }
+        }
+        const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+          setState: (
+            updater: (state: {
+              tabs: Record<string, { results: Array<Record<string, unknown>> }>
+            }) => Record<string, unknown>
+          ) => void
+        }
+        const tabId =
+          workspaceStore.getState().activeTabByConnection['session-playwright-1'] ?? null
+        if (!tabId) {
+          throw new Error('Missing active query tab for restore-overlay screenshot')
+        }
+
+        queryStore.setState((state) => ({
+          tabs: {
+            ...state.tabs,
+            [tabId]: {
+              ...state.tabs[tabId],
+              tabStatus: 'success',
+              results: [
+                {
+                  ...state.tabs[tabId].results[0],
+                  resultStatus: 'success',
+                  rows: [],
+                  rowResidency: {
+                    status: 'restoring',
+                    isActive: true,
+                    inactiveSince: null,
+                  },
+                },
+              ],
+              activeResultIndex: 0,
+            },
+          },
+        }))
+      })
+
+      await expect(page.getByTestId('query-result-restore-overlay')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await expect(page.getByTestId('result-panel')).toHaveScreenshot(
+        `query-editor-result-panel-restoring-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
+    test('TableDataTab — restore overlay', async ({ page }) => {
+      await openTableDataTab(page)
+
+      await page.evaluate(() => {
+        const tableDataStore = (window as unknown as Record<string, unknown>).__tableDataStore__ as {
+          setState: (
+            updater: (state: { tabs: Record<string, Record<string, unknown>> }) => Record<string, unknown>
+          ) => void
+        }
+        const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
+          getState: () => {
+            tabsByConnection: Record<string, Array<{ id: string; type: string }>>
+          }
+        }
+        const tableTab =
+          workspaceStore
+            .getState()
+            .tabsByConnection['session-playwright-1']?.find((tab) => tab.type === 'table-data') ??
+          null
+        if (!tableTab) {
+          throw new Error('Missing table data tab for restore-overlay screenshot')
+        }
+
+        tableDataStore.setState((state) => ({
+          tabs: {
+            ...state.tabs,
+            [tableTab.id]: {
+              ...state.tabs[tableTab.id],
+              isLoading: true,
+              rows: [],
+              rowResidency: {
+                status: 'restoring',
+                isActive: true,
+                inactiveSince: null,
+              },
+            },
+          },
+        }))
+      })
+
+      await expect(page.getByTestId('table-data-restore-overlay')).toBeVisible({
+        timeout: APP_READY_MS,
+      })
+      await expect(page.getByTestId('table-data-tab')).toHaveScreenshot(
+        `table-data-tab-restoring-${theme}.png`,
+        { animations: 'disabled' }
+      )
+    })
+
     test('QueryEditorTab — combined bottom panel with results and scoped table-data tabs', async ({
       page,
     }) => {

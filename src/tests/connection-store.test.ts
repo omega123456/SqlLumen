@@ -764,6 +764,7 @@ describe('useConnectionStore — closeConnection aborts on failed save', () => {
           pageSize: 100,
           executionTimeMs: 0,
           primaryKey: null, // No PK → save will fail
+          rowsEvictedAt: null,
           viewMode: 'grid',
           selectedRowKey: null,
           selectedCell: null,
