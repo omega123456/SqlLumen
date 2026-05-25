@@ -2800,7 +2800,7 @@ for (const theme of themes) {
     })
 
     test('QueryEditorTab — results expired empty state', async ({ page }) => {
-      await openQueryEditorTab(page)
+      await openQueryEditorWithResults(page)
 
       await page.evaluate(() => {
         const workspaceStore = (window as unknown as Record<string, unknown>).__workspaceStore__ as {
@@ -2809,6 +2809,9 @@ for (const theme of themes) {
           }
         }
         const queryStore = (window as unknown as Record<string, unknown>).__queryStore__ as {
+          getState: () => {
+            tabs: Record<string, { results: Array<Record<string, unknown>> }>
+          }
           setState: (
             updater: (state: {
               tabs: Record<string, { results: Array<Record<string, unknown>> }>
@@ -2821,15 +2824,20 @@ for (const theme of themes) {
           throw new Error('Missing active query tab for expired-result screenshot')
         }
 
+        const queryTab = queryStore.getState().tabs[tabId]
+        if (!queryTab || queryTab.results.length === 0) {
+          throw new Error('Missing query results for expired-result screenshot')
+        }
+
         queryStore.setState((state) => ({
           tabs: {
             ...state.tabs,
             [tabId]: {
-              ...state.tabs[tabId],
+              ...queryTab,
               tabStatus: 'success',
               results: [
                 {
-                  ...state.tabs[tabId].results[0],
+                  ...queryTab.results[0],
                   resultStatus: 'success',
                   queryId: 'mock-expired-q1',
                   columns: [{ name: 'id', dataType: 'BIGINT' }],
