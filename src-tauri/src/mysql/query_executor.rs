@@ -133,90 +133,87 @@ pub struct QueryTableEditInfo {
 /// Removes standard block comments (`/* ... */`), line comments (`-- ...`), and hash comments (`# ...`).
 pub fn strip_non_executable_comments(sql: &str) -> String {
     let mut result = String::with_capacity(sql.len());
-    let chars: Vec<char> = sql.chars().collect();
-    let len = chars.len();
-    let mut i = 0;
+    let mut iter = sql.char_indices().peekable();
 
-    while i < len {
+    while let Some((_, ch)) = iter.next() {
         // Check for block comment start `/*`
-        if i + 1 < len && chars[i] == '/' && chars[i + 1] == '*' {
+        if ch == '/' && iter.peek().map(|&(_, c)| c) == Some('*') {
+            iter.next(); // consume '*'
             // Check if it's an executable comment `/*!` or hint `/*+`
-            if i + 2 < len && (chars[i + 2] == '!' || chars[i + 2] == '+') {
+            if iter
+                .peek()
+                .map(|&(_, c)| c == '!' || c == '+')
+                .unwrap_or(false)
+            {
+                let (_, special) = iter.next().unwrap(); // safe: peek above confirmed element exists
                 // Preserve this comment — copy until closing `*/`
-                result.push(chars[i]);
-                result.push(chars[i + 1]);
-                i += 2;
-                while i < len {
-                    if i + 1 < len && chars[i] == '*' && chars[i + 1] == '/' {
-                        result.push(chars[i]);
-                        result.push(chars[i + 1]);
-                        i += 2;
+                result.push('/');
+                result.push('*');
+                result.push(special);
+                while let Some((_, c)) = iter.next() {
+                    if c == '*' && iter.peek().map(|&(_, c2)| c2) == Some('/') {
+                        result.push('*');
+                        result.push('/');
+                        iter.next(); // consume '/'
                         break;
                     }
-                    result.push(chars[i]);
-                    i += 1;
+                    result.push(c);
                 }
             } else {
                 // Standard block comment — skip until `*/`
-                i += 2;
-                while i < len {
-                    if i + 1 < len && chars[i] == '*' && chars[i + 1] == '/' {
-                        i += 2;
+                while let Some((_, c)) = iter.next() {
+                    if c == '*' && iter.peek().map(|&(_, c2)| c2) == Some('/') {
+                        iter.next(); // consume '/'
                         break;
                     }
-                    i += 1;
                 }
                 // Replace the comment with a space to avoid joining tokens
                 result.push(' ');
             }
         }
         // Line comment `--`
-        else if i + 1 < len && chars[i] == '-' && chars[i + 1] == '-' {
+        else if ch == '-' && iter.peek().map(|&(_, c)| c) == Some('-') {
+            iter.next(); // consume second '-'
             // Skip until end of line
-            i += 2;
-            while i < len && chars[i] != '\n' {
-                i += 1;
+            while iter.peek().map(|&(_, c)| c != '\n').unwrap_or(false) {
+                iter.next();
             }
             // Keep the newline if present
-            if i < len && chars[i] == '\n' {
+            if iter.peek().map(|&(_, c)| c) == Some('\n') {
+                iter.next(); // consume '\n'
                 result.push('\n');
-                i += 1;
             }
         }
         // Hash comment `#`
-        else if chars[i] == '#' {
+        else if ch == '#' {
             // Skip until end of line
-            i += 1;
-            while i < len && chars[i] != '\n' {
-                i += 1;
+            while iter.peek().map(|&(_, c)| c != '\n').unwrap_or(false) {
+                iter.next();
             }
-            if i < len && chars[i] == '\n' {
+            if iter.peek().map(|&(_, c)| c) == Some('\n') {
+                iter.next(); // consume '\n'
                 result.push('\n');
-                i += 1;
             }
         }
         // String literal — skip to preserve content
-        else if chars[i] == '\'' || chars[i] == '"' || chars[i] == '`' {
-            let quote = chars[i];
-            result.push(chars[i]);
-            i += 1;
-            while i < len {
-                if chars[i] == '\\' && i + 1 < len {
-                    result.push(chars[i]);
-                    result.push(chars[i + 1]);
-                    i += 2;
+        else if ch == '\'' || ch == '"' || ch == '`' {
+            let quote = ch;
+            result.push(ch);
+            while let Some((_, c)) = iter.next() {
+                if c == '\\' {
+                    result.push(c);
+                    if let Some((_, escaped)) = iter.next() {
+                        result.push(escaped);
+                    }
                     continue;
                 }
-                result.push(chars[i]);
-                if chars[i] == quote {
-                    i += 1;
+                result.push(c);
+                if c == quote {
                     break;
                 }
-                i += 1;
             }
         } else {
-            result.push(chars[i]);
-            i += 1;
+            result.push(ch);
         }
     }
 

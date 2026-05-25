@@ -972,6 +972,7 @@ pub async fn query_all_foreign_keys(
 /// `key_fn` extracts the grouping key (e.g. table name or `"{schema}.{table}"`)
 /// from each row. The remaining column indices locate `INDEX_NAME`, `NON_UNIQUE`,
 /// `INDEX_TYPE`, `COLUMN_NAME`, and `CARDINALITY` within each row.
+#[cfg(not(coverage))]
 fn aggregate_index_rows(
     rows: &[MySqlRow],
     key_fn: impl Fn(&MySqlRow) -> String,
