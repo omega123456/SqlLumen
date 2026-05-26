@@ -187,8 +187,9 @@ fn sync_table_data_cache_response(
     table: &str,
     response: TableDataResponse,
 ) -> TableDataCacheSyncResponse {
-    let expected_invalidation_version =
-        state.table_data_cache.current_invalidation_version(connection_id, tab_id);
+    let expected_invalidation_version = state
+        .table_data_cache
+        .current_invalidation_version(connection_id, tab_id);
     match state.table_data_cache.get(connection_id, tab_id) {
         CacheGet::Found(_) | CacheGet::ReWarmed(_) => {
             if state.table_data_cache.insert_if_current(
@@ -664,6 +665,26 @@ fn decode_raw_string(value: MySqlValueRef<'_>) -> Option<String> {
 }
 
 #[cfg(not(coverage))]
+fn build_table_data_projection(
+    columns: &[TableDataColumnMeta],
+    pk_col_set: &std::collections::HashSet<&str>,
+) -> Result<String, String> {
+    let mut projection_parts = Vec::with_capacity(columns.len());
+
+    for column in columns {
+        let safe_col = safe_identifier(&column.name)?;
+        let is_pk = pk_col_set.contains(column.name.as_str());
+        if column.is_binary && !is_pk {
+            projection_parts.push(format!("OCTET_LENGTH({safe_col}) AS {safe_col}"));
+        } else {
+            projection_parts.push(safe_col);
+        }
+    }
+
+    Ok(projection_parts.join(", "))
+}
+
+#[cfg(not(coverage))]
 fn format_mysql_time(value: MySqlTime) -> String {
     let sign = if value.sign().is_negative() { "-" } else { "" };
     let hours = value.hours();
@@ -739,18 +760,30 @@ fn serialize_table_value(
 
     // Binary columns: placeholder or hex
     if is_binary {
-        if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(i) {
-            return match v {
-                Some(bytes) => {
-                    if is_pk {
-                        let hex: String = bytes.iter().map(|b| format!("{:02X}", b)).collect();
-                        serde_json::Value::String(format!("0x{hex}"))
-                    } else {
-                        serde_json::Value::String(format!("[BLOB - {} bytes]", bytes.len()))
+        if is_pk {
+            if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(i) {
+                return match v {
+                    Some(bytes) => serde_json::Value::String(format!("0x{}", hex::encode_upper(bytes))),
+                    None => serde_json::Value::Null,
+                };
+            }
+        } else {
+            if let Ok(v) = row.try_get::<Option<u64>, _>(i) {
+                return match v {
+                    Some(byte_len) => {
+                        serde_json::Value::String(format!("[BLOB - {byte_len} bytes]"))
                     }
-                }
-                None => serde_json::Value::Null,
-            };
+                    None => serde_json::Value::Null,
+                };
+            }
+            if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
+                return match v {
+                    Some(byte_len) if byte_len >= 0 => {
+                        serde_json::Value::String(format!("[BLOB - {byte_len} bytes]"))
+                    }
+                    Some(_) | None => serde_json::Value::Null,
+                };
+            }
         }
         return serde_json::Value::Null;
     }
@@ -1189,6 +1222,12 @@ pub async fn fetch_table_data_impl(
     // Get column metadata and PK info
     let (pk_info, columns) = fetch_table_pk_impl(pool, database, table).await?;
 
+    // Build PK column set for binary serialization and projection handling
+    let pk_col_set: std::collections::HashSet<&str> = pk_info
+        .as_ref()
+        .map(|pk| pk.key_columns.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_default();
+
     // Build filter WHERE clause
     let filter_clause = translate_filter_model_with_columns(&filter_model, &columns);
     let where_sql = if filter_clause.sql.is_empty() {
@@ -1209,12 +1248,13 @@ pub async fn fetch_table_data_impl(
 
     let safe_db = safe_identifier(database)?;
     let safe_table = safe_identifier(table)?;
+    let projection = build_table_data_projection(&columns, &pk_col_set)?;
 
     // Build and execute DATA query
     let page = if page < 1 { 1 } else { page };
     let offset = (page - 1) as u64 * page_size as u64;
     let data_sql = format!(
-        "SELECT * FROM {safe_db}.{safe_table}{where_sql}{order_sql} LIMIT {page_size} OFFSET {offset}"
+        "SELECT {projection} FROM {safe_db}.{safe_table}{where_sql}{order_sql} LIMIT {page_size} OFFSET {offset}"
     );
     log_table_data_sql(&data_sql, &filter_clause.params);
     let mut data_query = sqlx::query(&data_sql);
@@ -1228,12 +1268,6 @@ pub async fn fetch_table_data_impl(
     crate::mysql::query_log::log_mysql_rows(&data_rows);
 
     let execution_time_ms = start.elapsed().as_millis() as u64;
-
-    // Build PK column set for binary serialization
-    let pk_col_set: std::collections::HashSet<&str> = pk_info
-        .as_ref()
-        .map(|pk| pk.key_columns.iter().map(|s| s.as_str()).collect())
-        .unwrap_or_default();
 
     // Serialize rows
     let mut serialized_rows = Vec::with_capacity(data_rows.len());
@@ -1395,6 +1429,10 @@ pub async fn insert_table_row_impl(
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
     let safe_db = safe_identifier(database)?;
     let safe_table = safe_identifier(table)?;
+    let (_, columns) = fetch_table_pk_impl(pool, database, table).await?;
+    let pk_col_set: std::collections::HashSet<&str> =
+        pk_info.key_columns.iter().map(|s| s.as_str()).collect();
+    let projection = build_table_data_projection(&columns, &pk_col_set)?;
 
     // Sort column names for deterministic SQL
     let mut col_names: Vec<&String> = values.keys().collect();
@@ -1455,7 +1493,7 @@ pub async fn insert_table_row_impl(
         }
 
         let refetch_sql = format!(
-            "SELECT * FROM {safe_db}.{safe_table} WHERE {}",
+            "SELECT {projection} FROM {safe_db}.{safe_table} WHERE {}",
             where_parts.join(" AND ")
         );
 
@@ -1490,7 +1528,7 @@ pub async fn insert_table_row_impl(
         }
 
         let refetch_sql = format!(
-            "SELECT * FROM {safe_db}.{safe_table} WHERE {}",
+            "SELECT {projection} FROM {safe_db}.{safe_table} WHERE {}",
             where_parts.join(" AND ")
         );
 
@@ -1513,14 +1551,17 @@ pub async fn insert_table_row_impl(
     // Serialize the re-fetched row
     match refetch_row {
         Some(row) => {
-            let (_, columns) = fetch_table_pk_impl(pool, database, table).await?;
             let result: Vec<(String, serde_json::Value)> = (0..row.columns().len())
                 .map(|i| {
                     let col_name = row.column(i).name().to_string();
+                    let col_meta = columns.get(i);
                     let is_boolean_alias =
-                        columns.get(i).map(|c| c.is_boolean_alias).unwrap_or(false);
-                    let is_binary = columns.get(i).map(|c| c.is_binary).unwrap_or(false);
-                    let value = serialize_table_value(&row, i, is_boolean_alias, is_binary, false);
+                        col_meta.map(|column| column.is_boolean_alias).unwrap_or(false);
+                    let is_binary = col_meta.map(|column| column.is_binary).unwrap_or(false);
+                    let is_pk = col_meta
+                        .map(|column| pk_col_set.contains(column.name.as_str()))
+                        .unwrap_or(false);
+                    let value = serialize_table_value(&row, i, is_boolean_alias, is_binary, is_pk);
                     (col_name, value)
                 })
                 .collect();

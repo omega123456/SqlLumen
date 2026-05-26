@@ -253,7 +253,7 @@ mod type_aware_filter_integration {
                 error: None,
             },
             MockQueryStep {
-                query: "SELECT * FROM `pi_management`.`users` WHERE `email_verified_at` IS NOT NULL LIMIT 50 OFFSET 0",
+                query: "SELECT `id`, `email_verified_at` FROM `pi_management`.`users` WHERE `email_verified_at` IS NOT NULL LIMIT 50 OFFSET 0",
                 columns: vec![
                     MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
                     MockColumnDef { name: "email_verified_at", coltype: ColumnType::MYSQL_TYPE_TIMESTAMP, colflags: ColumnFlags::empty() },
@@ -374,7 +374,7 @@ mod type_aware_filter_integration {
                 error: None,
             },
             MockQueryStep {
-                query: "SELECT * FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
+                query: "SELECT `id`, `created_at`, `updated_at` FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
                 columns: vec![
                     MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
                     MockColumnDef { name: "created_at", coltype: ColumnType::MYSQL_TYPE_TIMESTAMP, colflags: ColumnFlags::NOT_NULL_FLAG },
@@ -495,7 +495,7 @@ mod type_aware_filter_integration {
                 error: None,
             },
             MockQueryStep {
-                query: "SELECT * FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
+                query: "SELECT `id`, `status` FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
                 columns: vec![
                     MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
                     MockColumnDef { name: "status", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::empty() },
@@ -596,7 +596,7 @@ mod type_aware_filter_integration {
                 error: None,
             },
             MockQueryStep {
-                query: "SELECT * FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
+                query: "SELECT `id`, `flags` FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
                 columns: vec![
                     MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
                     MockColumnDef { name: "flags", coltype: ColumnType::MYSQL_TYPE_VAR_STRING, colflags: ColumnFlags::empty() },
@@ -697,7 +697,7 @@ mod type_aware_filter_integration {
                 error: None,
             },
             MockQueryStep {
-                query: "SELECT * FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
+                query: "SELECT `id`, `is_admin` FROM `pi_management`.`users` LIMIT 50 OFFSET 0",
                 columns: vec![
                     MockColumnDef { name: "id", coltype: ColumnType::MYSQL_TYPE_LONG, colflags: ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG },
                     MockColumnDef { name: "is_admin", coltype: ColumnType::MYSQL_TYPE_TINY, colflags: ColumnFlags::empty() },
@@ -1441,7 +1441,9 @@ mod command_wrapper_coverage {
                 }),
             )
             .expect("restore after delete should succeed");
-        let final_data = final_restore.data.expect("deleted cache should still exist");
+        let final_data = final_restore
+            .data
+            .expect("deleted cache should still exist");
         assert_eq!(final_restore.status, "available");
         assert_eq!(
             final_data.rows,
