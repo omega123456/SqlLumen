@@ -1,4 +1,5 @@
 .tabBar {
+  --underline-tab-row-height: 44px;
   height: 44px;
   background-color: var(--surface-container);
   display: flex;
@@ -6,6 +7,7 @@
   padding: 0 var(--space-sm);
   flex-shrink: 0;
   gap: 0;
+  overflow: hidden;
 }
 
 .leftSection,
@@ -53,6 +55,7 @@
 }
 
 .connectionTabRail {
+  --underline-tab-row-height: 44px;
   flex: 1;
   min-width: 0;
   align-self: stretch;
