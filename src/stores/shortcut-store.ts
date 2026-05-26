@@ -16,6 +16,9 @@ export const DEFAULT_SHORTCUTS: Record<string, ShortcutBinding> = {
   'new-query-tab': { key: 'T', modifiers: ['ctrl'] },
   'close-tab': { key: 'W', modifiers: ['ctrl'] },
   settings: { key: ',', modifiers: ['ctrl'] },
+  'zoom-in': { key: '=', modifiers: ['ctrl'] },
+  'zoom-out': { key: '-', modifiers: ['ctrl'] },
+  'zoom-reset': { key: '0', modifiers: ['ctrl'] },
 }
 
 /** Action IDs that should fire even when the Monaco editor is focused. */
@@ -24,7 +27,13 @@ export const EDITOR_CONTEXT_ACTIONS = new Set([
   'execute-all',
   'format-query',
   'new-query-tab',
+  'zoom-in',
+  'zoom-out',
+  'zoom-reset',
 ])
+
+/** Action IDs that should fire even when focus is on INPUT/TEXTAREA/SELECT elements. */
+export const GLOBAL_ACTIONS = new Set(['zoom-in', 'zoom-out', 'zoom-reset'])
 
 // ---------------------------------------------------------------------------
 // Store

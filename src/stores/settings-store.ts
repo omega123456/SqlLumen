@@ -24,6 +24,7 @@ export const SETTINGS_DEFAULTS: Record<string, string> = {
   'results.cacheTTL': '1800',
   'results.tableTabsInBottomPanel': 'false',
   'connection.defaultTimeout': '10',
+  'appearance.zoom': '100',
   'connection.defaultKeepalive': '60',
   'updates.checkInterval': DEFAULT_UPDATE_INTERVAL,
   shortcuts: '{}',
@@ -56,7 +57,8 @@ function sectionForKey(key: string): SettingsSection | null {
     key === 'theme' ||
     key === 'session.restore' ||
     key === 'session.state' ||
-    key.startsWith('connection.')
+    key.startsWith('connection.') ||
+    key.startsWith('appearance.')
   )
     return 'general'
   if (key.startsWith('editor.')) return 'editor'

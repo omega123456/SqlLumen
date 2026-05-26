@@ -4,6 +4,7 @@ import { SettingsSection } from './SettingsSection'
 import { SettingsToggle } from './SettingsToggle'
 import { useSettingsStore, useSettingValue } from '../../stores/settings-store'
 import { useThemeStore } from '../../stores/theme-store'
+import { useZoomStore, ZOOM_LEVELS } from '../../stores/zoom-store'
 import type { Theme } from '../../stores/theme-store'
 
 const THEME_OPTIONS = [
@@ -12,11 +13,17 @@ const THEME_OPTIONS = [
   { value: 'dark', label: 'Dark' },
 ]
 
+const ZOOM_OPTIONS = ZOOM_LEVELS.map((level) => ({
+  value: String(level),
+  label: level === 100 ? '100% (Default)' : `${level}%`,
+}))
+
 export function GeneralSettings() {
   const setPendingChange = useSettingsStore((s) => s.setPendingChange)
   const previewTheme = useThemeStore((s) => s.previewTheme)
 
   const theme = useSettingValue('theme')
+  const zoom = useSettingValue('appearance.zoom')
   const sessionRestore = useSettingValue('session.restore') === 'true'
   const connectionTimeout = useSettingValue('connection.defaultTimeout')
   const keepalive = useSettingValue('connection.defaultKeepalive')
@@ -24,6 +31,11 @@ export function GeneralSettings() {
   const handleThemeChange = (value: string) => {
     setPendingChange('theme', value)
     previewTheme(value as Theme)
+  }
+
+  const handleZoomChange = (value: string) => {
+    setPendingChange('appearance.zoom', value)
+    useZoomStore.getState().previewZoom(Number(value))
   }
 
   return (
@@ -43,6 +55,22 @@ export function GeneralSettings() {
             value={theme}
             onChange={handleThemeChange}
             data-testid="settings-theme-dropdown"
+          />
+        </div>
+        <div>
+          <label
+            id="zoom-label"
+            style={{ display: 'block', marginBottom: 6, fontSize: 'var(--type-size-sm)' }}
+          >
+            Zoom
+          </label>
+          <Dropdown
+            id="settings-zoom"
+            labelledBy="zoom-label"
+            options={ZOOM_OPTIONS}
+            value={zoom}
+            onChange={handleZoomChange}
+            data-testid="settings-zoom-dropdown"
           />
         </div>
       </SettingsSection>

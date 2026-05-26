@@ -5,6 +5,7 @@ import { useThemeStore } from './stores/theme-store'
 import { useConnectionStore } from './stores/connection-store'
 import { useSessionRestoreStore } from './stores/session-restore-store'
 import { useShortcutStore } from './stores/shortcut-store'
+import { useZoomStore } from './stores/zoom-store'
 import { useUpdateStore } from './stores/update-store'
 import { useSystemTheme } from './hooks/use-system-theme'
 
@@ -25,6 +26,7 @@ function App() {
   useEffect(() => {
     void initialize()
     void initializeShortcuts()
+    void useZoomStore.getState().initialize()
     let cleanup: (() => void) | undefined
     setupEventListeners().then((unlisten) => {
       cleanup = unlisten

@@ -18,6 +18,7 @@ import { useQueryStore } from '../../stores/query-store'
 import { useObjectEditorStore } from '../../stores/object-editor-store'
 import { useImportDialogStore } from '../../stores/import-dialog-store'
 import { useSettingsStore } from '../../stores/settings-store'
+import { useZoomStore } from '../../stores/zoom-store'
 import { readFile } from '../../lib/query-commands'
 import {
   splitStatements,
@@ -287,6 +288,18 @@ export function AppLayout() {
       useSettingsStore.getState().openDialog()
     })
 
+    store.registerAction('zoom-in', () => {
+      void useZoomStore.getState().zoomIn()
+    })
+
+    store.registerAction('zoom-out', () => {
+      void useZoomStore.getState().zoomOut()
+    })
+
+    store.registerAction('zoom-reset', () => {
+      void useZoomStore.getState().resetZoom()
+    })
+
     return () => {
       store.unregisterAction('execute-query')
       store.unregisterAction('execute-all')
@@ -296,6 +309,9 @@ export function AppLayout() {
       store.unregisterAction('close-tab')
       store.unregisterAction('open-file')
       store.unregisterAction('settings')
+      store.unregisterAction('zoom-in')
+      store.unregisterAction('zoom-out')
+      store.unregisterAction('zoom-reset')
     }
   }, [])
 

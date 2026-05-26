@@ -13,6 +13,7 @@ import { UpdatesSettings } from './UpdatesSettings'
 import { useSettingsStore } from '../../stores/settings-store'
 import { useShortcutStore } from '../../stores/shortcut-store'
 import { useThemeStore } from '../../stores/theme-store'
+import { useZoomStore } from '../../stores/zoom-store'
 import { useUpdateStore } from '../../stores/update-store'
 import type { SettingsSection } from '../../types/schema'
 import styles from './SettingsDialog.module.css'
@@ -63,6 +64,9 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     const savedShortcuts = useSettingsStore.getState().getSetting('shortcuts')
     useShortcutStore.getState().loadShortcuts(savedShortcuts)
 
+    // Clear the zoom preview snapshot so a subsequent Cancel doesn't revert the saved zoom
+    useZoomStore.setState({ previewSnapshot: null })
+
     if (intervalSaveSucceeded) {
       await useUpdateStore.getState().restartPeriodicCheck()
     }
@@ -75,6 +79,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
       setConfirmOpen(true)
     } else {
       revertPreview()
+      useZoomStore.getState().revertPreview()
       onClose()
     }
   }, [isDirty, onClose, revertPreview])
@@ -82,6 +87,7 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
   const handleConfirmDiscard = useCallback(() => {
     discard()
     revertPreview()
+    useZoomStore.getState().revertPreview()
     // Reload shortcuts from saved settings to revert any local-only changes
     const savedShortcuts = useSettingsStore.getState().getSetting('shortcuts')
     useShortcutStore.getState().loadShortcuts(savedShortcuts)

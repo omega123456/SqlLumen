@@ -21,6 +21,9 @@ const ACTION_DESCRIPTORS: ShortcutActionDescriptor[] = [
   { id: 'new-query-tab', label: 'New Query Tab', description: 'Open a new query editor tab' },
   { id: 'close-tab', label: 'Close Tab', description: 'Close the active workspace tab' },
   { id: 'settings', label: 'Settings', description: 'Open the settings dialog' },
+  { id: 'zoom-in', label: 'Zoom In', description: 'Increase application zoom level' },
+  { id: 'zoom-out', label: 'Zoom Out', description: 'Decrease application zoom level' },
+  { id: 'zoom-reset', label: 'Reset Zoom', description: 'Reset application zoom to 100%' },
 ]
 
 /** Check if two bindings are the same key combo. */

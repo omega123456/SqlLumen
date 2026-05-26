@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { GeneralSettings } from '../../../components/settings/GeneralSettings'
 import { SETTINGS_DEFAULTS, useSettingsStore } from '../../../stores/settings-store'
 import { useThemeStore } from '../../../stores/theme-store'
+import { useZoomStore, ZOOM_LEVELS } from '../../../stores/zoom-store'
 
 describe('GeneralSettings', () => {
   beforeEach(() => {
@@ -15,7 +16,9 @@ describe('GeneralSettings', () => {
       activeSection: 'general',
     })
     useThemeStore.setState({ theme: 'system', resolvedTheme: 'light', _previewSnapshot: null })
+    useZoomStore.setState({ zoomLevel: 100, previewSnapshot: null })
     document.documentElement.removeAttribute('data-theme')
+    document.documentElement.style.zoom = ''
   })
 
   it('renders the general settings defaults', () => {
@@ -80,5 +83,44 @@ describe('GeneralSettings', () => {
     expect(useSettingsStore.getState().pendingChanges['session.restore']).toBe('false')
     expect(useSettingsStore.getState().pendingChanges['connection.defaultTimeout']).toBe('30')
     expect(useSettingsStore.getState().pendingChanges['connection.defaultKeepalive']).toBe('90')
+  })
+
+  it('renders the zoom dropdown with all 9 options', async () => {
+    const user = userEvent.setup()
+    render(<GeneralSettings />)
+
+    const zoomDropdown = screen.getByTestId('settings-zoom-dropdown')
+    expect(zoomDropdown).toHaveTextContent('100% (Default)')
+
+    await user.click(zoomDropdown)
+
+    const expectedLabels = ['70%', '80%', '90%', '100% (Default)', '110%', '125%', '150%', '175%', '200%']
+    for (const label of expectedLabels) {
+      expect(screen.getByRole('option', { name: label })).toBeInTheDocument()
+    }
+    expect(screen.getAllByRole('option')).toHaveLength(ZOOM_LEVELS.length)
+  })
+
+  it('changing zoom calls setPendingChange and previewZoom', async () => {
+    const user = userEvent.setup()
+    render(<GeneralSettings />)
+
+    await user.click(screen.getByTestId('settings-zoom-dropdown'))
+    await user.click(screen.getByTestId('settings-zoom-dropdown-option-125'))
+
+    expect(useSettingsStore.getState().pendingChanges['appearance.zoom']).toBe('125')
+    expect(useZoomStore.getState().zoomLevel).toBe(125)
+    expect(useZoomStore.getState().previewSnapshot).toBe(100)
+  })
+
+  it('shows the current effective zoom value from settings', () => {
+    useSettingsStore.setState({
+      pendingChanges: { 'appearance.zoom': '150' },
+      isDirty: true,
+    })
+
+    render(<GeneralSettings />)
+
+    expect(screen.getByTestId('settings-zoom-dropdown')).toHaveTextContent('150%')
   })
 })

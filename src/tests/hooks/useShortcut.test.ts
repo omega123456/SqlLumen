@@ -235,4 +235,124 @@ describe('useShortcut', () => {
     fireKeydown('F9')
     expect(callback).not.toHaveBeenCalled()
   })
+
+  // ---------------------------------------------------------------------------
+  // Global actions (zoom shortcuts) — fire on INPUT/TEXTAREA/SELECT
+  // ---------------------------------------------------------------------------
+
+  it('fires global actions (zoom-in) when focus is on INPUT element', () => {
+    const callback = vi.fn()
+    useShortcutStore.getState().registerAction('zoom-in', callback)
+
+    const { unmount } = renderHook(() => useShortcut())
+
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    fireKeydown('=', { ctrlKey: true }, input)
+
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    document.body.removeChild(input)
+    unmount()
+  })
+
+  it('fires global actions (zoom-out) when focus is on TEXTAREA element', () => {
+    const callback = vi.fn()
+    useShortcutStore.getState().registerAction('zoom-out', callback)
+
+    const { unmount } = renderHook(() => useShortcut())
+
+    const textarea = document.createElement('textarea')
+    document.body.appendChild(textarea)
+    fireKeydown('-', { ctrlKey: true }, textarea)
+
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    document.body.removeChild(textarea)
+    unmount()
+  })
+
+  it('fires global actions (zoom-reset) when focus is on SELECT element', () => {
+    const callback = vi.fn()
+    useShortcutStore.getState().registerAction('zoom-reset', callback)
+
+    const { unmount } = renderHook(() => useShortcut())
+
+    const select = document.createElement('select')
+    document.body.appendChild(select)
+    fireKeydown('0', { ctrlKey: true }, select)
+
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    document.body.removeChild(select)
+    unmount()
+  })
+
+  it('does NOT fire non-global actions on INPUT/TEXTAREA/SELECT elements', () => {
+    const callback = vi.fn()
+    useShortcutStore.getState().registerAction('execute-query', callback)
+
+    const { unmount } = renderHook(() => useShortcut())
+
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    fireKeydown('F9', {}, input)
+    expect(callback).not.toHaveBeenCalled()
+
+    const textarea = document.createElement('textarea')
+    document.body.appendChild(textarea)
+    fireKeydown('F9', {}, textarea)
+    expect(callback).not.toHaveBeenCalled()
+
+    const select = document.createElement('select')
+    document.body.appendChild(select)
+    fireKeydown('F9', {}, select)
+    expect(callback).not.toHaveBeenCalled()
+
+    document.body.removeChild(input)
+    document.body.removeChild(textarea)
+    document.body.removeChild(select)
+    unmount()
+  })
+
+  it('fires global actions (zoom-in) inside Monaco context', () => {
+    const callback = vi.fn()
+    useShortcutStore.getState().registerAction('zoom-in', callback)
+
+    const { unmount } = renderHook(() => useShortcut())
+
+    const monacoContainer = document.createElement('div')
+    monacoContainer.classList.add('monaco-editor')
+    const innerElement = document.createElement('div')
+    monacoContainer.appendChild(innerElement)
+    document.body.appendChild(monacoContainer)
+
+    Object.defineProperty(document, 'activeElement', {
+      value: innerElement,
+      configurable: true,
+    })
+
+    fireKeydown('=', { ctrlKey: true })
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    Object.defineProperty(document, 'activeElement', {
+      value: document.body,
+      configurable: true,
+    })
+    document.body.removeChild(monacoContainer)
+    unmount()
+  })
+
+  it('normalizes + key to = and triggers zoom-in (Cmd+Shift+=)', () => {
+    const callback = vi.fn()
+    useShortcutStore.getState().registerAction('zoom-in', callback)
+
+    const { unmount } = renderHook(() => useShortcut())
+
+    // Pressing Shift+= produces '+' as e.key
+    fireKeydown('+', { ctrlKey: true, shiftKey: true })
+    expect(callback).toHaveBeenCalledTimes(1)
+
+    unmount()
+  })
 })

@@ -18,36 +18,35 @@ import { initAiMemoryStore } from './stores/ai-memory-store'
 // self.MonacoEnvironment.getWorker before Monaco initialises.
 // ---------------------------------------------------------------------------
 import('monaco-editor')
-  .then((monaco) => {
-    return import('@monaco-editor/react').then(({ loader }) => {
-      loader.config({ monaco })
+  .then(async (monaco) => {
+    const { loader } = await import('@monaco-editor/react')
+    loader.config({ monaco })
 
-      // Patch editor.createWebWorker — see comment below for rationale.
-      // monaco-sql-languages' WorkerManager calls
-      //   editor.createWebWorker({ moduleId, label, createData })
-      // but Monaco >= 0.55 expects `opts.worker` (a Worker instance).
-      // We inject it from our MonacoEnvironment.getWorker.
-      const origCreateWebWorker = monaco.editor.createWebWorker.bind(monaco.editor)
+    // Patch editor.createWebWorker — see comment below for rationale.
+    // monaco-sql-languages' WorkerManager calls
+    //   editor.createWebWorker({ moduleId, label, createData })
+    // but Monaco >= 0.55 expects `opts.worker` (a Worker instance).
+    // We inject it from our MonacoEnvironment.getWorker.
+    const origCreateWebWorker = monaco.editor.createWebWorker.bind(monaco.editor)
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(monaco.editor as any).createWebWorker = function patchedCreateWebWorker(
+      opts: Parameters<typeof origCreateWebWorker>[0]
+    ) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(monaco.editor as any).createWebWorker = function patchedCreateWebWorker(
-        opts: Parameters<typeof origCreateWebWorker>[0]
-      ) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const o = opts as any
-        if (!o.worker && o.label) {
-          const env = self.MonacoEnvironment
-          if (env?.getWorker) {
-            try {
-              o.worker = env.getWorker('workerMain.js', o.label)
-            } catch {
-              // fall through — let Monaco handle it
-            }
+      const o = opts as any
+      if (!o.worker && o.label) {
+        const env = self.MonacoEnvironment
+        if (env?.getWorker) {
+          try {
+            o.worker = env.getWorker('workerMain.js', o.label)
+          } catch {
+            // fall through — let Monaco handle it
           }
         }
-        return origCreateWebWorker(opts)
       }
-    })
+      return origCreateWebWorker(opts)
+    }
   })
   // Deliberate console.error: logFrontend relies on Tauri IPC which is
   // unavailable at module-evaluation time before ReactDOM.createRoot.
@@ -118,6 +117,12 @@ async function init() {
           ? 'dark'
           : 'light'
     document.documentElement.setAttribute('data-theme', resolved)
+
+    // Apply saved zoom level before first render to prevent flash
+    const zoom = useSettingsStore.getState().getSetting('appearance.zoom')
+    if (zoom && zoom !== '100') {
+      document.documentElement.style.zoom = `${zoom}%`
+    }
   } catch {
     // Fallback: use system preference if settings load fails
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
