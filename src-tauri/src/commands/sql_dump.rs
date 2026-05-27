@@ -23,13 +23,29 @@ pub struct ExportableDatabase {
     pub tables: Vec<ExportableTable>,
 }
 
+/// The closed set of supported SQL dump object categories.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DumpObjectType {
+    Table,
+    View,
+}
+
 /// A table or view available for export.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportableTable {
     pub name: String,
-    pub object_type: String,
+    pub object_type: DumpObjectType,
     pub estimated_rows: u64,
+}
+
+/// A selected table or view in the dump-start input.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DumpTableEntry {
+    pub name: String,
+    pub object_type: DumpObjectType,
 }
 
 /// Input for starting a SQL dump export job.
@@ -39,9 +55,10 @@ pub struct StartDumpInput {
     pub connection_id: String,
     pub file_path: String,
     pub databases: Vec<String>,
-    /// Map of database name → list of table/view names. If empty for a database,
-    /// all tables/views in that database are exported.
-    pub tables: HashMap<String, Vec<String>>,
+    /// Map of database name → list of selected object entries.
+    /// Each entry carries the object name and its type (table or view).
+    /// Empty maps are accepted but result in no work (no objects exported).
+    pub tables: HashMap<String, Vec<DumpTableEntry>>,
     pub options: DumpOptions,
 }
 
@@ -55,64 +72,63 @@ pub async fn list_exportable_objects_impl(
         .get_pool(connection_id)
         .ok_or_else(|| format!("Connection '{connection_id}' not found in registry"))?;
 
-    // Get list of databases
-    let db_rows = sqlx::query("SHOW DATABASES")
+    // Consolidated metadata query: retrieve all non-system schemas and their
+    // optional table/view metadata in a single round trip.
+    let metadata_query = "\
+        SELECT s.SCHEMA_NAME, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS \
+        FROM information_schema.SCHEMATA s \
+        LEFT JOIN information_schema.TABLES t \
+          ON t.TABLE_SCHEMA = s.SCHEMA_NAME \
+        WHERE s.SCHEMA_NAME NOT IN ('information_schema', 'performance_schema', 'mysql', 'sys') \
+        ORDER BY s.SCHEMA_NAME, t.TABLE_NAME";
+
+    crate::mysql::query_log::log_outgoing_sql(metadata_query);
+
+    let rows = sqlx::query(metadata_query)
         .fetch_all(&pool)
         .await
-        .map_err(|e| format!("Failed to list databases: {e}"))?;
+        .map_err(|e| format!("Failed to list exportable objects: {e}"))?;
 
-    let mut result = Vec::new();
+    // Group rows by schema name, preserving deterministic ordering.
+    let mut result: Vec<ExportableDatabase> = Vec::new();
+    let mut current_db: Option<String> = None;
 
-    for db_row in &db_rows {
-        let db_name: String = decode_mysql_text_cell(db_row, 0)?;
+    for row in &rows {
+        let schema_name: String = decode_mysql_text_cell_named(row, "SCHEMA_NAME")
+            .unwrap_or_default();
 
-        // Skip system databases
-        if db_name == "information_schema"
-            || db_name == "performance_schema"
-            || db_name == "mysql"
-            || db_name == "sys"
-        {
-            continue;
+        // Start a new database group when the schema name changes
+        if current_db.as_deref() != Some(&schema_name) {
+            current_db = Some(schema_name.clone());
+            result.push(ExportableDatabase {
+                name: schema_name.clone(),
+                tables: Vec::new(),
+            });
         }
 
-        // Get tables and views for this database
-        let table_query = format!(
-            "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS \
-             FROM information_schema.TABLES \
-             WHERE TABLE_SCHEMA = '{}' \
-             ORDER BY TABLE_NAME",
-            sql_dump::escape_string_value(&db_name)
-        );
-
-        let table_rows = sqlx::query(&table_query)
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| format!("Failed to list tables for '{db_name}': {e}"))?;
-
-        let tables: Vec<ExportableTable> = table_rows
-            .iter()
-            .map(|row| {
-                let name: String =
-                    decode_mysql_text_cell_named(row, "TABLE_NAME").unwrap_or_default();
-                let table_type: String =
-                    decode_mysql_text_cell_named(row, "TABLE_TYPE").unwrap_or_default();
-                let estimated_rows: i64 = row.try_get("TABLE_ROWS").unwrap_or(0);
-                ExportableTable {
+        // LEFT JOIN produces NULL TABLE_NAME for empty databases
+        let table_name: Option<String> =
+            decode_mysql_text_cell_named(row, "TABLE_NAME").ok();
+        if let Some(name) = table_name {
+            if name.is_empty() {
+                continue;
+            }
+            let table_type: String =
+                decode_mysql_text_cell_named(row, "TABLE_TYPE").unwrap_or_default();
+            let estimated_rows: i64 = row.try_get("TABLE_ROWS").unwrap_or(0);
+            let object_type = if table_type.contains("VIEW") {
+                DumpObjectType::View
+            } else {
+                DumpObjectType::Table
+            };
+            if let Some(db) = result.last_mut() {
+                db.tables.push(ExportableTable {
                     name,
-                    object_type: if table_type.contains("VIEW") {
-                        "view".to_string()
-                    } else {
-                        "table".to_string()
-                    },
+                    object_type,
                     estimated_rows: estimated_rows.max(0) as u64,
-                }
-            })
-            .collect();
-
-        result.push(ExportableDatabase {
-            name: db_name,
-            tables,
-        });
+                });
+            }
+        }
     }
 
     Ok(result)
@@ -128,9 +144,21 @@ pub async fn start_sql_dump_impl(
     dump_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
     pool: sqlx::MySqlPool,
 ) -> Result<String, String> {
+    // Validate all selected object types before creating any job or side effects.
+    for (db_name, entries) in &input.tables {
+        for entry in entries {
+            match entry.object_type {
+                DumpObjectType::Table | DumpObjectType::View => {}
+            }
+            // Serde already rejects unknown variants, but the match ensures
+            // compile-time coverage of the closed enum.
+            let _ = (db_name, &entry.name);
+        }
+    }
+
     let job_id = uuid::Uuid::new_v4().to_string();
 
-    // Count total tables to export
+    // Count total objects to export
     let total_tables: usize = input
         .databases
         .iter()
@@ -237,8 +265,8 @@ fn execute_dump(
 
     let table_loop_result: Result<(), String> = (|| {
         for db_name in &input.databases {
-            let table_list = input.tables.get(db_name).cloned().unwrap_or_default();
-            if table_list.is_empty() {
+            let entry_list = input.tables.get(db_name).cloned().unwrap_or_default();
+            if entry_list.is_empty() {
                 continue;
             }
 
@@ -247,7 +275,10 @@ fn execute_dump(
                 .map_err(|e| format!("Write error: {e}"))?;
             writeln!(file).map_err(|e| format!("Write error: {e}"))?;
 
-            for table_name in &table_list {
+            for entry in &entry_list {
+                let table_name = &entry.name;
+                let is_view = entry.object_type == DumpObjectType::View;
+
                 // Update progress
                 {
                     let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
@@ -255,28 +286,6 @@ fn execute_dump(
                         progress.current_table = Some(format!("{}.{}", db_name, table_name));
                     }
                 }
-
-                // Determine if this is a view
-                let is_view = rt.block_on(async {
-                    let query = format!(
-                        "SELECT TABLE_TYPE FROM information_schema.TABLES \
-                         WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}'",
-                        sql_dump::escape_string_value(db_name),
-                        sql_dump::escape_string_value(table_name)
-                    );
-                    let row = sqlx::query(&query)
-                        .fetch_optional(pool)
-                        .await
-                        .map_err(|e| format!("Failed to check table type: {e}"))?;
-                    match row {
-                        Some(r) => {
-                            let tt: String =
-                                decode_mysql_text_cell_named(&r, "TABLE_TYPE").unwrap_or_default();
-                            Ok::<bool, String>(tt.contains("VIEW"))
-                        }
-                        None => Ok::<bool, String>(false),
-                    }
-                })?;
 
                 // Get CREATE statement
                 if input.options.include_structure {

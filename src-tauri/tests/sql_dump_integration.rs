@@ -410,12 +410,12 @@ fn test_exportable_database_serde() {
         tables: vec![
             sqllumen_lib::commands::sql_dump::ExportableTable {
                 name: "users".to_string(),
-                object_type: "table".to_string(),
+                object_type: sqllumen_lib::commands::sql_dump::DumpObjectType::Table,
                 estimated_rows: 1000,
             },
             sqllumen_lib::commands::sql_dump::ExportableTable {
                 name: "user_stats".to_string(),
-                object_type: "view".to_string(),
+                object_type: sqllumen_lib::commands::sql_dump::DumpObjectType::View,
                 estimated_rows: 0,
             },
         ],
@@ -434,13 +434,17 @@ fn test_exportable_database_serde() {
 // ── StartDumpInput serde ──────────────────────────────────────────────────
 
 #[test]
-fn test_start_dump_input_serde() {
+fn test_start_dump_input_serde_with_object_entries() {
     let input_json = serde_json::json!({
         "connectionId": "conn-1",
         "filePath": "/tmp/dump.sql",
         "databases": ["db1"],
         "tables": {
-            "db1": ["users", "orders"]
+            "db1": [
+                { "name": "users", "objectType": "table" },
+                { "name": "orders", "objectType": "table" },
+                { "name": "user_stats", "objectType": "view" }
+            ]
         },
         "options": {
             "includeStructure": true,
@@ -456,11 +460,55 @@ fn test_start_dump_input_serde() {
     assert_eq!(input.connection_id, "conn-1");
     assert_eq!(input.file_path, "/tmp/dump.sql");
     assert_eq!(input.databases, vec!["db1"]);
-    assert_eq!(
-        input.tables.get("db1").unwrap(),
-        &vec!["users".to_string(), "orders".to_string()]
-    );
+
+    let entries = input.tables.get("db1").unwrap();
+    assert_eq!(entries.len(), 3);
+    assert_eq!(entries[0].name, "users");
+    assert_eq!(entries[0].object_type, sqllumen_lib::commands::sql_dump::DumpObjectType::Table);
+    assert_eq!(entries[2].name, "user_stats");
+    assert_eq!(entries[2].object_type, sqllumen_lib::commands::sql_dump::DumpObjectType::View);
     assert_eq!(input.options.include_drop, false);
+}
+
+#[test]
+fn test_start_dump_input_invalid_object_type_rejected() {
+    let input_json = serde_json::json!({
+        "connectionId": "conn-1",
+        "filePath": "/tmp/dump.sql",
+        "databases": ["db1"],
+        "tables": {
+            "db1": [
+                { "name": "users", "objectType": "invalid_type" }
+            ]
+        },
+        "options": {
+            "includeStructure": true,
+            "includeData": true,
+            "includeDrop": false,
+            "useTransaction": true
+        }
+    });
+
+    let result: Result<sqllumen_lib::commands::sql_dump::StartDumpInput, _> =
+        serde_json::from_value(input_json);
+    assert!(result.is_err(), "Invalid object type should be rejected at deserialization");
+}
+
+#[test]
+fn test_dump_object_type_serde_round_trip() {
+    use sqllumen_lib::commands::sql_dump::DumpObjectType;
+
+    assert_eq!(serde_json::to_string(&DumpObjectType::Table).unwrap(), "\"table\"");
+    assert_eq!(serde_json::to_string(&DumpObjectType::View).unwrap(), "\"view\"");
+
+    let table: DumpObjectType = serde_json::from_str("\"table\"").unwrap();
+    assert_eq!(table, DumpObjectType::Table);
+    let view: DumpObjectType = serde_json::from_str("\"view\"").unwrap();
+    assert_eq!(view, DumpObjectType::View);
+
+    // Invalid value rejected
+    let bad: Result<DumpObjectType, _> = serde_json::from_str("\"procedure\"");
+    assert!(bad.is_err());
 }
 
 // ── Full header + data + footer integration ───────────────────────────────
@@ -892,7 +940,7 @@ fn test_dump_job_progress_with_error() {
 // ── StartDumpInput with empty tables map ──────────────────────────────────
 
 #[test]
-fn test_start_dump_input_empty_tables() {
+fn test_start_dump_input_empty_tables_is_no_work() {
     let input_json = serde_json::json!({
         "connectionId": "conn-1",
         "filePath": "/tmp/dump.sql",
@@ -913,4 +961,80 @@ fn test_start_dump_input_empty_tables() {
     assert!(input.tables.is_empty());
     assert!(!input.options.include_structure);
     assert!(!input.options.use_transaction);
+
+    // Empty tables map is accepted for deserialization but results in zero
+    // total objects to export — it is NOT treated as "export all objects".
+    let total_objects: usize = input
+        .databases
+        .iter()
+        .map(|db| input.tables.get(db).map(|t| t.len()).unwrap_or(0))
+        .sum();
+    assert_eq!(total_objects, 0);
+}
+
+// ── Source-level structural coverage ─────────────────────────────────────
+
+#[test]
+fn test_listing_source_does_not_use_show_databases() {
+    // Verify that the consolidated listing implementation no longer uses
+    // `SHOW DATABASES` by checking the source file for the old pattern.
+    let source = include_str!("../src/commands/sql_dump.rs");
+    let listing_fn_start = source
+        .find("pub async fn list_exportable_objects_impl")
+        .expect("listing function must exist");
+    // Find the next `pub` function to bound the search
+    let after_listing = &source[listing_fn_start + 10..];
+    let listing_fn_end = after_listing
+        .find("\npub ")
+        .map(|pos| listing_fn_start + 10 + pos)
+        .unwrap_or(source.len());
+    let listing_body = &source[listing_fn_start..listing_fn_end];
+
+    assert!(
+        !listing_body.contains("SHOW DATABASES"),
+        "list_exportable_objects_impl must not use SHOW DATABASES"
+    );
+}
+
+#[test]
+fn test_dump_execution_does_not_use_per_object_type_lookup() {
+    // Verify that the dump executor no longer contains a per-object
+    // TABLE_TYPE lookup query.
+    let source = include_str!("../src/commands/sql_dump.rs");
+    let execute_fn_start = source
+        .find("fn execute_dump(")
+        .expect("execute_dump function must exist");
+    let after_execute = &source[execute_fn_start + 10..];
+    let execute_fn_end = after_execute
+        .find("\npub ")
+        .or_else(|| after_execute.find("\nfn "))
+        .map(|pos| execute_fn_start + 10 + pos)
+        .unwrap_or(source.len());
+    let execute_body = &source[execute_fn_start..execute_fn_end];
+
+    assert!(
+        !execute_body.contains("SELECT TABLE_TYPE FROM information_schema.TABLES"),
+        "execute_dump must not contain per-object TABLE_TYPE lookup"
+    );
+}
+
+#[test]
+fn test_listing_uses_query_log_helper() {
+    // Verify that the consolidated listing query path logs through the
+    // shared MySQL query logging helper.
+    let source = include_str!("../src/commands/sql_dump.rs");
+    let listing_fn_start = source
+        .find("pub async fn list_exportable_objects_impl")
+        .expect("listing function must exist");
+    let after_listing = &source[listing_fn_start + 10..];
+    let listing_fn_end = after_listing
+        .find("\npub ")
+        .map(|pos| listing_fn_start + 10 + pos)
+        .unwrap_or(source.len());
+    let listing_body = &source[listing_fn_start..listing_fn_end];
+
+    assert!(
+        listing_body.contains("query_log::log_outgoing_sql"),
+        "list_exportable_objects_impl must log through the shared query_log helper"
+    );
 }

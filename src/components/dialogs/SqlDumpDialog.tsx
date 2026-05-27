@@ -10,6 +10,7 @@ import {
   type ExportableDatabase,
   type DumpOptions,
   type DumpJobProgress,
+  type DumpTableEntry,
 } from '../../lib/sql-dump-commands'
 import { showSuccessToast, showErrorToast } from '../../stores/toast-store'
 import styles from './SqlDumpDialog.module.css'
@@ -237,14 +238,26 @@ export default function SqlDumpDialog({
       useTransaction,
     }
 
-    // Build tables map
-    const tables: Record<string, string[]> = {}
+    // Enrich selected object names with type metadata from the loaded listing
+    const tables: Record<string, DumpTableEntry[]> = {}
     const dbList: string[] = []
     for (const [dbName, tableSet] of Object.entries(selectedTables)) {
-      if (tableSet.size > 0) {
-        dbList.push(dbName)
-        tables[dbName] = Array.from(tableSet)
+      if (tableSet.size === 0) continue
+      const db = databases.find((d) => d.name === dbName)
+      const entries: DumpTableEntry[] = []
+      for (const objName of tableSet) {
+        const meta = db?.tables.find((t) => t.name === objName)
+        if (!meta) {
+          setIsExporting(false)
+          const msg = `Cannot export: metadata not found for "${objName}" in database "${dbName}"`
+          setError(msg)
+          logFrontend('error', `[sql-dump] ${msg}`)
+          return
+        }
+        entries.push({ name: meta.name, objectType: meta.objectType })
       }
+      dbList.push(dbName)
+      tables[dbName] = entries
     }
 
     try {
@@ -269,6 +282,7 @@ export default function SqlDumpDialog({
     useTransaction,
     selectedTables,
     connectionId,
+    databases,
   ])
 
   // Handle cancel

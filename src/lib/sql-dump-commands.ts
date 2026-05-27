@@ -6,11 +6,20 @@ export interface ExportableDatabase {
   tables: ExportableTable[]
 }
 
+/** The closed set of supported SQL dump object categories. */
+export type SqlDumpObjectType = 'table' | 'view'
+
 /** A table or view available for SQL dump export. */
 export interface ExportableTable {
   name: string
-  objectType: string
+  objectType: SqlDumpObjectType
   estimatedRows: number
+}
+
+/** A selected table or view in the dump-start input. */
+export interface DumpTableEntry {
+  name: string
+  objectType: SqlDumpObjectType
 }
 
 /** Options controlling what gets included in the SQL dump. */
@@ -26,7 +35,7 @@ export interface StartDumpInput {
   connectionId: string
   filePath: string
   databases: string[]
-  tables: Record<string, string[]>
+  tables: Record<string, DumpTableEntry[]>
   options: DumpOptions
 }
 

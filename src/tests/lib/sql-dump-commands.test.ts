@@ -40,12 +40,18 @@ describe('listExportableObjects', () => {
 })
 
 describe('startSqlDump', () => {
-  it('calls invoke with correct command and input', async () => {
+  it('calls invoke with correct command and selected-object entries', async () => {
     const input: StartDumpInput = {
       connectionId: 'conn-1',
       filePath: '/tmp/dump.sql',
       databases: ['testdb'],
-      tables: { testdb: ['users', 'orders'] },
+      tables: {
+        testdb: [
+          { name: 'users', objectType: 'table' },
+          { name: 'orders', objectType: 'table' },
+          { name: 'user_stats', objectType: 'view' },
+        ],
+      },
       options: {
         includeStructure: true,
         includeData: true,
@@ -58,6 +64,12 @@ describe('startSqlDump', () => {
     const jobId = await startSqlDump(input)
     expect(ipc.calls('start_sql_dump')).toEqual([{ input }])
     expect(jobId).toBe('job-123')
+
+    // Verify each entry carries name and objectType
+    const sentInput = (ipc.calls('start_sql_dump')[0] as Record<string, unknown>)
+      .input as StartDumpInput
+    expect(sentInput.tables.testdb).toHaveLength(3)
+    expect(sentInput.tables.testdb[2]).toEqual({ name: 'user_stats', objectType: 'view' })
   })
 })
 

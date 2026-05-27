@@ -223,13 +223,13 @@ describe('SqlDumpDialog', () => {
     expect(screen.getByTestId('dump-submit-button')).toBeDisabled()
   })
 
-  it('export button calls start_sql_dump IPC with correct params', async () => {
+  it('export button calls start_sql_dump IPC with selected-object entries including types', async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
     render(<SqlDumpDialog {...defaultProps} onClose={onClose} />)
     await waitForDumpDialogLoaded()
 
-    // Select test_db
+    // Select test_db (has tables + a view)
     await user.click(screen.getByTestId('dump-db-test_db'))
 
     // Set file path
@@ -243,13 +243,22 @@ describe('SqlDumpDialog', () => {
       expect(calls).toHaveLength(1)
       const args = calls[0] as Record<string, unknown>
       const input = args.input as Record<string, unknown>
+      const tables = input.tables as Record<string, Array<{ name: string; objectType: string }>>
+      // Verify tables are sent as DumpTableEntry with objectType
+      const testDbEntries = tables.test_db
+      expect(testDbEntries).toHaveLength(3)
+      // Find specific entries by name
+      const usersEntry = testDbEntries.find((e) => e.name === 'users')
+      const ordersEntry = testDbEntries.find((e) => e.name === 'orders')
+      const viewEntry = testDbEntries.find((e) => e.name === 'user_stats_view')
+      expect(usersEntry).toEqual({ name: 'users', objectType: 'table' })
+      expect(ordersEntry).toEqual({ name: 'orders', objectType: 'table' })
+      expect(viewEntry).toEqual({ name: 'user_stats_view', objectType: 'view' })
+      // Verify other input fields
       expect(input).toMatchObject({
         connectionId: 'conn-1',
         filePath: '/tmp/dump.sql',
         databases: ['test_db'],
-        tables: {
-          test_db: ['users', 'orders', 'user_stats_view'],
-        },
         options: {
           includeStructure: true,
           includeData: true,
@@ -258,6 +267,53 @@ describe('SqlDumpDialog', () => {
         },
       })
     })
+  })
+
+  it('blocks export when selected metadata is missing and does not call start_sql_dump', async () => {
+    const user = userEvent.setup()
+
+    // Use a mutable metadata array so we can remove a table after loading
+    const mutableDatabases: ExportableDatabase[] = [
+      {
+        name: 'test_db',
+        tables: [
+          { name: 'users', objectType: 'table', estimatedRows: 1000 },
+          { name: 'orders', objectType: 'table', estimatedRows: 5000 },
+        ],
+      },
+    ]
+    ipc.override('list_exportable_objects', () => mutableDatabases)
+
+    render(<SqlDumpDialog {...defaultProps} initialDatabase="test_db" />)
+    await waitForDumpDialogLoaded()
+
+    // All tables are pre-selected via initialDatabase
+    expect(screen.getByTestId('dump-table-test_db-users')).toBeChecked()
+    expect(screen.getByTestId('dump-table-test_db-orders')).toBeChecked()
+
+    setFilePath('/tmp/dump.sql')
+
+    // Now mutate the metadata array in-place to remove 'users' from the tables.
+    // The component's `databases` state holds this same array reference, so
+    // when handleExport iterates it at export time, the table will be missing.
+    mutableDatabases[0].tables = [
+      { name: 'orders', objectType: 'table', estimatedRows: 5000 },
+    ]
+
+    // Click Export — should detect missing metadata for 'users'
+    await user.click(screen.getByTestId('dump-submit-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dump-error')).toHaveTextContent(
+        /metadata not found for "users"/
+      )
+    })
+
+    // Verify no start_sql_dump IPC call was made
+    expect(ipc.calls('start_sql_dump')).toHaveLength(0)
+
+    // Verify the submit button is not in the exporting state (not disabled/replaced)
+    expect(screen.getByTestId('dump-submit-button')).toBeInTheDocument()
   })
 
   it('shows error when export fails', async () => {
