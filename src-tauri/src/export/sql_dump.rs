@@ -176,6 +176,47 @@ pub fn write_structure<W: Write>(
     Ok(())
 }
 
+/// Write a single `INSERT INTO ... VALUES ...;` statement for one batch of rows.
+///
+/// This is the low-level writer that handles only the INSERT statement itself —
+/// no LOCK/UNLOCK, no comment header. Called internally by [`write_data_inserts`]
+/// and by the streaming helper [`stream_to_dump`](crate::commands::sql_dump::stream_to_dump).
+pub fn write_insert_batch<W: Write>(
+    writer: &mut W,
+    escaped_table: &str,
+    col_list: &str,
+    batch: &[Vec<SqlDumpValue>],
+) -> io::Result<u64> {
+    if batch.is_empty() {
+        return Ok(0);
+    }
+
+    write!(
+        writer,
+        "INSERT INTO `{}` ({}) VALUES",
+        escaped_table, col_list
+    )?;
+
+    let mut count: u64 = 0;
+    for (row_idx, row) in batch.iter().enumerate() {
+        if row_idx > 0 {
+            write!(writer, ",")?;
+        }
+        write!(writer, "\n(")?;
+        for (col_idx, val) in row.iter().enumerate() {
+            if col_idx > 0 {
+                write!(writer, ", ")?;
+            }
+            write_value(writer, val)?;
+        }
+        write!(writer, ")")?;
+        count += 1;
+    }
+    writeln!(writer, ";")?;
+
+    Ok(count)
+}
+
 /// Write batched INSERT statements for a table's data.
 ///
 /// Rows are written in batches of up to `INSERT_BATCH_SIZE` rows per INSERT statement
@@ -207,27 +248,7 @@ pub fn write_data_inserts<W: Write>(
     let mut total_rows: u64 = 0;
 
     for chunk in rows.chunks(INSERT_BATCH_SIZE) {
-        write!(
-            writer,
-            "INSERT INTO `{}` ({}) VALUES",
-            escaped_table, col_list
-        )?;
-
-        for (row_idx, row) in chunk.iter().enumerate() {
-            if row_idx > 0 {
-                write!(writer, ",")?;
-            }
-            write!(writer, "\n(")?;
-            for (col_idx, val) in row.iter().enumerate() {
-                if col_idx > 0 {
-                    write!(writer, ", ")?;
-                }
-                write_value(writer, val)?;
-            }
-            write!(writer, ")")?;
-            total_rows += 1;
-        }
-        writeln!(writer, ";")?;
+        total_rows += write_insert_batch(writer, &escaped_table, &col_list, chunk)?;
     }
 
     writeln!(writer, "UNLOCK TABLES;")?;

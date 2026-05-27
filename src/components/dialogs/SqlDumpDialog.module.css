@@ -269,16 +269,40 @@
   height: 20px;
 }
 
-/* ── Progress bar ───────────────────────────────────────────────────────── */
+/* ── Progress ───────────────────────────────────────────────────────────── */
 
 .progressSection {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(var(--outline-variant-rgb), 0.06);
+  border-radius: 8px;
+  border: 1px solid rgba(var(--outline-variant-rgb), 0.12);
+}
+
+[data-theme='light'] .progressSection {
+  background: #f7f9fb;
+  border-color: rgba(193, 198, 213, 0.3);
+}
+
+.progressRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progressLabel {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-2xs);
+  color: var(--on-surface-variant);
+  white-space: nowrap;
+  min-width: 48px;
+  flex-shrink: 0;
 }
 
 .progressBar {
-  width: 100%;
+  flex: 1;
   height: 6px;
   border-radius: 3px;
   background: rgba(var(--outline-variant-rgb), 0.2);
@@ -292,10 +316,22 @@
   transition: width 0.3s ease;
 }
 
-.progressText {
-  font-family: var(--font-body);
+.progressCount {
+  font-family: var(--font-mono);
   font-size: var(--type-size-2xs);
-  color: var(--on-surface-variant);
+  color: var(--on-surface);
+  white-space: nowrap;
+  min-width: 48px;
+  text-align: right;
+}
+
+.rowCount {
+  font-family: var(--font-mono);
+  font-size: var(--type-size-2xs);
+  color: var(--primary);
+  font-weight: 600;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Action buttons ─────────────────────────────────────────────────────── */
@@ -351,6 +387,38 @@
 [data-theme='light'] .exportButton:hover:not(:disabled) {
   background: #0052a3;
   filter: none;
+}
+
+.cancelExportButton {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--error);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--error);
+  font-family: var(--font-body);
+  font-size: var(--type-size-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.cancelExportButton:hover:not(:disabled) {
+  background: rgba(var(--error-rgb), 0.08);
+}
+
+.cancelExportButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+[data-theme='light'] .cancelExportButton {
+  border-radius: 12px;
+  padding: 16px;
 }
 
 .cancelButton {

@@ -31,7 +31,9 @@ const MOCK_PROGRESS_COMPLETED: DumpJobProgress = {
   tablesDone: 3,
   currentTable: null,
   bytesWritten: 102400,
+  rowsExported: 0,
   errorMessage: null,
+  cancelRequested: false,
 }
 
 // ---------------------------------------------------------------------------
@@ -375,10 +377,20 @@ describe('SqlDumpDialog', () => {
     })
   })
 
-  it('export button shows Exporting... while export is in progress', async () => {
+  it('shows cancel export button while export is in progress', async () => {
     const user = userEvent.setup()
-    // Make get_dump_progress never complete
-    ipc.override('get_dump_progress', () => new Promise(() => {}))
+    // Make get_dump_progress return running status
+    ipc.override('get_dump_progress', () => ({
+      jobId: 'mock-dump-job-1',
+      status: 'running',
+      tablesTotal: 2,
+      tablesDone: 0,
+      currentTable: 'test_db.users',
+      bytesWritten: 0,
+      rowsExported: 1000,
+      errorMessage: null,
+      cancelRequested: false,
+    }))
     render(<SqlDumpDialog {...defaultProps} />)
     await waitForDumpDialogLoaded()
 
@@ -387,8 +399,8 @@ describe('SqlDumpDialog', () => {
     await user.click(screen.getByTestId('dump-submit-button'))
 
     await waitFor(() => {
-      expect(screen.getByTestId('dump-submit-button')).toHaveTextContent('Exporting...')
-      expect(screen.getByTestId('dump-submit-button')).toBeDisabled()
+      expect(screen.getByTestId('dump-cancel-export-button')).toHaveTextContent('Cancel Export')
+      expect(screen.getByTestId('dump-cancel-export-button')).toBeEnabled()
     })
   })
 

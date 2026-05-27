@@ -268,8 +268,11 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
     tablesDone: 0,
     currentTable: null,
     bytesWritten: 0,
+    rowsExported: 0,
     errorMessage: null,
+    cancelRequested: false,
   }),
+  cancel_dump: () => null,
   start_sql_import: () => 'mock-import-job-1',
   get_import_progress: () => ({
     jobId: 'mock-import-job-1',

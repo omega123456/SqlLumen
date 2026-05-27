@@ -2,13 +2,15 @@
 //! starting a dump job, and checking progress.
 //! Also includes SQL import commands for executing .sql script files.
 
+use futures::stream::StreamExt;
+use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlValueRef;
 use sqlx::{Column, Row, TypeInfo, Value, ValueRef};
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{Seek, Write};
 
-use crate::export::sql_dump::{self, DumpOptions, SqlDumpValue};
+use crate::export::sql_dump::{self, DumpOptions, SqlDumpValue, INSERT_BATCH_SIZE};
 use crate::export::sql_import;
 use crate::mysql::schema_queries::{decode_mysql_text_cell, decode_mysql_text_cell_named};
 use crate::state::{AppState, DumpJobProgress, DumpJobStatus, ImportJobProgress, ImportJobStatus};
@@ -143,7 +145,10 @@ pub async fn start_sql_dump_impl(
         tables_done: 0,
         current_table: None,
         bytes_written: 0,
+        rows_exported: 0,
         error_message: None,
+        cancel_requested: false,
+        mysql_thread_id: None,
         completed_at: None,
     };
 
@@ -165,14 +170,22 @@ pub async fn start_sql_dump_impl(
         if let Some(progress) = jobs.get_mut(&job_id_clone) {
             match result {
                 Ok(bytes) => {
-                    progress.status = DumpJobStatus::Completed;
+                    if progress.cancel_requested {
+                        progress.status = DumpJobStatus::Cancelled;
+                    } else {
+                        progress.status = DumpJobStatus::Completed;
+                    }
                     progress.bytes_written = bytes;
                     progress.current_table = None;
                     progress.completed_at = Some(std::time::SystemTime::now());
                 }
                 Err(err) => {
-                    progress.status = DumpJobStatus::Failed;
-                    progress.error_message = Some(err);
+                    if progress.cancel_requested {
+                        progress.status = DumpJobStatus::Cancelled;
+                    } else {
+                        progress.status = DumpJobStatus::Failed;
+                        progress.error_message = Some(err);
+                    }
                     progress.current_table = None;
                     progress.completed_at = Some(std::time::SystemTime::now());
                 }
@@ -220,155 +233,387 @@ fn execute_dump(
     }
 
     let mut tables_done: usize = 0;
+    let mut cancelled = false;
 
-    for db_name in &input.databases {
-        let table_list = input.tables.get(db_name).cloned().unwrap_or_default();
-        if table_list.is_empty() {
-            continue;
-        }
-
-        // USE database
-        writeln!(file, "USE `{}`;", sql_dump::escape_identifier(db_name))
-            .map_err(|e| format!("Write error: {e}"))?;
-        writeln!(file).map_err(|e| format!("Write error: {e}"))?;
-
-        for table_name in &table_list {
-            // Update progress
-            {
-                let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
-                if let Some(progress) = jobs.get_mut(job_id) {
-                    progress.current_table = Some(format!("{}.{}", db_name, table_name));
-                }
+    let table_loop_result: Result<(), String> = (|| {
+        for db_name in &input.databases {
+            let table_list = input.tables.get(db_name).cloned().unwrap_or_default();
+            if table_list.is_empty() {
+                continue;
             }
 
-            // Determine if this is a view
-            let is_view = rt.block_on(async {
-                let query = format!(
-                    "SELECT TABLE_TYPE FROM information_schema.TABLES \
-                     WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}'",
-                    sql_dump::escape_string_value(db_name),
-                    sql_dump::escape_string_value(table_name)
-                );
-                let row = sqlx::query(&query)
-                    .fetch_optional(pool)
-                    .await
-                    .map_err(|e| format!("Failed to check table type: {e}"))?;
-                match row {
-                    Some(r) => {
-                        let tt: String =
-                            decode_mysql_text_cell_named(&r, "TABLE_TYPE").unwrap_or_default();
-                        Ok::<bool, String>(tt.contains("VIEW"))
+            // USE database
+            writeln!(file, "USE `{}`;", sql_dump::escape_identifier(db_name))
+                .map_err(|e| format!("Write error: {e}"))?;
+            writeln!(file).map_err(|e| format!("Write error: {e}"))?;
+
+            for table_name in &table_list {
+                // Update progress
+                {
+                    let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+                    if let Some(progress) = jobs.get_mut(job_id) {
+                        progress.current_table = Some(format!("{}.{}", db_name, table_name));
                     }
-                    None => Ok::<bool, String>(false),
                 }
-            })?;
 
-            // Get CREATE statement
-            if input.options.include_structure {
-                let create_sql = if is_view {
-                    rt.block_on(async {
-                        let q = format!(
-                            "SHOW CREATE VIEW `{}`.`{}`",
-                            sql_dump::escape_identifier(db_name),
-                            sql_dump::escape_identifier(table_name)
-                        );
-                        let row = sqlx::query(&q).fetch_one(pool).await.map_err(|e| {
-                            format!("Failed to get CREATE VIEW for '{table_name}': {e}")
-                        })?;
-                        decode_mysql_text_cell(&row, 1)
-                    })?
-                } else {
-                    rt.block_on(async {
-                        let q = format!(
-                            "SHOW CREATE TABLE `{}`.`{}`",
-                            sql_dump::escape_identifier(db_name),
-                            sql_dump::escape_identifier(table_name)
-                        );
-                        let row = sqlx::query(&q).fetch_one(pool).await.map_err(|e| {
-                            format!("Failed to get CREATE TABLE for '{table_name}': {e}")
-                        })?;
-                        decode_mysql_text_cell(&row, 1)
-                    })?
-                };
-
-                sql_dump::write_structure(
-                    &mut file,
-                    table_name,
-                    &create_sql,
-                    input.options.include_drop,
-                    is_view,
-                )
-                .map_err(|e| format!("Failed to write structure for '{table_name}': {e}"))?;
-            }
-
-            // Get data (only for tables, not views)
-            if input.options.include_data && !is_view {
-                let (columns, rows) = rt.block_on(async {
-                    // Fetch all data — column names come from the result set metadata
-                    let data_query = format!(
-                        "SELECT * FROM `{}`.`{}`",
-                        sql_dump::escape_identifier(db_name),
-                        sql_dump::escape_identifier(table_name)
+                // Determine if this is a view
+                let is_view = rt.block_on(async {
+                    let query = format!(
+                        "SELECT TABLE_TYPE FROM information_schema.TABLES \
+                         WHERE TABLE_SCHEMA = '{}' AND TABLE_NAME = '{}'",
+                        sql_dump::escape_string_value(db_name),
+                        sql_dump::escape_string_value(table_name)
                     );
-                    let data_rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(&data_query)
-                        .fetch_all(pool)
+                    let row = sqlx::query(&query)
+                        .fetch_optional(pool)
                         .await
-                        .map_err(|e| format!("Failed to fetch data from '{table_name}': {e}"))?;
+                        .map_err(|e| format!("Failed to check table type: {e}"))?;
+                    match row {
+                        Some(r) => {
+                            let tt: String =
+                                decode_mysql_text_cell_named(&r, "TABLE_TYPE").unwrap_or_default();
+                            Ok::<bool, String>(tt.contains("VIEW"))
+                        }
+                        None => Ok::<bool, String>(false),
+                    }
+                })?;
 
-                    // Extract column names from the first row's metadata (or return empty)
-                    let columns: Vec<String> = if let Some(first) = data_rows.first() {
-                        first
+                // Get CREATE statement
+                if input.options.include_structure {
+                    let create_sql = if is_view {
+                        rt.block_on(async {
+                            let q = format!(
+                                "SHOW CREATE VIEW `{}`.`{}`",
+                                sql_dump::escape_identifier(db_name),
+                                sql_dump::escape_identifier(table_name)
+                            );
+                            let row = sqlx::query(&q).fetch_one(pool).await.map_err(|e| {
+                                format!("Failed to get CREATE VIEW for '{table_name}': {e}")
+                            })?;
+                            decode_mysql_text_cell(&row, 1)
+                        })?
+                    } else {
+                        rt.block_on(async {
+                            let q = format!(
+                                "SHOW CREATE TABLE `{}`.`{}`",
+                                sql_dump::escape_identifier(db_name),
+                                sql_dump::escape_identifier(table_name)
+                            );
+                            let row = sqlx::query(&q).fetch_one(pool).await.map_err(|e| {
+                                format!("Failed to get CREATE TABLE for '{table_name}': {e}")
+                            })?;
+                            decode_mysql_text_cell(&row, 1)
+                        })?
+                    };
+
+                    sql_dump::write_structure(
+                        &mut file,
+                        table_name,
+                        &create_sql,
+                        input.options.include_drop,
+                        is_view,
+                    )
+                    .map_err(|e| format!("Failed to write structure for '{table_name}': {e}"))?;
+                }
+
+                // Check for cancellation before starting data fetch
+                if is_cancel_requested(dump_jobs, job_id) {
+                    cancelled = true;
+                    return Ok(());
+                }
+
+                // Get data (only for tables, not views)
+                if input.options.include_data && !is_view {
+                    rt.block_on(async {
+                        let data_query = format!(
+                            "SELECT * FROM `{}`.`{}`",
+                            sql_dump::escape_identifier(db_name),
+                            sql_dump::escape_identifier(table_name)
+                        );
+
+                        // Acquire a dedicated connection so we can track its thread ID for KILL QUERY
+                        let mut conn = pool
+                            .acquire()
+                            .await
+                            .map_err(|e| format!("Failed to acquire connection: {e}"))?;
+
+                        let thread_id: u64 =
+                            sqlx::query_scalar("SELECT CONNECTION_ID()")
+                                .fetch_one(&mut *conn)
+                                .await
+                                .map_err(|e| format!("Failed to get connection ID: {e}"))?;
+
+                        {
+                            let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+                            if let Some(progress) = jobs.get_mut(job_id) {
+                                progress.mysql_thread_id = Some(thread_id);
+                            }
+                        }
+
+                        // Use fetch() for streaming on the dedicated connection
+                        let mut stream = sqlx::query(&data_query).fetch(&mut *conn);
+
+                        // Extract column names from the first row
+                        let first_row = stream
+                            .try_next()
+                            .await
+                            .map_err(|e| format!("Failed to fetch data from '{table_name}': {e}"))?;
+
+                        let first_row = match first_row {
+                            Some(row) => row,
+                            None => {
+                                // Clear thread ID — no longer running a query
+                                let mut jobs =
+                                    dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+                                if let Some(progress) = jobs.get_mut(job_id) {
+                                    progress.mysql_thread_id = None;
+                                }
+                                return Ok::<_, String>(()); // Empty table
+                            }
+                        };
+
+                        let columns: Vec<String> = first_row
                             .columns()
                             .iter()
                             .map(|c| c.name().to_string())
-                            .collect()
-                    } else {
-                        Vec::new()
-                    };
+                            .collect();
 
-                    // Serialize every cell using the raw MySQL value + type metadata
-                    let rows: Vec<Vec<SqlDumpValue>> = data_rows
-                        .iter()
-                        .map(|row| {
-                            (0..row.columns().len())
-                                .map(|i| serialize_dump_value(row, i))
-                                .collect()
-                        })
-                        .collect();
+                        // Chain the first row back with the rest of the stream
+                        let first_row_stream = futures::stream::once(async { Ok(first_row) });
+                        let full_stream = Box::pin(first_row_stream.chain(stream));
 
-                    Ok::<_, String>((columns, rows))
-                })?;
+                        let result = stream_to_dump(
+                            full_stream,
+                            &mut file,
+                            table_name,
+                            &columns,
+                            |row: &sqlx::mysql::MySqlRow| {
+                                (0..row.columns().len())
+                                    .map(|i| serialize_dump_value(row, i))
+                                    .collect()
+                            },
+                            dump_jobs,
+                            job_id,
+                        )
+                        .await;
 
-                sql_dump::write_data_inserts(&mut file, table_name, &columns, &rows)
-                    .map_err(|e| format!("Failed to write data for '{table_name}': {e}"))?;
-            }
+                        // Clear thread ID — query is done
+                        {
+                            let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+                            if let Some(progress) = jobs.get_mut(job_id) {
+                                progress.mysql_thread_id = None;
+                            }
+                        }
 
-            tables_done += 1;
+                        result.map_err(|e| format!("Failed to write data for '{table_name}': {e}"))?;
 
-            // Update progress
-            {
-                let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
-                if let Some(progress) = jobs.get_mut(job_id) {
-                    progress.tables_done = tables_done;
+                        Ok::<_, String>(())
+                    })?;
+                }
+
+                tables_done += 1;
+
+                // Update progress
+                {
+                    let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+                    if let Some(progress) = jobs.get_mut(job_id) {
+                        progress.tables_done = tables_done;
+                        progress.rows_exported = 0;
+                    }
+                }
+
+                // Check for cancellation after each table
+                if is_cancel_requested(dump_jobs, job_id) {
+                    cancelled = true;
+                    return Ok(());
                 }
             }
         }
-    }
+        Ok(())
+    })();
+
+    // Always write transaction end + footer + flush, even after cancellation.
+    // This ensures the dump file is well-formed (COMMIT, FK checks restored).
+    // Propagate the first error encountered.
+    let mut first_err = table_loop_result.err();
 
     if input.options.use_transaction {
-        sql_dump::write_transaction_end(&mut file)
-            .map_err(|e| format!("Failed to write transaction end: {e}"))?;
+        if let Err(e) = sql_dump::write_transaction_end(&mut file) {
+            first_err.get_or_insert(format!("Failed to write transaction end: {e}"));
+        }
     }
 
-    sql_dump::write_footer(&mut file).map_err(|e| format!("Failed to write footer: {e}"))?;
+    if let Err(e) = sql_dump::write_footer(&mut file) {
+        first_err.get_or_insert(format!("Failed to write footer: {e}"));
+    }
 
-    file.flush()
-        .map_err(|e| format!("Failed to flush file: {e}"))?;
+    if let Err(e) = file.flush() {
+        first_err.get_or_insert(format!("Failed to flush file: {e}"));
+    }
+
+    if let Some(err) = first_err {
+        return Err(err);
+    }
 
     let metadata = std::fs::metadata(&input.file_path)
         .map_err(|e| format!("Failed to read file size: {e}"))?;
 
+    // Store the cancelled flag so the completion handler can check it
+    if cancelled {
+        let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+        if let Some(progress) = jobs.get_mut(job_id) {
+            progress.cancel_requested = true;
+        }
+    }
+
     Ok(metadata.len())
+}
+
+/// Stream rows from a `TryStream`, batch them, and write INSERT statements to the dump file.
+///
+/// This is the core streaming helper that replaces the old `fetch_all` + `write_data_inserts`
+/// approach. It writes LOCK TABLE once before the first batch, calls
+/// [`write_insert_batch`](sql_dump::write_insert_batch) per batch, and writes UNLOCK TABLE
+/// once after the last batch. Progress is updated after each batch flush.
+///
+/// Generic over the row type `R` so that tests can use `Vec<SqlDumpValue>` directly
+/// without constructing `MySqlRow`.
+pub async fn stream_to_dump<R, S, F, W>(
+    mut stream: S,
+    file: &mut W,
+    table_name: &str,
+    columns: &[String],
+    serialize: F,
+    dump_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
+    job_id: &str,
+) -> Result<(), String>
+where
+    S: futures::TryStream<Ok = R, Error = sqlx::Error> + Unpin,
+    F: Fn(&R) -> Vec<SqlDumpValue>,
+    W: Write + Seek,
+{
+    let escaped_table = sql_dump::escape_identifier(table_name);
+    let col_list: String = columns
+        .iter()
+        .map(|c| format!("`{}`", sql_dump::escape_identifier(c)))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    if columns.is_empty() {
+        return Ok(());
+    }
+
+    let mut batch: Vec<Vec<SqlDumpValue>> = Vec::with_capacity(INSERT_BATCH_SIZE);
+    let mut header_written = false;
+
+    let mut total_rows: u64 = 0;
+
+    fn flush_batch<W: Write + Seek>(
+        file: &mut W,
+        header_written: &mut bool,
+        table_name: &str,
+        escaped_table: &str,
+        col_list: &str,
+        batch: &[Vec<SqlDumpValue>],
+        total_rows: u64,
+        dump_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
+        job_id: &str,
+    ) -> Result<(), String> {
+        if !*header_written {
+            writeln!(file, "--").map_err(|e| format!("Write error: {e}"))?;
+            writeln!(
+                file,
+                "-- Data for `{}`",
+                sql_dump::escape_identifier(table_name)
+            )
+            .map_err(|e| format!("Write error: {e}"))?;
+            writeln!(file, "--").map_err(|e| format!("Write error: {e}"))?;
+            writeln!(file).map_err(|e| format!("Write error: {e}"))?;
+            writeln!(file, "LOCK TABLES `{escaped_table}` WRITE;")
+                .map_err(|e| format!("Write error: {e}"))?;
+            *header_written = true;
+        }
+
+        sql_dump::write_insert_batch(file, escaped_table, col_list, batch)
+            .map_err(|e| format!("Write error: {e}"))?;
+
+        let pos = file
+            .stream_position()
+            .map_err(|e| format!("Seek error: {e}"))?;
+        {
+            let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+            if let Some(progress) = jobs.get_mut(job_id) {
+                progress.bytes_written = pos;
+                progress.rows_exported = total_rows;
+            }
+        }
+        Ok(())
+    }
+
+    let loop_result: Result<(), String> = async {
+        loop {
+            let row = stream
+                .try_next()
+                .await
+                .map_err(|e| format!("Stream error for '{table_name}': {e}"))?;
+
+            match row {
+                Some(r) => {
+                    batch.push(serialize(&r));
+
+                    if batch.len() >= INSERT_BATCH_SIZE {
+                        total_rows += batch.len() as u64;
+                        flush_batch(
+                            file,
+                            &mut header_written,
+                            table_name,
+                            &escaped_table,
+                            &col_list,
+                            &batch,
+                            total_rows,
+                            dump_jobs,
+                            job_id,
+                        )?;
+                        batch.clear();
+
+                        if is_cancel_requested(dump_jobs, job_id) {
+                            break;
+                        }
+                    }
+                }
+                None => {
+                    // Stream exhausted — flush remainder
+                    if !batch.is_empty() {
+                        total_rows += batch.len() as u64;
+                        flush_batch(
+                            file,
+                            &mut header_written,
+                            table_name,
+                            &escaped_table,
+                            &col_list,
+                            &batch,
+                            total_rows,
+                            dump_jobs,
+                            job_id,
+                        )?;
+                        batch.clear();
+                    }
+
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+    .await;
+
+    // Always write UNLOCK if LOCK was written, regardless of success or error
+    if header_written {
+        writeln!(file, "UNLOCK TABLES;").map_err(|e| format!("Write error: {e}"))?;
+        writeln!(file).map_err(|e| format!("Write error: {e}"))?;
+    }
+
+    loop_result
 }
 
 /// Get progress of a dump job.
@@ -379,6 +624,64 @@ pub fn get_dump_progress_impl(state: &AppState, job_id: &str) -> Result<DumpJobP
     jobs.get(job_id)
         .cloned()
         .ok_or_else(|| format!("Dump job '{job_id}' not found"))
+}
+
+/// Cancel a running dump job. Sets `cancel_requested` and issues `KILL QUERY`
+/// if a MySQL thread is actively fetching data.
+pub async fn cancel_dump_impl(
+    state: &AppState,
+    job_id: &str,
+    connection_id: &str,
+) -> Result<(), String> {
+    let thread_id = {
+        let mut jobs = state.dump_jobs.write().map_err(|e| e.to_string())?;
+        match jobs.get_mut(job_id) {
+            Some(progress) => {
+                progress.cancel_requested = true;
+                progress.mysql_thread_id
+            }
+            None => return Err(format!("Dump job '{job_id}' not found")),
+        }
+    };
+
+    if let Some(tid) = thread_id {
+        let pool = state
+            .registry
+            .get_pool(connection_id)
+            .ok_or_else(|| format!("Connection '{connection_id}' not found"))?;
+
+        // Re-check that the thread ID is still active before issuing KILL QUERY
+        // to avoid killing an unrelated query that reused the connection.
+        let still_active = {
+            let jobs = state.dump_jobs.read().map_err(|e| e.to_string())?;
+            jobs.get(job_id)
+                .and_then(|p| p.mysql_thread_id)
+                .map(|current_tid| current_tid == tid)
+                .unwrap_or(false)
+        };
+
+        if still_active {
+            let kill_sql = format!("KILL QUERY {}", tid);
+            tracing::debug!(job_id, thread_id = tid, "cancel_dump: issuing KILL QUERY");
+            crate::mysql::query_log::log_outgoing_sql(&kill_sql);
+            if let Err(e) = sqlx::query(&kill_sql).execute(&pool).await {
+                tracing::warn!(job_id, error = %e, "KILL QUERY failed during dump cancel");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Check if cancellation has been requested for a dump job.
+fn is_cancel_requested(
+    dump_jobs: &std::sync::Arc<std::sync::RwLock<HashMap<String, DumpJobProgress>>>,
+    job_id: &str,
+) -> bool {
+    let jobs = dump_jobs.read().unwrap_or_else(|p| p.into_inner());
+    jobs.get(job_id)
+        .map(|p| p.cancel_requested)
+        .unwrap_or(false)
 }
 
 /// Duration after which terminal dump jobs are cleaned up.
@@ -619,6 +922,16 @@ pub async fn get_dump_progress(
     get_dump_progress_impl(&state, &job_id)
 }
 
+#[cfg(not(coverage))]
+#[tauri::command]
+pub async fn cancel_dump(
+    state: tauri::State<'_, AppState>,
+    job_id: String,
+    connection_id: String,
+) -> Result<(), String> {
+    cancel_dump_impl(&state, &job_id, &connection_id).await
+}
+
 // Coverage stubs
 #[cfg(coverage)]
 #[tauri::command]
@@ -644,6 +957,16 @@ pub async fn get_dump_progress(
     _state: tauri::State<'_, AppState>,
     _job_id: String,
 ) -> Result<DumpJobProgress, String> {
+    Err("coverage stub".to_string())
+}
+
+#[cfg(coverage)]
+#[tauri::command]
+pub async fn cancel_dump(
+    _state: tauri::State<'_, AppState>,
+    _job_id: String,
+    _connection_id: String,
+) -> Result<(), String> {
     Err("coverage stub".to_string())
 }
 

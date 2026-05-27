@@ -6,6 +6,7 @@ import {
   listExportableObjects,
   startSqlDump,
   getDumpProgress,
+  cancelDump,
   type ExportableDatabase,
   type DumpOptions,
   type DumpJobProgress,
@@ -59,6 +60,7 @@ export default function SqlDumpDialog({
   const [jobId, setJobId] = useState<string | null>(null)
   const [progress, setProgress] = useState<DumpJobProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [cancelPending, setCancelPending] = useState(false)
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -121,6 +123,14 @@ export default function SqlDumpDialog({
             pollRef.current = null
             showSuccessToast('Export completed', `SQL dump saved to ${filePath}`)
             onClose()
+          } else if (p.status === 'cancelled') {
+            setIsExporting(false)
+            setCancelPending(false)
+            if (pollRef.current) clearInterval(pollRef.current)
+            pollRef.current = null
+            setError(
+              `Export cancelled — ${p.tablesDone} of ${p.tablesTotal} tables were written to the file`
+            )
           } else if (p.status === 'failed') {
             setIsExporting(false)
             if (pollRef.current) clearInterval(pollRef.current)
@@ -261,7 +271,19 @@ export default function SqlDumpDialog({
     connectionId,
   ])
 
-  // Progress percentage
+  // Handle cancel
+  const handleCancel = useCallback(async () => {
+    if (!jobId || cancelPending) return
+    setCancelPending(true)
+    try {
+      await cancelDump(jobId, connectionId)
+    } catch (err) {
+      setCancelPending(false)
+      logFrontend('error', ['[sql-dump] Failed to cancel export:', err].map(String).join(' '))
+    }
+  }, [jobId, connectionId, cancelPending])
+
+  // Progress percentage (table-level)
   const progressPercent = useMemo(() => {
     if (!progress || progress.tablesTotal === 0) return 0
     return Math.round((progress.tablesDone / progress.tablesTotal) * 100)
@@ -439,16 +461,23 @@ export default function SqlDumpDialog({
           {/* Progress */}
           {isExporting && progress && (
             <div className={styles.progressSection} data-testid="dump-progress">
-              <div className={styles.progressBar}>
-                <div className={styles.progressFill} style={{ width: `${progressPercent}%` }} />
+              <div className={styles.progressRow}>
+                <span className={styles.progressLabel}>Tables</span>
+                <div className={styles.progressBar}>
+                  <div className={styles.progressFill} style={{ width: `${progressPercent}%` }} />
+                </div>
+                <span className={styles.progressCount}>
+                  {progress.tablesDone} / {progress.tablesTotal}
+                </span>
               </div>
-              <span className={styles.progressText}>
-                {progress.currentTable
-                  ? `Exporting ${progress.currentTable}...`
-                  : `${progress.tablesDone} / ${progress.tablesTotal} tables`}
-                {' — '}
-                {progressPercent}%
-              </span>
+              {progress.currentTable && (
+                <div className={styles.progressRow}>
+                  <span className={styles.progressLabel}>{progress.currentTable}</span>
+                  <span className={styles.rowCount} data-testid="dump-row-count">
+                    {progress.rowsExported.toLocaleString()} rows
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -461,23 +490,37 @@ export default function SqlDumpDialog({
 
           {/* Buttons */}
           <div className={styles.actions}>
-            <button
-              type="button"
-              className={styles.exportButton}
-              onClick={handleExport}
-              disabled={!canExport}
-              data-testid="dump-submit-button"
-            >
-              {isExporting ? 'Exporting...' : 'Export'}
-            </button>
-            <button
-              type="button"
-              className={styles.cancelButton}
-              onClick={onClose}
-              data-testid="dump-cancel-button"
-            >
-              Cancel
-            </button>
+            {isExporting ? (
+              <button
+                type="button"
+                className={styles.cancelExportButton}
+                onClick={handleCancel}
+                disabled={cancelPending || progress?.cancelRequested}
+                data-testid="dump-cancel-export-button"
+              >
+                {cancelPending || progress?.cancelRequested ? 'Cancelling...' : 'Cancel Export'}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={styles.exportButton}
+                  onClick={handleExport}
+                  disabled={!canExport}
+                  data-testid="dump-submit-button"
+                >
+                  Export
+                </button>
+                <button
+                  type="button"
+                  className={styles.cancelButton}
+                  onClick={onClose}
+                  data-testid="dump-cancel-button"
+                >
+                  Cancel
+                </button>
+              </>
+            )}
           </div>
         </div>
 

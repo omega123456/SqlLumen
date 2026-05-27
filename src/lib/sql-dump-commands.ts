@@ -31,7 +31,7 @@ export interface StartDumpInput {
 }
 
 /** Status of a SQL dump export job. */
-export type DumpJobStatus = 'running' | 'completed' | 'failed'
+export type DumpJobStatus = 'running' | 'completed' | 'failed' | 'cancelled'
 
 /** Progress info for an active or completed SQL dump export job. */
 export interface DumpJobProgress {
@@ -41,7 +41,9 @@ export interface DumpJobProgress {
   tablesDone: number
   currentTable: string | null
   bytesWritten: number
+  rowsExported: number
   errorMessage: string | null
+  cancelRequested: boolean
 }
 
 /** List databases and their tables/views that can be exported via SQL dump. */
@@ -57,6 +59,11 @@ export async function startSqlDump(input: StartDumpInput): Promise<string> {
 /** Get progress of a SQL dump export job. */
 export async function getDumpProgress(jobId: string): Promise<DumpJobProgress> {
   return invoke<DumpJobProgress>('get_dump_progress', { jobId })
+}
+
+/** Cancel a running SQL dump export job. */
+export async function cancelDump(jobId: string, connectionId: string): Promise<void> {
+  return invoke<void>('cancel_dump', { jobId, connectionId })
 }
 
 // ---------------------------------------------------------------------------

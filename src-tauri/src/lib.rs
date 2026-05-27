@@ -365,6 +365,7 @@ pub fn run() {
             commands::sql_dump::list_exportable_objects,
             commands::sql_dump::start_sql_dump,
             commands::sql_dump::get_dump_progress,
+            commands::sql_dump::cancel_dump,
             commands::sql_dump::start_sql_import,
             commands::sql_dump::get_import_progress,
             commands::sql_dump::cancel_import,

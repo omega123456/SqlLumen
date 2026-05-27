@@ -18,6 +18,7 @@ pub enum DumpJobStatus {
     Running,
     Completed,
     Failed,
+    Cancelled,
 }
 
 /// Progress info for an active or completed SQL dump export job.
@@ -30,8 +31,12 @@ pub struct DumpJobProgress {
     pub tables_done: usize,
     pub current_table: Option<String>,
     pub bytes_written: u64,
+    pub rows_exported: u64,
     pub error_message: Option<String>,
-    /// When the job reached a terminal state (Completed/Failed).
+    pub cancel_requested: bool,
+    #[serde(skip)]
+    pub mysql_thread_id: Option<u64>,
+    /// When the job reached a terminal state (Completed/Failed/Cancelled).
     /// Used for lazy cleanup of stale entries.
     #[serde(skip)]
     pub completed_at: Option<std::time::SystemTime>,

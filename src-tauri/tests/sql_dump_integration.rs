@@ -323,7 +323,10 @@ fn test_dump_job_progress_serde() {
         tables_done: 3,
         current_table: Some("users".to_string()),
         bytes_written: 0,
+        rows_exported: 0,
         error_message: None,
+        cancel_requested: false,
+        mysql_thread_id: None,
         completed_at: None,
     };
 
@@ -334,7 +337,9 @@ fn test_dump_job_progress_serde() {
     assert_eq!(json["tablesDone"], serde_json::json!(3));
     assert_eq!(json["currentTable"], serde_json::json!("users"));
     assert_eq!(json["bytesWritten"], serde_json::json!(0));
+    assert_eq!(json["rowsExported"], serde_json::json!(0));
     assert!(json["errorMessage"].is_null());
+    assert_eq!(json["cancelRequested"], serde_json::json!(false));
 }
 
 #[test]
@@ -342,10 +347,12 @@ fn test_dump_job_status_variants() {
     let running = DumpJobStatus::Running;
     let completed = DumpJobStatus::Completed;
     let failed = DumpJobStatus::Failed;
+    let cancelled = DumpJobStatus::Cancelled;
 
     assert_eq!(serde_json::to_string(&running).unwrap(), "\"running\"");
     assert_eq!(serde_json::to_string(&completed).unwrap(), "\"completed\"");
     assert_eq!(serde_json::to_string(&failed).unwrap(), "\"failed\"");
+    assert_eq!(serde_json::to_string(&cancelled).unwrap(), "\"cancelled\"");
 
     assert_eq!(running, DumpJobStatus::Running);
     assert_ne!(running, DumpJobStatus::Failed);
@@ -377,7 +384,10 @@ fn test_get_dump_progress_found() {
                 tables_done: 5,
                 current_table: None,
                 bytes_written: 1024,
+                rows_exported: 0,
                 error_message: None,
+                cancel_requested: false,
+                mysql_thread_id: None,
                 completed_at: None,
             },
         );
@@ -725,8 +735,10 @@ fn test_stale_dump_job_cleanup() {
                 tables_done: 5,
                 current_table: None,
                 bytes_written: 1024,
+                rows_exported: 0,
                 error_message: None,
-                // completed_at set to 10 minutes ago (stale > 5 min)
+                cancel_requested: false,
+                mysql_thread_id: None,
                 completed_at: Some(
                     std::time::SystemTime::now() - std::time::Duration::from_secs(601),
                 ),
@@ -742,7 +754,10 @@ fn test_stale_dump_job_cleanup() {
                 tables_done: 2,
                 current_table: Some("users".to_string()),
                 bytes_written: 0,
+                rows_exported: 0,
                 error_message: None,
+                cancel_requested: false,
+                mysql_thread_id: None,
                 completed_at: None,
             },
         );
@@ -861,7 +876,10 @@ fn test_dump_job_progress_with_error() {
         tables_done: 2,
         current_table: None,
         bytes_written: 512,
+        rows_exported: 0,
         error_message: Some("Connection lost".to_string()),
+        cancel_requested: false,
+        mysql_thread_id: None,
         completed_at: None,
     };
 

@@ -92,6 +92,7 @@
     "allow-list-exportable-objects",
     "allow-start-sql-dump",
     "allow-get-dump-progress",
+    "allow-cancel-dump",
     "allow-start-sql-import",
     "allow-get-import-progress",
     "allow-cancel-import",

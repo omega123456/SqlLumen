@@ -70,7 +70,9 @@ describe('getDumpProgress', () => {
       tablesDone: 2,
       currentTable: 'orders',
       bytesWritten: 1024,
+      rowsExported: 2000,
       errorMessage: null,
+      cancelRequested: false,
     }
     ipc.override('get_dump_progress', () => mockProgress)
 

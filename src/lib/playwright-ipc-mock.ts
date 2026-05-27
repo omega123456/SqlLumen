@@ -941,8 +941,13 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
         tablesDone: 4,
         currentTable: null,
         bytesWritten: 102400,
+        rowsExported: 0,
         errorMessage: null,
+        cancelRequested: false,
       }
+
+    case 'cancel_dump':
+      return null
 
     // --- SQL Import (Phase 9.5b) ---
     case 'start_sql_import':
