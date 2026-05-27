@@ -299,16 +299,24 @@ export default function SqlDumpDialog({
       testId="sql-dump-dialog"
       ariaLabel="Export SQL Dump"
       disableFocusManagement={isPlaywright}
+      nonDismissible={isExporting}
     >
       <div className={styles.root}>
         {/* Header */}
         <div className={styles.header}>
           <h2 className={styles.title}>{schemaOnly ? 'Export Schema DDL' : 'Export SQL Dump'}</h2>
-          <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+          {!isExporting && (
+            <button
+              type="button"
+              className={styles.closeButton}
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Body */}
@@ -538,10 +546,7 @@ export default function SqlDumpDialog({
                 (no data). Useful for version-controlling schema changes.
               </>
             ) : (
-              <>
-                Large tables may take several minutes to export. The dump runs in the background —
-                you can close this dialog and check progress later.
-              </>
+              <>Keep this dialog open while the export runs. Use Cancel Export to stop it.</>
             )}
           </p>
         </div>
