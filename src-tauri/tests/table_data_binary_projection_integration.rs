@@ -13,6 +13,7 @@ mod binary_projection_integration {
     use sqllumen_lib::commands::connections::{save_connection_impl, SaveConnectionInput};
     use sqllumen_lib::commands::mysql::{open_connection_impl, OpenConnectionResult};
     use sqllumen_lib::commands::table_data as table_data_commands;
+    use sqllumen_lib::mysql::metadata_cache::MetadataCache;
     use sqllumen_lib::mysql::pool::set_test_pool_factory;
     use sqllumen_lib::mysql::registry::ConnectionRegistry;
     use sqllumen_lib::mysql::table_data::{
@@ -48,6 +49,7 @@ mod binary_projection_integration {
                 1800,
                 std::env::temp_dir().join("sqllumen-test-binary-projection-table-data"),
             )),
+            metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
             dump_jobs: std::sync::Arc::new(
@@ -802,6 +804,7 @@ mod binary_projection_integration {
         .await;
 
         let pool = connect_mock_pool(&server).await;
+        let metadata_cache = MetadataCache::new();
         let mut values = HashMap::new();
         values.insert(
             "uuid".to_string(),
@@ -811,6 +814,8 @@ mod binary_projection_integration {
 
         let inserted = insert_table_row_impl(
             &pool,
+            "binary-projection-connection",
+            &metadata_cache,
             "app_db",
             "assets",
             &values,
@@ -902,6 +907,7 @@ mod binary_projection_integration {
         .await;
 
         let pool = connect_mock_pool(&server).await;
+        let metadata_cache = MetadataCache::new();
         let mut values = HashMap::new();
         values.insert("id".to_string(), json!(42));
         values.insert("payload".to_string(), json!("AQIDBAUG"));
@@ -909,6 +915,8 @@ mod binary_projection_integration {
 
         let inserted = insert_table_row_impl(
             &pool,
+            "binary-projection-connection",
+            &metadata_cache,
             "app_db",
             "assets",
             &values,

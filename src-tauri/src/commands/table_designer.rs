@@ -3,6 +3,10 @@
 //! Each public `*_impl` function contains the testable business logic, while
 //! the `#[tauri::command]` wrappers remain thin delegates.
 
+use crate::mysql::ddl_detector::{detect_ddl_tables, DdlDetectionResult};
+use crate::mysql::metadata_cache::{
+    evict_metadata_cache_for_connection, evict_metadata_cache_for_tables,
+};
 use crate::mysql::table_designer::{
     self, DesignerTableProperties, DesignerTableSchema, GenerateDdlRequest, GenerateDdlResponse,
 };
@@ -483,6 +487,23 @@ pub async fn apply_table_ddl_impl(
     Ok(())
 }
 
+pub fn invalidate_metadata_cache_for_applied_table_ddl(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    ddl: &str,
+) {
+    match detect_ddl_tables(ddl) {
+        DdlDetectionResult::NoDdl => {}
+        DdlDetectionResult::DdlDetected(affected_tables) => {
+            evict_metadata_cache_for_tables(state, connection_id, &affected_tables, Some(database));
+        }
+        DdlDetectionResult::ParseFailed => {
+            evict_metadata_cache_for_connection(state, connection_id);
+        }
+    }
+}
+
 #[cfg(coverage)]
 pub async fn apply_table_ddl_impl(
     state: &AppState,
@@ -557,6 +578,10 @@ pub async fn apply_table_ddl(
 ) -> Result<(), String> {
     let start = std::time::Instant::now();
     let result = apply_table_ddl_impl(&state, &connection_id, &database, &ddl).await;
+
+    if result.is_ok() {
+        invalidate_metadata_cache_for_applied_table_ddl(&state, &connection_id, &database, &ddl);
+    }
 
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);

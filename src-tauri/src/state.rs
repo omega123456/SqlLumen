@@ -6,6 +6,7 @@ use tauri::AppHandle;
 use tokio::sync::RwLock as TokioRwLock;
 
 use crate::logging::LogFilterReloadHandle;
+use crate::mysql::metadata_cache::MetadataCache;
 use crate::mysql::registry::ConnectionRegistry;
 use crate::mysql::result_cache::ResultCache;
 use crate::mysql::table_data_cache::TableDataCache;
@@ -93,6 +94,8 @@ pub struct AppState {
     pub result_cache: Arc<ResultCache>,
     /// In-memory table-data responses with the same eviction/spill behavior as result cache.
     pub table_data_cache: Arc<TableDataCache>,
+    /// In-memory cache for table primary-key and column metadata.
+    pub metadata_cache: MetadataCache,
     /// Reload handle for `EnvFilter` when `log.level` changes (None in tests).
     pub log_filter_reload: Mutex<Option<LogFilterReloadHandle>>,
     /// MySQL thread IDs for currently running queries, keyed by (connection_id, tab_id).

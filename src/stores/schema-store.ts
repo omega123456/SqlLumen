@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 import type { TreeNode, NodeType } from '../types/schema'
-import { listDatabases, listSchemaObjects, listColumns } from '../lib/schema-commands'
+import {
+  invalidateMetadataCache,
+  listDatabases,
+  listSchemaObjects,
+  listColumns,
+} from '../lib/schema-commands'
+import { logFrontend } from '../lib/app-log-commands'
 
 // ---------------------------------------------------------------------------
 // Node ID encoding helpers
@@ -499,6 +505,14 @@ export const useSchemaStore = create<SchemaState>()((set, get) => ({
       })
     )
     await get().loadDatabases(connectionId)
+    void invalidateMetadataCache(connectionId).catch((err) => {
+      logFrontend(
+        'warn',
+        ['[schema-store] Failed to invalidate backend metadata cache during refreshAll:', err]
+          .map(String)
+          .join(' ')
+      )
+    })
   },
 
   // ------ refreshCategory ------

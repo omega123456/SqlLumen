@@ -1,4 +1,6 @@
+pub mod ddl_detector;
 pub mod health;
+pub mod metadata_cache;
 pub mod multi_result;
 pub mod pool;
 pub mod query_executor;

@@ -44,6 +44,7 @@
     "allow-truncate-table",
     "allow-rename-table",
     "allow-get-table-foreign-keys",
+    "allow-invalidate-metadata-cache",
     "allow-load-schema-cache-snapshot",
     "allow-save-schema-cache-snapshot",
     "allow-load-table-for-designer",

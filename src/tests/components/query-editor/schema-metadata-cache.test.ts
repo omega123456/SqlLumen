@@ -3,12 +3,14 @@ import type { SchemaMetadataFull } from '../../../types/schema'
 
 // Use vi.spyOn to install per-test mock on fetchSchemaMetadataFull without vi.mock().
 import * as QueryCommandsModule from '../../../lib/query-commands'
+import { ipc } from '../../ipc-mock'
 
 import {
   getCache,
   loadCache,
   invalidateCache,
   refreshCacheInBackground,
+  setupSchemaInvalidationListener,
   filterDatabases,
   filterTables,
   filterColumns,
@@ -627,6 +629,63 @@ describe('schema-metadata-cache', () => {
 
       // The stale refresh result should be discarded — cache stays empty
       expect(getCache('conn-bg-inv').status).toBe('empty')
+    })
+  })
+
+  describe('setupSchemaInvalidationListener', () => {
+    it('invalidates the connection cache and triggers a background refresh on event', async () => {
+      hydrateFromSnapshot(
+        JSON.stringify(
+          mockMetadata({
+            databases: ['stale_db'],
+            tables: {
+              stale_db: [
+                {
+                  name: 'old_table',
+                  engine: 'InnoDB',
+                  charset: 'utf8mb4',
+                  rowCount: 1,
+                  dataSize: 1,
+                },
+              ],
+            },
+          })
+        ),
+        'conn-event'
+      )
+
+      mockFetchSchema().mockResolvedValueOnce(
+        mockMetadata({
+          databases: ['fresh_db'],
+          tables: {
+            fresh_db: [
+              {
+                name: 'new_table',
+                engine: 'InnoDB',
+                charset: 'utf8mb4',
+                rowCount: 2,
+                dataSize: 2,
+              },
+            ],
+          },
+        })
+      )
+
+      const unlisten = await setupSchemaInvalidationListener()
+      expect(unlisten).toBeTypeOf('function')
+
+      await ipc.emit('schema-metadata-invalidated', {
+        connectionId: 'conn-event',
+        scope: 'connection',
+        tables: [],
+      })
+
+      await vi.waitFor(() => {
+        expect(getCache('conn-event').status).toBe('ready')
+        expect(getCache('conn-event').databases).toEqual(['fresh_db'])
+      })
+
+      unlisten?.()
     })
   })
 })

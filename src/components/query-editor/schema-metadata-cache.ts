@@ -4,6 +4,7 @@
  * Manages fetching, caching, and filtering of schema metadata for autocomplete.
  */
 
+import { listen } from '@tauri-apps/api/event'
 import type {
   TableInfo,
   ColumnMeta,
@@ -13,6 +14,14 @@ import type {
   SchemaMetadataFull,
 } from '../../types/schema'
 import { fetchSchemaMetadataFull } from '../../lib/query-commands'
+import { logFrontend } from '../../lib/app-log-commands'
+import { hasTauriApis } from '../../lib/tauri-env'
+
+export interface SchemaMetadataInvalidatedPayload {
+  connectionId: string
+  scope: 'tables' | 'connection'
+  tables: string[]
+}
 
 export type CacheStatus = 'empty' | 'loading' | 'ready' | 'error'
 
@@ -303,6 +312,40 @@ export async function refreshCacheInBackground(connectionId: string): Promise<vo
     lastRefreshAt: Date.now(),
   }
   cacheMap.set(connectionId, readyCache)
+}
+
+export async function setupSchemaInvalidationListener(): Promise<(() => void) | undefined> {
+  if (!hasTauriApis()) {
+    return undefined
+  }
+
+  try {
+    return await listen<SchemaMetadataInvalidatedPayload>(
+      'schema-metadata-invalidated',
+      (event) => {
+        invalidateCache(event.payload.connectionId)
+        void refreshCacheInBackground(event.payload.connectionId).catch((err) => {
+          logFrontend(
+            'warn',
+            [
+              '[schema-metadata-cache] Background refresh after schema invalidation failed:',
+              err,
+            ]
+              .map(String)
+              .join(' ')
+          )
+        })
+      }
+    )
+  } catch (err) {
+    logFrontend(
+      'warn',
+      ['[schema-metadata-cache] schema-metadata-invalidated listen failed:', err]
+        .map(String)
+        .join(' ')
+    )
+    return undefined
+  }
 }
 
 export function hydrateFromSnapshot(snapshotJson: string, connectionId: string): void {

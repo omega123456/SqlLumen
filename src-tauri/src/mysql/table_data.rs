@@ -4,6 +4,7 @@
 //! and editing table data. Each function takes a `MySqlPool` directly (the
 //! command wrappers in `commands::table_data` extract the pool from `AppState`).
 
+use crate::mysql::metadata_cache::MetadataCache;
 use crate::mysql::result_cache::CacheGet;
 use crate::mysql::schema_queries::safe_identifier;
 use crate::state::AppState;
@@ -1207,11 +1208,53 @@ pub async fn fetch_table_pk_impl(
     Ok((None, columns))
 }
 
+#[cfg(not(coverage))]
+pub async fn fetch_table_pk_cached(
+    pool: &sqlx::MySqlPool,
+    connection_id: &str,
+    database: &str,
+    table: &str,
+    metadata_cache: &MetadataCache,
+) -> Result<(Option<PrimaryKeyInfo>, Vec<TableDataColumnMeta>), String> {
+    if let Some((primary_key, columns)) = metadata_cache.get(connection_id, database, table) {
+        return Ok((primary_key, columns));
+    }
+
+    let (primary_key, columns) = fetch_table_pk_impl(pool, database, table).await?;
+    metadata_cache.insert(
+        connection_id,
+        database,
+        table,
+        primary_key.clone(),
+        columns.clone(),
+    );
+
+    Ok((primary_key, columns))
+}
+
+/// Coverage stub: returns cached metadata when present and otherwise skips MySQL access.
+#[cfg(coverage)]
+pub async fn fetch_table_pk_cached(
+    _pool: &sqlx::MySqlPool,
+    connection_id: &str,
+    database: &str,
+    table: &str,
+    metadata_cache: &MetadataCache,
+) -> Result<(Option<PrimaryKeyInfo>, Vec<TableDataColumnMeta>), String> {
+    Ok(
+        metadata_cache
+            .get(connection_id, database, table)
+            .unwrap_or_else(|| (None, Vec::new())),
+    )
+}
+
 // ── fetch_table_data_impl ──────────────────────────────────────────────────────
 
 #[cfg(not(coverage))]
 pub async fn fetch_table_data_impl(
     pool: &sqlx::MySqlPool,
+    connection_id: &str,
+    metadata_cache: &MetadataCache,
     database: &str,
     table: &str,
     page: u32,
@@ -1222,7 +1265,8 @@ pub async fn fetch_table_data_impl(
     let start = std::time::Instant::now();
 
     // Get column metadata and PK info
-    let (pk_info, columns) = fetch_table_pk_impl(pool, database, table).await?;
+    let (pk_info, columns) =
+        fetch_table_pk_cached(pool, connection_id, database, table, metadata_cache).await?;
 
     // Build PK column set for binary serialization and projection handling
     let pk_col_set: std::collections::HashSet<&str> = pk_info
@@ -1308,6 +1352,8 @@ pub async fn fetch_table_data_impl(
 #[cfg(coverage)]
 pub async fn fetch_table_data_impl(
     _pool: &sqlx::MySqlPool,
+    _connection_id: &str,
+    _metadata_cache: &MetadataCache,
     _database: &str,
     _table: &str,
     page: u32,
@@ -1424,6 +1470,8 @@ pub async fn update_table_row_impl(
 #[cfg(not(coverage))]
 pub async fn insert_table_row_impl(
     pool: &sqlx::MySqlPool,
+    connection_id: &str,
+    metadata_cache: &MetadataCache,
     database: &str,
     table: &str,
     values: &HashMap<String, serde_json::Value>,
@@ -1431,7 +1479,8 @@ pub async fn insert_table_row_impl(
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
     let safe_db = safe_identifier(database)?;
     let safe_table = safe_identifier(table)?;
-    let (_, columns) = fetch_table_pk_impl(pool, database, table).await?;
+    let (_, columns) =
+        fetch_table_pk_cached(pool, connection_id, database, table, metadata_cache).await?;
     let pk_col_set: std::collections::HashSet<&str> =
         pk_info.key_columns.iter().map(|s| s.as_str()).collect();
     let projection = build_table_data_projection(&columns, &pk_col_set)?;
@@ -1578,6 +1627,8 @@ pub async fn insert_table_row_impl(
 #[cfg(coverage)]
 pub async fn insert_table_row_impl(
     _pool: &sqlx::MySqlPool,
+    _connection_id: &str,
+    _metadata_cache: &MetadataCache,
     _database: &str,
     _table: &str,
     _values: &HashMap<String, serde_json::Value>,
@@ -1690,6 +1741,8 @@ impl Drop for TempFileGuard {
 #[cfg(not(coverage))]
 pub async fn export_table_data_impl(
     pool: &sqlx::MySqlPool,
+    connection_id: &str,
+    metadata_cache: &MetadataCache,
     options: &ExportTableOptions,
 ) -> Result<(), String> {
     use futures::TryStreamExt;
@@ -1697,7 +1750,14 @@ pub async fn export_table_data_impl(
 
     let safe_db = safe_identifier(&options.database)?;
     let safe_table = safe_identifier(&options.table)?;
-    let (_, columns) = fetch_table_pk_impl(pool, &options.database, &options.table).await?;
+    let (_, columns) = fetch_table_pk_cached(
+        pool,
+        connection_id,
+        &options.database,
+        &options.table,
+        metadata_cache,
+    )
+    .await?;
 
     // Build WHERE, ORDER BY, and optional LIMIT/OFFSET (to export only the current page)
     let filter_clause = translate_filter_model_with_columns(&options.filter_model, &columns);
@@ -1954,6 +2014,8 @@ pub async fn export_table_data_impl(
 #[cfg(coverage)]
 pub async fn export_table_data_impl(
     _pool: &sqlx::MySqlPool,
+    _connection_id: &str,
+    _metadata_cache: &MetadataCache,
     _options: &ExportTableOptions,
 ) -> Result<(), String> {
     Ok(())

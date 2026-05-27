@@ -414,6 +414,16 @@ describe('useSchemaStore — refreshAll', () => {
     const genAfter = useSchemaStore.getState().connectionStates['conn-1'].loadGeneration
     expect(genAfter).toBeGreaterThan(genBefore)
   })
+
+  it('fires backend metadata cache invalidation after refresh', async () => {
+    ipc.override('list_databases', () => ['db1'])
+
+    await useSchemaStore.getState().refreshAll('conn-1')
+
+    await vi.waitFor(() => {
+      expect(ipc.calls('invalidate_metadata_cache')).toEqual([{ connectionId: 'conn-1' }])
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------

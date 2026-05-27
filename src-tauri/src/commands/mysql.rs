@@ -2,6 +2,7 @@ use crate::credentials;
 use crate::db::connections;
 #[cfg(not(coverage))]
 use crate::mysql::health;
+use crate::mysql::metadata_cache::evict_metadata_cache_for_connection;
 #[cfg(not(coverage))]
 use crate::mysql::pool;
 #[cfg(coverage)]
@@ -395,6 +396,7 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
             let mut rq = state.running_queries.write().await;
             rq.retain(|(conn_id, _), _| conn_id != connection_id);
         }
+        evict_metadata_cache_for_connection(state, connection_id);
         Ok(())
     } else {
         Err(format!("Connection '{connection_id}' is not open"))
@@ -419,6 +421,8 @@ pub async fn close_connection_impl(state: &AppState, connection_id: &str) -> Res
         let mut rq = state.running_queries.write().await;
         rq.retain(|(conn_id, _), _| conn_id != connection_id);
     }
+
+    evict_metadata_cache_for_connection(state, connection_id);
 
     // Explicitly close the pool before dropping
     close_pool(entry.pool).await;

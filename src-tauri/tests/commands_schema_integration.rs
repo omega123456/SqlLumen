@@ -155,6 +155,33 @@ fn test_registry_contains_returns_false_for_unknown_id() {
     assert!(!state.registry.contains("nonexistent"));
 }
 
+#[tokio::test]
+async fn test_invalidate_metadata_cache_impl_clears_connection_entries() {
+    let state = common::test_app_state();
+    register_lazy_pool(&state, "test-conn", false);
+    state
+        .metadata_cache
+        .insert("test-conn", "db", "tbl", None, Vec::new());
+
+    let result =
+        sqllumen_lib::commands::schema::invalidate_metadata_cache_impl(&state, "test-conn");
+
+    assert!(result.is_ok());
+    assert!(state.metadata_cache.get("test-conn", "db", "tbl").is_none());
+}
+
+#[tokio::test]
+async fn test_invalidate_metadata_cache_impl_errors_for_missing_connection() {
+    let state = common::test_app_state();
+
+    let result = sqllumen_lib::commands::schema::invalidate_metadata_cache_impl(&state, "missing");
+
+    assert_eq!(
+        result.unwrap_err(),
+        "Connection 'missing' is not open".to_string()
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Coverage-mode impl function tests (exercise stubs)
 // ---------------------------------------------------------------------------
@@ -279,6 +306,32 @@ mod coverage_stubs {
         let state = common::test_app_state();
         let result = rename_table_impl(&state, "test-conn", "db", "old", "new").await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_invalidate_metadata_cache_impl_coverage() {
+        let state = common::test_app_state();
+        super::register_lazy_pool(&state, "test-conn", false);
+        state
+            .metadata_cache
+            .insert("test-conn", "db", "tbl", None, Vec::new());
+
+        let result = invalidate_metadata_cache_impl(&state, "test-conn");
+
+        assert!(result.is_ok());
+        assert!(state.metadata_cache.get("test-conn", "db", "tbl").is_none());
+    }
+
+    #[test]
+    fn test_invalidate_metadata_cache_impl_errors_for_missing_connection() {
+        let state = common::test_app_state();
+
+        let result = invalidate_metadata_cache_impl(&state, "missing");
+
+        assert_eq!(
+            result.unwrap_err(),
+            "Connection 'missing' is not open".to_string()
+        );
     }
 
     #[tokio::test]

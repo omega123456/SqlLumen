@@ -69,15 +69,26 @@ async fn multi_batch_produces_three_inserts() {
     let rows = generate_rows(2500);
 
     let stream = row_stream(rows);
-    stream_to_dump(stream, &mut cursor, "users", &columns, |row: &Vec<SqlDumpValue>| row.clone(), &jobs, job_id)
-        .await
-        .expect("stream_to_dump should succeed");
+    stream_to_dump(
+        stream,
+        &mut cursor,
+        "users",
+        &columns,
+        |row: &Vec<SqlDumpValue>| row.clone(),
+        &jobs,
+        job_id,
+    )
+    .await
+    .expect("stream_to_dump should succeed");
 
     let output = String::from_utf8(cursor.into_inner()).unwrap();
 
     // Exactly 3 INSERT INTO statements (1000 + 1000 + 500)
     let insert_count = count_occurrences(&output, "INSERT INTO");
-    assert_eq!(insert_count, 3, "Expected 3 INSERT statements for 2500 rows, got {insert_count}");
+    assert_eq!(
+        insert_count, 3,
+        "Expected 3 INSERT statements for 2500 rows, got {insert_count}"
+    );
 
     // Contains proper structure
     assert!(output.contains("LOCK TABLES `users` WRITE;"));
@@ -102,9 +113,17 @@ async fn exact_batch_boundary_produces_one_insert() {
     let rows = generate_rows(INSERT_BATCH_SIZE); // exactly 1000
 
     let stream = row_stream(rows);
-    stream_to_dump(stream, &mut cursor, "items", &columns, |row: &Vec<SqlDumpValue>| row.clone(), &jobs, job_id)
-        .await
-        .expect("stream_to_dump should succeed");
+    stream_to_dump(
+        stream,
+        &mut cursor,
+        "items",
+        &columns,
+        |row: &Vec<SqlDumpValue>| row.clone(),
+        &jobs,
+        job_id,
+    )
+    .await
+    .expect("stream_to_dump should succeed");
 
     let output = String::from_utf8(cursor.into_inner()).unwrap();
 
@@ -128,19 +147,28 @@ async fn single_batch_fewer_than_limit() {
     let jobs = make_progress(job_id);
     let mut cursor = Cursor::new(Vec::new());
     let columns = vec!["val".to_string()];
-    let rows: Vec<Vec<SqlDumpValue>> = (0..50)
-        .map(|i| vec![SqlDumpValue::Int(i)])
-        .collect();
+    let rows: Vec<Vec<SqlDumpValue>> = (0..50).map(|i| vec![SqlDumpValue::Int(i)]).collect();
 
     let stream = row_stream(rows);
-    stream_to_dump(stream, &mut cursor, "small", &columns, |row: &Vec<SqlDumpValue>| row.clone(), &jobs, job_id)
-        .await
-        .expect("stream_to_dump should succeed");
+    stream_to_dump(
+        stream,
+        &mut cursor,
+        "small",
+        &columns,
+        |row: &Vec<SqlDumpValue>| row.clone(),
+        &jobs,
+        job_id,
+    )
+    .await
+    .expect("stream_to_dump should succeed");
 
     let output = String::from_utf8(cursor.into_inner()).unwrap();
 
     let insert_count = count_occurrences(&output, "INSERT INTO");
-    assert_eq!(insert_count, 1, "Expected 1 INSERT for 50 rows, got {insert_count}");
+    assert_eq!(
+        insert_count, 1,
+        "Expected 1 INSERT for 50 rows, got {insert_count}"
+    );
 
     assert!(output.contains("LOCK TABLES `small` WRITE;"));
     assert!(output.contains("UNLOCK TABLES;"));
@@ -158,15 +186,32 @@ async fn empty_stream_produces_no_output() {
     let columns = vec!["id".to_string()];
 
     let stream = row_stream(vec![]);
-    stream_to_dump(stream, &mut cursor, "empty_tbl", &columns, |row: &Vec<SqlDumpValue>| row.clone(), &jobs, job_id)
-        .await
-        .expect("stream_to_dump should succeed with empty stream");
+    stream_to_dump(
+        stream,
+        &mut cursor,
+        "empty_tbl",
+        &columns,
+        |row: &Vec<SqlDumpValue>| row.clone(),
+        &jobs,
+        job_id,
+    )
+    .await
+    .expect("stream_to_dump should succeed with empty stream");
 
     let output = String::from_utf8(cursor.into_inner()).unwrap();
 
-    assert!(!output.contains("INSERT INTO"), "Empty stream should produce no INSERT");
-    assert!(!output.contains("LOCK TABLES"), "Empty stream should produce no LOCK");
-    assert!(!output.contains("UNLOCK TABLES"), "Empty stream should produce no UNLOCK");
+    assert!(
+        !output.contains("INSERT INTO"),
+        "Empty stream should produce no INSERT"
+    );
+    assert!(
+        !output.contains("LOCK TABLES"),
+        "Empty stream should produce no LOCK"
+    );
+    assert!(
+        !output.contains("UNLOCK TABLES"),
+        "Empty stream should produce no UNLOCK"
+    );
 
     // bytes_written should still be 0
     let jobs_read = jobs.read().unwrap();
@@ -189,9 +234,17 @@ async fn per_batch_progress_is_monotonically_increasing() {
     // the final batch flush position.
     let rows = generate_rows(2500);
     let stream = row_stream(rows);
-    stream_to_dump(stream, &mut cursor, "progress_tbl", &columns, |row: &Vec<SqlDumpValue>| row.clone(), &jobs, job_id)
-        .await
-        .expect("stream_to_dump should succeed");
+    stream_to_dump(
+        stream,
+        &mut cursor,
+        "progress_tbl",
+        &columns,
+        |row: &Vec<SqlDumpValue>| row.clone(),
+        &jobs,
+        job_id,
+    )
+    .await
+    .expect("stream_to_dump should succeed");
 
     let jobs_read = jobs.read().unwrap();
     let progress = jobs_read.get(job_id).unwrap();
@@ -304,7 +357,10 @@ async fn mid_stream_error_propagates() {
     )
     .await;
 
-    assert!(result.is_err(), "stream_to_dump should return Err on mid-stream failure");
+    assert!(
+        result.is_err(),
+        "stream_to_dump should return Err on mid-stream failure"
+    );
     let err_msg = result.unwrap_err();
     assert!(
         err_msg.contains("connection lost"),
@@ -342,9 +398,17 @@ async fn empty_columns_returns_ok_with_no_output() {
     let rows = generate_rows(10);
 
     let stream = row_stream(rows);
-    stream_to_dump(stream, &mut cursor, "tbl", &columns, |row: &Vec<SqlDumpValue>| row.clone(), &jobs, job_id)
-        .await
-        .expect("stream_to_dump should succeed with empty columns");
+    stream_to_dump(
+        stream,
+        &mut cursor,
+        "tbl",
+        &columns,
+        |row: &Vec<SqlDumpValue>| row.clone(),
+        &jobs,
+        job_id,
+    )
+    .await
+    .expect("stream_to_dump should succeed with empty columns");
 
     let output = String::from_utf8(cursor.into_inner()).unwrap();
     assert!(output.is_empty(), "Empty columns should produce no output");

@@ -447,6 +447,13 @@ describe('playwrightIpcMockHandler', () => {
     expect(result).toBeNull()
   })
 
+  it('returns null for invalidate_metadata_cache', () => {
+    const result = playwrightIpcMockHandler('invalidate_metadata_cache', {
+      connectionId: 'session-playwright-1',
+    })
+    expect(result).toBeNull()
+  })
+
   it('captures event listener callback IDs via plugin:event|listen', () => {
     // Simulate what Tauri listen() does internally
     const result = playwrightIpcMockHandler('plugin:event|listen', {

@@ -41,6 +41,7 @@ pub fn test_app_state() -> AppState {
         app_handle: None,
         result_cache: Arc::new(ResultCache::new_for_test(1800, result_spill_dir)),
         table_data_cache: Arc::new(TableDataCache::new_for_test(1800, table_data_spill_dir)),
+        metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),

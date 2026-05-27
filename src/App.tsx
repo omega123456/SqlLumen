@@ -8,6 +8,7 @@ import { useShortcutStore } from './stores/shortcut-store'
 import { useZoomStore } from './stores/zoom-store'
 import { useUpdateStore } from './stores/update-store'
 import { useSystemTheme } from './hooks/use-system-theme'
+import { setupSchemaInvalidationListener } from './components/query-editor/schema-metadata-cache'
 
 // Glide Data Grid base styles + Precision Studio custom theme
 import '@glideapps/glide-data-grid/dist/index.css'
@@ -28,13 +29,18 @@ function App() {
     void initializeShortcuts()
     void useZoomStore.getState().initialize()
     let cleanup: (() => void) | undefined
+    let schemaInvalidationCleanup: (() => void) | undefined
     setupEventListeners().then((unlisten) => {
       cleanup = unlisten
+    })
+    void setupSchemaInvalidationListener().then((unlisten) => {
+      schemaInvalidationCleanup = unlisten
     })
     void restoreSession()
     void useUpdateStore.getState().startPeriodicCheck()
     return () => {
       cleanup?.()
+      schemaInvalidationCleanup?.()
       useUpdateStore.getState().stopPeriodicCheck()
     }
   }, [initialize, initializeShortcuts, setupEventListeners, restoreSession])

@@ -99,3 +99,9 @@ identifier = "allow-save-schema-cache-snapshot"
 description = "Enables the save_schema_cache_snapshot command without any pre-configured scope."
 commands.allow = ["save_schema_cache_snapshot"]
 commands.deny = []
+
+[[permission]]
+identifier = "allow-invalidate-metadata-cache"
+description = "Enables the invalidate_metadata_cache command without any pre-configured scope."
+commands.allow = ["invalidate_metadata_cache"]
+commands.deny = []

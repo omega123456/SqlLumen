@@ -464,9 +464,15 @@ fn test_start_dump_input_serde_with_object_entries() {
     let entries = input.tables.get("db1").unwrap();
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[0].name, "users");
-    assert_eq!(entries[0].object_type, sqllumen_lib::commands::sql_dump::DumpObjectType::Table);
+    assert_eq!(
+        entries[0].object_type,
+        sqllumen_lib::commands::sql_dump::DumpObjectType::Table
+    );
     assert_eq!(entries[2].name, "user_stats");
-    assert_eq!(entries[2].object_type, sqllumen_lib::commands::sql_dump::DumpObjectType::View);
+    assert_eq!(
+        entries[2].object_type,
+        sqllumen_lib::commands::sql_dump::DumpObjectType::View
+    );
     assert_eq!(input.options.include_drop, false);
 }
 
@@ -491,15 +497,24 @@ fn test_start_dump_input_invalid_object_type_rejected() {
 
     let result: Result<sqllumen_lib::commands::sql_dump::StartDumpInput, _> =
         serde_json::from_value(input_json);
-    assert!(result.is_err(), "Invalid object type should be rejected at deserialization");
+    assert!(
+        result.is_err(),
+        "Invalid object type should be rejected at deserialization"
+    );
 }
 
 #[test]
 fn test_dump_object_type_serde_round_trip() {
     use sqllumen_lib::commands::sql_dump::DumpObjectType;
 
-    assert_eq!(serde_json::to_string(&DumpObjectType::Table).unwrap(), "\"table\"");
-    assert_eq!(serde_json::to_string(&DumpObjectType::View).unwrap(), "\"view\"");
+    assert_eq!(
+        serde_json::to_string(&DumpObjectType::Table).unwrap(),
+        "\"table\""
+    );
+    assert_eq!(
+        serde_json::to_string(&DumpObjectType::View).unwrap(),
+        "\"view\""
+    );
 
     let table: DumpObjectType = serde_json::from_str("\"table\"").unwrap();
     assert_eq!(table, DumpObjectType::Table);

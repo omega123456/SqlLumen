@@ -1,13 +1,75 @@
 //! Integration tests for table data operations — filter translation and coverage stubs.
 
 use sqllumen_lib::commands::table_data::interpolate_sql_params;
-use sqllumen_lib::mysql::table_data::{parse_enum_values, parse_set_values};
+#[cfg(not(coverage))]
+use sqllumen_lib::mysql::table_data::fetch_table_pk_cached;
 use sqllumen_lib::mysql::table_data::{
     translate_filter_model, translate_filter_model_with_columns, ExportTableOptions,
     FilterCondition, PrimaryKeyInfo, SortInfo, TableDataColumnMeta,
 };
+use sqllumen_lib::mysql::table_data::{parse_enum_values, parse_set_values};
 
 mod common;
+
+use sqllumen_lib::mysql::metadata_cache::MetadataCache;
+
+#[cfg(not(coverage))]
+#[tokio::test]
+async fn fetch_table_pk_cached_returns_cached_metadata_without_querying_mysql() {
+    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+
+    let pool = MySqlPoolOptions::new().connect_lazy_with(
+        MySqlConnectOptions::new()
+            .host("127.0.0.1")
+            .port(13306)
+            .username("dummy")
+            .password("dummy"),
+    );
+
+    let metadata_cache = MetadataCache::new();
+    let cached_pk = Some(PrimaryKeyInfo {
+        key_columns: vec!["id".to_string()],
+        has_auto_increment: true,
+        is_unique_key_fallback: false,
+    });
+    let cached_columns = vec![TableDataColumnMeta {
+        name: "id".to_string(),
+        data_type: "INT".to_string(),
+        is_boolean_alias: false,
+        enum_values: None,
+        set_values: None,
+        is_nullable: false,
+        is_primary_key: true,
+        is_unique_key: false,
+        has_default: false,
+        column_default: None,
+        is_binary: false,
+        is_auto_increment: true,
+    }];
+
+    metadata_cache.insert(
+        "cached-connection",
+        "cached_db",
+        "cached_table",
+        cached_pk.clone(),
+        cached_columns.clone(),
+    );
+
+    let result = fetch_table_pk_cached(
+        &pool,
+        "cached-connection",
+        "cached_db",
+        "cached_table",
+        &metadata_cache,
+    )
+    .await
+    .expect("cache hit should return without touching mysql");
+
+    assert_eq!(result.0, cached_pk);
+    assert_eq!(result.1, cached_columns);
+
+    pool.close().await;
+}
 
 #[cfg(not(coverage))]
 mod type_aware_filter_integration {
@@ -48,6 +110,7 @@ mod type_aware_filter_integration {
                 1800,
                 std::env::temp_dir().join("sqllumen-test-tbldata-table-data"),
             )),
+            metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
             dump_jobs: std::sync::Arc::new(
@@ -2649,8 +2712,19 @@ mod coverage_stubs {
     #[tokio::test]
     async fn fetch_table_data_impl_stub_returns_default() {
         let pool = dummy_lazy_pool();
-        let result =
-            fetch_table_data_impl(&pool, "test_db", "test_table", 1, 100, None, vec![]).await;
+        let metadata_cache = MetadataCache::new();
+        let result = fetch_table_data_impl(
+            &pool,
+            "test-connection",
+            &metadata_cache,
+            "test_db",
+            "test_table",
+            1,
+            100,
+            None,
+            vec![],
+        )
+        .await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -2664,6 +2738,7 @@ mod coverage_stubs {
     #[tokio::test]
     async fn fetch_table_data_impl_stub_with_sort_and_filter() {
         let pool = dummy_lazy_pool();
+        let metadata_cache = MetadataCache::new();
         let filter = vec![FilterCondition {
             column: "name".to_string(),
             operator: "LIKE".to_string(),
@@ -2674,8 +2749,18 @@ mod coverage_stubs {
             column: "id".to_string(),
             direction: "asc".to_string(),
         });
-
-        let result = fetch_table_data_impl(&pool, "db", "tbl", 2, 50, sort, filter).await;
+        let result = fetch_table_data_impl(
+            &pool,
+            "test-connection",
+            &metadata_cache,
+            "db",
+            "tbl",
+            2,
+            50,
+            sort,
+            filter,
+        )
+        .await;
 
         assert!(result.is_ok());
         let response = result.unwrap();
@@ -2715,13 +2800,23 @@ mod coverage_stubs {
             has_auto_increment: true,
             is_unique_key_fallback: false,
         };
+        let metadata_cache = MetadataCache::new();
         let values = {
             let mut m = HashMap::new();
             m.insert("name".to_string(), serde_json::json!("new_user"));
             m
         };
 
-        let result = insert_table_row_impl(&pool, "test_db", "test_table", &values, &pk).await;
+        let result = insert_table_row_impl(
+            &pool,
+            "test-connection",
+            &metadata_cache,
+            "test_db",
+            "test_table",
+            &values,
+            &pk,
+        )
+        .await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
@@ -2755,8 +2850,10 @@ mod coverage_stubs {
             page: None,
             page_size: None,
         };
+        let metadata_cache = MetadataCache::new();
 
-        let result = export_table_data_impl(&pool, &options).await;
+        let result =
+            export_table_data_impl(&pool, "test-connection", &metadata_cache, &options).await;
         assert!(result.is_ok());
     }
 }

@@ -456,6 +456,7 @@ export function playwrightIpcMockHandler(cmd: string, args?: Record<string, unkn
     case 'drop_table':
     case 'truncate_table':
     case 'rename_table':
+    case 'invalidate_metadata_cache':
       return null
 
     // --- Query execution ---

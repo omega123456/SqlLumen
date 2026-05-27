@@ -29,6 +29,7 @@ fn test_state() -> AppState {
             1800,
             std::env::temp_dir().join("sqllumen-test-ai-table-data"),
         )),
+        metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(HashMap::new())),

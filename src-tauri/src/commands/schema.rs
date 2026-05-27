@@ -9,6 +9,11 @@ use crate::commands::query_history_bridge::{
 };
 #[cfg(not(coverage))]
 use crate::db::history::NewHistoryEntry;
+use crate::mysql::metadata_cache::evict_metadata_cache_for_connection;
+#[cfg(not(coverage))]
+use crate::mysql::metadata_cache::{
+    evict_metadata_cache_for_database, evict_metadata_cache_for_tables,
+};
 #[cfg(not(coverage))]
 use crate::mysql::query_log;
 use crate::mysql::schema_queries::{
@@ -585,6 +590,15 @@ pub async fn rename_table_impl(
     Ok(())
 }
 
+pub fn invalidate_metadata_cache_impl(state: &AppState, connection_id: &str) -> Result<(), String> {
+    if !state.registry.contains(connection_id) {
+        return Err(format!("Connection '{connection_id}' is not open"));
+    }
+
+    evict_metadata_cache_for_connection(state, connection_id);
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Thin Tauri command wrappers
 // ---------------------------------------------------------------------------
@@ -777,6 +791,10 @@ pub async fn drop_database(
         },
     );
 
+    if result.is_ok() {
+        evict_metadata_cache_for_database(&state, &connection_id, &name);
+    }
+
     result
 }
 
@@ -895,6 +913,15 @@ pub async fn drop_table(
         },
     );
 
+    if result.is_ok() {
+        evict_metadata_cache_for_tables(
+            &state,
+            &connection_id,
+            &[(Some(database.clone()), table.clone())],
+            None,
+        );
+    }
+
     result
 }
 
@@ -960,5 +987,26 @@ pub async fn rename_table(
         },
     );
 
+    if result.is_ok() {
+        evict_metadata_cache_for_tables(
+            &state,
+            &connection_id,
+            &[
+                (Some(database.clone()), old_name.clone()),
+                (Some(database.clone()), new_name.clone()),
+            ],
+            None,
+        );
+    }
+
     result
+}
+
+#[cfg(not(coverage))]
+#[tauri::command]
+pub fn invalidate_metadata_cache(
+    connection_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    invalidate_metadata_cache_impl(&state, &connection_id)
 }

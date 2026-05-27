@@ -8,7 +8,53 @@
 mod common;
 
 use sqllumen_lib::commands::history::list_history_impl;
+use sqllumen_lib::commands::query_history_bridge::invalidate_metadata_cache_for_executed_sql;
 use sqllumen_lib::db::history::{self, NewHistoryEntry};
+use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
+use sqllumen_lib::state::AppState;
+use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+use tokio_util::sync::CancellationToken;
+
+fn dummy_lazy_pool() -> sqlx::MySqlPool {
+    let opts = MySqlConnectOptions::new()
+        .host("127.0.0.1")
+        .port(13306)
+        .username("dummy")
+        .password("dummy");
+    MySqlPoolOptions::new().connect_lazy_with(opts)
+}
+
+fn dummy_stored_params(profile_id: &str) -> StoredConnectionParams {
+    StoredConnectionParams {
+        profile_id: profile_id.to_string(),
+        host: "127.0.0.1".to_string(),
+        port: 13306,
+        username: "dummy".to_string(),
+        has_password: false,
+        keychain_ref: None,
+        default_database: Some("test_db".to_string()),
+        ssl_enabled: false,
+        ssl_ca_path: None,
+        ssl_cert_path: None,
+        ssl_key_path: None,
+        connect_timeout_secs: 10,
+        keepalive_interval_secs: 0,
+    }
+}
+
+fn register_lazy_pool(state: &AppState, session_id: &str, profile_id: &str) {
+    let entry = RegistryEntry {
+        pool: dummy_lazy_pool(),
+        session_id: session_id.to_string(),
+        profile_id: profile_id.to_string(),
+        status: ConnectionStatus::Connected,
+        server_version: "8.0.0".to_string(),
+        cancellation_token: CancellationToken::new(),
+        connection_params: dummy_stored_params(profile_id),
+        read_only: false,
+    };
+    state.registry.insert(session_id.to_string(), entry);
+}
 
 /// Verify that history entries with the new schema fields can be inserted and listed.
 #[test]
@@ -126,6 +172,60 @@ fn test_history_pruning() {
     assert_eq!(page.total, 3);
 }
 
+#[tokio::test]
+async fn invalidate_metadata_cache_for_executed_sql_uses_default_database_for_unqualified_ddl() {
+    let state = common::test_app_state();
+    register_lazy_pool(&state, "sess-ddl", "profile-ddl");
+    state
+        .metadata_cache
+        .insert("sess-ddl", "test_db", "users", None, Vec::new());
+    state
+        .metadata_cache
+        .insert("sess-ddl", "other_db", "users", None, Vec::new());
+
+    invalidate_metadata_cache_for_executed_sql(
+        &state,
+        "sess-ddl",
+        "ALTER TABLE users ADD COLUMN email VARCHAR(255)",
+    );
+
+    assert!(state
+        .metadata_cache
+        .get("sess-ddl", "test_db", "users")
+        .is_none());
+    assert!(state
+        .metadata_cache
+        .get("sess-ddl", "other_db", "users")
+        .is_some());
+}
+
+#[tokio::test]
+async fn invalidate_metadata_cache_for_executed_sql_evicts_all_rename_targets() {
+    let state = common::test_app_state();
+    register_lazy_pool(&state, "sess-rename", "profile-rename");
+    state
+        .metadata_cache
+        .insert("sess-rename", "test_db", "orders", None, Vec::new());
+    state
+        .metadata_cache
+        .insert("sess-rename", "test_db", "orders_archive", None, Vec::new());
+
+    invalidate_metadata_cache_for_executed_sql(
+        &state,
+        "sess-rename",
+        "RENAME TABLE test_db.orders TO test_db.orders_archive",
+    );
+
+    assert!(state
+        .metadata_cache
+        .get("sess-rename", "test_db", "orders")
+        .is_none());
+    assert!(state
+        .metadata_cache
+        .get("sess-rename", "test_db", "orders_archive")
+        .is_none());
+}
+
 // ── Coverage-mode tests for bridge functions ─────────────────────────────
 //
 // Under `cfg(coverage)`, `execute_query_impl`, `execute_multi_query_impl`,
@@ -137,57 +237,11 @@ fn test_history_pruning() {
 
 #[cfg(coverage)]
 mod coverage_bridge_tests {
-    use super::common;
+    use super::{common, register_lazy_pool};
     use sqllumen_lib::commands::history::list_history_impl;
     use sqllumen_lib::commands::query_history_bridge::{
         execute_call_query_bridge, execute_multi_query_bridge, execute_query_bridge,
     };
-    use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
-    use sqllumen_lib::state::AppState;
-    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
-    use tokio_util::sync::CancellationToken;
-
-    fn dummy_lazy_pool() -> sqlx::MySqlPool {
-        let opts = MySqlConnectOptions::new()
-            .host("127.0.0.1")
-            .port(13306)
-            .username("dummy")
-            .password("dummy");
-        MySqlPoolOptions::new().connect_lazy_with(opts)
-    }
-
-    fn dummy_stored_params(profile_id: &str) -> StoredConnectionParams {
-        StoredConnectionParams {
-            profile_id: profile_id.to_string(),
-            host: "127.0.0.1".to_string(),
-            port: 13306,
-            username: "dummy".to_string(),
-            has_password: false,
-            keychain_ref: None,
-            default_database: Some("test_db".to_string()),
-            ssl_enabled: false,
-            ssl_ca_path: None,
-            ssl_cert_path: None,
-            ssl_key_path: None,
-            connect_timeout_secs: 10,
-            keepalive_interval_secs: 0,
-        }
-    }
-
-    fn register_lazy_pool(state: &AppState, session_id: &str, profile_id: &str) {
-        let entry = RegistryEntry {
-            pool: dummy_lazy_pool(),
-            session_id: session_id.to_string(),
-            profile_id: profile_id.to_string(),
-            status: ConnectionStatus::Connected,
-            server_version: "8.0.0".to_string(),
-            cancellation_token: CancellationToken::new(),
-            connection_params: dummy_stored_params(profile_id),
-            read_only: false,
-        };
-        state.registry.insert(session_id.to_string(), entry);
-    }
-
     /// Helper: wait for fire-and-forget history logging spawned tasks to complete.
     async fn wait_for_history_logging() {
         // The bridge uses tauri::async_runtime::spawn for fire-and-forget logging.
@@ -271,6 +325,72 @@ mod coverage_bridge_tests {
             page.total >= 1,
             "at least one history entry should be logged"
         );
+    }
+
+    #[tokio::test]
+    async fn test_execute_query_bridge_evicts_targeted_metadata_on_ddl_with_default_database() {
+        let state = common::test_app_state();
+        register_lazy_pool(&state, "sess-ddl", "profile-ddl");
+        state
+            .metadata_cache
+            .insert("sess-ddl", "test_db", "users", None, Vec::new());
+        state
+            .metadata_cache
+            .insert("sess-ddl", "other_db", "users", None, Vec::new());
+
+        execute_query_bridge(
+            &state,
+            "sess-ddl",
+            "tab-ddl",
+            "ALTER TABLE users ADD COLUMN email VARCHAR(255)",
+            100,
+        )
+        .await
+        .expect("bridge should succeed");
+
+        assert!(state
+            .metadata_cache
+            .get("sess-ddl", "test_db", "users")
+            .is_none());
+        assert!(state
+            .metadata_cache
+            .get("sess-ddl", "other_db", "users")
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn test_execute_multi_query_bridge_evicts_metadata_for_successful_ddl_statements() {
+        let state = common::test_app_state();
+        register_lazy_pool(&state, "sess-multi-ddl", "profile-multi-ddl");
+        state
+            .metadata_cache
+            .insert("sess-multi-ddl", "test_db", "users", None, Vec::new());
+        state
+            .metadata_cache
+            .insert("sess-multi-ddl", "test_db", "orders", None, Vec::new());
+
+        execute_multi_query_bridge(
+            &state,
+            "sess-multi-ddl",
+            "tab-multi-ddl",
+            vec![
+                "SELECT 1".to_string(),
+                "DROP TABLE test_db.users".to_string(),
+                "RENAME TABLE test_db.orders TO test_db.orders_archive".to_string(),
+            ],
+            100,
+        )
+        .await
+        .expect("bridge should succeed");
+
+        assert!(state
+            .metadata_cache
+            .get("sess-multi-ddl", "test_db", "users")
+            .is_none());
+        assert!(state
+            .metadata_cache
+            .get("sess-multi-ddl", "test_db", "orders")
+            .is_none());
     }
 
     // ── execute_multi_query_bridge: error path ────────────────────────────

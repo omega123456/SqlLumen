@@ -129,9 +129,18 @@ pub async fn fetch_table_data(
         });
     let sql_text = interpolate_sql_params(&raw_sql, &filter_clause.params);
 
-    let result =
-        table_data::fetch_table_data_impl(&pool, &database, &table, page, page_size, sort, filter)
-            .await;
+    let result = table_data::fetch_table_data_impl(
+        &pool,
+        &connection_id,
+        &state.metadata_cache,
+        &database,
+        &table,
+        page,
+        page_size,
+        sort,
+        filter,
+    )
+    .await;
 
     if let Ok(response) = &result {
         let inserted = state.table_data_cache.insert_if_current(
@@ -401,8 +410,16 @@ pub async fn insert_table_row(
     let sql_text = interpolate_sql_params(&raw_sql, &history_params);
 
     let start = std::time::Instant::now();
-    let result =
-        table_data::insert_table_row_impl(&pool, &database, &table, &values, &pk_info).await;
+    let result = table_data::insert_table_row_impl(
+        &pool,
+        &connection_id,
+        &state.metadata_cache,
+        &database,
+        &table,
+        &values,
+        &pk_info,
+    )
+    .await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);
@@ -535,7 +552,9 @@ pub async fn export_table_data(
     };
 
     let start = std::time::Instant::now();
-    let result = table_data::export_table_data_impl(&pool, &options).await;
+    let result =
+        table_data::export_table_data_impl(&pool, &connection_id, &state.metadata_cache, &options)
+            .await;
 
     let duration_ms = start.elapsed().as_millis() as i64;
     let (conn_id, database_name) = resolve_connection_context(&state, &connection_id);

@@ -1,4 +1,6 @@
-use sqllumen_lib::commands::table_designer::{generate_table_ddl_impl, parse_column_type};
+use sqllumen_lib::commands::table_designer::{
+    generate_table_ddl_impl, invalidate_metadata_cache_for_applied_table_ddl, parse_column_type,
+};
 use sqllumen_lib::mysql::table_designer::{
     derive_charset_from_collation, generate_alter_table_ddl, generate_create_table_ddl,
     validate_schema, DefaultValueModel, DesignerColumnDef, DesignerForeignKeyDef, DesignerIndexDef,
@@ -571,6 +573,57 @@ fn test_parse_column_type_splits_unsigned_without_length() {
     assert_eq!(column_type, "INT");
     assert_eq!(length, "");
     assert_eq!(modifier, "UNSIGNED");
+}
+
+#[test]
+fn invalidate_metadata_cache_for_applied_table_ddl_evicts_detected_tables() {
+    let state = common::test_app_state();
+
+    state
+        .metadata_cache
+        .insert("conn-1", "appdb", "users", None, Vec::new());
+    state
+        .metadata_cache
+        .insert("conn-1", "otherdb", "users", None, Vec::new());
+
+    invalidate_metadata_cache_for_applied_table_ddl(
+        &state,
+        "conn-1",
+        "appdb",
+        "ALTER TABLE users ADD COLUMN email VARCHAR(255)",
+    );
+
+    assert!(state
+        .metadata_cache
+        .get("conn-1", "appdb", "users")
+        .is_none());
+    assert!(state
+        .metadata_cache
+        .get("conn-1", "otherdb", "users")
+        .is_some());
+}
+
+#[test]
+fn invalidate_metadata_cache_for_applied_table_ddl_falls_back_to_connection_on_parse_failure() {
+    let state = common::test_app_state();
+
+    state
+        .metadata_cache
+        .insert("conn-1", "appdb", "users", None, Vec::new());
+    state
+        .metadata_cache
+        .insert("conn-1", "appdb", "orders", None, Vec::new());
+
+    invalidate_metadata_cache_for_applied_table_ddl(&state, "conn-1", "appdb", "ALTER");
+
+    assert!(state
+        .metadata_cache
+        .get("conn-1", "appdb", "users")
+        .is_none());
+    assert!(state
+        .metadata_cache
+        .get("conn-1", "appdb", "orders")
+        .is_none());
 }
 
 #[tokio::test]
@@ -1281,6 +1334,7 @@ mod command_wrapper_integration {
                 1800,
                 std::env::temp_dir().join("sqllumen-test-tbldesign-table-data"),
             )),
+            metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
             log_filter_reload: Mutex::new(None),
             running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
             dump_jobs: std::sync::Arc::new(
@@ -1718,7 +1772,8 @@ mod command_wrapper_integration {
 mod coverage_stubs {
     use super::*;
     use sqllumen_lib::commands::table_designer::{
-        apply_table_ddl_impl, generate_table_ddl_impl, load_table_for_designer_impl,
+        apply_table_ddl_impl, generate_table_ddl_impl,
+        invalidate_metadata_cache_for_applied_table_ddl, load_table_for_designer_impl,
     };
     use sqllumen_lib::mysql::registry::{ConnectionStatus, RegistryEntry, StoredConnectionParams};
     use sqllumen_lib::state::AppState;
@@ -1869,5 +1924,56 @@ mod coverage_stubs {
         )
         .await;
         assert!(success.is_ok());
+    }
+
+    #[test]
+    fn invalidate_metadata_cache_for_applied_table_ddl_evicts_detected_tables() {
+        let state = common::test_app_state();
+
+        state
+            .metadata_cache
+            .insert("conn-1", "appdb", "users", None, Vec::new());
+        state
+            .metadata_cache
+            .insert("conn-1", "otherdb", "users", None, Vec::new());
+
+        invalidate_metadata_cache_for_applied_table_ddl(
+            &state,
+            "conn-1",
+            "appdb",
+            "ALTER TABLE users ADD COLUMN email VARCHAR(255)",
+        );
+
+        assert!(state
+            .metadata_cache
+            .get("conn-1", "appdb", "users")
+            .is_none());
+        assert!(state
+            .metadata_cache
+            .get("conn-1", "otherdb", "users")
+            .is_some());
+    }
+
+    #[test]
+    fn invalidate_metadata_cache_for_applied_table_ddl_falls_back_to_connection_on_parse_failure() {
+        let state = common::test_app_state();
+
+        state
+            .metadata_cache
+            .insert("conn-1", "appdb", "users", None, Vec::new());
+        state
+            .metadata_cache
+            .insert("conn-1", "appdb", "orders", None, Vec::new());
+
+        invalidate_metadata_cache_for_applied_table_ddl(&state, "conn-1", "appdb", "ALTER");
+
+        assert!(state
+            .metadata_cache
+            .get("conn-1", "appdb", "users")
+            .is_none());
+        assert!(state
+            .metadata_cache
+            .get("conn-1", "appdb", "orders")
+            .is_none());
     }
 }

@@ -7,6 +7,7 @@ import { useSessionRestoreStore } from '../stores/session-restore-store'
 import { useShortcutStore } from '../stores/shortcut-store'
 import { useThemeStore } from '../stores/theme-store'
 import { useUpdateStore } from '../stores/update-store'
+import * as SchemaMetadataCacheModule from '../components/query-editor/schema-metadata-cache'
 
 beforeEach(() => {
   act(() => {
@@ -67,5 +68,22 @@ describe('App', () => {
 
     unmount()
     expect(stopPeriodicCheck).toHaveBeenCalledTimes(1)
+  })
+
+  it('registers and cleans up the schema invalidation listener', async () => {
+    const schemaUnlisten = vi.fn()
+    const listenerSpy = vi
+      .spyOn(SchemaMetadataCacheModule, 'setupSchemaInvalidationListener')
+      .mockResolvedValue(schemaUnlisten)
+
+    const { unmount } = render(<App />)
+
+    await vi.waitFor(() => {
+      expect(listenerSpy).toHaveBeenCalledTimes(1)
+    })
+
+    unmount()
+
+    expect(schemaUnlisten).toHaveBeenCalledTimes(1)
   })
 })

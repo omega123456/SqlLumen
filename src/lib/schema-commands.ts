@@ -153,3 +153,8 @@ export async function renameTable(
 ): Promise<void> {
   return invoke<void>('rename_table', { connectionId, database, oldName, newName })
 }
+
+/** Evict cached table metadata for an entire connection. */
+export async function invalidateMetadataCache(connectionId: string): Promise<void> {
+  return invoke<void>('invalidate_metadata_cache', { connectionId })
+}

@@ -94,8 +94,8 @@ pub async fn list_exportable_objects_impl(
     let mut current_db: Option<String> = None;
 
     for row in &rows {
-        let schema_name: String = decode_mysql_text_cell_named(row, "SCHEMA_NAME")
-            .unwrap_or_default();
+        let schema_name: String =
+            decode_mysql_text_cell_named(row, "SCHEMA_NAME").unwrap_or_default();
 
         // Start a new database group when the schema name changes
         if current_db.as_deref() != Some(&schema_name) {
@@ -107,8 +107,7 @@ pub async fn list_exportable_objects_impl(
         }
 
         // LEFT JOIN produces NULL TABLE_NAME for empty databases
-        let table_name: Option<String> =
-            decode_mysql_text_cell_named(row, "TABLE_NAME").ok();
+        let table_name: Option<String> = decode_mysql_text_cell_named(row, "TABLE_NAME").ok();
         if let Some(name) = table_name {
             if name.is_empty() {
                 continue;
@@ -346,11 +345,10 @@ fn execute_dump(
                             .await
                             .map_err(|e| format!("Failed to acquire connection: {e}"))?;
 
-                        let thread_id: u64 =
-                            sqlx::query_scalar("SELECT CONNECTION_ID()")
-                                .fetch_one(&mut *conn)
-                                .await
-                                .map_err(|e| format!("Failed to get connection ID: {e}"))?;
+                        let thread_id: u64 = sqlx::query_scalar("SELECT CONNECTION_ID()")
+                            .fetch_one(&mut *conn)
+                            .await
+                            .map_err(|e| format!("Failed to get connection ID: {e}"))?;
 
                         {
                             let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
@@ -363,17 +361,15 @@ fn execute_dump(
                         let mut stream = sqlx::query(&data_query).fetch(&mut *conn);
 
                         // Extract column names from the first row
-                        let first_row = stream
-                            .try_next()
-                            .await
-                            .map_err(|e| format!("Failed to fetch data from '{table_name}': {e}"))?;
+                        let first_row = stream.try_next().await.map_err(|e| {
+                            format!("Failed to fetch data from '{table_name}': {e}")
+                        })?;
 
                         let first_row = match first_row {
                             Some(row) => row,
                             None => {
                                 // Clear thread ID — no longer running a query
-                                let mut jobs =
-                                    dump_jobs.write().unwrap_or_else(|p| p.into_inner());
+                                let mut jobs = dump_jobs.write().unwrap_or_else(|p| p.into_inner());
                                 if let Some(progress) = jobs.get_mut(job_id) {
                                     progress.mysql_thread_id = None;
                                 }
@@ -414,7 +410,8 @@ fn execute_dump(
                             }
                         }
 
-                        result.map_err(|e| format!("Failed to write data for '{table_name}': {e}"))?;
+                        result
+                            .map_err(|e| format!("Failed to write data for '{table_name}': {e}"))?;
 
                         Ok::<_, String>(())
                     })?;

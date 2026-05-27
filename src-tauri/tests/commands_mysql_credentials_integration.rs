@@ -85,6 +85,7 @@ fn test_state() -> AppState {
             1800,
             std::env::temp_dir().join("sqllumen-test-creds-table-data"),
         )),
+        metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
@@ -123,6 +124,7 @@ fn poisoned_state() -> AppState {
             1800,
             std::env::temp_dir().join("sqllumen-test-creds-table-data"),
         )),
+        metadata_cache: sqllumen_lib::mysql::metadata_cache::MetadataCache::new(),
         log_filter_reload: Mutex::new(None),
         running_queries: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         dump_jobs: Arc::new(std::sync::RwLock::new(std::collections::HashMap::new())),
@@ -829,6 +831,55 @@ async fn close_connection_impl_removes_only_matching_running_queries() {
         running.get(&("conn-2".to_string(), "tab-2".to_string())),
         Some(&202)
     );
+}
+
+#[tokio::test]
+async fn close_connection_impl_evicts_metadata_cache_for_closed_connection() {
+    let state = test_state();
+    let entry = RegistryEntry {
+        pool: dummy_pool(),
+        session_id: "conn-1".to_string(),
+        profile_id: "profile-1".to_string(),
+        status: ConnectionStatus::Connected,
+        server_version: "8.0".to_string(),
+        cancellation_token: CancellationToken::new(),
+        connection_params: StoredConnectionParams {
+            profile_id: "profile-1".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 13306,
+            username: "dummy".to_string(),
+            has_password: false,
+            keychain_ref: None,
+            default_database: Some("test_db".to_string()),
+            ssl_enabled: false,
+            ssl_ca_path: None,
+            ssl_cert_path: None,
+            ssl_key_path: None,
+            connect_timeout_secs: 10,
+            keepalive_interval_secs: 0,
+        },
+        read_only: false,
+    };
+    state.registry.insert("conn-1".to_string(), entry);
+    state
+        .metadata_cache
+        .insert("conn-1", "test_db", "users", None, Vec::new());
+    state
+        .metadata_cache
+        .insert("conn-2", "test_db", "users", None, Vec::new());
+
+    close_connection_impl(&state, "conn-1")
+        .await
+        .expect("close should succeed");
+
+    assert!(state
+        .metadata_cache
+        .get("conn-1", "test_db", "users")
+        .is_none());
+    assert!(state
+        .metadata_cache
+        .get("conn-2", "test_db", "users")
+        .is_some());
 }
 
 #[tokio::test]

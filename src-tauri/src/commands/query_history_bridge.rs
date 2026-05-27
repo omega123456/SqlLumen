@@ -8,6 +8,10 @@
 //! The frontend never writes history; it only reads via `list_history` etc.
 
 use crate::db::history::{self, NewHistoryEntry};
+use crate::mysql::ddl_detector::{detect_ddl_tables, DdlDetectionResult};
+use crate::mysql::metadata_cache::{
+    evict_metadata_cache_for_connection, evict_metadata_cache_for_tables,
+};
 use crate::mysql::query_executor::{
     execute_call_query_impl, execute_multi_query_impl, execute_query_impl, ExecuteQueryResult,
     MultiQueryResult,
@@ -83,6 +87,35 @@ pub(crate) fn resolve_connection_context(
     (connection_id, database_name)
 }
 
+fn handle_metadata_cache_invalidation(
+    state: &AppState,
+    session_id: &str,
+    sql: &str,
+    default_database: Option<&str>,
+) {
+    match detect_ddl_tables(sql) {
+        DdlDetectionResult::NoDdl => {}
+        DdlDetectionResult::DdlDetected(affected_tables) => {
+            evict_metadata_cache_for_tables(state, session_id, &affected_tables, default_database);
+        }
+        DdlDetectionResult::ParseFailed => {
+            evict_metadata_cache_for_connection(state, session_id);
+        }
+    }
+}
+
+fn default_database_for_session(state: &AppState, session_id: &str) -> Option<String> {
+    state
+        .registry
+        .get_connection_params(session_id)
+        .and_then(|params| params.default_database)
+}
+
+pub fn invalidate_metadata_cache_for_executed_sql(state: &AppState, session_id: &str, sql: &str) {
+    let default_database = default_database_for_session(state, session_id);
+    handle_metadata_cache_invalidation(state, session_id, sql, default_database.as_deref());
+}
+
 // ── execute_query bridge ──────────────────────────────────────────────────────
 
 /// Execute a single query and log history.
@@ -99,6 +132,7 @@ pub async fn execute_query_bridge(
 
     match &result {
         Ok(r) => {
+            invalidate_metadata_cache_for_executed_sql(state, session_id, sql);
             log_single_entry(
                 &state.db,
                 NewHistoryEntry {
@@ -149,6 +183,12 @@ pub async fn execute_multi_query_bridge(
 
     match &result {
         Ok(multi) => {
+            for item in &multi.results {
+                if item.error.is_none() {
+                    invalidate_metadata_cache_for_executed_sql(state, session_id, &item.source_sql);
+                }
+            }
+
             let entries: Vec<NewHistoryEntry> = multi
                 .results
                 .iter()

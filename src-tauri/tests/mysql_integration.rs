@@ -517,6 +517,7 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
         db.to_string()
     };
 
+    use sqllumen_lib::mysql::metadata_cache::MetadataCache;
     use sqllumen_lib::mysql::table_data::{insert_table_row_impl, PrimaryKeyInfo};
     use std::collections::HashMap;
 
@@ -549,7 +550,17 @@ async fn insert_table_row_impl_refetches_unsigned_bigint_autoincrement_pk() {
         is_unique_key_fallback: false,
     };
 
-    let insert_outcome = insert_table_row_impl(&pool, &db_name, &table, &values, &pk).await;
+    let metadata_cache = MetadataCache::new();
+    let insert_outcome = insert_table_row_impl(
+        &pool,
+        "mysql-test-connection",
+        &metadata_cache,
+        &db_name,
+        &table,
+        &values,
+        &pk,
+    )
+    .await;
 
     let _ = sqlx::query(&format!("DROP TABLE `{}`.`{}`", db_name, table))
         .execute(&pool)
