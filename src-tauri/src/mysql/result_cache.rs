@@ -106,7 +106,13 @@ impl MemorySnapshot for SysinfoMemorySnapshot {
     }
 
     fn available_bytes(&self) -> u64 {
-        self.sys.available_memory()
+        let available = self.sys.available_memory();
+        if available > 0 {
+            return available;
+        }
+        // macOS: sysinfo returns 0 for available_memory; approximate as total − used
+        // (used = active + wired, so the remainder includes free + inactive + purgeable)
+        self.sys.total_memory().saturating_sub(self.sys.used_memory())
     }
 
     fn total_bytes(&self) -> u64 {
